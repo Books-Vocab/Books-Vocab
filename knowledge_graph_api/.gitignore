@@ -1,0 +1,19 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+.venv/
+.env
+
+# Data (Keep cards.json? User didn't say to ignore it, but usually ignore generated data if large. I'll ignore embeddings and backups)
+data/*.npy
+data/*.bak
+data/legacy_id_map.json
+legacy_cards/
+
+# IDE
+.vscode/
+.idea/
+.DS_Store
+build.log
+build_*.log

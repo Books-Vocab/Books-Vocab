@@ -1,0 +1,332 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<style>
+* { margin: 0; padding: 0; box-sizing: border-box; }
+html, body { width: 100%; height: 100%; overflow: hidden; background: transparent; }
+canvas { display: block; touch-action: none; background: transparent; }
+</style>
+</head>
+<body>
+<canvas id="g"></canvas>
+<script src="d3.v7.min.js"></script>
+<script>
+// ── Global state ─────────────────────────────────────────────────────────────
+let sim, nodes = [], links = [], forces = {};
+let transform = d3.zoomIdentity;
+let hoveredId = null, selectedId = null;
+let TIER_COLORS = { dark: {}, light: {} };
+let adjCache = new Map();
+let currentMode = 'dark';
+let W = window.innerWidth, H = window.innerHeight;
+
+const canvas = document.getElementById('g');
+const ctx = canvas.getContext('2d');
+
+// ── Bridge to Swift ───────────────────────────────────────────────────────────
+function postBridge(obj) {
+    if (window.webkit && window.webkit.messageHandlers && window.webkit.messageHandlers.graphBridge) {
+        window.webkit.messageHandlers.graphBridge.postMessage(obj);
+    }
+}
+
+// ── Retina canvas ─────────────────────────────────────────────────────────────
+function resize() {
+    const dpr = window.devicePixelRatio || 1;
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    canvas.style.width = W + 'px';
+    canvas.style.height = H + 'px';
+    ctx.scale(dpr, dpr);
+}
+window.addEventListener('resize', () => { resize(); if (sim) sim.alpha(0.1).restart(); });
+resize();
+
+// ── Node helpers ──────────────────────────────────────────────────────────────
+function nodeRadius(d) {
+    const base = forces.baseNodeRadius || 4;
+    if (d.degree > 5) return base * 2.2;
+    if (d.degree > 2) return base * 1.5;
+    return base;
+}
+
+function nodeColor(d) {
+    const palette = TIER_COLORS[currentMode] || {};
+    return palette[d.tier] || '#888888';
+}
+
+function opacityForNode(id) {
+    if (!hoveredId && !selectedId) return 1.0;
+    const focusId = selectedId || hoveredId;
+    if (id === focusId) return 1.0;
+    if (adjCache.get(focusId)?.has(id)) return 0.8;
+    return 0.15;
+}
+
+function opacityForEdge(sid, tid) {
+    if (!selectedId) return 0.25;
+    if (sid === selectedId || tid === selectedId) return 0.7;
+    return 0.05;
+}
+
+const EDGE_COLORS = {
+    confusable:     '#FF8C00',
+    contrasts_with: '#4A90E2',
+    shares_usage:   '#5CA85C'
+};
+
+// ── Draw ──────────────────────────────────────────────────────────────────────
+function draw() {
+    // Transparent clear — no solid background, iOS system bg shows through
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+
+    // Draw edges
+    const screenLineWidth = (forces.linkThickness || 1.0) / transform.k;
+    for (const l of links) {
+        const s = l.source, t = l.target;
+        if (!s || !t || s.x == null || t.x == null) continue;
+        const sid = typeof s === 'object' ? s.id : s;
+        const tid = typeof t === 'object' ? t.id : t;
+        ctx.beginPath();
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(t.x, t.y);
+        ctx.strokeStyle = EDGE_COLORS[l.kind] || '#888888';
+        ctx.globalAlpha = opacityForEdge(sid, tid);
+        ctx.lineWidth = screenLineWidth;
+        ctx.stroke();
+    }
+
+    // Draw nodes (with subtle glow)
+    for (const d of nodes) {
+        const r = nodeRadius(d);
+        const color = nodeColor(d);
+        const opacity = opacityForNode(d.id);
+
+        // Glow halo
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, r * 2.2, 0, 2 * Math.PI);
+        const grad = ctx.createRadialGradient(d.x, d.y, r * 0.4, d.x, d.y, r * 2.2);
+        grad.addColorStop(0, color + '30');
+        grad.addColorStop(1, color + '00');
+        ctx.fillStyle = grad;
+        ctx.globalAlpha = opacity;
+        ctx.fill();
+
+        // Node fill
+        ctx.beginPath();
+        ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
+        ctx.fillStyle = color;
+        ctx.globalAlpha = opacity;
+        ctx.fill();
+    }
+
+    // Draw labels
+    ctx.globalAlpha = 1;
+    const shadowColor = currentMode === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)';
+    for (const d of nodes) {
+        const r = nodeRadius(d);
+        const opacity = opacityForNode(d.id);
+        if (opacity < 0.2) continue;
+        const fontSize = d.degree > 3 ? 10 : 8;
+        ctx.font = `${fontSize}px -apple-system, sans-serif`;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        ctx.shadowColor = shadowColor;
+        ctx.shadowBlur = 4;
+        ctx.fillStyle = currentMode === 'dark'
+            ? `rgba(255,255,255,${0.88 * opacity})`
+            : `rgba(0,0,0,${0.80 * opacity})`;
+        ctx.fillText(d.word, d.x, d.y + r + 3);
+    }
+    ctx.shadowBlur = 0;
+
+    ctx.restore();
+}
+
+// ── Build adjacency cache ──────────────────────────────────────────────────────
+function buildAdjCache() {
+    adjCache.clear();
+    nodes.forEach(n => adjCache.set(n.id, new Set()));
+    links.forEach(l => {
+        const sid = typeof l.source === 'object' ? l.source.id : l.source;
+        const tid = typeof l.target === 'object' ? l.target.id : l.target;
+        adjCache.get(sid)?.add(tid);
+        adjCache.get(tid)?.add(sid);
+    });
+}
+
+// ── findNode ──────────────────────────────────────────────────────────────────
+function findNode(x, y) {
+    const sx = (x - transform.x) / transform.k;
+    const sy = (y - transform.y) / transform.k;
+    return nodes.find(n => Math.hypot(n.x - sx, n.y - sy) < nodeRadius(n) + 4);
+}
+
+// ── Zoom ──────────────────────────────────────────────────────────────────────
+const zoom = d3.zoom()
+    .scaleExtent([0.1, 8])
+    .on('zoom', e => { transform = e.transform; draw(); });
+d3.select(canvas).call(zoom);
+
+// ── Drag ──────────────────────────────────────────────────────────────────────
+const drag = d3.drag()
+    .subject(function(event) {
+        return findNode(event.x, event.y) || null;
+    })
+    .on('start', function(event) {
+        if (!event.subject) return;
+        const d = event.subject;
+        d.fx = d.x; d.fy = d.y;
+        if (sim) sim.alphaTarget(0.3).restart();
+    })
+    .on('drag', function(event) {
+        if (!event.subject) return;
+        const d = event.subject;
+        d.fx = (event.x - transform.x) / transform.k;
+        d.fy = (event.y - transform.y) / transform.k;
+    })
+    .on('end', function(event) {
+        if (!event.subject) return;
+        const d = event.subject;
+        d.fx = null; d.fy = null;
+        if (sim) sim.alphaTarget(0);
+    });
+d3.select(canvas).call(drag);
+
+// ── Click ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('click', function(e) {
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const node = findNode(x, y);
+    if (node) {
+        if (selectedId === node.id) {
+            selectedId = null;
+        } else {
+            selectedId = node.id;
+            postBridge({ type: 'nodeClick', nodeId: node.id });
+        }
+    } else {
+        selectedId = null;
+    }
+    draw();
+});
+
+// ── Hover ─────────────────────────────────────────────────────────────────────
+canvas.addEventListener('pointermove', function(e) {
+    if (e.buttons !== 0) return;
+    const rect = canvas.getBoundingClientRect();
+    const x = e.clientX - rect.left;
+    const y = e.clientY - rect.top;
+    const node = findNode(x, y);
+    const newId = node ? node.id : null;
+    if (newId !== hoveredId) {
+        hoveredId = newId;
+        draw();
+    }
+});
+
+canvas.addEventListener('pointerleave', function() {
+    if (hoveredId !== null) { hoveredId = null; draw(); }
+});
+
+// ── initGraph ─────────────────────────────────────────────────────────────────
+window.initGraph = function(jsonStr) {
+    const data = JSON.parse(jsonStr);
+    forces = data.forces || {};
+
+    // Cache tier colors
+    const colors = data.theme?.colors || {};
+    TIER_COLORS = { dark: {}, light: {} };
+    for (const [tier, pair] of Object.entries(colors)) {
+        TIER_COLORS.dark[tier]  = pair.dark  || '#888888';
+        TIER_COLORS.light[tier] = pair.light || '#888888';
+    }
+
+    // Apply theme
+    currentMode = data.theme?.mode || 'dark';
+
+    // Preserve existing positions
+    const posMap = new Map();
+    nodes.forEach(n => posMap.set(n.id, { x: n.x, y: n.y, vx: n.vx, vy: n.vy }));
+
+    nodes = (data.nodes || []).map(n => {
+        const old = posMap.get(n.id);
+        const radius = Math.random() * 80 + 20;
+        const angle  = Math.random() * 2 * Math.PI;
+        return Object.assign(n, {
+            x:  old ? old.x  : Math.cos(angle) * radius + W / 2,
+            y:  old ? old.y  : Math.sin(angle) * radius + H / 2,
+            vx: old ? old.vx : 0,
+            vy: old ? old.vy : 0
+        });
+    });
+
+    links = (data.links || []).map(l => ({ ...l }));
+
+    // Kill old sim
+    if (sim) sim.stop();
+
+    buildAdjCache();
+
+    const cx = W / 2, cy = H / 2;
+    const gravity = forces.centerStrength || 0.05;
+
+    sim = d3.forceSimulation(nodes)
+        .force('charge',  d3.forceManyBody().strength(-(forces.repel || 80)))
+        .force('link',    d3.forceLink(links).id(d => d.id)
+                            .distance(forces.linkDistance || 50)
+                            .strength(forces.linkStrength != null ? forces.linkStrength : undefined))
+        .force('center',  d3.forceCenter(cx, cy))
+        .force('x',       d3.forceX(cx).strength(gravity))
+        .force('y',       d3.forceY(cy).strength(gravity))
+        .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 2))
+        .on('tick', draw);
+
+    draw();
+};
+
+// ── updateForces ──────────────────────────────────────────────────────────────
+window.updateForces = function(arg) {
+    forces = typeof arg === 'string' ? JSON.parse(arg) : arg;
+    if (!sim) return;
+    const gravity2 = forces.centerStrength || 0.05;
+    sim.force('charge',  d3.forceManyBody().strength(-(forces.repel || 80)));
+    sim.force('link',    d3.forceLink(links).id(d => d.id)
+                           .distance(forces.linkDistance || 50)
+                           .strength(forces.linkStrength != null ? forces.linkStrength : undefined));
+    sim.force('x',       d3.forceX(W / 2).strength(gravity2));
+    sim.force('y',       d3.forceY(H / 2).strength(gravity2));
+    sim.force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 2));
+    sim.alpha(0.3).restart();
+};
+
+// ── updateTheme ───────────────────────────────────────────────────────────────
+window.updateTheme = function(mode) {
+    currentMode = mode;
+    draw();
+};
+
+// ── reheat ────────────────────────────────────────────────────────────────────
+window.reheat = function() {
+    if (sim) sim.alpha(0.3).restart();
+};
+
+// ── Ready ─────────────────────────────────────────────────────────────────────
+document.addEventListener('DOMContentLoaded', function() {
+    postBridge({ type: 'ready' });
+});
+// In case DOMContentLoaded already fired
+if (document.readyState === 'complete' || document.readyState === 'interactive') {
+    postBridge({ type: 'ready' });
+}
+</script>
+</body>
+</html>

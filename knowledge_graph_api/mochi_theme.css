@@ -1,0 +1,50 @@
+/* KG Knowledge Theme for Mochi — matches KG Vocab v3 template */
+
+/* ── POS tag ── */
+.pos-tag {
+  font-weight: 400;
+  opacity: 0.7;
+}
+
+/* ── Difficulty tag (template uses <sup class="diff-tag diff-advanced">) ── */
+.diff-tag {
+  font-size: 0.65em;
+  font-weight: 400;
+  letter-spacing: 0.04em;
+  vertical-align: super;
+  margin-left: 6px;
+}
+
+.diff-core {
+  color: #4caf50 !important;
+}
+
+.diff-intermediate {
+  color: #cfad25 !important;
+}
+
+.diff-advanced {
+  color: #e88a1a !important;
+}
+
+.diff-rare {
+  color: #e05252 !important;
+}
+
+/* ── Note block ── */
+.note-block {
+  font-size: 0.85em;
+  margin-top: 8px;
+  line-height: 1.6;
+  opacity: 0.9;
+}
+
+/* ── Links block ── */
+.links-block {
+  font-size: 0.82em;
+  margin-top: 6px;
+  padding: 6px 10px;
+  border-radius: 6px;
+  background: rgba(100, 100, 100, 0.06);
+  line-height: 1.5;
+}

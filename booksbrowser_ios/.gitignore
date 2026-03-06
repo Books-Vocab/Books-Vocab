@@ -1,0 +1,28 @@
+# Xcode
+#
+# gitignore contributors: scrollable on GitHub
+
+## Build results
+build/
+DerivedData/
+
+## Skeleton project files
+*.xcodeproj/*
+!*.xcodeproj/project.pbxproj
+!*.xcodeproj/xcshareddata/
+!*.xcworkspace/contents.xcworkspacedata
+
+## Swift Package Manager
+.build/
+
+## User-specific files
+*.xcuserdatad
+*.xccheckout
+*.xcuserstate
+
+## OS X
+.DS_Store
+build.log
+build_warnings.log
+build.log
+build_*.log

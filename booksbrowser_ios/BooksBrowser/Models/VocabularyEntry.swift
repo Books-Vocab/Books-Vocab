@@ -1,0 +1,71 @@
+//
+//  VocabularyEntry.swift
+//  BooksBrowser
+//
+//  Created by 陳亮宇 on 2026/2/24.
+//
+
+import Foundation
+import SwiftData
+
+/// 生詞條目 — 記錄使用者在閱讀中查詢的單字/短語
+@Model
+final class VocabularyEntry {
+    var id: UUID
+    var word: String                // 原文單字或短語
+    var translation: String         // 翻譯結果
+    var context: String             // 來源句子（上下文）
+    var explanation: String?        // AI 語境解釋
+    var partOfSpeech: String?       // 詞性
+    var pronunciation: String?      // 音標
+    var bookTitle: String           // 來源書名
+    var chapterTitle: String?       // 來源章節
+    var dateAdded: Date
+
+    // Inflection forms for underlining (e.g. "lay" → ["lay","lays","laid","laying","lain"])
+    var rootForm: String?           // AI-determined lemma, sent to server on sync
+    var inflections: [String] = []  // filled by server after sync
+
+    // KG Integration
+    var syncStatus: Int = 0         // 0=pending, 1=synced, 2=failed
+    var kgCardId: String?           // KG 卡片 ID（同步後回填）
+    var difficultyTier: String?     // "core" / "intermediate" / "advanced" / "rare"
+    var actionType: String = "add"  // "add" | "delete" | "edit"
+
+    // Local spaced-review state
+    var reviewIntervalHours: Double = VocabularyReviewPolicy.initialIntervalHours
+    var nextReviewAt: Date = Date().addingTimeInterval(VocabularyReviewPolicy.initialIntervalHours * 3600)
+    var lastReviewedAt: Date?
+    var reviewCount: Int = 0
+    var lapseCount: Int = 0
+    var reviewStreak: Int = 0
+    var lastReviewFeedbackRaw: Int = -1
+
+    var book: Book?
+
+    /// Sync status convenience
+    var isSynced: Bool { syncStatus == 1 }
+    var isPending: Bool { syncStatus == 0 }
+
+    init(
+        word: String,
+        translation: String,
+        context: String,
+        explanation: String? = nil,
+        partOfSpeech: String? = nil,
+        pronunciation: String? = nil,
+        bookTitle: String,
+        chapterTitle: String? = nil
+    ) {
+        self.id = UUID()
+        self.word = word
+        self.translation = translation
+        self.context = context
+        self.explanation = explanation
+        self.partOfSpeech = partOfSpeech
+        self.pronunciation = pronunciation
+        self.bookTitle = bookTitle
+        self.chapterTitle = chapterTitle
+        self.dateAdded = Date()
+    }
+}

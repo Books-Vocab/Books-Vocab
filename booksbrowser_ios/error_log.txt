@@ -1,0 +1,44 @@
+Command line invocation:
+    /Applications/Xcode.app/Contents/Developer/usr/bin/xcodebuild -project BooksBrowser.xcodeproj -scheme BooksBrowser -destination "platform=iOS Simulator,name=iPhone 16 Pro Max" build
+
+Resolve Package Graph
+
+
+Resolved source packages:
+  CryptoSwift: https://github.com/krzyzanowskim/CryptoSwift.git @ 1.9.0
+  ReadiumFuzi: https://github.com/readium/Fuzi.git @ 4.0.0
+  SwiftSoup: https://github.com/scinfu/SwiftSoup.git @ 2.11.3
+  GCDWebServer: https://github.com/readium/GCDWebServer.git @ 4.0.1
+  DifferenceKit: https://github.com/ra1028/DifferenceKit.git @ 1.3.0
+  swift-atomics: https://github.com/apple/swift-atomics.git @ 1.3.0
+  Zip: https://github.com/marmelroy/Zip.git @ 2.1.2
+  LRUCache: https://github.com/nicklockwood/LRUCache.git @ 1.2.1
+  SQLite.swift: https://github.com/stephencelis/SQLite.swift.git @ 0.15.5
+  ReadiumZIPFoundation: https://github.com/readium/ZIPFoundation.git @ 3.0.1
+  Readium: https://github.com/readium/swift-toolkit.git @ 3.7.0
+
+2026-02-27 11:55:08.745 xcodebuild[37431:24349126] [MT] IDERunDestination: Supported platforms for the buildables in the current scheme is empty.
+2026-02-27 11:56:09.006 xcodebuild[37431:24349126] Writing error result bundle to /var/folders/w_/pyp_frp52cq5pm_nydww7qx40000gn/T/ResultBundle_2026-27-02_11-56-0009.xcresult
+xcodebuild: error: Unable to find a device matching the provided destination specifier:
+		{ platform:iOS Simulator, OS:latest, name:iPhone 16 Pro Max }
+
+	The requested device could not be found because no available devices matched the request.
+
+	Available destinations for the "BooksBrowser" scheme:
+		{ platform:iOS, arch:arm64, id:00008120-0014146001EB401E, name:🍆 }
+		{ platform:iOS, id:dvtdevice-DVTiPhonePlaceholder-iphoneos:placeholder, name:Any iOS Device }
+		{ platform:iOS Simulator, id:dvtdevice-DVTiOSDeviceSimulatorPlaceholder-iphonesimulator:placeholder, name:Any iOS Simulator Device }
+		{ platform:iOS Simulator, arch:arm64, id:760AB501-04DB-46A3-B7FB-63B816A37238, OS:26.2, name:iPad (A16) }
+		{ platform:iOS Simulator, arch:arm64, id:C670054C-2457-4B9F-BD1F-310B53EDDBF0, OS:26.2, name:iPad Air 11-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:0AF25082-B68C-45B7-9A70-B25FA2433FDD, OS:26.2, name:iPad Air 13-inch (M3) }
+		{ platform:iOS Simulator, arch:arm64, id:22301DA1-BA2A-4091-A0AC-95C069111FF0, OS:26.2, name:iPad Pro 11-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:3B08E767-603B-4C7B-974C-8D7DE89A9AE2, OS:26.2, name:iPad Pro 13-inch (M5) }
+		{ platform:iOS Simulator, arch:arm64, id:E242C4BE-CC20-4D30-A74F-8A382559DF6D, OS:26.2, name:iPad mini (A17 Pro) }
+		{ platform:iOS Simulator, arch:arm64, id:4D055CAE-03BB-46E0-AC0A-ECB889A0FBC6, OS:26.2, name:iPhone 16e }
+		{ platform:iOS Simulator, arch:arm64, id:BE9BA454-C27F-48F4-B456-8FEA565B614A, OS:26.2, name:iPhone 17 }
+		{ platform:iOS Simulator, arch:arm64, id:8A8BB102-AECD-4AB2-B29B-56E130366B86, OS:26.2, name:iPhone 17 Pro }
+		{ platform:iOS Simulator, arch:arm64, id:3A83C95B-EB15-4BD6-8C17-C10A77F2C82A, OS:26.2, name:iPhone 17 Pro Max }
+		{ platform:iOS Simulator, arch:arm64, id:C0D63C04-ABFD-4C16-8318-A90172D188EB, OS:26.2, name:iPhone Air }
+
+	Ineligible destinations for the "BooksBrowser" scheme:
+		{ platform:macOS, arch:undefined_arch, variant:Designed for [iPad,iPhone], id:00008132-001669963445801C, name:My Mac, error:Xcode doesn’t support My Mac’s macOS 15.6 (24G84).  }

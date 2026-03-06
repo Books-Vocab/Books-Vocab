@@ -1,63 +1,59 @@
-# Super-Repo + Submodule Workflow
+# Monorepo Workflow (Detailed)
 
-## Topology
-- Workspace root is the control-plane repo.
-- `booksbrowser_ios` and `knowledge_graph_api` are submodules.
-- Root commit records exact child commit SHAs (release pairing source of truth).
+This document is the detailed workflow guide for the workspace after migration to a single git repository.
 
-## Day-to-Day Flow
+## Repository Topology
+- One root git repository tracks:
+  - iOS app: `booksbrowser_ios/`
+  - backend API: `knowledge_graph_api/`
+  - workspace ops/docs: `docs/`, `ops/`, `devops.sh`, policy/support pages
+
+## Commit Strategy
+- Keep commit scope narrow and explicit.
+- Recommended prefixes:
+  - `ios:` iOS-only changes
+  - `api:` backend-only changes
+  - `ops:` deploy/runbook/tooling
+  - `docs:` documentation-only
+
+## Typical Flows
 
 ### A) iOS-only change
-1. `cd booksbrowser_ios`
-2. Implement + test + commit
-3. `cd ..`
-4. `git add booksbrowser_ios`
-5. Commit root pointer update (and optional release note/docs)
+1. edit under `booksbrowser_ios/`
+2. validate iOS build/tests as needed
+3. commit with iOS-focused message
 
 ### B) API-only change
-1. `cd knowledge_graph_api`
-2. Implement + test + commit
-3. `cd ..`
-4. `git add knowledge_graph_api`
-5. Commit root pointer update
+1. edit under `knowledge_graph_api/`
+2. run API tests
+3. commit with API-focused message
 
-### C) Cross-project release
-1. Commit iOS repo
-2. Commit API repo
-3. At root, stage both submodule pointers
-4. Commit one root "release alignment" commit
+### C) Cross-cutting release change
+1. apply iOS + API changes
+2. run both validation paths
+3. commit with explicit release context
 
-## Read/Write Rules For Agents
-- Always decide scope first: `ios` / `api` / `workspace`.
-- Never commit iOS code from root repo.
-- Never commit API code from root repo.
-- Root repo should only track coordination artifacts + submodule pointers.
+## Operational Safety
+- Before production changes, run preflight and backup via project-safe scripts.
+- Do not run destructive cleanup commands on production host.
+- If task scope is ambiguous, clarify before executing risky operations.
 
 ## Useful Commands
 ```bash
-# root status (shows submodule pointer drift)
-git status
+# repo overview
+git status --short
+git log --oneline -n 20
 
-# current paired SHAs
-git submodule status
+# scope-limited status checks
+git status --short booksbrowser_ios
+git status --short knowledge_graph_api
 
-# inspect child states
-git -C booksbrowser_ios status --short
-git -C knowledge_graph_api status --short
+# fast search
+rg "pattern" booksbrowser_ios knowledge_graph_api docs
 ```
 
-## No-Remote Mode (Current Setup)
-This setup can run fully local without remotes.
-- Child repos remain normal git repos.
-- Root repo still provides pairing/audit via local commits.
-- Remote can be added later with:
-
-```bash
-git remote add origin <workspace-remote>
-git push -u origin main
-```
-
-## Recommended Commit Message Convention (Root)
-- `chore(workspace): align ios/api submodule pointers`
-- `docs(workspace): update deploy/runbook`
-- `release(workspace): pair ios <sha> with api <sha>`
+## Migration Note
+- Previous nested child `.git` metadata was moved to:
+  - `backups/git_metadata_<timestamp>/booksbrowser_ios.git`
+  - `backups/git_metadata_<timestamp>/knowledge_graph_api.git`
+- Current source of truth is the root monorepo git history.

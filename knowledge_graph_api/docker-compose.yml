@@ -1,0 +1,14 @@
+version: '3.8'
+
+services:
+  kg-api:
+    build: .
+    container_name: knowledge-graph-api
+    restart: always # 確保伺服器重啟或崩潰時自動重啟
+    ports:
+      - "8000:8000"
+    volumes:
+      # 將本機的 data 資料夾掛載到容器內，確保資料持久化 (單字庫、設定檔不會因為容器刪除而消失)
+      - ./data:/app/data
+    env_file:
+      - .env

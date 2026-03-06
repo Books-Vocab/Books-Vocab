@@ -1,0 +1,57 @@
+//
+//  Book.swift
+//  BooksBrowser
+//
+//  Created by 陳亮宇 on 2026/2/24.
+//
+
+import Foundation
+import SwiftData
+
+/// 書籍資料模型 — 代表一本已匯入的 EPUB 書籍
+@Model
+final class Book {
+    var id: UUID
+    var title: String
+    var author: String
+    var coverImageData: Data?
+    var epubFileName: String          // .epub 檔案名稱（在 Documents/EPUBs/ 下）
+    var lastReadLocatorJSON: String?  // Readium Locator 序列化 JSON
+    var dateAdded: Date
+    var dateLastRead: Date?
+    var progression: Double?          // 閱讀進度 (0.0 ~ 1.0)
+
+    @Relationship(deleteRule: .cascade)
+    var vocabularyEntries: [VocabularyEntry]
+
+    init(
+        title: String,
+        author: String,
+        coverImageData: Data? = nil,
+        epubFileName: String
+    ) {
+        self.id = UUID()
+        self.title = title
+        self.author = author
+        self.coverImageData = coverImageData
+        self.epubFileName = epubFileName
+        self.lastReadLocatorJSON = nil
+        self.dateAdded = Date()
+        self.dateLastRead = nil
+        self.progression = nil
+        self.vocabularyEntries = []
+    }
+
+    /// EPUB 檔案的完整 URL
+    var epubFileURL: URL {
+        Self.epubsDirectory.appendingPathComponent(epubFileName)
+    }
+
+    /// EPUBs 儲存目錄
+    static var epubsDirectory: URL {
+        let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EPUBs")
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        return dir
+    }
+}

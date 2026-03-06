@@ -1,0 +1,379 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Privacy Policy — BooksBrowser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #f8f7f4;
+      --surface:  #fcfbfa;
+      --border:   #dbd6cd;
+      --border-l: #e8e4db;
+      --ink:      #2a2520;
+      --sub:      #7a756c;
+      --ink-light:#5a5550;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Noto Sans TC', sans-serif;
+      font-weight: 300;
+      line-height: 1.8;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      height: 52px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--sub);
+      text-decoration: none;
+      transition: color .15s;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+    .nav-links a.active { color: var(--ink); }
+
+    /* ── Page ── */
+    .page {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 72px 24px 96px;
+    }
+
+    /* ── Header ── */
+    .page-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: .02em;
+      color: var(--ink);
+      margin-bottom: 12px;
+    }
+
+    .lead {
+      font-size: 14px;
+      color: var(--sub);
+      margin-bottom: 56px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: .02em;
+    }
+
+    /* ── Section ── */
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-l);
+    }
+
+    p {
+      font-size: 14px;
+      color: var(--ink-light);
+      line-height: 1.9;
+      margin-bottom: 14px;
+    }
+
+    p:last-child { margin-bottom: 0; }
+
+    /* ── Data table ── */
+    .data-table {
+      width: 100%;
+      border-collapse: collapse;
+      margin-top: 4px;
+    }
+
+    .data-table th {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .10em;
+      text-transform: uppercase;
+      color: var(--sub);
+      text-align: left;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--border-l);
+    }
+
+    .data-table td {
+      font-size: 13px;
+      font-weight: 300;
+      color: var(--ink-light);
+      padding: 12px 14px;
+      border: 1px solid var(--border-l);
+      vertical-align: top;
+      line-height: 1.7;
+    }
+
+    .data-table tr:hover td { background: var(--surface); }
+
+    /* ── Security checklist ── */
+    .checklist {
+      list-style: none;
+      border: 1px solid var(--border-l);
+      border-radius: 3px;
+      overflow: hidden;
+    }
+
+    .checklist li {
+      display: flex;
+      align-items: flex-start;
+      gap: 14px;
+      padding: 14px 18px;
+      border-bottom: 1px solid var(--border-l);
+      font-size: 13px;
+      color: var(--ink-light);
+      line-height: 1.7;
+    }
+
+    .checklist li:last-child { border-bottom: none; }
+
+    .check-mark {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      flex-shrink: 0;
+      margin-top: 3px;
+    }
+
+    /* ── Plain list ── */
+    .plain-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .plain-list li {
+      font-size: 14px;
+      color: var(--ink-light);
+      line-height: 1.9;
+      padding: 4px 0;
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .plain-list li::before {
+      content: '—';
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      position: absolute;
+      left: 0;
+      top: 6px;
+    }
+
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1px;
+      transition: border-color .15s;
+    }
+
+    a:hover { border-color: var(--ink); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border-l);
+      padding: 28px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .footer-copy {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      letter-spacing: .04em;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      text-decoration: none;
+      border: none;
+      letter-spacing: .04em;
+      transition: color .15s;
+    }
+
+    .footer-links a:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-brand" href="/">BooksBrowser</a>
+    <ul class="nav-links">
+      <li><a href="/support.html">Support</a></li>
+      <li><a href="/privacy.html" class="active">Privacy</a></li>
+    </ul>
+  </nav>
+
+  <main class="page">
+
+    <p class="page-label">Privacy Policy</p>
+    <h1>隱私政策</h1>
+    <p class="lead">最後更新：2026 年 2 月</p>
+
+    <!-- Intro -->
+    <section class="section">
+      <p>BooksBrowser 尊重並保護使用者的隱私。本政策說明我們如何收集、使用與保護您的資訊。</p>
+    </section>
+
+    <!-- 收集的資訊 -->
+    <section class="section">
+      <p class="section-label">我們收集的資訊</p>
+      <table class="data-table">
+        <thead>
+          <tr>
+            <th>類型</th>
+            <th>內容</th>
+            <th>目的</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td>帳戶資訊</td>
+            <td>電子郵件、顯示名稱（由 Google / Apple 提供）</td>
+            <td>識別使用者、同步詞彙庫</td>
+          </tr>
+          <tr>
+            <td>詞彙資料</td>
+            <td>單字、翻譯、上下文句子</td>
+            <td>儲存於裝置；可選同步至伺服器</td>
+          </tr>
+          <tr>
+            <td>使用紀錄</td>
+            <td>API 請求計數、錯誤日誌</td>
+            <td>改善服務品質，不追蹤個人行為</td>
+          </tr>
+        </tbody>
+      </table>
+    </section>
+
+    <!-- 資料安全 -->
+    <section class="section">
+      <p class="section-label">資料安全</p>
+      <ul class="checklist">
+        <li><span class="check-mark">✓</span> 所有伺服器通信使用 HTTPS（TLS 加密）</li>
+        <li><span class="check-mark">✓</span> API 驗證使用 JWT Token</li>
+        <li><span class="check-mark">✓</span> 本地資料由 iOS 系統保護</li>
+        <li><span class="check-mark">✓</span> 無廣告、無行為追蹤、不與第三方共享資料</li>
+      </ul>
+    </section>
+
+    <!-- 資料保留 -->
+    <section class="section">
+      <p class="section-label">資料保留</p>
+      <ul class="plain-list">
+        <li>本地資料永久保留在您的裝置，直到您刪除應用程式</li>
+        <li>伺服器同步資料可隨時要求刪除</li>
+        <li>帳戶刪除後，主要伺服器資料會立即移除</li>
+      </ul>
+    </section>
+
+    <!-- 第三方服務 -->
+    <section class="section">
+      <p class="section-label">第三方服務</p>
+      <ul class="plain-list">
+        <li><a href="https://policies.google.com/privacy">Google 登入</a> — 由 Google 管理其隱私</li>
+        <li><a href="https://www.apple.com/privacy/">Apple Sign-In</a> — 由 Apple 管理其隱私</li>
+        <li>Gemini API — 用於詞彙 AI 增強功能（不存取完整詞彙庫）</li>
+      </ul>
+    </section>
+
+    <!-- 您的權利 -->
+    <section class="section">
+      <p class="section-label">您的權利</p>
+      <ul class="plain-list">
+        <li>存取您的個人資訊</li>
+        <li>要求修正不準確的資訊</li>
+        <li>要求刪除帳戶及所有相關資料</li>
+        <li>查詢我們如何使用您的資訊</li>
+      </ul>
+    </section>
+
+    <!-- 聯絡 -->
+    <section class="section">
+      <p class="section-label">聯絡我們</p>
+      <p>如有任何隱私相關問題，請寄信至 <a href="mailto:max970228@gmail.com">max970228@gmail.com</a>，或前往 <a href="/support.html">支援頁面</a>。</p>
+    </section>
+
+  </main>
+
+  <footer>
+    <span class="footer-copy">© 2026 BooksBrowser</span>
+    <ul class="footer-links">
+      <li><a href="/support.html">Support</a></li>
+    </ul>
+  </footer>
+
+</body>
+</html>

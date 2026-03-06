@@ -1,0 +1,126 @@
+"""Apple JWT validation module for Sign in with Apple."""
+
+import json
+import logging
+import time
+from typing import Any
+
+logger = logging.getLogger(__name__)
+
+import httpx
+import jwt
+from cryptography.hazmat.primitives.asymmetric.rsa import RSAPublicNumbers
+from cryptography.hazmat.backends import default_backend
+from cryptography.hazmat.primitives import serialization
+from fastapi import HTTPException
+
+APPLE_PUBLIC_KEY_URL = "https://appleid.apple.com/auth/keys"
+
+# In-memory cache for Apple public keys (JWKS)
+_apple_public_keys: dict[str, Any] = {}
+_keys_last_fetched: float = 0
+_CACHE_DURATION_SECONDS = 86400  # Cache keys for 24 hours
+
+
+def _fetch_apple_public_keys() -> None:
+    """Fetch public keys from Apple and update the cache."""
+    global _apple_public_keys, _keys_last_fetched
+    
+    try:
+        with httpx.Client(timeout=10.0) as client:
+            resp = client.get(APPLE_PUBLIC_KEY_URL)
+            resp.raise_for_status()
+            
+            keys_data = resp.json()
+            _apple_public_keys = {key["kid"]: key for key in keys_data.get("keys", [])}
+            _keys_last_fetched = time.time()
+    except Exception as e:
+        # If cache exists and request fails, keeping old cache is safer
+        if not _apple_public_keys:
+            raise HTTPException(status_code=500, detail=f"Failed to fetch Apple public keys: {e}")
+
+
+def _get_rsa_public_key(kid: str) -> str | bytes:
+    """Convert a JWK to a PEM format public key."""
+    # Refresh cache if needed or if kid is not in cache
+    if time.time() - _keys_last_fetched > _CACHE_DURATION_SECONDS or kid not in _apple_public_keys:
+        _fetch_apple_public_keys()
+        
+    jwk = _apple_public_keys.get(kid)
+    if not jwk:
+        raise HTTPException(status_code=401, detail="Invalid token kid (Key ID)")
+
+    # Decode base64url encoded n and e
+    def _base64url_decode(v: str) -> bytes:
+        v = v + '=' * (4 - len(v) % 4)
+        v = v.replace('-', '+').replace('_', '/')
+        import base64
+        return base64.b64decode(v)
+
+    n_bytes = _base64url_decode(jwk["n"])
+    e_bytes = _base64url_decode(jwk["e"])
+
+    n = int.from_bytes(n_bytes, byteorder='big')
+    e = int.from_bytes(e_bytes, byteorder='big')
+
+    public_numbers = RSAPublicNumbers(e, n)
+    public_key = public_numbers.public_key(default_backend())
+
+    pem = public_key.public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo
+    )
+    return pem
+
+
+def verify_apple_token(token: str, audience: str) -> str:
+    """Validate Apple Identity Token and return the user ID (sub).
+    
+    Args:
+        token: The JWT identity token from Apple
+        audience: The App's Bundle ID (e.g. com.chentw.BooksBrowser)
+        
+    Returns:
+        The Apple User ID (sub) string.
+    """
+    try:
+        # 1. Fetch the completely unverified header to get the 'kid'
+        unverified_header = jwt.get_unverified_header(token)
+        kid = unverified_header.get("kid")
+        if not kid:
+            raise HTTPException(status_code=401, detail="Token missing kid")
+            
+        # 2. Get the corresponding public key
+        public_key = _get_rsa_public_key(kid)
+        
+        # 3. Decode and verify the token
+        # See https://developer.apple.com/documentation/sign_in_with_apple/sign_in_with_apple_rest_api/verifying_a_user
+        decoded = jwt.decode(
+            token,
+            key=public_key,
+            algorithms=["RS256"],
+            audience=audience,
+            issuer="https://appleid.apple.com"
+        )
+        
+        # 4. Extract subject (user ID)
+        sub = decoded.get("sub")
+        if not sub:
+            raise HTTPException(status_code=401, detail="Token missing subject (sub)")
+            
+        return str(sub)
+        
+    except jwt.ExpiredSignatureError:
+        raise HTTPException(status_code=401, detail="Token has expired")
+    except jwt.InvalidAudienceError:
+        raise HTTPException(status_code=401, detail="Invalid audience (Bundle ID mismatch)")
+    except jwt.InvalidIssuerError:
+        raise HTTPException(status_code=401, detail="Invalid issuer")
+    except jwt.PyJWTError as e:
+        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
+    except Exception as e:
+        # Expose full error to backend logs, hide specific details in HTTP response
+        logger.error("Apple token verification error: %s", e)
+        if isinstance(e, HTTPException):
+            raise e
+        raise HTTPException(status_code=401, detail="Authentication failed")

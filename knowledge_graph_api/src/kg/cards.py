@@ -1,0 +1,144 @@
+"""Card storage and CRUD operations."""
+
+from __future__ import annotations
+
+import json
+import uuid
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Iterator, Literal
+
+from typing import Iterator, Literal, Optional
+
+from pydantic import BaseModel, Field
+from sqlalchemy import Column, JSON
+from sqlmodel import SQLModel, Field as SQLField, Session, select, create_engine
+
+CardMode = Literal["recognition", "production"]
+
+
+class Card(SQLModel, table=True):
+    """A vocabulary card."""
+
+    id: str = SQLField(default_factory=lambda: uuid.uuid4().hex[:12], primary_key=True)
+    content: str  # word or phrase
+    pos: Optional[str] = None  # part of speech [v.] [n.] [adj.]
+    meaning: str  # canonical definition
+    examples: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))
+    collocations: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # common collocations
+    note: Optional[str] = None  # LLM-generated teacher note (markdown)
+    difficulty: Optional[float] = None  # Zipf frequency score (higher = more common)
+    mode: str = "recognition"  # recognition: 英→中, production: 中→英
+    root_form: Optional[str] = None  # lemma (e.g. "laid" → "lay")
+    inflections: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # all inflected forms from dictionary
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+    is_deleted: bool = SQLField(default=False)
+
+    def embed_text(self) -> str:
+        """Text used for embedding."""
+        return f"{self.content}: {self.meaning}"
+
+
+class CardStore:
+    """SQLite-based card storage using SQLModel."""
+
+    def __init__(self, path: Path) -> None:
+        self.path = path
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        # Use sqlite URI format
+        sqlite_url = f"sqlite:///{self.path.absolute()}"
+        self.engine = create_engine(sqlite_url)
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
+            conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+        SQLModel.metadata.create_all(self.engine, checkfirst=True)
+
+    def add(
+        self,
+        content: str,
+        meaning: str,
+        pos: Optional[str] = None,
+        examples: Optional[list[str]] = None,
+        collocations: Optional[list[str]] = None,
+        mode: str = "recognition",
+        root_form: Optional[str] = None,
+        inflections: Optional[list[str]] = None,
+    ) -> Card:
+        """Create and store a new card."""
+        card = Card(
+            content=content,
+            meaning=meaning,
+            pos=pos,
+            examples=examples or [],
+            collocations=collocations or [],
+            mode=mode,
+            root_form=root_form,
+            inflections=inflections or [],
+        )
+        with Session(self.engine) as session:
+            session.add(card)
+            session.commit()
+            session.refresh(card)
+        return card
+
+    def get(self, card_id: str) -> Optional[Card]:
+        with Session(self.engine) as session:
+            return session.get(Card, card_id)
+
+    def all(self, include_deleted: bool = False) -> Iterator[Card]:
+        with Session(self.engine) as session:
+            statement = select(Card)
+            if not include_deleted:
+                statement = statement.where(Card.is_deleted == False)
+            results = session.exec(statement).all()
+            for row in results:
+                yield row
+
+    def get_modified_since(self, since: datetime) -> list[Card]:
+        """Fetch all cards (including soft-deleted) modified after the given timestamp."""
+        with Session(self.engine) as session:
+            statement = select(Card).where(Card.updated_at > since)
+            return list(session.exec(statement).all())
+
+    def count(self) -> int:
+        from sqlalchemy import func
+        with Session(self.engine) as session:
+            return session.scalar(
+                select(func.count()).select_from(Card).where(Card.is_deleted == False)
+            ) or 0
+
+    def delete(self, card_id: str) -> bool:
+        """Soft deletes the card to support incremental sync."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                card.is_deleted = True
+                card.updated_at = datetime.now(timezone.utc)
+                session.add(card)
+                session.commit()
+                return True
+        return False
+        
+    def update(self, card_id: str, **kwargs) -> Optional[Card]:
+        """Update specific fields of a card. Automatically sets updated_at."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                has_changes = False
+                for key, value in kwargs.items():
+                    if hasattr(card, key) and getattr(card, key) != value:
+                        setattr(card, key, value)
+                        has_changes = True
+                
+                if has_changes:
+                    card.updated_at = datetime.now(timezone.utc)
+                    session.add(card)
+                    session.commit()
+                    session.refresh(card)
+                return card
+        return None
+
+    def save(self) -> None:
+        """No-op for SQLite. Changes are committed immediately or via explicit sessions."""
+        pass
