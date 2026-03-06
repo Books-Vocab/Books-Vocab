@@ -1,0 +1,11 @@
+.DS_Store
+backups/
+
+# IDE/user-specific
+*.xcuserstate
+*.xcworkspace/xcuserdata/
+*.xcodeproj/xcuserdata/
+
+# Python cache in root if any
+__pycache__/
+.pytest_cache/

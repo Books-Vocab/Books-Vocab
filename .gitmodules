@@ -1,0 +1,6 @@
+[submodule "booksbrowser_ios"]
+	path = booksbrowser_ios
+	url = ./booksbrowser_ios
+[submodule "knowledge_graph_api"]
+	path = knowledge_graph_api
+	url = ./knowledge_graph_api
