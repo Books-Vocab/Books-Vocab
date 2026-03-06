@@ -423,7 +423,7 @@ struct WordRow: View {
                         Text(isDue ? "現在可複習" : "下次 \(nextReviewAt.reviewRelativeDescription())")
                             .font(.caption2)
                     }
-                    .foregroundStyle(isDue ? AppColors.translation(colorScheme) : .tertiary)
+                    .foregroundStyle(isDue ? AppColors.translation(colorScheme) : Color.secondary.opacity(0.7))
                 }
             }
 

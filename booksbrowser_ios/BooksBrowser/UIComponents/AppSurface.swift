@@ -8,7 +8,6 @@
 import SwiftUI
 
 struct AppCard<Content: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
     let padding: CGFloat
     @ViewBuilder var content: Content
 
@@ -26,21 +25,16 @@ struct AppCard<Content: View>: View {
             .background(cardBackground)
             .overlay(cardBorder)
             .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
-            .shadow(
-                color: Color.black.opacity(colorScheme == .dark ? 0.18 : AppShadows.paperFloatOpacity),
-                radius: AppShadows.paperFloatRadius,
-                y: AppShadows.paperFloatY
-            )
     }
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-            .fill(colorScheme == .dark ? Color.white.opacity(0.04) : Color.white.opacity(0.82))
+            .fill(Color.white.opacity(0.72))
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-            .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.08 : 0.05), lineWidth: 0.6)
+            .strokeBorder(Color.primary.opacity(0.04), lineWidth: 0.6)
     }
 }
 
