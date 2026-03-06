@@ -532,10 +532,11 @@ private struct TodayReviewView: View {
                 }
                 Spacer(minLength: 0)
                 Text(current.word)
-                    .font(.system(size: 48, weight: .semibold, design: .serif))
+                    .font(.system(size: 62, weight: .semibold, design: .serif))
                     .foregroundStyle(.primary)
+                    .minimumScaleFactor(0.75)
                 Text("先想意思，再點卡片翻面")
-                    .font(AppFonts.subhead())
+                    .font(.system(size: 20, weight: .medium, design: .default))
                     .foregroundStyle(.secondary)
             }
 
@@ -548,24 +549,36 @@ private struct TodayReviewView: View {
                 Spacer()
             }
         }
-        .padding(28)
+        .padding(34)
     }
 
     private func reviewCardBack(_ current: VocabularyEntry) -> some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                Text(current.word)
-                    .font(AppFonts.h2(weight: .semibold))
-                    .foregroundStyle(.secondary)
-                Text(current.translation)
-                    .font(AppFonts.hero(weight: .semibold))
-                    .foregroundStyle(AppColors.translation(.light))
+                reviewRichText(
+                    current.word,
+                    font: .system(size: 26, weight: .semibold, design: .serif),
+                    textColor: .secondary,
+                    highlightTone: AppColors.accent(.light),
+                    italic: false
+                )
+
+                reviewRichText(
+                    current.translation,
+                    font: .system(size: 44, weight: .semibold, design: .default),
+                    textColor: AppColors.translation(.light),
+                    highlightTone: AppColors.translation(.light),
+                    italic: false
+                )
 
                 if !current.context.isEmpty {
-                    Text(current.context)
-                        .font(AppFonts.body())
-                        .foregroundStyle(.secondary)
-                        .italic()
+                    reviewRichText(
+                        current.context,
+                        font: .system(size: 28, weight: .regular, design: .default),
+                        textColor: .secondary,
+                        highlightTone: AppColors.translation(.light),
+                        italic: true
+                    )
                         .lineLimit(5)
                 }
             }
@@ -579,7 +592,7 @@ private struct TodayReviewView: View {
                 Spacer()
             }
         }
-        .padding(28)
+        .padding(34)
     }
 
     private func reviewButton(
@@ -608,5 +621,55 @@ private struct TodayReviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tone)
+    }
+
+    private static let quotePattern = try! NSRegularExpression(pattern: #""([^"]+)""#)
+
+    private func reviewRichText(
+        _ raw: String,
+        font: Font,
+        textColor: Color,
+        highlightTone: Color,
+        italic: Bool
+    ) -> Text {
+        let nsString = raw as NSString
+        let matches = Self.quotePattern.matches(in: raw, range: NSRange(location: 0, length: nsString.length))
+
+        var result = AttributedString()
+        var lastEnd = 0
+
+        func basePart(_ string: String) -> AttributedString {
+            var part = AttributedString(string)
+            part.font = italic ? font.italic() : font
+            part.foregroundColor = textColor
+            return part
+        }
+
+        for match in matches {
+            let beforeRange = NSRange(location: lastEnd, length: match.range.location - lastEnd)
+            if beforeRange.length > 0 {
+                result += basePart(nsString.substring(with: beforeRange))
+            }
+
+            let captureRange = match.range(at: 1)
+            if captureRange.location != NSNotFound, captureRange.length > 0 {
+                var highlighted = AttributedString(nsString.substring(with: captureRange))
+                highlighted.font = italic ? font.italic() : font.weight(.semibold)
+                highlighted.foregroundColor = .primary
+                highlighted.backgroundColor = highlightTone.opacity(0.18)
+                result += highlighted
+            }
+
+            lastEnd = match.range.location + match.range.length
+        }
+
+        if lastEnd < nsString.length {
+            result += basePart(nsString.substring(from: lastEnd))
+        }
+
+        if matches.isEmpty {
+            return Text(basePart(raw))
+        }
+        return Text(result)
     }
 }
