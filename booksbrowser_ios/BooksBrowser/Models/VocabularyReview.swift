@@ -12,6 +12,22 @@ enum ReviewFeedback: Int, Codable {
     case remembered = 1
 }
 
+enum VocabularyReviewState: String, CaseIterable, Identifiable {
+    case unlearned
+    case due
+    case reviewed
+
+    var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .unlearned: return "未學習"
+        case .due: return "待複習"
+        case .reviewed: return "已複習"
+        }
+    }
+}
+
 struct VocabularyReviewSnapshot {
     let intervalHours: Double
     let nextReviewAt: Date
@@ -58,6 +74,13 @@ extension VocabularyEntry {
 
     var isReviewDue: Bool {
         reviewSnapshot.isDue
+    }
+
+    var reviewState: VocabularyReviewState {
+        if reviewCount == 0 {
+            return .unlearned
+        }
+        return isReviewDue ? .due : .reviewed
     }
 
     func applyReviewFeedback(_ feedback: ReviewFeedback, now: Date = Date()) {

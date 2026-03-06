@@ -171,6 +171,7 @@ struct VocabularyListView: View {
                         bookTitle: entry.bookTitle,
                         chapterTitle: entry.chapterTitle,
                         nextReviewAt: entry.nextReviewAt,
+                        reviewState: nil,
                         syncStatus: nil,
                         actionType: entry.actionType
                     )
@@ -342,6 +343,7 @@ struct WordRow: View {
     let bookTitle: String?
     let chapterTitle: String?
     let nextReviewAt: Date
+    let reviewState: VocabularyReviewState?
     let syncStatus: Int?
     var actionType: String = "add"  // "add" | "delete"
 
@@ -418,12 +420,12 @@ struct WordRow: View {
 
                 if !isDelete {
                     HStack(spacing: 6) {
-                        Image(systemName: isDue ? "clock.badge.exclamationmark" : "clock.arrow.trianglehead.counterclockwise.rotate.90")
+                        Image(systemName: statusIconName)
                             .font(.caption2)
-                        Text(isDue ? "現在可複習" : "下次 \(nextReviewAt.reviewRelativeDescription())")
+                        Text(statusSubtitle)
                             .font(.caption2)
                     }
-                    .foregroundStyle(isDue ? AppColors.translation(colorScheme) : Color.secondary.opacity(0.7))
+                    .foregroundStyle(statusTone)
                 }
             }
 
@@ -434,14 +436,8 @@ struct WordRow: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     tierLabel(tier)
 
-                    if isDue {
-                        Text("due")
-                            .font(.system(size: 10, weight: .semibold, design: .rounded))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 3)
-                            .background(AppColors.translation(colorScheme).opacity(0.10))
-                            .foregroundStyle(AppColors.translation(colorScheme))
-                            .clipShape(Capsule())
+                    if let reviewState {
+                        reviewStateBadge(reviewState)
                     }
                 }
             }
@@ -457,6 +453,55 @@ struct WordRow: View {
         return Text(label)
             .font(.system(size: 10, weight: .medium))
             .foregroundStyle(color.opacity(0.7))
+    }
+
+    private var statusSubtitle: String {
+        switch reviewState {
+        case .unlearned:
+            return "尚未進入複習流程"
+        case .due:
+            return "現在可複習"
+        case .reviewed:
+            return "下次 \(nextReviewAt.reviewRelativeDescription())"
+        case nil:
+            return isDue ? "現在可複習" : "下次 \(nextReviewAt.reviewRelativeDescription())"
+        }
+    }
+
+    private var statusIconName: String {
+        switch reviewState {
+        case .unlearned:
+            return "sparkles"
+        case .due:
+            return "clock.badge.exclamationmark"
+        case .reviewed:
+            return "checkmark.circle"
+        case nil:
+            return isDue ? "clock.badge.exclamationmark" : "clock.arrow.trianglehead.counterclockwise.rotate.90"
+        }
+    }
+
+    private var statusTone: Color {
+        switch reviewState {
+        case .unlearned:
+            return AppColors.accent(colorScheme)
+        case .due:
+            return AppColors.translation(colorScheme)
+        case .reviewed:
+            return AppColors.saved(colorScheme)
+        case nil:
+            return isDue ? AppColors.translation(colorScheme) : Color.secondary.opacity(0.7)
+        }
+    }
+
+    private func reviewStateBadge(_ state: VocabularyReviewState) -> some View {
+        Text(state.title)
+            .font(.system(size: 10, weight: .semibold, design: .rounded))
+            .padding(.horizontal, 6)
+            .padding(.vertical, 3)
+            .background(statusTone.opacity(0.10))
+            .foregroundStyle(statusTone)
+            .clipShape(Capsule())
     }
 
     @ViewBuilder
