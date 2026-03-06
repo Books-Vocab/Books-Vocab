@@ -53,6 +53,8 @@ struct KGVocabView: View {
         .fullScreenCover(isPresented: $showTodayReview) {
             TodayReviewView(entries: todaySessionEntries)
         }
+        .background(VocabPalette.background.ignoresSafeArea())
+        .tint(VocabPalette.primary)
         .task {
             guard authManager.isLoggedIn else { return }
 
@@ -96,33 +98,31 @@ struct KGVocabView: View {
             .padding(AppMetrics.spacingLarge)
             .padding(.bottom, 120)
         }
+        .scrollContentBackground(.hidden)
     }
 
     private var todayReviewHero: some View {
         Button {
             showTodayReview = true
         } label: {
-            AppCard(padding: 0) {
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [
-                                    AppColors.translation(.light).opacity(0.16),
-                                    AppColors.accent(.light).opacity(0.12),
-                                    Color.white.opacity(0.82)
-                                ],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
+            VocabPanel(padding: 0) {
+                VStack(alignment: .leading, spacing: 0) {
+                    HStack {
+                        Capsule()
+                            .fill(todaySessionEntries.isEmpty ? VocabPalette.line : VocabPalette.warm)
+                            .frame(width: 68, height: 8)
+                        Spacer()
+                        AppTag(text: "flashcards", tone: VocabPalette.primary)
+                    }
+                    .padding(.horizontal, AppMetrics.spacingLarge)
+                    .padding(.top, AppMetrics.spacingLarge)
 
                     VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Today Review")
                                     .font(AppFonts.caption(weight: .semibold))
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(VocabPalette.primary)
 
                                 Text("今日待複習")
                                     .font(AppFonts.hero(weight: .semibold))
@@ -130,7 +130,7 @@ struct KGVocabView: View {
 
                                 Text(heroDescription)
                                     .font(AppFonts.subhead())
-                                    .foregroundStyle(.secondary)
+                                    .foregroundStyle(VocabPalette.textMuted)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
 
@@ -138,7 +138,7 @@ struct KGVocabView: View {
 
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("\(todaySessionEntries.count)")
-                                    .font(.system(size: 58, weight: .semibold, design: .serif))
+                                    .font(.system(size: 62, weight: .semibold, design: .rounded))
                                     .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
                                 Text("cards")
                                     .font(AppFonts.caption(weight: .semibold))
@@ -147,27 +147,31 @@ struct KGVocabView: View {
                         }
 
                         HStack(spacing: AppMetrics.spacingSmall) {
-                            sessionStat(title: "待複習", value: "\(dueEntries.count)", tone: AppColors.translation(.light))
-                            sessionStat(title: "未學習", value: "\(unlearnedEntries.count)", tone: AppColors.accent(.light))
-                            sessionStat(title: "已複習", value: "\(reviewedEntries.count)", tone: AppColors.saved(.light))
+                            sessionStat(title: "待複習", value: "\(dueEntries.count)", tone: VocabPalette.warm)
+                            sessionStat(title: "未學習", value: "\(unlearnedEntries.count)", tone: VocabPalette.primary)
+                            sessionStat(title: "已複習", value: "\(reviewedEntries.count)", tone: VocabPalette.success)
                         }
 
                         HStack(spacing: AppMetrics.spacingSmall) {
-                            Label("flashcards", systemImage: "rectangle.stack")
-                                .font(AppFonts.caption(weight: .semibold))
-                                .foregroundStyle(.secondary)
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text("入口")
+                                    .font(AppFonts.caption(weight: .semibold))
+                                    .foregroundStyle(.tertiary)
+                                Text(todaySessionEntries.isEmpty ? "今日暫無 session" : "先做 session，再回來整理卡片")
+                                    .font(AppFonts.subhead(weight: .semibold))
+                                    .foregroundStyle(.primary)
+                            }
 
                             Spacer()
 
-                            Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習")
-                                .font(AppFonts.subhead(weight: .semibold))
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
-
                             Image(systemName: "arrow.right.circle.fill")
-                                .font(.title3)
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : AppColors.translation(.light))
+                                .font(.title2)
+                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : VocabPalette.warm)
                         }
-                        .padding(.top, 4)
+                        .padding(.vertical, AppMetrics.spacingSmall)
+                        .padding(.horizontal, AppMetrics.spacingMedium)
+                        .background(VocabPalette.surface)
+                        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
                     }
                     .padding(AppMetrics.spacingLarge)
                 }
@@ -178,11 +182,11 @@ struct KGVocabView: View {
     }
 
     private var stateSection: some View {
-        AppCard {
+        VocabPanel {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 Text("知識庫狀態")
                     .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(VocabPalette.primary)
 
                 Picker("", selection: $selectedReviewState) {
                     ForEach(VocabularyReviewState.allCases) { state in
@@ -193,13 +197,13 @@ struct KGVocabView: View {
 
                 Text(stateDescription)
                     .font(AppFonts.subhead())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(VocabPalette.textMuted)
             }
         }
     }
 
     private var browserSection: some View {
-        AppCard {
+        VocabPanel {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -355,7 +359,7 @@ struct KGVocabView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(AppFonts.caption())
-                .foregroundStyle(.secondary)
+                .foregroundStyle(VocabPalette.textMuted)
             Text(value)
                 .font(AppFonts.h2(weight: .semibold))
                 .foregroundStyle(tone)
@@ -363,7 +367,7 @@ struct KGVocabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, AppMetrics.spacingSmall)
         .padding(.horizontal, AppMetrics.spacingMedium)
-        .background(Color.white.opacity(0.48))
+        .background(Color.white.opacity(0.64))
         .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
     }
 
@@ -440,29 +444,26 @@ private struct TodayReviewView: View {
                                 showBack.toggle()
                             }
                         } label: {
-                            AppCard(padding: 0) {
+                            VocabPanel(padding: 0) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 30, style: .continuous)
-                                        .fill(
-                                            LinearGradient(
-                                                colors: [
-                                                    Color.white.opacity(0.96),
-                                                    AppColors.accent(.light).opacity(showBack ? 0.10 : 0.05)
-                                                ],
-                                                startPoint: .topLeading,
-                                                endPoint: .bottomTrailing
-                                            )
-                                        )
+                                        .fill(VocabPalette.surfaceStrong)
+                                        .overlay(alignment: .topLeading) {
+                                            Capsule()
+                                                .fill(showBack ? VocabPalette.warm : VocabPalette.primary)
+                                                .frame(width: 74, height: 8)
+                                                .padding(24)
+                                        }
 
                                     VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
                                         if showBack {
                                             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                                                 Text(current.word)
                                                     .font(AppFonts.h2(weight: .semibold))
-                                                    .foregroundStyle(.secondary)
+                                                    .foregroundStyle(VocabPalette.primary)
                                                 Text(current.translation)
                                                     .font(AppFonts.hero(weight: .semibold))
-                                                    .foregroundStyle(AppColors.translation(.light))
+                                                    .foregroundStyle(VocabPalette.warm)
 
                                                 if !current.context.isEmpty {
                                                     Text(current.context)
@@ -475,7 +476,7 @@ private struct TodayReviewView: View {
                                         } else {
                                             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                                                 if let pos = current.partOfSpeech {
-                                                    AppTag(text: pos, tone: AppColors.accent(.light))
+                                                    AppTag(text: pos, tone: VocabPalette.primary)
                                                 }
                                                 Spacer(minLength: 0)
                                                 Text(current.word)
@@ -513,14 +514,14 @@ private struct TodayReviewView: View {
                                 reviewButton(
                                     title: "忘記了",
                                     caption: "縮短間隔",
-                                    tone: AppColors.translation(.light)
+                                    tone: VocabPalette.warm
                                 ) {
                                     submit(.forgot)
                                 }
                                 reviewButton(
                                     title: "記得",
                                     caption: "進入下一張",
-                                    tone: AppColors.saved(.light)
+                                    tone: VocabPalette.success
                                 ) {
                                     submit(.remembered)
                                 }
@@ -550,7 +551,28 @@ private struct TodayReviewView: View {
                     Button("關閉") { dismiss() }
                 }
             }
-            .background(Color(.systemGroupedBackground).ignoresSafeArea())
+            .safeAreaInset(edge: .top) {
+                HStack {
+                    Spacer()
+                    Button {
+                        dismiss()
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.headline.weight(.semibold))
+                            .foregroundStyle(.primary)
+                            .frame(width: 40, height: 40)
+                            .background(Color.white.opacity(0.92))
+                            .clipShape(Circle())
+                            .overlay(
+                                Circle()
+                                    .stroke(VocabPalette.line, lineWidth: 1)
+                            )
+                    }
+                    .padding(.trailing, AppMetrics.spacingLarge)
+                }
+                .padding(.top, 8)
+            }
+            .background(VocabPalette.background.ignoresSafeArea())
         }
     }
 
@@ -597,5 +619,31 @@ private struct TodayReviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tone)
+    }
+}
+
+private struct VocabPanel<Content: View>: View {
+    let padding: CGFloat
+    @ViewBuilder var content: Content
+
+    init(
+        padding: CGFloat = AppMetrics.spacingLarge,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.padding = padding
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(padding)
+            .background(
+                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+                    .fill(VocabPalette.surfaceStrong)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+                    .strokeBorder(VocabPalette.line, lineWidth: 0.8)
+            )
     }
 }
