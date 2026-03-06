@@ -17,28 +17,28 @@ import SwiftUI
 enum AppColors {
 
     // ── 紙張背景色 ────────────────────────────────────────────────────
-    static let paperLight = Color(red: 0.98, green: 0.98, blue: 0.98)
+    static let paperLight = Color(red: 0.992, green: 0.989, blue: 0.982)
     static let paperSepia = Color(red: 0.98, green: 0.965, blue: 0.94)
     static let paperDark  = Color(red: 0.11, green: 0.106, blue: 0.098)
 
     // ── 主題強調色（莫蘭迪灰藍 · 明亮）────────────────────────────────
     // 如同淡水彩暈染的藍灰
-    static let accentLight = Color(hue: 215/360, saturation: 0.30, brightness: 0.58)
+    static let accentLight = Color(hue: 215/360, saturation: 0.28, brightness: 0.66)
     static let accentDark  = Color(hue: 215/360, saturation: 0.28, brightness: 0.70)
 
     // ── 翻譯文字色（栗棕 · 明亮）──────────────────────────────────────
     // 如同上好信箋上的棕色墨水
-    static let translationLight = Color(hue: 22/360, saturation: 0.28, brightness: 0.55)
+    static let translationLight = Color(hue: 22/360, saturation: 0.26, brightness: 0.62)
     static let translationDark  = Color(hue: 25/360, saturation: 0.25, brightness: 0.70)
 
     // ── 成功色（灰橄欖 · 明亮）────────────────────────────────────────
     // 如同風乾的鼠尾草葉
-    static let savedLight = Color(hue: 152/360, saturation: 0.22, brightness: 0.52)
+    static let savedLight = Color(hue: 152/360, saturation: 0.20, brightness: 0.60)
     static let savedDark  = Color(hue: 152/360, saturation: 0.20, brightness: 0.62)
 
     // ── 危險色（煙玫瑰 · 明亮）────────────────────────────────────────
     // 如同褪色的玫瑰花瓣
-    static let destructiveLight = Color(hue: 355/360, saturation: 0.28, brightness: 0.58)
+    static let destructiveLight = Color(hue: 355/360, saturation: 0.26, brightness: 0.66)
     static let destructiveDark  = Color(hue: 355/360, saturation: 0.25, brightness: 0.68)
 
     // ── 難度 Tier ─────────────────────────────────────────────────────
@@ -53,7 +53,7 @@ enum AppColors {
 
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
     // 用於 NavigationBar、TabBar、所有可點擊元素的默認色
-    static let tint = Color(hue: 215/360, saturation: 0.18, brightness: 0.45)
+    static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
 }
 
 // MARK: - 環境感知

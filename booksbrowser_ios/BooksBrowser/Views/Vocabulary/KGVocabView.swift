@@ -51,10 +51,11 @@ struct KGVocabView: View {
                 .presentationDragIndicator(.visible)
         }
         .fullScreenCover(isPresented: $showTodayReview) {
-            TodayReviewView(entries: todaySessionEntries)
+            TodayReviewView(
+                entries: todaySessionEntries,
+                onClose: { showTodayReview = false }
+            )
         }
-        .background(VocabPalette.background.ignoresSafeArea())
-        .tint(VocabPalette.primary)
         .task {
             guard authManager.isLoggedIn else { return }
 
@@ -98,31 +99,24 @@ struct KGVocabView: View {
             .padding(AppMetrics.spacingLarge)
             .padding(.bottom, 120)
         }
-        .scrollContentBackground(.hidden)
+        .background(AppColors.paperLight.ignoresSafeArea())
     }
 
     private var todayReviewHero: some View {
         Button {
             showTodayReview = true
         } label: {
-            VocabPanel(padding: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    HStack {
-                        Capsule()
-                            .fill(todaySessionEntries.isEmpty ? VocabPalette.line : VocabPalette.warm)
-                            .frame(width: 68, height: 8)
-                        Spacer()
-                        AppTag(text: "flashcards", tone: VocabPalette.primary)
-                    }
-                    .padding(.horizontal, AppMetrics.spacingLarge)
-                    .padding(.top, AppMetrics.spacingLarge)
+            AppCard(padding: 0) {
+                ZStack(alignment: .topLeading) {
+                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+                        .fill(Color(red: 0.985, green: 0.974, blue: 0.956))
 
                     VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                         HStack(alignment: .top) {
                             VStack(alignment: .leading, spacing: 8) {
                                 Text("Today Review")
                                     .font(AppFonts.caption(weight: .semibold))
-                                    .foregroundStyle(VocabPalette.primary)
+                                    .foregroundStyle(.secondary)
 
                                 Text("今日待複習")
                                     .font(AppFonts.hero(weight: .semibold))
@@ -130,7 +124,7 @@ struct KGVocabView: View {
 
                                 Text(heroDescription)
                                     .font(AppFonts.subhead())
-                                    .foregroundStyle(VocabPalette.textMuted)
+                                    .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
                             }
 
@@ -138,7 +132,7 @@ struct KGVocabView: View {
 
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("\(todaySessionEntries.count)")
-                                    .font(.system(size: 62, weight: .semibold, design: .rounded))
+                                    .font(.system(size: 58, weight: .semibold, design: .serif))
                                     .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
                                 Text("cards")
                                     .font(AppFonts.caption(weight: .semibold))
@@ -147,31 +141,27 @@ struct KGVocabView: View {
                         }
 
                         HStack(spacing: AppMetrics.spacingSmall) {
-                            sessionStat(title: "待複習", value: "\(dueEntries.count)", tone: VocabPalette.warm)
-                            sessionStat(title: "未學習", value: "\(unlearnedEntries.count)", tone: VocabPalette.primary)
-                            sessionStat(title: "已複習", value: "\(reviewedEntries.count)", tone: VocabPalette.success)
+                            sessionStat(title: "待複習", value: "\(dueEntries.count)", tone: AppColors.translation(.light))
+                            sessionStat(title: "未學習", value: "\(unlearnedEntries.count)", tone: AppColors.accent(.light))
+                            sessionStat(title: "已複習", value: "\(reviewedEntries.count)", tone: AppColors.saved(.light))
                         }
 
                         HStack(spacing: AppMetrics.spacingSmall) {
-                            VStack(alignment: .leading, spacing: 2) {
-                                Text("入口")
-                                    .font(AppFonts.caption(weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                                Text(todaySessionEntries.isEmpty ? "今日暫無 session" : "先做 session，再回來整理卡片")
-                                    .font(AppFonts.subhead(weight: .semibold))
-                                    .foregroundStyle(.primary)
-                            }
+                            Label("flashcards", systemImage: "rectangle.stack")
+                                .font(AppFonts.caption(weight: .semibold))
+                                .foregroundStyle(.secondary)
 
                             Spacer()
 
+                            Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習")
+                                .font(AppFonts.subhead(weight: .semibold))
+                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
+
                             Image(systemName: "arrow.right.circle.fill")
-                                .font(.title2)
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : VocabPalette.warm)
+                                .font(.title3)
+                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : AppColors.translation(.light))
                         }
-                        .padding(.vertical, AppMetrics.spacingSmall)
-                        .padding(.horizontal, AppMetrics.spacingMedium)
-                        .background(VocabPalette.surface)
-                        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
+                        .padding(.top, 4)
                     }
                     .padding(AppMetrics.spacingLarge)
                 }
@@ -182,11 +172,11 @@ struct KGVocabView: View {
     }
 
     private var stateSection: some View {
-        VocabPanel {
+        AppCard {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 Text("知識庫狀態")
                     .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(VocabPalette.primary)
+                    .foregroundStyle(.secondary)
 
                 Picker("", selection: $selectedReviewState) {
                     ForEach(VocabularyReviewState.allCases) { state in
@@ -197,13 +187,13 @@ struct KGVocabView: View {
 
                 Text(stateDescription)
                     .font(AppFonts.subhead())
-                    .foregroundStyle(VocabPalette.textMuted)
+                    .foregroundStyle(.secondary)
             }
         }
     }
 
     private var browserSection: some View {
-        VocabPanel {
+        AppCard {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
@@ -359,7 +349,7 @@ struct KGVocabView: View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
                 .font(AppFonts.caption())
-                .foregroundStyle(VocabPalette.textMuted)
+                .foregroundStyle(.secondary)
             Text(value)
                 .font(AppFonts.h2(weight: .semibold))
                 .foregroundStyle(tone)
@@ -367,7 +357,7 @@ struct KGVocabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, AppMetrics.spacingSmall)
         .padding(.horizontal, AppMetrics.spacingMedium)
-        .background(Color.white.opacity(0.64))
+        .background(Color.white.opacity(0.86))
         .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
     }
 
@@ -413,14 +403,15 @@ struct KGVocabView: View {
 }
 
 private struct TodayReviewView: View {
-    @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
     @State private var showBack = false
+    let onClose: () -> Void
 
-    init(entries: [VocabularyEntry]) {
+    init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
         _queue = State(initialValue: entries)
+        self.onClose = onClose
     }
 
     var body: some View {
@@ -428,7 +419,7 @@ private struct TodayReviewView: View {
             Group {
                 if let current = currentEntry {
                     VStack(spacing: AppMetrics.spacingLarge) {
-                        HStack {
+                        HStack(alignment: .center) {
                             Text(progressText)
                                 .font(AppFonts.caption(weight: .semibold))
                                 .foregroundStyle(.secondary)
@@ -436,6 +427,14 @@ private struct TodayReviewView: View {
                             Text(showBack ? "背面" : "正面")
                                 .font(AppFonts.caption(weight: .semibold))
                                 .foregroundStyle(.tertiary)
+                            Button("關閉") {
+                                onClose()
+                            }
+                            .font(AppFonts.caption(weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.white)
+                            .clipShape(Capsule())
                         }
                         .padding(.horizontal, AppMetrics.spacingLarge)
 
@@ -444,60 +443,17 @@ private struct TodayReviewView: View {
                                 showBack.toggle()
                             }
                         } label: {
-                            VocabPanel(padding: 0) {
+                            AppCard(padding: 0) {
                                 ZStack {
                                     RoundedRectangle(cornerRadius: 30, style: .continuous)
-                                        .fill(VocabPalette.surfaceStrong)
-                                        .overlay(alignment: .topLeading) {
-                                            Capsule()
-                                                .fill(showBack ? VocabPalette.warm : VocabPalette.primary)
-                                                .frame(width: 74, height: 8)
-                                                .padding(24)
-                                        }
+                                        .fill(Color.white)
 
-                                    VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-                                        if showBack {
-                                            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                                                Text(current.word)
-                                                    .font(AppFonts.h2(weight: .semibold))
-                                                    .foregroundStyle(VocabPalette.primary)
-                                                Text(current.translation)
-                                                    .font(AppFonts.hero(weight: .semibold))
-                                                    .foregroundStyle(VocabPalette.warm)
+                                    reviewCardFront(current)
+                                        .opacity(showBack ? 0 : 1)
 
-                                                if !current.context.isEmpty {
-                                                    Text(current.context)
-                                                        .font(AppFonts.body())
-                                                        .foregroundStyle(.secondary)
-                                                        .italic()
-                                                        .lineLimit(5)
-                                                }
-                                            }
-                                        } else {
-                                            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                                                if let pos = current.partOfSpeech {
-                                                    AppTag(text: pos, tone: VocabPalette.primary)
-                                                }
-                                                Spacer(minLength: 0)
-                                                Text(current.word)
-                                                    .font(.system(size: 48, weight: .semibold, design: .serif))
-                                                    .foregroundStyle(.primary)
-                                                Text("先想意思，再點卡片翻面")
-                                                    .font(AppFonts.subhead())
-                                                    .foregroundStyle(.secondary)
-                                            }
-                                        }
-
-                                        Spacer()
-
-                                        HStack {
-                                            Label(showBack ? "點擊回正面" : "點擊看答案", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                                                .font(AppFonts.caption(weight: .semibold))
-                                                .foregroundStyle(.tertiary)
-                                            Spacer()
-                                        }
-                                    }
-                                    .padding(28)
+                                    reviewCardBack(current)
+                                        .opacity(showBack ? 1 : 0)
+                                        .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
                                 }
                                 .frame(minHeight: 420)
                             }
@@ -514,14 +470,14 @@ private struct TodayReviewView: View {
                                 reviewButton(
                                     title: "忘記了",
                                     caption: "縮短間隔",
-                                    tone: VocabPalette.warm
+                                    tone: AppColors.translation(.light)
                                 ) {
                                     submit(.forgot)
                                 }
                                 reviewButton(
                                     title: "記得",
                                     caption: "進入下一張",
-                                    tone: VocabPalette.success
+                                    tone: AppColors.saved(.light)
                                 ) {
                                     submit(.remembered)
                                 }
@@ -546,33 +502,8 @@ private struct TodayReviewView: View {
             }
             .navigationTitle("今日複習")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .topBarLeading) {
-                    Button("關閉") { dismiss() }
-                }
-            }
-            .safeAreaInset(edge: .top) {
-                HStack {
-                    Spacer()
-                    Button {
-                        dismiss()
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.headline.weight(.semibold))
-                            .foregroundStyle(.primary)
-                            .frame(width: 40, height: 40)
-                            .background(Color.white.opacity(0.92))
-                            .clipShape(Circle())
-                            .overlay(
-                                Circle()
-                                    .stroke(VocabPalette.line, lineWidth: 1)
-                            )
-                    }
-                    .padding(.trailing, AppMetrics.spacingLarge)
-                }
-                .padding(.top, 8)
-            }
-            .background(VocabPalette.background.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
+            .background(AppColors.paperLight.ignoresSafeArea())
         }
     }
 
@@ -591,6 +522,64 @@ private struct TodayReviewView: View {
         try? modelContext.save()
         showBack = false
         currentIndex += 1
+    }
+
+    private func reviewCardFront(_ current: VocabularyEntry) -> some View {
+        VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+                if let pos = current.partOfSpeech {
+                    AppTag(text: pos, tone: AppColors.accent(.light))
+                }
+                Spacer(minLength: 0)
+                Text(current.word)
+                    .font(.system(size: 48, weight: .semibold, design: .serif))
+                    .foregroundStyle(.primary)
+                Text("先想意思，再點卡片翻面")
+                    .font(AppFonts.subhead())
+                    .foregroundStyle(.secondary)
+            }
+
+            Spacer()
+
+            HStack {
+                Label("點擊看答案", systemImage: "rectangle.portrait.on.rectangle.portrait")
+                    .font(AppFonts.caption(weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+        }
+        .padding(28)
+    }
+
+    private func reviewCardBack(_ current: VocabularyEntry) -> some View {
+        VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+                Text(current.word)
+                    .font(AppFonts.h2(weight: .semibold))
+                    .foregroundStyle(.secondary)
+                Text(current.translation)
+                    .font(AppFonts.hero(weight: .semibold))
+                    .foregroundStyle(AppColors.translation(.light))
+
+                if !current.context.isEmpty {
+                    Text(current.context)
+                        .font(AppFonts.body())
+                        .foregroundStyle(.secondary)
+                        .italic()
+                        .lineLimit(5)
+                }
+            }
+
+            Spacer()
+
+            HStack {
+                Label("點擊回正面", systemImage: "rectangle.portrait.on.rectangle.portrait")
+                    .font(AppFonts.caption(weight: .semibold))
+                    .foregroundStyle(.tertiary)
+                Spacer()
+            }
+        }
+        .padding(28)
     }
 
     private func reviewButton(
@@ -619,31 +608,5 @@ private struct TodayReviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tone)
-    }
-}
-
-private struct VocabPanel<Content: View>: View {
-    let padding: CGFloat
-    @ViewBuilder var content: Content
-
-    init(
-        padding: CGFloat = AppMetrics.spacingLarge,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.padding = padding
-        self.content = content()
-    }
-
-    var body: some View {
-        content
-            .padding(padding)
-            .background(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                    .fill(VocabPalette.surfaceStrong)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                    .strokeBorder(VocabPalette.line, lineWidth: 0.8)
-            )
     }
 }

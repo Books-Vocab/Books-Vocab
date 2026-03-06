@@ -484,11 +484,11 @@ struct WordRow: View {
     private var statusTone: Color {
         switch reviewState {
         case .unlearned:
-            return VocabPalette.primary
+            return AppColors.accent(colorScheme)
         case .due:
-            return VocabPalette.warm
+            return AppColors.translation(colorScheme)
         case .reviewed:
-            return VocabPalette.success
+            return AppColors.saved(colorScheme)
         case nil:
             return isDue ? AppColors.translation(colorScheme) : Color.secondary.opacity(0.7)
         }
