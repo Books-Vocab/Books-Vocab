@@ -11,6 +11,7 @@ import UniformTypeIdentifiers
 
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
+    @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
 
@@ -28,6 +29,9 @@ struct BookshelfView: View {
     var body: some View {
         NavigationStack {
             ZStack {
+                appTheme.palette.pageBackground
+                    .ignoresSafeArea()
+
                 if books.isEmpty {
                     emptyState
                 } else {
@@ -151,7 +155,7 @@ struct BookshelfView: View {
 
     private var loadingOverlay: some View {
         ZStack {
-            Color.black.opacity(0.2)
+            appTheme.palette.scrim
                 .ignoresSafeArea()
 
             VStack(spacing: 16) {
@@ -239,6 +243,7 @@ struct BookshelfView: View {
 // MARK: - 書籍卡片
 
 struct BookCard: View {
+    @Environment(\.appTheme) private var appTheme
     let book: Book
 
     var body: some View {
@@ -256,7 +261,7 @@ struct BookCard: View {
                         if let progress = book.progression, progress > 0 {
                             GeometryReader { geo in
                                 Rectangle()
-                                    .fill(Color.white.opacity(0.55))
+                                    .fill(appTheme.palette.pageBackground.opacity(0.82))
                                     .frame(width: geo.size.width * progress, height: 3)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
@@ -266,7 +271,7 @@ struct BookCard: View {
             } else {
                 // 無封面佔位 — 極簡風格
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
-                    .fill(Color.primary.opacity(0.04))
+                    .fill(appTheme.palette.mutedFill)
                     .frame(height: 210)
                     .overlay {
                         VStack(spacing: 10) {
@@ -282,13 +287,13 @@ struct BookCard: View {
                     }
                     .overlay(
                         RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(.primary.opacity(0.06), lineWidth: 0.5)
+                            .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
                     )
                     .overlay(alignment: .bottom) {
                         if let progress = book.progression, progress > 0 {
                             GeometryReader { geo in
                                 Rectangle()
-                                    .fill(Color.primary.opacity(0.2))
+                                    .fill(appTheme.palette.accent.opacity(0.55))
                                     .frame(width: geo.size.width * progress, height: 3)
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }

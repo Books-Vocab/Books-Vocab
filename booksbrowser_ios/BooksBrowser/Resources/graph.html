@@ -17,9 +17,13 @@ let sim, nodes = [], links = [], forces = {};
 let transform = d3.zoomIdentity;
 let hoveredId = null, selectedId = null;
 let TIER_COLORS = { dark: {}, light: {} };
+let EDGE_COLORS = {};
 let adjCache = new Map();
 let currentMode = 'dark';
 let W = window.innerWidth, H = window.innerHeight;
+let backgroundColor = 'transparent';
+let labelColor = '#FFFFFF';
+let labelShadowColor = 'rgba(0,0,0,0.9)';
 
 const canvas = document.getElementById('g');
 const ctx = canvas.getContext('2d');
@@ -72,16 +76,13 @@ function opacityForEdge(sid, tid) {
     return 0.05;
 }
 
-const EDGE_COLORS = {
-    confusable:     '#FF8C00',
-    contrasts_with: '#4A90E2',
-    shares_usage:   '#5CA85C'
-};
-
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function draw() {
-    // Transparent clear — no solid background, iOS system bg shows through
     ctx.clearRect(0, 0, W, H);
+    if (backgroundColor !== 'transparent') {
+        ctx.fillStyle = backgroundColor;
+        ctx.fillRect(0, 0, W, H);
+    }
 
     ctx.save();
     ctx.translate(transform.x, transform.y);
@@ -129,7 +130,6 @@ function draw() {
 
     // Draw labels
     ctx.globalAlpha = 1;
-    const shadowColor = currentMode === 'dark' ? 'rgba(0,0,0,0.9)' : 'rgba(255,255,255,0.9)';
     for (const d of nodes) {
         const r = nodeRadius(d);
         const opacity = opacityForNode(d.id);
@@ -138,11 +138,9 @@ function draw() {
         ctx.font = `${fontSize}px -apple-system, sans-serif`;
         ctx.textAlign = 'center';
         ctx.textBaseline = 'top';
-        ctx.shadowColor = shadowColor;
+        ctx.shadowColor = labelShadowColor;
         ctx.shadowBlur = 4;
-        ctx.fillStyle = currentMode === 'dark'
-            ? `rgba(255,255,255,${0.88 * opacity})`
-            : `rgba(0,0,0,${0.80 * opacity})`;
+        ctx.fillStyle = hexToRGBA(labelColor, currentMode === 'dark' ? 0.90 * opacity : 0.82 * opacity);
         ctx.fillText(d.word, d.x, d.y + r + 3);
     }
     ctx.shadowBlur = 0;
@@ -167,6 +165,15 @@ function findNode(x, y) {
     const sx = (x - transform.x) / transform.k;
     const sy = (y - transform.y) / transform.k;
     return nodes.find(n => Math.hypot(n.x - sx, n.y - sy) < nodeRadius(n) + 4);
+}
+
+function hexToRGBA(hex, alpha) {
+    const normalized = hex.replace('#', '');
+    const safe = normalized.length === 6 ? normalized : '888888';
+    const r = parseInt(safe.slice(0, 2), 16);
+    const g = parseInt(safe.slice(2, 4), 16);
+    const b = parseInt(safe.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
 }
 
 // ── Zoom ──────────────────────────────────────────────────────────────────────
@@ -252,6 +259,13 @@ window.initGraph = function(jsonStr) {
 
     // Apply theme
     currentMode = data.theme?.mode || 'dark';
+    backgroundColor = data.theme?.background || 'transparent';
+    labelColor = data.theme?.label || (currentMode === 'dark' ? '#FFFFFF' : '#000000');
+    labelShadowColor = hexToRGBA(
+        data.theme?.labelShadow || (currentMode === 'dark' ? '#000000' : '#FFFFFF'),
+        currentMode === 'dark' ? 0.86 : 0.90
+    );
+    Object.assign(EDGE_COLORS, data.theme?.edges || {});
 
     // Preserve existing positions
     const posMap = new Map();

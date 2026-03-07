@@ -18,6 +18,9 @@ struct KnowledgeGraphEdge: Identifiable, Equatable {
 struct KnowledgeGraphTheme: Equatable {
     let backgroundHex: String
     let tierHexes: [String: String]
+    let edgeHexes: [String: String]
+    let labelHex: String
+    let labelShadowHex: String
 }
 
 enum KnowledgeGraphPresentation {
@@ -70,7 +73,14 @@ enum KnowledgeGraphPresentation {
                 "advanced": cssHex(skin.tierColor(for: "advanced")),
                 "rare": cssHex(skin.palette.destructive),
                 "unknown": cssHex(skin.palette.secondaryText)
-            ]
+            ],
+            edgeHexes: [
+                "confusable": cssHex(skin.tierColor(for: "advanced")),
+                "contrasts_with": cssHex(skin.palette.link),
+                "shares_usage": cssHex(skin.palette.success)
+            ],
+            labelHex: cssHex(skin.palette.primaryText),
+            labelShadowHex: cssHex(skin.palette.pageBackground)
         )
     }
 
