@@ -17,6 +17,17 @@ struct WordSelection: Equatable {
         lhs.word == rhs.word && lhs.context == rhs.context
     }
 }
+
+struct KGCardLinkSummary: Codable, Identifiable, Equatable {
+    let id: String
+    let cardId: String
+    let word: String
+    let kind: String
+    let label: String
+    let confidence: Double
+    let reason: String
+}
+
 struct KGCard: Codable, Identifiable {
     let id: String
     let content: String
@@ -29,4 +40,5 @@ struct KGCard: Codable, Identifiable {
     let mode: String
     let isDeleted: Bool?
     let inflections: [String]?
+    let linksByKind: [String: [KGCardLinkSummary]]?
 }

@@ -31,6 +31,9 @@ final class VocabularyEntry {
     var kgCardId: String?           // KG 卡片 ID（同步後回填）
     var difficultyTier: String?     // "core" / "intermediate" / "advanced" / "rare"
     var actionType: String = "add"  // "add" | "delete" | "edit"
+    var reviewModeRaw: String = VocabularyCardMode.recognition.rawValue
+    var reviewExamples: [String] = []
+    var graphLinksJSON: String = "{}"
 
     // Local spaced-review state
     var reviewIntervalHours: Double = VocabularyReviewPolicy.initialIntervalHours
@@ -67,5 +70,42 @@ final class VocabularyEntry {
         self.bookTitle = bookTitle
         self.chapterTitle = chapterTitle
         self.dateAdded = Date()
+    }
+}
+
+extension VocabularyEntry {
+    var reviewMode: VocabularyCardMode {
+        get { VocabularyCardMode(rawValue: reviewModeRaw) ?? .recognition }
+        set { reviewModeRaw = newValue.rawValue }
+    }
+
+    var primaryReviewExample: String? {
+        reviewExamples.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ??
+        (context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : context)
+    }
+
+    var allReviewExamples: [String] {
+        let remoteExamples = reviewExamples.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
+        if remoteExamples.isEmpty {
+            return context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [context]
+        }
+        return remoteExamples
+    }
+
+    var graphLinksByKind: [String: [KGCardLinkSummary]] {
+        get {
+            guard let data = graphLinksJSON.data(using: .utf8) else { return [:] }
+            return (try? JSONDecoder().decode([String: [KGCardLinkSummary]].self, from: data)) ?? [:]
+        }
+        set {
+            guard
+                let data = try? JSONEncoder().encode(newValue),
+                let json = String(data: data, encoding: .utf8)
+            else {
+                graphLinksJSON = "{}"
+                return
+            }
+            graphLinksJSON = json
+        }
     }
 }

@@ -562,15 +562,43 @@ private struct TodayReviewView: View {
     private func reviewCardFront(_ current: VocabularyEntry) -> some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                if let pos = current.partOfSpeech {
-                    AppTag(text: pos, tone: AppColors.accent(.light))
+                HStack(spacing: AppMetrics.spacingSmall) {
+                    AppTag(text: current.reviewMode.localizedTitle, tone: AppColors.translation(.light))
+                    if let pos = current.partOfSpeech {
+                        AppTag(text: pos, tone: AppColors.accent(.light))
+                    }
                 }
                 Spacer(minLength: 0)
-                Text(current.word)
-                    .font(.system(size: 62, weight: .semibold, design: .serif))
-                    .foregroundStyle(.primary)
-                    .minimumScaleFactor(0.75)
-                Text("先想意思，再點卡片翻面")
+
+                switch current.reviewMode {
+                case .recognition:
+                    Text(current.word)
+                        .font(.system(size: 62, weight: .semibold, design: .serif))
+                        .foregroundStyle(.primary)
+                        .minimumScaleFactor(0.75)
+
+                case .production:
+                    Text(current.translation)
+                        .font(.system(size: 46, weight: .semibold, design: .default))
+                        .foregroundStyle(AppColors.translation(.light))
+                        .minimumScaleFactor(0.75)
+
+                    if let example = current.primaryReviewExample {
+                        CardRichTextRenderer.text(
+                            example,
+                            style: CardRichTextStyle(
+                                font: .system(size: 24, weight: .regular, design: .default),
+                                textColor: .secondary,
+                                highlightColor: AppColors.translation(.light),
+                                italic: true
+                            ),
+                            mode: .cloze,
+                            truncateAroundMarkedWordRadius: 5
+                        )
+                    }
+                }
+
+                Text(frontInstruction(for: current.reviewMode))
                     .font(.system(size: 20, weight: .medium, design: .default))
                     .foregroundStyle(.secondary)
             }
@@ -590,30 +618,49 @@ private struct TodayReviewView: View {
     private func reviewCardBack(_ current: VocabularyEntry) -> some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                reviewRichText(
-                    current.word,
-                    font: .system(size: 26, weight: .semibold, design: .serif),
-                    textColor: .secondary,
-                    highlightTone: AppColors.accent(.light),
-                    italic: false
-                )
+                switch current.reviewMode {
+                case .recognition:
+                    Text(current.word)
+                        .font(.system(size: 26, weight: .semibold, design: .serif))
+                        .foregroundStyle(.secondary)
 
-                reviewRichText(
-                    current.translation,
-                    font: .system(size: 44, weight: .semibold, design: .default),
-                    textColor: AppColors.translation(.light),
-                    highlightTone: AppColors.translation(.light),
-                    italic: false
-                )
+                    Text(current.translation)
+                        .font(.system(size: 44, weight: .semibold, design: .default))
+                        .foregroundStyle(AppColors.translation(.light))
 
-                if !current.context.isEmpty {
-                    reviewRichText(
-                        current.context,
-                        font: .system(size: 28, weight: .regular, design: .default),
-                        textColor: .secondary,
-                        highlightTone: AppColors.translation(.light),
-                        italic: true,
-                        truncateAroundHighlightWords: 5
+                case .production:
+                    Text(current.translation)
+                        .font(.system(size: 22, weight: .medium, design: .default))
+                        .foregroundStyle(.secondary)
+
+                    Text(current.word)
+                        .font(.system(size: 54, weight: .semibold, design: .serif))
+                        .foregroundStyle(.primary)
+                        .minimumScaleFactor(0.75)
+                }
+
+                if let example = current.primaryReviewExample {
+                    CardRichTextRenderer.text(
+                        example,
+                        style: CardRichTextStyle(
+                            font: .system(size: 26, weight: .regular, design: .default),
+                            textColor: .secondary,
+                            highlightColor: AppColors.translation(.light),
+                            italic: true
+                        ),
+                        truncateAroundMarkedWordRadius: 5
+                    )
+                }
+
+                if let explanation = current.explanation, !explanation.isEmpty {
+                    CardRichTextRenderer.text(
+                        explanation,
+                        style: CardRichTextStyle(
+                            font: .system(size: 18, weight: .regular, design: .default),
+                            textColor: .secondary,
+                            highlightColor: AppColors.accent(.light),
+                            italic: false
+                        )
                     )
                 }
             }
@@ -659,164 +706,12 @@ private struct TodayReviewView: View {
         .disabled(isAdvancing)
     }
 
-    private struct ReviewRichSegment {
-        let text: String
-        let isHighlight: Bool
-    }
-
-    private static let inlineHighlightPattern = try! NSRegularExpression(
-        pattern: #"\*\*([^*]+)\*\*"#
-    )
-    private static let tokenPattern = try! NSRegularExpression(
-        pattern: #"\S+"#
-    )
-
-    private func reviewRichText(
-        _ raw: String,
-        font: Font,
-        textColor: Color,
-        highlightTone: Color,
-        italic: Bool,
-        truncateAroundHighlightWords: Int? = nil
-    ) -> Text {
-        let truncatedRaw = truncateAroundHighlightWords.map {
-            truncatedReviewText(raw, contextWords: $0)
-        } ?? raw
-        let segments = parseReviewRichSegments(from: truncatedRaw)
-
-        var result = AttributedString()
-
-        for segment in segments where !segment.text.isEmpty {
-            var part = AttributedString(segment.text)
-            if segment.isHighlight {
-                part.font = italic ? font.weight(.semibold).italic() : font.weight(.semibold)
-                part.foregroundColor = highlightTone.opacity(0.95)
-                part.underlineStyle = Text.LineStyle(
-                    pattern: .solid,
-                    color: highlightTone.opacity(0.6)
-                )
-            } else {
-                part.font = italic ? font.italic() : font
-                part.foregroundColor = textColor
-            }
-            result += part
+    private func frontInstruction(for mode: VocabularyCardMode) -> String {
+        switch mode {
+        case .recognition:
+            return "先想意思，再點卡片翻面"
+        case .production:
+            return "先想英文，再點卡片翻面"
         }
-
-        return Text(result)
-    }
-
-    private func parseReviewRichSegments(from raw: String) -> [ReviewRichSegment] {
-        let nsString = raw as NSString
-        let matches = Self.inlineHighlightPattern.matches(
-            in: raw,
-            range: NSRange(location: 0, length: nsString.length)
-        )
-
-        guard !matches.isEmpty else {
-            return [ReviewRichSegment(text: raw, isHighlight: false)]
-        }
-
-        var segments: [ReviewRichSegment] = []
-        var lastEnd = 0
-
-        for match in matches {
-            let beforeRange = NSRange(location: lastEnd, length: match.range.location - lastEnd)
-            if beforeRange.length > 0 {
-                segments.append(ReviewRichSegment(text: nsString.substring(with: beforeRange), isHighlight: false))
-            }
-
-            let captureRange = match.range(at: 1)
-            if captureRange.location != NSNotFound, captureRange.length > 0 {
-                segments.append(ReviewRichSegment(text: nsString.substring(with: captureRange), isHighlight: true))
-            }
-
-            lastEnd = match.range.location + match.range.length
-        }
-
-        if lastEnd < nsString.length {
-            segments.append(ReviewRichSegment(text: nsString.substring(from: lastEnd), isHighlight: false))
-        }
-
-        return segments
-    }
-
-    private func truncatedReviewText(_ raw: String, contextWords: Int) -> String {
-        guard contextWords >= 0 else { return raw }
-
-        let nsString = raw as NSString
-        guard let highlightMatch = Self.inlineHighlightPattern.firstMatch(
-            in: raw,
-            range: NSRange(location: 0, length: nsString.length)
-        ) else {
-            return raw
-        }
-
-        let highlightRange = highlightMatch.range
-        let beforeText = nsString.substring(to: highlightRange.location)
-        let highlightText = nsString.substring(with: highlightRange)
-        let afterStart = highlightRange.location + highlightRange.length
-        let afterText = nsString.substring(from: afterStart)
-
-        let truncatedBefore = truncateReviewContext(beforeText, keepingLastWordCount: contextWords)
-        let truncatedAfter = truncateReviewContext(afterText, keepingFirstWordCount: contextWords)
-
-        return "\(truncatedBefore.prefix)\(truncatedBefore.text)\(highlightText)\(truncatedAfter.text)\(truncatedAfter.suffix)"
-    }
-
-    private func truncateReviewContext(
-        _ text: String,
-        keepingLastWordCount count: Int
-    ) -> (prefix: String, text: String) {
-        guard count > 0 else {
-            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? ("", text) : ("...", "")
-        }
-
-        let nsString = text as NSString
-        let tokens = Self.tokenPattern.matches(
-            in: text,
-            range: NSRange(location: 0, length: nsString.length)
-        )
-        let validIndices = tokens.enumerated().compactMap { index, match in
-            isWordToken(match, in: nsString) ? index : nil
-        }
-
-        guard validIndices.count > count, count >= 0 else {
-            return ("", text)
-        }
-
-        let tokenIndex = validIndices[validIndices.count - count]
-        let cutStart = tokens[tokenIndex].range.location
-        return ("...", nsString.substring(from: cutStart))
-    }
-
-    private func truncateReviewContext(
-        _ text: String,
-        keepingFirstWordCount count: Int
-    ) -> (text: String, suffix: String) {
-        guard count > 0 else {
-            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (text, "") : ("", "...")
-        }
-
-        let nsString = text as NSString
-        let tokens = Self.tokenPattern.matches(
-            in: text,
-            range: NSRange(location: 0, length: nsString.length)
-        )
-        let validIndices = tokens.enumerated().compactMap { index, match in
-            isWordToken(match, in: nsString) ? index : nil
-        }
-
-        guard validIndices.count > count, count >= 0 else {
-            return (text, "")
-        }
-
-        let tokenIndex = validIndices[count - 1]
-        let cutEnd = tokens[tokenIndex].range.location + tokens[tokenIndex].range.length
-        return (nsString.substring(to: cutEnd), "...")
-    }
-
-    private func isWordToken(_ match: NSTextCheckingResult, in text: NSString) -> Bool {
-        let token = text.substring(with: match.range)
-        return token.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
     }
 }

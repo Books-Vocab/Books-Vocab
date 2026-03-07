@@ -58,6 +58,9 @@ actor BackgroundSyncActor {
                     existingEntry.difficultyTier = card.difficultyTier
                     existingEntry.kgCardId = card.id
                     existingEntry.inflections = card.inflections ?? []
+                    existingEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
+                    existingEntry.reviewExamples = card.examples
+                    existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.syncStatus = 1
                     existingEntry.actionType = "add"
                 }
@@ -78,6 +81,9 @@ actor BackgroundSyncActor {
                 newEntry.difficultyTier = card.difficultyTier
                 newEntry.kgCardId = card.id
                 newEntry.inflections = card.inflections ?? []
+                newEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
+                newEntry.reviewExamples = card.examples
+                newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.syncStatus = 1
                 newEntry.actionType = "add"
                 

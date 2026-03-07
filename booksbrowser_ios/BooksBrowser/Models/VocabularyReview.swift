@@ -12,6 +12,29 @@ enum ReviewFeedback: Int, Codable {
     case remembered = 1
 }
 
+enum VocabularyCardMode: String, Codable {
+    case recognition
+    case production
+
+    var title: String {
+        switch self {
+        case .recognition:
+            return "Recognition"
+        case .production:
+            return "Production"
+        }
+    }
+
+    var localizedTitle: String {
+        switch self {
+        case .recognition:
+            return "辨識"
+        case .production:
+            return "產出"
+        }
+    }
+}
+
 enum VocabularyReviewState: String, CaseIterable, Identifiable {
     case unlearned
     case due
