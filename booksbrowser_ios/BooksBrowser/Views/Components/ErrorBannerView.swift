@@ -19,7 +19,7 @@ struct ErrorBannerView: View {
                 .font(.footnote)
                 .foregroundStyle(AppColors.warning(colorScheme))
 
-            Text(message)
+            Text(message.localized)
                 .font(.caption)
                 .foregroundStyle(.secondary)
                 .lineLimit(2)

@@ -28,9 +28,9 @@ enum VocabularyCardMode: String, Codable {
     var localizedTitle: String {
         switch self {
         case .recognition:
-            return "辨識"
+            return L10n.string("辨識")
         case .production:
-            return "產出"
+            return L10n.string("產出")
         }
     }
 }
@@ -44,9 +44,9 @@ enum VocabularyReviewState: String, CaseIterable, Identifiable {
 
     var title: String {
         switch self {
-        case .unlearned: return "未學習"
-        case .due: return "待複習"
-        case .reviewed: return "已複習"
+        case .unlearned: return L10n.string("未學習")
+        case .due: return L10n.string("待複習")
+        case .reviewed: return L10n.string("已複習")
         }
     }
 }

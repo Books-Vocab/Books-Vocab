@@ -68,7 +68,11 @@ extension ReaderTranslationHandler {
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
                         Task { @MainActor in
-                            self?.translationStatus = "正在重試 (\(attempt)/\(total))..."
+                            self?.translationStatus = L10n.format(
+                                "正在重試 (%@/%@)...",
+                                "\(attempt)",
+                                "\(total)"
+                            )
                         }
                     }
                 )
@@ -103,7 +107,7 @@ extension ReaderTranslationHandler {
                 print("❌ 翻譯錯誤: \(error)")
                 let fetchedPron = await pronTask.value
                 translationResult = TranslationResult(
-                    translation: "翻譯失敗：\(error.localizedDescription)",
+                    translation: L10n.format("翻譯失敗：%@", error.localizedDescription),
                     partOfSpeech: nil,
                     pronunciation: nil,
                     explanation: nil
@@ -140,7 +144,11 @@ extension ReaderTranslationHandler {
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
                         Task { @MainActor in
-                            self?.translationStatus = "正在重試 (\(attempt)/\(total))..."
+                            self?.translationStatus = L10n.format(
+                                "正在重試 (%@/%@)...",
+                                "\(attempt)",
+                                "\(total)"
+                            )
                         }
                     }
                 )
@@ -163,7 +171,7 @@ extension ReaderTranslationHandler {
                 )
             } catch {
                 translationResult = TranslationResult(
-                    translation: "翻譯失敗：\(error.localizedDescription)",
+                    translation: L10n.format("翻譯失敗：%@", error.localizedDescription),
                     partOfSpeech: nil,
                     pronunciation: nil,
                     explanation: nil
@@ -196,7 +204,11 @@ extension ReaderTranslationHandler {
                     context: context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
                         Task { @MainActor in
-                            self?.explanationStatus = "正在重試 (\(attempt)/\(total))..."
+                            self?.explanationStatus = L10n.format(
+                                "正在重試 (%@/%@)...",
+                                "\(attempt)",
+                                "\(total)"
+                            )
                         }
                     }
                 )
@@ -206,7 +218,7 @@ extension ReaderTranslationHandler {
                     explanationStatus = nil
                 }
             } catch {
-                explanationText = "載入失敗：\(error.localizedDescription)"
+                explanationText = L10n.format("載入失敗：%@", error.localizedDescription)
                 isLoadingExplanation = false
                 explanationStatus = nil
             }
@@ -232,7 +244,11 @@ extension ReaderTranslationHandler {
                     context: selection.context,
                     onRetry: { [weak self] (attempt: Int, total: Int) in
                         Task { @MainActor in
-                            self?.explanationStatus = "正在重試 (\(attempt)/\(total))..."
+                            self?.explanationStatus = L10n.format(
+                                "正在重試 (%@/%@)...",
+                                "\(attempt)",
+                                "\(total)"
+                            )
                         }
                     }
                 )
@@ -247,7 +263,7 @@ extension ReaderTranslationHandler {
                 }
             } catch {
                 print("❌ 解釋錯誤: \(error)")
-                explanationText = "載入失敗：\(error.localizedDescription)"
+                explanationText = L10n.format("載入失敗：%@", error.localizedDescription)
                 isLoadingExplanation = false
                 explanationStatus = nil
             }

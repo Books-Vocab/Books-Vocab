@@ -82,7 +82,7 @@ struct TranslationPanelPresenter: View {
         if state.isLoading {
             HStack(spacing: 8) {
                 ProgressView().scaleEffect(0.8)
-                Text(state.statusMessage ?? "翻譯中...")
+                Text((state.statusMessage ?? "翻譯中...").localized)
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
                 Spacer()
@@ -107,7 +107,7 @@ struct TranslationPanelPresenter: View {
                     Image(systemName: state.isSaved ? "checkmark.circle.fill" : "clock")
                         .font(.caption)
                         .foregroundStyle(state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme))
-                    Text(state.isSaved ? "已加入待收錄" : "正在記錄…")
+                    Text((state.isSaved ? "已加入待收錄" : "正在記錄…").localized)
                         .font(.system(size: 13, weight: .bold))
                         .foregroundStyle(state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme))
                 }
@@ -138,7 +138,7 @@ struct TranslationPanelPresenter: View {
             if state.isLoadingExplanation {
                 HStack(spacing: 8) {
                     ProgressView().scaleEffect(0.7)
-                    Text(state.statusMessage ?? "載入解釋...")
+                    Text((state.statusMessage ?? "載入解釋...").localized)
                         .font(.caption)
                         .foregroundStyle(.secondary)
                     Spacer()
@@ -175,7 +175,7 @@ struct TranslationPanelPresenter: View {
                 if state.isLoadingExplanation {
                     HStack(spacing: 8) {
                         ProgressView().scaleEffect(0.7)
-                        Text(state.statusMessage ?? "載入解釋...")
+                        Text((state.statusMessage ?? "載入解釋...").localized)
                             .font(.caption)
                             .foregroundStyle(.secondary)
                         Spacer()

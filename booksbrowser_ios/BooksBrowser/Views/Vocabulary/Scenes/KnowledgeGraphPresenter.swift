@@ -143,7 +143,7 @@ struct KnowledgeGraphPresenter: View {
 
     private func sectionHeader(_ title: String) -> some View {
         HStack {
-            Text(title)
+            Text(title.localized)
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .tracking(0.5)
@@ -160,7 +160,7 @@ struct KnowledgeGraphPresenter: View {
         fmt: String
     ) -> some View {
         HStack(spacing: 8) {
-            Text(label)
+            Text(label.localized)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.primaryText)
                 .frame(width: 52, alignment: .leading)

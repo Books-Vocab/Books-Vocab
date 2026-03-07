@@ -42,7 +42,11 @@ final class ReadiumService {
         print("📖 openPublication: \(url.path)")
         guard let absoluteURL = FileURL(url: url) else {
             print("❌ 無法轉換為 FileURL")
-            throw NSError(domain: "ReadiumService", code: 1, userInfo: [NSLocalizedDescriptionKey: "無法轉換檔案路徑: \(url.path)"])
+            throw NSError(
+                domain: "ReadiumService",
+                code: 1,
+                userInfo: [NSLocalizedDescriptionKey: L10n.format("無法轉換檔案路徑: %@", url.path)]
+            )
         }
         print("📖 retrieving asset...")
         let asset = try await assetRetriever.retrieve(url: absoluteURL).get()

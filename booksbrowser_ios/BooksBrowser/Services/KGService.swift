@@ -305,13 +305,13 @@ final class KGService: KGServing, LocalDataClearing {
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
     /// This makes all KG words available offline (for underlining and browsing).
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws {
-        progress?("從遠端下載知識庫...", 0, 0)
+        progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
         let defaults = UserDefaults.standard
         let storedPayloadVersion = defaults.integer(forKey: SyncKeys.payloadVersion)
         if storedPayloadVersion < SyncKeys.currentPayloadVersion {
             defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
-            progress?("升級卡片資料格式，重新同步全部卡片...", 0, 0)
+            progress?(L10n.string("升級卡片資料格式，重新同步全部卡片..."), 0, 0)
         }
         
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
@@ -348,7 +348,7 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Failed to fetch cards, HTTP \(httpResponse.statusCode)")
         }
 
-        progress?("解析資料...", 0, 0)
+        progress?(L10n.string("解析資料..."), 0, 0)
         let fetchedCards: [KGCard]
         do {
             fetchedCards = try JSONDecoder().decode([KGCard].self, from: data)
@@ -414,9 +414,9 @@ enum KGError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .serverError(let msg): return "KG 伺服器錯誤：\(msg)"
-        case .notConnected: return "KG 伺服器未連線"
-        case .unauthorized: return "未登入帳號或身份已過期"
+        case .serverError(let msg): return L10n.format("KG 伺服器錯誤：%@", msg)
+        case .notConnected: return L10n.string("KG 伺服器未連線")
+        case .unauthorized: return L10n.string("未登入帳號或身份已過期")
         }
     }
 }

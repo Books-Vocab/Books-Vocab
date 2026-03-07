@@ -82,7 +82,7 @@ struct WordDetailPresenter: View {
 
             ForEach(state.card.linkGroups) { group in
                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
-                    Text(group.label)
+                    Text(group.label.localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
 
@@ -105,7 +105,7 @@ struct WordDetailPresenter: View {
                 HStack(spacing: 4) {
                     Image(systemName: item.icon)
                         .font(vocabSkin.typography.iconTiny)
-                    Text(item.text)
+                    Text(item.text.localized)
                 }
             }
         }

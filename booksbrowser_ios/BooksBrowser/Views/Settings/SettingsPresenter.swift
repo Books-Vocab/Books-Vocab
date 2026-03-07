@@ -175,7 +175,7 @@ struct SettingsPresenter: View {
                     }
 
                     if !debug.developerAccountId.isEmpty {
-                        Text("目前開發者帳號：\(debug.developerAccountId)")
+                        Text(L10n.format("目前開發者帳號：%@", debug.developerAccountId))
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -296,7 +296,7 @@ struct SettingsPresenter: View {
                                 color: statusTone.opacity(0.6),
                                 radius: kg.connectionPulse ? 5 : 2
                             )
-                        Text(kg.isConnected ? "已連線" : "離線")
+                        Text((kg.isConnected ? "已連線" : "離線").localized)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
@@ -306,7 +306,7 @@ struct SettingsPresenter: View {
                     SettingsDivider()
 
                     SettingsRow(icon: "text.book.closed", label: "字庫卡片") {
-                        Text("\(kg.serverCardCount) 張")
+                        Text(L10n.format("%@ 張", "\(kg.serverCardCount)"))
                             .font(vocabSkin.typography.monoLabel)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
@@ -385,7 +385,7 @@ struct SettingsPresenter: View {
                     SettingsDivider()
 
                     SettingsRow(icon: "wrench.and.screwdriver", label: "開發者帳號 ID") {
-                        Text(developerAccountId.isEmpty ? "未設定" : developerAccountId)
+                        Text(developerAccountId.isEmpty ? L10n.string("未設定") : developerAccountId)
                             .font(vocabSkin.typography.monoLabel)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                             .lineLimit(1)
@@ -404,7 +404,7 @@ struct SettingsPresenter: View {
             VStack(spacing: 0) {
                 Button(role: .destructive, action: actions.requestDeleteAccount) {
                     HStack {
-                        Text(danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料")
+                        Text((danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料").localized)
                             .font(vocabSkin.typography.body)
                             .foregroundStyle(vocabSkin.palette.destructive)
                         Spacer()
@@ -437,7 +437,7 @@ private struct SettingsSectionHeader: View {
     let icon: String
 
     var body: some View {
-        Label(title, systemImage: icon)
+        Label(title.localized, systemImage: icon)
             .font(vocabSkin.typography.captionStrong)
             .foregroundStyle(vocabSkin.palette.secondaryText)
             .padding(.leading, 4)
@@ -453,7 +453,7 @@ private struct SettingsSectionFooter: View {
     }
 
     var body: some View {
-        Text(text)
+        Text(text.localized)
             .font(vocabSkin.typography.caption)
             .foregroundStyle(vocabSkin.palette.tertiaryText)
             .lineSpacing(3)
@@ -491,7 +491,7 @@ private struct SettingsRow<Content: View>: View {
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .frame(width: 22, alignment: .center)
 
-            Text(label)
+            Text(label.localized)
                 .font(vocabSkin.typography.body)
                 .foregroundStyle(vocabSkin.palette.primaryText)
 

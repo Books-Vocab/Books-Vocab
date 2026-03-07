@@ -126,7 +126,7 @@ struct ReaderSettingsPanelPresenter: View {
                             Button {
                                 onSelectUnderlineOpacity(option.value)
                             } label: {
-                                Text(option.label)
+                                Text(option.label.localized)
                                     .font(.subheadline)
                                     .fontWeight(bindings.underlineOpacity.wrappedValue == option.value ? .medium : .regular)
                                     .frame(maxWidth: .infinity)

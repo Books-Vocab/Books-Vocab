@@ -121,14 +121,14 @@ struct KGVocabView: View {
     private var bannerState: KGVocabPresenter.State.Banner? {
         if !pendingDeletes.isEmpty {
             return .init(
-                message: "\(pendingDeletes.count) 個單字刪除待同步",
+                message: L10n.format("%@ 個單字刪除待同步", "\(pendingDeletes.count)"),
                 canDismiss: false,
                 canRetry: true
             )
         }
         if let errorMessage {
             return .init(
-                message: "離線模式，同步失敗：\(errorMessage)",
+                message: L10n.format("離線模式，同步失敗：%@", errorMessage),
                 canDismiss: true,
                 canRetry: false
             )

@@ -29,7 +29,7 @@ struct ReaderView: View {
     @State private var publication: Publication?
     @State private var isLoading = true
     @State private var isWebViewReady = false
-    @State private var loadingPhase = "開啟書本…"
+    @State private var loadingPhase = L10n.string("開啟書本…")
     @State private var errorMessage: String?
     @State private var underlineProgress: Double? = nil
     @State private var hasCompletedInitialMarking = false
@@ -228,11 +228,11 @@ struct ReaderView: View {
 
     private func loadPublication() async {
         do {
-            await MainActor.run { loadingPhase = "開啟書本…" }
+            await MainActor.run { loadingPhase = L10n.string("開啟書本…") }
             let pub = try await ReadiumService.shared.openPublication(at: book.epubFileURL)
 
             await MainActor.run {
-                loadingPhase = "渲染頁面…"
+                loadingPhase = L10n.string("渲染頁面…")
                 publication = pub
                 isLoading = false
                 handler.loadLookedUpWords(from: allVocabulary)

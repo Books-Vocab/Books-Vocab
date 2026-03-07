@@ -166,7 +166,7 @@ struct TodayReviewPresenter: View {
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                 Spacer()
-                Text(state.showBack ? "點擊收合" : "點擊翻面")
+                Text((state.showBack ? "點擊收合" : "點擊翻面").localized)
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
@@ -285,7 +285,7 @@ struct TodayReviewPresenter: View {
             VStack(alignment: .leading, spacing: 6) {
                 ForEach(groups) { group in
                     HStack(spacing: 4) {
-                        Text("\(group.label)：")
+                        Text(group.label.localized + "：")
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
 
@@ -321,9 +321,9 @@ struct TodayReviewPresenter: View {
     private func frontInstruction(for mode: VocabularyCardMode) -> String {
         switch mode {
         case .recognition:
-            return "先想意思，再點卡片翻面"
+            return L10n.string("先想意思，再點卡片翻面")
         case .production:
-            return "先想英文，再點卡片翻面"
+            return L10n.string("先想英文，再點卡片翻面")
         }
     }
 

@@ -77,7 +77,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                 )
             } catch {
                 print("❌ Backend verification failed: \(error)")
-                authManager.setAuthError("伺服器驗證失敗，請稍後再試。")
+                authManager.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
             }
         }
     }
