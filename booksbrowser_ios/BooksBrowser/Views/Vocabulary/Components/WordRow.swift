@@ -1,71 +1,83 @@
 import SwiftUI
 
 struct WordRow: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let word: String
-    let translation: String
-    let partOfSpeech: String?
-    let difficultyTier: String?
-    let bookTitle: String?
-    let chapterTitle: String?
-    let nextReviewAt: Date
-    let reviewState: VocabularyReviewState?
-    let syncStatus: Int?
-    var actionType: String = "add"
-    var showsReviewState: Bool = true
+    struct ViewData: Identifiable, Hashable {
+        enum Tone: Hashable {
+            case primary
+            case secondary
+            case tertiary
+            case quaternary
+            case destructive
+            case reviewDue
+        }
 
-    private var isDelete: Bool { actionType == "delete" }
-    private var isDue: Bool { nextReviewAt <= Date() }
+        let id: UUID
+        let word: String
+        let wordTone: Tone
+        let isStrikethrough: Bool
+        let partOfSpeech: String?
+        let translation: String?
+        let bookTitle: String?
+        let chapterTitle: String?
+        let difficultyTier: String?
+        let leadingSystemImage: String?
+        let leadingTone: Tone?
+        let trailingLabel: String?
+        let trailingTone: Tone?
+        let statusText: String?
+        let statusTone: Tone?
+    }
+
+    @Environment(\.vocabSkin) private var vocabSkin
+    let viewData: ViewData
 
     var body: some View {
         HStack(alignment: .top, spacing: 10) {
             VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    if isDelete {
-                        Image(systemName: "trash")
+                    if let systemImage = viewData.leadingSystemImage {
+                        Image(systemName: systemImage)
                             .font(.system(size: 12, weight: .thin))
-                            .foregroundStyle(vocabSkin.palette.destructive)
+                            .foregroundStyle(resolveTone(viewData.leadingTone ?? .tertiary))
                     }
 
-                    Text(word)
+                    Text(viewData.word)
                         .font(vocabSkin.typography.rowWord)
-                        .strikethrough(isDelete, color: vocabSkin.palette.destructive)
-                        .foregroundStyle(isDelete ? vocabSkin.palette.destructive : vocabSkin.palette.primaryText)
+                        .strikethrough(viewData.isStrikethrough, color: resolveTone(viewData.wordTone))
+                        .foregroundStyle(resolveTone(viewData.wordTone))
 
-                    if let pos = partOfSpeech {
+                    if let pos = viewData.partOfSpeech {
                         Text(pos)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
 
-                    if isDelete {
+                    if let trailingLabel = viewData.trailingLabel {
                         Spacer()
-                        Text("待刪除")
+                        Text(trailingLabel)
                             .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.destructive)
+                            .foregroundStyle(resolveTone(viewData.trailingTone ?? .tertiary))
                     }
                 }
 
-                if !isDelete {
-                    if translation.isEmpty {
-                        Label("待翻譯", systemImage: "clock")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    } else {
-                        Text(translation)
-                            .font(vocabSkin.typography.body)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineLimit(2)
-                    }
+                if let translation = viewData.translation, !translation.isEmpty {
+                    Text(translation)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(2)
+                } else if !viewData.isStrikethrough {
+                    Label("待翻譯", systemImage: "clock")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
 
-                if let book = bookTitle, !book.isEmpty {
+                if let book = viewData.bookTitle, !book.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "book.closed")
                             .font(.system(size: 10, weight: .thin))
                         Text(book)
                             .font(vocabSkin.typography.caption)
-                        if let chapter = chapterTitle {
+                        if let chapter = viewData.chapterTitle {
                             Text("· \(chapter)")
                                 .font(vocabSkin.typography.caption)
                         }
@@ -73,17 +85,17 @@ struct WordRow: View {
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
 
-                if !isDelete && showsReviewState {
-                    Text(statusSubtitle)
+                if let statusText = viewData.statusText, !statusText.isEmpty {
+                    Text(statusText)
                         .font(vocabSkin.typography.caption)
-                        .foregroundStyle(statusTone)
+                        .foregroundStyle(resolveTone(viewData.statusTone ?? .tertiary))
                         .lineLimit(1)
                 }
             }
 
             Spacer(minLength: 0)
 
-            if let tier = difficultyTier, !isDelete {
+            if let tier = viewData.difficultyTier, !viewData.isStrikethrough {
                 VStack(alignment: .trailing, spacing: 4) {
                     VocabTierLabel(tier: tier)
                 }
@@ -92,29 +104,73 @@ struct WordRow: View {
         .padding(.vertical, 7)
     }
 
-    private var statusSubtitle: String {
-        switch reviewState {
-        case .unlearned:
-            return "未複習"
-        case .due:
-            return "待複習"
-        case .reviewed:
-            return "下次 \(nextReviewAt.reviewRelativeDescription())"
-        case nil:
-            return isDue ? "待複習" : "下次 \(nextReviewAt.reviewRelativeDescription())"
+    private func resolveTone(_ tone: ViewData.Tone) -> Color {
+        switch tone {
+        case .primary:
+            return vocabSkin.palette.primaryText
+        case .secondary:
+            return vocabSkin.palette.secondaryText
+        case .tertiary:
+            return vocabSkin.palette.tertiaryText
+        case .quaternary:
+            return vocabSkin.palette.quaternaryText
+        case .destructive:
+            return vocabSkin.palette.destructive
+        case .reviewDue:
+            return vocabSkin.tierColor(for: "intermediate")
         }
     }
+}
 
-    private var statusTone: Color {
+extension VocabularyEntry {
+    func wordRowViewData(
+        showsReviewState: Bool = true,
+        showsSourceContext: Bool = true
+    ) -> WordRow.ViewData {
+        let isDelete = actionType == "delete"
+        let status = rowStatus(showsReviewState: showsReviewState, isDelete: isDelete)
+
+        return WordRow.ViewData(
+            id: id,
+            word: word,
+            wordTone: isDelete ? .destructive : .primary,
+            isStrikethrough: isDelete,
+            partOfSpeech: partOfSpeech,
+            translation: translation.nilIfBlank,
+            bookTitle: showsSourceContext ? bookTitle.nilIfBlank : nil,
+            chapterTitle: showsSourceContext ? chapterTitle.nilIfBlank : nil,
+            difficultyTier: difficultyTier.nilIfBlank,
+            leadingSystemImage: isDelete ? "trash" : nil,
+            leadingTone: isDelete ? .destructive : nil,
+            trailingLabel: isDelete ? "待刪除" : nil,
+            trailingTone: isDelete ? .destructive : nil,
+            statusText: status?.text,
+            statusTone: status?.tone
+        )
+    }
+
+    private func rowStatus(
+        showsReviewState: Bool,
+        isDelete: Bool
+    ) -> (text: String, tone: WordRow.ViewData.Tone)? {
+        guard showsReviewState, !isDelete else { return nil }
+
         switch reviewState {
         case .unlearned:
-            return vocabSkin.palette.tertiaryText
+            return ("未複習", .tertiary)
         case .due:
-            return vocabSkin.tierColor(for: "intermediate")
+            return ("待複習", .reviewDue)
         case .reviewed:
-            return vocabSkin.palette.secondaryText
-        case nil:
-            return isDue ? vocabSkin.tierColor(for: "intermediate") : vocabSkin.palette.tertiaryText
+            return ("下次 \(nextReviewAt.reviewRelativeDescription())", .secondary)
         }
+    }
+}
+
+private extension Optional where Wrapped == String {
+    var nilIfBlank: String? {
+        guard let value = self?.trimmingCharacters(in: .whitespacesAndNewlines), !value.isEmpty else {
+            return nil
+        }
+        return value
     }
 }

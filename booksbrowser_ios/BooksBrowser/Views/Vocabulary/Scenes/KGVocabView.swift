@@ -124,16 +124,10 @@ struct KGVocabView: View {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
                             WordRow(
-                                word: entry.word,
-                                translation: entry.translation,
-                                partOfSpeech: entry.partOfSpeech,
-                                difficultyTier: entry.difficultyTier,
-                                bookTitle: nil,
-                                chapterTitle: nil,
-                                nextReviewAt: entry.nextReviewAt,
-                                reviewState: entry.reviewState,
-                                syncStatus: nil,
-                                showsReviewState: false
+                                viewData: entry.wordRowViewData(
+                                    showsReviewState: false,
+                                    showsSourceContext: false
+                                )
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { selectedEntry = entry }

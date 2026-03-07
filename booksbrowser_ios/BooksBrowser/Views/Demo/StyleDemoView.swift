@@ -83,32 +83,14 @@ struct StyleDemoView: View {
         DemoShowroomSection("Rows") {
             VocabCard {
                 VStack(spacing: 0) {
-                    WordRow(
-                        word: samplePendingEntry.word,
-                        translation: samplePendingEntry.translation,
-                        partOfSpeech: samplePendingEntry.partOfSpeech,
-                        difficultyTier: samplePendingEntry.difficultyTier,
-                        bookTitle: samplePendingEntry.bookTitle,
-                        chapterTitle: samplePendingEntry.chapterTitle,
-                        nextReviewAt: samplePendingEntry.nextReviewAt,
-                        reviewState: nil,
-                        syncStatus: samplePendingEntry.syncStatus,
-                        actionType: samplePendingEntry.actionType
-                    )
+                    WordRow(viewData: samplePendingEntry.wordRowViewData())
 
                     CardSectionDivider(horizontalPadding: 0)
 
                     WordRow(
-                        word: sampleReviewedEntry.word,
-                        translation: sampleReviewedEntry.translation,
-                        partOfSpeech: sampleReviewedEntry.partOfSpeech,
-                        difficultyTier: sampleReviewedEntry.difficultyTier,
-                        bookTitle: nil,
-                        chapterTitle: nil,
-                        nextReviewAt: sampleReviewedEntry.nextReviewAt,
-                        reviewState: sampleReviewedEntry.reviewState,
-                        syncStatus: sampleReviewedEntry.syncStatus,
-                        actionType: sampleReviewedEntry.actionType
+                        viewData: sampleReviewedEntry.wordRowViewData(
+                            showsSourceContext: false
+                        )
                     )
                 }
             }

@@ -202,18 +202,7 @@ struct VocabularyListView: View {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
                                 HStack(alignment: .top, spacing: 12) {
-                                    WordRow(
-                                        word: entry.word,
-                                        translation: entry.translation,
-                                        partOfSpeech: nil,
-                                        difficultyTier: entry.difficultyTier,
-                                        bookTitle: entry.bookTitle,
-                                        chapterTitle: entry.chapterTitle,
-                                        nextReviewAt: entry.nextReviewAt,
-                                        reviewState: nil,
-                                        syncStatus: nil,
-                                        actionType: entry.actionType
-                                    )
+                                    WordRow(viewData: entry.wordRowViewData())
                                     .frame(maxWidth: .infinity, alignment: .leading)
                                     .contentShape(Rectangle())
                                     .onTapGesture { selectedEntry = entry }
