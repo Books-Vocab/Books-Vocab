@@ -12,17 +12,23 @@ import SwiftData
 struct WordDetailSheet: View {
     @Environment(\.colorScheme) private var colorScheme
     @Query private var allEntries: [VocabularyEntry]
-    @State private var selectedLinkedEntry: VocabularyEntry?
+    @State private var localLinkedCardStack: [VocabularyEntry] = []
     let entry: VocabularyEntry
     private let wrapInNavigation: Bool
+    private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
     private var paperBackground: Color {
         colorScheme == .dark ? AppColors.paperDark : AppColors.paperLight
     }
 
-    init(entry: VocabularyEntry, wrapInNavigation: Bool = true) {
+    init(
+        entry: VocabularyEntry,
+        wrapInNavigation: Bool = true,
+        linkedCardStack: Binding<[VocabularyEntry]>? = nil
+    ) {
         self.entry = entry
         self.wrapInNavigation = wrapInNavigation
+        self.externalLinkedCardStack = linkedCardStack
     }
 
     var body: some View {
@@ -37,19 +43,27 @@ struct WordDetailSheet: View {
         }
     }
 
+    private var card: CardPresentation {
+        entry.cardPresentation
+    }
+
+    private var linkedCardStack: Binding<[VocabularyEntry]> {
+        externalLinkedCardStack ?? $localLinkedCardStack
+    }
+
     private var detailContent: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
                 heroSection
 
-                if !displayedExamples.isEmpty {
+                if !card.examples.isEmpty {
                     contentSection(
                         title: "例句",
                         systemImage: "text.quote",
                         tint: AppColors.translation(colorScheme)
                     ) {
                         VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                            ForEach(Array(displayedExamples.enumerated()), id: \.offset) { _, example in
+                            ForEach(Array(card.examples.enumerated()), id: \.offset) { _, example in
                                 CardRichTextRenderer.text(
                                     example,
                                     style: CardRichTextStyle(
@@ -65,7 +79,7 @@ struct WordDetailSheet: View {
                     }
                 }
 
-                if showsSourceContext {
+                if card.showsSourceContext {
                     contentSection(
                         title: "來源",
                         systemImage: "quote.opening",
@@ -73,7 +87,7 @@ struct WordDetailSheet: View {
                     ) {
                         VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                             CardRichTextRenderer.text(
-                                entry.context,
+                                card.sourceContext,
                                 style: CardRichTextStyle(
                                     font: AppFonts.body(),
                                     textColor: .secondary,
@@ -84,8 +98,8 @@ struct WordDetailSheet: View {
 
                             HStack(spacing: 6) {
                                 Image(systemName: "book.closed")
-                                Text(entry.bookTitle)
-                                if let chapter = entry.chapterTitle {
+                                Text(card.bookTitle)
+                                if let chapter = card.chapterTitle {
                                     Text("· \(chapter)")
                                 }
                             }
@@ -95,7 +109,7 @@ struct WordDetailSheet: View {
                     }
                 }
 
-                if let explanation = entry.explanation, !explanation.isEmpty {
+                if let explanation = card.explanation, !explanation.isEmpty {
                     contentSection(
                         title: "教學筆記",
                         systemImage: "text.book.closed",
@@ -113,7 +127,7 @@ struct WordDetailSheet: View {
                     }
                 }
 
-                if !allForms.isEmpty {
+                if !card.forms.isEmpty {
                     contentSection(
                         title: "變化形",
                         systemImage: "text.badge.plus",
@@ -121,7 +135,7 @@ struct WordDetailSheet: View {
                     ) {
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: AppMetrics.spacingSmall) {
-                                ForEach(Array(allForms.enumerated()), id: \.offset) { _, form in
+                                ForEach(Array(card.forms.enumerated()), id: \.offset) { _, form in
                                     let isRoot = form == entry.rootForm
                                     AppTag(
                                         text: form,
@@ -133,14 +147,14 @@ struct WordDetailSheet: View {
                     }
                 }
 
-                if !linkGroups.isEmpty {
+                if !card.linkGroups.isEmpty {
                     contentSection(
                         title: "知識連結",
                         systemImage: "point.3.filled.connected.trianglepath",
                         tint: AppColors.translation(colorScheme)
                     ) {
                         VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                            ForEach(linkGroups) { group in
+                            ForEach(card.linkGroups) { group in
                                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                                     Text(group.label)
                                         .font(AppFonts.caption(weight: .semibold))
@@ -163,11 +177,11 @@ struct WordDetailSheet: View {
                     tint: .secondary
                 ) {
                     VStack(spacing: AppMetrics.spacingSmall) {
-                        metadataRow("卡片模式", value: entry.reviewMode.localizedTitle)
-                        metadataRow("加入日期", value: entry.dateAdded.formatted(date: .abbreviated, time: .omitted))
-                        metadataRow("知識連結", value: "\(linkGroups.reduce(0) { $0 + $1.items.count })")
+                        metadataRow("卡片模式", value: card.reviewMode.localizedTitle)
+                        metadataRow("加入日期", value: card.dateAdded.formatted(date: .abbreviated, time: .omitted))
+                        metadataRow("知識連結", value: "\(card.totalLinkCount)")
                         metadataRow("同步狀態") {
-                            syncBadge(status: entry.syncStatus)
+                            syncBadge(status: card.syncStatus)
                         }
                     }
                 }
@@ -175,36 +189,10 @@ struct WordDetailSheet: View {
             .padding(AppMetrics.spacingLarge)
         }
         .background(paperBackground.ignoresSafeArea())
-        .navigationTitle(entry.word)
+        .navigationTitle(card.word)
         .navigationBarTitleDisplayMode(.inline)
-        .navigationDestination(item: $selectedLinkedEntry) { linkedEntry in
-            WordDetailSheet(entry: linkedEntry, wrapInNavigation: false)
-        }
-    }
-
-    private var allForms: [String] {
-        var forms: [String] = []
-        if let root = entry.rootForm { forms.append(root) }
-        forms += entry.inflections.filter { $0 != entry.rootForm }
-        return forms
-    }
-
-    private var displayedExamples: [String] {
-        entry.allReviewExamples
-    }
-
-    private var showsSourceContext: Bool {
-        let trimmedContext = entry.context.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !trimmedContext.isEmpty else { return false }
-        return entry.allReviewExamples.first != trimmedContext || entry.bookTitle != "Knowledge Graph"
-    }
-
-    private var linkGroups: [LinkGroup] {
-        let ordering = ["confusable", "contrasts_with", "shares_usage"]
-        let grouped = entry.graphLinksByKind
-        return ordering.compactMap { kind in
-            guard let items = grouped[kind], !items.isEmpty else { return nil }
-            return LinkGroup(id: kind, label: items.first?.label ?? kind, items: items)
+        .overlay {
+            LinkedCardOverlayStack(stack: linkedCardStack)
         }
     }
 
@@ -215,12 +203,12 @@ struct WordDetailSheet: View {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
                     VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
-                        Text(entry.word)
+                        Text(card.word)
                             .font(AppFonts.hero(weight: .semibold))
                             .foregroundStyle(.primary)
                             .minimumScaleFactor(0.85)
 
-                        if let pron = entry.pronunciation, !pron.isEmpty {
+                        if let pron = card.pronunciation, !pron.isEmpty {
                             Text("/\(pron)/")
                                 .font(AppFonts.subhead())
                                 .foregroundStyle(.secondary)
@@ -229,22 +217,22 @@ struct WordDetailSheet: View {
 
                     Spacer(minLength: 12)
 
-                    if let tier = entry.difficultyTier {
+                    if let tier = card.difficultyTier {
                         tierChip(tier)
                     }
                 }
 
                 HStack(spacing: AppMetrics.spacingSmall) {
-                    if let pos = entry.partOfSpeech {
+                    if let pos = card.partOfSpeech {
                         AppTag(text: pos, tone: AppColors.accent(colorScheme))
                     }
                     AppTag(
-                        text: entry.reviewMode.localizedTitle,
+                        text: card.reviewMode.localizedTitle,
                         tone: AppColors.translation(colorScheme)
                     )
                 }
 
-                Text(entry.translation)
+                Text(card.translation)
                     .font(AppFonts.h2(weight: .semibold))
                     .foregroundStyle(AppColors.translation(colorScheme))
                     .fixedSize(horizontal: false, vertical: true)
@@ -277,9 +265,9 @@ struct WordDetailSheet: View {
 
     @ViewBuilder
     private func graphLinkRow(_ link: KGCardLinkSummary) -> some View {
-        if let target = linkedEntry(for: link) {
+        if let target = entry.linkedEntry(for: link, in: allEntries) {
             Button {
-                selectedLinkedEntry = target
+                linkedCardStack.wrappedValue.append(target)
             } label: {
                 HStack(alignment: .top, spacing: AppMetrics.spacingSmall) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -362,17 +350,5 @@ struct WordDetailSheet: View {
                 .font(AppFonts.caption(weight: .medium))
                 .foregroundStyle(.secondary)
         }
-    }
-}
-
-private extension WordDetailSheet {
-    struct LinkGroup: Identifiable {
-        let id: String
-        let label: String
-        let items: [KGCardLinkSummary]
-    }
-
-    func linkedEntry(for link: KGCardLinkSummary) -> VocabularyEntry? {
-        allEntries.first { $0.kgCardId == link.cardId }
     }
 }
