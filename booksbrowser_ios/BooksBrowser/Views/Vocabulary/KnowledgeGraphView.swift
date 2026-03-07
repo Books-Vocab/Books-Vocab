@@ -34,24 +34,24 @@ struct KnowledgeGraphView: View {
             vocabSkin.palette.pageBackground.ignoresSafeArea()
 
             if !authManager.isLoggedIn {
-                ContentUnavailableView(
-                    "需登入帳號",
+                centeredStateCard(
+                    title: "需登入帳號",
                     systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: Text("請至設定中登入以查閱您的知識關聯。")
+                    description: "請至設定中登入以查閱您的知識關聯。"
                 )
             } else if isLoading {
                 ProgressView("正在載入關聯圖...")
             } else if let error = errorMessage {
-                ContentUnavailableView(
-                    "載入失敗",
+                centeredStateCard(
+                    title: "載入失敗",
                     systemImage: "exclamationmark.triangle",
-                    description: Text(error)
+                    description: error
                 )
             } else if nodes.isEmpty {
-                ContentUnavailableView(
-                    "知識圖譜為空",
+                centeredStateCard(
+                    title: "知識圖譜為空",
                     systemImage: "point.3.connected.trianglepath.dotted",
-                    description: Text("知識庫中尚無單字，或尚未與伺服器同步。")
+                    description: "知識庫中尚無單字，或尚未與伺服器同步。"
                 )
             } else {
                 ZStack(alignment: .bottom) {
@@ -277,5 +277,18 @@ struct KnowledgeGraphView: View {
         var a: CGFloat = 0
         UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
         return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
+    }
+
+    private func centeredStateCard(title: String, systemImage: String, description: String) -> some View {
+        VStack {
+            Spacer()
+            VocabEmptyStateCard(
+                title: title,
+                systemImage: systemImage,
+                description: description
+            )
+            Spacer()
+        }
+        .padding(20)
     }
 }

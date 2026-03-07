@@ -1,5 +1,13 @@
 import SwiftUI
 
+enum VocabActionTone {
+    case primary
+    case neutral
+    case success
+    case warning
+    case destructive
+}
+
 struct VocabTabOption<ID: Hashable>: Identifiable, Hashable {
     let id: ID
     let title: String
@@ -183,6 +191,70 @@ struct VocabToolbarGlyph: View {
                     )
             }
         }
+    }
+}
+
+struct VocabActionButtonStyle: ButtonStyle {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let tone: VocabActionTone
+
+    func makeBody(configuration: Configuration) -> some View {
+        let palette = stylePalette
+
+        configuration.label
+            .font(vocabSkin.typography.captionStrong)
+            .foregroundStyle(palette.foreground)
+            .padding(.horizontal, 16)
+            .padding(.vertical, 13)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .fill(palette.background)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(palette.border, lineWidth: 1)
+            )
+            .opacity(configuration.isPressed ? 0.82 : 1)
+            .scaleEffect(configuration.isPressed ? 0.992 : 1)
+            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+    }
+
+    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+        switch tone {
+        case .primary:
+            return (.white, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
+        case .neutral:
+            return (
+                vocabSkin.palette.primaryText,
+                vocabSkin.palette.cardBackground,
+                vocabSkin.palette.cardBorder
+            )
+        case .success:
+            return (
+                vocabSkin.palette.success,
+                vocabSkin.palette.success.opacity(0.10),
+                vocabSkin.palette.success.opacity(0.22)
+            )
+        case .warning:
+            let warning = vocabSkin.tierColor(for: "intermediate")
+            return (
+                warning,
+                warning.opacity(0.12),
+                warning.opacity(0.22)
+            )
+        case .destructive:
+            return (
+                vocabSkin.palette.destructive,
+                vocabSkin.palette.destructive.opacity(0.10),
+                vocabSkin.palette.destructive.opacity(0.22)
+            )
+        }
+    }
+}
+
+extension ButtonStyle where Self == VocabActionButtonStyle {
+    static func vocabAction(_ tone: VocabActionTone = .primary) -> VocabActionButtonStyle {
+        VocabActionButtonStyle(tone: tone)
     }
 }
 

@@ -36,11 +36,17 @@ struct KGVocabView: View {
     var body: some View {
         Group {
             if !authManager.isLoggedIn {
-                ContentUnavailableView(
-                    "尚未登入",
-                    systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: Text("登入後，您在閱讀時標記的生詞將會自動整理於此。")
-                )
+                VStack {
+                    Spacer()
+                    VocabEmptyStateCard(
+                        title: "尚未登入",
+                        systemImage: "person.crop.circle.badge.exclamationmark",
+                        description: "登入後，您在閱讀時標記的生詞將會自動整理於此。"
+                    )
+                    Spacer()
+                }
+                .padding(AppMetrics.spacingLarge)
+                .vocabCanvasBackground()
             } else if isLoading && syncedEntries.isEmpty {
                 ProgressView("載入知識庫...")
             } else {
@@ -174,12 +180,7 @@ struct KGVocabView: View {
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
 
-                Picker("", selection: $selectedReviewState) {
-                    ForEach(VocabularyReviewState.allCases) { state in
-                        Text("\(state.title) \(count(for: state))").tag(state)
-                    }
-                }
-                .pickerStyle(.segmented)
+                VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
 
                 Text(stateDescription)
                     .font(vocabSkin.typography.body)
@@ -240,6 +241,16 @@ struct KGVocabView: View {
                     }
                 }
             }
+        }
+    }
+
+    private var reviewStateOptions: [VocabTabOption<VocabularyReviewState>] {
+        VocabularyReviewState.allCases.map { state in
+            VocabTabOption(
+                id: state,
+                title: state.title,
+                count: count(for: state)
+            )
         }
     }
 
@@ -319,11 +330,12 @@ struct KGVocabView: View {
     }
 
     private var emptyState: some View {
-        ContentUnavailableView {
-            Label(emptyStateTitle, systemImage: emptyStateIcon)
-        } description: {
-            Text(emptyStateDescription)
-        }
+        VocabEmptyStateContent(
+            title: emptyStateTitle,
+            systemImage: emptyStateIcon,
+            description: emptyStateDescription
+        )
+        .padding(.vertical, 16)
     }
 
     private var emptyStateTitle: String {

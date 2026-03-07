@@ -13,6 +13,7 @@ import UniformTypeIdentifiers
 struct VocabularyListView: View {
     @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) private var allEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.vocabSkin) private var vocabSkin
 
     @State private var searchText = ""
     @State private var showExportSheet = false
@@ -56,6 +57,7 @@ struct VocabularyListView: View {
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animation(.none, value: selectedTab)
             }
+            .vocabCanvasBackground()
             .navigationTitle("生詞庫")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -145,32 +147,86 @@ struct VocabularyListView: View {
     @ViewBuilder
     private var localVocabContent: some View {
         if filteredEntries.isEmpty {
-            ContentUnavailableView(
-                "沒有待收錄的生詞",
-                systemImage: "character.book.closed",
-                description: Text("閱讀時點擊的單字會出現在這裡，同步後移入知識庫")
-            )
-        } else {
-            List {
-                ForEach(filteredEntries) { entry in
-                    WordRow(
-                        word: entry.word,
-                        translation: entry.translation,
-                        partOfSpeech: nil,
-                        difficultyTier: entry.difficultyTier,
-                        bookTitle: entry.bookTitle,
-                        chapterTitle: entry.chapterTitle,
-                        nextReviewAt: entry.nextReviewAt,
-                        reviewState: nil,
-                        syncStatus: nil,
-                        actionType: entry.actionType
-                    )
-                    .contentShape(Rectangle())
-                    .onTapGesture { selectedEntry = entry }
-                }
-                .onDelete(perform: deleteEntries)
+            ScrollView {
+                VocabEmptyStateCard(
+                    title: "沒有待收錄的生詞",
+                    systemImage: "character.book.closed",
+                    description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。"
+                )
+                .padding(.horizontal)
+                .padding(.top, 16)
             }
-            .listStyle(.insetGrouped)
+        } else {
+            ScrollView {
+                VStack(spacing: 16) {
+                    VocabCard {
+                        HStack(alignment: .firstTextBaseline) {
+                            VStack(alignment: .leading, spacing: 4) {
+                                Text("待收錄")
+                                    .font(vocabSkin.typography.sectionTitle)
+                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                                Text("同步前的本地收件匣，會保留新增與待刪除動作。")
+                                    .font(vocabSkin.typography.body)
+                                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                            }
+
+                            Spacer()
+
+                            Text("\(filteredEntries.count)")
+                                .font(vocabSkin.typography.numericHero)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        }
+                    }
+
+                    VocabCard(padding: 0) {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
+                                HStack(alignment: .top, spacing: 12) {
+                                    WordRow(
+                                        word: entry.word,
+                                        translation: entry.translation,
+                                        partOfSpeech: nil,
+                                        difficultyTier: entry.difficultyTier,
+                                        bookTitle: entry.bookTitle,
+                                        chapterTitle: entry.chapterTitle,
+                                        nextReviewAt: entry.nextReviewAt,
+                                        reviewState: nil,
+                                        syncStatus: nil,
+                                        actionType: entry.actionType
+                                    )
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { selectedEntry = entry }
+
+                                    Button {
+                                        handlePendingRemoval(entry)
+                                    } label: {
+                                        Image(systemName: entry.actionType == "delete" ? "arrow.uturn.backward.circle" : "trash")
+                                            .font(.system(size: 15, weight: .medium))
+                                            .foregroundStyle(entry.actionType == "delete" ? vocabSkin.palette.secondaryText : vocabSkin.palette.tertiaryText)
+                                            .frame(width: 30, height: 30)
+                                            .background(
+                                                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                                                    .fill(vocabSkin.palette.mutedFill)
+                                            )
+                                    }
+                                    .buttonStyle(.plain)
+                                    .padding(.top, 10)
+                                }
+                                .padding(.horizontal, 18)
+
+                                if index < filteredEntries.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 18)
+                                }
+                            }
+                        }
+                    }
+                }
+                .padding(.horizontal)
+                .padding(.top, 10)
+                .padding(.bottom, 24)
+            }
         }
     }
 
@@ -233,15 +289,12 @@ struct VocabularyListView: View {
 
     // MARK: - 刪除
 
-    private func deleteEntries(at offsets: IndexSet) {
-        for index in offsets {
-            let entry = filteredEntries[index]
-            if entry.actionType == "delete" {
-                entry.syncStatus = 1
-                entry.actionType = "add"
-            } else {
-                modelContext.delete(entry)
-            }
+    private func handlePendingRemoval(_ entry: VocabularyEntry) {
+        if entry.actionType == "delete" {
+            entry.syncStatus = 1
+            entry.actionType = "add"
+        } else {
+            modelContext.delete(entry)
         }
         try? modelContext.save()
     }
@@ -254,16 +307,25 @@ struct VocabularyListView: View {
 
     @ViewBuilder
     private var loggedOutState: some View {
-        ContentUnavailableView {
-            Label("需登入帳號", systemImage: "person.crop.circle.badge.exclamationmark")
-        } description: {
-            Text("知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。")
-        } actions: {
-            Button("前往設定登入") {
-                showSettings = true
+        ScrollView {
+            VocabCard {
+                VStack(spacing: 16) {
+                    VocabEmptyStateContent(
+                        title: "需登入帳號",
+                        systemImage: "person.crop.circle.badge.exclamationmark",
+                        description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。"
+                    )
+
+                    Button("前往設定登入") {
+                        showSettings = true
+                    }
+                    .buttonStyle(.vocabAction(.primary))
+                    .frame(maxWidth: .infinity)
+                }
+                .padding(.vertical, 12)
             }
-            .buttonStyle(.borderedProminent)
-            .buttonBorderShape(.capsule)
+            .padding(.horizontal)
+            .padding(.top, 16)
         }
     }
 }

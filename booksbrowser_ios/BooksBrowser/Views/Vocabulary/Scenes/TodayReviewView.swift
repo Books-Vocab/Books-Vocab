@@ -270,7 +270,7 @@ struct TodayReviewView: View {
                         submit(.forgot)
                     } label: {
                         Label("Forgot", systemImage: "xmark")
-                            .font(AppFonts.subhead(weight: .medium))
+                            .font(vocabSkin.typography.body.weight(.medium))
                     }
                     .buttonStyle(.ghost(vocabSkin.palette.destructive))
 
@@ -278,7 +278,7 @@ struct TodayReviewView: View {
                         submit(.remembered)
                     } label: {
                         Label("Remembered", systemImage: "checkmark")
-                            .font(AppFonts.subhead(weight: .medium))
+                            .font(vocabSkin.typography.body.weight(.medium))
                     }
                     .buttonStyle(.ghost(vocabSkin.palette.success))
                 }
@@ -300,10 +300,10 @@ struct TodayReviewView: View {
     private var completionState: some View {
         VStack(spacing: AppMetrics.spacingLarge) {
             Spacer()
-            ContentUnavailableView(
-                "今天複習完成",
+            VocabEmptyStateContent(
+                title: "今天複習完成",
                 systemImage: "checkmark.circle",
-                description: Text("這一輪 session 的卡片都處理完了。")
+                description: "這一輪 session 的卡片都處理完了。"
             )
             Button("返回生詞庫") {
                 onClose()

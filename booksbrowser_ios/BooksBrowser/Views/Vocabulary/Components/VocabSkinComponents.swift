@@ -68,6 +68,48 @@ struct VocabTierLabel: View {
     }
 }
 
+struct VocabEmptyStateContent: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let systemImage: String
+    let description: String
+
+    var body: some View {
+        VStack(spacing: 14) {
+            Image(systemName: systemImage)
+                .font(.system(size: 30, weight: .light))
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            Text(title)
+                .font(vocabSkin.typography.sectionTitle)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+
+            Text(description)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .multilineTextAlignment(.center)
+        }
+        .frame(maxWidth: .infinity)
+    }
+}
+
+struct VocabEmptyStateCard: View {
+    let title: String
+    let systemImage: String
+    let description: String
+
+    var body: some View {
+        VocabCard {
+            VocabEmptyStateContent(
+                title: title,
+                systemImage: systemImage,
+                description: description
+            )
+            .padding(.vertical, 12)
+        }
+    }
+}
+
 private struct VocabCanvasBackgroundModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 

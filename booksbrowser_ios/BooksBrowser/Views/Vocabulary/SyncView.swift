@@ -28,7 +28,7 @@ struct PipelineStep: Identifiable {
 struct SyncView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.vocabSkin) private var vocabSkin
     @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     private var pendingEntries: [VocabularyEntry]
 
@@ -60,46 +60,48 @@ struct SyncView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Header
                 headerView
                     .padding(.top, 32)
                     .padding(.bottom, 24)
                     .animation(.spring(response: 0.4, dampingFraction: 0.8), value: phase)
 
-                // Steps
                 if authManager.isLoggedIn && !steps.isEmpty {
-                    GlassEffectContainer {
+                    VocabCard(padding: 0) {
                         VStack(alignment: .leading, spacing: 0) {
-                            ForEach(steps) { step in
+                            ForEach(Array(steps.enumerated()), id: \.element.id) { index, step in
                                 stepRow(step)
+
+                                if index < steps.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 32)
+                                }
                             }
                         }
                         .padding(.horizontal, 16)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, 6)
                     }
-                    .glassEffect(.regular, in: .rect(cornerRadius: 16))
                     .padding(.horizontal, 20)
                 }
 
                 Spacer()
 
-                // Summary
                 if !summaryText.isEmpty {
                     Text(summaryText)
-                        .font(AppFonts.subhead())
-                        .foregroundStyle(phase == .failed ? AppColors.destructive(colorScheme) : .secondary)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(phase == .failed ? vocabSkin.palette.destructive : vocabSkin.palette.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 24)
                         .padding(.bottom, 12)
                 }
 
-                // Action button
                 actionButton
                     .padding(.horizontal, 20)
                     .padding(.bottom, 20)
             }
+            .vocabCanvasBackground()
             .navigationTitle("同步")
             .navigationBarTitleDisplayMode(.inline)
+            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     if phase == .ready || phase == .completed || phase == .failed {
@@ -118,14 +120,14 @@ struct SyncView: View {
         if !authManager.isLoggedIn {
             VStack(spacing: 12) {
                 Image(systemName: "person.crop.circle.badge.exclamationmark")
-                    .font(AppFonts.hero(weight: .light))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
                 Text("尚未登入帳號")
-                    .font(AppFonts.h1())
+                    .font(vocabSkin.typography.sectionTitle)
                 Text("登入後即可將您的生詞庫同步至雲端與 Mochi。")
-                    .font(AppFonts.subhead())
+                    .font(vocabSkin.typography.body)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
                     .padding(.horizontal, 40)
             }
         } else {
@@ -133,28 +135,24 @@ struct SyncView: View {
             case .ready:
                 VStack(spacing: 8) {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(AppFonts.hero(weight: .light))
-                        .foregroundStyle(AppColors.accent(colorScheme))
+                        .font(.system(size: 44, weight: .light))
+                        .foregroundStyle(vocabSkin.palette.accent)
 
                     if pendingEntries.isEmpty {
                         Text("強制同步到 Mochi")
-                            .font(AppFonts.h1())
+                            .font(vocabSkin.typography.sectionTitle)
                     } else {
                         let dels = deleteActions.count
                         let adds = addActions.count
                         VStack(spacing: 4) {
                             Text("\(pendingEntries.count) 個待處理動作")
-                                .font(AppFonts.h2())
-                            HStack(spacing: AppMetrics.spacingMedium) {
+                                .font(vocabSkin.typography.sectionTitle)
+                            HStack(spacing: vocabSkin.spacing.inlineGap) {
                                 if adds > 0 {
-                                    Label("\(adds) 新增", systemImage: "plus.circle")
-                                        .font(.caption)
-                                        .foregroundStyle(AppColors.saved(colorScheme))
+                                    VocabToneChip(text: "\(adds) 新增", tone: vocabSkin.palette.success)
                                 }
                                 if dels > 0 {
-                                    Label("\(dels) 刪除", systemImage: "trash")
-                                        .font(.caption)
-                                        .foregroundStyle(AppColors.destructive(colorScheme))
+                                    VocabToneChip(text: "\(dels) 刪除", tone: vocabSkin.palette.destructive)
                                 }
                             }
                         }
@@ -167,26 +165,26 @@ struct SyncView: View {
                 ProgressView()
                     .controlSize(.large)
                 Text("同步中…")
-                    .font(AppFonts.h1())
+                    .font(vocabSkin.typography.sectionTitle)
             }
             .transition(.blurReplace)
         case .completed:
             VStack(spacing: 8) {
                 Image(systemName: "checkmark.circle.fill")
-                    .font(AppFonts.hero(weight: .light))
-                    .foregroundStyle(AppColors.saved(colorScheme))
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(vocabSkin.palette.success)
                     .symbolEffect(.bounce)
                 Text("同步完成")
-                    .font(AppFonts.h1())
+                    .font(vocabSkin.typography.sectionTitle)
             }
             .transition(.blurReplace)
         case .failed:
             VStack(spacing: 8) {
                 Image(systemName: "exclamationmark.triangle.fill")
-                    .font(AppFonts.hero(weight: .light))
-                    .foregroundStyle(AppColors.destructive(colorScheme))
+                    .font(.system(size: 44, weight: .light))
+                    .foregroundStyle(vocabSkin.palette.destructive)
                 Text("同步失敗")
-                    .font(AppFonts.h1())
+                    .font(vocabSkin.typography.sectionTitle)
             }
             .transition(.blurReplace)
         }
@@ -197,59 +195,56 @@ struct SyncView: View {
 
     private func stepRow(_ step: PipelineStep) -> some View {
         HStack(spacing: 12) {
-            // Status icon
             Group {
                 switch step.status {
                 case .waiting:
                     Image(systemName: "circle")
-                        .foregroundStyle(.quaternary)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                 case .running:
                     ProgressView()
                         .controlSize(.small)
                 case .retry:
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .symbolEffect(.scale.up, options: .repeating)
-                        .foregroundStyle(AppColors.warning(colorScheme))
+                        .foregroundStyle(vocabSkin.tierColor(for: "intermediate"))
                 case .done:
                     Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(AppColors.saved(colorScheme))
+                        .foregroundStyle(vocabSkin.palette.success)
                         .symbolEffect(.bounce)
                 case .skipped:
                     Image(systemName: "minus.circle.fill")
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
                 case .error:
                     Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(AppColors.destructive(colorScheme))
+                        .foregroundStyle(vocabSkin.palette.destructive)
                 }
             }
             .frame(width: 20)
 
             VStack(alignment: .leading, spacing: 2) {
-                // Label + progress
                 HStack {
                     Text(step.label)
-                        .font(AppFonts.subhead(weight: .medium))
-                        .foregroundStyle(step.status == .waiting ? .tertiary : .primary)
+                        .font(vocabSkin.typography.body.weight(.medium))
+                        .foregroundStyle(step.status == .waiting ? vocabSkin.palette.tertiaryText : vocabSkin.palette.primaryText)
                     Spacer()
                     if step.status == .running && step.total > 0 {
                         Text("\(step.current)/\(step.total)")
-                            .font(AppFonts.monoNumbers(size: 12))
-                            .foregroundStyle(.secondary)
+                            .font(vocabSkin.typography.monoLabel)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                             .contentTransition(.numericText())
                             .animation(.spring, value: step.current)
                     }
-                    
+
                     StepDurationView(step: step)
                 }
 
-                // Detail text (shown when done/error/running with detail)
                 if !step.detail.isEmpty && step.status != .waiting {
-                    let detailColor = step.status == .error ? AppColors.destructive(colorScheme) :
-                                      step.status == .retry ? AppColors.warning(colorScheme) :
-                                      .secondary
-                    
+                    let detailColor = step.status == .error ? vocabSkin.palette.destructive :
+                                      step.status == .retry ? vocabSkin.tierColor(for: "intermediate") :
+                                      vocabSkin.palette.secondaryText
+
                     Text(step.detail)
-                        .font(.caption2)
+                        .font(vocabSkin.typography.caption)
                         .foregroundStyle(detailColor)
                         .lineLimit(2)
                 }
@@ -271,13 +266,13 @@ struct SyncView: View {
                     Label("開始同步", systemImage: "arrow.triangle.2.circlepath")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.morandi(colorScheme: colorScheme))
+                .buttonStyle(.vocabAction(.primary))
                 .disabled(!kgService.isConnected)
 
                 if !kgService.isConnected {
-                    Text("⚠️ KG 伺服器未連線")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.destructive(colorScheme))
+                    Text("KG 伺服器未連線")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.destructive)
                 }
             } else {
                 Button {
@@ -286,7 +281,7 @@ struct SyncView: View {
                     Text("前往設定登入")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.morandi(colorScheme: colorScheme))
+                .buttonStyle(.vocabAction(.neutral))
                 .sheet(isPresented: $showSettings) {
                     SettingsView()
                 }
@@ -298,7 +293,7 @@ struct SyncView: View {
                 Text("取消")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.morandi(colorScheme: colorScheme, isProminent: false))
+            .buttonStyle(.vocabAction(.neutral))
         case .completed:
             Button {
                 dismiss()
@@ -306,7 +301,7 @@ struct SyncView: View {
                 Text("完成")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.morandi(colorScheme: colorScheme))
+            .buttonStyle(.vocabAction(.primary))
         case .failed:
             Button {
                 resetForRetry()
@@ -314,7 +309,7 @@ struct SyncView: View {
                 Label("重試", systemImage: "arrow.clockwise")
                     .frame(maxWidth: .infinity)
             }
-            .buttonStyle(.morandi(colorScheme: colorScheme, tintColor: AppColors.warning(colorScheme)))
+            .buttonStyle(.vocabAction(.warning))
         }
     }
 
@@ -472,19 +467,20 @@ struct SyncView: View {
 // MARK: - Helper Views
 
 struct StepDurationView: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let step: PipelineStep
     
     var body: some View {
         if let start = step.startTime {
             if let end = step.endTime {
                 Text(formatDuration(end.timeIntervalSince(start)))
-                    .font(AppFonts.monoNumbers(size: 12))
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
             } else {
                 TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
                     Text(formatDuration(timeline.date.timeIntervalSince(start)))
-                        .font(AppFonts.monoNumbers(size: 12))
-                        .foregroundStyle(step.status == .retry ? AppColors.warning(.light) : .secondary) // Fallback color scheme, ideally using environment but tertiary/secondary are adaptive
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(step.status == .retry ? vocabSkin.tierColor(for: "intermediate") : vocabSkin.palette.secondaryText)
                 }
             }
         }

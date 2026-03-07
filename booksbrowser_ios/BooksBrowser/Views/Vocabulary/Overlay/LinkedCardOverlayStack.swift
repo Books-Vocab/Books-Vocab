@@ -1,12 +1,13 @@
 import SwiftUI
 
 struct LinkedCardOverlayStack: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     @Binding var stack: [VocabularyEntry]
 
     var body: some View {
         if !stack.isEmpty {
             ZStack {
-                Color.black.opacity(0.18)
+                vocabSkin.palette.primaryText.opacity(0.10)
                     .ignoresSafeArea()
                     .onTapGesture {
                         _ = stack.popLast()
@@ -24,18 +25,17 @@ struct LinkedCardOverlayStack: View {
 
     private func linkedCardLayer(entry: VocabularyEntry, index: Int) -> some View {
         VStack(spacing: 0) {
-            // Header bar
             HStack(spacing: AppMetrics.spacingSmall) {
                 Label(index == 0 ? "Linked Card" : "Nested Link", systemImage: "rectangle.stack")
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
 
                 Spacer()
 
                 if index > 0 {
                     Text("+\(index)")
-                        .font(AppFonts.caption(weight: .medium))
-                        .foregroundStyle(.quaternary)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
 
                 Button {
@@ -43,7 +43,7 @@ struct LinkedCardOverlayStack: View {
                 } label: {
                     Image(systemName: "xmark.circle")
                         .font(.system(size: 18, weight: .thin))
-                        .foregroundStyle(.tertiary)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
                 .buttonStyle(.plain)
             }
@@ -51,7 +51,7 @@ struct LinkedCardOverlayStack: View {
             .padding(.vertical, 14)
 
             Rectangle()
-                .fill(Color.primary.opacity(0.06))
+                .fill(vocabSkin.palette.divider)
                 .frame(height: 0.5)
 
             WordDetailSheet(
@@ -64,13 +64,13 @@ struct LinkedCardOverlayStack: View {
             maxWidth: max(420, 680 - CGFloat(index * 18)),
             maxHeight: max(420, 620 - CGFloat(index * 18))
         )
-        .background(Color.white)
-        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+        .background(vocabSkin.palette.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                .stroke(Color.primary.opacity(0.05), lineWidth: 0.5)
+            RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
+                .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
-        .shadow(color: .black.opacity(0.08), radius: 28, y: 14)
+        .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: 28, y: 14)
         .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index * 10))
         .padding(.vertical, AppMetrics.spacingExtraLarge + CGFloat(index * 8))
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
