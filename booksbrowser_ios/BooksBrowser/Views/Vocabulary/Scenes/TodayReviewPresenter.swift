@@ -17,6 +17,7 @@ struct TodayReviewPresenterState {
     let currentCard: CurrentCard?
     let showBack: Bool
     let isExpanded: Bool
+    let canShuffle: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
 }
@@ -28,6 +29,7 @@ struct TodayReviewPresenter: View {
     let onClose: () -> Void
     let onToggleCard: () -> Void
     let onToggleExpansion: () -> Void
+    let onShuffle: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
     let onForgot: () -> Void
@@ -68,6 +70,24 @@ struct TodayReviewPresenter: View {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
                 )
+
+            Button(action: onShuffle) {
+                HStack(spacing: 6) {
+                    Image(systemName: "shuffle")
+                        .font(vocabSkin.typography.iconTiny)
+                    Text("洗牌")
+                        .font(vocabSkin.typography.captionStrong)
+                }
+                .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.mutedFill)
+                )
+            }
+            .buttonStyle(.plain)
+            .disabled(!state.canShuffle)
 
             Spacer()
 
