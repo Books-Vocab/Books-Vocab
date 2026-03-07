@@ -21,8 +21,8 @@ struct GraphForces: Equatable, Encodable {
 // MARK: - GraphWebView
 
 struct GraphWebView: UIViewRepresentable {
-    let nodes: [KnowledgeGraphView.GraphNode]
-    let edges: [KnowledgeGraphView.GraphEdge]
+    let nodes: [KnowledgeGraphNode]
+    let edges: [KnowledgeGraphEdge]
     let colorScheme: ColorScheme
     let backgroundHex: String
     let tierHexes: [String: String]
