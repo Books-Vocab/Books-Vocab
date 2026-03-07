@@ -40,6 +40,13 @@ def test_api_module_exposes_legacy_surface():
         "_create_jwt_token",
         "_resolve_and_link_user",
         "auth_verify",
+        "list_vocab",
+        "lookup_word",
+        "delete_word",
+        "get_graph_links",
+        "add_vocab",
+        "_build_links_by_kind",
+        "_card_response",
     ]
 
     missing = [name for name in expected_symbols if not hasattr(api_mod, name)]
@@ -60,3 +67,10 @@ def test_api_module_keeps_expected_callable_shapes():
     assert callable(api_mod.translate_explain)
     assert callable(api_mod._create_jwt_token)
     assert callable(api_mod._resolve_and_link_user)
+    assert callable(api_mod.list_vocab)
+    assert callable(api_mod.lookup_word)
+    assert callable(api_mod.delete_word)
+    assert callable(api_mod.get_graph_links)
+    assert callable(api_mod.add_vocab)
+    assert callable(api_mod._build_links_by_kind)
+    assert callable(api_mod._card_response)
