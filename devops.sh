@@ -28,6 +28,10 @@ REQUIRED_ENV_KEYS=(
   "GOOGLE_CLIENT_ID"
   "APPLE_BUNDLE_ID"
   "ADMIN_TOKEN"
+  "APP_STORE_ROOT_CA_PATH"
+  "APP_STORE_CONNECT_ISSUER_ID"
+  "APP_STORE_CONNECT_KEY_ID"
+  "APP_STORE_CONNECT_PRIVATE_KEY_PATH"
 )
 
 # ── 工具函式 ──────────────────────────────────────────────────────────────────
@@ -63,6 +67,7 @@ run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式�
 cmd_env_check() {
   section "檢查遠端 .env 環境變數"
   local missing=()
+  local unsafe=()
   for key in "${REQUIRED_ENV_KEYS[@]}"; do
     if run_remote "grep -q '^${key}=' $REMOTE_DIR/.env" 2>/dev/null; then
       ok "$key"
@@ -71,8 +76,21 @@ cmd_env_check() {
       missing+=("$key")
     fi
   done
+
+  for key in APP_STORE_ALLOW_UNSIGNED_SYNC APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS; do
+    if run_remote "grep -Eq '^${key}=(1|true|TRUE|yes|YES)$' $REMOTE_DIR/.env" 2>/dev/null; then
+      echo "✗ ${key} (production 不可啟用)"
+      unsafe+=("$key")
+    else
+      ok "${key:-unset}"
+    fi
+  done
+
   if [ ${#missing[@]} -gt 0 ]; then
     err "缺少必要環境變數：${missing[*]}，請手動 SSH 更新 .env 後重試"
+  fi
+  if [ ${#unsafe[@]} -gt 0 ]; then
+    err "偵測到不安全的 App Store fallback 開關：${unsafe[*]}，production 請移除或設為 false"
   fi
 }
 
