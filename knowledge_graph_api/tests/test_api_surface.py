@@ -66,6 +66,8 @@ def isolated_api(tmp_path):
         patch.object(api_mod, "USERS_FILE", users_file),
         patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
         patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
+        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", True),
+        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", True),
     ):
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None

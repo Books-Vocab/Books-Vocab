@@ -78,6 +78,7 @@ struct KGAppStoreSubscriptionSyncRequest: Codable {
     let expires_at: String?
     let will_renew: Bool
     let price_display: String?
+    let signed_transaction_info: String?
 }
 
 // MARK: - Service

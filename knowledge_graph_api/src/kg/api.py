@@ -27,6 +27,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 from pydantic import BaseModel, Field
+import httpx
 import jwt
 from filelock import FileLock
 
@@ -80,6 +81,12 @@ from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind, LINK_LABELS
 from .difficulty import get_tier
 from .apple_auth import verify_apple_token
+from .app_store import (
+    AppStoreConfigurationError,
+    AppStoreVerificationError,
+    fetch_transaction_info,
+    verify_and_decode_signed_jws,
+)
 from .google_auth import verify_google_token
 
 load_dotenv()
@@ -124,6 +131,8 @@ JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = 60 * 24 * 365 # 1 year
 GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
 APPLE_BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser")
+APP_STORE_ALLOW_UNSIGNED_SYNC = os.getenv("APP_STORE_ALLOW_UNSIGNED_SYNC", "").strip().lower() in {"1", "true", "yes"}
+APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = os.getenv("APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", "").strip().lower() in {"1", "true", "yes"}
 
 security = HTTPBearer()
 
@@ -445,6 +454,7 @@ class AppStoreSyncRequest(BaseModel):
     expires_at: str | None = None
     will_renew: bool = True
     price_display: str | None = None
+    signed_transaction_info: str | None = None
 
 
 class AppStoreNotificationRequest(BaseModel):
@@ -460,6 +470,11 @@ class AppStoreNotificationRequest(BaseModel):
     will_renew: bool | None = None
     signed_payload: str | None = None
     raw_payload: dict[str, Any] | None = None
+
+
+class AppStoreReconcileRequest(BaseModel):
+    transaction_id: str
+    environment: str = "production"
 
 
 class DeleteAccountResponse(BaseModel):
@@ -692,6 +707,119 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
     return "active"
 
 
+def _normalize_ms_timestamp(raw: Any) -> str | None:
+    if raw is None:
+        return None
+    try:
+        timestamp_ms = int(raw)
+    except (TypeError, ValueError):
+        return _parse_datetime(raw).isoformat() if _parse_datetime(raw) else None
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+
+
+def _bool_from_any(raw: Any, default: bool = False) -> bool:
+    if isinstance(raw, bool):
+        return raw
+    if isinstance(raw, (int, float)):
+        return bool(raw)
+    if isinstance(raw, str):
+        return raw.strip().lower() in {"1", "true", "yes"}
+    return default
+
+
+def _status_from_transaction_payload(payload: dict[str, Any], renewal_payload: dict[str, Any] | None = None) -> str:
+    if payload.get("revocationDate"):
+        return "expired"
+    expires_at = _parse_datetime(_normalize_ms_timestamp(payload.get("expiresDate")))
+    if expires_at and expires_at <= datetime.now(tz=timezone.utc):
+        return "expired"
+    grace = renewal_payload.get("gracePeriodExpiresDate") if isinstance(renewal_payload, dict) else None
+    if grace:
+        grace_dt = _parse_datetime(_normalize_ms_timestamp(grace))
+        if grace_dt and grace_dt > datetime.now(tz=timezone.utc):
+            return "grace_period"
+    offer_type = payload.get("offerType")
+    offer_discount_type = str(payload.get("offerDiscountType") or "").upper()
+    if offer_type == 1 or offer_discount_type == "FREE_TRIAL":
+        return "trial"
+    return "active"
+
+
+def _verified_transaction_snapshot(
+    payload: dict[str, Any],
+    *,
+    renewal_payload: dict[str, Any] | None = None,
+    price_display: str | None = None,
+) -> dict[str, Any]:
+    product_id = payload.get("productId")
+    if not isinstance(product_id, str) or not product_id.strip():
+        raise HTTPException(status_code=400, detail="Verified App Store transaction is missing productId")
+
+    environment = str(payload.get("environment") or "production").lower()
+    transaction_id = payload.get("transactionId")
+    original_transaction_id = payload.get("originalTransactionId")
+    status = _status_from_transaction_payload(payload, renewal_payload)
+    auto_renew_status = None
+    if isinstance(renewal_payload, dict):
+        auto_renew_status = renewal_payload.get("autoRenewStatus")
+
+    return {
+        "product_id": product_id.strip(),
+        "transaction_id": str(transaction_id) if transaction_id is not None else None,
+        "original_transaction_id": str(original_transaction_id) if original_transaction_id is not None else None,
+        "environment": environment,
+        "status": status,
+        "is_trial": status == "trial",
+        "expires_at": _normalize_ms_timestamp(payload.get("expiresDate")),
+        "will_renew": _bool_from_any(auto_renew_status, default=status in {"active", "trial", "grace_period"}),
+        "price_display": price_display,
+    }
+
+
+def _decode_signed_transaction_info(signed_transaction_info: str) -> dict[str, Any]:
+    verified = verify_and_decode_signed_jws(signed_transaction_info, bundle_id=APPLE_BUNDLE_ID)
+    return _verified_transaction_snapshot(verified.payload)
+
+
+def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    if not req.signed_payload:
+        if APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS:
+            return ({
+                "product_id": req.product_id,
+                "transaction_id": req.transaction_id,
+                "original_transaction_id": req.original_transaction_id,
+                "environment": req.environment,
+                "status": req.status or _notification_status(req.notification_type, req.subtype),
+                "is_trial": req.is_trial,
+                "expires_at": req.expires_at,
+                "will_renew": req.will_renew if req.will_renew is not None else True,
+                "price_display": None,
+            }, req.raw_payload)
+        raise HTTPException(status_code=400, detail="signed_payload is required for App Store notifications")
+
+    verified_notification = verify_and_decode_signed_jws(req.signed_payload, bundle_id=APPLE_BUNDLE_ID)
+    notification_payload = verified_notification.payload
+    data = notification_payload.get("data", {})
+    if not isinstance(data, dict):
+        raise HTTPException(status_code=400, detail="App Store notification data payload is malformed")
+
+    signed_transaction_info = data.get("signedTransactionInfo")
+    signed_renewal_info = data.get("signedRenewalInfo")
+    if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
+        raise HTTPException(status_code=400, detail="App Store notification missing signedTransactionInfo")
+
+    transaction_verified = verify_and_decode_signed_jws(signed_transaction_info, bundle_id=APPLE_BUNDLE_ID)
+    renewal_payload = None
+    if isinstance(signed_renewal_info, str) and signed_renewal_info:
+        renewal_payload = verify_and_decode_signed_jws(signed_renewal_info, bundle_id=APPLE_BUNDLE_ID).payload
+
+    snapshot = _verified_transaction_snapshot(
+        transaction_verified.payload,
+        renewal_payload=renewal_payload,
+    )
+    return snapshot, notification_payload
+
+
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
@@ -718,21 +846,46 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 @app.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
+    try:
+        if req.signed_transaction_info:
+            snapshot = _decode_signed_transaction_info(req.signed_transaction_info)
+            if req.transaction_id and snapshot["transaction_id"] and req.transaction_id != snapshot["transaction_id"]:
+                raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
+            if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
+                raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
+        else:
+            if not APP_STORE_ALLOW_UNSIGNED_SYNC and req.environment.lower() != "xcode":
+                raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
+            snapshot = {
+                "product_id": req.product_id,
+                "transaction_id": req.transaction_id,
+                "original_transaction_id": req.original_transaction_id,
+                "environment": req.environment,
+                "status": req.status,
+                "is_trial": req.is_trial,
+                "expires_at": req.expires_at,
+                "will_renew": req.will_renew,
+                "price_display": req.price_display,
+            }
+    except AppStoreConfigurationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except AppStoreVerificationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     with FileLock(str(USERS_LOCK_FILE)):
         users = load_users()
-        user_id = user["id"]
         record = _write_subscription_snapshot(
             users,
             user["id"],
-            product_id=req.product_id,
-            status=req.status,
-            is_trial=req.is_trial,
-            expires_at=req.expires_at,
-            will_renew=req.will_renew,
-            environment=req.environment,
-            transaction_id=req.transaction_id,
-            original_transaction_id=req.original_transaction_id,
-            price_display=req.price_display,
+            product_id=snapshot["product_id"],
+            status=snapshot["status"],
+            is_trial=snapshot["is_trial"],
+            expires_at=snapshot["expires_at"],
+            will_renew=snapshot["will_renew"],
+            environment=snapshot["environment"],
+            transaction_id=snapshot["transaction_id"],
+            original_transaction_id=snapshot["original_transaction_id"],
+            price_display=snapshot["price_display"],
             source="app_store",
         )
         save_users(users)
@@ -746,20 +899,27 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 @app.post("/api/billing/app-store/notifications")
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
+    try:
+        snapshot, decoded_payload = _decode_notification_payload(req)
+    except AppStoreConfigurationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except AppStoreVerificationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     event = {
         "received_at": datetime.now(tz=timezone.utc).isoformat(),
         "notification_type": req.notification_type,
         "subtype": req.subtype,
-        "product_id": req.product_id,
-        "transaction_id": req.transaction_id,
-        "original_transaction_id": req.original_transaction_id,
-        "environment": req.environment,
-        "status": req.status,
-        "is_trial": req.is_trial,
-        "expires_at": req.expires_at,
-        "will_renew": req.will_renew,
+        "product_id": snapshot["product_id"],
+        "transaction_id": snapshot["transaction_id"],
+        "original_transaction_id": snapshot["original_transaction_id"],
+        "environment": snapshot["environment"],
+        "status": snapshot["status"],
+        "is_trial": snapshot["is_trial"],
+        "expires_at": snapshot["expires_at"],
+        "will_renew": snapshot["will_renew"],
         "signed_payload": req.signed_payload,
-        "raw_payload": req.raw_payload,
+        "raw_payload": decoded_payload or req.raw_payload,
     }
     _append_app_store_event(event)
 
@@ -767,27 +927,22 @@ def app_store_notifications(req: AppStoreNotificationRequest):
         users = load_users()
         user_id = _resolve_user_id_from_subscription_index(
             users,
-            req.original_transaction_id,
-            req.transaction_id,
+            snapshot["original_transaction_id"],
+            snapshot["transaction_id"],
         )
         if not user_id:
             return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
-
-        if not req.product_id:
-            return {"status": "accepted", "updated": False, "reason": "missing_product_id"}
-
-        status = req.status or _notification_status(req.notification_type, req.subtype)
         record = _write_subscription_snapshot(
             users,
             user_id,
-            product_id=req.product_id,
-            status=status,
-            is_trial=req.is_trial,
-            expires_at=req.expires_at,
-            will_renew=req.will_renew if req.will_renew is not None else status in {"active", "trial", "grace_period"},
-            environment=req.environment,
-            transaction_id=req.transaction_id,
-            original_transaction_id=req.original_transaction_id,
+            product_id=snapshot["product_id"],
+            status=snapshot["status"],
+            is_trial=snapshot["is_trial"],
+            expires_at=snapshot["expires_at"],
+            will_renew=snapshot["will_renew"],
+            environment=snapshot["environment"],
+            transaction_id=snapshot["transaction_id"],
+            original_transaction_id=snapshot["original_transaction_id"],
             price_display=None,
             source="app_store_notification",
         )
@@ -799,6 +954,57 @@ def app_store_notifications(req: AppStoreNotificationRequest):
         "user_id": user_id,
         "entitlements": _build_entitlements_response(record).model_dump(),
     }
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/app-store/reconcile
+# ---------------------------------------------------------------------------
+@app.post("/api/billing/app-store/reconcile", response_model=EntitlementsResponse)
+async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
+    """Fetch transaction state from Apple's App Store Server API and persist it."""
+    try:
+        server_response = await fetch_transaction_info(
+            req.transaction_id,
+            bundle_id=APPLE_BUNDLE_ID,
+            environment=req.environment,
+        )
+        signed_transaction_info = server_response.get("signedTransactionInfo")
+        if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
+            raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
+        snapshot = _decode_signed_transaction_info(signed_transaction_info)
+    except AppStoreConfigurationError as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+    except AppStoreVerificationError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    except httpx.HTTPStatusError as exc:
+        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
+    except httpx.HTTPError as exc:
+        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: {exc}") from exc
+
+    with FileLock(str(USERS_LOCK_FILE)):
+        users = load_users()
+        resolved_user_id = _resolve_user_id_from_subscription_index(
+            users,
+            snapshot["original_transaction_id"],
+            snapshot["transaction_id"],
+        ) or user["id"]
+        record = _write_subscription_snapshot(
+            users,
+            resolved_user_id,
+            product_id=snapshot["product_id"],
+            status=snapshot["status"],
+            is_trial=snapshot["is_trial"],
+            expires_at=snapshot["expires_at"],
+            will_renew=snapshot["will_renew"],
+            environment=snapshot["environment"],
+            transaction_id=snapshot["transaction_id"],
+            original_transaction_id=snapshot["original_transaction_id"],
+            price_display=None,
+            source="app_store_server_api",
+        )
+        save_users(users)
+
+    return _build_entitlements_response(record)
 
 
 # ---------------------------------------------------------------------------
