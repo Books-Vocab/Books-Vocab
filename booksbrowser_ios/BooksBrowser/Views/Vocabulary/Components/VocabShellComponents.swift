@@ -35,19 +35,24 @@ struct VocabTabSelector<ID: Hashable>: View {
                         selection = option.id
                     }
                 } label: {
-                    HStack(spacing: 8) {
+                    HStack(spacing: 6) {
                         if let systemImage = option.systemImage {
                             Image(systemName: systemImage)
                                 .font(vocabSkin.typography.iconSmall)
+                                .fixedSize()
                         }
 
                         Text(option.title)
                             .font(vocabSkin.typography.captionStrong)
                             .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .layoutPriority(1)
 
                         if let count = option.count {
                             Text("\(count)")
                                 .font(vocabSkin.typography.monoLabel)
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(
@@ -58,7 +63,7 @@ struct VocabTabSelector<ID: Hashable>: View {
                     }
                     .frame(maxWidth: .infinity)
                     .foregroundStyle(selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, 10)
+                    .padding(.horizontal, 8)
                     .padding(.vertical, 8)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)

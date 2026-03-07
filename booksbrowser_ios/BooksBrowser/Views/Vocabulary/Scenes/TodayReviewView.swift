@@ -13,6 +13,7 @@ struct TodayReviewView: View {
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
     @State private var showBack = false
+    @State private var isExpanded = false
     @State private var isAdvancing = false
     @State private var linkedCardStack: [VocabularyEntry] = []
 
@@ -28,6 +29,8 @@ struct TodayReviewView: View {
             state: presenterState,
             onClose: onClose,
             onToggleCard: toggleCard,
+            onToggleExpansion: toggleExpansion,
+            onShuffle: shuffleQueue,
             onPrevious: goPrevious,
             onNext: goNext,
             onForgot: { submit(.forgot) },
@@ -44,6 +47,8 @@ struct TodayReviewView: View {
             progressText: progressText,
             currentCard: currentCardState,
             showBack: showBack,
+            isExpanded: isExpanded,
+            canShuffle: queue.count > 1,
             canGoPrevious: currentIndex > 0,
             canGoNext: currentIndex < queue.count - 1
         )
@@ -86,7 +91,27 @@ struct TodayReviewView: View {
     private func toggleCard() {
         guard !isAdvancing else { return }
         withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+            if showBack {
+                isExpanded = false
+            }
             showBack.toggle()
+        }
+    }
+
+    private func toggleExpansion() {
+        guard showBack, !isAdvancing else { return }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            isExpanded.toggle()
+        }
+    }
+
+    private func shuffleQueue() {
+        guard queue.count > 1, !isAdvancing else { return }
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+            queue.shuffle()
+            currentIndex = 0
+            showBack = false
+            isExpanded = false
         }
     }
 
@@ -94,6 +119,7 @@ struct TodayReviewView: View {
         guard currentIndex > 0 else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             showBack = false
+            isExpanded = false
             currentIndex -= 1
         }
     }
@@ -102,6 +128,7 @@ struct TodayReviewView: View {
         guard currentIndex < queue.count - 1 else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
             showBack = false
+            isExpanded = false
             currentIndex += 1
         }
     }
@@ -114,6 +141,7 @@ struct TodayReviewView: View {
 
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
             showBack = false
+            isExpanded = false
             currentIndex += 1
         }
 
