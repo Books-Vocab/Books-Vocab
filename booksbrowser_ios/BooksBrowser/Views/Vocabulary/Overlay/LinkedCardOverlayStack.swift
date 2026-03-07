@@ -25,25 +25,12 @@ struct LinkedCardOverlayStack: View {
 
     private func linkedCardLayer(entry: VocabularyEntry, index: Int) -> some View {
         VStack(spacing: 0) {
-            HStack(spacing: AppMetrics.spacingSmall) {
-                Label(index == 0 ? "Linked Card" : "Nested Link", systemImage: "rectangle.stack")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                Spacer()
-
-                if index > 0 {
-                    Text("+\(index)")
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
-                }
-
-                VocabChromeIconButton(systemImage: "xmark") {
-                    close(from: index)
-                }
-            }
-            .padding(.horizontal, AppMetrics.spacingMedium)
-            .padding(.vertical, 14)
+            VocabOverlayHeader(
+                title: index == 0 ? "Linked Card" : "Nested Link",
+                systemImage: "rectangle.stack",
+                badgeText: index > 0 ? "+\(index)" : nil,
+                onClose: { close(from: index) }
+            )
 
             Rectangle()
                 .fill(vocabSkin.palette.divider)

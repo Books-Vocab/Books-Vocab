@@ -133,27 +133,20 @@ struct KnowledgeGraphView: View {
     private var settingsOverlay: some View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
-                // Header
-                HStack {
-                    Button("重設", action: resetForces)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.accent)
-                    Spacer()
-                    Text("關聯圖")
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                    Spacer()
-                    Button {
+                VocabOverlayHeader(
+                    title: "關聯圖",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    onClose: {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             isShowingSettings = false
                         }
-                    } label: {
-                        VocabToolbarGlyph(systemImage: "xmark.circle.fill")
                     }
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 10)
+                ) {
+                    Button("重設", action: resetForces)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.accent)
+                        .buttonStyle(.plain)
+                    }
 
                 Divider().padding(.horizontal, 8)
 

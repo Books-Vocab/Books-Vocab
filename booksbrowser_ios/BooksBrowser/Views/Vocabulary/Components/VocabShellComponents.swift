@@ -219,6 +219,57 @@ struct VocabChromeIconButton: View {
     }
 }
 
+struct VocabOverlayHeader<LeadingAccessory: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let systemImage: String
+    var badgeText: String? = nil
+    let onClose: () -> Void
+    @ViewBuilder let leadingAccessory: LeadingAccessory
+
+    init(
+        title: String,
+        systemImage: String,
+        badgeText: String? = nil,
+        onClose: @escaping () -> Void,
+        @ViewBuilder leadingAccessory: () -> LeadingAccessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.badgeText = badgeText
+        self.onClose = onClose
+        self.leadingAccessory = leadingAccessory()
+    }
+
+    var body: some View {
+        HStack(spacing: 10) {
+            leadingAccessory
+
+            Label(title, systemImage: systemImage)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            if let badgeText {
+                Text(badgeText)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 3)
+                    .background(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                            .fill(vocabSkin.palette.mutedFill)
+                    )
+            }
+
+            Spacer()
+
+            VocabChromeIconButton(systemImage: "xmark", action: onClose)
+        }
+        .padding(.horizontal, 16)
+        .padding(.vertical, 12)
+    }
+}
+
 struct VocabActionButtonStyle: ButtonStyle {
     @Environment(\.vocabSkin) private var vocabSkin
     let tone: VocabActionTone
