@@ -1,0 +1,579 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>WordNexus Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #f8f7f4;
+  --surface: #fcfbfa;
+  --border: #dbd6cd;
+  --border-l: #e8e4db;
+  --ink: #2a2520;
+  --sub: #7a756c;
+  --ink-light: #5a5550;
+  --dev: #c0392b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.86;
+  min-height: 100vh;
+}
+/* Top nav */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 52px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.brand {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dev-dot {
+  margin-left: 8px;
+  color: var(--dev);
+  border: 1px solid var(--dev);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+#ts {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-light);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink); color: var(--ink); }
+.btn-cta {
+  height: 48px;
+  padding: 0 16px;
+  border: 1px solid var(--ink);
+  background: var(--ink);
+  color: #fff;
+  letter-spacing: .12em;
+  transition: transform .12s ease, box-shadow .12s ease;
+}
+.btn-cta:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 5px 0 rgba(42, 37, 32, .25);
+}
+/* Tabs */
+.tabs {
+  display: flex;
+  gap: 8px;
+  padding: 12px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.tab {
+  height: 30px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-light);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  display: inline-flex;
+  align-items: center;
+  cursor: pointer;
+}
+.tab.active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: #fff;
+}
+/* Main layout */
+.main {
+  max-width: 1320px;
+  padding: 16px;
+  margin: 0 auto 42px;
+}
+/* Panel */
+.panel { display: none; }
+.panel.active { display: block; }
+/* Section title */
+.section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  margin-bottom: 12px;
+}
+/* Stat cards */
+.stats {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 8px;
+  margin-bottom: 24px;
+}
+.stat {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 10px 12px;
+}
+.stat .v {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 24px;
+  line-height: 1.2;
+  letter-spacing: .04em;
+  color: var(--ink);
+}
+.stat .l {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  margin-top: 2px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+}
+/* Table */
+.table-wrap {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  overflow-x: auto;
+}
+table { width: 100%; border-collapse: collapse; }
+thead { background: #f3f0ea; }
+th {
+  text-align: left;
+  padding: 9px 12px;
+  border-right: 1px solid var(--border-l);
+  border-bottom: 1px solid var(--border-l);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  white-space: nowrap;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+th:last-child, td:last-child { border-right: 0; }
+td {
+  padding: 10px 12px;
+  border-right: 1px solid var(--border-l);
+  border-bottom: 1px solid var(--border-l);
+  vertical-align: top;
+}
+tbody tr:last-child td { border-bottom: none; }
+tbody tr:hover td { background: #f6f4ef; }
+.uid { color: var(--ink); }
+.email { font-size: 12px; color: var(--sub); margin-top: 2px; }
+.badge {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-light);
+}
+.b-apple, .b-google, .b-manual { background: transparent; }
+.mochi-yes { color: var(--ink); }
+.mochi-no  { color: var(--sub); }
+.bar-wrap { display: flex; align-items: center; gap: 8px; }
+.bar {
+  flex: 1;
+  height: 5px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: 3px;
+  overflow: hidden;
+  min-width: 64px;
+}
+.bar-fill { height: 100%; background: var(--ink-light); transition: width .3s ease; }
+.bar-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.cost {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink);
+  font-variant-numeric: tabular-nums;
+}
+.chips { display: flex; flex-wrap: wrap; gap: 4px; }
+.chip {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); border-radius: 2px;
+  padding: 3px 8px; font-size: 11px; white-space: nowrap;
+}
+.chip-dot {
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: var(--ink-light);
+  flex-shrink: 0;
+}
+.chip-name {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sub);
+  font-size: 10px;
+}
+.chip-val  {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--ink);
+  font-size: 10px;
+  font-variant-numeric: tabular-nums;
+}
+.chip-calls {
+  font-family: 'JetBrains Mono', monospace;
+  color: var(--sub);
+  font-size: 10px;
+}
+.no-data {
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .05em;
+}
+/* Log panel */
+.log-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.log-filter-group { display: flex; gap: 4px; }
+.log-filter {
+  height: 30px;
+  padding: 0 10px;
+  border-radius: 2px;
+  border: 1px solid var(--border);
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--ink-light);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.log-filter.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.log-search {
+  flex: 1;
+  min-width: 180px;
+  padding: 5px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--ink);
+  outline: none;
+  background: var(--surface);
+}
+.log-search:focus { border-color: var(--ink); }
+.log-sep { flex: 1; }
+.log-auto {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  cursor: pointer;
+  user-select: none;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.log-auto input { cursor: pointer; }
+.log-box {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow-y: auto;
+  height: 500px;
+  background: var(--surface);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11.5px;
+  line-height: 1.6;
+}
+.log-entry {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+  padding: 5px 14px;
+  border-bottom: 1px solid var(--border-l);
+}
+.log-entry:last-child { border-bottom: none; }
+.log-entry:hover { background: #f6f4ef; }
+.log-ts { color: var(--sub); flex-shrink: 0; font-size: 10.5px; }
+.log-lv {
+  flex-shrink: 0;
+  font-size: 10px;
+  font-weight: 500;
+  padding: 1px 5px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  letter-spacing: .08em;
+  color: var(--ink-light);
+  text-transform: uppercase;
+  background: transparent;
+}
+.log-name {
+  color: var(--sub);
+  flex-shrink: 0;
+  font-size: 10.5px;
+  max-width: 160px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.log-msg { color: var(--ink); word-break: break-all; }
+.log-empty {
+  padding: 40px;
+  text-align: center;
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .08em;
+}
+/* Loading */
+#loading {
+  color: var(--sub);
+  padding: 30px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="brand">
+    WordNexus Admin <span class="dev-dot">DEV</span>
+  </div>
+  <div class="nav-actions">
+    <span id="ts"></span>
+    <a class="btn" id="admin-tests-link" href="/admin/tests?token=">Admin Test</a>
+    <button class="btn btn-cta" onclick="refreshCurrent()">Refresh</button>
+  </div>
+</div>
+
+<div class="tabs">
+  <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
+  <div class="tab" data-tab="logs" onclick="switchTab('logs')">Logs</div>
+</div>
+
+<div id="loading">載入中…</div>
+
+<div id="app" class="main" style="display:none">
+
+  <!-- ── Users panel ── -->
+  <div class="panel active" id="panel-users">
+    <div class="section-title">總覽</div>
+    <div class="stats" id="summary"></div>
+    <div class="section-title">用戶明細</div>
+    <div class="table-wrap">
+      <table>
+        <thead><tr>
+          <th>用戶</th><th>Provider</th><th>最後登入</th>
+          <th>單字數</th><th>Mochi</th>
+          <th>Token 用量</th><th>預估費用</th><th>各功能明細</th>
+        </tr></thead>
+        <tbody id="rows"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- ── Logs panel ── -->
+  <div class="panel" id="panel-logs">
+    <div class="log-toolbar">
+      <div class="log-filter-group">
+        <button class="log-filter active" data-lv="" onclick="setFilter(this,'')">ALL</button>
+        <button class="log-filter" data-lv="INFO" onclick="setFilter(this,'INFO')">INFO</button>
+        <button class="log-filter" data-lv="WARNING" onclick="setFilter(this,'WARNING')">WARN</button>
+        <button class="log-filter" data-lv="ERROR" onclick="setFilter(this,'ERROR')">ERROR</button>
+      </div>
+      <input class="log-search" id="log-search" type="text" placeholder="搜尋…" oninput="renderLogs()">
+      <div class="log-sep"></div>
+      <label class="log-auto">
+        <input type="checkbox" id="log-auto" onchange="toggleAuto(this)"> 自動刷新
+      </label>
+    </div>
+    <div class="log-box" id="log-box"></div>
+  </div>
+
+</div>
+
+<script>
+const TOKEN = new URLSearchParams(location.search).get('token') || '';
+document.getElementById('admin-tests-link').href = '/admin/tests?token=' + encodeURIComponent(TOKEN);
+let _tab = 'users';
+let _logLevel = '';
+let _logs = [];
+let _autoTimer = null;
+
+/* ── Tabs ── */
+function switchTab(tab) {
+  _tab = tab;
+  document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
+  document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
+  if (tab === 'logs') loadLogs();
+}
+
+function refreshCurrent() {
+  if (_tab === 'users') loadStats();
+  else loadLogs();
+}
+
+/* Stats */
+function fmt(n) {
+  n = n || 0;
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (n >= 1000) return (n/1000).toFixed(1)+'k';
+  return n.toLocaleString();
+}
+function fmtDate(iso) {
+  if (!iso) return '<span class="mochi-no">—</span>';
+  return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+
+async function loadStats() {
+  document.getElementById('loading').style.display = '';
+  document.getElementById('app').style.display = 'none';
+  try {
+    const r = await fetch('/api/admin/stats?token=' + TOKEN);
+    if (!r.ok) { document.getElementById('loading').textContent='Error '+r.status+': '+await r.text(); return; }
+    renderStats(await r.json());
+    stamp();
+  } catch(e) { document.getElementById('loading').textContent='Error: '+e; }
+}
+
+function renderStats(data) {
+  document.getElementById('loading').style.display = 'none';
+  document.getElementById('app').style.display = '';
+  const ti=data.users.reduce((s,u)=>s+u.total_input,0);
+  const to=data.users.reduce((s,u)=>s+u.total_output,0);
+  const tc=data.users.reduce((s,u)=>s+u.est_cost_usd,0);
+  const tv=data.users.reduce((s,u)=>s+u.vocab_count,0);
+  document.getElementById('summary').innerHTML=`
+    <div class="stat"><div class="v">${data.users.length}</div><div class="l">用戶數</div></div>
+    <div class="stat"><div class="v">${tv.toLocaleString()}</div><div class="l">總單字數</div></div>
+    <div class="stat"><div class="v">${fmt(ti+to)}</div><div class="l">總 Token 用量</div></div>
+    <div class="stat"><div class="v">${fmt(ti)}</div><div class="l">輸入 tokens</div></div>
+    <div class="stat"><div class="v">${fmt(to)}</div><div class="l">輸出 tokens</div></div>
+    <div class="stat"><div class="v">$${tc.toFixed(4)}</div><div class="l">預估費用 USD</div></div>`;
+  const maxTok=Math.max(...data.users.map(u=>u.total_input+u.total_output),1);
+  document.getElementById('rows').innerHTML=data.users.map(u=>{
+    const pc=u.provider||'manual';
+    const total=u.total_input+u.total_output;
+    const pct=Math.round((total/maxTok)*100);
+    const chips=Object.entries(u.tokens||{}).map(([t,d])=>{
+      return `<span class="chip"><span class="chip-dot"></span><span class="chip-name">${t.replace('translate_','tr.')}</span><span class="chip-val">${fmt(d.input_tokens)}↑${fmt(d.output_tokens)}↓</span><span class="chip-calls">×${d.calls}</span></span>`;
+    }).join('');
+    return `<tr>
+      <td><div class="uid">${u.user_id}</div>${u.email?`<div class="email">${u.email}</div>`:''}</td>
+      <td><span class="badge b-${pc}">${pc}</span></td>
+      <td style="color:var(--ink-light);font-size:12px">${fmtDate(u.last_login)}</td>
+      <td style="font-variant-numeric:tabular-nums">${u.vocab_count.toLocaleString()}</td>
+      <td>${u.has_mochi?'<span class="mochi-yes">✓</span>':'<span class="mochi-no">—</span>'}</td>
+      <td style="min-width:160px">
+        <div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-label">${fmt(total)}</span></div>
+        <div style="font-size:11px;color:var(--sub);margin-top:3px">${fmt(u.total_input)}↑ / ${fmt(u.total_output)}↓</div>
+      </td>
+      <td class="cost">$${u.est_cost_usd.toFixed(4)}</td>
+      <td><div class="chips">${chips||'<span class="no-data">無紀錄</span>'}</div></td>
+    </tr>`;
+  }).join('');
+}
+
+/* ── Logs ── */
+function setFilter(btn, lv) {
+  _logLevel = lv;
+  document.querySelectorAll('.log-filter').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  renderLogs();
+}
+
+function toggleAuto(cb) {
+  if (_autoTimer) { clearInterval(_autoTimer); _autoTimer = null; }
+  if (cb.checked) { _autoTimer = setInterval(loadLogs, 3000); }
+}
+
+async function loadLogs() {
+  try {
+    const r = await fetch('/api/admin/logs?token=' + TOKEN + '&n=300');
+    if (!r.ok) return;
+    _logs = (await r.json()).logs;
+    renderLogs();
+    stamp();
+  } catch(e) {}
+}
+
+function renderLogs() {
+  const q = document.getElementById('log-search').value.toLowerCase();
+  const box = document.getElementById('log-box');
+  let rows = _logs;
+  if (_logLevel) rows = rows.filter(r => r.level === _logLevel);
+  if (q) rows = rows.filter(r => r.msg.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  if (!rows.length) { box.innerHTML = '<div class="log-empty">無符合的日誌</div>'; return; }
+  box.innerHTML = [...rows].reverse().map(r =>
+    `<div class="log-entry lv-${r.level}">
+      <span class="log-ts">${r.ts}</span>
+      <span class="log-lv">${r.level}</span>
+      <span class="log-name" title="${r.name}">${r.name.replace('kg.','')}</span>
+      <span class="log-msg">${r.msg.replace(/</g,'&lt;')}</span>
+    </div>`
+  ).join('');
+}
+
+function stamp() {
+  document.getElementById('ts').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-TW', { hour12: false });
+}
+
+loadStats();
+</script>
+</body>
+</html>
