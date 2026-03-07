@@ -71,273 +71,17 @@ struct ReaderView: View {
     }
 
     var body: some View {
-        ZStack {
-            // 背景色填滿，消滅頂部系統白邊 (white band)
-            paperColor.ignoresSafeArea()
-
-            // ── 主要閱讀內容 ────────────────────────────────
-            if let publication = publication {
-                ReadiumNavigatorView(
-                    publication: publication,
-                    initialLocator: initialLocator,
-                    httpServer: ReadiumService.shared.httpServer,
-                    lookedUpWords: handler.lookedUpWords,
-                    bookUniqueWords: handler.bookUniqueWords,
-                    preferences: settings.epubPreferences,
-                    clearHighlightTrigger: handler.clearHighlightTrigger,
-                    removeWordTrigger: handler.removeWordTrigger,
-                    navigateToLocator: navigateToLocator,
-                    isInteractionBlocked: handler.showTranslationPanel || showReaderSettings,
-                    onLocationChanged: { locator in
-                        handleLocationChange(locator)
-                    },
-                    onWordSelected: { word, context in
-                        handler.handleWordSelected(
-                            word: word, context: context,
-                            vocabulary: allVocabulary,
-                            modelContext: modelContext,
-                            book: book,
-                            currentLocator: currentLocator
-                        )
-                    },
-                    onPhraseSelected: { phrase, context in
-                        handler.handlePhraseSelected(
-                            phrase: phrase, context: context,
-                            vocabulary: allVocabulary,
-                            modelContext: modelContext,
-                            book: book,
-                            currentLocator: currentLocator
-                        )
-                    },
-                    onExplainSelected: { text, context in
-                        handler.handleExplainSelected(text: text, context: context)
-                    },
-                    onWordDeselected: {
-                        handleWordDeselected()
-                    },
-                    onMarkingProgress: { progress in
-                        guard !hasCompletedInitialMarking else { return }
-                        withAnimation(.linear(duration: 0.1)) {
-                            underlineProgress = progress
-                        }
-                        if progress >= 1.0 {
-                            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                                withAnimation(.easeOut(duration: 0.3)) {
-                                    underlineProgress = nil
-                                }
-                                hasCompletedInitialMarking = true
-                            }
-                        }
-                    }
-                )
-                .ignoresSafeArea(edges: [.horizontal, .bottom])
-                .safeAreaInset(edge: .top) {
-                    Color.clear.frame(height: 0) // 極限 0 邊距，讓內文緊貼按鈕下緣裁切
-                }
-            } else if let error = errorMessage {
-                ContentUnavailableView(
-                    "無法開啟書籍",
-                    systemImage: "exclamationmark.triangle",
-                    description: Text(error)
-                )
-            }
-
-            // ── 載入 overlay（WebView 渲染完成前覆蓋整個畫面）──
-            if !isWebViewReady {
-                paperColor.ignoresSafeArea()
-                VStack(spacing: 14) {
-                    ProgressView()
-                        .tint(.primary)
-                    Text(loadingPhase)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .contentTransition(.numericText())
-                        .animation(.default, value: loadingPhase)
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
-            }
-
-            // ── 底線匯入進度條（左上角）────────────────────────
-            if let prog = underlineProgress {
-                VStack {
-                    HStack(spacing: 10) {
-                        ZStack(alignment: .leading) {
-                            Capsule()
-                                .fill(.quaternary)
-                                .frame(width: 80, height: 3)
-                            Capsule()
-                                .fill(Color.accentColor)
-                                .frame(width: max(3, 80 * prog), height: 3)
-                                .animation(.linear(duration: 0.1), value: prog)
-                        }
-                        Text("\(Int(prog * 100))%")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .frame(width: 30, alignment: .trailing)
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
-                    .glassEffect(.regular, in: .capsule)
-                    .padding(.top, 8)
-                    Spacer()
-                }
-                .allowsHitTesting(false)
-                .transition(.opacity)
-            }
-
-            // ── 底部疊層：翻譯 / 設定 / 進度 ──────────────────
-            VStack {
-                Spacer()
-
-                if handler.showTranslationPanel, let selection = handler.wordSelection {
-                    TranslationPanel(
-                        word: selection.word,
-                        result: handler.translationResult,
-                        pronunciation: handler.pronunciation,
-                        isLoading: handler.isTranslating,
-                        isSaved: handler.isSaved,
-                        isLoggedIn: authManager.isLoggedIn,
-                        isExpanded: handler.isExpanded,
-                        explanation: handler.explanationText,
-                        isLoadingExplanation: handler.isLoadingExplanation,
-                        statusMessage: handler.statusMessage,
-                        isExplanationOnly: handler.isExplanationOnly,
-                        onExpand: { handler.handleExpand() },
-                        onDelete: {
-                            handler.deleteFromVocabulary(
-                                selection.word,
-                                vocabulary: allVocabulary,
-                                modelContext: modelContext
-                            )
-                        },
-                        onDismiss: { handler.dismiss() }
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                }
-            }
-
-            // ── 頂部 Liquid Glass 浮動導覽列 ──────────────────
-            VStack {
-                if !handler.showTranslationPanel && !showReaderSettings {
-                    if headerState == .expanded {
-                        // 展開模式：完整的導覽列膠囊
-                        GlassEffectContainer {
-                            HStack(spacing: 0) {
-                                // 返回按鈕
-                                Button {
-                                    dismiss()
-                                } label: {
-                                    HStack(spacing: 4) {
-                                        Image(systemName: "chevron.left")
-                                            .font(.system(size: 15, weight: .semibold))
-                                        Text("書庫")
-                                            .font(.system(size: 15))
-                                    }
-                                    .foregroundStyle(.primary)
-                                    .padding(.leading, 4)
-                                }
-
-                                Spacer()
-
-                                // 書名
-                                Text(book.title)
-                                    .font(.caption)
-                                    .fontWeight(.medium)
-                                    .foregroundStyle(.secondary)
-                                    .lineLimit(1)
-                                    .frame(maxWidth: 160)
-
-                                Spacer()
-
-                                // 右側按鈕群組
-                                HStack(spacing: 2) {
-                                    // 目錄
-                                    Button {
-                                        showTableOfContents = true
-                                    } label: {
-                                        Image(systemName: "list.bullet")
-                                            .font(.system(size: 15))
-                                            .foregroundStyle(.primary)
-                                            .frame(width: 34, height: 34)
-                                            .contentShape(Rectangle())
-                                    }
-
-                                    // 顯示設定
-                                    Button {
-                                        withAnimation(.spring(response: 0.3)) {
-                                            showReaderSettings = true
-                                            headerState = .compact // 開啟設定時自動收合
-                                        }
-                                    } label: {
-                                        Image(systemName: "textformat.size")
-                                            .font(.system(size: 15))
-                                            .foregroundStyle(.primary)
-                                            .frame(width: 34, height: 34)
-                                            .contentShape(Rectangle())
-                                    }
-
-                                    // 收合按鈕
-                                    Button {
-                                        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                            headerState = .compact
-                                        }
-                                    } label: {
-                                        Image(systemName: "chevron.up")
-                                            .font(.system(size: 14, weight: .semibold))
-                                            .foregroundStyle(.primary)
-                                            .frame(width: 34, height: 34)
-                                            .contentShape(Rectangle())
-                                    }
-                                }
-                                .padding(.trailing, 4)
-                            }
-                            .padding(.horizontal, 12)
-                            .padding(.vertical, 10)
-                        }
-                        .glassEffect(in: Capsule())
-                        .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 4)
-                        .padding(.horizontal, 20)
-                        .padding(.top, 8)
-                        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
-                    } else if headerState == .compact {
-                        // 收合模式：一顆小圓點與閱讀百分比
-                        HStack(spacing: 8) {
-                            Spacer()
-
-                            if totalProgression > 0 {
-                                Text(String(format: "%.1f%%", totalProgression * 100))
-                                    .font(.system(size: 11, weight: .light, design: .monospaced))
-                                    .foregroundStyle(.tertiary)
-                                    .padding(.trailing, 4)
-                            }
-
-                            Button {
-                                withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-                                    headerState = .expanded
-                                }
-                            } label: {
-                                GlassEffectContainer {
-                                    Image(systemName: "ellipsis")
-                                        .font(.system(size: 18, weight: .medium))
-                                        .foregroundStyle(.secondary)
-                                        .frame(width: 44, height: 44)
-                                        .contentShape(Circle())
-                                }
-                                .glassEffect(in: Circle())
-                                .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
-                            }
-                        }
-                        .padding(.trailing, 20)
-                        .padding(.top, 0)
-                        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
-                    }
-                }
-                Spacer()
-            }
+        ReaderViewPresenter(
+            state: presenterState,
+            onDismiss: { dismiss() },
+            onShowTableOfContents: { showTableOfContents = true },
+            onShowReaderSettings: showReaderSettingsPanel,
+            onExpandHeader: expandHeader,
+            onCollapseHeader: collapseHeader
+        ) {
+            readerMainContent
+        } translationPanel: {
+            translationPanelContent
         }
         .preferredColorScheme(settings.swiftUIColorScheme)
         .tint(.secondary)
@@ -386,7 +130,85 @@ struct ReaderView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
-            .preferredColorScheme(settings.swiftUIColorScheme) // 繼承主題顏色
+            .preferredColorScheme(settings.swiftUIColorScheme)
+        }
+    }
+
+    private var presenterState: ReaderViewPresenterState {
+        .init(
+            paperColor: paperColor,
+            isWebViewReady: isWebViewReady,
+            loadingPhase: loadingPhase,
+            underlineProgress: underlineProgress,
+            showsTranslationPanel: handler.showTranslationPanel,
+            showsReaderSettings: showReaderSettings,
+            headerState: headerState,
+            totalProgression: totalProgression,
+            bookTitle: book.title
+        )
+    }
+
+    @ViewBuilder
+    private var readerMainContent: some View {
+        if let publication = publication {
+            ReadiumNavigatorView(
+                publication: publication,
+                initialLocator: initialLocator,
+                httpServer: ReadiumService.shared.httpServer,
+                lookedUpWords: handler.lookedUpWords,
+                bookUniqueWords: handler.bookUniqueWords,
+                preferences: settings.epubPreferences,
+                clearHighlightTrigger: handler.clearHighlightTrigger,
+                removeWordTrigger: handler.removeWordTrigger,
+                navigateToLocator: navigateToLocator,
+                isInteractionBlocked: handler.showTranslationPanel || showReaderSettings,
+                onLocationChanged: handleLocationChange,
+                onWordSelected: handleWordSelected,
+                onPhraseSelected: handlePhraseSelected,
+                onExplainSelected: { text, context in
+                    handler.handleExplainSelected(text: text, context: context)
+                },
+                onWordDeselected: handleWordDeselected,
+                onMarkingProgress: handleMarkingProgress
+            )
+            .ignoresSafeArea(edges: [.horizontal, .bottom])
+            .safeAreaInset(edge: .top) {
+                Color.clear.frame(height: 0)
+            }
+        } else if let error = errorMessage {
+            ContentUnavailableView(
+                "無法開啟書籍",
+                systemImage: "exclamationmark.triangle",
+                description: Text(error)
+            )
+        }
+    }
+
+    @ViewBuilder
+    private var translationPanelContent: some View {
+        if let selection = handler.wordSelection {
+            TranslationPanel(
+                word: selection.word,
+                result: handler.translationResult,
+                pronunciation: handler.pronunciation,
+                isLoading: handler.isTranslating,
+                isSaved: handler.isSaved,
+                isLoggedIn: authManager.isLoggedIn,
+                isExpanded: handler.isExpanded,
+                explanation: handler.explanationText,
+                isLoadingExplanation: handler.isLoadingExplanation,
+                statusMessage: handler.statusMessage,
+                isExplanationOnly: handler.isExplanationOnly,
+                onExpand: { handler.handleExpand() },
+                onDelete: {
+                    handler.deleteFromVocabulary(
+                        selection.word,
+                        vocabulary: allVocabulary,
+                        modelContext: modelContext
+                    )
+                },
+                onDismiss: { handler.dismiss() }
+            )
         }
     }
 
@@ -438,6 +260,62 @@ struct ReaderView: View {
         book.lastReadLocatorJSON = locator.jsonString
         book.dateLastRead = Date()
         book.progression = totalProgression
+    }
+
+    private func handleWordSelected(_ word: String, _ context: String) {
+        handler.handleWordSelected(
+            word: word,
+            context: context,
+            vocabulary: allVocabulary,
+            modelContext: modelContext,
+            book: book,
+            currentLocator: currentLocator
+        )
+    }
+
+    private func handlePhraseSelected(_ phrase: String, _ context: String) {
+        handler.handlePhraseSelected(
+            phrase: phrase,
+            context: context,
+            vocabulary: allVocabulary,
+            modelContext: modelContext,
+            book: book,
+            currentLocator: currentLocator
+        )
+    }
+
+    private func handleMarkingProgress(_ progress: Double) {
+        guard !hasCompletedInitialMarking else { return }
+        withAnimation(.linear(duration: 0.1)) {
+            underlineProgress = progress
+        }
+        if progress >= 1.0 {
+            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+                withAnimation(.easeOut(duration: 0.3)) {
+                    underlineProgress = nil
+                }
+                hasCompletedInitialMarking = true
+            }
+        }
+    }
+
+    private func showReaderSettingsPanel() {
+        withAnimation(.spring(response: 0.3)) {
+            showReaderSettings = true
+            headerState = .compact
+        }
+    }
+
+    private func expandHeader() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            headerState = .expanded
+        }
+    }
+
+    private func collapseHeader() {
+        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+            headerState = .compact
+        }
     }
 
     // MARK: - 取消選取（再次點擊 highlight 的字或點擊空白處）
