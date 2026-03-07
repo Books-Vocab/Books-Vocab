@@ -20,7 +20,7 @@ struct KGVocabView: View {
     @State private var errorMessage: String?
     @State private var selectedEntry: VocabularyEntry?
     @State private var selectedReviewState: VocabularyReviewState = .due
-    @State private var showTodayReview = false
+    @State private var activeReviewSession: TodayReviewSession?
 
     @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
     private var pendingDeletes: [VocabularyEntry]
@@ -50,10 +50,10 @@ struct KGVocabView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }
-        .fullScreenCover(isPresented: $showTodayReview) {
+        .fullScreenCover(item: $activeReviewSession) { session in
             TodayReviewView(
-                entries: todaySessionEntries,
-                onClose: { showTodayReview = false }
+                entries: session.entries,
+                onClose: { activeReviewSession = nil }
             )
         }
         .task {
@@ -104,7 +104,7 @@ struct KGVocabView: View {
 
     private var todayReviewHero: some View {
         Button {
-            showTodayReview = true
+            startTodayReview()
         } label: {
             AppCard(padding: 0) {
                 ZStack(alignment: .topLeading) {
@@ -389,6 +389,12 @@ struct KGVocabView: View {
         try? modelContext.save()
     }
 
+    private func startTodayReview() {
+        let entries = todaySessionEntries
+        guard !entries.isEmpty else { return }
+        activeReviewSession = TodayReviewSession(entries: entries)
+    }
+
     private func retryPendingDeletes() async {
         for entry in pendingDeletes {
             do {
@@ -402,11 +408,17 @@ struct KGVocabView: View {
     }
 }
 
+private struct TodayReviewSession: Identifiable {
+    let id = UUID()
+    let entries: [VocabularyEntry]
+}
+
 private struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
     @State private var showBack = false
+    @State private var isAdvancing = false
     let onClose: () -> Void
 
     init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
@@ -439,6 +451,7 @@ private struct TodayReviewView: View {
                         .padding(.horizontal, AppMetrics.spacingLarge)
 
                         Button {
+                            guard !isAdvancing else { return }
                             withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
                                 showBack.toggle()
                             }
@@ -493,11 +506,24 @@ private struct TodayReviewView: View {
                     }
                     .padding(.top, AppMetrics.spacingLarge)
                 } else {
-                    ContentUnavailableView(
-                        "今天複習完成",
-                        systemImage: "checkmark.circle",
-                        description: Text("待複習與未學習卡片都處理完了。")
-                    )
+                    VStack(spacing: AppMetrics.spacingLarge) {
+                        Spacer()
+                        ContentUnavailableView(
+                            "今天複習完成",
+                            systemImage: "checkmark.circle",
+                            description: Text("這一輪 session 的卡片都處理完了。")
+                        )
+                        Button("返回生詞庫") {
+                            onClose()
+                        }
+                        .font(AppFonts.subhead(weight: .semibold))
+                        .padding(.horizontal, 18)
+                        .padding(.vertical, 12)
+                        .background(Color.white)
+                        .clipShape(Capsule())
+                        Spacer()
+                    }
+                    .padding(.horizontal, AppMetrics.spacingLarge)
                 }
             }
             .navigationTitle("今日複習")
@@ -517,11 +543,20 @@ private struct TodayReviewView: View {
     }
 
     private func submit(_ feedback: ReviewFeedback) {
-        guard let current = currentEntry else { return }
+        guard let current = currentEntry, !isAdvancing else { return }
+        isAdvancing = true
+
         current.applyReviewFeedback(feedback)
-        try? modelContext.save()
-        showBack = false
-        currentIndex += 1
+
+        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+            showBack = false
+            currentIndex += 1
+        }
+
+        Task { @MainActor in
+            try? modelContext.save()
+            isAdvancing = false
+        }
     }
 
     private func reviewCardFront(_ current: VocabularyEntry) -> some View {
@@ -577,7 +612,8 @@ private struct TodayReviewView: View {
                         font: .system(size: 28, weight: .regular, design: .default),
                         textColor: .secondary,
                         highlightTone: AppColors.translation(.light),
-                        italic: true
+                        italic: true,
+                        truncateAroundHighlightCharacters: 5
                     )
                         .lineLimit(5)
                 }
@@ -621,55 +657,161 @@ private struct TodayReviewView: View {
         }
         .buttonStyle(.plain)
         .foregroundStyle(tone)
+        .disabled(isAdvancing)
     }
 
-    private static let quotePattern = try! NSRegularExpression(pattern: #""([^"]+)""#)
+    private struct ReviewRichSegment {
+        let text: String
+        let isHighlight: Bool
+    }
+
+    private static let inlineHighlightPattern = try! NSRegularExpression(
+        pattern: #"\*\*([^*]+)\*\*|"([^"]+)""#
+    )
 
     private func reviewRichText(
         _ raw: String,
         font: Font,
         textColor: Color,
         highlightTone: Color,
-        italic: Bool
+        italic: Bool,
+        truncateAroundHighlightCharacters: Int? = nil
     ) -> Text {
-        let nsString = raw as NSString
-        let matches = Self.quotePattern.matches(in: raw, range: NSRange(location: 0, length: nsString.length))
+        let parsedSegments = parseReviewRichSegments(from: raw)
+        let segments = truncateAroundHighlightCharacters.map {
+            truncatedReviewRichSegments(parsedSegments, contextCharacters: $0)
+        } ?? parsedSegments
 
         var result = AttributedString()
-        var lastEnd = 0
 
-        func basePart(_ string: String) -> AttributedString {
-            var part = AttributedString(string)
-            part.font = italic ? font.italic() : font
-            part.foregroundColor = textColor
-            return part
+        for segment in segments where !segment.text.isEmpty {
+            var part = AttributedString(segment.text)
+            if segment.isHighlight {
+                part.font = italic ? font.weight(.semibold).italic() : font.weight(.semibold)
+                part.foregroundColor = .primary
+                part.backgroundColor = highlightTone.opacity(0.18)
+            } else {
+                part.font = italic ? font.italic() : font
+                part.foregroundColor = textColor
+            }
+            result += part
         }
+
+        return Text(result)
+    }
+
+    private func parseReviewRichSegments(from raw: String) -> [ReviewRichSegment] {
+        let nsString = raw as NSString
+        let matches = Self.inlineHighlightPattern.matches(
+            in: raw,
+            range: NSRange(location: 0, length: nsString.length)
+        )
+
+        guard !matches.isEmpty else {
+            return [ReviewRichSegment(text: raw, isHighlight: false)]
+        }
+
+        var segments: [ReviewRichSegment] = []
+        var lastEnd = 0
 
         for match in matches {
             let beforeRange = NSRange(location: lastEnd, length: match.range.location - lastEnd)
             if beforeRange.length > 0 {
-                result += basePart(nsString.substring(with: beforeRange))
+                segments.append(ReviewRichSegment(text: nsString.substring(with: beforeRange), isHighlight: false))
             }
 
-            let captureRange = match.range(at: 1)
+            let markdownRange = match.range(at: 1)
+            let quoteRange = match.range(at: 2)
+            let captureRange = markdownRange.location != NSNotFound ? markdownRange : quoteRange
             if captureRange.location != NSNotFound, captureRange.length > 0 {
-                var highlighted = AttributedString(nsString.substring(with: captureRange))
-                highlighted.font = italic ? font.italic() : font.weight(.semibold)
-                highlighted.foregroundColor = .primary
-                highlighted.backgroundColor = highlightTone.opacity(0.18)
-                result += highlighted
+                segments.append(ReviewRichSegment(text: nsString.substring(with: captureRange), isHighlight: true))
             }
 
             lastEnd = match.range.location + match.range.length
         }
 
         if lastEnd < nsString.length {
-            result += basePart(nsString.substring(from: lastEnd))
+            segments.append(ReviewRichSegment(text: nsString.substring(from: lastEnd), isHighlight: false))
         }
 
-        if matches.isEmpty {
-            return Text(basePart(raw))
+        return segments
+    }
+
+    private func truncatedReviewRichSegments(
+        _ segments: [ReviewRichSegment],
+        contextCharacters: Int
+    ) -> [ReviewRichSegment] {
+        guard
+            contextCharacters >= 0,
+            let highlightRange = firstHighlightRange(in: segments)
+        else {
+            return segments
         }
-        return Text(result)
+
+        let totalCount = segments.reduce(0) { $0 + $1.text.count }
+        let lowerBound = max(0, highlightRange.lowerBound - contextCharacters)
+        let upperBound = min(totalCount, highlightRange.upperBound + contextCharacters)
+
+        var sliced: [ReviewRichSegment] = []
+        var cursor = 0
+
+        if lowerBound > 0 {
+            sliced.append(ReviewRichSegment(text: "...", isHighlight: false))
+        }
+
+        for segment in segments {
+            let segmentStart = cursor
+            let segmentEnd = cursor + segment.text.count
+            let overlapStart = max(segmentStart, lowerBound)
+            let overlapEnd = min(segmentEnd, upperBound)
+
+            if overlapStart < overlapEnd {
+                let lowerIndex = segment.text.index(segment.text.startIndex, offsetBy: overlapStart - segmentStart)
+                let upperIndex = segment.text.index(segment.text.startIndex, offsetBy: overlapEnd - segmentStart)
+                sliced.append(
+                    ReviewRichSegment(
+                        text: String(segment.text[lowerIndex..<upperIndex]),
+                        isHighlight: segment.isHighlight
+                    )
+                )
+            }
+
+            cursor = segmentEnd
+        }
+
+        if upperBound < totalCount {
+            sliced.append(ReviewRichSegment(text: "...", isHighlight: false))
+        }
+
+        return mergeReviewRichSegments(sliced)
+    }
+
+    private func firstHighlightRange(in segments: [ReviewRichSegment]) -> Range<Int>? {
+        var cursor = 0
+        for segment in segments {
+            let nextCursor = cursor + segment.text.count
+            if segment.isHighlight {
+                return cursor..<nextCursor
+            }
+            cursor = nextCursor
+        }
+        return nil
+    }
+
+    private func mergeReviewRichSegments(_ segments: [ReviewRichSegment]) -> [ReviewRichSegment] {
+        var merged: [ReviewRichSegment] = []
+
+        for segment in segments where !segment.text.isEmpty {
+            if let last = merged.last, last.isHighlight == segment.isHighlight {
+                merged[merged.count - 1] = ReviewRichSegment(
+                    text: last.text + segment.text,
+                    isHighlight: last.isHighlight
+                )
+            } else {
+                merged.append(segment)
+            }
+        }
+
+        return merged
     }
 }
