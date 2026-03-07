@@ -3,17 +3,14 @@ import SwiftUI
 // MARK: - WordDetailGraphLinkRow
 
 struct WordDetailGraphLinkRow: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let link: KGCardLinkSummary
     let onTap: (() -> Void)?
 
     var body: some View {
-        let _ = print("[DEBUG-LINKROW] word=\(link.word) hasTap=\(onTap != nil)")
         Group {
             if let onTap {
-                Button(action: {
-                    print("[DEBUG-LINKROW] Button action FIRED for \(link.word)")
-                    onTap()
-                }) {
+                Button(action: onTap) {
                     linkRowContent(showsAccessory: true)
                 }
                 .buttonStyle(.plain)
@@ -28,13 +25,13 @@ struct WordDetailGraphLinkRow: View {
         HStack(alignment: .top, spacing: AppMetrics.spacingSmall) {
             VStack(alignment: .leading, spacing: 3) {
                 Text(link.word)
-                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
-                    .foregroundStyle(.primary)
+                    .font(vocabSkin.typography.rowWord)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(link.reason)
-                    .font(AppFonts.caption())
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineSpacing(2)
             }
@@ -42,7 +39,7 @@ struct WordDetailGraphLinkRow: View {
             if showsAccessory {
                 Image(systemName: "arrow.up.right")
                     .font(.system(size: 10, weight: .thin))
-                    .foregroundStyle(.quaternary)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
@@ -53,6 +50,7 @@ struct WordDetailGraphLinkRow: View {
 // MARK: - WordDetailMetadataRow (kept for backward compat, simplified)
 
 struct WordDetailMetadataRow<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     @ViewBuilder let trailing: Content
 
@@ -64,8 +62,8 @@ struct WordDetailMetadataRow<Content: View>: View {
     var body: some View {
         HStack {
             Text(title)
-                .font(AppFonts.caption())
-                .foregroundStyle(.quaternary)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
             Spacer()
             trailing
         }
@@ -75,6 +73,7 @@ struct WordDetailMetadataRow<Content: View>: View {
 // MARK: - VocabularySyncBadge
 
 struct VocabularySyncBadge: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let status: Int
     let successTone: Color
     let destructiveTone: Color
@@ -84,16 +83,16 @@ struct VocabularySyncBadge: View {
             switch status {
             case 1:
                 Label("已同步", systemImage: "checkmark.circle")
-                    .font(AppFonts.caption(weight: .medium))
+                    .font(vocabSkin.typography.caption)
                     .foregroundStyle(successTone)
             case 2:
                 Label("同步失敗", systemImage: "exclamationmark.circle")
-                    .font(AppFonts.caption(weight: .medium))
+                    .font(vocabSkin.typography.caption)
                     .foregroundStyle(destructiveTone)
             default:
                 Label("待同步", systemImage: "clock")
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(.secondary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
             }
         }
     }

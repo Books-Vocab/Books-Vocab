@@ -12,6 +12,7 @@ import SwiftData
 struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
+    @Environment(\.vocabSkin) private var vocabSkin
     @Binding var searchText: String
 
     @Query private var syncedEntries: [VocabularyEntry]
@@ -101,7 +102,7 @@ struct KGVocabView: View {
             .padding(AppMetrics.spacingLarge)
             .padding(.bottom, 120)
         }
-        .background(AppColors.paperLight.ignoresSafeArea())
+        .vocabCanvasBackground()
     }
 
     // MARK: - Today Review Hero
@@ -110,18 +111,18 @@ struct KGVocabView: View {
         Button {
             startTodayReview()
         } label: {
-            AppCard {
+            VocabCard {
                 VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
                     // Header row
                     HStack(alignment: .top) {
                         VStack(alignment: .leading, spacing: 6) {
                             Text("Today Review")
-                                .font(AppFonts.caption(weight: .medium))
-                                .foregroundStyle(.tertiary)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
 
                             Text("今日待複習")
-                                .font(AppFonts.hero(weight: .semibold))
-                                .foregroundStyle(.primary)
+                                .font(vocabSkin.typography.displayTitle)
+                                .foregroundStyle(vocabSkin.palette.primaryText)
                         }
 
                         Spacer(minLength: 12)
@@ -129,33 +130,33 @@ struct KGVocabView: View {
                         // Large number
                         VStack(alignment: .trailing, spacing: 2) {
                             Text("\(todaySessionEntries.count)")
-                                .font(.system(size: 52, weight: .semibold, design: .serif))
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .quaternary : .primary)
+                                .font(vocabSkin.typography.numericHero)
+                                .foregroundStyle(todaySessionEntries.isEmpty ? vocabSkin.palette.quaternaryText : vocabSkin.palette.primaryText)
                             Text("cards")
-                                .font(AppFonts.caption(weight: .medium))
-                                .foregroundStyle(.quaternary)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
                         }
                     }
 
                     // Description
                     Text(heroDescription)
-                        .font(AppFonts.subhead())
-                        .foregroundStyle(.secondary)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(4)
 
                     // Stats — inline text, not pills
                     HStack(spacing: AppMetrics.spacingLarge) {
-                        statText(title: "待複習", value: dueEntries.count, tone: AppColors.translation(.light))
-                        statText(title: "未學習", value: unlearnedEntries.count, tone: AppColors.accent(.light))
-                        statText(title: "已複習", value: reviewedEntries.count, tone: AppColors.saved(.light))
+                        statText(title: "待複習", value: dueEntries.count, tone: vocabSkin.palette.translationText)
+                        statText(title: "未學習", value: unlearnedEntries.count, tone: vocabSkin.palette.accent)
+                        statText(title: "已複習", value: reviewedEntries.count, tone: vocabSkin.palette.success)
                     }
 
                     // CTA
                     HStack {
                         Spacer()
                         Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習 →")
-                            .font(AppFonts.subhead(weight: .semibold))
-                            .foregroundStyle(todaySessionEntries.isEmpty ? .quaternary : .primary)
+                            .font(vocabSkin.typography.body.weight(.semibold))
+                            .foregroundStyle(todaySessionEntries.isEmpty ? vocabSkin.palette.quaternaryText : vocabSkin.palette.primaryText)
                     }
                 }
             }
@@ -167,11 +168,11 @@ struct KGVocabView: View {
     // MARK: - State Section
 
     private var stateSection: some View {
-        AppCard {
+        VocabCard {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 Text("知識庫狀態")
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
 
                 Picker("", selection: $selectedReviewState) {
                     ForEach(VocabularyReviewState.allCases) { state in
@@ -181,8 +182,8 @@ struct KGVocabView: View {
                 .pickerStyle(.segmented)
 
                 Text(stateDescription)
-                    .font(AppFonts.subhead())
-                    .foregroundStyle(.secondary)
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
                     .lineSpacing(4)
             }
         }
@@ -191,16 +192,16 @@ struct KGVocabView: View {
     // MARK: - Browser Section
 
     private var browserSection: some View {
-        AppCard {
+        VocabCard {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(selectedReviewState.title)
-                            .font(AppFonts.h2(weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .font(vocabSkin.typography.sectionTitle)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                         Text("\(filteredEntries.count) 張卡片")
-                            .font(AppFonts.caption(weight: .medium))
-                            .foregroundStyle(.quaternary)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
                     }
                     Spacer()
                 }
@@ -247,10 +248,10 @@ struct KGVocabView: View {
     private func statText(title: String, value: Int, tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(title)
-                .font(AppFonts.caption())
-                .foregroundStyle(.tertiary)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
             Text("\(value)")
-                .font(AppFonts.h2(weight: .semibold))
+                .font(vocabSkin.typography.sectionTitle)
                 .foregroundStyle(tone)
         }
     }

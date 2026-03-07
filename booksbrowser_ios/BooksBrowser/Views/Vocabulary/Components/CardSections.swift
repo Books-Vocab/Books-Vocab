@@ -12,11 +12,12 @@ import SwiftUI
 
 /// 卡片內部的水平分隔線（統一外觀，取代散落在各 View 的重複定義）
 struct CardSectionDivider: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     var horizontalPadding: CGFloat = AppMetrics.spacingLarge
 
     var body: some View {
         Rectangle()
-            .fill(Color.primary.opacity(0.06))
+            .fill(vocabSkin.palette.divider)
             .frame(height: 0.5)
             .padding(.horizontal, horizontalPadding)
     }
@@ -26,18 +27,19 @@ struct CardSectionDivider: View {
 
 /// Section 標題標籤（icon + 小字）
 struct CardSectionLabel: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let systemImage: String
 
     var body: some View {
         Label {
             Text(title)
-                .font(AppFonts.caption(weight: .medium))
+                .font(vocabSkin.typography.caption)
         } icon: {
             Image(systemName: systemImage)
                 .font(.system(size: 10, weight: .thin))
         }
-        .foregroundStyle(.tertiary)
+        .foregroundStyle(vocabSkin.palette.tertiaryText)
     }
 }
 
@@ -45,6 +47,7 @@ struct CardSectionLabel: View {
 
 /// 詳情頁頂部英雄區塊：單字 + 音標 + POS + Tier + 模式 + 翻譯
 struct CardHeroSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let card: CardPresentation
     let colorScheme: ColorScheme
 
@@ -54,43 +57,40 @@ struct CardHeroSection: View {
                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(card.word)
-                            .font(AppFonts.hero(weight: .semibold))
-                            .foregroundStyle(.primary)
+                            .font(vocabSkin.typography.detailWord)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                             .minimumScaleFactor(0.85)
 
                         if let pos = card.partOfSpeech {
                             Text(pos)
-                                .font(AppFonts.subhead(weight: .medium))
-                                .foregroundStyle(.tertiary)
+                                .font(vocabSkin.typography.body.weight(.medium))
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
                     }
 
                     if let pron = card.pronunciation, !pron.isEmpty {
                         Text("/\(pron)/")
-                            .font(AppFonts.subhead())
-                            .foregroundStyle(.quaternary)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
                     }
                 }
 
                 Spacer(minLength: 12)
 
                 if let tier = card.difficultyTier {
-                    let (color, label) = AppColors.tier(tier, scheme: colorScheme)
-                    Text(label)
-                        .font(.system(size: 12, weight: .semibold))
-                        .foregroundStyle(color)
+                    VocabTierLabel(tier: tier)
                 }
             }
 
             HStack(spacing: AppMetrics.spacingSmall) {
                 Text(card.reviewMode.localizedTitle)
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
 
             Text(card.translation)
-                .font(AppFonts.h2(weight: .semibold))
-                .foregroundStyle(AppColors.translation(colorScheme))
+                .font(vocabSkin.typography.translationTitle)
+                .foregroundStyle(vocabSkin.palette.translationText)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(4)
         }
@@ -101,6 +101,7 @@ struct CardHeroSection: View {
 
 /// 例句渲染區塊
 struct CardExamplesSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let examples: [String]
     let colorScheme: ColorScheme
 
@@ -112,9 +113,9 @@ struct CardExamplesSection: View {
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: AppFonts.body(),
-                        textColor: .primary,
-                        highlightColor: AppColors.highlightMark,
+                        font: vocabSkin.typography.example,
+                        textColor: vocabSkin.palette.primaryText,
+                        highlightColor: vocabSkin.palette.highlightMark,
                         italic: true
                     ),
                     truncateAroundMarkedWordRadius: 5
@@ -129,6 +130,7 @@ struct CardExamplesSection: View {
 
 /// 來源上下文 + 書名 + 章節
 struct CardSourceSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let sourceContext: String
     let bookTitle: String
     let chapterTitle: String?
@@ -140,9 +142,9 @@ struct CardSourceSection: View {
             CardRichTextRenderer.text(
                 sourceContext,
                 style: CardRichTextStyle(
-                    font: AppFonts.body(),
-                    textColor: .secondary,
-                    highlightColor: AppColors.highlightMark,
+                    font: vocabSkin.typography.body,
+                    textColor: vocabSkin.palette.secondaryText,
+                    highlightColor: vocabSkin.palette.highlightMark,
                     italic: true
                 )
             )
@@ -156,8 +158,8 @@ struct CardSourceSection: View {
                     Text("· \(chapter)")
                 }
             }
-            .font(AppFonts.caption())
-            .foregroundStyle(.quaternary)
+            .font(vocabSkin.typography.caption)
+            .foregroundStyle(vocabSkin.palette.quaternaryText)
         }
     }
 }
@@ -166,6 +168,7 @@ struct CardSourceSection: View {
 
 /// 教學筆記（Rich Text）
 struct CardExplanationSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let explanation: String
     let colorScheme: ColorScheme
 
@@ -176,9 +179,9 @@ struct CardExplanationSection: View {
             CardRichTextRenderer.text(
                 explanation,
                 style: CardRichTextStyle(
-                    font: AppFonts.body(),
-                    textColor: .primary,
-                    highlightColor: AppColors.accent(colorScheme),
+                    font: vocabSkin.typography.body,
+                    textColor: vocabSkin.palette.primaryText,
+                    highlightColor: vocabSkin.palette.accent,
                     italic: false
                 )
             )
@@ -191,6 +194,7 @@ struct CardExplanationSection: View {
 
 /// 單字變化形列表
 struct CardFormsSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let forms: [String]
     let rootForm: String?
     let colorScheme: ColorScheme
@@ -205,7 +209,7 @@ struct CardFormsSection: View {
                         let isRoot = form == rootForm
                         Text(form)
                             .font(.system(size: 14, weight: isRoot ? .semibold : .regular, design: .monospaced))
-                            .foregroundStyle(isRoot ? AppColors.accent(colorScheme) : .secondary)
+                            .foregroundStyle(isRoot ? vocabSkin.palette.accent : vocabSkin.palette.secondaryText)
                     }
                 }
             }

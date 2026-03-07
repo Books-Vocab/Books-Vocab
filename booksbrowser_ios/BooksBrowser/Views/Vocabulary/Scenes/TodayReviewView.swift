@@ -10,6 +10,7 @@ struct TodayReviewSession: Identifiable {
 
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.vocabSkin) private var vocabSkin
     @Query private var allEntries: [VocabularyEntry]
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
@@ -44,7 +45,7 @@ struct TodayReviewView: View {
                     completionState
                 }
             }
-            .background(AppColors.paperLight.ignoresSafeArea())
+            .vocabCanvasBackground()
             .toolbar(.hidden, for: .navigationBar)
             .overlay {
                 LinkedCardOverlayStack(stack: $linkedCardStack)
@@ -57,24 +58,24 @@ struct TodayReviewView: View {
     private func topBar(current: VocabularyEntry) -> some View {
         HStack(alignment: .center, spacing: AppMetrics.spacingMedium) {
             Text(progressText)
-                .font(AppFonts.caption(weight: .semibold))
-                .foregroundStyle(.tertiary)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
 
             Spacer()
 
             Text(showBack ? "背面" : "正面")
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(.quaternary)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
 
             Button("詳情") {
                 linkedCardStack.append(current)
             }
-            .buttonStyle(.ghost(.secondary))
+            .buttonStyle(.ghost(vocabSkin.palette.secondaryText))
 
             Button("關閉") {
                 onClose()
             }
-            .buttonStyle(.ghost(.secondary))
+            .buttonStyle(.ghost(vocabSkin.palette.secondaryText))
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
         .padding(.vertical, AppMetrics.spacingSmall)
@@ -83,7 +84,7 @@ struct TodayReviewView: View {
     // MARK: - Review Card (Mochi layout)
 
     private func reviewCard(_ current: VocabularyEntry) -> some View {
-        AppCard(padding: 0) {
+        VocabCard(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 // Front content — Button to toggle reveal (not onTapGesture, avoids ScrollView gesture conflict)
                 Button {
@@ -111,22 +112,19 @@ struct TodayReviewView: View {
             // Mode + POS tags
             HStack(spacing: AppMetrics.spacingSmall) {
                 Text(current.reviewMode.localizedTitle)
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(.tertiary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
                 if let pos = current.partOfSpeech {
                     Text("·")
-                        .font(AppFonts.caption())
-                        .foregroundStyle(.quaternary)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                     Text(pos)
-                        .font(AppFonts.caption(weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
                 Spacer()
                 if let tier = current.difficultyTier {
-                    let (color, label) = AppColors.tier(tier, scheme: .light)
-                    Text(label)
-                        .font(.system(size: 11, weight: .semibold))
-                        .foregroundStyle(color)
+                    VocabTierLabel(tier: tier)
                 }
             }
 
@@ -136,14 +134,14 @@ struct TodayReviewView: View {
             switch current.reviewMode {
             case .recognition:
                 Text(current.word)
-                    .font(.system(size: 56, weight: .semibold, design: .serif))
-                    .foregroundStyle(.primary)
+                    .font(vocabSkin.typography.reviewWord)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
                     .minimumScaleFactor(0.6)
 
             case .production:
                 Text(current.translation)
-                    .font(.system(size: 40, weight: .semibold, design: .default))
-                    .foregroundStyle(AppColors.translation(.light))
+                    .font(vocabSkin.typography.translationTitle)
+                    .foregroundStyle(vocabSkin.palette.translationText)
                     .minimumScaleFactor(0.6)
             }
 
@@ -152,9 +150,9 @@ struct TodayReviewView: View {
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: .system(size: 22, weight: .regular, design: .default),
-                        textColor: .secondary,
-                        highlightColor: AppColors.highlightMark,
+                        font: vocabSkin.typography.example,
+                        textColor: vocabSkin.palette.secondaryText,
+                        highlightColor: vocabSkin.palette.highlightMark,
                         italic: true
                     ),
                     mode: .cloze,
@@ -168,8 +166,8 @@ struct TodayReviewView: View {
             // Tap hint
             HStack {
                 Text(showBack ? "點擊收合" : "點擊展開答案")
-                    .font(AppFonts.caption())
-                    .foregroundStyle(.quaternary)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
                 Spacer()
             }
         }
@@ -185,13 +183,13 @@ struct TodayReviewView: View {
             switch card.reviewMode {
             case .recognition:
                 Text(card.translation)
-                    .font(.system(size: 36, weight: .semibold, design: .default))
-                    .foregroundStyle(AppColors.translation(.light))
+                    .font(vocabSkin.typography.translationTitle)
+                    .foregroundStyle(vocabSkin.palette.translationText)
 
             case .production:
                 Text(card.word)
-                    .font(.system(size: 48, weight: .semibold, design: .serif))
-                    .foregroundStyle(.primary)
+                    .font(vocabSkin.typography.reviewWord)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
                     .minimumScaleFactor(0.6)
             }
 
@@ -200,9 +198,9 @@ struct TodayReviewView: View {
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: .system(size: 20, weight: .regular, design: .default),
-                        textColor: .secondary,
-                        highlightColor: AppColors.highlightMark,
+                        font: vocabSkin.typography.example,
+                        textColor: vocabSkin.palette.secondaryText,
+                        highlightColor: vocabSkin.palette.highlightMark,
                         italic: true
                     ),
                     truncateAroundMarkedWordRadius: 5
@@ -274,7 +272,7 @@ struct TodayReviewView: View {
                         Label("Forgot", systemImage: "xmark")
                             .font(AppFonts.subhead(weight: .medium))
                     }
-                    .buttonStyle(.ghost(AppColors.translation(.light)))
+                    .buttonStyle(.ghost(vocabSkin.palette.destructive))
 
                     Button {
                         submit(.remembered)
@@ -282,7 +280,7 @@ struct TodayReviewView: View {
                         Label("Remembered", systemImage: "checkmark")
                             .font(AppFonts.subhead(weight: .medium))
                     }
-                    .buttonStyle(.ghost(AppColors.saved(.light)))
+                    .buttonStyle(.ghost(vocabSkin.palette.success))
                 }
                 .transition(.opacity)
             }
@@ -291,7 +289,7 @@ struct TodayReviewView: View {
         .padding(.vertical, AppMetrics.spacingMedium)
         .background(
             Rectangle()
-                .fill(AppColors.paperLight)
+                .fill(vocabSkin.palette.pageBackground)
                 .shadow(color: .black.opacity(0.03), radius: 8, y: -4)
                 .ignoresSafeArea(edges: .bottom)
         )
@@ -310,7 +308,7 @@ struct TodayReviewView: View {
             Button("返回生詞庫") {
                 onClose()
             }
-            .buttonStyle(.ghost(.primary))
+            .buttonStyle(.ghost(vocabSkin.palette.primaryText))
             Spacer()
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
@@ -325,7 +323,7 @@ struct TodayReviewView: View {
         return HStack(alignment: .top, spacing: 8) {
             Image(systemName: "paperclip")
                 .font(.system(size: 13, weight: .thin))
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .padding(.top, 2)
 
             VStack(alignment: .leading, spacing: 6) {
@@ -343,8 +341,8 @@ struct TodayReviewView: View {
     ) -> some View {
         HStack(spacing: 4) {
             Text("\(group.label)：")
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(.tertiary)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
 
             ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
                 if let target = linkedEntry(for: item) {
@@ -353,27 +351,27 @@ struct TodayReviewView: View {
                     } label: {
                         Text(item.word)
                             .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                     }
                     .buttonStyle(.plain)
                 } else {
                     Text(item.word)
                         .font(.system(size: 16, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
                 }
 
                 if index < group.items.count - 1 {
                     Text("|")
-                        .font(AppFonts.caption())
-                        .foregroundStyle(.quaternary)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
             }
 
             let overflowCount = group.overflowed(relativeToFullGroup: fullGroup)
             if overflowCount > 0 {
                 Text("+\(overflowCount)")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.quaternary)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
         }
     }

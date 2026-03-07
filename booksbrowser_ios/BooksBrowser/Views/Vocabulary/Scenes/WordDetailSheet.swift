@@ -11,6 +11,7 @@ import SwiftData
 
 struct WordDetailSheet: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.vocabSkin) private var vocabSkin
     @Query private var allEntries: [VocabularyEntry]
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     let entry: VocabularyEntry
@@ -51,7 +52,7 @@ struct WordDetailSheet: View {
 
     private var detailContent: some View {
         ScrollView {
-            AppCard(padding: 0) {
+            VocabCard(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
                     // ─── Hero ───
                     CardHeroSection(card: card, colorScheme: colorScheme)
@@ -109,7 +110,7 @@ struct WordDetailSheet: View {
             .padding(AppMetrics.spacingLarge)
         }
         .scrollContentBackground(.hidden)
-        .background(AppColors.paperLight.ignoresSafeArea())
+        .vocabCanvasBackground()
         .navigationTitle(card.word)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
@@ -133,8 +134,8 @@ struct WordDetailSheet: View {
             ForEach(card.linkGroups) { group in
                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                     Text(group.label)
-                        .font(AppFonts.caption(weight: .medium))
-                        .foregroundStyle(.tertiary)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
 
                     ForEach(group.items) { link in
                         graphLinkRow(link)
@@ -161,8 +162,8 @@ struct WordDetailSheet: View {
                 text: card.syncStatus == 1 ? "已同步" : "待同步"
             )
         }
-        .font(AppFonts.caption())
-        .foregroundStyle(.quaternary)
+        .font(vocabSkin.typography.caption)
+        .foregroundStyle(vocabSkin.palette.quaternaryText)
     }
 
     private func metaItem(icon: String, text: String) -> some View {
@@ -178,14 +179,11 @@ struct WordDetailSheet: View {
     @ViewBuilder
     private func graphLinkRow(_ link: KGCardLinkSummary) -> some View {
         let target = entry.linkedEntry(for: link, in: allEntries)
-        let _ = print("[DEBUG-LINK] link.word=\(link.word) link.cardId=\(link.cardId) target=\(target?.word ?? "NIL") allEntries.count=\(allEntries.count)")
         WordDetailGraphLinkRow(
             link: link,
             onTap: target.map { t in
                 {
-                    print("[DEBUG-LINK] TAP FIRED for \(link.word) -> appending \(t.word) to stack")
                     linkedCardStack.wrappedValue.append(t)
-                    print("[DEBUG-LINK] stack count now: \(linkedCardStack.wrappedValue.count)")
                 }
             }
         )
