@@ -233,6 +233,52 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
     assert r_unknown.status_code == 400
 
 
+def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
+    users_file = tmp_path / "users.json"
+    lock_file = tmp_path / "users.json.lock"
+    users_file.write_text(
+        json.dumps(
+            {
+                "legacy_user": {
+                    "mochi_api_key": "mk_legacy",
+                    "provider": "google",
+                }
+            }
+        )
+    )
+
+    with (
+        patch.object(api_mod, "USERS_FILE", users_file),
+        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
+    ):
+        users = api_mod.load_users()
+
+    assert users["legacy_user"]["config"]["mochi_api_key"] == "mk_legacy"
+    assert "mochi_api_key" not in users["legacy_user"]
+
+
+def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
+    users_file = tmp_path / "users.json"
+    lock_file = tmp_path / "users.json.lock"
+
+    with (
+        patch.object(api_mod, "USERS_FILE", users_file),
+        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
+    ):
+        api_mod.save_users(
+            {
+                "legacy_user": {
+                    "mochi_api_key": "mk_legacy",
+                    "provider": "google",
+                }
+            }
+        )
+
+    stored = json.loads(users_file.read_text())
+    assert stored["legacy_user"]["config"]["mochi_api_key"] == "mk_legacy"
+    assert "mochi_api_key" not in stored["legacy_user"]
+
+
 def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
     client = isolated_api.client
 

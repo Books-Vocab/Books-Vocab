@@ -340,7 +340,7 @@ def sync(
     user_id = ctx.obj["user_id"]
     user_dir = ctx.obj["user_dir"]
     users = load_users()
-    mochi_key = users.get(user_id, {}).get("mochi_api_key")
+    mochi_key = users.get(user_id, {}).get("config", {}).get("mochi_api_key")
     
     if not mochi_key:
         raise typer.Exit(f"MOCHI_API_KEY not configured for user {user_id}. Set it in users.json")

@@ -145,12 +145,49 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
 def load_users() -> dict[str, dict[str, Any]]:
     if not USERS_FILE.exists():
         return {}
-    return json.loads(USERS_FILE.read_text())
+    data = json.loads(USERS_FILE.read_text())
+    normalized, _ = _normalize_users_payload(data)
+    return normalized
 
 def save_users(users: dict[str, dict[str, Any]]) -> None:
+    normalized, _ = _normalize_users_payload(users)
     tmp_path = USERS_FILE.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(users, indent=2))
+    tmp_path.write_text(json.dumps(normalized, indent=2))
     tmp_path.replace(USERS_FILE)
+
+
+def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+    changed = False
+    normalized: dict[str, Any] = {}
+
+    for user_id, record in users.items():
+        if not isinstance(record, dict) or user_id.startswith("_"):
+            normalized[user_id] = record
+            continue
+
+        normalized_record = dict(record)
+        had_config = isinstance(normalized_record.get("config"), dict)
+        config = dict(normalized_record.get("config", {})) if had_config else {}
+        legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
+
+        if "mochi_api_key" in record:
+            changed = True
+            if isinstance(legacy_mochi_key, str):
+                legacy_mochi_key = legacy_mochi_key.strip()
+            if legacy_mochi_key and not config.get("mochi_api_key"):
+                config["mochi_api_key"] = legacy_mochi_key
+
+        if had_config or config:
+            if normalized_record.get("config") != config:
+                changed = True
+            normalized_record["config"] = config
+        elif "config" in normalized_record:
+            normalized_record.pop("config", None)
+            changed = True
+
+        normalized[user_id] = normalized_record
+
+    return normalized, changed
 
 def _parse_datetime(raw: Any) -> datetime | None:
     if raw is None:

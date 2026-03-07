@@ -62,9 +62,12 @@ def main():
     # Always set or update
     if apple_id not in users:
         users[apple_id] = {}
-        
+
+    if not isinstance(users[apple_id].get("config"), dict):
+        users[apple_id]["config"] = {}
+
     if mochi_key:
-        users[apple_id]["mochi_api_key"] = mochi_key
+        users[apple_id]["config"]["mochi_api_key"] = mochi_key
         print("   Mochi API Key linked to your Apple ID.")
         
     with open(users_file, "w") as f:
