@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
+import kg.admin_test_matrix as admin_test_matrix_mod
 from kg.api import app
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
@@ -65,12 +66,14 @@ def startup_env(tmp_path):
     ):
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
+        admin_test_matrix_mod.LAST_TEST_RUN = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client,
             user_id=user_id,
             headers=headers,
         )
+        admin_test_matrix_mod.LAST_TEST_RUN = None
 
 
 def test_startup_smoke_serves_admin_and_core_routes(startup_env):
@@ -83,6 +86,10 @@ def test_startup_smoke_serves_admin_and_core_routes(startup_env):
     admin_tests_ui = client.get("/admin/tests", params={"token": "adm-secret"})
     assert admin_tests_ui.status_code == 200, admin_tests_ui.text
     assert "KG Test Matrix" in admin_tests_ui.text
+
+    admin_test_alias = client.get("/admin/test", params={"token": "adm-secret"})
+    assert admin_test_alias.status_code == 200, admin_test_alias.text
+    assert "KG Test Matrix" in admin_test_alias.text
 
     entitlements = client.get("/api/user/entitlements", headers=startup_env.headers)
     assert entitlements.status_code == 200, entitlements.text
@@ -106,3 +113,35 @@ def test_startup_smoke_admin_catalog_and_last_result_routes(startup_env):
     last = client.get("/api/admin/tests/last", params={"token": "adm-secret"})
     assert last.status_code == 200, last.text
     assert last.json()["status"] == "idle"
+
+
+def test_startup_smoke_admin_run_updates_last_result(startup_env):
+    client = startup_env.client
+    fake_result = {
+        "runId": "20260307000100",
+        "startedAt": "2026-03-07T00:01:00+00:00",
+        "finishedAt": "2026-03-07T00:01:02+00:00",
+        "durationSeconds": 2.0,
+        "returnCode": 0,
+        "outcome": "passed",
+        "totals": {"passed": 1, "failed": 0, "errors": 0, "skipped": 0, "total": 1},
+        "selectedItems": ["renderer_truncation"],
+        "matrix": [],
+        "cases": [],
+        "itemResults": [],
+        "stdoutTail": [],
+        "stderrTail": [],
+    }
+
+    with patch.object(api_mod, "_run_pytest_matrix", return_value=fake_result):
+        run = client.post(
+            "/api/admin/tests/run",
+            params={"token": "adm-secret"},
+            json={"itemIds": ["renderer_truncation"]},
+        )
+    assert run.status_code == 200, run.text
+    assert run.json()["runId"] == fake_result["runId"]
+
+    last = client.get("/api/admin/tests/last", params={"token": "adm-secret"})
+    assert last.status_code == 200, last.text
+    assert last.json()["runId"] == fake_result["runId"]

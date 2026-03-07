@@ -1475,6 +1475,7 @@ def admin_test_catalog(token: str | None = None):
 
 
 @app.get("/admin/tests", response_class=HTMLResponse, include_in_schema=False)
+@app.get("/admin/test", response_class=HTMLResponse, include_in_schema=False)
 def admin_tests_ui(token: str | None = None):
     """Minimal grayscale test matrix dashboard."""
     _check_admin(token)
