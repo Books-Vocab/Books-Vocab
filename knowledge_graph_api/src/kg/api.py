@@ -124,6 +124,7 @@ from .vocab_service import (
     list_vocab_cards,
     lookup_vocab_word,
 )
+from .pipeline_service import run_pipeline_background
 from .admin_test_matrix import (
     build_test_catalog,
     get_last_test_run,
@@ -803,185 +804,16 @@ def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user))
 # POST /api/pipeline  — Run full pipeline in background
 # ---------------------------------------------------------------------------
 async def _run_pipeline_background(user: dict):
-    uid = user["id"]
-    lock = await get_user_lock(uid)
-    if lock.locked():
-        logger.info("[%s] Pipeline already running, skipping.", uid)
-        return
-
-    async with lock:
-        try:
-            logger.info("[%s] Pipeline started.", uid)
-
-            # --- Step 1: Enrich ---
-            try:
-                logger.info("[%s] Step 1: Enrich", uid)
-                cards = _card_store(user["dir"])
-                all_cards = list(cards.all())
-                targets = [c for c in all_cards if not c.pos or not c.note]
-
-                if targets:
-                    from .enrich import enrich_cards_stream
-                    client = _gemini_client()
-                    logger.info("[%s] Enriching %d cards...", uid, len(targets))
-
-                    updated = 0
-                    async for msg in enrich_cards_stream(client, targets, user_id=uid, batch_size=20, max_workers=5):
-                        if msg.get("status") == "error":
-                            logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
-
-                        if msg.get("results"):
-                            result_map = {r["word"].lower(): r for r in msg["results"]}
-                            for card in targets:
-                                enrichment = result_map.get(card.content.lower())
-                                if not enrichment:
-                                    continue
-
-                                kwargs = {}
-                                if enrichment.get("pos") and not card.pos:
-                                    kwargs["pos"] = enrichment["pos"]
-                                if enrichment.get("note") and not card.note:
-                                    kwargs["note"] = enrichment["note"]
-
-                                if kwargs:
-                                    updated_card = cards.update(card.id, **kwargs)
-                                    if updated_card:
-                                        card.pos = updated_card.pos
-                                        card.note = updated_card.note
-                                        updated += 1
-
-                    logger.info("[%s] Enriched %d cards", uid, updated)
-                else:
-                    logger.info("[%s] All cards already enriched", uid)
-            except Exception as e:
-                logger.error("[%s] Step 1 (Enrich) failed: %s", uid, e, exc_info=True)
-
-            # --- Step 1b: Backfill missing embeddings ---
-            # Cards created when embedding API was down have no embedding;
-            # without this they are permanently excluded from graph linking.
-            try:
-                cards = _card_store(user["dir"])
-                embeddings = _embedding_store(user["dir"], user_id=uid)
-                graph = _graph_store(user["dir"])
-                missing = [c for c in cards.all() if not embeddings.has(c.id)]
-                if missing:
-                    logger.info("[%s] Backfilling embeddings for %d cards", uid, len(missing))
-                    backfilled = 0
-                    for card in missing:
-                        try:
-                            embeddings.add(card.id, card.embed_text())
-                            similar = embeddings.find_similar(card.id, k=3)
-                            for other_id, score in similar:
-                                if score > 0.655:
-                                    graph.add_candidate(card.id, other_id, score)
-                            backfilled += 1
-                        except Exception as e:
-                            logger.warning("[%s] Embedding backfill failed for '%s': %s", uid, card.content, e)
-                    logger.info("[%s] Backfilled %d embeddings", uid, backfilled)
-            except Exception as e:
-                logger.error("[%s] Step 1b (Embedding backfill) failed: %s", uid, e, exc_info=True)
-
-            # --- Step 2: Link ---
-            try:
-                logger.info("[%s] Step 2: Link", uid)
-                graph = _graph_store(user["dir"])
-                candidates = graph.pop_candidates()
-
-                if candidates:
-                    from .judge import Judge
-                    client = _gemini_client()
-                    judge = Judge(client)
-                    created_links = 0
-                    cards = _card_store(user["dir"])
-                    i = 0
-
-                    try:
-                        for i, candidate in enumerate(candidates):
-                            card_a = cards.get(candidate.from_id)
-                            card_b = cards.get(candidate.to_id)
-                            if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted:
-                                continue
-
-                            loop = asyncio.get_event_loop()
-                            result = await loop.run_in_executor(
-                                None,
-                                lambda a=card_a, b=card_b: judge.evaluate(
-                                    a.content, a.meaning, b.content, b.meaning, user_id=uid
-                                ),
-                            )
-
-                            if result:
-                                graph.add_link(
-                                    candidate.from_id,
-                                    candidate.to_id,
-                                    LinkKind(result.link),
-                                    result.confidence,
-                                    result.reason,
-                                )
-                                created_links += 1
-                    except Exception as e:
-                        # Rescue unprocessed candidates back to queue
-                        graph.requeue_candidates(candidates[i:])
-                        raise e
-                    logger.info("[%s] Created %d links", uid, created_links)
-                else:
-                    logger.info("[%s] No pending candidates", uid)
-            except Exception as e:
-                logger.error("[%s] Step 2 (Link) failed: %s", uid, e, exc_info=True)
-
-            # --- Step 3: Difficulty ---
-            try:
-                logger.info("[%s] Step 3: Difficulty", uid)
-                from .difficulty import get_zipf
-                cards = _card_store(user["dir"])
-                all_cards = list(cards.all(include_deleted=False))
-                scored = 0
-                for card in all_cards:
-                    z = get_zipf(card.content)
-                    difficulty = round(z, 2)
-                    if card.difficulty != difficulty:
-                        cards.update(card.id, difficulty=difficulty)
-                        scored += 1
-                logger.info("[%s] Scored %d cards", uid, scored)
-            except Exception as e:
-                logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, e, exc_info=True)
-
-            # --- Step 4: Sync to Mochi ---
-            try:
-                logger.info("[%s] Step 4: Mochi Sync", uid)
-                mochi_key = user["config"].get("mochi_api_key")
-                if not mochi_key:
-                    logger.info("[%s] Mochi API key not set, skipping sync", uid)
-                else:
-                    from .mochi import MochiClient, MochiSync
-                    from .renderer import RenderIntent
-                    cards = _card_store(user["dir"])
-                    graph = _graph_store(user["dir"])
-                    mochi_client = MochiClient(mochi_key)
-                    syncer = MochiSync(
-                        mochi_client,
-                        cards,
-                        graph,
-                        map_path=user["dir"] / "mochi_map.json",
-                    )
-
-                    loop = asyncio.get_running_loop()
-
-                    def _run_sync():
-                        return syncer.sync(RenderIntent.FULL, dry_run=False)
-
-                    stats = await loop.run_in_executor(None, _run_sync)
-                    logger.info(
-                        "[%s] Mochi Sync: %d created, %d updated, %d deleted",
-                        uid, stats["created"], stats["updated"], stats["deleted"],
-                    )
-            except Exception as e:
-                logger.error("[%s] Step 4 (Mochi Sync) failed: %s", uid, e, exc_info=True)
-
-            logger.info("[%s] Pipeline completed.", uid)
-
-        except Exception as e:
-            logger.error("[%s] Pipeline unexpected error: %s", uid, e, exc_info=True)
+    await run_pipeline_background(
+        user,
+        get_user_lock_fn=get_user_lock,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        embedding_store_factory=_embedding_store,
+        gemini_client_factory=_gemini_client,
+        logger=logger,
+        link_kind_enum=LinkKind,
+    )
 
 
 @app.post("/api/pipeline")
