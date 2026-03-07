@@ -49,20 +49,21 @@ struct BooksBrowserApp: App {
 
     var body: some Scene {
         WindowGroup {
-            ContentView()
-                .environment(\.authManager, authManager)
-                .environment(\.kgService, kgService)
-                .tint(AppColors.tint)
-                .onOpenURL { url in
-                    GIDSignIn.sharedInstance.handle(url)
-                }
-                .task {
-                    // 啟動清理：未登入時移除殘留的 KG 同步資料
-                    if !authManager.isLoggedIn {
-                        let actor = BackgroundSyncActor(modelContainer: modelContainer)
-                        try? await actor.clearSyncedData()
+            AppThemeContainer {
+                ContentView()
+                    .environment(\.authManager, authManager)
+                    .environment(\.kgService, kgService)
+                    .onOpenURL { url in
+                        GIDSignIn.sharedInstance.handle(url)
                     }
-                }
+                    .task {
+                        // 啟動清理：未登入時移除殘留的 KG 同步資料
+                        if !authManager.isLoggedIn {
+                            let actor = BackgroundSyncActor(modelContainer: modelContainer)
+                            try? await actor.clearSyncedData()
+                        }
+                    }
+            }
         }
         .modelContainer(modelContainer)
     }

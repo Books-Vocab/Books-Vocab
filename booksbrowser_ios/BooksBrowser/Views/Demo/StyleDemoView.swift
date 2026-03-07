@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct StyleDemoView: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     @State private var selectedTab = 1
     @State private var searchText = ""
     private let sampleEntry = StyleDemoSamples.primaryEntry
@@ -28,8 +29,7 @@ struct StyleDemoView: View {
                     VocabChromePill(title: "Review", systemImage: "tray.full", count: 47, emphasized: true)
                 }
             }
-        }
-        .vocabSkin(.mochiNeutral)
+            }
     }
 
     private var shellSection: some View {
@@ -136,10 +136,10 @@ struct StyleDemoView: View {
         DemoShowroomSection("Tone Chips") {
             VocabCard {
                 HStack(spacing: 10) {
-                    VocabToneChip(text: "core", tone: VocabSkin.mochiNeutral.palette.success)
-                    VocabToneChip(text: "intermediate", tone: VocabSkin.mochiNeutral.tierColor(for: "intermediate"))
-                    VocabToneChip(text: "advanced", tone: VocabSkin.mochiNeutral.tierColor(for: "advanced"))
-                    VocabToneChip(text: "rare", tone: VocabSkin.mochiNeutral.palette.destructive)
+                    VocabToneChip(text: "core", tone: vocabSkin.palette.success)
+                    VocabToneChip(text: "intermediate", tone: vocabSkin.tierColor(for: "intermediate"))
+                    VocabToneChip(text: "advanced", tone: vocabSkin.tierColor(for: "advanced"))
+                    VocabToneChip(text: "rare", tone: vocabSkin.palette.destructive)
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
             }

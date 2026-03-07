@@ -99,6 +99,80 @@ struct VocabSkin {
 }
 
 extension VocabSkin {
+    static let baseTypography = Typography(
+        displayTitle: .system(size: 24, weight: .semibold, design: .default),
+        sectionTitle: .system(size: 18, weight: .semibold, design: .default),
+        detailWord: .system(size: 27, weight: .semibold, design: .monospaced),
+        reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),
+        rowWord: .system(size: 18, weight: .semibold, design: .monospaced),
+        translationTitle: .system(size: 21, weight: .semibold, design: .default),
+        body: .system(size: 15, weight: .regular, design: .default),
+        example: .system(size: 18, weight: .regular, design: .default),
+        caption: .system(size: 12, weight: .medium, design: .default),
+        captionStrong: .system(size: 12, weight: .semibold, design: .default),
+        monoLabel: .system(size: 10, weight: .medium, design: .monospaced),
+        monoBody: .system(size: 14, weight: .regular, design: .monospaced),
+        monoBodyStrong: .system(size: 14, weight: .semibold, design: .monospaced),
+        monoEmphasis: .system(size: 16, weight: .semibold, design: .monospaced),
+        numericHero: .system(size: 38, weight: .semibold, design: .default),
+        iconTiny: .system(size: 10, weight: .thin, design: .default),
+        iconSmall: .system(size: 12, weight: .medium, design: .default),
+        iconMedium: .system(size: 14, weight: .medium, design: .default),
+        iconToolbar: .system(size: 15, weight: .medium, design: .default),
+        iconNavigation: .system(size: 16, weight: .thin, design: .default),
+        symbolLarge: .system(size: 30, weight: .light, design: .default),
+        symbolHero: .system(size: 44, weight: .light, design: .default)
+    )
+
+    static let baseRadii = Radii(
+        stage: 14,
+        card: 12,
+        overlay: 13,
+        control: 10,
+        chip: 8,
+        tiny: 7
+    )
+
+    static let baseSpacing = Spacing(
+        cardPadding: 18,
+        sectionGap: 14,
+        inlineGap: 8,
+        rowPadding: 9
+    )
+
+    static func themed(_ theme: AppTheme) -> VocabSkin {
+        VocabSkin(
+            palette: .init(
+                pageBackground: theme.palette.pageBackground,
+                stageBackground: theme.palette.stageBackground,
+                cardBackground: theme.palette.cardBackground,
+                cardBorder: theme.palette.cardBorder,
+                divider: theme.palette.divider,
+                shadow: theme.palette.shadow,
+                primaryText: theme.palette.primaryText,
+                secondaryText: theme.palette.secondaryText,
+                tertiaryText: theme.palette.tertiaryText,
+                quaternaryText: theme.palette.quaternaryText,
+                translationText: theme.colorScheme == .dark
+                    ? Color(red: 0.80, green: 0.72, blue: 0.64)
+                    : Color(red: 0.54, green: 0.50, blue: 0.44),
+                accent: theme.palette.accent,
+                success: theme.palette.success,
+                destructive: theme.palette.destructive,
+                highlightMark: theme.colorScheme == .dark
+                    ? Color(red: 0.73, green: 0.66, blue: 0.33)
+                    : Color(red: 0.90, green: 0.84, blue: 0.57),
+                mutedFill: theme.palette.mutedFill,
+                link: theme.colorScheme == .dark
+                    ? Color(red: 0.62, green: 0.71, blue: 0.84)
+                    : Color(red: 0.47, green: 0.56, blue: 0.67)
+            ),
+            typography: baseTypography,
+            radii: baseRadii,
+            spacing: baseSpacing
+        )
+    }
+
     static let mochiNeutral = VocabSkin(
         palette: .init(
             pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),
@@ -119,49 +193,14 @@ extension VocabSkin {
             mutedFill: Color.black.opacity(0.035),
             link: Color(red: 0.47, green: 0.56, blue: 0.67)
         ),
-        typography: .init(
-            displayTitle: .system(size: 24, weight: .semibold, design: .default),
-            sectionTitle: .system(size: 18, weight: .semibold, design: .default),
-            detailWord: .system(size: 27, weight: .semibold, design: .monospaced),
-            reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),
-            rowWord: .system(size: 18, weight: .semibold, design: .monospaced),
-            translationTitle: .system(size: 21, weight: .semibold, design: .default),
-            body: .system(size: 15, weight: .regular, design: .default),
-            example: .system(size: 18, weight: .regular, design: .default),
-            caption: .system(size: 12, weight: .medium, design: .default),
-            captionStrong: .system(size: 12, weight: .semibold, design: .default),
-            monoLabel: .system(size: 10, weight: .medium, design: .monospaced),
-            monoBody: .system(size: 14, weight: .regular, design: .monospaced),
-            monoBodyStrong: .system(size: 14, weight: .semibold, design: .monospaced),
-            monoEmphasis: .system(size: 16, weight: .semibold, design: .monospaced),
-            numericHero: .system(size: 38, weight: .semibold, design: .default),
-            iconTiny: .system(size: 10, weight: .thin, design: .default),
-            iconSmall: .system(size: 12, weight: .medium, design: .default),
-            iconMedium: .system(size: 14, weight: .medium, design: .default),
-            iconToolbar: .system(size: 15, weight: .medium, design: .default),
-            iconNavigation: .system(size: 16, weight: .thin, design: .default),
-            symbolLarge: .system(size: 30, weight: .light, design: .default),
-            symbolHero: .system(size: 44, weight: .light, design: .default)
-        ),
-        radii: .init(
-            stage: 14,
-            card: 12,
-            overlay: 13,
-            control: 10,
-            chip: 8,
-            tiny: 7
-        ),
-        spacing: .init(
-            cardPadding: 18,
-            sectionGap: 14,
-            inlineGap: 8,
-            rowPadding: 9
-        )
+        typography: baseTypography,
+        radii: baseRadii,
+        spacing: baseSpacing
     )
 }
 
 private struct VocabSkinEnvironmentKey: EnvironmentKey {
-    static let defaultValue = VocabSkin.mochiNeutral
+    static let defaultValue = VocabSkin.themed(.light)
 }
 
 extension EnvironmentValues {

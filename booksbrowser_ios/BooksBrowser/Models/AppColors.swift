@@ -52,7 +52,7 @@ enum AppColors {
     static let tierRareDark          = destructiveDark
 
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
-    // 用於 NavigationBar、TabBar、所有可點擊元素的默認色
+    // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
     static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
 
     // ── Glass-era Token ───────────────────────────────────────────────────
@@ -65,6 +65,9 @@ enum AppColors {
 // MARK: - 環境感知
 
 extension AppColors {
+    static func theme(_ scheme: ColorScheme) -> AppTheme {
+        AppTheme.resolve(for: scheme)
+    }
 
     static func accent(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? accentDark : accentLight

@@ -69,6 +69,9 @@ struct KnowledgeGraphPresenter: View {
             colorScheme: colorScheme,
             backgroundHex: state.graphTheme.backgroundHex,
             tierHexes: state.graphTheme.tierHexes,
+            edgeHexes: state.graphTheme.edgeHexes,
+            labelHex: state.graphTheme.labelHex,
+            labelShadowHex: state.graphTheme.labelShadowHex,
             forces: state.forces,
             onNodeTap: onNodeTapped
         )

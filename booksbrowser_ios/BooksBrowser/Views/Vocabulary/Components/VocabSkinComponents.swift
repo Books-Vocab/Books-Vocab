@@ -9,7 +9,7 @@ struct VocabCard<Content: View>: View {
         padding: CGFloat? = nil,
         @ViewBuilder content: () -> Content
     ) {
-        self.padding = padding ?? VocabSkin.mochiNeutral.spacing.cardPadding
+        self.padding = padding ?? VocabSkin.baseSpacing.cardPadding
         self.content = content()
     }
 

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct SettingsPresenter: View {
+    @Environment(\.appTheme) private var appTheme
     @Environment(\.vocabSkin) private var vocabSkin
 
     let state: SettingsPresenterState
@@ -94,9 +95,9 @@ struct SettingsPresenter: View {
                     HStack(spacing: 12) {
                         ZStack {
                             Circle()
-                                .fill(.white)
+                                .fill(vocabSkin.palette.cardBackground)
                                 .frame(width: 22, height: 22)
-                                .shadow(color: .black.opacity(0.08), radius: 2, y: 1)
+                                .shadow(color: vocabSkin.palette.shadow.opacity(0.9), radius: 2, y: 1)
                             Text("G")
                                 .font(vocabSkin.typography.captionStrong)
                                 .foregroundStyle(Color(red: 0.87, green: 0.19, blue: 0.19))
@@ -185,7 +186,7 @@ struct SettingsPresenter: View {
                 if let error = state.auth.authError {
                     Text(error)
                         .font(vocabSkin.typography.caption)
-                        .foregroundStyle(.red)
+                        .foregroundStyle(vocabSkin.palette.destructive)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, 8)
                         .padding(.bottom, 4)
@@ -249,7 +250,7 @@ struct SettingsPresenter: View {
                     if state.auth.isDeveloper {
                         Text("DEVELOPER")
                             .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(.orange)
+                            .foregroundStyle(appTheme.palette.warning)
                     }
 #endif
                 }
@@ -287,11 +288,12 @@ struct SettingsPresenter: View {
 
                 SettingsRow(icon: "antenna.radiowaves.left.and.right", label: "連線狀態") {
                     HStack(spacing: 8) {
+                        let statusTone = kg.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
                         Circle()
-                            .fill(kg.isConnected ? vocabSkin.palette.success : Color.orange)
+                            .fill(statusTone)
                             .frame(width: 8, height: 8)
                             .shadow(
-                                color: (kg.isConnected ? vocabSkin.palette.success : Color.orange).opacity(0.6),
+                                color: statusTone.opacity(0.6),
                                 radius: kg.connectionPulse ? 5 : 2
                             )
                         Text(kg.isConnected ? "已連線" : "離線")

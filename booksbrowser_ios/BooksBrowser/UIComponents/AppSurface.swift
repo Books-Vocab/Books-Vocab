@@ -11,7 +11,7 @@ import SwiftUI
 // MARK: - AppCard (Pure White Paper)
 
 struct AppCard<Content: View>: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var appTheme
     let padding: CGFloat
     @ViewBuilder var content: Content
 
@@ -38,12 +38,12 @@ struct AppCard<Content: View>: View {
 
     private var cardBackground: some View {
         RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-            .fill(colorScheme == .dark ? Color.white.opacity(0.08) : Color.white)
+            .fill(appTheme.palette.elevatedCardBackground)
     }
 
     private var cardBorder: some View {
         RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-            .strokeBorder(Color.primary.opacity(colorScheme == .dark ? 0.10 : 0.05), lineWidth: 0.5)
+            .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
     }
 }
 
@@ -105,7 +105,7 @@ extension View {
         } else {
             self.background(
                 shape.fill(.ultraThinMaterial)
-                    .overlay(shape.stroke(.white.opacity(0.2), lineWidth: 1))
+                    .overlay(shape.stroke(Color.primary.opacity(0.12), lineWidth: 1))
             )
         }
     }

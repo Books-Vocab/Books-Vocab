@@ -26,6 +26,9 @@ struct GraphWebView: UIViewRepresentable {
     let colorScheme: ColorScheme
     let backgroundHex: String
     let tierHexes: [String: String]
+    let edgeHexes: [String: String]
+    let labelHex: String
+    let labelShadowHex: String
     let forces: GraphForces
     var onNodeTap: (String) -> Void
 
@@ -58,11 +61,13 @@ struct GraphWebView: UIViewRepresentable {
         let coord = context.coordinator
         coord.onNodeTap = onNodeTap
 
+        let themeSignature = themeSignature
+
         // Layer 1: theme change
-        if coord.lastColorScheme != colorScheme {
+        if coord.lastThemeSignature != themeSignature || coord.lastColorScheme != colorScheme {
+            coord.lastThemeSignature = themeSignature
             coord.lastColorScheme = colorScheme
-            let mode = colorScheme == .dark ? "dark" : "light"
-            webView.evaluateJavaScript("updateTheme('\(mode)')", completionHandler: nil)
+            coord.sendInitGraph(buildPayload(), webView: webView)
         }
 
         // Layer 2: forces change
@@ -110,6 +115,9 @@ struct GraphWebView: UIViewRepresentable {
         struct ThemePayload: Encodable {
             let mode, background: String
             let colors: [String: TierPair]
+            let edges: [String: String]
+            let label: String
+            let labelShadow: String
         }
         struct Payload: Encodable {
             let nodes: [NodePayload]
@@ -125,12 +133,29 @@ struct GraphWebView: UIViewRepresentable {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
         }
         let colorPairs = colorsDict.mapValues { TierPair(dark: $0["dark"]!, light: $0["light"]!) }
-        let theme = ThemePayload(mode: mode, background: bg, colors: colorPairs)
+        let theme = ThemePayload(
+            mode: mode,
+            background: bg,
+            colors: colorPairs,
+            edges: edgeHexes,
+            label: labelHex,
+            labelShadow: labelShadowHex
+        )
         let payload = Payload(nodes: nodePayloads, links: linkPayloads, forces: forces, theme: theme)
 
         guard let data = try? JSONEncoder().encode(payload),
               let json = String(data: data, encoding: .utf8) else { return "{}" }
         return json
+    }
+
+    private var themeSignature: String {
+        let sortedTiers = tierHexes.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "|")
+        let sortedEdges = edgeHexes.sorted { $0.key < $1.key }
+            .map { "\($0.key)=\($0.value)" }
+            .joined(separator: "|")
+        return "\(colorScheme)-\(backgroundHex)-\(labelHex)-\(labelShadowHex)-\(sortedTiers)-\(sortedEdges)"
     }
 
     // MARK: - Coordinator
@@ -142,6 +167,7 @@ struct GraphWebView: UIViewRepresentable {
         var onNodeTap: (String) -> Void
 
         var lastColorScheme: ColorScheme? = nil
+        var lastThemeSignature: String? = nil
         var lastForces: GraphForces? = nil
         var lastNodeCount = -1
         var lastLinkCount = -1
