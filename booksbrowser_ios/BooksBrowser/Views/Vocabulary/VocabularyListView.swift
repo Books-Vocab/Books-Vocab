@@ -135,7 +135,6 @@ struct VocabularyListView: View {
                 searchText = ""  // 清空搜尋
             }
         }
-        .vocabSkin(.mochiNeutral)
     }
 
     // MARK: - Local Vocab Content
