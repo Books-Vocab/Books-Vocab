@@ -143,6 +143,59 @@ def test_graph_links_returns_active_only(isolated_api):
     assert data[0]["kind"] == LinkKind.CONFUSABLE.value
 
 
+def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    cards = api_mod._card_store(user_dir)
+    graph = api_mod._graph_store(user_dir)
+
+    evoke = cards.add(
+        content="evoke",
+        meaning="喚起",
+        examples=["The story can **evoke** old memories."],
+        mode="production",
+    )
+    invoke = cards.add(content="invoke", meaning="援引")
+    suppress = cards.add(content="suppress", meaning="壓制")
+    obsolete = cards.add(content="obsolete", meaning="過時")
+    cards.delete(obsolete.id)
+
+    graph.add_link(evoke.id, invoke.id, LinkKind.CONFUSABLE, 0.92, "similar spelling")
+    graph.add_link(evoke.id, suppress.id, LinkKind.CONTRASTS_WITH, 0.74, "opposite direction")
+    graph.add_link(evoke.id, obsolete.id, LinkKind.SHARES_USAGE, 0.50, "should be hidden")
+
+    r = client.get("/api/vocab/evoke", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()
+
+    assert body["mode"] == "production"
+    assert body["examples"] == ["The story can **evoke** old memories."]
+    assert body["linksByKind"]["confusable"] == [
+        {
+            "id": body["linksByKind"]["confusable"][0]["id"],
+            "cardId": invoke.id,
+            "word": "invoke",
+            "kind": "confusable",
+            "label": "易混",
+            "confidence": 0.92,
+            "reason": "similar spelling",
+        }
+    ]
+    assert body["linksByKind"]["contrasts_with"] == [
+        {
+            "id": body["linksByKind"]["contrasts_with"][0]["id"],
+            "cardId": suppress.id,
+            "word": "suppress",
+            "kind": "contrasts_with",
+            "label": "對比",
+            "confidence": 0.74,
+            "reason": "opposite direction",
+        }
+    ]
+    assert "shares_usage" not in body["linksByKind"]
+
+
 def test_translate_endpoints_success_and_error(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers

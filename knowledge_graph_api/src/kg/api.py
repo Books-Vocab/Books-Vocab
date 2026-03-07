@@ -26,7 +26,7 @@ from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 import jwt
 from filelock import FileLock
 
@@ -77,7 +77,7 @@ _attach_memory_log_handler("uvicorn.access")
 
 from .cards import CardStore
 from .embeddings import EmbeddingStore
-from .graph import GraphStore, LinkKind
+from .graph import GraphStore, LinkKind, LINK_LABELS
 from .apple_auth import verify_apple_token
 from .google_auth import verify_google_token
 
@@ -344,6 +344,17 @@ class CardResponse(BaseModel):
     mode: str
     isDeleted: bool
     inflections: list[str] = []
+    linksByKind: dict[str, list["CardLinkSummaryResponse"]] = Field(default_factory=dict)
+
+
+class CardLinkSummaryResponse(BaseModel):
+    id: str
+    cardId: str
+    word: str
+    kind: str
+    label: str
+    confidence: float
+    reason: str
 
 
 class TranslateRequest(BaseModel):
@@ -396,6 +407,69 @@ class DeleteAccountResponse(BaseModel):
     deleted_user_id: str
     linked_ids: list[str]
     deleted_dirs: list[str]
+
+
+def _build_links_by_kind(
+    card_id: str,
+    graph: GraphStore,
+    cards_by_id: dict[str, Any],
+) -> dict[str, list[CardLinkSummaryResponse]]:
+    grouped: dict[str, list[CardLinkSummaryResponse]] = {}
+
+    for link in graph.get_links_for(card_id):
+        other_id = link.to_id if link.from_id == card_id else link.from_id
+        other_card = cards_by_id.get(other_id)
+        if not other_card or other_card.is_deleted:
+            continue
+
+        kind_key = link.kind.value
+        grouped.setdefault(kind_key, []).append(
+            CardLinkSummaryResponse(
+                id=link.id,
+                cardId=other_card.id,
+                word=other_card.content,
+                kind=kind_key,
+                label=LINK_LABELS.get(link.kind, link.kind.value),
+                confidence=link.confidence,
+                reason=link.reason,
+            )
+        )
+
+    ordered: dict[str, list[CardLinkSummaryResponse]] = {}
+    for kind in LinkKind:
+        items = grouped.get(kind.value)
+        if items:
+            ordered[kind.value] = sorted(items, key=lambda item: item.word.lower())
+
+    return ordered
+
+
+def _card_response(
+    card,
+    graph: GraphStore,
+    cards_by_id: dict[str, Any],
+):
+    from .difficulty import get_tier
+
+    tier = get_tier(card.content)
+    links_by_kind = {}
+    if not card.is_deleted:
+        links_by_kind = _build_links_by_kind(card.id, graph, cards_by_id)
+
+    return CardResponse(
+        id=card.id,
+        content=card.content,
+        meaning=card.meaning,
+        pos=card.pos,
+        difficulty=card.difficulty,
+        difficultyTier=tier.tag,
+        note=card.note,
+        examples=card.examples,
+        mode=card.mode,
+        isDeleted=card.is_deleted,
+        inflections=card.inflections or [],
+        linksByKind=links_by_kind,
+    )
 
 
 def _collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id: str) -> tuple[str, list[str]]:
@@ -543,9 +617,8 @@ def health(user: dict = Depends(get_current_user)):
 @app.get("/api/vocab")
 def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
-    from .difficulty import get_tier
-
     cards_store = _card_store(user["dir"])
+    graph = _graph_store(user["dir"])
     if since:
         try:
             # Parse ISO 8601 (e.g. 2026-02-27T10:00:00Z)
@@ -557,25 +630,10 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
             raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
     else:
         # Initial full sync avoids deleted cards
-        cards = cards_store.all()
+        cards = list(cards_store.all())
 
-    result = []
-    for card in cards:
-        tier = get_tier(card.content)
-        result.append(CardResponse(
-            id=card.id,
-            content=card.content,
-            meaning=card.meaning,
-            pos=card.pos,
-            difficulty=card.difficulty,
-            difficultyTier=tier.tag,
-            note=card.note,
-            examples=card.examples,
-            mode=card.mode,
-            isDeleted=card.is_deleted,
-            inflections=card.inflections or [],
-        ))
-    return result
+    cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
+    return [_card_response(card, graph, cards_by_id) for card in cards]
 
 
 # ---------------------------------------------------------------------------
@@ -584,25 +642,12 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
 @app.get("/api/vocab/{word}")
 def lookup_word(word: str, user: dict = Depends(get_current_user)):
     """Lookup a word in the current user's card store."""
-    from .difficulty import get_tier
-
     cards = _card_store(user["dir"])
+    graph = _graph_store(user["dir"])
+    cards_by_id = {card.id: card for card in cards.all(include_deleted=True)}
     for card in cards.all():
         if card.content.lower() == word.lower():
-            tier = get_tier(card.content)
-            return CardResponse(
-                id=card.id,
-                content=card.content,
-                meaning=card.meaning,
-                pos=card.pos,
-                difficulty=card.difficulty,
-                difficultyTier=tier.tag,
-                note=card.note,
-                examples=card.examples,
-                mode=card.mode,
-                isDeleted=card.is_deleted,
-                inflections=card.inflections or [],
-            )
+            return _card_response(card, graph, cards_by_id)
     raise HTTPException(404, f"Word '{word}' not found")
 
 

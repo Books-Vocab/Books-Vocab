@@ -613,7 +613,7 @@ private struct TodayReviewView: View {
                         textColor: .secondary,
                         highlightTone: AppColors.translation(.light),
                         italic: true,
-                        truncateAroundHighlightCharacters: 5
+                        truncateAroundHighlightWords: 5
                     )
                 }
             }
@@ -664,13 +664,11 @@ private struct TodayReviewView: View {
         let isHighlight: Bool
     }
 
-    private struct ReviewRichUnit {
-        let character: Character
-        let isHighlight: Bool
-    }
-
     private static let inlineHighlightPattern = try! NSRegularExpression(
         pattern: #"\*\*([^*]+)\*\*"#
+    )
+    private static let tokenPattern = try! NSRegularExpression(
+        pattern: #"\S+"#
     )
 
     private func reviewRichText(
@@ -679,12 +677,12 @@ private struct TodayReviewView: View {
         textColor: Color,
         highlightTone: Color,
         italic: Bool,
-        truncateAroundHighlightCharacters: Int? = nil
+        truncateAroundHighlightWords: Int? = nil
     ) -> Text {
-        let parsedSegments = parseReviewRichSegments(from: raw)
-        let segments = truncateAroundHighlightCharacters.map {
-            truncatedReviewRichSegments(parsedSegments, contextCharacters: $0)
-        } ?? parsedSegments
+        let truncatedRaw = truncateAroundHighlightWords.map {
+            truncatedReviewText(raw, contextWords: $0)
+        } ?? raw
+        let segments = parseReviewRichSegments(from: truncatedRaw)
 
         var result = AttributedString()
 
@@ -742,177 +740,83 @@ private struct TodayReviewView: View {
         return segments
     }
 
-    private func firstHighlightRange(in units: [ReviewRichUnit]) -> Range<Int>? {
-        var cursor = 0
-        while cursor < units.count {
-            if units[cursor].isHighlight {
-                var end = cursor + 1
-                while end < units.count, units[end].isHighlight {
-                    end += 1
-                }
-                return cursor..<end
-            }
-            cursor += 1
+    private func truncatedReviewText(_ raw: String, contextWords: Int) -> String {
+        guard contextWords >= 0 else { return raw }
+
+        let nsString = raw as NSString
+        guard let highlightMatch = Self.inlineHighlightPattern.firstMatch(
+            in: raw,
+            range: NSRange(location: 0, length: nsString.length)
+        ) else {
+            return raw
         }
-        return nil
+
+        let highlightRange = highlightMatch.range
+        let beforeText = nsString.substring(to: highlightRange.location)
+        let highlightText = nsString.substring(with: highlightRange)
+        let afterStart = highlightRange.location + highlightRange.length
+        let afterText = nsString.substring(from: afterStart)
+
+        let truncatedBefore = truncateReviewContext(beforeText, keepingLastWordCount: contextWords)
+        let truncatedAfter = truncateReviewContext(afterText, keepingFirstWordCount: contextWords)
+
+        return "\(truncatedBefore.prefix)\(truncatedBefore.text)\(highlightText)\(truncatedAfter.text)\(truncatedAfter.suffix)"
     }
 
-    private func units(from segments: [ReviewRichSegment]) -> [ReviewRichUnit] {
-        var units: [ReviewRichUnit] = []
-        for segment in segments {
-            units.append(contentsOf: segment.text.map { ReviewRichUnit(character: $0, isHighlight: segment.isHighlight) })
-        }
-        return units
-    }
-
-    private func richSegments(from units: [ReviewRichUnit]) -> [ReviewRichSegment] {
-        var segments: [ReviewRichSegment] = []
-
-        for unit in units {
-            let text = String(unit.character)
-            if let last = segments.last, last.isHighlight == unit.isHighlight {
-                segments[segments.count - 1] = ReviewRichSegment(
-                    text: last.text + text,
-                    isHighlight: last.isHighlight
-                )
-            } else {
-                segments.append(ReviewRichSegment(text: text, isHighlight: unit.isHighlight))
-            }
+    private func truncateReviewContext(
+        _ text: String,
+        keepingLastWordCount count: Int
+    ) -> (prefix: String, text: String) {
+        guard count > 0 else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? ("", text) : ("...", "")
         }
 
-        return segments
-    }
-
-    private func expandedLowerBound(
-        in units: [ReviewRichUnit],
-        from highlightStart: Int,
-        visibleCharacters: Int
-    ) -> Int {
-        var index = highlightStart
-        var remaining = visibleCharacters
-
-        while index > 0 {
-            index -= 1
-            if isContextCharacter(units[index].character) {
-                remaining -= 1
-                if remaining == 0 {
-                    break
-                }
-            }
-        }
-
-        return index
-    }
-
-    private func expandedUpperBound(
-        in units: [ReviewRichUnit],
-        from highlightEnd: Int,
-        visibleCharacters: Int
-    ) -> Int {
-        var index = highlightEnd
-        var remaining = visibleCharacters
-
-        while index < units.count {
-            if isContextCharacter(units[index].character) {
-                remaining -= 1
-                index += 1
-                if remaining == 0 {
-                    break
-                }
-            } else {
-                index += 1
-            }
-        }
-
-        return index
-    }
-
-    private func isContextCharacter(_ character: Character) -> Bool {
-        character.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
-    }
-
-    private func trimOuterWhitespace(in segments: [ReviewRichSegment]) -> [ReviewRichSegment] {
-        guard !segments.isEmpty else { return segments }
-        var trimmed = segments
-
-        while let first = trimmed.first, first.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            trimmed.removeFirst()
-        }
-
-        while let last = trimmed.last, last.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-            trimmed.removeLast()
-        }
-
-        if let first = trimmed.first {
-            let value = first.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            trimmed[0] = ReviewRichSegment(text: value, isHighlight: first.isHighlight)
-        }
-
-        if let last = trimmed.last {
-            let value = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
-            trimmed[trimmed.count - 1] = ReviewRichSegment(text: value, isHighlight: last.isHighlight)
-        }
-
-        return trimmed.filter { !$0.text.isEmpty }
-    }
-
-    private func firstHighlightRange(in segments: [ReviewRichSegment]) -> Range<Int>? {
-        let units = units(from: segments)
-        return firstHighlightRange(in: units)
-    }
-
-    private func truncatedReviewRichSegments(
-        _ segments: [ReviewRichSegment],
-        contextCharacters: Int
-    ) -> [ReviewRichSegment] {
-        let units = units(from: segments)
-
-        guard
-            contextCharacters >= 0,
-            let highlightRange = firstHighlightRange(in: units)
-        else {
-            return segments
-        }
-
-        let lowerBound = expandedLowerBound(
-            in: units,
-            from: highlightRange.lowerBound,
-            visibleCharacters: contextCharacters
+        let nsString = text as NSString
+        let tokens = Self.tokenPattern.matches(
+            in: text,
+            range: NSRange(location: 0, length: nsString.length)
         )
-        let upperBound = expandedUpperBound(
-            in: units,
-            from: highlightRange.upperBound,
-            visibleCharacters: contextCharacters
-        )
-
-        var sliced = richSegments(from: Array(units[lowerBound..<upperBound]))
-        sliced = trimOuterWhitespace(in: sliced)
-
-        if lowerBound > 0 {
-            sliced.insert(ReviewRichSegment(text: "...", isHighlight: false), at: 0)
+        let validIndices = tokens.enumerated().compactMap { index, match in
+            isWordToken(match, in: nsString) ? index : nil
         }
 
-        if upperBound < units.count {
-            sliced.append(ReviewRichSegment(text: "...", isHighlight: false))
+        guard validIndices.count > count, count >= 0 else {
+            return ("", text)
         }
 
-        return mergeReviewRichSegments(sliced)
+        let tokenIndex = validIndices[validIndices.count - count]
+        let cutStart = tokens[tokenIndex].range.location
+        return ("...", nsString.substring(from: cutStart))
     }
 
-    private func mergeReviewRichSegments(_ segments: [ReviewRichSegment]) -> [ReviewRichSegment] {
-        var merged: [ReviewRichSegment] = []
-
-        for segment in segments where !segment.text.isEmpty {
-            if let last = merged.last, last.isHighlight == segment.isHighlight {
-                merged[merged.count - 1] = ReviewRichSegment(
-                    text: last.text + segment.text,
-                    isHighlight: last.isHighlight
-                )
-            } else {
-                merged.append(segment)
-            }
+    private func truncateReviewContext(
+        _ text: String,
+        keepingFirstWordCount count: Int
+    ) -> (text: String, suffix: String) {
+        guard count > 0 else {
+            return text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? (text, "") : ("", "...")
         }
 
-        return merged
+        let nsString = text as NSString
+        let tokens = Self.tokenPattern.matches(
+            in: text,
+            range: NSRange(location: 0, length: nsString.length)
+        )
+        let validIndices = tokens.enumerated().compactMap { index, match in
+            isWordToken(match, in: nsString) ? index : nil
+        }
+
+        guard validIndices.count > count, count >= 0 else {
+            return (text, "")
+        }
+
+        let tokenIndex = validIndices[count - 1]
+        let cutEnd = tokens[tokenIndex].range.location + tokens[tokenIndex].range.length
+        return (nsString.substring(to: cutEnd), "...")
+    }
+
+    private func isWordToken(_ match: NSTextCheckingResult, in text: NSString) -> Bool {
+        let token = text.substring(with: match.range)
+        return token.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
     }
 }
