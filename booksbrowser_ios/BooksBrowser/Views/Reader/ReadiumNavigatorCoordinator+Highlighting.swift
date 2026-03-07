@@ -1,0 +1,131 @@
+import Foundation
+import UIKit
+import ReadiumNavigator
+
+extension ReadiumNavigatorView.Coordinator {
+    @objc func handleBlockerTap(_ gesture: UITapGestureRecognizer) {
+        print("👋 Blocker tapped, clearing selection...")
+        DispatchQueue.main.async {
+            self.parent.onWordDeselected()
+        }
+    }
+
+    func markVocabWords(_ words: [String]) {
+        guard !words.isEmpty else { return }
+
+        Task {
+            await GlobalDebouncer.shared.debounce(key: "markVocabWords", duration: 0.8) { [weak self] in
+                guard let self else { return }
+                await MainActor.run {
+                    guard let navigator = self.navigator else { return }
+
+                    let escaped = words.map {
+                        $0.replacingOccurrences(of: "\\", with: "\\\\")
+                            .replacingOccurrences(of: "\"", with: "\\\"")
+                    }
+                    let wordsJSON = escaped.map { "\"\($0)\"" }.joined(separator: ",")
+                    let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
+
+                    Task { _ = await navigator.evaluateJavaScript(js) }
+                    print("📘 Marked \(words.count) vocab words")
+                }
+            }
+        }
+    }
+
+    func markNewVocabWord(_ word: String) {
+        guard let navigator else { return }
+        let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
+        Task { @MainActor in
+            _ = await navigator.evaluateJavaScript(js)
+            print("📘 Marked new vocab: \(word)")
+        }
+    }
+
+    func clearAllVocabHighlights() {
+        guard let navigator else { return }
+        let js = """
+        document.querySelectorAll('.vocab-word').forEach(function(el) {
+            el.classList.remove('vocab-word', 'active-word');
+            var parent = el.parentNode;
+            if (parent) {
+                while (el.firstChild) parent.insertBefore(el.firstChild, el);
+                parent.removeChild(el);
+                parent.normalize();
+            }
+        });
+        """
+        Task { @MainActor in
+            _ = await navigator.evaluateJavaScript(js)
+            print("🧹 Cleared all vocab highlights")
+        }
+    }
+
+    func removeVocabWord(_ word: String) {
+        guard let navigator else { return }
+        let escaped = word.replacingOccurrences(of: "\\", with: "\\\\").replacingOccurrences(of: "\"", with: "\\\"")
+        let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
+        Task { @MainActor in
+            _ = await navigator.evaluateJavaScript(js)
+            print("🗑️ Removed vocab underline: \(word)")
+        }
+    }
+
+    func clearActiveHighlight() {
+        guard let navigator else { return }
+        let js = """
+        document.querySelectorAll('.active-word').forEach(function(el) {
+            if (el.classList.contains('vocab-word')) {
+                el.classList.remove('active-word');
+                return;
+            }
+            var parent = el.parentNode;
+            while (el.firstChild) parent.insertBefore(el.firstChild, el);
+            parent.removeChild(el);
+            parent.normalize();
+        });
+        """
+        Task { @MainActor in
+            _ = await navigator.evaluateJavaScript(js)
+            navigator.clearSelection()
+        }
+    }
+
+    static func buildFontFaceCSS() -> String {
+        let fontDefs: [(file: String, family: String, weight: String, style: String)] = [
+            ("CormorantGaramond-Regular", "Cormorant Garamond", "normal", "normal"),
+            ("CormorantGaramond-Bold", "Cormorant Garamond", "bold", "normal"),
+            ("CormorantGaramond-Italic", "Cormorant Garamond", "normal", "italic"),
+            ("CormorantGaramond-BoldItalic", "Cormorant Garamond", "bold", "italic"),
+            ("ElmsSans-Regular", "Elms Sans", "normal", "normal"),
+            ("ElmsSans-Bold", "Elms Sans", "bold", "normal"),
+            ("ElmsSans-Italic", "Elms Sans", "normal", "italic"),
+            ("ElmsSans-BoldItalic", "Elms Sans", "bold", "italic"),
+            ("SpaceMono-Regular", "Space Mono", "normal", "normal"),
+            ("SpaceMono-Bold", "Space Mono", "bold", "normal"),
+            ("SpaceMono-Italic", "Space Mono", "normal", "italic"),
+            ("SpaceMono-BoldItalic", "Space Mono", "bold", "italic"),
+        ]
+
+        var css = ""
+        for def in fontDefs {
+            guard let url = Bundle.main.url(forResource: def.file, withExtension: "ttf"),
+                  let data = try? Data(contentsOf: url) else {
+                print("⚠️ Font not found in bundle: \(def.file).ttf")
+                continue
+            }
+            let b64 = data.base64EncodedString()
+            css += """
+            @font-face {
+                font-family: '\(def.family)';
+                font-weight: \(def.weight);
+                font-style: \(def.style);
+                src: url('data:font/truetype;base64,\(b64)') format('truetype');
+            }
+
+            """
+        }
+        return css
+    }
+}

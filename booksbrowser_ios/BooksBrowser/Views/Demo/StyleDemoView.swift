@@ -103,18 +103,7 @@ struct StyleDemoView: View {
         return DemoShowroomSection("Card Blocks") {
             VocabCard(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CardHeroSection(card: card, colorScheme: .light)
-                        .padding(AppMetrics.spacingLarge)
-
-                    CardSectionDivider()
-
-                    CardExamplesSection(examples: card.examples, colorScheme: .light)
-                        .padding(AppMetrics.spacingLarge)
-
-                    CardSectionDivider()
-
-                    CardExplanationSection(explanation: card.explanation ?? "", colorScheme: .light)
-                        .padding(AppMetrics.spacingLarge)
+                    CardDocumentView(document: card.document)
 
                     if !card.forms.isEmpty {
                         CardSectionDivider()

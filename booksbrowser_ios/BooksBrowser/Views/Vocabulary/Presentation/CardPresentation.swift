@@ -36,6 +36,7 @@ struct CardPresentation {
     let syncStatus: Int
     let dateAdded: Date
     let linkGroups: [CardLinkGroupPresentation]
+    let document: CardDocument
 
     init(entry: VocabularyEntry, linkOrdering: [String] = Self.defaultLinkOrdering) {
         word = entry.word
@@ -68,6 +69,29 @@ struct CardPresentation {
                 items: items
             )
         }
+
+        let trimmedContext = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
+        let computedShowsSourceContext: Bool
+        if trimmedContext.isEmpty {
+            computedShowsSourceContext = false
+        } else {
+            computedShowsSourceContext = examples.first != trimmedContext || bookTitle != "Knowledge Graph"
+        }
+
+        document = CardDocumentBuilder.build(
+            word: word,
+            translation: translation,
+            pronunciation: pronunciation,
+            partOfSpeech: partOfSpeech,
+            difficultyTier: difficultyTier,
+            reviewModeTitle: reviewMode.localizedTitle,
+            examples: examples,
+            sourceContext: sourceContext,
+            bookTitle: bookTitle,
+            chapterTitle: chapterTitle,
+            explanation: explanation,
+            showsSourceContext: computedShowsSourceContext
+        )
     }
 
     var totalLinkCount: Int {

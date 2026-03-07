@@ -46,30 +46,7 @@ struct WordDetailPresenter: View {
         ScrollView {
             VocabCard(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
-                    CardHeroSection(card: state.card, colorScheme: colorScheme)
-                        .padding(AppMetrics.spacingLarge)
-
-                    if !state.card.examples.isEmpty {
-                        CardSectionDivider()
-                        CardExamplesSection(examples: state.card.examples, colorScheme: colorScheme)
-                            .padding(AppMetrics.spacingLarge)
-                    }
-
-                    if state.card.showsSourceContext {
-                        CardSectionDivider()
-                        CardSourceSection(
-                            sourceContext: state.card.sourceContext,
-                            bookTitle: state.card.bookTitle,
-                            chapterTitle: state.card.chapterTitle
-                        )
-                        .padding(AppMetrics.spacingLarge)
-                    }
-
-                    if let explanation = state.card.explanation, !explanation.isEmpty {
-                        CardSectionDivider()
-                        CardExplanationSection(explanation: explanation, colorScheme: colorScheme)
-                            .padding(AppMetrics.spacingLarge)
-                    }
+                    CardDocumentView(document: state.card.document)
 
                     if !state.card.forms.isEmpty {
                         CardSectionDivider()
