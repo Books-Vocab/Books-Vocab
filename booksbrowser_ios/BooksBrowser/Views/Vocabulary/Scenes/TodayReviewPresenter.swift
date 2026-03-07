@@ -158,12 +158,7 @@ struct TodayReviewPresenter: View {
         let card = currentCard.card
 
         return VStack(alignment: .leading, spacing: 16) {
-            switch card.reviewMode {
-            case .recognition:
-                Text(card.translation)
-                    .font(vocabSkin.typography.translationTitle)
-                    .foregroundStyle(vocabSkin.palette.translationText)
-            case .production:
+            if card.reviewMode == .production {
                 Text(card.word)
                     .font(vocabSkin.typography.detailWord)
                     .foregroundStyle(vocabSkin.palette.primaryText)
@@ -171,26 +166,7 @@ struct TodayReviewPresenter: View {
                     .minimumScaleFactor(0.6)
             }
 
-            if let example = card.examples.first {
-                CardRichTextRenderer.text(
-                    example,
-                    style: CardRichTextStyle(
-                        font: vocabSkin.typography.example,
-                        textColor: vocabSkin.palette.secondaryText,
-                        highlightColor: vocabSkin.palette.highlightMark,
-                        italic: true
-                    ),
-                    truncateAroundMarkedWordRadius: 5
-                )
-                .lineSpacing(4)
-            }
-
-            if let explanation = card.explanation, !explanation.isEmpty {
-                CardSectionDivider(horizontalPadding: reviewCardPadding)
-
-                CardExplanationSection(explanation: explanation, colorScheme: .light)
-                    .lineSpacing(4)
-            }
+            CardDocumentView(document: reviewBackDocument(for: card))
 
             if !currentCard.linkGroups.isEmpty {
                 CardSectionDivider(horizontalPadding: reviewCardPadding)
@@ -316,5 +292,18 @@ struct TodayReviewPresenter: View {
 
     private var reviewCardPadding: CGFloat {
         24
+    }
+
+    private func reviewBackDocument(for card: CardPresentation) -> CardDocument {
+        let blocks = card.document.blocks.compactMap { block -> CardDocumentBlock? in
+            switch block {
+            case .hero, .source:
+                return nil
+            case .example, .divider, .meaning:
+                return block
+            }
+        }
+
+        return CardDocument(blocks: blocks)
     }
 }

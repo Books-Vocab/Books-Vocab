@@ -1,8 +1,15 @@
 import Foundation
 
 enum CardMarkdownInlineParser {
+    private static let demotedLeadingMarkers: Set<String> = [
+        "名詞", "動詞", "形容詞", "副詞", "介系詞", "代名詞", "連接詞", "感嘆詞",
+        "片語", "短語", "縮寫", "冠詞", "數詞",
+        "noun", "verb", "adjective", "adverb", "preposition", "pronoun", "conjunction",
+        "interjection", "phrase", "n.", "v.", "adj.", "adv.", "prep.", "pron.", "conj.", "phr."
+    ]
+
     static func parseParagraph(_ raw: String) -> CardDocumentParagraph {
-        CardDocumentParagraph(inlines: parseInlines(raw))
+        CardDocumentParagraph(inlines: normalizeLeadingMarker(parseInlines(raw)))
     }
 
     static func parseInlines(_ raw: String) -> [CardDocumentInline] {
@@ -66,5 +73,46 @@ enum CardMarkdownInlineParser {
         flushBuffer()
         return result
     }
-}
 
+    private static func normalizeLeadingMarker(_ inlines: [CardDocumentInline]) -> [CardDocumentInline] {
+        guard !inlines.isEmpty else { return inlines }
+
+        let firstContentIndex = inlines.firstIndex { inline in
+            switch inline {
+            case .text(let value):
+                return !value.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            case .mark, .code, .emphasis:
+                return true
+            }
+        }
+
+        guard
+            let index = firstContentIndex,
+            case .mark(let value) = inlines[index],
+            shouldDemoteLeadingMarker(value, following: Array(inlines.dropFirst(index + 1)))
+        else {
+            return inlines
+        }
+
+        var normalized = inlines
+        normalized[index] = .text(value)
+        return normalized
+    }
+
+    private static func shouldDemoteLeadingMarker(
+        _ value: String,
+        following: [CardDocumentInline]
+    ) -> Bool {
+        let normalizedValue = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        guard demotedLeadingMarkers.contains(normalizedValue) else { return false }
+
+        guard let next = following.first else { return true }
+        switch next {
+        case .text(let text):
+            let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.hasPrefix("，") || trimmed.hasPrefix(",") || trimmed.hasPrefix("：") || trimmed.hasPrefix(":")
+        case .mark, .code, .emphasis:
+            return false
+        }
+    }
+}
