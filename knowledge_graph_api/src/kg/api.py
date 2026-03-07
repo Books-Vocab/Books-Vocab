@@ -133,6 +133,7 @@ from .billing import (
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
+from .auth_service import create_jwt_token, resolve_and_link_user
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -1166,80 +1167,24 @@ def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_us
 # ---------------------------------------------------------------------------
 
 def _create_jwt_token(user_id: str, provider: str) -> str:
-    """Create a JWT access token."""
-    now = datetime.now(tz=timezone.utc)
-    expires = now + timedelta(minutes=JWT_EXPIRY_MINUTES)
-
-    payload = {
-        "sub": user_id,
-        "provider": provider,
-        "iat": now,
-        "exp": expires,
-    }
-
-    return jwt.encode(payload, JWT_SECRET, algorithm=JWT_ALGORITHM)
+    return create_jwt_token(
+        user_id,
+        provider,
+        jwt_secret=JWT_SECRET,
+        jwt_algorithm=JWT_ALGORITHM,
+        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+    )
 
 
 def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | None = None) -> str:
-    """Resolve and link user accounts by email. Returns canonical user_id."""
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-
-        # Ensure _email_index exists
-        if "_email_index" not in users:
-            users["_email_index"] = {}
-
-        canonical_id = None
-        now = datetime.now(tz=timezone.utc).isoformat()
-
-        # Case 1: Email exists and is in index → account merge
-        if email and email in users["_email_index"]:
-            canonical_id = users["_email_index"][email]
-
-            # If this is a different provider, link it
-            if canonical_id != provider_user_id:
-                # Ensure linked_ids list exists in canonical user
-                if "linked_ids" not in users[canonical_id]:
-                    users[canonical_id]["linked_ids"] = []
-
-                # Add provider_user_id to linked accounts if not already there
-                if provider_user_id not in users[canonical_id]["linked_ids"]:
-                    users[canonical_id]["linked_ids"].append(provider_user_id)
-
-                # Create stub entry for provider_user_id pointing to canonical
-                if provider_user_id not in users:
-                    users[provider_user_id] = {}
-                users[provider_user_id]["_linked_to"] = canonical_id
-
-        # Case 2: No email or email not in index → use provider_user_id as canonical
-        else:
-            canonical_id = provider_user_id
-            if canonical_id not in users:
-                users[canonical_id] = {}
-
-            # Add email to index if present
-            if email:
-                users["_email_index"][email] = canonical_id
-
-        # Update canonical user metadata
-        if canonical_id not in users:
-            users[canonical_id] = {}
-
-        users[canonical_id].update({
-            "provider": provider,
-            "email": email,
-            "last_login": now,
-        })
-
-        revoked_before = users.get("_revoked_before")
-        if isinstance(revoked_before, dict):
-            revoked_before.pop(canonical_id, None)
-            revoked_before.pop(provider_user_id, None)
-            if not revoked_before:
-                users.pop("_revoked_before", None)
-
-        save_users(users)
-        return canonical_id
+    return resolve_and_link_user(
+        provider_user_id,
+        provider,
+        users_lock_file=str(USERS_LOCK_FILE),
+        load_users_fn=load_users,
+        save_users_fn=save_users,
+        email=email,
+    )
 
 
 @app.post("/auth/verify", response_model=AuthVerifyResponse)
