@@ -115,6 +115,15 @@ from .translate_service import (
     run_phrase_translate,
     run_quick_translate,
 )
+from .vocab_service import (
+    add_vocab_entries,
+    build_links_by_kind,
+    card_response,
+    delete_vocab_word,
+    graph_links_payload,
+    list_vocab_cards,
+    lookup_vocab_word,
+)
 from .admin_test_matrix import (
     build_test_catalog,
     get_last_test_run,
@@ -322,34 +331,13 @@ def _build_links_by_kind(
     graph: GraphStore,
     cards_by_id: dict[str, Any],
 ) -> dict[str, list[CardLinkSummaryResponse]]:
-    grouped: dict[str, list[CardLinkSummaryResponse]] = {}
-
-    for link in graph.get_links_for(card_id):
-        other_id = link.to_id if link.from_id == card_id else link.from_id
-        other_card = cards_by_id.get(other_id)
-        if not other_card or other_card.is_deleted:
-            continue
-
-        kind_key = link.kind.value
-        grouped.setdefault(kind_key, []).append(
-            CardLinkSummaryResponse(
-                id=link.id,
-                cardId=other_card.id,
-                word=other_card.content,
-                kind=kind_key,
-                label=LINK_LABELS.get(link.kind, link.kind.value),
-                confidence=link.confidence,
-                reason=link.reason,
-            )
-        )
-
-    ordered: dict[str, list[CardLinkSummaryResponse]] = {}
-    for kind in LinkKind:
-        items = grouped.get(kind.value)
-        if items:
-            ordered[kind.value] = sorted(items, key=lambda item: item.word.lower())
-
-    return ordered
+    return build_links_by_kind(
+        card_id,
+        graph=graph,
+        cards_by_id=cards_by_id,
+        link_kinds=list(LinkKind),
+        link_labels=LINK_LABELS,
+    )
 
 
 def _card_response(
@@ -357,24 +345,13 @@ def _card_response(
     graph: GraphStore,
     cards_by_id: dict[str, Any],
 ):
-    tier = get_tier(card.content)
-    links_by_kind = {}
-    if not card.is_deleted:
-        links_by_kind = _build_links_by_kind(card.id, graph, cards_by_id)
-
-    return CardResponse(
-        id=card.id,
-        content=card.content,
-        meaning=card.meaning,
-        pos=card.pos,
-        difficulty=card.difficulty,
-        difficultyTier=tier.tag,
-        note=card.note,
-        examples=card.examples,
-        mode=card.mode,
-        isDeleted=card.is_deleted,
-        inflections=card.inflections or [],
-        linksByKind=links_by_kind,
+    return card_response(
+        card,
+        graph=graph,
+        cards_by_id=cards_by_id,
+        tier_getter=get_tier,
+        link_kinds=list(LinkKind),
+        link_labels=LINK_LABELS,
     )
 
 
@@ -759,21 +736,12 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
     _require_pro_access(user, "knowledge_sync")
     cards_store = _card_store(user["dir"])
     graph = _graph_store(user["dir"])
-    if since:
-        try:
-            # Parse ISO 8601 (e.g. 2026-02-27T10:00:00Z)
-            # Remove Z if present because fromisoformat in <3.11 expects proper +00:00, 
-            # but Python 3.11+ handles Z natively.
-            parsed_since = datetime.fromisoformat(since.replace("Z", "+00:00"))
-            cards = cards_store.get_modified_since(parsed_since)
-        except ValueError:
-            raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
-    else:
-        # Initial full sync avoids deleted cards
-        cards = list(cards_store.all())
-
-    cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
-    return [_card_response(card, graph, cards_by_id) for card in cards]
+    return list_vocab_cards(
+        since=since,
+        cards_store=cards_store,
+        graph=graph,
+        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -785,11 +753,12 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
     _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
     graph = _graph_store(user["dir"])
-    cards_by_id = {card.id: card for card in cards.all(include_deleted=True)}
-    for card in cards.all():
-        if card.content.lower() == word.lower():
-            return _card_response(card, graph, cards_by_id)
-    raise HTTPException(404, f"Word '{word}' not found")
+    return lookup_vocab_word(
+        word,
+        cards_store=cards,
+        graph=graph,
+        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -800,12 +769,7 @@ def delete_word(word: str, user: dict = Depends(get_current_user)):
     """Delete a word from the current user's card store."""
     _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
-    for card in cards.all():
-        if card.content.lower() == word.lower():
-            card_id = card.id
-            cards.delete(card_id)
-            return {"deleted": word, "id": card_id}
-    raise HTTPException(404, f"Word '{word}' not found")
+    return delete_vocab_word(word, cards_store=cards)
 
 # ---------------------------------------------------------------------------
 # GET /api/graph/links
@@ -815,21 +779,7 @@ def get_graph_links(user: dict = Depends(get_current_user)):
     """Get all active graph connections for the user."""
     _require_pro_access(user, "knowledge_graph")
     graph = _graph_store(user["dir"])
-    links = []
-    
-    for link in graph._links.values():
-        if link.status != "active":
-            continue
-        links.append(GraphLinkResponse(
-            id=link.id,
-            fromId=link.from_id,
-            toId=link.to_id,
-            kind=link.kind.value,
-            confidence=link.confidence,
-            reason=link.reason
-        ))
-            
-    return links
+    return graph_links_payload(graph=graph)
 
 # ---------------------------------------------------------------------------
 # POST /api/vocab  — Batch add from BooksBrowser
@@ -839,94 +789,13 @@ def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user))
     """Add vocabulary entries from BooksBrowser → KG Cards."""
     _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
-    existing = {c.content.lower() for c in cards.all()}
-
-    created = 0
-    skipped = 0
-    duplicates: list[str] = []
-    card_ids: dict[str, str] = {}
-
-    for entry in entries:
-        word = entry.word.strip()
-        if word.lower() in existing:
-            skipped += 1
-            duplicates.append(word)
-            # Still return the existing card ID
-            for c in cards.all():
-                if c.content.lower() == word.lower():
-                    card_ids[word] = c.id
-                    break
-            continue
-
-        # Build example with **word** marking
-        example = ""
-        if entry.context:
-            # Try to wrap the word in the context with **bold**
-            pattern = re.compile(re.escape(word), re.IGNORECASE)
-            if pattern.search(entry.context):
-                example = pattern.sub(f"**{word}**", entry.context, count=1)
-            else:
-                example = entry.context
-
-        # 片語（含空格）不做 inflection 展開
-        inflections: list[str] = []
-        root = None
-        if " " not in word:
-            root = (entry.root_form or "").strip().lower() or None
-            if root:
-                try:
-                    from lemminflect import getAllInflections
-                    infl_map = getAllInflections(root)
-                    # 若 lemminflect 完全查不到此 root，代表 AI 給的是非法單字，fallback 到原字
-                    if not infl_map:
-                        logger.warning("lemminflect found no inflections for root '%s', falling back to '%s'", root, word)
-                        root = word.lower()
-                        infl_map = getAllInflections(root)
-                    seen = {word.lower()}
-                    for forms in infl_map.values():
-                        for f in forms:
-                            fl = f.lower()
-                            if fl not in seen:
-                                inflections.append(fl)
-                                seen.add(fl)
-                except Exception as e:
-                    logger.warning("lemminflect failed for root '%s': %s", root, e)
-
-        card = cards.add(
-            content=word,
-            meaning=entry.translation.strip(),
-            examples=[example] if example else [],
-            root_form=root,
-            inflections=inflections,
-        )
-        card_ids[word] = card.id
-        existing.add(word.lower())
-        created += 1
-
-    if created > 0:
-        embeddings = _embedding_store(user["dir"], user_id=user["id"])
-        graph = _graph_store(user["dir"])
-        for entry in entries:
-            word = entry.word.strip()
-            cid = card_ids.get(word)
-            card = cards.get(cid) if cid else None
-            if card and not embeddings.has(card.id):
-                try:
-                    embeddings.add(card.id, card.embed_text())
-                    # Find similarity candidates
-                    similar = embeddings.find_similar(card.id, k=3)
-                    for other_id, score in similar:
-                        if score > 0.655:
-                            graph.add_candidate(card.id, other_id, score)
-                except Exception as e:
-                    logger.warning("Failed to generate embedding for '%s': %s", word, e)
-                    continue
-
-    return VocabAddResponse(
-        created=created,
-        skipped=skipped,
-        duplicates=duplicates,
-        cardIds=card_ids,
+    return add_vocab_entries(
+        entries,
+        user=user,
+        cards=cards,
+        embeddings=_embedding_store(user["dir"], user_id=user["id"]),
+        graph=_graph_store(user["dir"]),
+        logger=logger,
     )
 
 
