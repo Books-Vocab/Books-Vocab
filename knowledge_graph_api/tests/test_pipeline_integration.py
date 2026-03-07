@@ -47,7 +47,24 @@ def pipeline_api(tmp_path):
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = tmp_path / "users.json"
     lock_file = tmp_path / "users.json.lock"
-    users_file.write_text(json.dumps({user_id: {"config": {}}}))
+    users_file.write_text(
+        json.dumps(
+            {
+                user_id: {
+                    "config": {},
+                    "subscription": {
+                        "product_id": "kg.pro.monthly",
+                        "status": "active",
+                        "is_active": True,
+                        "is_trial": True,
+                        "expires_at": "2099-01-01T00:00:00Z",
+                        "environment": "xcode",
+                        "source": "tests",
+                    },
+                }
+            }
+        )
+    )
     token = _make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
     with (
