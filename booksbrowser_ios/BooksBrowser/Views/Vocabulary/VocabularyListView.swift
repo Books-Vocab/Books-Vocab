@@ -136,6 +136,7 @@ struct VocabularyListView: View {
                 WordDetailSheet(entry: entry)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.scrolls)
             }
             .task {
                 await kgService.healthCheck()

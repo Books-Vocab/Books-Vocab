@@ -50,6 +50,7 @@ struct KGVocabView: View {
             WordDetailSheet(entry: entry)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
         }
         .fullScreenCover(item: $activeReviewSession) { session in
             TodayReviewView(

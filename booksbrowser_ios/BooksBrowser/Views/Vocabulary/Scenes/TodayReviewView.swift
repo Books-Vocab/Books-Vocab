@@ -85,22 +85,23 @@ struct TodayReviewView: View {
     private func reviewCard(_ current: VocabularyEntry) -> some View {
         AppCard(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
-                // Front content — always visible
-                reviewCardFront(current)
+                // Front content — Button to toggle reveal (not onTapGesture, avoids ScrollView gesture conflict)
+                Button {
+                    guard !isAdvancing else { return }
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                        showBack.toggle()
+                    }
+                } label: {
+                    reviewCardFront(current)
+                }
+                .buttonStyle(.plain)
 
-                // Back content — visible after flip
+                // Back content — visible after reveal, links are tappable
                 if showBack {
                     cardDivider
 
                     reviewCardBack(current)
                 }
-            }
-        }
-        .contentShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
-        .onTapGesture {
-            guard !isAdvancing else { return }
-            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
-                showBack.toggle()
             }
         }
     }

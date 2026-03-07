@@ -7,12 +7,17 @@ struct WordDetailGraphLinkRow: View {
     let onTap: (() -> Void)?
 
     var body: some View {
+        let _ = print("[DEBUG-LINKROW] word=\(link.word) hasTap=\(onTap != nil)")
         Group {
             if let onTap {
-                Button(action: onTap) {
+                Button(action: {
+                    print("[DEBUG-LINKROW] Button action FIRED for \(link.word)")
+                    onTap()
+                }) {
                     linkRowContent(showsAccessory: true)
                 }
                 .buttonStyle(.plain)
+                .contentShape(Rectangle())
             } else {
                 linkRowContent(showsAccessory: false)
             }

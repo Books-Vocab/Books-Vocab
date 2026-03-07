@@ -27,8 +27,8 @@ struct AppCard<Content: View>: View {
         content
             .padding(padding)
             .background(cardBackground)
-            .overlay(cardBorder)
             .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+            .overlay(cardBorder.allowsHitTesting(false))
             .shadow(
                 color: .black.opacity(AppShadows.paperFloatOpacity),
                 radius: AppShadows.paperFloatRadius,

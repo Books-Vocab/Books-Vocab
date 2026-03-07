@@ -105,7 +105,12 @@ struct WordDetailSheet: View {
         .navigationTitle(card.word)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
-            LinkedCardOverlayStack(stack: linkedCardStack)
+            // Only top-level WordDetailSheet renders the overlay stack.
+            // Inner sheets (inside LinkedCardOverlayStack) share the same binding
+            // but must NOT create a nested overlay — that causes infinite recursion.
+            if wrapInNavigation {
+                LinkedCardOverlayStack(stack: linkedCardStack)
+            }
         }
     }
 
@@ -260,7 +265,7 @@ struct WordDetailSheet: View {
 
     private var linksSection: some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-            sectionLabel("知識連結", systemImage: "point.3.filled.connected.trianglepath")
+            sectionLabel("知識連結", systemImage: "link")
 
             ForEach(card.linkGroups) { group in
                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
@@ -285,7 +290,7 @@ struct WordDetailSheet: View {
                 text: card.dateAdded.formatted(date: .abbreviated, time: .omitted)
             )
             metaItem(
-                icon: "point.3.connected.trianglepath",
+                icon: "link",
                 text: "\(card.totalLinkCount) connections"
             )
             metaItem(
@@ -320,10 +325,16 @@ struct WordDetailSheet: View {
 
     @ViewBuilder
     private func graphLinkRow(_ link: KGCardLinkSummary) -> some View {
+        let target = entry.linkedEntry(for: link, in: allEntries)
+        let _ = print("[DEBUG-LINK] link.word=\(link.word) link.cardId=\(link.cardId) target=\(target?.word ?? "NIL") allEntries.count=\(allEntries.count)")
         WordDetailGraphLinkRow(
             link: link,
-            onTap: entry.linkedEntry(for: link, in: allEntries).map { target in
-                { linkedCardStack.wrappedValue.append(target) }
+            onTap: target.map { t in
+                {
+                    print("[DEBUG-LINK] TAP FIRED for \(link.word) -> appending \(t.word) to stack")
+                    linkedCardStack.wrappedValue.append(t)
+                    print("[DEBUG-LINK] stack count now: \(linkedCardStack.wrappedValue.count)")
+                }
             }
         )
     }
