@@ -57,7 +57,7 @@ struct WordDetailSheet: View {
                 heroSection
 
                 if !card.examples.isEmpty {
-                    contentSection(
+                    WordDetailSectionCard(
                         title: "例句",
                         systemImage: "text.quote",
                         tint: AppColors.translation(colorScheme)
@@ -80,7 +80,7 @@ struct WordDetailSheet: View {
                 }
 
                 if card.showsSourceContext {
-                    contentSection(
+                    WordDetailSectionCard(
                         title: "來源",
                         systemImage: "quote.opening",
                         tint: .secondary
@@ -110,7 +110,7 @@ struct WordDetailSheet: View {
                 }
 
                 if let explanation = card.explanation, !explanation.isEmpty {
-                    contentSection(
+                    WordDetailSectionCard(
                         title: "教學筆記",
                         systemImage: "text.book.closed",
                         tint: AppColors.accent(colorScheme)
@@ -128,7 +128,7 @@ struct WordDetailSheet: View {
                 }
 
                 if !card.forms.isEmpty {
-                    contentSection(
+                    WordDetailSectionCard(
                         title: "變化形",
                         systemImage: "text.badge.plus",
                         tint: AppColors.translation(colorScheme)
@@ -148,7 +148,7 @@ struct WordDetailSheet: View {
                 }
 
                 if !card.linkGroups.isEmpty {
-                    contentSection(
+                    WordDetailSectionCard(
                         title: "知識連結",
                         systemImage: "point.3.filled.connected.trianglepath",
                         tint: AppColors.translation(colorScheme)
@@ -171,17 +171,33 @@ struct WordDetailSheet: View {
                     }
                 }
 
-                contentSection(
+                WordDetailSectionCard(
                     title: "卡片資訊",
                     systemImage: "tray.full",
                     tint: .secondary
                 ) {
                     VStack(spacing: AppMetrics.spacingSmall) {
-                        metadataRow("卡片模式", value: card.reviewMode.localizedTitle)
-                        metadataRow("加入日期", value: card.dateAdded.formatted(date: .abbreviated, time: .omitted))
-                        metadataRow("知識連結", value: "\(card.totalLinkCount)")
-                        metadataRow("同步狀態") {
-                            syncBadge(status: card.syncStatus)
+                        WordDetailMetadataRow(title: "卡片模式") {
+                            Text(card.reviewMode.localizedTitle)
+                                .font(AppFonts.caption(weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        WordDetailMetadataRow(title: "加入日期") {
+                            Text(card.dateAdded.formatted(date: .abbreviated, time: .omitted))
+                                .font(AppFonts.caption(weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        WordDetailMetadataRow(title: "知識連結") {
+                            Text("\(card.totalLinkCount)")
+                                .font(AppFonts.caption(weight: .medium))
+                                .foregroundStyle(.secondary)
+                        }
+                        WordDetailMetadataRow(title: "同步狀態") {
+                            VocabularySyncBadge(
+                                status: card.syncStatus,
+                                successTone: AppColors.saved(colorScheme),
+                                destructiveTone: AppColors.destructive(colorScheme)
+                            )
                         }
                     }
                 }
@@ -199,156 +215,23 @@ struct WordDetailSheet: View {
     // MARK: - Sections
 
     private var heroSection: some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
-                    VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
-                        Text(card.word)
-                            .font(AppFonts.hero(weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .minimumScaleFactor(0.85)
-
-                        if let pron = card.pronunciation, !pron.isEmpty {
-                            Text("/\(pron)/")
-                                .font(AppFonts.subhead())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer(minLength: 12)
-
-                    if let tier = card.difficultyTier {
-                        tierChip(tier)
-                    }
-                }
-
-                HStack(spacing: AppMetrics.spacingSmall) {
-                    if let pos = card.partOfSpeech {
-                        AppTag(text: pos, tone: AppColors.accent(colorScheme))
-                    }
-                    AppTag(
-                        text: card.reviewMode.localizedTitle,
-                        tone: AppColors.translation(colorScheme)
-                    )
-                }
-
-                Text(card.translation)
-                    .font(AppFonts.h2(weight: .semibold))
-                    .foregroundStyle(AppColors.translation(colorScheme))
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.clear)
-        }
-    }
-
-    private func contentSection<Content: View>(
-        title: String,
-        systemImage: String,
-        tint: Color,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                Label {
-                    Text(title)
-                        .font(AppFonts.caption(weight: .semibold))
-                } icon: {
-                    Image(systemName: systemImage)
-                }
-                .foregroundStyle(tint)
-
-                content()
-            }
-        }
+        let tier = card.difficultyTier.map { AppColors.tier($0, scheme: colorScheme) }
+        return WordDetailHeroCard(
+            card: card,
+            tierTone: tier?.color,
+            tierLabel: tier?.label,
+            accentTone: AppColors.accent(colorScheme),
+            translationTone: AppColors.translation(colorScheme)
+        )
     }
 
     @ViewBuilder
     private func graphLinkRow(_ link: KGCardLinkSummary) -> some View {
-        if let target = entry.linkedEntry(for: link, in: allEntries) {
-            Button {
-                linkedCardStack.wrappedValue.append(target)
-            } label: {
-                HStack(alignment: .top, spacing: AppMetrics.spacingSmall) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(link.word)
-                            .font(AppFonts.subhead(weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-
-                        Text(link.reason)
-                            .font(AppFonts.caption())
-                            .foregroundStyle(.secondary)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-
-                    Image(systemName: "arrow.up.right")
-                        .font(.caption.weight(.semibold))
-                        .foregroundStyle(.tertiary)
-                }
-                .padding(.vertical, AppMetrics.spacingSmall)
+        WordDetailGraphLinkRow(
+            link: link,
+            onTap: entry.linkedEntry(for: link, in: allEntries).map { target in
+                { linkedCardStack.wrappedValue.append(target) }
             }
-            .buttonStyle(.plain)
-        } else {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(link.word)
-                    .font(AppFonts.subhead(weight: .semibold))
-                    .foregroundStyle(.primary)
-                Text(link.reason)
-                    .font(AppFonts.caption())
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, AppMetrics.spacingSmall)
-        }
-    }
-
-    @ViewBuilder
-    private func metadataRow(_ title: String, value: String) -> some View {
-        HStack {
-            Text(title)
-                .font(AppFonts.caption())
-                .foregroundStyle(.tertiary)
-            Spacer()
-            Text(value)
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(.secondary)
-        }
-    }
-
-    @ViewBuilder
-    private func metadataRow<Content: View>(_ title: String, @ViewBuilder trailing: () -> Content) -> some View {
-        HStack {
-            Text(title)
-                .font(AppFonts.caption())
-                .foregroundStyle(.tertiary)
-            Spacer()
-            trailing()
-        }
-    }
-
-    // MARK: - Shared views
-
-    private func tierChip(_ tier: String) -> some View {
-        let (color, label) = AppColors.tier(tier, scheme: colorScheme)
-        return AppTag(text: label, tone: color)
-    }
-
-    @ViewBuilder
-    private func syncBadge(status: Int) -> some View {
-        switch status {
-        case 1:
-            Label("已同步", systemImage: "checkmark.circle.fill")
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(AppColors.saved(colorScheme))
-        case 2:
-            Label("同步失敗", systemImage: "exclamationmark.circle.fill")
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(AppColors.destructive(colorScheme))
-        default:
-            Label("待同步", systemImage: "clock")
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(.secondary)
-        }
+        )
     }
 }
