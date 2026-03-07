@@ -110,6 +110,13 @@ from .api_models import (
     VocabAddResponse,
     VocabEntry,
 )
+from .user_store import (
+    collect_account_ids_for_deletion,
+    load_users_from,
+    normalize_users_payload,
+    parse_datetime,
+    save_users_to,
+)
 
 load_dotenv()
 
@@ -176,82 +183,17 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
 
 
 def load_users() -> dict[str, dict[str, Any]]:
-    if not USERS_FILE.exists():
-        return {}
-    data = json.loads(USERS_FILE.read_text())
-    normalized, _ = _normalize_users_payload(data)
-    return normalized
+    return load_users_from(USERS_FILE, _normalize_users_payload)
 
 def save_users(users: dict[str, dict[str, Any]]) -> None:
-    normalized, _ = _normalize_users_payload(users)
-    tmp_path = USERS_FILE.with_suffix(".json.tmp")
-    tmp_path.write_text(json.dumps(normalized, indent=2))
-    tmp_path.replace(USERS_FILE)
+    save_users_to(USERS_FILE, users, _normalize_users_payload)
 
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    changed = False
-    normalized: dict[str, Any] = {}
-
-    for user_id, record in users.items():
-        if not isinstance(record, dict) or user_id.startswith("_"):
-            normalized[user_id] = record
-            continue
-
-        normalized_record = dict(record)
-        had_config = isinstance(normalized_record.get("config"), dict)
-        config = dict(normalized_record.get("config", {})) if had_config else {}
-        legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
-        subscription = normalized_record.get("subscription")
-
-        if "mochi_api_key" in record:
-            changed = True
-            if isinstance(legacy_mochi_key, str):
-                legacy_mochi_key = legacy_mochi_key.strip()
-            if legacy_mochi_key and not config.get("mochi_api_key"):
-                config["mochi_api_key"] = legacy_mochi_key
-
-        if had_config or config:
-            if normalized_record.get("config") != config:
-                changed = True
-            normalized_record["config"] = config
-        elif "config" in normalized_record:
-            normalized_record.pop("config", None)
-            changed = True
-
-        if subscription is not None:
-            if isinstance(subscription, dict):
-                normalized_subscription = _default_subscription_payload()
-                normalized_subscription.update(subscription)
-                if normalized_subscription != subscription:
-                    changed = True
-                normalized_record["subscription"] = normalized_subscription
-            else:
-                normalized_record.pop("subscription", None)
-                changed = True
-
-        normalized[user_id] = normalized_record
-
-    return normalized, changed
+    return normalize_users_payload(users, _default_subscription_payload)
 
 def _parse_datetime(raw: Any) -> datetime | None:
-    if raw is None:
-        return None
-    if isinstance(raw, datetime):
-        if raw.tzinfo is None:
-            return raw.replace(tzinfo=timezone.utc)
-        return raw.astimezone(timezone.utc)
-    if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw), tz=timezone.utc)
-    if isinstance(raw, str):
-        try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
-        except ValueError:
-            try:
-                return datetime.fromtimestamp(float(raw), tz=timezone.utc)
-            except ValueError:
-                return None
-    return None
+    return parse_datetime(raw)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
     token = credentials.credentials.strip()
@@ -413,28 +355,7 @@ def _card_response(
 
 
 def _collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id: str) -> tuple[str, list[str]]:
-    """Return canonical id + all related ids that must be purged."""
-    record = users.get(user_id, {})
-    canonical_id = user_id
-    if isinstance(record, dict):
-        linked_to = record.get("_linked_to")
-        if isinstance(linked_to, str) and linked_to:
-            canonical_id = linked_to
-
-    ids: set[str] = {canonical_id, user_id}
-    canonical_record = users.get(canonical_id, {})
-    if isinstance(canonical_record, dict):
-        linked_ids = canonical_record.get("linked_ids", [])
-        if isinstance(linked_ids, list):
-            ids.update(uid for uid in linked_ids if isinstance(uid, str) and uid)
-
-    for uid, info in users.items():
-        if uid.startswith("_"):
-            continue
-        if isinstance(info, dict) and info.get("_linked_to") == canonical_id:
-            ids.add(uid)
-
-    return canonical_id, sorted(ids)
+    return collect_account_ids_for_deletion(users, user_id)
 
 
 def _default_subscription_payload() -> dict[str, Any]:
