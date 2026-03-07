@@ -310,6 +310,35 @@ def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
     assert "mochi_api_key" not in users["legacy_user"]
 
 
+def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": True,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "BooksBrowser Pro",
+        "price_display": "$1.00/month",
+        "status": "trial",
+        "is_trial": True,
+        "trial_days": 7,
+        "will_renew": True,
+        "expires_at": "2026-03-14T00:00:00+00:00",
+        "last_synced_at": "2026-03-07T00:00:00+00:00",
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    r = client.get("/api/user/entitlements", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()["pro"]
+    assert body["is_active"] is True
+    assert body["status"] == "trial"
+    assert body["product_id"] == "com.wordnexus.pro.monthly"
+    assert body["price_display"] == "$1.00/month"
+    assert body["will_renew"] is True
+
+
 def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
     users_file = tmp_path / "users.json"
     lock_file = tmp_path / "users.json.lock"

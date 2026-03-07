@@ -25,6 +25,16 @@ struct SettingsPresenterState {
         let lastSyncDescription: String?
     }
 
+    struct SubscriptionSection {
+        let planName: String
+        let badgeText: String
+        let badgeTone: SubscriptionBadgeTone
+        let summary: String
+        let detail: String
+        let ctaTitle: String
+        let isRefreshing: Bool
+    }
+
     struct MochiSection {
         let isEnabled: Bool
     }
@@ -41,9 +51,16 @@ struct SettingsPresenterState {
 
     let auth: AuthSection
     let kg: KGSection?
+    let subscription: SubscriptionSection?
     let mochi: MochiSection?
     let about: AboutSection
     let danger: DangerSection?
+}
+
+enum SubscriptionBadgeTone {
+    case neutral
+    case accent
+    case success
 }
 
 struct SettingsPresenterActions {
@@ -53,6 +70,7 @@ struct SettingsPresenterActions {
     let manualLogin: () -> Void
     let setDeveloperAccount: () -> Void
     let clearDeveloperAccount: () -> Void
+    let showSubscriptionPaywall: () -> Void
     let showMochiInfo: () -> Void
     let requestDeleteAccount: () -> Void
 }

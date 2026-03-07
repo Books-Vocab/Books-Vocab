@@ -13,6 +13,9 @@ struct SettingsPresenter: View {
             ScrollView {
                 VStack(spacing: 24) {
                     authSection
+                    if let subscription = state.subscription {
+                        subscriptionSection(subscription)
+                    }
                     if let kg = state.kg {
                         kgSection(kg)
                     }
@@ -303,6 +306,69 @@ struct SettingsPresenter: View {
         }
     }
 
+    private func subscriptionSection(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "訂閱", icon: "sparkles.rectangle.stack")
+
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(alignment: .top, spacing: 12) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text(subscription.planName)
+                                .font(vocabSkin.typography.sectionTitle)
+                                .foregroundStyle(vocabSkin.palette.primaryText)
+
+                            Text(subscription.summary)
+                                .font(vocabSkin.typography.body)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .lineSpacing(4)
+                        }
+
+                        Spacer()
+
+                        subscriptionBadge(subscription)
+                    }
+
+                    Text(subscription.detail)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+                    Button(action: actions.showSubscriptionPaywall) {
+                        HStack(spacing: 10) {
+                            if subscription.isRefreshing {
+                                ProgressView()
+                                    .controlSize(.small)
+                            } else {
+                                Image(systemName: "arrow.right.circle.fill")
+                                    .font(vocabSkin.typography.iconMedium)
+                            }
+
+                            Text(subscription.ctaTitle)
+                                .font(vocabSkin.typography.body.weight(.medium))
+
+                            Spacer()
+                        }
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 12)
+                        .background(vocabSkin.palette.pageBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(subscription.isRefreshing)
+                }
+                .padding(vocabSkin.spacing.cardPadding)
+            }
+            .settingsCard()
+
+            SettingsSectionFooter("目前先以狀態卡與 paywall 骨架接上，購買與 restore 流程下一步接 StoreKit 2。")
+        }
+    }
+
     private func mochiSection(_ mochi: SettingsPresenterState.MochiSection) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "第三方整合", icon: "puzzlepiece.extension")
@@ -399,6 +465,29 @@ struct SettingsPresenter: View {
 
             SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。")
         }
+    }
+}
+
+private extension SettingsPresenter {
+    @ViewBuilder
+    func subscriptionBadge(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
+        let tone: Color
+        switch subscription.badgeTone {
+        case .neutral:
+            tone = vocabSkin.palette.secondaryText
+        case .accent:
+            tone = vocabSkin.palette.accent
+        case .success:
+            tone = vocabSkin.palette.success
+        }
+
+        Text(subscription.badgeText)
+            .font(vocabSkin.typography.monoLabel)
+            .foregroundStyle(tone)
+            .padding(.horizontal, 9)
+            .padding(.vertical, 6)
+            .background(tone.opacity(0.12))
+            .clipShape(Capsule())
     }
 }
 
@@ -549,6 +638,70 @@ struct MochiInfoSheetView: View {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+    }
+}
+
+struct SubscriptionPaywallSheet: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(alignment: .leading, spacing: 20) {
+                    Image(systemName: "sparkles.rectangle.stack.fill")
+                        .font(vocabSkin.typography.symbolHero)
+                        .foregroundStyle(vocabSkin.palette.accent)
+
+                    Text("BooksBrowser Pro")
+                        .font(vocabSkin.typography.displayTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+
+                    Text("第一版已把訂閱狀態、試用文案與設定頁入口接好。下一步會把這裡接上 StoreKit 2 購買、restore 與 App Store 同步。")
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineSpacing(6)
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        paywallFeatureRow("AI 翻譯與語境解釋")
+                        paywallFeatureRow("知識庫同步與跨裝置狀態")
+                        paywallFeatureRow("關聯圖與 Mochi 同步")
+                    }
+                    .padding(vocabSkin.spacing.cardPadding)
+                    .background(vocabSkin.palette.cardBackground)
+                    .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+                    .overlay(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    )
+
+                    Text("價格與免費試用長度將以 App Store 顯示為準。")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
+                .padding(20)
+            }
+            .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+            .navigationTitle("訂閱")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                }
+            }
+        }
+    }
+
+    private func paywallFeatureRow(_ text: String) -> some View {
+        HStack(spacing: 10) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.success)
+            Text(text)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+            Spacer()
         }
     }
 }

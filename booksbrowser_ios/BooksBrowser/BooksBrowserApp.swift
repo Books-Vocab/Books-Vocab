@@ -15,6 +15,7 @@ struct BooksBrowserApp: App {
     let modelContainer: ModelContainer
     let authManager = AuthManager.shared
     let kgService = KGService()
+    let subscriptionManager = SubscriptionManager.shared
 
     init() {
         let schema = Schema([Book.self, VocabularyEntry.self])
@@ -52,6 +53,7 @@ struct BooksBrowserApp: App {
             ContentView()
                 .environment(\.authManager, authManager)
                 .environment(\.kgService, kgService)
+                .environment(\.subscriptionManager, subscriptionManager)
                 .tint(AppColors.tint)
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
@@ -62,6 +64,7 @@ struct BooksBrowserApp: App {
                         let actor = BackgroundSyncActor(modelContainer: modelContainer)
                         try? await actor.clearSyncedData()
                     }
+                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
                 }
         }
         .modelContainer(modelContainer)

@@ -10,6 +10,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    @Environment(\.subscriptionManager) private var subscriptionManager
 
 #if DEBUG
     @AppStorage("developer_account_id") private var developerAccountId: String = ""
@@ -24,6 +25,7 @@ struct SettingsView: View {
     @State private var showDeleteAccountConfirm = false
     @State private var isDeletingAccount = false
     @State private var deleteAccountError: String?
+    @State private var showSubscriptionPaywall = false
 
     private var userInitials: String? {
         guard let name = authManager.displayName, !name.isEmpty else { return nil }
@@ -66,6 +68,7 @@ struct SettingsView: View {
     }
 
     private var presenterState: SettingsPresenterState {
+        let pro = subscriptionManager.entitlements.pro
         SettingsPresenterState(
             auth: .init(
                 isLoggedIn: authManager.isLoggedIn,
@@ -87,6 +90,17 @@ struct SettingsView: View {
                     lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named))
                 )
                 : nil,
+            subscription: authManager.isLoggedIn
+                ? .init(
+                    planName: pro.plan_name ?? "BooksBrowser Pro",
+                    badgeText: subscriptionBadgeText(for: pro),
+                    badgeTone: subscriptionBadgeTone(for: pro),
+                    summary: subscriptionSummary(for: pro),
+                    detail: subscriptionDetail(for: pro),
+                    ctaTitle: pro.is_active ? "管理訂閱" : "開始免費試用",
+                    isRefreshing: subscriptionManager.isLoading
+                )
+                : nil,
             mochi: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
             about: .init(
                 version: "1.1.0",
@@ -105,6 +119,10 @@ struct SettingsView: View {
             manualLogin: handleManualLogin,
             setDeveloperAccount: setDeveloperAccount,
             clearDeveloperAccount: clearDeveloperAccount,
+            showSubscriptionPaywall: {
+                subscriptionManager.activePaywallSource = .settings
+                showSubscriptionPaywall = true
+            },
             showMochiInfo: { showMochiInfo = true },
             requestDeleteAccount: { showDeleteAccountConfirm = true }
         )
@@ -122,6 +140,7 @@ struct SettingsView: View {
             connectionPulse.toggle()
 
             if authManager.isLoggedIn {
+                await subscriptionManager.refresh(using: kgService, authManager: authManager)
                 if let config = try? await kgService.fetchUserConfig() {
                     let fetched = config.mochi_api_key ?? ""
                     fetchedKey = fetched
@@ -152,6 +171,9 @@ struct SettingsView: View {
         }
         .sheet(isPresented: $showMochiInfo) {
             MochiInfoSheetView()
+        }
+        .sheet(isPresented: $showSubscriptionPaywall) {
+            SubscriptionPaywallSheet()
         }
         .alert("刪除帳號與雲端資料？", isPresented: $showDeleteAccountConfirm) {
             Button("取消", role: .cancel) {}
@@ -211,6 +233,53 @@ struct SettingsView: View {
 #if DEBUG
         developerAccountId = ""
 #endif
+    }
+
+    private func subscriptionBadgeText(for status: KGSubscriptionStatus) -> String {
+        switch status.status {
+        case "active":
+            return "ACTIVE"
+        case "trial":
+            return "TRIAL"
+        case "grace_period":
+            return "GRACE"
+        default:
+            return "FREE"
+        }
+    }
+
+    private func subscriptionBadgeTone(for status: KGSubscriptionStatus) -> SubscriptionBadgeTone {
+        switch status.status {
+        case "active":
+            return .success
+        case "trial":
+            return .accent
+        default:
+            return .neutral
+        }
+    }
+
+    private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
+        if status.is_trial {
+            return "免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與 Mochi 同步。"
+        }
+        if status.is_active {
+            return "你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。"
+        }
+        return "升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與 Mochi 同步。"
+    }
+
+    private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {
+        if let price = status.price_display, !price.isEmpty {
+            if let expiresAt = status.expires_at, !expiresAt.isEmpty {
+                return "\(price) · 到期 \(expiresAt)"
+            }
+            return price
+        }
+        if let days = status.trial_days, !status.is_active {
+            return "預設提供 \(days) 天免費試用"
+        }
+        return "價格與試用長度會以 App Store 顯示為準"
     }
 }
 

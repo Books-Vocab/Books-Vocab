@@ -170,6 +170,7 @@ def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], boo
         had_config = isinstance(normalized_record.get("config"), dict)
         config = dict(normalized_record.get("config", {})) if had_config else {}
         legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
+        subscription = normalized_record.get("subscription")
 
         if "mochi_api_key" in record:
             changed = True
@@ -185,6 +186,17 @@ def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], boo
         elif "config" in normalized_record:
             normalized_record.pop("config", None)
             changed = True
+
+        if subscription is not None:
+            if isinstance(subscription, dict):
+                normalized_subscription = _default_subscription_payload()
+                normalized_subscription.update(subscription)
+                if normalized_subscription != subscription:
+                    changed = True
+                normalized_record["subscription"] = normalized_subscription
+            else:
+                normalized_record.pop("subscription", None)
+                changed = True
 
         normalized[user_id] = normalized_record
 
@@ -404,6 +416,24 @@ class UserConfigResponse(BaseModel):
     mochi_api_key: str | None = None
 
 
+class SubscriptionStatusResponse(BaseModel):
+    is_active: bool
+    product_id: str | None = None
+    plan_name: str | None = None
+    price_display: str | None = None
+    status: str
+    is_trial: bool = False
+    trial_days: int | None = None
+    will_renew: bool = False
+    expires_at: str | None = None
+    source: str = "app_store"
+    last_synced_at: str | None = None
+
+
+class EntitlementsResponse(BaseModel):
+    pro: SubscriptionStatusResponse
+
+
 class DeleteAccountResponse(BaseModel):
     deleted_user_id: str
     linked_ids: list[str]
@@ -496,6 +526,33 @@ def _collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id:
     return canonical_id, sorted(ids)
 
 
+def _default_subscription_payload() -> dict[str, Any]:
+    return {
+        "is_active": False,
+        "product_id": None,
+        "plan_name": "BooksBrowser Pro",
+        "price_display": None,
+        "status": "inactive",
+        "is_trial": False,
+        "trial_days": 7,
+        "will_renew": False,
+        "expires_at": None,
+        "source": "app_store",
+        "last_synced_at": None,
+    }
+
+
+def _build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
+    record = user_record if isinstance(user_record, dict) else {}
+    raw_subscription = record.get("subscription")
+    subscription = _default_subscription_payload()
+    if isinstance(raw_subscription, dict):
+        subscription.update(raw_subscription)
+    return EntitlementsResponse(
+        pro=SubscriptionStatusResponse(**subscription)
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
@@ -505,6 +562,15 @@ def get_user_config(user: dict = Depends(get_current_user)):
     return UserConfigResponse(
         mochi_api_key=user["config"].get("mochi_api_key")
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/user/entitlements
+# ---------------------------------------------------------------------------
+@app.get("/api/user/entitlements", response_model=EntitlementsResponse)
+def get_user_entitlements(user: dict = Depends(get_current_user)):
+    """Get the current user's subscription entitlement snapshot."""
+    return _build_entitlements_response(user.get("record"))
 
 
 # ---------------------------------------------------------------------------

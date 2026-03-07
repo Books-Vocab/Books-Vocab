@@ -146,6 +146,17 @@ class TestBatchA_UsersJsonLock:
         assert r.status_code == 200
         assert r.json()["mochi_api_key"] == "mk_xyz"
 
+    def test_get_entitlements_returns_default_subscription_snapshot(self, user_env):
+        """GET /api/user/entitlements should return a stable default snapshot."""
+        client, user_id, headers, data_dir = user_env
+
+        r = client.get("/api/user/entitlements", headers=headers)
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["pro"]["is_active"] is False
+        assert body["pro"]["status"] == "inactive"
+        assert body["pro"]["trial_days"] == 7
+
 
 # ============================================================================
 # BATCH A-1b — account deletion
