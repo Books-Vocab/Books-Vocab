@@ -24,6 +24,8 @@ struct GraphWebView: UIViewRepresentable {
     let nodes: [KnowledgeGraphView.GraphNode]
     let edges: [KnowledgeGraphView.GraphEdge]
     let colorScheme: ColorScheme
+    let backgroundHex: String
+    let tierHexes: [String: String]
     let forces: GraphForces
     var onNodeTap: (String) -> Void
 
@@ -82,19 +84,17 @@ struct GraphWebView: UIViewRepresentable {
 
     private func buildPayload() -> String {
         let mode = colorScheme == .dark ? "dark" : "light"
-        let bg   = colorScheme == .dark ? "#1C1B19" : "#FAFAFA"
+        let bg = backgroundHex
 
-        let tierNames = ["core", "intermediate", "advanced", "rare"]
+        let tierNames = ["core", "intermediate", "advanced", "rare", "unknown"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
-            let lightColor = AppColors.tier(tierName, scheme: .light).color
-            let darkColor  = AppColors.tier(tierName, scheme: .dark).color
+            let hex = tierHexes[tierName] ?? "#888888"
             colorsDict[tierName] = [
-                "dark":  cssHex(darkColor),
-                "light": cssHex(lightColor)
+                "dark": hex,
+                "light": hex
             ]
         }
-        colorsDict["unknown"] = ["dark": "#888888", "light": "#999999"]
 
         struct NodePayload: Encodable {
             let id, word: String
@@ -131,12 +131,6 @@ struct GraphWebView: UIViewRepresentable {
         guard let data = try? JSONEncoder().encode(payload),
               let json = String(data: data, encoding: .utf8) else { return "{}" }
         return json
-    }
-
-    private func cssHex(_ color: Color) -> String {
-        var r: CGFloat = 0, g: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
-        return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 
     // MARK: - Coordinator

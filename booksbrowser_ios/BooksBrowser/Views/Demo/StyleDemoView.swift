@@ -2,6 +2,7 @@ import SwiftUI
 
 struct StyleDemoView: View {
     @State private var selectedTab = 1
+    @State private var searchText = ""
     private let sampleEntry = StyleDemoSamples.primaryEntry
     private let samplePendingEntry = StyleDemoSamples.pendingEntry
     private let sampleReviewedEntry = StyleDemoSamples.reviewedEntry
@@ -51,6 +52,8 @@ struct StyleDemoView: View {
                         ],
                         selection: $selectedTab
                     )
+
+                    VocabSearchField(text: $searchText, prompt: "搜尋生詞庫")
 
                     ViewThatFits(in: .horizontal) {
                         HStack(spacing: 10) {

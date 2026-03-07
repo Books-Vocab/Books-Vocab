@@ -112,6 +112,80 @@ struct VocabChromePill: View {
     }
 }
 
+struct VocabSearchField: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @Binding var text: String
+    let prompt: String
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(.system(size: 13, weight: .medium))
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            TextField(prompt, text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 14, weight: .medium))
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 10)
+        .background(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+        )
+    }
+}
+
+struct VocabToolbarGlyph: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let systemImage: String
+    let badge: String?
+    let tone: Color?
+
+    init(systemImage: String, badge: String? = nil, tone: Color? = nil) {
+        self.systemImage = systemImage
+        self.badge = badge
+        self.tone = tone
+    }
+
+    var body: some View {
+        HStack(spacing: 4) {
+            Image(systemName: systemImage)
+                .font(.system(size: 15, weight: .medium))
+                .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
+
+            if let badge {
+                Text(badge)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, 5)
+                    .padding(.vertical, 2)
+                    .background(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                            .fill(tone ?? vocabSkin.palette.destructive)
+                    )
+            }
+        }
+    }
+}
+
 private extension VocabSkin.Palette {
     var borderSoftOrDivider: Color {
         divider.opacity(0.8)

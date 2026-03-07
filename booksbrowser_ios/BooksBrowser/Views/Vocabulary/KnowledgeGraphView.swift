@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
+import UIKit
 
 struct KnowledgeGraphView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.vocabSkin) private var vocabSkin
     @Query private var allEntries: [VocabularyEntry]
 
     @Environment(\.kgService) private var kgService
@@ -29,6 +31,8 @@ struct KnowledgeGraphView: View {
 
     var body: some View {
         ZStack {
+            vocabSkin.palette.pageBackground.ignoresSafeArea()
+
             if !authManager.isLoggedIn {
                 ContentUnavailableView(
                     "需登入帳號",
@@ -65,9 +69,9 @@ struct KnowledgeGraphView: View {
                                 isShowingSettings.toggle()
                             }
                         } label: {
-                            Image(systemName: isShowingSettings
-                                  ? "xmark.circle.fill"
-                                  : "slider.horizontal.3")
+                            VocabToolbarGlyph(
+                                systemImage: isShowingSettings ? "xmark.circle.fill" : "slider.horizontal.3"
+                            )
                         }
                     }
                 }
@@ -88,6 +92,14 @@ struct KnowledgeGraphView: View {
             nodes: nodes,
             edges: edges,
             colorScheme: colorScheme,
+            backgroundHex: cssHex(vocabSkin.palette.pageBackground),
+            tierHexes: [
+                "core": cssHex(vocabSkin.palette.success),
+                "intermediate": cssHex(vocabSkin.tierColor(for: "intermediate")),
+                "advanced": cssHex(vocabSkin.tierColor(for: "advanced")),
+                "rare": cssHex(vocabSkin.palette.destructive),
+                "unknown": cssHex(vocabSkin.palette.secondaryText)
+            ],
             forces: GraphForces(
                 repel: repelStrength,
                 linkDistance: linkDistance,
@@ -119,24 +131,24 @@ struct KnowledgeGraphView: View {
     // MARK: - Settings Overlay（Obsidian 風格）
 
     private var settingsOverlay: some View {
-        GlassEffectContainer {
+        VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 // Header
                 HStack {
                     Button("重設", action: resetForces)
-                        .font(.subheadline)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.accent)
                     Spacer()
                     Text("關聯圖")
-                        .font(.subheadline.weight(.semibold))
+                        .font(vocabSkin.typography.captionStrong)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
                     Spacer()
                     Button {
                         withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
                             isShowingSettings = false
                         }
                     } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
-                            .font(.system(size: 20))
+                        VocabToolbarGlyph(systemImage: "xmark.circle.fill")
                     }
                 }
                 .padding(.horizontal, 16)
@@ -164,7 +176,7 @@ struct KnowledgeGraphView: View {
                 .padding(.bottom, 12)
             }
         }
-        .glassEffect(.clear, in: .rect(cornerRadius: 20))
+        .frame(maxWidth: 420)
         .padding(.horizontal, 12)
         .padding(.bottom, 8)
     }
@@ -177,8 +189,8 @@ struct KnowledgeGraphView: View {
     private func sectionHeader(_ title: String) -> some View {
         HStack {
             Text(title)
-                .font(.caption2.weight(.semibold))
-                .foregroundStyle(.tertiary)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .tracking(0.5)
             Spacer()
         }
@@ -190,13 +202,13 @@ struct KnowledgeGraphView: View {
                            range: ClosedRange<Double>, fmt: String) -> some View {
         HStack(spacing: 8) {
             Text(label)
-                .font(.caption)
-                .foregroundStyle(.primary)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.primaryText)
                 .frame(width: 52, alignment: .leading)
             Slider(value: value, in: range)
             Text(String(format: fmt, value.wrappedValue))
-                .font(.caption.monospacedDigit())
-                .foregroundStyle(.secondary)
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
                 .frame(width: 36, alignment: .trailing)
         }
         .frame(height: 32)
@@ -256,5 +268,14 @@ struct KnowledgeGraphView: View {
             errorMessage = error.localizedDescription
         }
         isLoading = false
+    }
+
+    private func cssHex(_ color: Color) -> String {
+        var r: CGFloat = 0
+        var g: CGFloat = 0
+        var b: CGFloat = 0
+        var a: CGFloat = 0
+        UIColor(color).getRed(&r, green: &g, blue: &b, alpha: &a)
+        return String(format: "#%02X%02X%02X", Int(r * 255), Int(g * 255), Int(b * 255))
     }
 }

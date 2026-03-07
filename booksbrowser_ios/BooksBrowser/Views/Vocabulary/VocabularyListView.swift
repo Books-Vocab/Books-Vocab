@@ -32,6 +32,15 @@ struct VocabularyListView: View {
                     .padding(.horizontal)
                     .padding(.vertical, 8)
 
+                if showsSearchField {
+                    VocabSearchField(
+                        text: $searchText,
+                        prompt: selectedTab == 0 ? "搜尋待收錄單字" : "搜尋知識庫"
+                    )
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
+                }
+
                 // Content
                 Group {
                     if selectedTab == 0 {
@@ -56,19 +65,10 @@ struct VocabularyListView: View {
                     Button {
                         showSyncView = true
                     } label: {
-                        HStack(spacing: 4) {
-                            Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 16, weight: .thin))
-                            if pendingCount > 0 {
-                                Text("\(pendingCount)")
-                                    .font(.system(size: 10, weight: .semibold))
-                                    .padding(.horizontal, 5)
-                                    .padding(.vertical, 1)
-                                    .background(AppColors.destructiveLight.opacity(0.85))
-                                    .foregroundStyle(.white)
-                                    .clipShape(Capsule())
-                            }
-                        }
+                        VocabToolbarGlyph(
+                            systemImage: "arrow.triangle.2.circlepath",
+                            badge: pendingCount > 0 ? "\(pendingCount)" : nil
+                        )
                     }
                 }
 
@@ -81,8 +81,7 @@ struct VocabularyListView: View {
                             if isForceRefreshing {
                                 ProgressView().scaleEffect(0.8)
                             } else {
-                                Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 16, weight: .thin))
+                                VocabToolbarGlyph(systemImage: "arrow.clockwise")
                             }
                         }
                         .disabled(isForceRefreshing)
@@ -111,8 +110,7 @@ struct VocabularyListView: View {
                                 Label("匯出 Anki TSV", systemImage: "rectangle.stack")
                             }
                         } label: {
-                            Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 16, weight: .thin))
+                            VocabToolbarGlyph(systemImage: "square.and.arrow.up")
                         }
                     }
                 }
@@ -135,7 +133,6 @@ struct VocabularyListView: View {
             .task {
                 await kgService.healthCheck()
             }
-            .searchable(text: $searchText, prompt: selectedTab == 0 ? "搜尋單字..." : "搜尋知識庫...")
             .onChange(of: selectedTab) { _, _ in
                 searchText = ""  // 清空搜尋
             }
@@ -186,6 +183,10 @@ struct VocabularyListView: View {
 
     private var pendingCount: Int {
         pendingEntries.count
+    }
+
+    private var showsSearchField: Bool {
+        selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
     }
 
     private var tabOptions: [VocabTabOption<Int>] {
