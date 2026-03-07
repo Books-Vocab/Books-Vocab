@@ -434,6 +434,18 @@ class EntitlementsResponse(BaseModel):
     pro: SubscriptionStatusResponse
 
 
+class AppStoreSyncRequest(BaseModel):
+    product_id: str
+    transaction_id: str | None = None
+    original_transaction_id: str | None = None
+    environment: str = "sandbox"
+    status: str = "active"
+    is_trial: bool = False
+    expires_at: str | None = None
+    will_renew: bool = True
+    price_display: str | None = None
+
+
 class DeleteAccountResponse(BaseModel):
     deleted_user_id: str
     linked_ids: list[str]
@@ -553,6 +565,29 @@ def _build_entitlements_response(user_record: dict[str, Any] | None) -> Entitlem
     )
 
 
+def _current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+    record = user_record if isinstance(user_record, dict) else {}
+    raw_subscription = record.get("subscription")
+    subscription = _default_subscription_payload()
+    if isinstance(raw_subscription, dict):
+        subscription.update(raw_subscription)
+    return subscription
+
+
+def _require_pro_access(user: dict[str, Any], capability: str) -> None:
+    subscription = _current_subscription_record(user.get("record"))
+    if subscription.get("is_active"):
+        return
+    raise HTTPException(
+        status_code=402,
+        detail={
+            "code": "pro_required",
+            "capability": capability,
+            "message": "BooksBrowser Pro subscription required.",
+        },
+    )
+
+
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
@@ -571,6 +606,47 @@ def get_user_config(user: dict = Depends(get_current_user)):
 def get_user_entitlements(user: dict = Depends(get_current_user)):
     """Get the current user's subscription entitlement snapshot."""
     return _build_entitlements_response(user.get("record"))
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/app-store/sync
+# ---------------------------------------------------------------------------
+@app.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
+def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
+    """Persist the latest App Store subscription snapshot for the current user."""
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+
+    with FileLock(str(USERS_LOCK_FILE)):
+        users = load_users()
+        user_id = user["id"]
+        record = users.setdefault(user_id, {})
+        subscription = _default_subscription_payload()
+        existing = record.get("subscription")
+        if isinstance(existing, dict):
+            subscription.update(existing)
+
+        normalized_status = req.status.strip() or "active"
+        subscription.update({
+            "is_active": normalized_status in {"active", "trial", "grace_period"},
+            "product_id": req.product_id.strip(),
+            "plan_name": "BooksBrowser Pro",
+            "price_display": req.price_display.strip() if isinstance(req.price_display, str) and req.price_display.strip() else subscription.get("price_display"),
+            "status": normalized_status,
+            "is_trial": req.is_trial,
+            "trial_days": subscription.get("trial_days") or 7,
+            "will_renew": req.will_renew,
+            "expires_at": req.expires_at,
+            "source": "app_store",
+            "last_synced_at": now_iso,
+            "transaction_id": req.transaction_id,
+            "original_transaction_id": req.original_transaction_id,
+            "environment": req.environment,
+        })
+
+        record["subscription"] = subscription
+        save_users(users)
+
+    return _build_entitlements_response(record)
 
 
 # ---------------------------------------------------------------------------
@@ -682,6 +758,7 @@ def health(user: dict = Depends(get_current_user)):
 @app.get("/api/vocab")
 def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
+    _require_pro_access(user, "knowledge_sync")
     cards_store = _card_store(user["dir"])
     graph = _graph_store(user["dir"])
     if since:
@@ -707,6 +784,7 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
 @app.get("/api/vocab/{word}")
 def lookup_word(word: str, user: dict = Depends(get_current_user)):
     """Lookup a word in the current user's card store."""
+    _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
     graph = _graph_store(user["dir"])
     cards_by_id = {card.id: card for card in cards.all(include_deleted=True)}
@@ -722,6 +800,7 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
 @app.delete("/api/vocab/{word}")
 def delete_word(word: str, user: dict = Depends(get_current_user)):
     """Delete a word from the current user's card store."""
+    _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
     for card in cards.all():
         if card.content.lower() == word.lower():
@@ -736,6 +815,7 @@ def delete_word(word: str, user: dict = Depends(get_current_user)):
 @app.get("/api/graph/links", response_model=list[GraphLinkResponse])
 def get_graph_links(user: dict = Depends(get_current_user)):
     """Get all active graph connections for the user."""
+    _require_pro_access(user, "knowledge_graph")
     graph = _graph_store(user["dir"])
     links = []
     
@@ -759,6 +839,7 @@ def get_graph_links(user: dict = Depends(get_current_user)):
 @app.post("/api/vocab", response_model=VocabAddResponse)
 def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
     """Add vocabulary entries from BooksBrowser → KG Cards."""
+    _require_pro_access(user, "knowledge_sync")
     cards = _card_store(user["dir"])
     existing = {c.content.lower() for c in cards.all()}
 
@@ -1042,6 +1123,7 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 
     Returns immediately with accepted status.
     """
+    _require_pro_access(user, "knowledge_sync")
     background_tasks.add_task(_run_pipeline_background, user)
     return {"status": "queued", "message": "Pipeline started in the background"}
 
@@ -1051,6 +1133,7 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 @app.post("/api/translate/quick", response_model=QuickTranslateResponse)
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Perform a quick UI translation via Gemini API (proxy)."""
+    _require_pro_access(user, "reader_ai")
     client = _gemini_client()
     prompt = f'''英→繁中。給出翻譯、詞性、字典原形（lemma）。
 詞性限定: n. / v. / adj. / adv. / conj. / prep.
@@ -1100,6 +1183,7 @@ lemma（r）規則：
 @app.post("/api/translate/phrase", response_model=dict)
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Translate a multi-word phrase or expression. Returns translation only."""
+    _require_pro_access(user, "reader_ai")
     client = _gemini_client()
     prompt = f'''將以下英文片語/短語翻譯成繁體中文，給出最精確的中文對應。
 片語: "{req.word}"
@@ -1129,6 +1213,7 @@ def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_use
 @app.post("/api/translate/explain", response_model=ExplainResponse)
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
+    _require_pro_access(user, "reader_ai")
     client = _gemini_client()
     prompt = f'''用繁體中文簡短說明「{req.word}」在以下語境中的含義（1-2句）。
 語境: "{req.context[:300]}"

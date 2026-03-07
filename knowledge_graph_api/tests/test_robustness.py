@@ -75,7 +75,18 @@ def user_env(tmp_path):
 
     users_file = tmp_path / "users.json"
     lock_file = tmp_path / "users.json.lock"
-    users_file.write_text(json.dumps({user_id: {"config": {}}}))
+    users_file.write_text(json.dumps({
+        user_id: {
+            "config": {},
+            "subscription": {
+                "is_active": True,
+                "status": "active",
+                "plan_name": "BooksBrowser Pro",
+                "trial_days": 7,
+                "will_renew": True,
+            },
+        }
+    }))
 
     with (
         patch.object(api_mod, "DATA_DIR", tmp_path),
@@ -150,12 +161,43 @@ class TestBatchA_UsersJsonLock:
         """GET /api/user/entitlements should return a stable default snapshot."""
         client, user_id, headers, data_dir = user_env
 
+        users_data = json.loads((data_dir / "users.json").read_text())
+        users_data[user_id].pop("subscription", None)
+        (data_dir / "users.json").write_text(json.dumps(users_data))
+
         r = client.get("/api/user/entitlements", headers=headers)
         assert r.status_code == 200, r.text
         body = r.json()
         assert body["pro"]["is_active"] is False
         assert body["pro"]["status"] == "inactive"
         assert body["pro"]["trial_days"] == 7
+
+    def test_billing_sync_persists_subscription_snapshot(self, user_env):
+        client, user_id, headers, data_dir = user_env
+
+        r = client.post(
+            "/api/billing/app-store/sync",
+            json={
+                "product_id": "com.wordnexus.pro.monthly",
+                "transaction_id": "tx-1",
+                "original_transaction_id": "otx-1",
+                "environment": "sandbox",
+                "status": "trial",
+                "is_trial": True,
+                "expires_at": "2026-03-14T00:00:00+00:00",
+                "will_renew": True,
+                "price_display": "$1.00/month",
+            },
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()["pro"]
+        assert body["is_active"] is True
+        assert body["status"] == "trial"
+        assert body["price_display"] == "$1.00/month"
+
+        saved = json.loads((data_dir / "users.json").read_text())
+        assert saved[user_id]["subscription"]["transaction_id"] == "tx-1"
 
 
 # ============================================================================

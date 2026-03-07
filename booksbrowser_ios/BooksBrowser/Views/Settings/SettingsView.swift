@@ -69,7 +69,7 @@ struct SettingsView: View {
 
     private var presenterState: SettingsPresenterState {
         let pro = subscriptionManager.entitlements.pro
-        SettingsPresenterState(
+        return SettingsPresenterState(
             auth: .init(
                 isLoggedIn: authManager.isLoggedIn,
                 userInitials: userInitials,

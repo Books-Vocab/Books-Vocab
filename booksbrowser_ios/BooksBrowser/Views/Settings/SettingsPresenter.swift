@@ -469,7 +469,6 @@ struct SettingsPresenter: View {
 }
 
 private extension SettingsPresenter {
-    @ViewBuilder
     func subscriptionBadge(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
         let tone: Color
         switch subscription.badgeTone {
@@ -481,7 +480,7 @@ private extension SettingsPresenter {
             tone = vocabSkin.palette.success
         }
 
-        Text(subscription.badgeText)
+        return Text(subscription.badgeText)
             .font(vocabSkin.typography.monoLabel)
             .foregroundStyle(tone)
             .padding(.horizontal, 9)

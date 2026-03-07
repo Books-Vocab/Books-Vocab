@@ -14,6 +14,7 @@ protocol KGServing: AnyObject {
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?) async throws
     func fetchUserConfig() async throws -> KGUserConfig
     func fetchEntitlements() async throws -> KGEntitlements
+    func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements
     func updateUserConfig(mochiKey: String?) async throws -> KGUserConfig
     func deleteAccount() async throws
     func pullGraphLinks() async throws -> [KGGraphLink]

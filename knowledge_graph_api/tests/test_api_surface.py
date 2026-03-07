@@ -47,6 +47,16 @@ def isolated_api(tmp_path):
         )
     )
 
+    users_data = json.loads(users_file.read_text())
+    users_data[user_id]["subscription"] = {
+        "is_active": True,
+        "status": "active",
+        "plan_name": "BooksBrowser Pro",
+        "trial_days": 7,
+        "will_renew": True,
+    }
+    users_file.write_text(json.dumps(users_data))
+
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -252,6 +262,28 @@ def test_translate_endpoints_success_and_error(isolated_api):
         )
         assert r.status_code == 500
         assert "Quick translation failed" in r.text
+
+
+def test_translate_requires_pro_subscription(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": False,
+        "status": "inactive",
+        "trial_days": 7,
+        "will_renew": False,
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    r = client.post(
+        "/api/translate/quick",
+        json={"word": "evoke", "context": "The story can evoke deep memories."},
+        headers=headers,
+    )
+    assert r.status_code == 402, r.text
+    assert "pro_required" in r.text
 
 
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):

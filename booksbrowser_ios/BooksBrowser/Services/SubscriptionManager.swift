@@ -123,10 +123,8 @@ final class SubscriptionManager: SubscriptionManaging {
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
                 purchaseStatusMessage = "購買成功，正在同步訂閱狀態。"
-                entitlements = optimisticEntitlements(
-                    from: product,
-                    status: "active"
-                )
+                entitlements = optimisticEntitlements(from: product, status: inferredStatus(for: product))
+                try? await syncTransaction(transaction, product: product, using: kgService)
                 await refresh(using: kgService, authManager: authManager)
             case .userCancelled:
                 purchaseStatusMessage = "已取消購買。"
@@ -147,6 +145,7 @@ final class SubscriptionManager: SubscriptionManaging {
 
         do {
             try await AppStore.sync()
+            await syncCurrentEntitlements(using: kgService)
             purchaseStatusMessage = "已向 App Store 要求恢復購買。"
             await refresh(using: kgService, authManager: authManager)
         } catch {
@@ -185,6 +184,48 @@ final class SubscriptionManager: SubscriptionManaging {
                 willRenew: true
             )
         )
+    }
+
+    private func syncCurrentEntitlements(using kgService: any KGServing) async {
+        for await result in Transaction.currentEntitlements {
+            guard
+                let transaction = try? checkVerified(result),
+                transaction.productID == Self.proProductID
+            else { continue }
+
+            let product = proProduct
+            try? await syncTransaction(transaction, product: product, using: kgService)
+            return
+        }
+    }
+
+    private func syncTransaction(
+        _ transaction: Transaction,
+        product: Product?,
+        using kgService: any KGServing
+    ) async throws {
+        let snapshot = KGAppStoreSubscriptionSyncRequest(
+            product_id: transaction.productID,
+            transaction_id: String(transaction.id),
+            original_transaction_id: String(transaction.originalID),
+            environment: transaction.environment == .sandbox ? "sandbox" : "production",
+            status: inferredStatus(for: product),
+            is_trial: entitlements.pro.is_trial,
+            expires_at: transaction.expirationDate?.ISO8601Format(),
+            will_renew: transaction.revocationDate == nil,
+            price_display: product?.displayPrice
+        )
+        entitlements = try await kgService.syncAppStoreSubscription(snapshot)
+    }
+
+    private func inferredStatus(for product: Product?) -> String {
+        if entitlements.pro.is_trial {
+            return "trial"
+        }
+        if let product, product.subscription != nil {
+            return "active"
+        }
+        return "active"
     }
 
     private func merge(
