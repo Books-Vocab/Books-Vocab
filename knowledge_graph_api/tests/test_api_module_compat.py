@@ -34,6 +34,12 @@ def test_api_module_exposes_legacy_surface():
         "_decode_notification_payload",
         "_build_test_catalog",
         "_run_pytest_matrix",
+        "translate_quick",
+        "translate_phrase",
+        "translate_explain",
+        "_create_jwt_token",
+        "_resolve_and_link_user",
+        "auth_verify",
     ]
 
     missing = [name for name in expected_symbols if not hasattr(api_mod, name)]
@@ -49,3 +55,8 @@ def test_api_module_keeps_expected_callable_shapes():
     assert callable(api_mod._embedding_store)
     assert callable(api_mod._run_pytest_matrix)
     assert callable(api_mod._build_test_catalog)
+    assert callable(api_mod.translate_quick)
+    assert callable(api_mod.translate_phrase)
+    assert callable(api_mod.translate_explain)
+    assert callable(api_mod._create_jwt_token)
+    assert callable(api_mod._resolve_and_link_user)
