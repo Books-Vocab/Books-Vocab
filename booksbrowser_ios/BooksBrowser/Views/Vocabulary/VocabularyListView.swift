@@ -25,6 +25,7 @@ struct VocabularyListView: View {
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State private var isForceRefreshing = false
     @State private var selectedEntry: VocabularyEntry?
+    @State private var activeReviewSession: TodayReviewSession?
 
     var body: some View {
         NavigationStack {
@@ -76,6 +77,19 @@ struct VocabularyListView: View {
 
                 // Force refresh (知識庫 tab only)
                 if selectedTab == 1 && authManager.isLoggedIn {
+                    if knowledgeReviewCount > 0 {
+                        ToolbarItem(placement: .topBarTrailing) {
+                            Button {
+                                startKnowledgeReview()
+                            } label: {
+                                VocabToolbarGlyph(
+                                    systemImage: "rectangle.stack.badge.play",
+                                    badge: "\(knowledgeReviewCount)"
+                                )
+                            }
+                        }
+                    }
+
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
                             Task { await forceRefresh() }
@@ -131,6 +145,12 @@ struct VocabularyListView: View {
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                     .presentationContentInteraction(.scrolls)
+            }
+            .fullScreenCover(item: $activeReviewSession) { session in
+                TodayReviewView(
+                    entries: session.entries,
+                    onClose: { activeReviewSession = nil }
+                )
             }
             .task {
                 await kgService.healthCheck()
@@ -245,6 +265,20 @@ struct VocabularyListView: View {
         selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
     }
 
+    private var syncedKnowledgeEntries: [VocabularyEntry] {
+        allEntries
+            .filter { $0.syncStatus == 1 && $0.actionType != "delete" }
+            .sorted(by: knowledgeEntrySort)
+    }
+
+    private var knowledgeReviewEntries: [VocabularyEntry] {
+        syncedKnowledgeEntries.filter { $0.reviewState == .due || $0.reviewState == .unlearned }
+    }
+
+    private var knowledgeReviewCount: Int {
+        knowledgeReviewEntries.count
+    }
+
     private var tabOptions: [VocabTabOption<Int>] {
         [
             .init(id: 0, title: "待收錄", count: pendingCount, systemImage: "tray"),
@@ -304,6 +338,44 @@ struct VocabularyListView: View {
     private func exportCSV()  { exportURL = VocabularyExporter.exportAsCSV(entries: pendingEntries) }
     private func exportJSON() { exportURL = VocabularyExporter.exportAsJSON(entries: pendingEntries) }
     private func exportAnki() { exportURL = VocabularyExporter.exportAsAnki(entries: pendingEntries) }
+
+    private func startKnowledgeReview() {
+        guard !knowledgeReviewEntries.isEmpty else { return }
+        activeReviewSession = TodayReviewSession(entries: knowledgeReviewEntries)
+    }
+
+    private func knowledgeEntrySort(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
+        if reviewOrder(lhs.reviewState) != reviewOrder(rhs.reviewState) {
+            return reviewOrder(lhs.reviewState) < reviewOrder(rhs.reviewState)
+        }
+        if lhs.reviewState != .reviewed && lhs.nextReviewAt != rhs.nextReviewAt {
+            return lhs.nextReviewAt < rhs.nextReviewAt
+        }
+        let lhsTier = tierOrder(lhs.difficultyTier)
+        let rhsTier = tierOrder(rhs.difficultyTier)
+        if lhsTier != rhsTier {
+            return lhsTier < rhsTier
+        }
+        return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+    }
+
+    private func reviewOrder(_ state: VocabularyReviewState) -> Int {
+        switch state {
+        case .due: return 0
+        case .unlearned: return 1
+        case .reviewed: return 2
+        }
+    }
+
+    private func tierOrder(_ tier: String?) -> Int {
+        switch tier {
+        case "core": return 0
+        case "intermediate": return 1
+        case "advanced": return 2
+        case "rare": return 3
+        default: return 4
+        }
+    }
 
     @ViewBuilder
     private var loggedOutState: some View {

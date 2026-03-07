@@ -22,7 +22,6 @@ struct KGVocabView: View {
     @State private var errorMessage: String?
     @State private var selectedEntry: VocabularyEntry?
     @State private var selectedReviewState: VocabularyReviewState = .due
-    @State private var activeReviewSession: TodayReviewSession?
 
     @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
     private var pendingDeletes: [VocabularyEntry]
@@ -58,12 +57,6 @@ struct KGVocabView: View {
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
-        }
-        .fullScreenCover(item: $activeReviewSession) { session in
-            TodayReviewView(
-                entries: session.entries,
-                onClose: { activeReviewSession = nil }
-            )
         }
         .task {
             guard authManager.isLoggedIn else { return }
@@ -115,28 +108,10 @@ struct KGVocabView: View {
         VocabCard(padding: 0) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 10) {
-                    HStack(alignment: .firstTextBaseline) {
-                        Text(selectedReviewState.title)
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-                        Spacer()
-                        if selectedReviewState == .due || selectedReviewState == .unlearned {
-                            Button(todaySessionEntries.isEmpty ? "暫無待複習" : "開始複習") {
-                                startTodayReview()
-                            }
-                            .buttonStyle(.vocabAction(todaySessionEntries.isEmpty ? .neutral : .primary))
-                            .disabled(todaySessionEntries.isEmpty)
-                        } else {
-                            Text("\(filteredEntries.count) 張卡片")
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-                    }
-
                     VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
                 }
                 .padding(.horizontal, 16)
-                .padding(.top, 16)
+                .padding(.top, 14)
                 .padding(.bottom, 12)
 
                 Divider()
@@ -206,10 +181,6 @@ struct KGVocabView: View {
 
     private var reviewedEntries: [VocabularyEntry] {
         sortedEntries.filter { $0.reviewState == .reviewed }
-    }
-
-    private var todaySessionEntries: [VocabularyEntry] {
-        dueEntries + unlearnedEntries
     }
 
     private var filteredEntries: [VocabularyEntry] {
@@ -298,13 +269,6 @@ struct KGVocabView: View {
         entry.syncStatus = 0
         try? modelContext.save()
     }
-
-    private func startTodayReview() {
-        let entries = todaySessionEntries
-        guard !entries.isEmpty else { return }
-        activeReviewSession = TodayReviewSession(entries: entries)
-    }
-
     private func retryPendingDeletes() async {
         for entry in pendingDeletes {
             do {
