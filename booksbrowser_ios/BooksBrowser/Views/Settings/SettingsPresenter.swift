@@ -118,6 +118,33 @@ struct SettingsPresenter: View {
                         .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
                 )
 
+                Button(action: actions.loginWithApple) {
+                    HStack(spacing: 12) {
+                        ZStack {
+                            Circle()
+                                .fill(.black)
+                                .frame(width: 22, height: 22)
+                            Image(systemName: "apple.logo")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(.white)
+                        }
+                        Text("以 Apple 繼續")
+                            .fontWeight(.medium)
+                        Spacer()
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                }
+                .buttonStyle(.plain)
+                .padding()
+                .background(vocabSkin.palette.pageBackground)
+                .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+
 #if DEBUG
                 if let manualLoginUserId, let debug = state.auth.debug {
                     Rectangle()

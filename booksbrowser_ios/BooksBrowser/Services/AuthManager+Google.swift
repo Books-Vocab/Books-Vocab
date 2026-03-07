@@ -9,12 +9,12 @@ extension AuthManager {
         let window = UIApplication.shared.connectedScenes
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
             .first { $0.isKeyWindow }
-        guard let rootViewController = window?.rootViewController else {
-            print("❌ Unable to find root view controller")
+        guard let presentingViewController = window?.rootViewController?.topMostPresentedViewController else {
+            print("❌ Unable to find presenting view controller")
             return
         }
 
-        GIDSignIn.sharedInstance.signIn(withPresenting: rootViewController) { [weak self] result, error in
+        GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController) { [weak self] result, error in
             if let error = error {
                 print("❌ Google Sign-In Error: \(error.localizedDescription)")
                 return
@@ -51,5 +51,20 @@ extension AuthManager {
                 }
             }
         }
+    }
+}
+
+private extension UIViewController {
+    var topMostPresentedViewController: UIViewController {
+        if let presentedViewController {
+            return presentedViewController.topMostPresentedViewController
+        }
+        if let navigationController = self as? UINavigationController {
+            return navigationController.visibleViewController?.topMostPresentedViewController ?? navigationController
+        }
+        if let tabBarController = self as? UITabBarController {
+            return tabBarController.selectedViewController?.topMostPresentedViewController ?? tabBarController
+        }
+        return self
     }
 }

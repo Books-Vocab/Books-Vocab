@@ -101,6 +101,7 @@ struct SettingsView: View {
         SettingsPresenterActions(
             dismiss: { dismiss() },
             loginWithGoogle: { authManager.loginWithGoogle(modelContainer: modelContext.container) },
+            loginWithApple: { authManager.loginWithApple(modelContainer: modelContext.container) },
             logout: { authManager.logout(modelContainer: modelContext.container, reason: "settings_logout") },
             manualLogin: handleManualLogin,
             setDeveloperAccount: setDeveloperAccount,

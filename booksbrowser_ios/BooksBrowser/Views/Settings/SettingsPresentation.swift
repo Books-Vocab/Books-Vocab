@@ -49,6 +49,7 @@ struct SettingsPresenterState {
 struct SettingsPresenterActions {
     let dismiss: () -> Void
     let loginWithGoogle: () -> Void
+    let loginWithApple: () -> Void
     let logout: () -> Void
     let manualLogin: () -> Void
     let setDeveloperAccount: () -> Void
