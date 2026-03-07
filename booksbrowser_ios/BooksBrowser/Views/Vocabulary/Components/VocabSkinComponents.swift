@@ -24,7 +24,7 @@ struct VocabCard<Content: View>: View {
                 RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
                     .stroke(vocabSkin.palette.cardBorder.opacity(0.7), lineWidth: 1)
             )
-            .shadow(color: vocabSkin.palette.shadow, radius: 10, y: 4)
+            .shadow(color: vocabSkin.palette.shadow, radius: 6, y: 2)
     }
 }
 

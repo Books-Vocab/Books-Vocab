@@ -98,8 +98,7 @@ struct KGVocabView: View {
                 }
 
                 if !syncedEntries.isEmpty {
-                    todayReviewHero
-                    stateSection
+                    overviewSection
                     browserSection
                 } else {
                     emptyState
@@ -111,81 +110,46 @@ struct KGVocabView: View {
         .vocabCanvasBackground()
     }
 
-    // MARK: - Today Review Hero
+    // MARK: - Overview Section
 
-    private var todayReviewHero: some View {
-        Button {
-            startTodayReview()
-        } label: {
-            VocabCard {
-                VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-                    // Header row
-                    HStack(alignment: .top) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text("Today Review")
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                            Text("今日待複習")
-                                .font(vocabSkin.typography.displayTitle)
-                                .foregroundStyle(vocabSkin.palette.primaryText)
-                        }
-
-                        Spacer(minLength: 12)
-
-                        // Large number
-                        VStack(alignment: .trailing, spacing: 2) {
-                            Text("\(todaySessionEntries.count)")
-                                .font(vocabSkin.typography.numericHero)
-                                .foregroundStyle(todaySessionEntries.isEmpty ? vocabSkin.palette.quaternaryText : vocabSkin.palette.primaryText)
-                            Text("cards")
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                    }
-
-                    // Description
-                    Text(heroDescription)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineSpacing(4)
-
-                    // Stats — inline text, not pills
-                    HStack(spacing: AppMetrics.spacingLarge) {
-                        statText(title: "待複習", value: dueEntries.count, tone: vocabSkin.palette.translationText)
-                        statText(title: "未學習", value: unlearnedEntries.count, tone: vocabSkin.palette.accent)
-                        statText(title: "已複習", value: reviewedEntries.count, tone: vocabSkin.palette.success)
-                    }
-
-                    // CTA
-                    HStack {
-                        Spacer()
-                        Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習 →")
-                            .font(vocabSkin.typography.body.weight(.semibold))
-                            .foregroundStyle(todaySessionEntries.isEmpty ? vocabSkin.palette.quaternaryText : vocabSkin.palette.primaryText)
-                    }
-                }
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(todaySessionEntries.isEmpty)
-    }
-
-    // MARK: - State Section
-
-    private var stateSection: some View {
+    private var overviewSection: some View {
         VocabCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                Text("知識庫狀態")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            VStack(alignment: .leading, spacing: 16) {
+                HStack(alignment: .top, spacing: 12) {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text("Review")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
 
-                VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
+                        Text(todaySessionEntries.isEmpty ? "今天沒有待處理卡片" : "\(todaySessionEntries.count) 張待處理")
+                            .font(vocabSkin.typography.sectionTitle)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
+                    }
 
-                Text(stateDescription)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .lineSpacing(4)
+                    Spacer(minLength: 12)
+
+                    Button(todaySessionEntries.isEmpty ? "暫無待複習" : "開始複習") {
+                        startTodayReview()
+                    }
+                    .buttonStyle(.vocabAction(todaySessionEntries.isEmpty ? .neutral : .primary))
+                    .disabled(todaySessionEntries.isEmpty)
+                }
+
+                HStack(spacing: 18) {
+                    statText(title: "待複習", value: dueEntries.count, tone: vocabSkin.tierColor(for: "intermediate"))
+                    statText(title: "未學習", value: unlearnedEntries.count, tone: vocabSkin.palette.secondaryText)
+                    statText(title: "已複習", value: reviewedEntries.count, tone: vocabSkin.palette.success)
+                }
+
+                Divider()
+
+                VStack(alignment: .leading, spacing: 10) {
+                    Text("篩選")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+                    VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
+                }
             }
         }
     }
@@ -193,8 +157,8 @@ struct KGVocabView: View {
     // MARK: - Browser Section
 
     private var browserSection: some View {
-        VocabCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+        VocabCard(padding: 18) {
+            VStack(alignment: .leading, spacing: 12) {
                 HStack {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(selectedReviewState.title)
@@ -262,28 +226,8 @@ struct KGVocabView: View {
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             Text("\(value)")
-                .font(vocabSkin.typography.sectionTitle)
+                .font(vocabSkin.typography.displayTitle)
                 .foregroundStyle(tone)
-        }
-    }
-
-    // MARK: - Descriptions
-
-    private var heroDescription: String {
-        if todaySessionEntries.isEmpty {
-            return "今天沒有待複習或未學習卡片。"
-        }
-        return "把到期卡與新卡一起拉進同一個 session，用 flashcards 節奏完成今天的複習。"
-    }
-
-    private var stateDescription: String {
-        switch selectedReviewState {
-        case .unlearned:
-            return "這些卡片已進知識庫，但還沒真正開始複習。"
-        case .due:
-            return "今天應該先處理的卡片，會優先進入每日 session。"
-        case .reviewed:
-            return "今天已處理完或尚未到期的卡片。"
         }
     }
 

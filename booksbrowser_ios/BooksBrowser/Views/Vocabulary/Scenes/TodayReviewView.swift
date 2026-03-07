@@ -29,7 +29,7 @@ struct TodayReviewView: View {
             VStack(spacing: 0) {
                 if let current = currentEntry {
                     // Top bar — minimal
-                    topBar(current: current)
+                    topBar
 
                     // Card area — takes all space
                     ScrollView {
@@ -55,30 +55,27 @@ struct TodayReviewView: View {
 
     // MARK: - Top Bar
 
-    private func topBar(current: VocabularyEntry) -> some View {
-        HStack(alignment: .center, spacing: AppMetrics.spacingMedium) {
+    private var topBar: some View {
+        HStack(alignment: .center, spacing: 12) {
             Text(progressText)
-                .font(vocabSkin.typography.captionStrong)
+                .font(vocabSkin.typography.monoLabel)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.mutedFill)
+                )
 
             Spacer()
 
-            Text(showBack ? "背面" : "正面")
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
-
-            Button("詳情") {
-                linkedCardStack.append(current)
-            }
-            .buttonStyle(.ghost(vocabSkin.palette.secondaryText))
-
-            Button("關閉") {
+            VocabChromeIconButton(systemImage: "xmark") {
                 onClose()
             }
-            .buttonStyle(.ghost(vocabSkin.palette.secondaryText))
         }
-        .padding(.horizontal, AppMetrics.spacingLarge)
-        .padding(.vertical, AppMetrics.spacingSmall)
+        .padding(.horizontal, 20)
+        .padding(.top, 10)
+        .padding(.bottom, 6)
     }
 
     // MARK: - Review Card (Mochi layout)
@@ -108,16 +105,9 @@ struct TodayReviewView: View {
     }
 
     private func reviewCardFront(_ current: VocabularyEntry) -> some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-            // Mode + POS tags
-            HStack(spacing: AppMetrics.spacingSmall) {
-                Text(current.reviewMode.localizedTitle)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
                 if let pos = current.partOfSpeech {
-                    Text("·")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                     Text(pos)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -128,24 +118,24 @@ struct TodayReviewView: View {
                 }
             }
 
-            Spacer(minLength: AppMetrics.spacingLarge)
+            Spacer(minLength: 18)
 
-            // The prompt
             switch current.reviewMode {
             case .recognition:
                 Text(current.word)
                     .font(vocabSkin.typography.reviewWord)
                     .foregroundStyle(vocabSkin.palette.primaryText)
+                    .lineLimit(3)
                     .minimumScaleFactor(0.6)
+                    .fixedSize(horizontal: false, vertical: true)
 
             case .production:
                 Text(current.translation)
                     .font(vocabSkin.typography.translationTitle)
-                    .foregroundStyle(vocabSkin.palette.translationText)
+                    .foregroundStyle(vocabSkin.palette.primaryText.opacity(0.84))
                     .minimumScaleFactor(0.6)
             }
 
-            // Example (with highlight mark)
             if current.reviewMode == .production, let example = current.primaryReviewExample {
                 CardRichTextRenderer.text(
                     example,
@@ -161,25 +151,26 @@ struct TodayReviewView: View {
                 .lineSpacing(4)
             }
 
-            Spacer(minLength: AppMetrics.spacingLarge)
+            Spacer(minLength: 14)
 
-            // Tap hint
             HStack {
-                Text(showBack ? "點擊收合" : "點擊展開答案")
+                Text(frontInstruction(for: current.reviewMode))
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                Spacer()
+                Text(showBack ? "點擊收合" : "點擊翻面")
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
-                Spacer()
             }
         }
-        .padding(AppMetrics.heroCardPadding)
-        .frame(minHeight: showBack ? nil : AppMetrics.cardMinHeight)
+        .padding(reviewCardPadding)
+        .frame(minHeight: showBack ? nil : 300)
     }
 
     private func reviewCardBack(_ current: VocabularyEntry) -> some View {
         let card = current.cardPresentation
 
-        return VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-            // Answer
+        return VStack(alignment: .leading, spacing: 16) {
             switch card.reviewMode {
             case .recognition:
                 Text(card.translation)
@@ -188,12 +179,12 @@ struct TodayReviewView: View {
 
             case .production:
                 Text(card.word)
-                    .font(vocabSkin.typography.reviewWord)
+                    .font(vocabSkin.typography.detailWord)
                     .foregroundStyle(vocabSkin.palette.primaryText)
+                    .lineLimit(3)
                     .minimumScaleFactor(0.6)
             }
 
-            // Example with highlight mark
             if let example = card.examples.first {
                 CardRichTextRenderer.text(
                     example,
@@ -208,22 +199,20 @@ struct TodayReviewView: View {
                 .lineSpacing(4)
             }
 
-            // Explanation
             if let explanation = card.explanation, !explanation.isEmpty {
-                CardSectionDivider(horizontalPadding: AppMetrics.heroCardPadding)
+                CardSectionDivider(horizontalPadding: reviewCardPadding)
 
                 CardExplanationSection(explanation: explanation, colorScheme: .light)
                     .lineSpacing(4)
             }
 
-            // Links
             if !card.linkGroups.isEmpty {
-                CardSectionDivider(horizontalPadding: AppMetrics.heroCardPadding)
+                CardSectionDivider(horizontalPadding: reviewCardPadding)
 
                 reviewLinkStrip(for: current)
             }
         }
-        .padding(AppMetrics.heroCardPadding)
+        .padding(reviewCardPadding)
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
@@ -259,38 +248,37 @@ struct TodayReviewView: View {
                 }
                 .disabled(currentIndex >= queue.count - 1)
             }
-            .foregroundStyle(.secondary)
+            .foregroundStyle(vocabSkin.palette.secondaryText)
 
             Spacer()
 
-            // Review actions — ghost buttons
             if showBack {
-                HStack(spacing: AppMetrics.spacingSmall) {
+                HStack(spacing: 10) {
                     Button {
                         submit(.forgot)
                     } label: {
-                        Label("Forgot", systemImage: "xmark")
-                            .font(vocabSkin.typography.body.weight(.medium))
+                        Label("忘記", systemImage: "xmark")
+                            .frame(minWidth: 92)
                     }
-                    .buttonStyle(.ghost(vocabSkin.palette.destructive))
+                    .buttonStyle(.vocabAction(.destructive))
 
                     Button {
                         submit(.remembered)
                     } label: {
-                        Label("Remembered", systemImage: "checkmark")
-                            .font(vocabSkin.typography.body.weight(.medium))
+                        Label("記得", systemImage: "checkmark")
+                            .frame(minWidth: 92)
                     }
-                    .buttonStyle(.ghost(vocabSkin.palette.success))
+                    .buttonStyle(.vocabAction(.success))
                 }
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, AppMetrics.spacingLarge)
-        .padding(.vertical, AppMetrics.spacingMedium)
+        .padding(.horizontal, 20)
+        .padding(.vertical, 12)
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
-                .shadow(color: .black.opacity(0.03), radius: 8, y: -4)
+                .shadow(color: vocabSkin.palette.shadow.opacity(1.1), radius: 6, y: -2)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -415,5 +403,9 @@ struct TodayReviewView: View {
         case .production:
             return "先想英文，再點卡片翻面"
         }
+    }
+
+    private var reviewCardPadding: CGFloat {
+        24
     }
 }

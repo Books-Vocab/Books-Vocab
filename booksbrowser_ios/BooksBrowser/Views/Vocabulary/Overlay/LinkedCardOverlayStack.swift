@@ -38,14 +38,9 @@ struct LinkedCardOverlayStack: View {
                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
 
-                Button {
+                VocabChromeIconButton(systemImage: "xmark") {
                     close(from: index)
-                } label: {
-                    Image(systemName: "xmark.circle")
-                        .font(.system(size: 18, weight: .thin))
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
-                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppMetrics.spacingMedium)
             .padding(.vertical, 14)

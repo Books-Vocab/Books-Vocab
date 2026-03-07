@@ -29,7 +29,7 @@ struct VocabTabSelector<ID: Hashable>: View {
 
     var body: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ForEach(options) { option in
                     Button {
                         withAnimation(.easeOut(duration: 0.18)) {
@@ -48,8 +48,8 @@ struct VocabTabSelector<ID: Hashable>: View {
                             if let count = option.count {
                                 Text("\(count)")
                                     .font(vocabSkin.typography.monoLabel)
-                                    .padding(.horizontal, 7)
-                                    .padding(.vertical, 3)
+                                    .padding(.horizontal, 6)
+                                    .padding(.vertical, 2)
                                     .background(
                                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
                                             .fill((selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.mutedFill).opacity(selection == option.id ? 0.08 : 1))
@@ -57,8 +57,8 @@ struct VocabTabSelector<ID: Hashable>: View {
                             }
                         }
                         .foregroundStyle(selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 8)
                         .background(
                             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                                 .fill(selection == option.id ? vocabSkin.palette.cardBackground : vocabSkin.palette.stageBackground)
@@ -71,7 +71,7 @@ struct VocabTabSelector<ID: Hashable>: View {
                     .buttonStyle(.plain)
                 }
             }
-            .padding(4)
+            .padding(3)
         }
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control + 4, style: .continuous)
@@ -98,8 +98,8 @@ struct VocabChromePill: View {
             if let count {
                 Text("\(count)")
                     .font(vocabSkin.typography.monoLabel)
-                    .padding(.horizontal, 7)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, 6)
+                    .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
                             .fill((emphasized ? Color.white.opacity(0.12) : vocabSkin.palette.mutedFill))
@@ -107,8 +107,8 @@ struct VocabChromePill: View {
             }
         }
         .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 10)
+        .padding(.horizontal, 12)
+        .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                 .fill(emphasized ? vocabSkin.palette.primaryText : vocabSkin.palette.cardBackground)
@@ -149,7 +149,7 @@ struct VocabSearchField: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 10)
+        .padding(.vertical, 9)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                 .fill(vocabSkin.palette.cardBackground)
@@ -191,6 +191,31 @@ struct VocabToolbarGlyph: View {
                     )
             }
         }
+    }
+}
+
+struct VocabChromeIconButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let systemImage: String
+    var tone: Color? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .medium))
+                .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
+                .frame(width: 32, height: 32)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.cardBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 

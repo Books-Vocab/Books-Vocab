@@ -17,8 +17,8 @@ struct WordRow: View {
     private var isDue: Bool { nextReviewAt <= Date() }
 
     var body: some View {
-        HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
-            VStack(alignment: .leading, spacing: 6) {
+        HStack(alignment: .top, spacing: 10) {
+            VStack(alignment: .leading, spacing: 4) {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if isDelete {
                         Image(systemName: "trash")
@@ -33,8 +33,8 @@ struct WordRow: View {
 
                     if let pos = partOfSpeech {
                         Text(pos)
-                            .font(.system(size: 14, weight: .medium))
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
 
                     if isDelete {
@@ -53,8 +53,8 @@ struct WordRow: View {
                     } else {
                         Text(translation)
                             .font(vocabSkin.typography.body)
-                            .foregroundStyle(vocabSkin.palette.translationText)
-                            .lineSpacing(3)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .lineSpacing(2)
                     }
                 }
 
@@ -73,12 +73,8 @@ struct WordRow: View {
                 }
 
                 if !isDelete {
-                    HStack(spacing: 6) {
-                        Image(systemName: statusIconName)
-                            .font(.system(size: 10, weight: .thin))
-                        Text(statusSubtitle)
-                            .font(vocabSkin.typography.caption)
-                    }
+                    Text(statusSubtitle)
+                        .font(vocabSkin.typography.caption)
                     .foregroundStyle(statusTone)
                 }
             }
@@ -86,12 +82,8 @@ struct WordRow: View {
             Spacer(minLength: 0)
 
             if let tier = difficultyTier, !isDelete {
-                VStack(alignment: .trailing, spacing: 6) {
+                VStack(alignment: .trailing, spacing: 4) {
                     VocabTierLabel(tier: tier)
-
-                    if let reviewState {
-                        reviewStateBadge(reviewState)
-                    }
                 }
             }
         }
@@ -111,41 +103,16 @@ struct WordRow: View {
         }
     }
 
-    private var statusIconName: String {
-        switch reviewState {
-        case .unlearned:
-            return "sparkles"
-        case .due:
-            return "clock.badge.exclamationmark"
-        case .reviewed:
-            return "checkmark.circle"
-        case nil:
-            return isDue ? "clock.badge.exclamationmark" : "clock.arrow.trianglehead.counterclockwise.rotate.90"
-        }
-    }
-
     private var statusTone: Color {
         switch reviewState {
         case .unlearned:
-            return vocabSkin.palette.accent
+            return vocabSkin.palette.tertiaryText
         case .due:
-            return vocabSkin.palette.translationText
+            return vocabSkin.tierColor(for: "intermediate")
         case .reviewed:
-            return vocabSkin.palette.success
+            return vocabSkin.palette.secondaryText
         case nil:
-            return isDue ? vocabSkin.palette.translationText : vocabSkin.palette.secondaryText
+            return isDue ? vocabSkin.tierColor(for: "intermediate") : vocabSkin.palette.tertiaryText
         }
-    }
-
-    private func reviewStateBadge(_ state: VocabularyReviewState) -> some View {
-        Text(state.title)
-            .font(vocabSkin.typography.captionStrong)
-            .padding(.horizontal, 6)
-            .padding(.vertical, 4)
-            .background(statusTone.opacity(0.08))
-            .foregroundStyle(statusTone)
-            .clipShape(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-            )
     }
 }

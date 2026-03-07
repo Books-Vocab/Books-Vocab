@@ -91,51 +91,51 @@ struct VocabSkin {
 extension VocabSkin {
     static let mochiNeutral = VocabSkin(
         palette: .init(
-            pageBackground: Color(red: 0.953, green: 0.952, blue: 0.946),
-            stageBackground: Color(red: 0.976, green: 0.975, blue: 0.970),
-            cardBackground: Color(red: 0.993, green: 0.992, blue: 0.989),
-            cardBorder: Color.black.opacity(0.055),
-            divider: Color.black.opacity(0.055),
-            shadow: Color.black.opacity(0.045),
-            primaryText: Color(red: 0.14, green: 0.14, blue: 0.14),
-            secondaryText: Color(red: 0.50, green: 0.50, blue: 0.50),
-            tertiaryText: Color(red: 0.68, green: 0.68, blue: 0.68),
-            quaternaryText: Color(red: 0.78, green: 0.78, blue: 0.78),
-            translationText: Color(red: 0.60, green: 0.52, blue: 0.40),
-            accent: Color(red: 0.44, green: 0.55, blue: 0.72),
-            success: Color(red: 0.43, green: 0.67, blue: 0.42),
-            destructive: Color(red: 0.86, green: 0.41, blue: 0.38),
-            highlightMark: Color(red: 0.92, green: 0.84, blue: 0.47),
+            pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),
+            stageBackground: Color(red: 0.972, green: 0.970, blue: 0.964),
+            cardBackground: Color(red: 0.989, green: 0.987, blue: 0.982),
+            cardBorder: Color.black.opacity(0.048),
+            divider: Color.black.opacity(0.05),
+            shadow: Color.black.opacity(0.028),
+            primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
+            secondaryText: Color(red: 0.43, green: 0.43, blue: 0.42),
+            tertiaryText: Color(red: 0.60, green: 0.60, blue: 0.58),
+            quaternaryText: Color(red: 0.72, green: 0.72, blue: 0.70),
+            translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
+            accent: Color(red: 0.49, green: 0.56, blue: 0.64),
+            success: Color(red: 0.50, green: 0.64, blue: 0.50),
+            destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
+            highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
             mutedFill: Color.black.opacity(0.035),
-            link: Color(red: 0.44, green: 0.55, blue: 0.72)
+            link: Color(red: 0.47, green: 0.56, blue: 0.67)
         ),
         typography: .init(
-            displayTitle: .system(size: 30, weight: .semibold, design: .default),
-            sectionTitle: .system(size: 20, weight: .semibold, design: .default),
-            detailWord: .system(size: 30, weight: .semibold, design: .monospaced),
-            reviewWord: .system(size: 50, weight: .semibold, design: .monospaced),
-            rowWord: .system(size: 20, weight: .semibold, design: .monospaced),
-            translationTitle: .system(size: 25, weight: .semibold, design: .default),
-            body: .system(size: 17, weight: .regular, design: .default),
-            example: .system(size: 19, weight: .regular, design: .default),
-            caption: .system(size: 13, weight: .medium, design: .default),
-            captionStrong: .system(size: 13, weight: .semibold, design: .default),
-            monoLabel: .system(size: 11, weight: .medium, design: .monospaced),
-            numericHero: .system(size: 48, weight: .semibold, design: .default)
+            displayTitle: .system(size: 24, weight: .semibold, design: .default),
+            sectionTitle: .system(size: 18, weight: .semibold, design: .default),
+            detailWord: .system(size: 27, weight: .semibold, design: .monospaced),
+            reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),
+            rowWord: .system(size: 18, weight: .semibold, design: .monospaced),
+            translationTitle: .system(size: 21, weight: .semibold, design: .default),
+            body: .system(size: 15, weight: .regular, design: .default),
+            example: .system(size: 18, weight: .regular, design: .default),
+            caption: .system(size: 12, weight: .medium, design: .default),
+            captionStrong: .system(size: 12, weight: .semibold, design: .default),
+            monoLabel: .system(size: 10, weight: .medium, design: .monospaced),
+            numericHero: .system(size: 38, weight: .semibold, design: .default)
         ),
         radii: .init(
-            stage: 18,
-            card: 15,
-            overlay: 16,
-            control: 12,
-            chip: 10,
-            tiny: 8
+            stage: 14,
+            card: 12,
+            overlay: 13,
+            control: 10,
+            chip: 8,
+            tiny: 7
         ),
         spacing: .init(
-            cardPadding: 22,
-            sectionGap: 18,
-            inlineGap: 10,
-            rowPadding: 12
+            cardPadding: 18,
+            sectionGap: 14,
+            inlineGap: 8,
+            rowPadding: 9
         )
     )
 }
