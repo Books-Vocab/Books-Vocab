@@ -75,6 +75,7 @@ def user_env(tmp_path):
 
     users_file = tmp_path / "users.json"
     lock_file = tmp_path / "users.json.lock"
+    notifications_file = tmp_path / "app_store_notifications.ndjson"
     users_file.write_text(json.dumps({
         user_id: {
             "config": {},
@@ -92,6 +93,7 @@ def user_env(tmp_path):
         patch.object(api_mod, "DATA_DIR", tmp_path),
         patch.object(api_mod, "USERS_FILE", users_file),
         patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
+        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
     ):
         client = TestClient(app, raise_server_exceptions=False)
         yield client, user_id, headers, tmp_path
@@ -198,6 +200,47 @@ class TestBatchA_UsersJsonLock:
 
         saved = json.loads((data_dir / "users.json").read_text())
         assert saved[user_id]["subscription"]["transaction_id"] == "tx-1"
+        assert saved["_subscription_index"]["otx-1"] == user_id
+
+    def test_app_store_notification_updates_subscription_by_index(self, user_env):
+        client, user_id, headers, data_dir = user_env
+
+        client.post(
+            "/api/billing/app-store/sync",
+            json={
+                "product_id": "com.wordnexus.pro.monthly",
+                "transaction_id": "tx-1",
+                "original_transaction_id": "otx-1",
+                "environment": "sandbox",
+                "status": "active",
+                "is_trial": False,
+                "expires_at": "2026-03-14T00:00:00+00:00",
+                "will_renew": True,
+                "price_display": "$1.00/month",
+            },
+            headers=headers,
+        )
+
+        r = client.post(
+            "/api/billing/app-store/notifications",
+            json={
+                "notification_type": "EXPIRED",
+                "product_id": "com.wordnexus.pro.monthly",
+                "transaction_id": "tx-2",
+                "original_transaction_id": "otx-1",
+                "environment": "production",
+                "expires_at": "2026-03-21T00:00:00+00:00",
+                "will_renew": False,
+            },
+        )
+        assert r.status_code == 200, r.text
+        body = r.json()
+        assert body["updated"] is True
+        assert body["user_id"] == user_id
+        assert body["entitlements"]["pro"]["status"] == "expired"
+
+        saved = json.loads((data_dir / "users.json").read_text())
+        assert saved[user_id]["subscription"]["status"] == "expired"
 
 
 # ============================================================================

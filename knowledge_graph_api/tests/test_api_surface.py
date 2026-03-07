@@ -34,6 +34,7 @@ def isolated_api(tmp_path):
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
     lock_file = data_dir / "users.json.lock"
+    notifications_file = data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps(
             {
@@ -64,6 +65,7 @@ def isolated_api(tmp_path):
         patch.object(api_mod, "DATA_DIR", data_dir),
         patch.object(api_mod, "USERS_FILE", users_file),
         patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
+        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
     ):
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None

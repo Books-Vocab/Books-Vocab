@@ -116,6 +116,7 @@ def get_support():
 DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
 USERS_FILE = DATA_DIR / "users.json"
 USERS_LOCK_FILE = DATA_DIR / "users.json.lock"
+APP_STORE_NOTIFICATIONS_FILE = DATA_DIR / "app_store_notifications.ndjson"
 
 # JWT Configuration
 JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
@@ -446,6 +447,21 @@ class AppStoreSyncRequest(BaseModel):
     price_display: str | None = None
 
 
+class AppStoreNotificationRequest(BaseModel):
+    notification_type: str | None = None
+    subtype: str | None = None
+    product_id: str | None = None
+    transaction_id: str | None = None
+    original_transaction_id: str | None = None
+    environment: str = "production"
+    status: str | None = None
+    is_trial: bool = False
+    expires_at: str | None = None
+    will_renew: bool | None = None
+    signed_payload: str | None = None
+    raw_payload: dict[str, Any] | None = None
+
+
 class DeleteAccountResponse(BaseModel):
     deleted_user_id: str
     linked_ids: list[str]
@@ -588,6 +604,94 @@ def _require_pro_access(user: dict[str, Any], capability: str) -> None:
     )
 
 
+def _append_app_store_event(payload: dict[str, Any]) -> None:
+    APP_STORE_NOTIFICATIONS_FILE.parent.mkdir(parents=True, exist_ok=True)
+    with APP_STORE_NOTIFICATIONS_FILE.open("a", encoding="utf-8") as fh:
+        fh.write(json.dumps(payload, ensure_ascii=False) + "\n")
+
+
+def _upsert_subscription_index(users: dict[str, Any], user_id: str, original_transaction_id: str | None, transaction_id: str | None) -> None:
+    index = users.get("_subscription_index")
+    if not isinstance(index, dict):
+        index = {}
+        users["_subscription_index"] = index
+
+    if isinstance(original_transaction_id, str) and original_transaction_id.strip():
+        index[original_transaction_id.strip()] = user_id
+    if isinstance(transaction_id, str) and transaction_id.strip():
+        index[transaction_id.strip()] = user_id
+
+
+def _resolve_user_id_from_subscription_index(users: dict[str, Any], original_transaction_id: str | None, transaction_id: str | None) -> str | None:
+    index = users.get("_subscription_index")
+    if not isinstance(index, dict):
+        return None
+    for candidate in (original_transaction_id, transaction_id):
+        if isinstance(candidate, str) and candidate.strip():
+            resolved = index.get(candidate.strip())
+            if isinstance(resolved, str) and resolved:
+                return resolved
+    return None
+
+
+def _write_subscription_snapshot(
+    users: dict[str, Any],
+    user_id: str,
+    *,
+    product_id: str,
+    status: str,
+    is_trial: bool,
+    expires_at: str | None,
+    will_renew: bool,
+    environment: str,
+    transaction_id: str | None,
+    original_transaction_id: str | None,
+    price_display: str | None,
+    source: str,
+) -> dict[str, Any]:
+    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    record = users.setdefault(user_id, {})
+    subscription = _default_subscription_payload()
+    existing = record.get("subscription")
+    if isinstance(existing, dict):
+        subscription.update(existing)
+
+    normalized_status = status.strip() or "active"
+    subscription.update({
+        "is_active": normalized_status in {"active", "trial", "grace_period"},
+        "product_id": product_id.strip(),
+        "plan_name": "BooksBrowser Pro",
+        "price_display": price_display.strip() if isinstance(price_display, str) and price_display.strip() else subscription.get("price_display"),
+        "status": normalized_status,
+        "is_trial": is_trial,
+        "trial_days": subscription.get("trial_days") or 7,
+        "will_renew": will_renew,
+        "expires_at": expires_at,
+        "source": source,
+        "last_synced_at": now_iso,
+        "transaction_id": transaction_id,
+        "original_transaction_id": original_transaction_id,
+        "environment": environment,
+    })
+    record["subscription"] = subscription
+    _upsert_subscription_index(users, user_id, original_transaction_id, transaction_id)
+    return record
+
+
+def _notification_status(notification_type: str | None, subtype: str | None) -> str:
+    kind = (notification_type or "").upper()
+    sub = (subtype or "").upper()
+    if kind in {"SUBSCRIBED", "OFFER_REDEEMED", "DID_RENEW"}:
+        return "trial" if sub == "INITIAL_BUY" else "active"
+    if kind == "GRACE_PERIOD_EXPIRED":
+        return "expired"
+    if kind == "DID_FAIL_TO_RENEW":
+        return "grace_period"
+    if kind in {"EXPIRED", "REVOKE"}:
+        return "expired"
+    return "active"
+
+
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
@@ -614,39 +718,87 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 @app.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
-
     with FileLock(str(USERS_LOCK_FILE)):
         users = load_users()
         user_id = user["id"]
-        record = users.setdefault(user_id, {})
-        subscription = _default_subscription_payload()
-        existing = record.get("subscription")
-        if isinstance(existing, dict):
-            subscription.update(existing)
-
-        normalized_status = req.status.strip() or "active"
-        subscription.update({
-            "is_active": normalized_status in {"active", "trial", "grace_period"},
-            "product_id": req.product_id.strip(),
-            "plan_name": "BooksBrowser Pro",
-            "price_display": req.price_display.strip() if isinstance(req.price_display, str) and req.price_display.strip() else subscription.get("price_display"),
-            "status": normalized_status,
-            "is_trial": req.is_trial,
-            "trial_days": subscription.get("trial_days") or 7,
-            "will_renew": req.will_renew,
-            "expires_at": req.expires_at,
-            "source": "app_store",
-            "last_synced_at": now_iso,
-            "transaction_id": req.transaction_id,
-            "original_transaction_id": req.original_transaction_id,
-            "environment": req.environment,
-        })
-
-        record["subscription"] = subscription
+        record = _write_subscription_snapshot(
+            users,
+            user["id"],
+            product_id=req.product_id,
+            status=req.status,
+            is_trial=req.is_trial,
+            expires_at=req.expires_at,
+            will_renew=req.will_renew,
+            environment=req.environment,
+            transaction_id=req.transaction_id,
+            original_transaction_id=req.original_transaction_id,
+            price_display=req.price_display,
+            source="app_store",
+        )
         save_users(users)
 
     return _build_entitlements_response(record)
+
+
+# ---------------------------------------------------------------------------
+# POST /api/billing/app-store/notifications
+# ---------------------------------------------------------------------------
+@app.post("/api/billing/app-store/notifications")
+def app_store_notifications(req: AppStoreNotificationRequest):
+    """Receive App Store Server Notifications and persist/update subscription state."""
+    event = {
+        "received_at": datetime.now(tz=timezone.utc).isoformat(),
+        "notification_type": req.notification_type,
+        "subtype": req.subtype,
+        "product_id": req.product_id,
+        "transaction_id": req.transaction_id,
+        "original_transaction_id": req.original_transaction_id,
+        "environment": req.environment,
+        "status": req.status,
+        "is_trial": req.is_trial,
+        "expires_at": req.expires_at,
+        "will_renew": req.will_renew,
+        "signed_payload": req.signed_payload,
+        "raw_payload": req.raw_payload,
+    }
+    _append_app_store_event(event)
+
+    with FileLock(str(USERS_LOCK_FILE)):
+        users = load_users()
+        user_id = _resolve_user_id_from_subscription_index(
+            users,
+            req.original_transaction_id,
+            req.transaction_id,
+        )
+        if not user_id:
+            return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
+
+        if not req.product_id:
+            return {"status": "accepted", "updated": False, "reason": "missing_product_id"}
+
+        status = req.status or _notification_status(req.notification_type, req.subtype)
+        record = _write_subscription_snapshot(
+            users,
+            user_id,
+            product_id=req.product_id,
+            status=status,
+            is_trial=req.is_trial,
+            expires_at=req.expires_at,
+            will_renew=req.will_renew if req.will_renew is not None else status in {"active", "trial", "grace_period"},
+            environment=req.environment,
+            transaction_id=req.transaction_id,
+            original_transaction_id=req.original_transaction_id,
+            price_display=None,
+            source="app_store_notification",
+        )
+        save_users(users)
+
+    return {
+        "status": "accepted",
+        "updated": True,
+        "user_id": user_id,
+        "entitlements": _build_entitlements_response(record).model_dump(),
+    }
 
 
 # ---------------------------------------------------------------------------
