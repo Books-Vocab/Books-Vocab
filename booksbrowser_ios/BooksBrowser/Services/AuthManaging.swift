@@ -10,6 +10,10 @@ protocol SessionInvalidating: AnyObject {
     func logout(modelContainer: ModelContainer?, reason: String)
 }
 
+protocol LocalDataClearing: AnyObject {
+    func clearLocalData(container: ModelContainer, reason: String) async
+}
+
 /// AuthManager 的行為契約，供 View / Handler 依賴，方便替換 Mock 進行測試
 @preconcurrency protocol AuthManaging: AnyObject {
     var isLoggedIn: Bool { get }

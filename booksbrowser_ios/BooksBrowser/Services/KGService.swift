@@ -54,7 +54,7 @@ struct KGUserConfig: Codable {
 
 /// Manages communication with the Knowledge Graph API server
 @Observable
-final class KGService: KGServing {
+final class KGService: KGServing, LocalDataClearing {
     private enum SyncKeys {
         static let incrementalBoundary = "kg_last_incremental_sync"
         static let payloadVersion = "kg_review_payload_version"
