@@ -2,12 +2,18 @@
 
 這是一個以 SQLite + Mochi 卡片盒為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、火速背景 Pipeline、以及增量同步機制。
 
+Mochi 整合目前採用使用者層設定：
+
+- 權威來源是 `users.json -> <user_id> -> config -> mochi_api_key`
+- iOS app 透過 `/api/user/config` 讀寫
+- 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
+
 > 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見上層目錄：[👉 `../System_Architecture.md`](../System_Architecture.md)
 
 ## 快速啟動
 
 ```bash
-# 複製 .env 範本並填入 GEMINI_API_KEY
+# 複製 .env 範本並填入系統層必要變數（例如 GEMINI_API_KEY）
 cp .env.example .env
 
 # 本地開發（需要 Python 3.11+）
@@ -43,7 +49,7 @@ Authorization: Bearer google-oauth2|1234567890  # Google Sign-In ID
 
 ```
 data/users/
-├── users.json                    # 全域用戶設定（Mochi API Key 映射）
+├── users.json                    # 全域用戶索引與 per-user config（含 config.mochi_api_key）
 ├── chen/
 │   ├── cards.db                 # SQLite 卡片資料庫
 │   ├── graph.json               # 知識圖譜連結
@@ -254,4 +260,3 @@ POST /api/pipeline                         # 觸發背景 Pipeline
 *   **Enrich & Judges**: `src/kg/enrich.py` & `src/kg/judge.py` - LLM Prompt (使用 `gemini-2.5-flash-lite`, batch 20, 5 workers)。
 *   **Embedding**: `src/kg/embeddings.py` - 使用 `gemini-embedding-001` (768維) 進行語意相似度檢索。
 *   **CSS**: `mochi_theme.css` - 需手動複製到 Mochi 的 "Custom CSS" 設定中。
-

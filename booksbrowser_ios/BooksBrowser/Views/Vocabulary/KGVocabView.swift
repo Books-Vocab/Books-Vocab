@@ -615,7 +615,6 @@ private struct TodayReviewView: View {
                         italic: true,
                         truncateAroundHighlightCharacters: 5
                     )
-                        .lineLimit(5)
                 }
             }
 
@@ -665,8 +664,13 @@ private struct TodayReviewView: View {
         let isHighlight: Bool
     }
 
+    private struct ReviewRichUnit {
+        let character: Character
+        let isHighlight: Bool
+    }
+
     private static let inlineHighlightPattern = try! NSRegularExpression(
-        pattern: #"\*\*([^*]+)\*\*|"([^"]+)""#
+        pattern: #"\*\*([^*]+)\*\*"#
     )
 
     private func reviewRichText(
@@ -688,8 +692,11 @@ private struct TodayReviewView: View {
             var part = AttributedString(segment.text)
             if segment.isHighlight {
                 part.font = italic ? font.weight(.semibold).italic() : font.weight(.semibold)
-                part.foregroundColor = .primary
-                part.backgroundColor = highlightTone.opacity(0.18)
+                part.foregroundColor = highlightTone.opacity(0.95)
+                part.underlineStyle = Text.LineStyle(
+                    pattern: .solid,
+                    color: highlightTone.opacity(0.6)
+                )
             } else {
                 part.font = italic ? font.italic() : font
                 part.foregroundColor = textColor
@@ -720,9 +727,7 @@ private struct TodayReviewView: View {
                 segments.append(ReviewRichSegment(text: nsString.substring(with: beforeRange), isHighlight: false))
             }
 
-            let markdownRange = match.range(at: 1)
-            let quoteRange = match.range(at: 2)
-            let captureRange = markdownRange.location != NSNotFound ? markdownRange : quoteRange
+            let captureRange = match.range(at: 1)
             if captureRange.location != NSNotFound, captureRange.length > 0 {
                 segments.append(ReviewRichSegment(text: nsString.substring(with: captureRange), isHighlight: true))
             }
@@ -737,65 +742,161 @@ private struct TodayReviewView: View {
         return segments
     }
 
+    private func firstHighlightRange(in units: [ReviewRichUnit]) -> Range<Int>? {
+        var cursor = 0
+        while cursor < units.count {
+            if units[cursor].isHighlight {
+                var end = cursor + 1
+                while end < units.count, units[end].isHighlight {
+                    end += 1
+                }
+                return cursor..<end
+            }
+            cursor += 1
+        }
+        return nil
+    }
+
+    private func units(from segments: [ReviewRichSegment]) -> [ReviewRichUnit] {
+        var units: [ReviewRichUnit] = []
+        for segment in segments {
+            units.append(contentsOf: segment.text.map { ReviewRichUnit(character: $0, isHighlight: segment.isHighlight) })
+        }
+        return units
+    }
+
+    private func richSegments(from units: [ReviewRichUnit]) -> [ReviewRichSegment] {
+        var segments: [ReviewRichSegment] = []
+
+        for unit in units {
+            let text = String(unit.character)
+            if let last = segments.last, last.isHighlight == unit.isHighlight {
+                segments[segments.count - 1] = ReviewRichSegment(
+                    text: last.text + text,
+                    isHighlight: last.isHighlight
+                )
+            } else {
+                segments.append(ReviewRichSegment(text: text, isHighlight: unit.isHighlight))
+            }
+        }
+
+        return segments
+    }
+
+    private func expandedLowerBound(
+        in units: [ReviewRichUnit],
+        from highlightStart: Int,
+        visibleCharacters: Int
+    ) -> Int {
+        var index = highlightStart
+        var remaining = visibleCharacters
+
+        while index > 0 {
+            index -= 1
+            if isContextCharacter(units[index].character) {
+                remaining -= 1
+                if remaining == 0 {
+                    break
+                }
+            }
+        }
+
+        return index
+    }
+
+    private func expandedUpperBound(
+        in units: [ReviewRichUnit],
+        from highlightEnd: Int,
+        visibleCharacters: Int
+    ) -> Int {
+        var index = highlightEnd
+        var remaining = visibleCharacters
+
+        while index < units.count {
+            if isContextCharacter(units[index].character) {
+                remaining -= 1
+                index += 1
+                if remaining == 0 {
+                    break
+                }
+            } else {
+                index += 1
+            }
+        }
+
+        return index
+    }
+
+    private func isContextCharacter(_ character: Character) -> Bool {
+        character.unicodeScalars.contains { CharacterSet.alphanumerics.contains($0) }
+    }
+
+    private func trimOuterWhitespace(in segments: [ReviewRichSegment]) -> [ReviewRichSegment] {
+        guard !segments.isEmpty else { return segments }
+        var trimmed = segments
+
+        while let first = trimmed.first, first.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            trimmed.removeFirst()
+        }
+
+        while let last = trimmed.last, last.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            trimmed.removeLast()
+        }
+
+        if let first = trimmed.first {
+            let value = first.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            trimmed[0] = ReviewRichSegment(text: value, isHighlight: first.isHighlight)
+        }
+
+        if let last = trimmed.last {
+            let value = last.text.trimmingCharacters(in: .whitespacesAndNewlines)
+            trimmed[trimmed.count - 1] = ReviewRichSegment(text: value, isHighlight: last.isHighlight)
+        }
+
+        return trimmed.filter { !$0.text.isEmpty }
+    }
+
+    private func firstHighlightRange(in segments: [ReviewRichSegment]) -> Range<Int>? {
+        let units = units(from: segments)
+        return firstHighlightRange(in: units)
+    }
+
     private func truncatedReviewRichSegments(
         _ segments: [ReviewRichSegment],
         contextCharacters: Int
     ) -> [ReviewRichSegment] {
+        let units = units(from: segments)
+
         guard
             contextCharacters >= 0,
-            let highlightRange = firstHighlightRange(in: segments)
+            let highlightRange = firstHighlightRange(in: units)
         else {
             return segments
         }
 
-        let totalCount = segments.reduce(0) { $0 + $1.text.count }
-        let lowerBound = max(0, highlightRange.lowerBound - contextCharacters)
-        let upperBound = min(totalCount, highlightRange.upperBound + contextCharacters)
+        let lowerBound = expandedLowerBound(
+            in: units,
+            from: highlightRange.lowerBound,
+            visibleCharacters: contextCharacters
+        )
+        let upperBound = expandedUpperBound(
+            in: units,
+            from: highlightRange.upperBound,
+            visibleCharacters: contextCharacters
+        )
 
-        var sliced: [ReviewRichSegment] = []
-        var cursor = 0
+        var sliced = richSegments(from: Array(units[lowerBound..<upperBound]))
+        sliced = trimOuterWhitespace(in: sliced)
 
         if lowerBound > 0 {
-            sliced.append(ReviewRichSegment(text: "...", isHighlight: false))
+            sliced.insert(ReviewRichSegment(text: "...", isHighlight: false), at: 0)
         }
 
-        for segment in segments {
-            let segmentStart = cursor
-            let segmentEnd = cursor + segment.text.count
-            let overlapStart = max(segmentStart, lowerBound)
-            let overlapEnd = min(segmentEnd, upperBound)
-
-            if overlapStart < overlapEnd {
-                let lowerIndex = segment.text.index(segment.text.startIndex, offsetBy: overlapStart - segmentStart)
-                let upperIndex = segment.text.index(segment.text.startIndex, offsetBy: overlapEnd - segmentStart)
-                sliced.append(
-                    ReviewRichSegment(
-                        text: String(segment.text[lowerIndex..<upperIndex]),
-                        isHighlight: segment.isHighlight
-                    )
-                )
-            }
-
-            cursor = segmentEnd
-        }
-
-        if upperBound < totalCount {
+        if upperBound < units.count {
             sliced.append(ReviewRichSegment(text: "...", isHighlight: false))
         }
 
         return mergeReviewRichSegments(sliced)
-    }
-
-    private func firstHighlightRange(in segments: [ReviewRichSegment]) -> Range<Int>? {
-        var cursor = 0
-        for segment in segments {
-            let nextCursor = cursor + segment.text.count
-            if segment.isHighlight {
-                return cursor..<nextCursor
-            }
-            cursor = nextCursor
-        }
-        return nil
     }
 
     private func mergeReviewRichSegments(_ segments: [ReviewRichSegment]) -> [ReviewRichSegment] {

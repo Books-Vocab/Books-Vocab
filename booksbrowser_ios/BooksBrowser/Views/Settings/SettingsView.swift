@@ -463,7 +463,7 @@ struct SettingsView: View {
             }
             .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
-            SectionFooter("可選。填入後自動將生詞同步至 Mochi 單字卡。")
+            SectionFooter("可選。這是你的使用者層 Mochi 設定，填入後自動將生詞同步至 Mochi 單字卡。")
         }
     }
 
@@ -620,7 +620,7 @@ struct MochiInfoSheetView: View {
                         .font(.title)
                         .fontWeight(.bold)
 
-                    Text("如果你有在使用 Mochi (mochi.cards) 來複習單字，BooksBrowser 可以自動將你查過並儲存的單字建立成 Mochi 卡片！")
+                    Text("如果你有在使用 Mochi (mochi.cards) 來複習單字，BooksBrowser 可以自動將你查過並儲存的單字建立成 Mochi 卡片。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。")
                         .font(.body)
                         .lineSpacing(4)
 
