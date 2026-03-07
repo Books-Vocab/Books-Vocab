@@ -645,6 +645,9 @@ struct MochiInfoSheetView: View {
 struct SubscriptionPaywallSheet: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.authManager) private var authManager
+    @Environment(\.kgService) private var kgService
 
     var body: some View {
         NavigationStack {
@@ -658,10 +661,19 @@ struct SubscriptionPaywallSheet: View {
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
-                    Text("第一版已把訂閱狀態、試用文案與設定頁入口接好。下一步會把這裡接上 StoreKit 2 購買、restore 與 App Store 同步。")
+                    Text(paywallSummaryText)
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(6)
+
+                    VStack(alignment: .leading, spacing: 6) {
+                        Text(priceLine)
+                            .font(vocabSkin.typography.sectionTitle)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
+                        Text("來源：\(sourceLine)")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
 
                     VStack(alignment: .leading, spacing: 12) {
                         paywallFeatureRow("AI 翻譯與語境解釋")
@@ -676,7 +688,48 @@ struct SubscriptionPaywallSheet: View {
                             .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
                     )
 
-                    Text("價格與免費試用長度將以 App Store 顯示為準。")
+                    VStack(spacing: 10) {
+                        Button {
+                            Task {
+                                if subscriptionManager.hasProAccess {
+                                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                                } else {
+                                    await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
+                                }
+                            }
+                        } label: {
+                            HStack {
+                                if subscriptionManager.isLoading {
+                                    ProgressView()
+                                        .controlSize(.small)
+                                }
+                                Text(subscriptionManager.hasProAccess ? "重新同步訂閱狀態" : "開始免費試用")
+                                Spacer()
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.vocabAction(.primary))
+                        .disabled(subscriptionManager.isLoading)
+
+                        Button {
+                            Task {
+                                await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
+                            }
+                        } label: {
+                            Text("恢復購買")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.vocabAction(.neutral))
+                        .disabled(subscriptionManager.isLoading)
+                    }
+
+                    if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
+                        Text(purchaseStatusMessage)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                    }
+
+                    Text("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
@@ -685,11 +738,49 @@ struct SubscriptionPaywallSheet: View {
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("訂閱")
             .navigationBarTitleDisplayMode(.inline)
+            .task {
+                await subscriptionManager.loadProducts()
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button("完成") { dismiss() }
                 }
             }
+        }
+    }
+
+    private var paywallSummaryText: String {
+        if subscriptionManager.hasProAccess {
+            return "目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。"
+        }
+        return "解鎖閱讀器 AI、知識庫同步、關聯圖與 Mochi 整合。免費試用與價格會直接來自 App Store。"
+    }
+
+    private var priceLine: String {
+        if let product = subscriptionManager.proProduct {
+            let days = subscriptionManager.entitlements.pro.trial_days ?? 7
+            return "\(product.displayPrice) / month · \(days) 天免費試用"
+        }
+        if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
+            return remotePrice
+        }
+        return "載入 App Store 價格中…"
+    }
+
+    private var sourceLine: String {
+        switch subscriptionManager.activePaywallSource {
+        case .settings:
+            return "設定"
+        case .sync:
+            return "同步"
+        case .graph:
+            return "關聯圖"
+        case .reader:
+            return "閱讀器 AI"
+        case .knowledge:
+            return "知識庫"
+        case nil:
+            return "訂閱"
         }
     }
 

@@ -140,6 +140,7 @@ struct SettingsView: View {
             connectionPulse.toggle()
 
             if authManager.isLoggedIn {
+                await subscriptionManager.loadProducts()
                 await subscriptionManager.refresh(using: kgService, authManager: authManager)
                 if let config = try? await kgService.fetchUserConfig() {
                     let fetched = config.mochi_api_key ?? ""
@@ -270,6 +271,10 @@ struct SettingsView: View {
     }
 
     private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {
+        if let price = subscriptionManager.proProduct?.displayPrice, !price.isEmpty, !status.is_active {
+            let days = status.trial_days ?? 7
+            return "\(price) / month · \(days) 天免費試用"
+        }
         if let price = status.price_display, !price.isEmpty {
             if let expiresAt = status.expires_at, !expiresAt.isEmpty {
                 return "\(price) · 到期 \(expiresAt)"
