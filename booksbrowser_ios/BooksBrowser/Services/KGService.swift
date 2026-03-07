@@ -65,6 +65,12 @@ final class KGService: KGServing {
 
     private static let deployedServerURL = "https://wordnexus.lol"
 
+    @ObservationIgnored
+    private let authSession: any AuthSessionProviding
+
+    @ObservationIgnored
+    private let sessionInvalidator: any SessionInvalidating
+
     var serverURL: String {
         get { Self.deployedServerURL }
         set { _ = newValue } // Keep protocol compatibility; server is fixed in production.
@@ -82,10 +88,18 @@ final class KGService: KGServing {
         return URL(string: clean) ?? URL(string: Self.deployedServerURL)!
     }
 
+    init(
+        authSession: any AuthSessionProviding = AuthManager.shared,
+        sessionInvalidator: any SessionInvalidating = AuthManager.shared
+    ) {
+        self.authSession = authSession
+        self.sessionInvalidator = sessionInvalidator
+    }
+
     // MARK: - Auth Helper
 
     private func applyAuth(to request: inout URLRequest) throws {
-        guard let token = AuthManager.shared.token else {
+        guard let token = authSession.token else {
             throw KGError.unauthorized
         }
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
@@ -94,7 +108,7 @@ final class KGService: KGServing {
     // MARK: - Health Check
 
     func healthCheck() async {
-        guard AuthManager.shared.isLoggedIn else {
+        guard authSession.isLoggedIn else {
             isConnected = false
             return
         }
@@ -112,7 +126,7 @@ final class KGService: KGServing {
             
             if httpResponse.statusCode == 401 {
                 print("❌ KG health check failed: 401 Unauthorized")
-                AuthManager.shared.logout(reason: "healthcheck_401")
+                sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
                 isConnected = false
                 return
             }

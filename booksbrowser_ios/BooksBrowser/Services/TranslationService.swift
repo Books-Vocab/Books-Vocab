@@ -21,7 +21,12 @@ struct TranslationResult: Codable {
 /// AI 翻譯服務 — 使用 Gemini API 進行上下文感知翻譯
 @Observable
 final class TranslationService: Translating {
+    @ObservationIgnored
+    private let authSession: any AuthSessionProviding
 
+    init(authSession: any AuthSessionProviding = AuthManager.shared) {
+        self.authSession = authSession
+    }
 
     /// Backend Server URL
     private var backendURL: String {
@@ -130,7 +135,7 @@ final class TranslationService: Translating {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // 帶上授權 Header (因為 /api/translate 是受保護的端點)
-        if let token = AuthManager.shared.token {
+        if let token = authSession.token {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         } else {
             throw TranslationError.apiError("未登入，無法調用翻譯 API")

@@ -14,7 +14,7 @@ import UIKit
 import AuthenticationServices
 
 @Observable
-final class AuthManager: @unchecked Sendable, AuthManaging {
+final class AuthManager: @unchecked Sendable, AuthManaging, AuthSessionProviding, SessionInvalidating {
     static let shared = AuthManager()
 
     // Stored at app startup so any logout path can clear local data

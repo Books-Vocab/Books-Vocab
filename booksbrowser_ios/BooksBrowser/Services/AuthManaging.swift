@@ -1,6 +1,15 @@
 import Foundation
 import SwiftData
 
+protocol AuthSessionProviding: AnyObject {
+    var isLoggedIn: Bool { get }
+    var token: String? { get }
+}
+
+protocol SessionInvalidating: AnyObject {
+    func logout(modelContainer: ModelContainer?, reason: String)
+}
+
 /// AuthManager 的行為契約，供 View / Handler 依賴，方便替換 Mock 進行測試
 @preconcurrency protocol AuthManaging: AnyObject {
     var isLoggedIn: Bool { get }
