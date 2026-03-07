@@ -45,6 +45,7 @@ struct WordDetailHeroCard: View {
                     .font(AppFonts.h2(weight: .semibold))
                     .foregroundStyle(translationTone)
                     .fixedSize(horizontal: false, vertical: true)
+                    .lineSpacing(3)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
             .background(Color.clear)
@@ -78,6 +79,7 @@ struct WordDetailSectionCard<Content: View>: View {
                         .font(AppFonts.caption(weight: .semibold))
                 } icon: {
                     Image(systemName: systemImage)
+                        .font(.system(size: 12, weight: .thin))
                 }
                 .foregroundStyle(tint)
 
@@ -116,11 +118,12 @@ struct WordDetailGraphLinkRow: View {
                     .font(AppFonts.caption())
                     .foregroundStyle(.secondary)
                     .frame(maxWidth: .infinity, alignment: .leading)
+                    .lineSpacing(2)
             }
 
             if showsAccessory {
                 Image(systemName: "arrow.up.right")
-                    .font(.caption.weight(.semibold))
+                    .font(.system(size: 12, weight: .thin))
                     .foregroundStyle(.tertiary)
             }
         }
@@ -158,11 +161,11 @@ struct VocabularySyncBadge: View {
         Group {
             switch status {
             case 1:
-                Label("已同步", systemImage: "checkmark.circle.fill")
+                Label("已同步", systemImage: "checkmark.circle")
                     .font(AppFonts.caption(weight: .medium))
                     .foregroundStyle(successTone)
             case 2:
-                Label("同步失敗", systemImage: "exclamationmark.circle.fill")
+                Label("同步失敗", systemImage: "exclamationmark.circle")
                     .font(AppFonts.caption(weight: .medium))
                     .foregroundStyle(destructiveTone)
             default:

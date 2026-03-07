@@ -30,7 +30,7 @@ struct TodayReviewView: View {
 
                         AppCard(padding: 0) {
                             ZStack {
-                                RoundedRectangle(cornerRadius: 30, style: .continuous)
+                                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusGlass, style: .continuous)
                                     .fill(Color.white)
 
                                 reviewCardFront(current)
@@ -40,9 +40,14 @@ struct TodayReviewView: View {
                                     .opacity(showBack ? 1 : 0)
                                     .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
                             }
-                            .frame(minHeight: 420)
+                            .frame(minHeight: AppMetrics.cardMinHeight)
                         }
-                        .contentShape(RoundedRectangle(cornerRadius: 30, style: .continuous))
+                        .shadow(
+                            color: .black.opacity(AppShadows.paperFloatOpacity),
+                            radius: AppShadows.paperFloatRadius,
+                            y: AppShadows.paperFloatY
+                        )
+                        .contentShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusGlass, style: .continuous))
                         .onTapGesture {
                             guard !isAdvancing else { return }
                             withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
@@ -80,6 +85,8 @@ struct TodayReviewView: View {
         }
     }
 
+    // MARK: - Header
+
     private func header(current: VocabularyEntry) -> some View {
         HStack(alignment: .center) {
             Text(progressText)
@@ -95,19 +102,19 @@ struct TodayReviewView: View {
             .font(AppFonts.caption(weight: .semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.white)
-            .clipShape(Capsule())
+            .compatibleGlass(in: Capsule())
             Button("關閉") {
                 onClose()
             }
             .font(AppFonts.caption(weight: .semibold))
             .padding(.horizontal, 12)
             .padding(.vertical, 8)
-            .background(Color.white)
-            .clipShape(Capsule())
+            .compatibleGlass(in: Capsule())
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
     }
+
+    // MARK: - Action Bar
 
     private var reviewActionBar: some View {
         HStack(spacing: AppMetrics.spacingSmall) {
@@ -129,6 +136,8 @@ struct TodayReviewView: View {
         .padding(.horizontal, AppMetrics.spacingLarge)
     }
 
+    // MARK: - Completion
+
     private var completionState: some View {
         VStack(spacing: AppMetrics.spacingLarge) {
             Spacer()
@@ -143,12 +152,13 @@ struct TodayReviewView: View {
             .font(AppFonts.subhead(weight: .semibold))
             .padding(.horizontal, 18)
             .padding(.vertical, 12)
-            .background(Color.white)
-            .clipShape(Capsule())
+            .compatibleGlass(in: Capsule())
             Spacer()
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
     }
+
+    // MARK: - State
 
     private var currentEntry: VocabularyEntry? {
         guard currentIndex < queue.count else { return nil }
@@ -175,6 +185,8 @@ struct TodayReviewView: View {
             isAdvancing = false
         }
     }
+
+    // MARK: - Card Front
 
     private func reviewCardFront(_ current: VocabularyEntry) -> some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
@@ -229,8 +241,10 @@ struct TodayReviewView: View {
                 Spacer()
             }
         }
-        .padding(34)
+        .padding(AppMetrics.heroCardPadding)
     }
+
+    // MARK: - Card Back
 
     private func reviewCardBack(_ current: VocabularyEntry) -> some View {
         let card = current.cardPresentation
@@ -297,8 +311,10 @@ struct TodayReviewView: View {
                 Spacer()
             }
         }
-        .padding(34)
+        .padding(AppMetrics.heroCardPadding)
     }
+
+    // MARK: - Link Strip
 
     private func reviewLinkStrip(for entry: VocabularyEntry) -> some View {
         let fullGroups = entry.cardPresentation.linkGroups
@@ -306,7 +322,7 @@ struct TodayReviewView: View {
 
         return HStack(alignment: .top, spacing: 10) {
             Image(systemName: "paperclip")
-                .font(.system(size: 15, weight: .semibold))
+                .font(.system(size: 15, weight: .thin))
                 .foregroundStyle(.secondary)
                 .padding(.top, 2)
 
@@ -329,11 +345,11 @@ struct TodayReviewView: View {
         .padding(.vertical, 12)
         .background(
             RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                .fill(Color.primary.opacity(0.05))
+                .fill(Color.primary.opacity(0.04))
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                .stroke(Color.primary.opacity(0.05), lineWidth: 0.8)
+                .stroke(Color.primary.opacity(0.04), lineWidth: 0.8)
         )
     }
 
@@ -382,6 +398,8 @@ struct TodayReviewView: View {
         allEntries.first { $0.kgCardId == link.cardId }
     }
 
+    // MARK: - Review Button
+
     private func reviewButton(
         title: String,
         caption: String,
@@ -399,15 +417,12 @@ struct TodayReviewView: View {
             .frame(maxWidth: .infinity, alignment: .leading)
             .padding(.vertical, AppMetrics.spacingLarge)
             .padding(.horizontal, AppMetrics.spacingMedium)
-            .background(tone.opacity(0.10))
-            .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                    .stroke(tone.opacity(0.12), lineWidth: 0.8)
-            )
-            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
         }
         .buttonStyle(.plain)
         .foregroundStyle(tone)
+        .compatibleGlass(
+            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+        )
         .disabled(isAdvancing)
     }
 

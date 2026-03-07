@@ -64,8 +64,7 @@ struct VocabularyListView: View {
                     } label: {
                         HStack(spacing: 4) {
                             Image(systemName: "arrow.triangle.2.circlepath")
-                                .font(.system(size: 14, weight: .light))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 16, weight: .thin))
                             if pendingCount > 0 {
                                 Text("\(pendingCount)")
                                     .font(.system(size: 10, weight: .semibold))
@@ -89,8 +88,7 @@ struct VocabularyListView: View {
                                 ProgressView().scaleEffect(0.8)
                             } else {
                                 Image(systemName: "arrow.clockwise")
-                                    .font(.system(size: 14, weight: .light))
-                                    .foregroundStyle(.secondary)
+                                    .font(.system(size: 16, weight: .thin))
                             }
                         }
                         .disabled(isForceRefreshing)
@@ -120,8 +118,7 @@ struct VocabularyListView: View {
                             }
                         } label: {
                             Image(systemName: "square.and.arrow.up")
-                                .font(.system(size: 14, weight: .light))
-                                .foregroundStyle(.secondary)
+                                .font(.system(size: 16, weight: .thin))
                         }
                     }
                 }
@@ -230,12 +227,9 @@ struct VocabularyListView: View {
         for index in offsets {
             let entry = filteredEntries[index]
             if entry.actionType == "delete" {
-                // 如果刪除的是「待刪除 (Pending Delete)」請求，則視為復原 (Undo)
-                // 將其移回已同步狀態，讓它重新回到知識庫列表
                 entry.syncStatus = 1
                 entry.actionType = "add"
             } else {
-                // 如果是「待新增 (Pending Add)」，則直接從本地資料庫抹除
                 modelContext.delete(entry)
             }
         }
@@ -285,7 +279,6 @@ struct VocabularyListView: View {
     }
 
     private func exportAsAnki() {
-        // Anki TSV: front \t back
         var tsv = ""
         for entry in pendingEntries {
             let front = "\(entry.word)\n<small>\(entry.context)</small>"
@@ -334,6 +327,7 @@ struct VocabularyListView: View {
 // MARK: - 統一單字行元件
 
 /// 共用單字列表行 — 待收錄和知識庫都使用相同版面
+/// 極簡知識美學：高留白、線性圖標、文字驅動層級
 struct WordRow: View {
     @Environment(\.colorScheme) private var colorScheme
     let word: String
@@ -351,28 +345,27 @@ struct WordRow: View {
     private var isDue: Bool { nextReviewAt <= Date() }
 
     var body: some View {
-        HStack(alignment: .top) {
-            VStack(alignment: .leading, spacing: 4) {
+        HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
+            VStack(alignment: .leading, spacing: 6) {
                 // Row 1: word + POS
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if isDelete {
                         Image(systemName: "trash")
-                            .font(.caption)
+                            .font(.system(size: 12, weight: .thin))
                             .foregroundStyle(AppColors.destructive(colorScheme))
                     }
 
                     Text(word)
-                        .font(.headline)
+                        .font(.system(size: 20, weight: .semibold, design: .serif))
                         .strikethrough(isDelete, color: AppColors.destructive(colorScheme))
                         .foregroundStyle(isDelete ? AppColors.destructive(colorScheme) : .primary)
 
                     if let pos = partOfSpeech {
                         Text(pos)
-                            .font(.caption2)
-                            .fontWeight(.medium)
+                            .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(AppColors.accent(colorScheme).opacity(0.12))
+                            .background(AppColors.accent(colorScheme).opacity(0.10))
                             .foregroundStyle(AppColors.accent(colorScheme))
                             .clipShape(Capsule())
                     }
@@ -380,11 +373,10 @@ struct WordRow: View {
                     if isDelete {
                         Spacer()
                         Text("待刪除")
-                            .font(.caption2)
-                            .fontWeight(.medium)
+                            .font(.system(size: 11, weight: .medium))
                             .padding(.horizontal, 6)
                             .padding(.vertical, 2)
-                            .background(AppColors.destructive(colorScheme).opacity(0.10))
+                            .background(AppColors.destructive(colorScheme).opacity(0.08))
                             .foregroundStyle(AppColors.destructive(colorScheme))
                             .clipShape(Capsule())
                     }
@@ -398,16 +390,17 @@ struct WordRow: View {
                             .foregroundStyle(.tertiary)
                     } else {
                         Text(translation)
-                            .font(.subheadline)
+                            .font(.system(size: 15, weight: .regular))
                             .foregroundStyle(AppColors.translation(colorScheme))
+                            .lineSpacing(3)
                     }
                 }
 
                 // Row 3: source (待收錄 only)
                 if let book = bookTitle, !book.isEmpty {
                     HStack(spacing: 4) {
-                        Image(systemName: "book")
-                            .font(.caption2)
+                        Image(systemName: "book.closed")
+                            .font(.system(size: 10, weight: .thin))
                         Text(book)
                             .font(.caption2)
                         if let chapter = chapterTitle {
@@ -418,10 +411,11 @@ struct WordRow: View {
                     .foregroundStyle(.tertiary)
                 }
 
+                // Row 4: review status
                 if !isDelete {
                     HStack(spacing: 6) {
                         Image(systemName: statusIconName)
-                            .font(.caption2)
+                            .font(.system(size: 10, weight: .thin))
                         Text(statusSubtitle)
                             .font(.caption2)
                     }
@@ -429,9 +423,9 @@ struct WordRow: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 0)
 
-            // Top-right: difficulty tier (borderless)
+            // Top-right: difficulty tier (borderless, lightweight text)
             if let tier = difficultyTier, !isDelete {
                 VStack(alignment: .trailing, spacing: 6) {
                     tierLabel(tier)
@@ -442,7 +436,7 @@ struct WordRow: View {
                 }
             }
         }
-        .padding(.vertical, 4)
+        .padding(.vertical, 8)
     }
 
     // MARK: - Badges
@@ -451,8 +445,8 @@ struct WordRow: View {
         let (color, label) = AppColors.tier(tier, scheme: colorScheme)
 
         return Text(label)
-            .font(.system(size: 10, weight: .medium))
-            .foregroundStyle(color.opacity(0.7))
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(color.opacity(0.65))
     }
 
     private var statusSubtitle: String {
@@ -499,7 +493,7 @@ struct WordRow: View {
             .font(.system(size: 10, weight: .semibold, design: .rounded))
             .padding(.horizontal, 6)
             .padding(.vertical, 3)
-            .background(statusTone.opacity(0.10))
+            .background(statusTone.opacity(0.08))
             .foregroundStyle(statusTone)
             .clipShape(Capsule())
     }
@@ -509,15 +503,15 @@ struct WordRow: View {
         switch status {
         case 1:
             Image(systemName: "checkmark.circle.fill")
-                .font(.caption)
+                .font(.system(size: 12, weight: .thin))
                 .foregroundStyle(AppColors.saved(colorScheme).opacity(0.7))
         case 2:
             Image(systemName: "exclamationmark.circle.fill")
-                .font(.caption)
+                .font(.system(size: 12, weight: .thin))
                 .foregroundStyle(AppColors.destructive(colorScheme).opacity(0.7))
         default:
             Image(systemName: "clock")
-                .font(.caption)
+                .font(.system(size: 12, weight: .thin))
                 .foregroundStyle(.tertiary)
         }
     }

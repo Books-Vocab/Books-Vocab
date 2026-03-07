@@ -24,6 +24,7 @@ struct LinkedCardOverlayStack: View {
 
     private func linkedCardLayer(entry: VocabularyEntry, index: Int) -> some View {
         VStack(spacing: 0) {
+            // Header bar
             HStack(spacing: AppMetrics.spacingSmall) {
                 Label(index == 0 ? "Linked Card" : "Nested Link", systemImage: "rectangle.stack")
                     .font(AppFonts.caption(weight: .semibold))
@@ -40,15 +41,15 @@ struct LinkedCardOverlayStack: View {
                 Button {
                     close(from: index)
                 } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.title3)
+                    Image(systemName: "xmark.circle")
+                        .font(.system(size: 20, weight: .thin))
                         .foregroundStyle(.secondary)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, AppMetrics.spacingMedium)
             .padding(.vertical, 14)
-            .background(Color.white.opacity(0.92))
+            .background(.ultraThinMaterial)
 
             Divider()
 
@@ -62,13 +63,8 @@ struct LinkedCardOverlayStack: View {
             maxWidth: max(420, 680 - CGFloat(index * 18)),
             maxHeight: max(420, 620 - CGFloat(index * 18))
         )
-        .background(Color.white.opacity(0.98))
-        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 28, style: .continuous)
-                .stroke(Color.primary.opacity(0.06), lineWidth: 0.8)
-        )
-        .shadow(color: .black.opacity(0.10), radius: 28, y: 14)
+        .compatibleGlassCard()
+        .shadow(color: .black.opacity(0.08), radius: 28, y: 14)
         .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index * 10))
         .padding(.vertical, AppMetrics.spacingExtraLarge + CGFloat(index * 8))
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))

@@ -17,7 +17,7 @@ import SwiftUI
 enum AppColors {
 
     // ── 紙張背景色 ────────────────────────────────────────────────────
-    static let paperLight = Color(red: 0.992, green: 0.989, blue: 0.982)
+    static let paperLight = Color(red: 0.975, green: 0.978, blue: 0.982)
     static let paperSepia = Color(red: 0.98, green: 0.965, blue: 0.94)
     static let paperDark  = Color(red: 0.11, green: 0.106, blue: 0.098)
 
@@ -54,6 +54,9 @@ enum AppColors {
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
     // 用於 NavigationBar、TabBar、所有可點擊元素的默認色
     static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
+
+    // ── Glass-era Token ───────────────────────────────────────────────────
+    static let glassClearBackground = Color.clear
 }
 
 // MARK: - 環境感知

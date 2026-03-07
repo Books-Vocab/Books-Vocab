@@ -3,6 +3,7 @@
 //  BooksBrowser
 //
 //  Displays vocabulary cards fetched from the Knowledge Graph API server.
+//  iOS 26+: Liquid Glass hero card, glass stat pills, glass sections.
 //
 
 import SwiftUI
@@ -102,6 +103,8 @@ struct KGVocabView: View {
         .background(AppColors.paperLight.ignoresSafeArea())
     }
 
+    // MARK: - Today Review Hero
+
     private var todayReviewHero: some View {
         Button {
             startTodayReview()
@@ -109,7 +112,7 @@ struct KGVocabView: View {
             AppCard(padding: 0) {
                 ZStack(alignment: .topLeading) {
                     RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                        .fill(Color(red: 0.985, green: 0.974, blue: 0.956))
+                        .fill(AppColors.paperSepia.opacity(0.6))
 
                     VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                         HStack(alignment: .top) {
@@ -126,13 +129,14 @@ struct KGVocabView: View {
                                     .font(AppFonts.subhead())
                                     .foregroundStyle(.secondary)
                                     .fixedSize(horizontal: false, vertical: true)
+                                    .lineSpacing(3)
                             }
 
                             Spacer(minLength: 12)
 
                             VStack(alignment: .trailing, spacing: 2) {
                                 Text("\(todaySessionEntries.count)")
-                                    .font(.system(size: 58, weight: .semibold, design: .serif))
+                                    .font(.system(size: 52, weight: .semibold, design: .serif))
                                     .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
                                 Text("cards")
                                     .font(AppFonts.caption(weight: .semibold))
@@ -157,8 +161,8 @@ struct KGVocabView: View {
                                 .font(AppFonts.subhead(weight: .semibold))
                                 .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
 
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(.title3)
+                            Image(systemName: "arrow.right.circle")
+                                .font(.system(size: 20, weight: .thin))
                                 .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : AppColors.translation(.light))
                         }
                         .padding(.top, 4)
@@ -170,6 +174,8 @@ struct KGVocabView: View {
         .buttonStyle(.plain)
         .disabled(todaySessionEntries.isEmpty)
     }
+
+    // MARK: - State Section
 
     private var stateSection: some View {
         AppCard {
@@ -188,9 +194,12 @@ struct KGVocabView: View {
                 Text(stateDescription)
                     .font(AppFonts.subhead())
                     .foregroundStyle(.secondary)
+                    .lineSpacing(3)
             }
         }
     }
+
+    // MARK: - Browser Section
 
     private var browserSection: some View {
         AppCard {
@@ -244,6 +253,8 @@ struct KGVocabView: View {
         }
     }
 
+    // MARK: - Descriptions
+
     private var heroDescription: String {
         if todaySessionEntries.isEmpty {
             return "今天沒有待複習或未學習卡片。"
@@ -261,6 +272,8 @@ struct KGVocabView: View {
             return "今天已處理完或尚未到期的卡片。"
         }
     }
+
+    // MARK: - Computed
 
     private var dueEntries: [VocabularyEntry] {
         sortedEntries.filter { $0.reviewState == .due }
@@ -345,6 +358,8 @@ struct KGVocabView: View {
         }
     }
 
+    // MARK: - Session Stat Pill
+
     private func sessionStat(title: String, value: String, tone: Color) -> some View {
         VStack(alignment: .leading, spacing: 4) {
             Text(title)
@@ -357,9 +372,12 @@ struct KGVocabView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, AppMetrics.spacingSmall)
         .padding(.horizontal, AppMetrics.spacingMedium)
-        .background(Color.white.opacity(0.86))
-        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
+        .compatibleGlass(
+            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+        )
     }
+
+    // MARK: - Helpers
 
     private func count(for state: VocabularyReviewState) -> Int {
         syncedEntries.filter { $0.reviewState == state }.count

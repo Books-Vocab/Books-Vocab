@@ -3,6 +3,7 @@
 //  BooksBrowser
 //
 //  單字詳情 Sheet — VocabularyListView 與 KGVocabView 共用
+//  iOS 26+: Sheet 自動帶 Liquid Glass 背景
 //
 
 import SwiftUI
@@ -16,10 +17,6 @@ struct WordDetailSheet: View {
     let entry: VocabularyEntry
     private let wrapInNavigation: Bool
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
-
-    private var paperBackground: Color {
-        colorScheme == .dark ? AppColors.paperDark : AppColors.paperLight
-    }
 
     init(
         entry: VocabularyEntry,
@@ -98,6 +95,7 @@ struct WordDetailSheet: View {
 
                             HStack(spacing: 6) {
                                 Image(systemName: "book.closed")
+                                    .font(.system(size: 10, weight: .thin))
                                 Text(card.bookTitle)
                                 if let chapter = card.chapterTitle {
                                     Text("· \(chapter)")
@@ -204,7 +202,8 @@ struct WordDetailSheet: View {
             }
             .padding(AppMetrics.spacingLarge)
         }
-        .background(paperBackground.ignoresSafeArea())
+        .scrollContentBackground(.hidden)
+        .background(AppColors.paperLight.ignoresSafeArea())
         .navigationTitle(card.word)
         .navigationBarTitleDisplayMode(.inline)
         .overlay {
