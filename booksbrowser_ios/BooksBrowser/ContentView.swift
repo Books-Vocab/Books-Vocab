@@ -17,6 +17,9 @@ struct ContentView: View {
             Tab("生詞庫", systemImage: "character.book.closed") {
                 VocabularyListView()
             }
+            Tab("Demo", systemImage: "square.grid.2x2") {
+                StyleDemoView()
+            }
         }
     }
 }
