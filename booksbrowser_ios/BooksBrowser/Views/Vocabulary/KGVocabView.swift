@@ -419,6 +419,7 @@ private struct TodayReviewView: View {
     @State private var currentIndex = 0
     @State private var showBack = false
     @State private var isAdvancing = false
+    @State private var selectedDetailEntry: VocabularyEntry?
     let onClose: () -> Void
 
     init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
@@ -439,6 +440,14 @@ private struct TodayReviewView: View {
                             Text(showBack ? "背面" : "正面")
                                 .font(AppFonts.caption(weight: .semibold))
                                 .foregroundStyle(.tertiary)
+                            Button("詳情") {
+                                selectedDetailEntry = current
+                            }
+                            .font(AppFonts.caption(weight: .semibold))
+                            .padding(.horizontal, 12)
+                            .padding(.vertical, 8)
+                            .background(Color.white)
+                            .clipShape(Capsule())
                             Button("關閉") {
                                 onClose()
                             }
@@ -530,6 +539,11 @@ private struct TodayReviewView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar(.hidden, for: .navigationBar)
             .background(AppColors.paperLight.ignoresSafeArea())
+            .sheet(item: $selectedDetailEntry) { entry in
+                WordDetailSheet(entry: entry)
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
         }
     }
 

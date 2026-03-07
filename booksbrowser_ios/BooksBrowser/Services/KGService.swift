@@ -55,6 +55,11 @@ struct KGUserConfig: Codable {
 /// Manages communication with the Knowledge Graph API server
 @Observable
 final class KGService: KGServing {
+    private enum SyncKeys {
+        static let incrementalBoundary = "kg_last_incremental_sync"
+        static let payloadVersion = "kg_review_payload_version"
+        static let currentPayloadVersion = 1
+    }
 
     // MARK: - Configuration
 
@@ -287,10 +292,17 @@ final class KGService: KGServing {
     /// This makes all KG words available offline (for underlining and browsing).
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws {
         progress?("從遠端下載知識庫...", 0, 0)
+
+        let defaults = UserDefaults.standard
+        let storedPayloadVersion = defaults.integer(forKey: SyncKeys.payloadVersion)
+        if storedPayloadVersion < SyncKeys.currentPayloadVersion {
+            defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+            progress?("升級卡片資料格式，重新同步全部卡片...", 0, 0)
+        }
         
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
         
-        let lastSyncMillis = UserDefaults.standard.double(forKey: "kg_last_incremental_sync")
+        let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
         let isIncremental = lastSyncMillis > 0
         
         if isIncremental {
@@ -342,7 +354,8 @@ final class KGService: KGServing {
         )
         
         // Save the successful sync boundary to avoid re-fetching later
-        UserDefaults.standard.set(Date().timeIntervalSince1970, forKey: "kg_last_incremental_sync")
+        defaults.set(Date().timeIntervalSince1970, forKey: SyncKeys.incrementalBoundary)
+        defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
     }
     
     /// Clears all local KG data (SwiftData + Sync Timestamp)
@@ -350,7 +363,7 @@ final class KGService: KGServing {
         let actor = BackgroundSyncActor(modelContainer: container)
         try? await actor.clearVocabularyData()
         
-        UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
+        UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)
         lastSyncDate = nil
         serverCardCount = 0
     }

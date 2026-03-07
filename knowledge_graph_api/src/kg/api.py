@@ -78,6 +78,7 @@ _attach_memory_log_handler("uvicorn.access")
 from .cards import CardStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind, LINK_LABELS
+from .difficulty import get_tier
 from .apple_auth import verify_apple_token
 from .google_auth import verify_google_token
 
@@ -449,8 +450,6 @@ def _card_response(
     graph: GraphStore,
     cards_by_id: dict[str, Any],
 ):
-    from .difficulty import get_tier
-
     tier = get_tier(card.content)
     links_by_kind = {}
     if not card.is_deleted:
