@@ -113,14 +113,14 @@ actor BackgroundSyncActor {
 
     /// Deletes all vocabulary entries from local SwiftData storage.
     /// Used during logout or account switch for data isolation.
-    func clearVocabularyData() throws {
-        print("🧹 Clearing all local vocabulary entries...")
+    func clearVocabularyData(reason: String) throws {
+        print("🧹 Clearing all local vocabulary entries... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
         }
         try modelContext.save()
-        print("✅ Core data cleared successfully. Deleted \(entries.count) entries.")
+        print("✅ Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).

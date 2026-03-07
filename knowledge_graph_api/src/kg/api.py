@@ -1888,6 +1888,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Rendering",
         "column": "Unit",
         "label": "Renderer Truncation",
+        "summary": "Fast renderer-only check for text truncation behavior.",
         "nodeids": ["tests/test_renderer_truncation.py"],
     },
     {
@@ -1895,6 +1896,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Vocab/Graph",
         "column": "Integration",
         "label": "Vocab + Graph API",
+        "summary": "Covers vocab lifecycle sync and graph-link API behavior together.",
         "nodeids": [
             "tests/test_api_surface.py::test_vocab_lifecycle_and_since_sync",
             "tests/test_api_surface.py::test_graph_links_returns_active_only",
@@ -1905,6 +1907,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Vocab/Graph",
         "column": "Contract",
         "label": "Translate API Contract",
+        "summary": "Checks response shape and error handling for translate endpoints.",
         "nodeids": ["tests/test_api_surface.py::test_translate_endpoints_success_and_error"],
     },
     {
@@ -1912,6 +1915,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "User/Auth",
         "column": "Integration",
         "label": "Auth Linking",
+        "summary": "Validates Google and Apple identity linking on the same user.",
         "nodeids": ["tests/test_api_surface.py::test_auth_verify_links_google_and_apple_by_email"],
     },
     {
@@ -1919,6 +1923,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "User/Auth",
         "column": "Robustness",
         "label": "Config + Account Robustness",
+        "summary": "Stresses config persistence, account deletion, and integrity behavior.",
         "nodeids": [
             "tests/test_robustness.py::TestBatchA_UsersJsonLock",
             "tests/test_robustness.py::TestBatchA_AccountDeletion",
@@ -1929,6 +1934,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Storage",
         "column": "Integration",
         "label": "Embedding Backfill",
+        "summary": "Verifies cards without embeddings are detected and backfilled correctly.",
         "nodeids": ["tests/test_robustness.py::TestBatchC_EmbeddingBackfill"],
     },
     {
@@ -1936,6 +1942,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Storage",
         "column": "Robustness",
         "label": "Mochi + CardStore Atomicity",
+        "summary": "Protects atomic writes, counts, and migration behavior for stored data.",
         "nodeids": [
             "tests/test_robustness.py::TestBatchB_MochiAtomicStorage",
             "tests/test_robustness.py::TestBatchC_CardStoreCount",
@@ -1946,6 +1953,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Pipeline",
         "column": "Robustness",
         "label": "Pipeline Locking",
+        "summary": "Checks per-user lock creation and skip behavior under contention.",
         "nodeids": ["tests/test_robustness.py::TestBatchD_UserLockAtomic"],
     },
     {
@@ -1953,6 +1961,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Admin",
         "column": "Contract",
         "label": "Admin Endpoints",
+        "summary": "Confirms admin token enforcement and test-matrix APIs stay intact.",
         "nodeids": [
             "tests/test_api_surface.py::test_admin_endpoints_enforce_token_and_return_stats",
             "tests/test_api_surface.py::test_admin_test_matrix_endpoints",
@@ -1963,6 +1972,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "User/Auth",
         "column": "Contract",
         "label": "Auth API Contract",
+        "summary": "Checks auth verify payload shape and revoked-token rejection behavior.",
         "nodeids": [
             "tests/test_api_surface.py::test_auth_verify_response_contract",
             "tests/test_api_surface.py::test_revoked_token_rejected",
@@ -1973,6 +1983,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Vocab/Graph",
         "column": "Robustness",
         "label": "Vocab Concurrent Write",
+        "summary": "Stresses concurrent vocab writes to catch lost-update issues.",
         "nodeids": ["tests/test_robustness.py::TestBatchE_VocabConcurrentWrite"],
     },
     {
@@ -1980,6 +1991,7 @@ _TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "domain": "Pipeline",
         "column": "Integration",
         "label": "Pipeline Integration",
+        "summary": "Runs pipeline flow end-to-end and checks response schema coverage.",
         "nodeids": ["tests/test_pipeline_integration.py::TestPipelineIntegration"],
     },
 ]
@@ -2040,7 +2052,7 @@ def _item_results(cases: list[dict[str, str]]) -> list[dict[str, Any]]:
 
 
 def _build_test_catalog() -> dict[str, Any]:
-    domains = sorted({item["domain"] for item in _TEST_MATRIX_ITEMS})
+    domains = list(dict.fromkeys(item["domain"] for item in _TEST_MATRIX_ITEMS))
     rows: list[dict[str, Any]] = []
     for domain in domains:
         row_cells: list[dict[str, Any] | None] = []
@@ -2210,146 +2222,323 @@ _ADMIN_TESTS_HTML = """<!DOCTYPE html>
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <title>Test Matrix</title>
+  <title>KG Test Matrix</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400;500&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400;500;700&display=swap" rel="stylesheet">
   <style>
     :root {
-      --bg: #f8f7f4;
-      --surface: #fcfbfa;
-      --border: #dbd6cd;
-      --border-l: #e8e4db;
-      --ink: #2a2520;
-      --sub: #7a756c;
-      --ink-light: #5a5550;
+      --bg: #f4f1eb;
+      --surface: rgba(255, 252, 247, .92);
+      --surface-strong: #fffdfa;
+      --border: #d8d0c2;
+      --border-light: #e8e1d6;
+      --ink: #241f19;
+      --ink-soft: #5d554b;
+      --sub: #7c7266;
+      --accent: #8a5a26;
+      --accent-soft: rgba(138, 90, 38, .10);
+      --passed: #256246;
+      --passed-soft: rgba(37, 98, 70, .10);
+      --failed: #a7372a;
+      --failed-soft: rgba(167, 55, 42, .10);
+      --warn: #9b6b16;
+      --warn-soft: rgba(155, 107, 22, .10);
+      --idle: #69727d;
+      --idle-soft: rgba(105, 114, 125, .10);
+      --shadow: 0 18px 40px rgba(63, 47, 30, .08);
       --dev: #c0392b;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      background: var(--bg);
       color: var(--ink);
       font-family: "Noto Sans TC", sans-serif;
-      line-height: 1.85;
+      line-height: 1.6;
+      background:
+        radial-gradient(circle at top left, rgba(138, 90, 38, .10), transparent 30%),
+        linear-gradient(180deg, #f7f3ec 0%, var(--bg) 45%, #efe7dc 100%);
+      min-height: 100vh;
+    }
+    button, input {
+      font: inherit;
     }
     .nav {
       position: sticky;
       top: 0;
-      height: 52px;
+      z-index: 20;
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 0 16px;
-      background: var(--surface);
-      border-bottom: 1px solid var(--border);
-      z-index: 10;
+      gap: 12px;
+      padding: 14px 18px;
+      background: rgba(255, 252, 247, .84);
+      backdrop-filter: blur(18px);
+      border-bottom: 1px solid rgba(216, 208, 194, .75);
     }
     .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
       font-family: "JetBrains Mono", monospace;
       font-size: 12px;
       letter-spacing: .12em;
       text-transform: uppercase;
     }
     .dev-dot {
-      margin-left: 8px;
       color: var(--dev);
-      border: 1px solid var(--dev);
-      padding: 1px 5px;
+      border: 1px solid rgba(192, 57, 43, .4);
+      padding: 2px 6px;
       font-size: 10px;
-      border-radius: 2px;
+      border-radius: 999px;
+      background: rgba(192, 57, 43, .08);
     }
     .nav-link {
-      font-family: "JetBrains Mono", monospace;
       text-decoration: none;
-      color: var(--ink-light);
+      color: var(--ink-soft);
+      font-family: "JetBrains Mono", monospace;
       font-size: 11px;
-      letter-spacing: .04em;
+      letter-spacing: .08em;
       text-transform: uppercase;
       border: 1px solid var(--border);
-      padding: 6px 10px;
-      border-radius: 2px;
-      background: var(--surface);
+      padding: 8px 12px;
+      border-radius: 999px;
+      background: rgba(255, 255, 255, .45);
     }
     .wrap {
-      max-width: 1180px;
-      margin: 20px auto 48px;
-      padding: 0 16px;
+      max-width: 1240px;
+      margin: 0 auto;
+      padding: 28px 18px 56px;
     }
     .panel {
-      border: 1px solid var(--border);
+      border: 1px solid rgba(216, 208, 194, .95);
       background: var(--surface);
-      border-radius: 3px;
-      padding: 16px;
-      margin-bottom: 12px;
+      border-radius: 24px;
+      padding: 20px;
+      box-shadow: var(--shadow);
+      margin-bottom: 16px;
     }
-    .label {
+    .hero {
+      display: grid;
+      grid-template-columns: minmax(0, 1.5fr) minmax(320px, 1fr);
+      gap: 18px;
+      align-items: stretch;
+    }
+    .eyebrow,
+    .section-kicker {
       font-family: "JetBrains Mono", monospace;
       font-size: 11px;
-      text-transform: uppercase;
       letter-spacing: .14em;
+      text-transform: uppercase;
       color: var(--sub);
-      margin-bottom: 8px;
+    }
+    .hero h1 {
+      margin: 10px 0 12px;
+      font-size: clamp(30px, 4vw, 46px);
+      line-height: 1.04;
+      letter-spacing: -.03em;
+    }
+    .hero p {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 15px;
+      max-width: 66ch;
+    }
+    .guide {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 10px;
+      margin-top: 18px;
+    }
+    .guide-card {
+      border: 1px solid var(--border-light);
+      border-radius: 18px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, .54);
+    }
+    .guide-card strong {
+      display: block;
+      margin-bottom: 6px;
+      font-size: 13px;
+    }
+    .guide-card span {
+      display: block;
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .hero-side {
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 14px;
+      padding: 18px;
+      border: 1px solid rgba(138, 90, 38, .16);
+      border-radius: 20px;
+      background: linear-gradient(180deg, rgba(138, 90, 38, .12) 0%, rgba(255, 255, 255, .62) 100%);
     }
     .actions {
       display: flex;
-      align-items: center;
-      gap: 10px;
       flex-wrap: wrap;
+      gap: 10px;
+    }
+    .cta,
+    .secondary,
+    .tertiary,
+    .filter-btn,
+    .search-input {
+      border-radius: 999px;
+      border: 1px solid var(--border);
+    }
+    .cta,
+    .secondary,
+    .tertiary {
+      min-height: 42px;
+      padding: 0 16px;
+      cursor: pointer;
+      transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease, background .14s ease;
     }
     .cta {
-      height: 48px;
-      padding: 0 18px;
-      border: 1px solid var(--ink);
-      border-radius: 3px;
+      border-color: var(--ink);
       background: var(--ink);
       color: #fff;
       font-family: "JetBrains Mono", monospace;
-      font-size: 12px;
+      font-size: 11px;
       letter-spacing: .12em;
       text-transform: uppercase;
-      cursor: pointer;
-      transition: transform .12s ease, box-shadow .12s ease;
+      box-shadow: 0 10px 24px rgba(36, 31, 25, .18);
     }
-    .cta:hover:not(:disabled) {
-      transform: translateY(-2px);
-      box-shadow: 0 5px 0 rgba(42, 37, 32, .25);
-    }
-    .cta:disabled {
-      opacity: .55;
-      cursor: not-allowed;
-    }
-    .secondary {
-      height: 38px;
-      padding: 0 12px;
-      border: 1px solid var(--border);
-      border-radius: 3px;
-      background: transparent;
-      color: var(--ink-light);
+    .secondary,
+    .tertiary {
+      background: rgba(255, 255, 255, .64);
+      color: var(--ink-soft);
       font-family: "JetBrains Mono", monospace;
       font-size: 11px;
       letter-spacing: .10em;
       text-transform: uppercase;
-      cursor: pointer;
     }
-    .meta {
+    .cta:hover:not(:disabled),
+    .secondary:hover:not(:disabled),
+    .tertiary:hover:not(:disabled),
+    .run-item-btn:hover:not(:disabled),
+    .filter-btn:hover:not(.active) {
+      transform: translateY(-1px);
+      box-shadow: 0 8px 18px rgba(36, 31, 25, .08);
+      border-color: var(--ink);
+    }
+    .cta:disabled,
+    .secondary:disabled,
+    .tertiary:disabled,
+    .run-item-btn:disabled {
+      opacity: .58;
+      cursor: not-allowed;
+      transform: none;
+      box-shadow: none;
+    }
+    .status-line {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: center;
+    }
+    .run-badge,
+    .pill,
+    .status-pill,
+    .case-badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 10px;
+      border-radius: 999px;
       font-family: "JetBrains Mono", monospace;
-      font-size: 11px;
-      color: var(--sub);
+      font-size: 10px;
       letter-spacing: .08em;
       text-transform: uppercase;
+      border: 1px solid transparent;
+      white-space: nowrap;
     }
-    .stats {
+    .run-badge.idle,
+    .status-pill.idle,
+    .pill.idle {
+      color: var(--idle);
+      background: var(--idle-soft);
+      border-color: rgba(105, 114, 125, .16);
+    }
+    .run-badge.passed,
+    .status-pill.passed,
+    .pill.passed,
+    .case-badge.passed {
+      color: var(--passed);
+      background: var(--passed-soft);
+      border-color: rgba(37, 98, 70, .18);
+    }
+    .run-badge.failed,
+    .status-pill.failed,
+    .status-pill.errors,
+    .pill.failed,
+    .pill.errors,
+    .case-badge.failed,
+    .case-badge.errors {
+      color: var(--failed);
+      background: var(--failed-soft);
+      border-color: rgba(167, 55, 42, .18);
+    }
+    .run-badge.skipped,
+    .status-pill.skipped,
+    .pill.skipped,
+    .case-badge.skipped {
+      color: var(--warn);
+      background: var(--warn-soft);
+      border-color: rgba(155, 107, 22, .18);
+    }
+    .pill.type {
+      color: var(--accent);
+      background: var(--accent-soft);
+      border-color: rgba(138, 90, 38, .18);
+    }
+    .pill.neutral {
+      color: var(--sub);
+      background: rgba(124, 114, 102, .10);
+      border-color: rgba(124, 114, 102, .16);
+    }
+    .hero-meta {
+      color: var(--ink-soft);
+      font-size: 14px;
+    }
+    .notice {
+      min-height: 24px;
+      color: var(--sub);
+      font-size: 13px;
+    }
+    .notice.error {
+      color: var(--failed);
+    }
+    .summary-grid,
+    .stats,
+    .module-grid,
+    .check-grid,
+    .output-grid {
       display: grid;
-      grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
-      gap: 8px;
-      margin-top: 14px;
+      gap: 12px;
     }
-    .stat {
-      border: 1px solid var(--border-l);
-      border-radius: 3px;
-      padding: 10px 12px;
+    .summary-grid {
+      grid-template-columns: repeat(4, minmax(0, 1fr));
     }
+    .summary-card,
+    .stat,
+    .module-card,
+    .check-card,
+    .output-card {
+      border: 1px solid var(--border-light);
+      border-radius: 18px;
+      background: rgba(255, 255, 255, .62);
+    }
+    .summary-card,
+    .stat,
+    .module-card,
+    .output-card {
+      padding: 14px 16px;
+    }
+    .summary-k,
     .stat-k {
       font-family: "JetBrains Mono", monospace;
       font-size: 10px;
@@ -2357,107 +2546,284 @@ _ADMIN_TESTS_HTML = """<!DOCTYPE html>
       text-transform: uppercase;
       color: var(--sub);
     }
+    .summary-v,
     .stat-v {
+      margin-top: 8px;
       font-family: "JetBrains Mono", monospace;
       font-size: 24px;
-      margin-top: 2px;
-      letter-spacing: .04em;
-      color: var(--ink);
+      letter-spacing: -.02em;
     }
-    .matrix-wrap {
-      overflow-x: auto;
+    .summary-v.scope {
+      font-family: "Noto Sans TC", sans-serif;
+      font-size: 18px;
+      line-height: 1.4;
+      letter-spacing: 0;
+    }
+    .summary-note,
+    .stat-note,
+    .module-note,
+    .section-copy,
+    .output-note,
+    .empty {
+      color: var(--ink-soft);
+      font-size: 13px;
+    }
+    .stats {
+      grid-template-columns: repeat(5, minmax(0, 1fr));
+      margin-top: 0;
+    }
+    .section-head {
+      display: flex;
+      justify-content: space-between;
+      gap: 14px;
+      align-items: flex-start;
+      margin-bottom: 16px;
+    }
+    .section-head h2 {
+      margin: 6px 0 8px;
+      font-size: 24px;
+      line-height: 1.15;
+      letter-spacing: -.03em;
+    }
+    .section-copy {
+      max-width: 70ch;
+    }
+    .check-groups {
+      display: grid;
+      gap: 16px;
+    }
+    .domain-block {
+      border: 1px solid var(--border-light);
+      border-radius: 20px;
+      padding: 14px;
+      background: rgba(255, 255, 255, .52);
+    }
+    .domain-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+      margin-bottom: 12px;
+    }
+    .domain-head h3 {
+      margin: 0;
+      font-size: 18px;
+      letter-spacing: -.02em;
+    }
+    .check-grid {
+      grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    }
+    .check-card {
+      padding: 14px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      min-height: 220px;
+      transition: border-color .14s ease, transform .14s ease, box-shadow .14s ease;
+    }
+    .check-card.included {
+      border-color: rgba(138, 90, 38, .28);
+      box-shadow: 0 12px 24px rgba(138, 90, 38, .10);
+    }
+    .check-card.failed {
+      border-color: rgba(167, 55, 42, .24);
+    }
+    .card-top,
+    .card-actions,
+    .filter-row,
+    .search-row,
+    .module-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+      flex-wrap: wrap;
+    }
+    .card-title {
+      margin: 0;
+      font-size: 17px;
+      line-height: 1.28;
+      letter-spacing: -.02em;
+    }
+    .card-summary {
+      margin: 0;
+      color: var(--ink-soft);
+      font-size: 13px;
+      flex: 1;
+    }
+    .card-meta {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+    .run-item-btn {
+      min-height: 38px;
+      padding: 0 14px;
+      border-radius: 999px;
       border: 1px solid var(--border);
-      border-radius: 3px;
-      background: var(--surface);
-    }
-    table {
-      width: 100%;
-      min-width: 760px;
-      border-collapse: collapse;
-      font-family: "JetBrains Mono", monospace;
-      font-size: 12px;
-    }
-    th, td {
-      padding: 10px 12px;
-      border-bottom: 1px solid var(--border-l);
-      border-right: 1px solid var(--border-l);
-      text-align: left;
-      vertical-align: top;
-    }
-    tr:last-child td { border-bottom: 0; }
-    th:last-child, td:last-child { border-right: 0; }
-    thead th {
-      color: var(--sub);
-      text-transform: uppercase;
-      letter-spacing: .08em;
-      background: #f3f0ea;
-      font-size: 11px;
-    }
-    .cell-btn {
-      width: 100%;
-      border: 1px solid var(--border);
-      background: transparent;
+      background: rgba(255, 255, 255, .82);
       color: var(--ink);
-      border-radius: 3px;
-      min-height: 44px;
-      font-family: "JetBrains Mono", monospace;
-      font-size: 11px;
-      letter-spacing: .06em;
-      text-transform: uppercase;
       cursor: pointer;
-      padding: 6px;
-      text-align: left;
-    }
-    .cell-btn:hover:not(:disabled) {
-      border-color: var(--ink);
-      background: #f7f4ef;
-    }
-    .cell-btn:disabled {
-      opacity: .5;
-      cursor: not-allowed;
-    }
-    .cell-status {
-      margin-top: 4px;
       font-family: "JetBrains Mono", monospace;
       font-size: 10px;
-      letter-spacing: .07em;
-      color: var(--sub);
+      letter-spacing: .10em;
       text-transform: uppercase;
+      transition: transform .14s ease, box-shadow .14s ease, border-color .14s ease;
     }
-    .dash {
-      color: var(--sub);
-      font-family: "JetBrains Mono", monospace;
-      font-size: 11px;
-      letter-spacing: .08em;
+    .module-grid {
+      grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+      margin-bottom: 14px;
     }
-    .content {
-      border: 1px solid var(--border);
-      border-radius: 3px;
-      background: var(--surface);
-      padding: 14px 16px;
-      margin-top: 12px;
-      max-height: 320px;
-      overflow: auto;
+    .module-card.alert {
+      border-color: rgba(167, 55, 42, .24);
     }
-    .case-row {
-      font-family: "Noto Sans TC", sans-serif;
-      font-size: 14px;
-      color: var(--ink-light);
-      border-bottom: 1px solid var(--border-l);
-      padding: 8px 0;
-    }
-    .case-row:last-child { border-bottom: 0; }
-    .mono {
-      font-family: "JetBrains Mono", monospace;
-      font-size: 11px;
-      color: var(--sub);
-      letter-spacing: .03em;
-    }
-    .empty {
-      color: var(--sub);
+    .module-name {
       font-family: "JetBrains Mono", monospace;
       font-size: 12px;
-      letter-spacing: .05em;
+      color: var(--ink);
+      word-break: break-all;
+    }
+    .module-metrics {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-top: 10px;
+    }
+    .filter-row {
+      margin-bottom: 10px;
+    }
+    .filter-group {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+    }
+    .filter-btn {
+      min-height: 34px;
+      padding: 0 12px;
+      cursor: pointer;
+      background: rgba(255, 255, 255, .72);
+      color: var(--ink-soft);
+      font-family: "JetBrains Mono", monospace;
+      font-size: 10px;
+      letter-spacing: .10em;
+      text-transform: uppercase;
+    }
+    .filter-btn.active {
+      background: var(--ink);
+      color: #fff;
+      border-color: var(--ink);
+    }
+    .search-input {
+      width: min(320px, 100%);
+      min-height: 40px;
+      padding: 0 14px;
+      background: rgba(255, 255, 255, .78);
+      color: var(--ink);
+      outline: none;
+      font-size: 14px;
+    }
+    .search-input:focus {
+      border-color: var(--ink);
+    }
+    .cases {
+      display: grid;
+      gap: 10px;
+      max-height: 520px;
+      overflow: auto;
+      padding-right: 2px;
+    }
+    .case-row {
+      border: 1px solid var(--border-light);
+      border-radius: 16px;
+      padding: 12px 14px;
+      background: rgba(255, 255, 255, .7);
+    }
+    .case-row.failed,
+    .case-row.errors {
+      border-color: rgba(167, 55, 42, .22);
+      background: rgba(167, 55, 42, .05);
+    }
+    .case-row.skipped {
+      border-color: rgba(155, 107, 22, .22);
+      background: rgba(155, 107, 22, .05);
+    }
+    .case-title {
+      margin: 10px 0 6px;
+      font-size: 15px;
+      line-height: 1.35;
+    }
+    .case-path,
+    .meta,
+    .log-box {
+      font-family: "JetBrains Mono", monospace;
+    }
+    .case-path {
+      color: var(--sub);
+      font-size: 11px;
+      line-height: 1.5;
+      word-break: break-all;
+    }
+    .meta {
+      font-size: 11px;
+      color: var(--sub);
+      letter-spacing: .06em;
+      text-transform: uppercase;
+    }
+    .output-grid {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .log-box {
+      margin-top: 12px;
+      border: 1px solid var(--border-light);
+      border-radius: 16px;
+      background: #211c17;
+      color: #f6efe6;
+      padding: 14px;
+      min-height: 240px;
+      max-height: 340px;
+      overflow: auto;
+      font-size: 11.5px;
+      line-height: 1.65;
+      white-space: pre-wrap;
+      word-break: break-word;
+    }
+    .empty {
+      padding: 24px 0;
+    }
+    @media (max-width: 1120px) {
+      .hero,
+      .summary-grid,
+      .stats,
+      .output-grid {
+        grid-template-columns: 1fr 1fr;
+      }
+    }
+    @media (max-width: 820px) {
+      .hero,
+      .summary-grid,
+      .stats,
+      .output-grid {
+        grid-template-columns: 1fr;
+      }
+      .guide {
+        grid-template-columns: 1fr;
+      }
+      .wrap {
+        padding-left: 14px;
+        padding-right: 14px;
+      }
+      .panel {
+        padding: 16px;
+        border-radius: 18px;
+      }
+      .section-head,
+      .domain-head {
+        flex-direction: column;
+        align-items: flex-start;
+      }
+      .search-input {
+        width: 100%;
+      }
     }
   </style>
 </head>
@@ -2468,33 +2834,100 @@ _ADMIN_TESTS_HTML = """<!DOCTYPE html>
   </div>
 
   <main class="wrap">
-    <section class="panel">
-      <div class="label">Run</div>
-      <div class="actions">
-        <button id="run-all-btn" class="cta">Run All</button>
-        <button id="reload-btn" class="secondary">Reload Last</button>
-        <span id="meta" class="meta">idle</span>
+    <section class="panel hero">
+      <div>
+        <div class="eyebrow">Admin Test Console</div>
+        <h1>先看結果，再決定要跑哪一組測試。</h1>
+        <p>這個面板現在會直接告訴你目前顯示的是全量還是局部結果、哪個模組最需要注意，還能把 stdout / stderr 尾段放在同一頁，讓你不用先理解 pytest 結構才敢操作。</p>
+        <div class="guide">
+          <div class="guide-card">
+            <strong>1. 選驗證範圍</strong>
+            <span>跑完整包，或只跑某個高風險檢查卡片。</span>
+          </div>
+          <div class="guide-card">
+            <strong>2. 看 scope 與結果</strong>
+            <span>先確認你現在看到的是哪次、哪個範圍的結果。</span>
+          </div>
+          <div class="guide-card">
+            <strong>3. 失敗先看模組</strong>
+            <span>先看 module summary，再下鑽 case 與輸出尾段。</span>
+          </div>
+        </div>
       </div>
+      <div class="hero-side">
+        <div>
+          <div class="section-kicker">Quick Actions</div>
+          <div class="actions">
+            <button id="run-all-btn" class="cta">Run Full Suite</button>
+            <button id="rerun-btn" class="secondary" disabled>Rerun Last Scope</button>
+            <button id="reload-btn" class="tertiary">Reload Last Result</button>
+          </div>
+        </div>
+        <div class="status-line">
+          <span id="run-badge" class="run-badge idle">Idle</span>
+          <span id="meta" class="meta">尚未執行測試</span>
+        </div>
+        <div id="notice" class="notice">卡片上的狀態會跟著目前這一份結果更新；如果只跑局部，未包含的檢查會清楚標示。</div>
+      </div>
+    </section>
+
+    <section class="panel">
+      <div id="summary" class="summary-grid"></div>
+    </section>
+
+    <section class="panel">
       <div id="stats" class="stats"></div>
     </section>
 
     <section class="panel">
-      <div class="label">Item Matrix (Click Cell To Run)</div>
-      <div class="matrix-wrap">
-        <table>
-          <thead id="matrix-head"></thead>
-          <tbody id="matrix-body">
-            <tr><td class="empty">Loading matrix catalog...</td></tr>
-          </tbody>
-        </table>
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Choose Checks</div>
+          <h2>依風險選擇測試，而不是硬看 matrix。</h2>
+          <div class="section-copy">每張卡片都會告訴你它驗證哪個產品面、屬於哪種測試類型，以及在目前結果裡是否有被包含。</div>
+        </div>
+        <div id="catalog-meta" class="meta"></div>
+      </div>
+      <div id="catalog" class="check-groups">
+        <div class="empty">Loading checks...</div>
       </div>
     </section>
 
     <section class="panel">
-      <div class="label">Cases</div>
-      <div id="cases" class="content">
+      <div class="section-head">
+        <div>
+          <div class="section-kicker">Results</div>
+          <h2>先看模組，再看單一 case。</h2>
+          <div class="section-copy">如果這次是局部執行，這裡只顯示該範圍內真正被跑到的模組與案例。</div>
+        </div>
+      </div>
+      <div id="modules" class="module-grid"></div>
+      <div class="filter-row">
+        <div class="filter-group" id="case-filters">
+          <button class="filter-btn active" data-filter="all">All</button>
+          <button class="filter-btn" data-filter="errors">Errors</button>
+          <button class="filter-btn" data-filter="failed">Failed</button>
+          <button class="filter-btn" data-filter="skipped">Skipped</button>
+          <button class="filter-btn" data-filter="passed">Passed</button>
+        </div>
+        <input id="case-search" class="search-input" type="text" placeholder="搜尋 case 名稱或 module..." />
+      </div>
+      <div id="cases" class="cases">
         <div class="empty">No case data.</div>
       </div>
+    </section>
+
+    <section class="output-grid">
+      <section class="panel output-card">
+        <div class="section-kicker">Stdout Tail</div>
+        <div class="output-note">顯示伺服器記住的最後 60 行 stdout，適合快速看 pytest 摘要。</div>
+        <pre id="stdout" class="log-box"></pre>
+      </section>
+      <section class="panel output-card">
+        <div class="section-kicker">Stderr Tail</div>
+        <div class="output-note">如果有錯誤或 traceback，會優先出現在這裡。</div>
+        <pre id="stderr" class="log-box"></pre>
+      </section>
     </section>
   </main>
 
@@ -2502,146 +2935,441 @@ _ADMIN_TESTS_HTML = """<!DOCTYPE html>
     const token = new URLSearchParams(location.search).get("token") || "";
     document.getElementById("back-link").href = "/admin?token=" + encodeURIComponent(token);
 
-    const runAllBtn = document.getElementById("run-all-btn");
-    const reloadBtn = document.getElementById("reload-btn");
-    const metaEl = document.getElementById("meta");
-    const matrixHead = document.getElementById("matrix-head");
-    const matrixBody = document.getElementById("matrix-body");
-    const casesEl = document.getElementById("cases");
-    const statsEl = document.getElementById("stats");
-    let matrixCatalog = null;
+    const state = {
+      catalog: null,
+      run: null,
+      caseFilter: "all",
+      isBusy: false,
+    };
 
-    function statCard(label, value) {
+    const runAllBtn = document.getElementById("run-all-btn");
+    const rerunBtn = document.getElementById("rerun-btn");
+    const reloadBtn = document.getElementById("reload-btn");
+    const runBadgeEl = document.getElementById("run-badge");
+    const metaEl = document.getElementById("meta");
+    const noticeEl = document.getElementById("notice");
+    const summaryEl = document.getElementById("summary");
+    const statsEl = document.getElementById("stats");
+    const catalogEl = document.getElementById("catalog");
+    const catalogMetaEl = document.getElementById("catalog-meta");
+    const modulesEl = document.getElementById("modules");
+    const casesEl = document.getElementById("cases");
+    const stdoutEl = document.getElementById("stdout");
+    const stderrEl = document.getElementById("stderr");
+    const caseSearchEl = document.getElementById("case-search");
+
+    function escapeHtml(value) {
+      return String(value == null ? "" : value)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;");
+    }
+
+    function getItems() {
+      return (state.catalog && state.catalog.items) || [];
+    }
+
+    function getRows() {
+      return (state.catalog && state.catalog.rows) || [];
+    }
+
+    function getItemById(itemId) {
+      return getItems().find((item) => item.id === itemId) || null;
+    }
+
+    function getItemResultMap() {
+      const map = {};
+      const itemResults = (state.run && state.run.itemResults) || [];
+      itemResults.forEach((item) => {
+        map[item.id] = item;
+      });
+      return map;
+    }
+
+    function bucketOrder(bucket) {
+      return { errors: 0, failed: 1, skipped: 2, passed: 3 }[bucket] ?? 4;
+    }
+
+    function statusClass(status) {
+      if (status === "failed" || status === "errors") return "failed";
+      if (status === "passed") return "passed";
+      if (status === "skipped") return "skipped";
+      return "idle";
+    }
+
+    function statusLabel(status) {
+      if (status === "failed") return "Failed";
+      if (status === "errors") return "Errors";
+      if (status === "passed") return "Passed";
+      if (status === "skipped") return "Skipped";
+      return "Not Included";
+    }
+
+    function formatDateTime(value) {
+      if (!value) return "—";
+      return new Date(value).toLocaleString("zh-TW", {
+        timeZone: "Asia/Taipei",
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+        hour: "2-digit",
+        minute: "2-digit",
+        second: "2-digit",
+      });
+    }
+
+    function formatDuration(seconds) {
+      if (seconds == null) return "—";
+      if (seconds < 1) return `${seconds.toFixed(2)}s`;
+      if (seconds < 10) return `${seconds.toFixed(1)}s`;
+      return `${Math.round(seconds)}s`;
+    }
+
+    function shortCaseName(nodeid) {
+      if (!nodeid) return "Unknown case";
+      const parts = nodeid.split("::");
+      return parts[parts.length - 1];
+    }
+
+    function scopeParts(data) {
+      if (!data || data.status === "idle") return [];
+      const selected = data.selectedItems || [];
+      if (!selected.length) return ["Full suite"];
+      return selected
+        .map((itemId) => {
+          const item = getItemById(itemId);
+          return item ? item.label : itemId;
+        });
+    }
+
+    function scopeLabel(data) {
+      const parts = scopeParts(data);
+      if (!parts.length) return "尚未執行";
+      if (parts.length === 1) return parts[0];
+      if (parts.length <= 3) return parts.join(" + ");
+      return `${parts.slice(0, 2).join(" + ")} +${parts.length - 2} more`;
+    }
+
+    function totalChecksInScope(data) {
+      const selected = (data && data.selectedItems) || [];
+      if (!state.catalog) return selected.length;
+      return selected.length || getItems().length;
+    }
+
+    function statCard(label, value, note) {
       return `
         <div class="stat">
-          <div class="stat-k">${label}</div>
-          <div class="stat-v">${value}</div>
+          <div class="stat-k">${escapeHtml(label)}</div>
+          <div class="stat-v">${escapeHtml(value)}</div>
+          <div class="stat-note">${escapeHtml(note || "")}</div>
         </div>
       `;
     }
 
-    function renderCatalog() {
-      if (!matrixCatalog) return;
-      const cols = matrixCatalog.columns || [];
-      matrixHead.innerHTML = `<tr><th>Domain</th>${cols.map(c => `<th>${c}</th>`).join("")}</tr>`;
-      const rows = matrixCatalog.rows || [];
-      if (!rows.length) {
-        matrixBody.innerHTML = `<tr><td class="empty">No matrix catalog.</td></tr>`;
-        return;
-      }
-      matrixBody.innerHTML = rows.map((row) => {
-        const cells = row.cells.map((cell) => {
-          if (!cell) return `<td><span class="dash">-</span></td>`;
-          return `<td>
-            <button class="cell-btn" data-item-id="${cell.id}">${cell.label}</button>
-            <div class="cell-status" id="status-${cell.id}">NOT RUN</div>
-          </td>`;
-        }).join("");
-        return `<tr><td>${row.domain}</td>${cells}</tr>`;
-      }).join("");
+    function summaryCard(label, value, note, extraClass = "") {
+      return `
+        <div class="summary-card">
+          <div class="summary-k">${escapeHtml(label)}</div>
+          <div class="summary-v ${extraClass}">${escapeHtml(value)}</div>
+          <div class="summary-note">${escapeHtml(note || "")}</div>
+        </div>
+      `;
     }
 
-    function applyItemStatuses(data) {
-      const itemResults = (data && data.itemResults) || [];
-      const resultMap = {};
-      itemResults.forEach((r) => { resultMap[r.id] = r; });
-      if (!matrixCatalog || !matrixCatalog.items) return;
-      matrixCatalog.items.forEach((item) => {
-        const el = document.getElementById(`status-${item.id}`);
-        if (!el) return;
-        const r = resultMap[item.id];
-        if (!r || r.status === "not_run") {
-          el.textContent = "NOT RUN";
-          return;
-        }
-        el.textContent = `${r.status.toUpperCase()} (${r.total})`;
-      });
-    }
-
-    function render(data) {
+    function renderTopSummary() {
+      const data = state.run;
       if (!data || data.status === "idle") {
-        metaEl.textContent = "idle";
-        statsEl.innerHTML = "";
-        casesEl.innerHTML = `<div class="empty">No case data.</div>`;
-        applyItemStatuses(null);
+        runBadgeEl.className = "run-badge idle";
+        runBadgeEl.textContent = "Idle";
+        metaEl.textContent = "尚未執行測試";
+        noticeEl.className = "notice";
+        noticeEl.textContent = "先載入最近一次結果，或直接執行完整測試。";
+        summaryEl.innerHTML = [
+          summaryCard("Current Scope", "尚未執行", "目前沒有可顯示的結果。", "scope"),
+          summaryCard("Run Started", "—", "最近執行時間會顯示在這裡。"),
+          summaryCard("Duration", "—", "方便判斷這組測試的大概成本。"),
+          summaryCard("Checks In Scope", "0", "執行後會顯示全量或局部覆蓋範圍。"),
+        ].join("");
+        statsEl.innerHTML = [
+          statCard("Total", "0", "No cases"),
+          statCard("Passed", "0", "No data"),
+          statCard("Failed", "0", "No data"),
+          statCard("Errors", "0", "No data"),
+          statCard("Skipped", "0", "No data"),
+        ].join("");
+        rerunBtn.disabled = true;
         return;
       }
 
       const totals = data.totals || { total: 0, passed: 0, failed: 0, errors: 0, skipped: 0 };
-      metaEl.textContent = `run ${data.runId} | ${data.outcome.toUpperCase()} | ${data.durationSeconds}s`;
-      statsEl.innerHTML = [
-        statCard("Total", totals.total || 0),
-        statCard("Passed", totals.passed || 0),
-        statCard("Failed", totals.failed || 0),
-        statCard("Errors", totals.errors || 0),
-        statCard("Skipped", totals.skipped || 0),
-      ].join("");
-      applyItemStatuses(data);
+      const outcomeClassName = statusClass(data.outcome || "idle");
+      runBadgeEl.className = `run-badge ${outcomeClassName}`;
+      runBadgeEl.textContent = `${(data.outcome || "idle").toUpperCase()}`;
+      metaEl.textContent = `run ${data.runId} • ${formatDateTime(data.finishedAt || data.startedAt)}`;
+      rerunBtn.disabled = false;
 
-      const cases = data.cases || [];
-      if (!cases.length) {
-        casesEl.innerHTML = `<div class="empty">No case details.</div>`;
-      } else {
-        casesEl.innerHTML = cases.slice(0, 400).map((c) => `
-          <div class="case-row">
-            <div>${c.id}</div>
-            <div class="mono">${c.status} · ${c.bucket}</div>
-          </div>
-        `).join("");
+      const partial = (data.selectedItems || []).length > 0;
+      noticeEl.className = "notice";
+      noticeEl.textContent = partial
+        ? "目前顯示的是局部結果。未包含的檢查卡片會標示 Not Included，避免和完整測試混淆。"
+        : "目前顯示的是完整測試結果。卡片狀態可當作整包健康度總覽。";
+
+      summaryEl.innerHTML = [
+        summaryCard("Current Scope", scopeLabel(data), partial ? "這不是完整 suite；只反映你選到的檢查。" : "這次結果來自完整 suite。", "scope"),
+        summaryCard("Run Started", formatDateTime(data.startedAt), "使用 Asia/Taipei 顯示時間。"),
+        summaryCard("Duration", formatDuration(data.durationSeconds), `Return code ${data.returnCode}`),
+        summaryCard("Checks In Scope", String(totalChecksInScope(data)), `${partial ? "Selected checks only" : "All available checks"}`),
+      ].join("");
+
+      statsEl.innerHTML = [
+        statCard("Total", String(totals.total || 0), "Cases in current result"),
+        statCard("Passed", String(totals.passed || 0), totals.passed ? "Healthy" : "No pass cases"),
+        statCard("Failed", String(totals.failed || 0), totals.failed ? "Needs attention" : "No failed cases"),
+        statCard("Errors", String(totals.errors || 0), totals.errors ? "Unexpected execution issue" : "No runtime errors"),
+        statCard("Skipped", String(totals.skipped || 0), totals.skipped ? "Skipped by test logic" : "No skipped cases"),
+      ].join("");
+    }
+
+    function renderCatalog() {
+      if (!state.catalog) {
+        catalogEl.innerHTML = `<div class="empty">Loading checks...</div>`;
+        return;
       }
+
+      const itemResultMap = getItemResultMap();
+      const rows = getRows();
+      catalogMetaEl.textContent = `${getItems().length} checks across ${rows.length} domains`;
+
+      catalogEl.innerHTML = rows.map((row) => {
+        const cells = (row.cells || []).filter(Boolean);
+        return `
+          <section class="domain-block">
+            <div class="domain-head">
+              <h3>${escapeHtml(row.domain)}</h3>
+              <span class="meta">${cells.length} checks</span>
+            </div>
+            <div class="check-grid">
+              ${cells.map((item) => {
+                const result = itemResultMap[item.id];
+                const tone = statusClass(result ? result.status : "idle");
+                const selected = result && result.status !== "not_run";
+                const selectors = item.nodeids ? item.nodeids.length : 0;
+                return `
+                  <article class="check-card ${selected ? "included" : ""} ${tone}">
+                    <div class="card-top">
+                      <div class="card-meta">
+                        <span class="pill type">${escapeHtml(item.column)}</span>
+                        <span class="pill neutral">${selectors} selector${selectors === 1 ? "" : "s"}</span>
+                      </div>
+                      <span class="status-pill ${tone}">${escapeHtml(result ? statusLabel(result.status) : "Not Included")}</span>
+                    </div>
+                    <div>
+                      <h4 class="card-title">${escapeHtml(item.label)}</h4>
+                      <p class="card-summary">${escapeHtml(item.summary || "No summary available.")}</p>
+                    </div>
+                    <div class="card-actions">
+                      <span class="meta">${result && result.status !== "not_run" ? `${result.total} case${result.total === 1 ? "" : "s"} in current result` : "Not part of current result"}</span>
+                      <button class="run-item-btn" data-item-id="${escapeHtml(item.id)}">Run This Check</button>
+                    </div>
+                  </article>
+                `;
+              }).join("")}
+            </div>
+          </section>
+        `;
+      }).join("");
+
+      catalogEl.querySelectorAll(".run-item-btn").forEach((btn) => {
+        btn.addEventListener("click", () => runTests([btn.dataset.itemId]));
+      });
+      setBusy(state.isBusy);
+    }
+
+    function renderModules() {
+      const data = state.run;
+      const rows = (data && data.matrix) || [];
+      if (!rows.length) {
+        modulesEl.innerHTML = `<div class="empty">No module summary yet.</div>`;
+        return;
+      }
+
+      const ordered = [...rows].sort((a, b) => {
+        const scoreA = (a.errors || 0) * 2 + (a.failed || 0);
+        const scoreB = (b.errors || 0) * 2 + (b.failed || 0);
+        if (scoreB !== scoreA) return scoreB - scoreA;
+        return (b.total || 0) - (a.total || 0);
+      });
+
+      modulesEl.innerHTML = ordered.map((row) => {
+        const alert = (row.failed || 0) > 0 || (row.errors || 0) > 0;
+        return `
+          <div class="module-card ${alert ? "alert" : ""}">
+            <div class="module-head">
+              <div class="summary-k">Module</div>
+              <span class="status-pill ${alert ? "failed" : "passed"}">${alert ? "Needs Attention" : "Healthy"}</span>
+            </div>
+            <div class="module-name">${escapeHtml(row.module)}</div>
+            <div class="module-metrics">
+              <span class="pill neutral">total ${row.total || 0}</span>
+              <span class="pill ${row.passed ? "passed" : "idle"}">passed ${row.passed || 0}</span>
+              <span class="pill ${row.failed ? "failed" : "idle"}">failed ${row.failed || 0}</span>
+              <span class="pill ${row.errors ? "failed" : "idle"}">errors ${row.errors || 0}</span>
+              <span class="pill ${row.skipped ? "skipped" : "idle"}">skipped ${row.skipped || 0}</span>
+            </div>
+          </div>
+        `;
+      }).join("");
+    }
+
+    function filteredCases() {
+      const data = state.run;
+      const cases = (data && data.cases) || [];
+      const needle = caseSearchEl.value.trim().toLowerCase();
+      return [...cases]
+        .sort((a, b) => {
+          const bucketDelta = bucketOrder(a.bucket) - bucketOrder(b.bucket);
+          if (bucketDelta !== 0) return bucketDelta;
+          return a.id.localeCompare(b.id);
+        })
+        .filter((item) => state.caseFilter === "all" || item.bucket === state.caseFilter)
+        .filter((item) => {
+          if (!needle) return true;
+          return item.id.toLowerCase().includes(needle) || item.module.toLowerCase().includes(needle);
+        });
+    }
+
+    function renderCases() {
+      const visible = filteredCases();
+      if (!visible.length) {
+        casesEl.innerHTML = `<div class="empty">No cases match the current filter.</div>`;
+        return;
+      }
+
+      casesEl.innerHTML = visible.slice(0, 400).map((item) => `
+        <article class="case-row ${escapeHtml(item.bucket)}">
+          <div class="card-top">
+            <span class="case-badge ${escapeHtml(item.bucket)}">${escapeHtml(item.status)}</span>
+            <span class="meta">${escapeHtml(item.module)}</span>
+          </div>
+          <div class="case-title">${escapeHtml(shortCaseName(item.id))}</div>
+          <div class="case-path">${escapeHtml(item.id)}</div>
+        </article>
+      `).join("");
+    }
+
+    function renderOutput() {
+      const data = state.run;
+      const stdout = data && data.stdoutTail && data.stdoutTail.length ? data.stdoutTail.join("\\n") : "No stdout tail captured.";
+      const stderr = data && data.stderrTail && data.stderrTail.length ? data.stderrTail.join("\\n") : "No stderr tail captured.";
+      stdoutEl.textContent = stdout;
+      stderrEl.textContent = stderr;
+    }
+
+    function renderAll() {
+      renderTopSummary();
+      renderCatalog();
+      renderModules();
+      renderCases();
+      renderOutput();
     }
 
     function setBusy(isBusy) {
+      state.isBusy = isBusy;
       runAllBtn.disabled = isBusy;
-      document.querySelectorAll(".cell-btn").forEach((b) => { b.disabled = isBusy; });
+      reloadBtn.disabled = isBusy;
+      rerunBtn.disabled = isBusy || !(state.run && state.run.status !== "idle");
+      document.querySelectorAll(".run-item-btn").forEach((btn) => {
+        btn.disabled = isBusy;
+      });
+    }
+
+    function showError(message) {
+      noticeEl.className = "notice error";
+      noticeEl.textContent = message;
     }
 
     async function runTests(itemIds = []) {
+      const labels = itemIds.map((itemId) => {
+        const item = getItemById(itemId);
+        return item ? item.label : itemId;
+      });
       setBusy(true);
-      metaEl.textContent = itemIds.length ? `running ${itemIds.join(",")}...` : "running all...";
+      runBadgeEl.className = "run-badge idle";
+      runBadgeEl.textContent = "Running";
+      metaEl.textContent = labels.length ? `running ${labels.join(" + ")}` : "running full suite";
+      noticeEl.className = "notice";
+      noticeEl.textContent = labels.length
+        ? "正在執行局部檢查。完成後會清楚標示這次結果只覆蓋哪些卡片。"
+        : "正在執行完整 suite。完成後所有卡片都會更新狀態。";
       try {
-        const r = await fetch("/api/admin/tests/run?token=" + encodeURIComponent(token), {
+        const response = await fetch("/api/admin/tests/run?token=" + encodeURIComponent(token), {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ itemIds }),
         });
-        if (!r.ok) {
-          metaEl.textContent = `error ${r.status}`;
+        if (!response.ok) {
+          showError(`Run failed with HTTP ${response.status}`);
           return;
         }
-        render(await r.json());
+        state.run = await response.json();
+        renderAll();
+      } catch (error) {
+        showError(`Run failed: ${error}`);
       } finally {
         setBusy(false);
       }
     }
 
     async function loadCatalog() {
-      const r = await fetch("/api/admin/tests/catalog?token=" + encodeURIComponent(token));
-      if (!r.ok) {
-        metaEl.textContent = `catalog error ${r.status}`;
-        return;
+      try {
+        const response = await fetch("/api/admin/tests/catalog?token=" + encodeURIComponent(token));
+        if (!response.ok) {
+          showError(`Catalog error ${response.status}`);
+          return;
+        }
+        state.catalog = await response.json();
+        renderCatalog();
+      } catch (error) {
+        showError(`Catalog error: ${error}`);
       }
-      matrixCatalog = await r.json();
-      renderCatalog();
-      matrixBody.querySelectorAll(".cell-btn").forEach((btn) => {
-        btn.addEventListener("click", () => runTests([btn.dataset.itemId]));
-      });
     }
 
     async function loadLast() {
-      const r = await fetch("/api/admin/tests/last?token=" + encodeURIComponent(token));
-      if (!r.ok) {
-        metaEl.textContent = `error ${r.status}`;
-        return;
+      try {
+        const response = await fetch("/api/admin/tests/last?token=" + encodeURIComponent(token));
+        if (!response.ok) {
+          showError(`Load last result failed with HTTP ${response.status}`);
+          return;
+        }
+        state.run = await response.json();
+        renderAll();
+      } catch (error) {
+        showError(`Load last result failed: ${error}`);
       }
-      render(await r.json());
     }
 
     runAllBtn.addEventListener("click", () => runTests([]));
+    rerunBtn.addEventListener("click", () => {
+      const selected = (state.run && state.run.selectedItems) || [];
+      runTests(selected);
+    });
     reloadBtn.addEventListener("click", loadLast);
+    caseSearchEl.addEventListener("input", renderCases);
+    document.querySelectorAll("#case-filters .filter-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        document.querySelectorAll("#case-filters .filter-btn").forEach((node) => node.classList.remove("active"));
+        btn.classList.add("active");
+        state.caseFilter = btn.dataset.filter;
+        renderCases();
+      });
+    });
+
     (async () => {
       await loadCatalog();
       await loadLast();
+      renderAll();
     })();
   </script>
 </body>

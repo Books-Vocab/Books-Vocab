@@ -112,7 +112,7 @@ final class KGService: KGServing {
             
             if httpResponse.statusCode == 401 {
                 print("❌ KG health check failed: 401 Unauthorized")
-                AuthManager.shared.logout()
+                AuthManager.shared.logout(reason: "healthcheck_401")
                 isConnected = false
                 return
             }
@@ -359,9 +359,10 @@ final class KGService: KGServing {
     }
     
     /// Clears all local KG data (SwiftData + Sync Timestamp)
-    func clearLocalData(container: ModelContainer) async {
+    func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
         let actor = BackgroundSyncActor(modelContainer: container)
-        try? await actor.clearVocabularyData()
+        print("🧹 clearLocalData requested. reason=\(reason)")
+        try? await actor.clearVocabularyData(reason: reason)
         
         UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)
         lastSyncDate = nil

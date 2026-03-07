@@ -163,12 +163,12 @@ final class AuthManager: @unchecked Sendable, AuthManaging {
         }.resume()
     }
 
-    func logout(modelContainer: ModelContainer? = nil) {
+    func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
         let container = modelContainer ?? self.modelContainer
         Task {
             // 先清本地資料，再更新 isLoggedIn，確保 UI 重新顯示時詞庫已空
             if let container {
-                await KGService().clearLocalData(container: container)
+                await KGService().clearLocalData(container: container, reason: reason)
             }
             await MainActor.run {
                 GIDSignIn.sharedInstance.signOut()
@@ -233,7 +233,7 @@ final class AuthManager: @unchecked Sendable, AuthManaging {
                         if isAccountSwitch, let container = modelContainer {
                             print("🧹 Account switch — clearing previous user's local data")
                             Task { @MainActor in
-                                await KGService().clearLocalData(container: container)
+                                await KGService().clearLocalData(container: container, reason: "account_switch_google")
                                 self.login(userId: userId, token: jwtToken)
                             }
                         } else {
@@ -318,7 +318,7 @@ private class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, 
                 if isAccountSwitch, let container = self.modelContainer {
                     print("🧹 Account switch — clearing previous user's local data")
                     Task { @MainActor in
-                        await KGService().clearLocalData(container: container)
+                        await KGService().clearLocalData(container: container, reason: "account_switch_apple")
                         authManager.login(userId: userId, token: jwtToken)
                     }
                 } else {

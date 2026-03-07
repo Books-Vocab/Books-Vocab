@@ -13,7 +13,7 @@ import SwiftData
 
     func login(userId: String, token: String)
     func login(customToken: String)
-    func logout(modelContainer: ModelContainer?)
+    func logout(modelContainer: ModelContainer?, reason: String)
     func loginWithGoogle(modelContainer: ModelContainer?)
     func loginWithApple(modelContainer: ModelContainer?)
 }

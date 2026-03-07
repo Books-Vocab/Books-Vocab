@@ -218,7 +218,7 @@ struct VocabularyListView: View {
     private func forceRefresh() async {
         guard !isForceRefreshing else { return }
         isForceRefreshing = true
-        await kgService.clearLocalData(container: modelContext.container)
+        await kgService.clearLocalData(container: modelContext.container, reason: "force_refresh")
         try? await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
         await kgService.healthCheck()
         isForceRefreshing = false

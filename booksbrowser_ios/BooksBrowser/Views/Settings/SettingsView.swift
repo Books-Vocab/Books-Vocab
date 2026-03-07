@@ -333,7 +333,7 @@ struct SettingsView: View {
             Divider().opacity(0.4)
 
             Button(role: .destructive) {
-                authManager.logout(modelContainer: modelContext.container)
+                authManager.logout(modelContainer: modelContext.container, reason: "settings_logout")
             } label: {
                 Text("登出帳號")
                     .font(.subheadline)
@@ -353,7 +353,7 @@ struct SettingsView: View {
 
         do {
             try await kgService.deleteAccount()
-            authManager.logout(modelContainer: modelContext.container)
+            authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
         } catch {
             deleteAccountError = "無法刪除帳號：\(error.localizedDescription)"
         }
