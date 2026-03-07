@@ -137,39 +137,35 @@ struct KGVocabView: View {
     }
 
     private var dueEntries: [VocabularyEntry] {
-        sortedEntries.filter { $0.reviewState == .due }
+        VocabularyEntryPresentation.filteredKnowledgeEntries(
+            in: syncedEntries,
+            reviewState: .due,
+            searchText: ""
+        )
     }
 
     private var unlearnedEntries: [VocabularyEntry] {
-        sortedEntries.filter { $0.reviewState == .unlearned }
+        VocabularyEntryPresentation.filteredKnowledgeEntries(
+            in: syncedEntries,
+            reviewState: .unlearned,
+            searchText: ""
+        )
     }
 
     private var reviewedEntries: [VocabularyEntry] {
-        sortedEntries.filter { $0.reviewState == .reviewed }
+        VocabularyEntryPresentation.filteredKnowledgeEntries(
+            in: syncedEntries,
+            reviewState: .reviewed,
+            searchText: ""
+        )
     }
 
     private var filteredEntries: [VocabularyEntry] {
-        let stateFiltered = sortedEntries.filter { $0.reviewState == selectedReviewState }
-        guard !searchText.isEmpty else { return stateFiltered }
-        return stateFiltered.filter {
-            $0.word.localizedCaseInsensitiveContains(searchText) ||
-            $0.translation.localizedCaseInsensitiveContains(searchText)
-        }
-    }
-
-    private var sortedEntries: [VocabularyEntry] {
-        syncedEntries.sorted {
-            if reviewOrder($0.reviewState) != reviewOrder($1.reviewState) {
-                return reviewOrder($0.reviewState) < reviewOrder($1.reviewState)
-            }
-            if $0.reviewState != .reviewed && $0.nextReviewAt != $1.nextReviewAt {
-                return $0.nextReviewAt < $1.nextReviewAt
-            }
-            let t0 = tierOrder($0.difficultyTier)
-            let t1 = tierOrder($1.difficultyTier)
-            if t0 != t1 { return t0 < t1 }
-            return $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
-        }
+        VocabularyEntryPresentation.filteredKnowledgeEntries(
+            in: syncedEntries,
+            reviewState: selectedReviewState,
+            searchText: searchText
+        )
     }
 
     private var emptyStateTitle: String {
@@ -199,25 +195,10 @@ struct KGVocabView: View {
     // MARK: - Helpers
 
     private func count(for state: VocabularyReviewState) -> Int {
-        syncedEntries.filter { $0.reviewState == state }.count
-    }
-
-    private func reviewOrder(_ state: VocabularyReviewState) -> Int {
-        switch state {
-        case .due: return 0
-        case .unlearned: return 1
-        case .reviewed: return 2
-        }
-    }
-
-    private func tierOrder(_ tier: String?) -> Int {
-        switch tier {
-        case "core": return 0
-        case "intermediate": return 1
-        case "advanced": return 2
-        case "rare": return 3
-        default: return 4
-        }
+        VocabularyEntryPresentation.countKnowledgeEntries(
+            in: syncedEntries,
+            reviewState: state
+        )
     }
 
     private func markForDeletion(_ entry: VocabularyEntry) {

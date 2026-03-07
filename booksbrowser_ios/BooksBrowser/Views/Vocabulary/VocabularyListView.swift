@@ -13,7 +13,6 @@ import UniformTypeIdentifiers
 struct VocabularyListView: View {
     @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) private var allEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.vocabSkin) private var vocabSkin
 
     @State private var searchText = ""
     @State private var showExportSheet = false
@@ -152,7 +151,11 @@ struct VocabularyListView: View {
     @ViewBuilder
     private var routedContent: some View {
         if selectedTab == 0 {
-            localVocabContent
+            PendingVocabPresenter(
+                state: pendingPresenterState,
+                onRowTapped: handlePendingRowTap,
+                onActionTapped: handlePendingActionTap
+            )
         } else if !authManager.isLoggedIn {
             loggedOutState
         } else if selectedTab == 1 {
@@ -162,86 +165,25 @@ struct VocabularyListView: View {
         }
     }
 
-    @ViewBuilder
-    private var localVocabContent: some View {
-        if filteredEntries.isEmpty {
-            ScrollView {
-                VocabEmptyStateCard(
-                    title: "沒有待收錄的生詞",
-                    systemImage: "character.book.closed",
-                    description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。"
-                )
-                .padding(.horizontal)
-                .padding(.top, 16)
-            }
-        } else {
-            ScrollView {
-                VStack(spacing: 16) {
-                    VocabCard {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("待收錄")
-                                    .font(vocabSkin.typography.sectionTitle)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
-                                Text("同步前的本地收件匣，會保留新增與待刪除動作。")
-                                    .font(vocabSkin.typography.body)
-                                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                            }
-
-                            Spacer()
-
-                            Text("\(filteredEntries.count)")
-                                .font(vocabSkin.typography.numericHero)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                    }
-
-                    VocabCard(padding: 0) {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
-                                HStack(alignment: .top, spacing: 12) {
-                                    WordRow(viewData: entry.wordRowViewData())
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { selectedEntry = entry }
-
-                                    Button {
-                                        handlePendingRemoval(entry)
-                                    } label: {
-                                        Image(systemName: entry.actionType == "delete" ? "arrow.uturn.backward.circle" : "trash")
-                                            .font(.system(size: 15, weight: .medium))
-                                            .foregroundStyle(entry.actionType == "delete" ? vocabSkin.palette.secondaryText : vocabSkin.palette.tertiaryText)
-                                            .frame(width: 30, height: 30)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                                                    .fill(vocabSkin.palette.mutedFill)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
-                                    .padding(.top, 10)
-                                }
-                                .padding(.horizontal, 18)
-
-                                if index < filteredEntries.count - 1 {
-                                    Divider()
-                                        .padding(.leading, 18)
-                                }
-                            }
-                        }
-                    }
-                }
-                .padding(.horizontal)
-                .padding(.top, 10)
-                .padding(.bottom, 24)
-            }
-        }
-    }
-
     // MARK: - Computed
+
+    private var pendingPresenterState: PendingVocabPresenterState {
+        PendingVocabPresenterState(
+            pendingCount: filteredPendingEntries.count,
+            rows: filteredPendingEntries.map { entry in
+                .init(
+                    id: entry.id,
+                    row: entry.wordRowViewData(),
+                    actionSystemImage: entry.actionType == "delete" ? "arrow.uturn.backward.circle" : "trash",
+                    actionTone: entry.actionType == "delete" ? .secondary : .tertiary
+                )
+            }
+        )
+    }
 
     /// Entries not yet synced to KG (待收錄)
     private var pendingEntries: [VocabularyEntry] {
-        allEntries.filter { $0.syncStatus != 1 }
+        VocabularyEntryPresentation.pendingEntries(in: allEntries)
     }
 
     private var pendingCount: Int {
@@ -253,13 +195,11 @@ struct VocabularyListView: View {
     }
 
     private var syncedKnowledgeEntries: [VocabularyEntry] {
-        allEntries
-            .filter { $0.syncStatus == 1 && $0.actionType != "delete" }
-            .sorted(by: knowledgeEntrySort)
+        VocabularyEntryPresentation.syncedKnowledgeEntries(in: allEntries)
     }
 
     private var knowledgeReviewEntries: [VocabularyEntry] {
-        syncedKnowledgeEntries.filter { $0.reviewState == .due || $0.reviewState == .unlearned }
+        VocabularyEntryPresentation.knowledgeReviewEntries(in: allEntries)
     }
 
     private var knowledgeReviewCount: Int {
@@ -279,22 +219,11 @@ struct VocabularyListView: View {
         ]
     }
 
-    private var filteredEntries: [VocabularyEntry] {
-        let sortedPending = pendingEntries.sorted {
-            if $0.isReviewDue != $1.isReviewDue {
-                return $0.isReviewDue && !$1.isReviewDue
-            }
-            if $0.nextReviewAt != $1.nextReviewAt {
-                return $0.nextReviewAt < $1.nextReviewAt
-            }
-            return $0.dateAdded > $1.dateAdded
-        }
-
-        if searchText.isEmpty { return sortedPending }
-        return sortedPending.filter {
-            $0.word.localizedCaseInsensitiveContains(searchText) ||
-            $0.translation.localizedCaseInsensitiveContains(searchText)
-        }
+    private var filteredPendingEntries: [VocabularyEntry] {
+        VocabularyEntryPresentation.filteredPendingEntries(
+            in: allEntries,
+            searchText: searchText
+        )
     }
 
     // MARK: - 強制刷新
@@ -331,37 +260,13 @@ struct VocabularyListView: View {
         activeReviewSession = TodayReviewSession(entries: knowledgeReviewEntries)
     }
 
-    private func knowledgeEntrySort(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
-        if reviewOrder(lhs.reviewState) != reviewOrder(rhs.reviewState) {
-            return reviewOrder(lhs.reviewState) < reviewOrder(rhs.reviewState)
-        }
-        if lhs.reviewState != .reviewed && lhs.nextReviewAt != rhs.nextReviewAt {
-            return lhs.nextReviewAt < rhs.nextReviewAt
-        }
-        let lhsTier = tierOrder(lhs.difficultyTier)
-        let rhsTier = tierOrder(rhs.difficultyTier)
-        if lhsTier != rhsTier {
-            return lhsTier < rhsTier
-        }
-        return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+    private func handlePendingRowTap(_ entryID: UUID) {
+        selectedEntry = pendingEntries.first { $0.id == entryID }
     }
 
-    private func reviewOrder(_ state: VocabularyReviewState) -> Int {
-        switch state {
-        case .due: return 0
-        case .unlearned: return 1
-        case .reviewed: return 2
-        }
-    }
-
-    private func tierOrder(_ tier: String?) -> Int {
-        switch tier {
-        case "core": return 0
-        case "intermediate": return 1
-        case "advanced": return 2
-        case "rare": return 3
-        default: return 4
-        }
+    private func handlePendingActionTap(_ entryID: UUID) {
+        guard let entry = pendingEntries.first(where: { $0.id == entryID }) else { return }
+        handlePendingRemoval(entry)
     }
 
     @ViewBuilder
