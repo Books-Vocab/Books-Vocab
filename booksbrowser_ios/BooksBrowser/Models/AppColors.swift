@@ -57,6 +57,9 @@ enum AppColors {
 
     // ── Glass-era Token ───────────────────────────────────────────────────
     static let glassClearBackground = Color.clear
+
+    // ── Highlight Mark (Mochi-style 螢光筆) ──────────────────────────────
+    static let highlightMark = Color(hue: 45/360, saturation: 0.50, brightness: 0.95)
 }
 
 // MARK: - 環境感知

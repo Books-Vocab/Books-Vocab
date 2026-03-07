@@ -6,7 +6,8 @@ struct CardRichTextStyle {
     let textColor: Color
     let highlightColor: Color
     let italic: Bool
-    var underlineHighlights: Bool = true
+    var underlineHighlights: Bool = false
+    var useBackgroundMark: Bool = true
     var highlightWeight: Font.Weight = .semibold
 }
 
@@ -135,13 +136,21 @@ enum CardRichTextRenderer {
             ? style.font.weight(style.highlightWeight).italic()
             : style.font.weight(style.highlightWeight)
         part.font = highlightFont
-        part.foregroundColor = style.highlightColor.opacity(0.95)
+        part.foregroundColor = style.highlightColor
+
+        // Mochi-style background highlight mark
+        if style.useBackgroundMark {
+            part.backgroundColor = style.highlightColor.opacity(0.18)
+        }
+
+        // Legacy underline (off by default)
         if style.underlineHighlights {
             part.underlineStyle = Text.LineStyle(
                 pattern: .solid,
                 color: style.highlightColor.opacity(0.6)
             )
         }
+
         return part
     }
 

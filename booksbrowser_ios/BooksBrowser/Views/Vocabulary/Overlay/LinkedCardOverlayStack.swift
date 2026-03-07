@@ -6,7 +6,7 @@ struct LinkedCardOverlayStack: View {
     var body: some View {
         if !stack.isEmpty {
             ZStack {
-                Color.black.opacity(0.20)
+                Color.black.opacity(0.18)
                     .ignoresSafeArea()
                     .onTapGesture {
                         _ = stack.popLast()
@@ -27,31 +27,32 @@ struct LinkedCardOverlayStack: View {
             // Header bar
             HStack(spacing: AppMetrics.spacingSmall) {
                 Label(index == 0 ? "Linked Card" : "Nested Link", systemImage: "rectangle.stack")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(AppFonts.caption(weight: .medium))
+                    .foregroundStyle(.tertiary)
 
                 Spacer()
 
                 if index > 0 {
                     Text("+\(index)")
-                        .font(AppFonts.caption(weight: .semibold))
-                        .foregroundStyle(.tertiary)
+                        .font(AppFonts.caption(weight: .medium))
+                        .foregroundStyle(.quaternary)
                 }
 
                 Button {
                     close(from: index)
                 } label: {
                     Image(systemName: "xmark.circle")
-                        .font(.system(size: 20, weight: .thin))
-                        .foregroundStyle(.secondary)
+                        .font(.system(size: 18, weight: .thin))
+                        .foregroundStyle(.tertiary)
                 }
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, AppMetrics.spacingMedium)
             .padding(.vertical, 14)
-            .background(.ultraThinMaterial)
 
-            Divider()
+            Rectangle()
+                .fill(Color.primary.opacity(0.06))
+                .frame(height: 0.5)
 
             WordDetailSheet(
                 entry: entry,
@@ -63,7 +64,12 @@ struct LinkedCardOverlayStack: View {
             maxWidth: max(420, 680 - CGFloat(index * 18)),
             maxHeight: max(420, 620 - CGFloat(index * 18))
         )
-        .compatibleGlassCard()
+        .background(Color.white)
+        .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+                .stroke(Color.primary.opacity(0.05), lineWidth: 0.5)
+        )
         .shadow(color: .black.opacity(0.08), radius: 28, y: 14)
         .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index * 10))
         .padding(.vertical, AppMetrics.spacingExtraLarge + CGFloat(index * 8))

@@ -362,23 +362,15 @@ struct WordRow: View {
 
                     if let pos = partOfSpeech {
                         Text(pos)
-                            .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppColors.accent(colorScheme).opacity(0.10))
-                            .foregroundStyle(AppColors.accent(colorScheme))
-                            .clipShape(Capsule())
+                            .font(.system(size: 14, weight: .regular))
+                            .foregroundStyle(.tertiary)
                     }
 
                     if isDelete {
                         Spacer()
                         Text("待刪除")
                             .font(.system(size: 11, weight: .medium))
-                            .padding(.horizontal, 6)
-                            .padding(.vertical, 2)
-                            .background(AppColors.destructive(colorScheme).opacity(0.08))
                             .foregroundStyle(AppColors.destructive(colorScheme))
-                            .clipShape(Capsule())
                     }
                 }
 
@@ -436,7 +428,7 @@ struct WordRow: View {
                 }
             }
         }
-        .padding(.vertical, 8)
+        .padding(.vertical, 12)
     }
 
     // MARK: - Badges

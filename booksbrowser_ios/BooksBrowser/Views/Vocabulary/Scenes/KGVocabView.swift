@@ -2,8 +2,8 @@
 //  KGVocabView.swift
 //  BooksBrowser
 //
-//  Displays vocabulary cards fetched from the Knowledge Graph API server.
-//  iOS 26+: Liquid Glass hero card, glass stat pills, glass sections.
+//  Mochi-inspired knowledge base browser.
+//  Clean white cards, generous spacing, ghost buttons, typography-driven hierarchy.
 //
 
 import SwiftUI
@@ -109,65 +109,53 @@ struct KGVocabView: View {
         Button {
             startTodayReview()
         } label: {
-            AppCard(padding: 0) {
-                ZStack(alignment: .topLeading) {
-                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
-                        .fill(AppColors.paperSepia.opacity(0.6))
+            AppCard {
+                VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+                    // Header row
+                    HStack(alignment: .top) {
+                        VStack(alignment: .leading, spacing: 6) {
+                            Text("Today Review")
+                                .font(AppFonts.caption(weight: .medium))
+                                .foregroundStyle(.tertiary)
 
-                    VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                        HStack(alignment: .top) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                Text("Today Review")
-                                    .font(AppFonts.caption(weight: .semibold))
-                                    .foregroundStyle(.secondary)
-
-                                Text("今日待複習")
-                                    .font(AppFonts.hero(weight: .semibold))
-                                    .foregroundStyle(.primary)
-
-                                Text(heroDescription)
-                                    .font(AppFonts.subhead())
-                                    .foregroundStyle(.secondary)
-                                    .fixedSize(horizontal: false, vertical: true)
-                                    .lineSpacing(3)
-                            }
-
-                            Spacer(minLength: 12)
-
-                            VStack(alignment: .trailing, spacing: 2) {
-                                Text("\(todaySessionEntries.count)")
-                                    .font(.system(size: 52, weight: .semibold, design: .serif))
-                                    .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
-                                Text("cards")
-                                    .font(AppFonts.caption(weight: .semibold))
-                                    .foregroundStyle(.tertiary)
-                            }
+                            Text("今日待複習")
+                                .font(AppFonts.hero(weight: .semibold))
+                                .foregroundStyle(.primary)
                         }
 
-                        HStack(spacing: AppMetrics.spacingSmall) {
-                            sessionStat(title: "待複習", value: "\(dueEntries.count)", tone: AppColors.translation(.light))
-                            sessionStat(title: "未學習", value: "\(unlearnedEntries.count)", tone: AppColors.accent(.light))
-                            sessionStat(title: "已複習", value: "\(reviewedEntries.count)", tone: AppColors.saved(.light))
+                        Spacer(minLength: 12)
+
+                        // Large number
+                        VStack(alignment: .trailing, spacing: 2) {
+                            Text("\(todaySessionEntries.count)")
+                                .font(.system(size: 52, weight: .semibold, design: .serif))
+                                .foregroundStyle(todaySessionEntries.isEmpty ? .quaternary : .primary)
+                            Text("cards")
+                                .font(AppFonts.caption(weight: .medium))
+                                .foregroundStyle(.quaternary)
                         }
-
-                        HStack(spacing: AppMetrics.spacingSmall) {
-                            Label("flashcards", systemImage: "rectangle.stack")
-                                .font(AppFonts.caption(weight: .semibold))
-                                .foregroundStyle(.secondary)
-
-                            Spacer()
-
-                            Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習")
-                                .font(AppFonts.subhead(weight: .semibold))
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : .primary)
-
-                            Image(systemName: "arrow.right.circle")
-                                .font(.system(size: 20, weight: .thin))
-                                .foregroundStyle(todaySessionEntries.isEmpty ? .secondary : AppColors.translation(.light))
-                        }
-                        .padding(.top, 4)
                     }
-                    .padding(AppMetrics.spacingLarge)
+
+                    // Description
+                    Text(heroDescription)
+                        .font(AppFonts.subhead())
+                        .foregroundStyle(.secondary)
+                        .lineSpacing(4)
+
+                    // Stats — inline text, not pills
+                    HStack(spacing: AppMetrics.spacingLarge) {
+                        statText(title: "待複習", value: dueEntries.count, tone: AppColors.translation(.light))
+                        statText(title: "未學習", value: unlearnedEntries.count, tone: AppColors.accent(.light))
+                        statText(title: "已複習", value: reviewedEntries.count, tone: AppColors.saved(.light))
+                    }
+
+                    // CTA
+                    HStack {
+                        Spacer()
+                        Text(todaySessionEntries.isEmpty ? "暫無 session" : "開始複習 →")
+                            .font(AppFonts.subhead(weight: .semibold))
+                            .foregroundStyle(todaySessionEntries.isEmpty ? .quaternary : .primary)
+                    }
                 }
             }
         }
@@ -181,8 +169,8 @@ struct KGVocabView: View {
         AppCard {
             VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
                 Text("知識庫狀態")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.secondary)
+                    .font(AppFonts.caption(weight: .medium))
+                    .foregroundStyle(.tertiary)
 
                 Picker("", selection: $selectedReviewState) {
                     ForEach(VocabularyReviewState.allCases) { state in
@@ -194,7 +182,7 @@ struct KGVocabView: View {
                 Text(stateDescription)
                     .font(AppFonts.subhead())
                     .foregroundStyle(.secondary)
-                    .lineSpacing(3)
+                    .lineSpacing(4)
             }
         }
     }
@@ -210,8 +198,8 @@ struct KGVocabView: View {
                             .font(AppFonts.h2(weight: .semibold))
                             .foregroundStyle(.primary)
                         Text("\(filteredEntries.count) 張卡片")
-                            .font(AppFonts.caption(weight: .semibold))
-                            .foregroundStyle(.tertiary)
+                            .font(AppFonts.caption(weight: .medium))
+                            .foregroundStyle(.quaternary)
                     }
                     Spacer()
                 }
@@ -250,6 +238,19 @@ struct KGVocabView: View {
                     }
                 }
             }
+        }
+    }
+
+    // MARK: - Components
+
+    private func statText(title: String, value: Int, tone: Color) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(AppFonts.caption())
+                .foregroundStyle(.tertiary)
+            Text("\(value)")
+                .font(AppFonts.h2(weight: .semibold))
+                .foregroundStyle(tone)
         }
     }
 
@@ -324,29 +325,18 @@ struct KGVocabView: View {
     }
 
     private var emptyStateTitle: String {
-        if syncedEntries.isEmpty {
-            return "知識庫目前是空的"
-        }
-        if !searchText.isEmpty {
-            return "沒有符合的單字"
-        }
+        if syncedEntries.isEmpty { return "知識庫目前是空的" }
+        if !searchText.isEmpty { return "沒有符合的單字" }
         return selectedReviewState.title
     }
 
     private var emptyStateDescription: String {
-        if syncedEntries.isEmpty {
-            return "同步完成後，這裡會顯示你的雲端單字。"
-        }
-        if !searchText.isEmpty {
-            return "試試其他關鍵字，或切換到別的狀態。"
-        }
+        if syncedEntries.isEmpty { return "同步完成後，這裡會顯示你的雲端單字。" }
+        if !searchText.isEmpty { return "試試其他關鍵字，或切換到別的狀態。" }
         switch selectedReviewState {
-        case .unlearned:
-            return "目前沒有尚未進入複習流程的卡片。"
-        case .due:
-            return "今天沒有到期卡片。"
-        case .reviewed:
-            return "目前沒有已複習中的卡片。"
+        case .unlearned: return "目前沒有尚未進入複習流程的卡片。"
+        case .due: return "今天沒有到期卡片。"
+        case .reviewed: return "目前沒有已複習中的卡片。"
         }
     }
 
@@ -356,25 +346,6 @@ struct KGVocabView: View {
         case .due: return "checkmark.seal"
         case .reviewed: return "leaf"
         }
-    }
-
-    // MARK: - Session Stat Pill
-
-    private func sessionStat(title: String, value: String, tone: Color) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(AppFonts.caption())
-                .foregroundStyle(.secondary)
-            Text(value)
-                .font(AppFonts.h2(weight: .semibold))
-                .foregroundStyle(tone)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, AppMetrics.spacingSmall)
-        .padding(.horizontal, AppMetrics.spacingMedium)
-        .compatibleGlass(
-            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-        )
     }
 
     // MARK: - Helpers

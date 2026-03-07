@@ -6,6 +6,8 @@ struct TodayReviewSession: Identifiable {
     let entries: [VocabularyEntry]
 }
 
+// MARK: - TodayReviewView (Mochi-inspired layout)
+
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allEntries: [VocabularyEntry]
@@ -23,117 +25,288 @@ struct TodayReviewView: View {
 
     var body: some View {
         NavigationStack {
-            Group {
+            VStack(spacing: 0) {
                 if let current = currentEntry {
-                    VStack(spacing: AppMetrics.spacingLarge) {
-                        header(current: current)
+                    // Top bar — minimal
+                    topBar(current: current)
 
-                        AppCard(padding: 0) {
-                            ZStack {
-                                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusGlass, style: .continuous)
-                                    .fill(Color.white)
-
-                                reviewCardFront(current)
-                                    .opacity(showBack ? 0 : 1)
-
-                                reviewCardBack(current)
-                                    .opacity(showBack ? 1 : 0)
-                                    .rotation3DEffect(.degrees(180), axis: (x: 0, y: 1, z: 0))
-                            }
-                            .frame(minHeight: AppMetrics.cardMinHeight)
-                        }
-                        .shadow(
-                            color: .black.opacity(AppShadows.paperFloatOpacity),
-                            radius: AppShadows.paperFloatRadius,
-                            y: AppShadows.paperFloatY
-                        )
-                        .contentShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusGlass, style: .continuous))
-                        .onTapGesture {
-                            guard !isAdvancing else { return }
-                            withAnimation(.spring(response: 0.45, dampingFraction: 0.82)) {
-                                showBack.toggle()
-                            }
-                        }
-                        .rotation3DEffect(
-                            .degrees(showBack ? 180 : 0),
-                            axis: (x: 0, y: 1, z: 0)
-                        )
-                        .padding(.horizontal, AppMetrics.spacingLarge)
-
-                        if showBack {
-                            reviewActionBar
-                        } else {
-                            Text("先翻面，再做記憶判斷。")
-                                .font(AppFonts.caption())
-                                .foregroundStyle(.secondary)
-                        }
-
-                        Spacer()
+                    // Card area — takes all space
+                    ScrollView {
+                        reviewCard(current)
+                            .padding(.horizontal, AppMetrics.spacingLarge)
+                            .padding(.top, AppMetrics.spacingMedium)
+                            .padding(.bottom, AppMetrics.spacingXXL)
                     }
-                    .padding(.top, AppMetrics.spacingLarge)
+
+                    // Bottom toolbar — Mochi-style actions
+                    bottomToolbar
                 } else {
                     completionState
                 }
             }
-            .navigationTitle("今日複習")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar(.hidden, for: .navigationBar)
             .background(AppColors.paperLight.ignoresSafeArea())
+            .toolbar(.hidden, for: .navigationBar)
             .overlay {
                 LinkedCardOverlayStack(stack: $linkedCardStack)
             }
         }
     }
 
-    // MARK: - Header
+    // MARK: - Top Bar
 
-    private func header(current: VocabularyEntry) -> some View {
-        HStack(alignment: .center) {
+    private func topBar(current: VocabularyEntry) -> some View {
+        HStack(alignment: .center, spacing: AppMetrics.spacingMedium) {
             Text(progressText)
                 .font(AppFonts.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
-            Spacer()
-            Text(showBack ? "背面" : "正面")
-                .font(AppFonts.caption(weight: .semibold))
                 .foregroundStyle(.tertiary)
+
+            Spacer()
+
+            Text(showBack ? "背面" : "正面")
+                .font(AppFonts.caption(weight: .medium))
+                .foregroundStyle(.quaternary)
+
             Button("詳情") {
                 linkedCardStack.append(current)
             }
-            .font(AppFonts.caption(weight: .semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .compatibleGlass(in: Capsule())
+            .buttonStyle(.ghost(.secondary))
+
             Button("關閉") {
                 onClose()
             }
-            .font(AppFonts.caption(weight: .semibold))
-            .padding(.horizontal, 12)
-            .padding(.vertical, 8)
-            .compatibleGlass(in: Capsule())
+            .buttonStyle(.ghost(.secondary))
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
+        .padding(.vertical, AppMetrics.spacingSmall)
     }
 
-    // MARK: - Action Bar
+    // MARK: - Review Card (Mochi layout)
 
-    private var reviewActionBar: some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
-            reviewButton(
-                title: "忘記了",
-                caption: "縮短間隔",
-                tone: AppColors.translation(.light)
-            ) {
-                submit(.forgot)
+    private func reviewCard(_ current: VocabularyEntry) -> some View {
+        AppCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                // Front content — always visible
+                reviewCardFront(current)
+
+                // Back content — visible after flip
+                if showBack {
+                    cardDivider
+
+                    reviewCardBack(current)
+                }
             }
-            reviewButton(
-                title: "記得",
-                caption: "進入下一張",
-                tone: AppColors.saved(.light)
-            ) {
-                submit(.remembered)
+        }
+        .contentShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+        .onTapGesture {
+            guard !isAdvancing else { return }
+            withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+                showBack.toggle()
+            }
+        }
+    }
+
+    private func reviewCardFront(_ current: VocabularyEntry) -> some View {
+        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+            // Mode + POS tags
+            HStack(spacing: AppMetrics.spacingSmall) {
+                Text(current.reviewMode.localizedTitle)
+                    .font(AppFonts.caption(weight: .medium))
+                    .foregroundStyle(.tertiary)
+                if let pos = current.partOfSpeech {
+                    Text("·")
+                        .font(AppFonts.caption())
+                        .foregroundStyle(.quaternary)
+                    Text(pos)
+                        .font(AppFonts.caption(weight: .medium))
+                        .foregroundStyle(.tertiary)
+                }
+                Spacer()
+                if let tier = current.difficultyTier {
+                    let (color, label) = AppColors.tier(tier, scheme: .light)
+                    Text(label)
+                        .font(.system(size: 11, weight: .semibold))
+                        .foregroundStyle(color)
+                }
+            }
+
+            Spacer(minLength: AppMetrics.spacingLarge)
+
+            // The prompt
+            switch current.reviewMode {
+            case .recognition:
+                Text(current.word)
+                    .font(.system(size: 56, weight: .semibold, design: .serif))
+                    .foregroundStyle(.primary)
+                    .minimumScaleFactor(0.6)
+
+            case .production:
+                Text(current.translation)
+                    .font(.system(size: 40, weight: .semibold, design: .default))
+                    .foregroundStyle(AppColors.translation(.light))
+                    .minimumScaleFactor(0.6)
+            }
+
+            // Example (with highlight mark)
+            if current.reviewMode == .production, let example = current.primaryReviewExample {
+                CardRichTextRenderer.text(
+                    example,
+                    style: CardRichTextStyle(
+                        font: .system(size: 22, weight: .regular, design: .default),
+                        textColor: .secondary,
+                        highlightColor: AppColors.highlightMark,
+                        italic: true
+                    ),
+                    mode: .cloze,
+                    truncateAroundMarkedWordRadius: 5
+                )
+                .lineSpacing(4)
+            }
+
+            Spacer(minLength: AppMetrics.spacingLarge)
+
+            // Tap hint
+            HStack {
+                Text(showBack ? "點擊收合" : "點擊展開答案")
+                    .font(AppFonts.caption())
+                    .foregroundStyle(.quaternary)
+                Spacer()
+            }
+        }
+        .padding(AppMetrics.heroCardPadding)
+        .frame(minHeight: showBack ? nil : AppMetrics.cardMinHeight)
+    }
+
+    private func reviewCardBack(_ current: VocabularyEntry) -> some View {
+        let card = current.cardPresentation
+
+        return VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+            // Answer
+            switch card.reviewMode {
+            case .recognition:
+                Text(card.translation)
+                    .font(.system(size: 36, weight: .semibold, design: .default))
+                    .foregroundStyle(AppColors.translation(.light))
+
+            case .production:
+                Text(card.word)
+                    .font(.system(size: 48, weight: .semibold, design: .serif))
+                    .foregroundStyle(.primary)
+                    .minimumScaleFactor(0.6)
+            }
+
+            // Example with highlight mark
+            if let example = card.examples.first {
+                CardRichTextRenderer.text(
+                    example,
+                    style: CardRichTextStyle(
+                        font: .system(size: 20, weight: .regular, design: .default),
+                        textColor: .secondary,
+                        highlightColor: AppColors.highlightMark,
+                        italic: true
+                    ),
+                    truncateAroundMarkedWordRadius: 5
+                )
+                .lineSpacing(4)
+            }
+
+            // Explanation
+            if let explanation = card.explanation, !explanation.isEmpty {
+                cardDivider
+
+                CardRichTextRenderer.text(
+                    explanation,
+                    style: CardRichTextStyle(
+                        font: .system(size: 16, weight: .regular, design: .default),
+                        textColor: .secondary,
+                        highlightColor: AppColors.accent(.light),
+                        italic: false
+                    )
+                )
+                .lineSpacing(4)
+            }
+
+            // Links
+            if !card.linkGroups.isEmpty {
+                cardDivider
+
+                reviewLinkStrip(for: current)
+            }
+        }
+        .padding(AppMetrics.heroCardPadding)
+        .transition(.opacity.combined(with: .move(edge: .top)))
+    }
+
+    private var cardDivider: some View {
+        Rectangle()
+            .fill(Color.primary.opacity(0.06))
+            .frame(height: 0.5)
+            .padding(.horizontal, AppMetrics.heroCardPadding)
+    }
+
+    // MARK: - Bottom Toolbar (Mochi-style)
+
+    private var bottomToolbar: some View {
+        HStack(spacing: 0) {
+            // Navigation arrows
+            HStack(spacing: AppMetrics.spacingSmall) {
+                Button {
+                    guard currentIndex > 0 else { return }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                        showBack = false
+                        currentIndex -= 1
+                    }
+                } label: {
+                    Image(systemName: "chevron.left")
+                        .font(.system(size: 16, weight: .thin))
+                }
+                .disabled(currentIndex <= 0)
+
+                Button {
+                    guard currentIndex < queue.count - 1 else { return }
+                    withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+                        showBack = false
+                        currentIndex += 1
+                    }
+                } label: {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 16, weight: .thin))
+                }
+                .disabled(currentIndex >= queue.count - 1)
+            }
+            .foregroundStyle(.secondary)
+
+            Spacer()
+
+            // Review actions — ghost buttons
+            if showBack {
+                HStack(spacing: AppMetrics.spacingSmall) {
+                    Button {
+                        submit(.forgot)
+                    } label: {
+                        Label("Forgot", systemImage: "xmark")
+                            .font(AppFonts.subhead(weight: .medium))
+                    }
+                    .buttonStyle(.ghost(AppColors.translation(.light)))
+
+                    Button {
+                        submit(.remembered)
+                    } label: {
+                        Label("Remembered", systemImage: "checkmark")
+                            .font(AppFonts.subhead(weight: .medium))
+                    }
+                    .buttonStyle(.ghost(AppColors.saved(.light)))
+                }
+                .transition(.opacity)
             }
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
+        .padding(.vertical, AppMetrics.spacingMedium)
+        .background(
+            Rectangle()
+                .fill(AppColors.paperLight)
+                .shadow(color: .black.opacity(0.03), radius: 8, y: -4)
+                .ignoresSafeArea(edges: .bottom)
+        )
     }
 
     // MARK: - Completion
@@ -149,13 +322,72 @@ struct TodayReviewView: View {
             Button("返回生詞庫") {
                 onClose()
             }
-            .font(AppFonts.subhead(weight: .semibold))
-            .padding(.horizontal, 18)
-            .padding(.vertical, 12)
-            .compatibleGlass(in: Capsule())
+            .buttonStyle(.ghost(.primary))
             Spacer()
         }
         .padding(.horizontal, AppMetrics.spacingLarge)
+    }
+
+    // MARK: - Link Strip
+
+    private func reviewLinkStrip(for entry: VocabularyEntry) -> some View {
+        let fullGroups = entry.cardPresentation.linkGroups
+        let groups = fullGroups.map { $0.limited(to: 2) }
+
+        return HStack(alignment: .top, spacing: 8) {
+            Image(systemName: "paperclip")
+                .font(.system(size: 13, weight: .thin))
+                .foregroundStyle(.tertiary)
+                .padding(.top, 2)
+
+            VStack(alignment: .leading, spacing: 6) {
+                ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
+                    compactLinkGroup(group, fullGroup: fullGroups[index])
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func compactLinkGroup(
+        _ group: CardLinkGroupPresentation,
+        fullGroup: CardLinkGroupPresentation
+    ) -> some View {
+        HStack(spacing: 4) {
+            Text("\(group.label)：")
+                .font(AppFonts.caption(weight: .medium))
+                .foregroundStyle(.tertiary)
+
+            ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                if let target = linkedEntry(for: item) {
+                    Button {
+                        linkedCardStack.append(target)
+                    } label: {
+                        Text(item.word)
+                            .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                            .foregroundStyle(.primary)
+                    }
+                    .buttonStyle(.plain)
+                } else {
+                    Text(item.word)
+                        .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                        .foregroundStyle(.primary)
+                }
+
+                if index < group.items.count - 1 {
+                    Text("|")
+                        .font(AppFonts.caption())
+                        .foregroundStyle(.quaternary)
+                }
+            }
+
+            let overflowCount = group.overflowed(relativeToFullGroup: fullGroup)
+            if overflowCount > 0 {
+                Text("+\(overflowCount)")
+                    .font(AppFonts.caption(weight: .semibold))
+                    .foregroundStyle(.quaternary)
+            }
+        }
     }
 
     // MARK: - State
@@ -167,6 +399,10 @@ struct TodayReviewView: View {
 
     private var progressText: String {
         "\(min(currentIndex + 1, queue.count)) / \(queue.count)"
+    }
+
+    private func linkedEntry(for link: KGCardLinkSummary) -> VocabularyEntry? {
+        allEntries.first { $0.kgCardId == link.cardId }
     }
 
     private func submit(_ feedback: ReviewFeedback) {
@@ -184,246 +420,6 @@ struct TodayReviewView: View {
             try? modelContext.save()
             isAdvancing = false
         }
-    }
-
-    // MARK: - Card Front
-
-    private func reviewCardFront(_ current: VocabularyEntry) -> some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                HStack(spacing: AppMetrics.spacingSmall) {
-                    AppTag(text: current.reviewMode.localizedTitle, tone: AppColors.translation(.light))
-                    if let pos = current.partOfSpeech {
-                        AppTag(text: pos, tone: AppColors.accent(.light))
-                    }
-                }
-                Spacer(minLength: 0)
-
-                switch current.reviewMode {
-                case .recognition:
-                    Text(current.word)
-                        .font(.system(size: 62, weight: .semibold, design: .serif))
-                        .foregroundStyle(.primary)
-                        .minimumScaleFactor(0.75)
-
-                case .production:
-                    Text(current.translation)
-                        .font(.system(size: 46, weight: .semibold, design: .default))
-                        .foregroundStyle(AppColors.translation(.light))
-                        .minimumScaleFactor(0.75)
-
-                    if let example = current.primaryReviewExample {
-                        CardRichTextRenderer.text(
-                            example,
-                            style: CardRichTextStyle(
-                                font: .system(size: 24, weight: .regular, design: .default),
-                                textColor: .secondary,
-                                highlightColor: AppColors.translation(.light),
-                                italic: true
-                            ),
-                            mode: .cloze,
-                            truncateAroundMarkedWordRadius: 5
-                        )
-                    }
-                }
-
-                Text(frontInstruction(for: current.reviewMode))
-                    .font(.system(size: 20, weight: .medium, design: .default))
-                    .foregroundStyle(.secondary)
-            }
-
-            Spacer()
-
-            HStack {
-                Label("點擊看答案", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-            }
-        }
-        .padding(AppMetrics.heroCardPadding)
-    }
-
-    // MARK: - Card Back
-
-    private func reviewCardBack(_ current: VocabularyEntry) -> some View {
-        let card = current.cardPresentation
-
-        return VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                switch card.reviewMode {
-                case .recognition:
-                    Text(card.word)
-                        .font(.system(size: 26, weight: .semibold, design: .serif))
-                        .foregroundStyle(.secondary)
-
-                    Text(card.translation)
-                        .font(.system(size: 44, weight: .semibold, design: .default))
-                        .foregroundStyle(AppColors.translation(.light))
-
-                case .production:
-                    Text(card.translation)
-                        .font(.system(size: 22, weight: .medium, design: .default))
-                        .foregroundStyle(.secondary)
-
-                    Text(card.word)
-                        .font(.system(size: 54, weight: .semibold, design: .serif))
-                        .foregroundStyle(.primary)
-                        .minimumScaleFactor(0.75)
-                }
-
-                if let example = card.examples.first {
-                    CardRichTextRenderer.text(
-                        example,
-                        style: CardRichTextStyle(
-                            font: .system(size: 26, weight: .regular, design: .default),
-                            textColor: .secondary,
-                            highlightColor: AppColors.translation(.light),
-                            italic: true
-                        ),
-                        truncateAroundMarkedWordRadius: 5
-                    )
-                }
-
-                if let explanation = card.explanation, !explanation.isEmpty {
-                    CardRichTextRenderer.text(
-                        explanation,
-                        style: CardRichTextStyle(
-                            font: .system(size: 18, weight: .regular, design: .default),
-                            textColor: .secondary,
-                            highlightColor: AppColors.accent(.light),
-                            italic: false
-                        )
-                    )
-                }
-
-                if !card.linkGroups.isEmpty {
-                    reviewLinkStrip(for: current)
-                }
-            }
-
-            Spacer()
-
-            HStack {
-                Label("點擊回正面", systemImage: "rectangle.portrait.on.rectangle.portrait")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.tertiary)
-                Spacer()
-            }
-        }
-        .padding(AppMetrics.heroCardPadding)
-    }
-
-    // MARK: - Link Strip
-
-    private func reviewLinkStrip(for entry: VocabularyEntry) -> some View {
-        let fullGroups = entry.cardPresentation.linkGroups
-        let groups = fullGroups.map { $0.limited(to: 2) }
-
-        return HStack(alignment: .top, spacing: 10) {
-            Image(systemName: "paperclip")
-                .font(.system(size: 15, weight: .thin))
-                .foregroundStyle(.secondary)
-                .padding(.top, 2)
-
-            ViewThatFits(in: .horizontal) {
-                HStack(spacing: 10) {
-                    ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                        compactLinkGroup(group, fullGroup: fullGroups[index])
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 8) {
-                    ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
-                        compactLinkGroup(group, fullGroup: fullGroups[index])
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.horizontal, 14)
-        .padding(.vertical, 12)
-        .background(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                .fill(Color.primary.opacity(0.04))
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                .stroke(Color.primary.opacity(0.04), lineWidth: 0.8)
-        )
-    }
-
-    private func compactLinkGroup(
-        _ group: CardLinkGroupPresentation,
-        fullGroup: CardLinkGroupPresentation
-    ) -> some View {
-        HStack(spacing: 4) {
-            Text("\(group.label)：")
-                .font(AppFonts.caption(weight: .semibold))
-                .foregroundStyle(.secondary)
-
-            ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                if let target = linkedEntry(for: item) {
-                    Button {
-                        linkedCardStack.append(target)
-                    } label: {
-                        Text(item.word)
-                            .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                            .foregroundStyle(.primary)
-                    }
-                    .buttonStyle(.plain)
-                } else {
-                    Text(item.word)
-                        .font(.system(size: 18, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.primary)
-                }
-
-                if index < group.items.count - 1 {
-                    Text("·")
-                        .font(AppFonts.caption(weight: .medium))
-                        .foregroundStyle(.tertiary)
-                }
-            }
-
-            let overflowCount = group.overflowed(relativeToFullGroup: fullGroup)
-            if overflowCount > 0 {
-                Text("+\(overflowCount)")
-                    .font(AppFonts.caption(weight: .semibold))
-                    .foregroundStyle(.tertiary)
-            }
-        }
-    }
-
-    private func linkedEntry(for link: KGCardLinkSummary) -> VocabularyEntry? {
-        allEntries.first { $0.kgCardId == link.cardId }
-    }
-
-    // MARK: - Review Button
-
-    private func reviewButton(
-        title: String,
-        caption: String,
-        tone: Color,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 4) {
-                Text(title)
-                    .font(AppFonts.h2(weight: .semibold))
-                Text(caption)
-                    .font(AppFonts.caption())
-                    .foregroundStyle(.secondary)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, AppMetrics.spacingLarge)
-            .padding(.horizontal, AppMetrics.spacingMedium)
-        }
-        .buttonStyle(.plain)
-        .foregroundStyle(tone)
-        .compatibleGlass(
-            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-        )
-        .disabled(isAdvancing)
     }
 
     private func frontInstruction(for mode: VocabularyCardMode) -> String {

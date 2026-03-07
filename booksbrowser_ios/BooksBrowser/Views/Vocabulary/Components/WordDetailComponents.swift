@@ -1,93 +1,6 @@
 import SwiftUI
 
-struct WordDetailHeroCard: View {
-    let card: CardPresentation
-    let tierTone: Color?
-    let tierLabel: String?
-    let accentTone: Color
-    let translationTone: Color
-
-    var body: some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
-                    VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
-                        Text(card.word)
-                            .font(AppFonts.hero(weight: .semibold))
-                            .foregroundStyle(.primary)
-                            .minimumScaleFactor(0.85)
-
-                        if let pron = card.pronunciation, !pron.isEmpty {
-                            Text("/\(pron)/")
-                                .font(AppFonts.subhead())
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-
-                    Spacer(minLength: 12)
-
-                    if let tierTone, let tierLabel {
-                        AppTag(text: tierLabel, tone: tierTone)
-                    }
-                }
-
-                HStack(spacing: AppMetrics.spacingSmall) {
-                    if let pos = card.partOfSpeech {
-                        AppTag(text: pos, tone: accentTone)
-                    }
-                    AppTag(
-                        text: card.reviewMode.localizedTitle,
-                        tone: translationTone
-                    )
-                }
-
-                Text(card.translation)
-                    .font(AppFonts.h2(weight: .semibold))
-                    .foregroundStyle(translationTone)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(3)
-            }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.clear)
-        }
-    }
-}
-
-struct WordDetailSectionCard<Content: View>: View {
-    let title: String
-    let systemImage: String
-    let tint: Color
-    @ViewBuilder let content: Content
-
-    init(
-        title: String,
-        systemImage: String,
-        tint: Color,
-        @ViewBuilder content: () -> Content
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.tint = tint
-        self.content = content()
-    }
-
-    var body: some View {
-        AppCard {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-                Label {
-                    Text(title)
-                        .font(AppFonts.caption(weight: .semibold))
-                } icon: {
-                    Image(systemName: systemImage)
-                        .font(.system(size: 12, weight: .thin))
-                }
-                .foregroundStyle(tint)
-
-                content
-            }
-        }
-    }
-}
+// MARK: - WordDetailGraphLinkRow
 
 struct WordDetailGraphLinkRow: View {
     let link: KGCardLinkSummary
@@ -108,29 +21,31 @@ struct WordDetailGraphLinkRow: View {
 
     private func linkRowContent(showsAccessory: Bool) -> some View {
         HStack(alignment: .top, spacing: AppMetrics.spacingSmall) {
-            VStack(alignment: .leading, spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
                 Text(link.word)
-                    .font(AppFonts.subhead(weight: .semibold))
+                    .font(.system(size: 15, weight: .semibold, design: .monospaced))
                     .foregroundStyle(.primary)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(link.reason)
                     .font(AppFonts.caption())
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(.tertiary)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineSpacing(2)
             }
 
             if showsAccessory {
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 12, weight: .thin))
-                    .foregroundStyle(.tertiary)
+                    .font(.system(size: 10, weight: .thin))
+                    .foregroundStyle(.quaternary)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, AppMetrics.spacingSmall)
     }
 }
+
+// MARK: - WordDetailMetadataRow (kept for backward compat, simplified)
 
 struct WordDetailMetadataRow<Content: View>: View {
     let title: String
@@ -145,12 +60,14 @@ struct WordDetailMetadataRow<Content: View>: View {
         HStack {
             Text(title)
                 .font(AppFonts.caption())
-                .foregroundStyle(.tertiary)
+                .foregroundStyle(.quaternary)
             Spacer()
             trailing
         }
     }
 }
+
+// MARK: - VocabularySyncBadge
 
 struct VocabularySyncBadge: View {
     let status: Int
