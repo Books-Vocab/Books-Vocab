@@ -12,7 +12,6 @@ import SwiftData
 struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
-    @Environment(\.vocabSkin) private var vocabSkin
     @Binding var searchText: String
 
     @Query private var syncedEntries: [VocabularyEntry]
@@ -76,79 +75,14 @@ struct KGVocabView: View {
     }
 
     private var content: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
-                if !pendingDeletes.isEmpty {
-                    ErrorBannerView(
-                        message: "\(pendingDeletes.count) 個單字刪除待同步",
-                        onDismiss: nil,
-                        onRetry: { Task { await retryPendingDeletes() } }
-                    )
-                } else if let error = errorMessage {
-                    ErrorBannerView(message: "離線模式，同步失敗：\(error)", onDismiss: {
-                        errorMessage = nil
-                    })
-                }
-
-                if !syncedEntries.isEmpty {
-                    browserSection
-                } else {
-                    emptyState
-                }
-            }
-            .padding(AppMetrics.spacingLarge)
-            .padding(.bottom, 120)
-        }
-        .vocabCanvasBackground()
-    }
-
-    // MARK: - Browser Section
-
-    private var browserSection: some View {
-        VocabCard(padding: 0) {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 10) {
-                    VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 14)
-                .padding(.bottom, 12)
-
-                Divider()
-                    .padding(.horizontal, 16)
-
-                if filteredEntries.isEmpty {
-                    emptyState
-                        .padding(16)
-                } else {
-                    LazyVStack(spacing: 0) {
-                        ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
-                            WordRow(
-                                viewData: entry.wordRowViewData(
-                                    showsReviewState: false,
-                                    showsSourceContext: false
-                                )
-                            )
-                            .contentShape(Rectangle())
-                            .onTapGesture { selectedEntry = entry }
-                            .contextMenu {
-                                Button(role: .destructive) {
-                                    markForDeletion(entry)
-                                } label: {
-                                    Label("刪除卡片", systemImage: "trash")
-                                }
-                            }
-                            .padding(.horizontal, 16)
-
-                            if index < filteredEntries.count - 1 {
-                                Divider()
-                                    .padding(.leading, 16)
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        KGVocabPresenter(
+            state: presenterState,
+            selectedReviewState: $selectedReviewState,
+            onDismissBanner: errorMessage == nil ? nil : { errorMessage = nil },
+            onRetryBanner: pendingDeletes.isEmpty ? nil : { Task { await retryPendingDeletes() } },
+            onRowTapped: handleRowTap,
+            onDeleteTapped: handleDeleteTap
+        )
     }
 
     private var reviewStateOptions: [VocabTabOption<VocabularyReviewState>] {
@@ -161,9 +95,46 @@ struct KGVocabView: View {
         }
     }
 
-    // MARK: - Components
-
     // MARK: - Computed
+
+    private var presenterState: KGVocabPresenter.State {
+        KGVocabPresenter.State(
+            banner: bannerState,
+            reviewStateOptions: reviewStateOptions,
+            rows: filteredEntries.map {
+                KGVocabPresenter.State.RowItem(
+                    id: $0.id,
+                    row: $0.wordRowViewData(
+                        showsReviewState: false,
+                        showsSourceContext: false
+                    )
+                )
+            },
+            emptyState: .init(
+                title: emptyStateTitle,
+                systemImage: emptyStateIcon,
+                description: emptyStateDescription
+            )
+        )
+    }
+
+    private var bannerState: KGVocabPresenter.State.Banner? {
+        if !pendingDeletes.isEmpty {
+            return .init(
+                message: "\(pendingDeletes.count) 個單字刪除待同步",
+                canDismiss: false,
+                canRetry: true
+            )
+        }
+        if let errorMessage {
+            return .init(
+                message: "離線模式，同步失敗：\(errorMessage)",
+                canDismiss: true,
+                canRetry: false
+            )
+        }
+        return nil
+    }
 
     private var dueEntries: [VocabularyEntry] {
         sortedEntries.filter { $0.reviewState == .due }
@@ -199,15 +170,6 @@ struct KGVocabView: View {
             if t0 != t1 { return t0 < t1 }
             return $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
         }
-    }
-
-    private var emptyState: some View {
-        VocabEmptyStateContent(
-            title: emptyStateTitle,
-            systemImage: emptyStateIcon,
-            description: emptyStateDescription
-        )
-        .padding(.vertical, 16)
     }
 
     private var emptyStateTitle: String {
@@ -263,6 +225,16 @@ struct KGVocabView: View {
         entry.syncStatus = 0
         try? modelContext.save()
     }
+
+    private func handleRowTap(_ entryID: UUID) {
+        selectedEntry = syncedEntries.first { $0.id == entryID }
+    }
+
+    private func handleDeleteTap(_ entryID: UUID) {
+        guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
+        markForDeletion(entry)
+    }
+
     private func retryPendingDeletes() async {
         for entry in pendingDeletes {
             do {

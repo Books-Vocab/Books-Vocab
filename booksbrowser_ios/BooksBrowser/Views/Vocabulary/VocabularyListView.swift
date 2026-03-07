@@ -29,36 +29,13 @@ struct VocabularyListView: View {
 
     var body: some View {
         NavigationStack {
-            VStack(spacing: 0) {
-                VocabTabSelector(options: tabOptions, selection: $selectedTab)
-                    .padding(.horizontal)
-                    .padding(.vertical, 8)
-
-                if showsSearchField {
-                    VocabSearchField(
-                        text: $searchText,
-                        prompt: selectedTab == 0 ? "搜尋待收錄單字" : "搜尋知識庫"
-                    )
-                    .padding(.horizontal)
-                    .padding(.bottom, 8)
-                }
-
-                // Content
-                Group {
-                    if selectedTab == 0 {
-                        localVocabContent
-                    } else if !authManager.isLoggedIn {
-                        loggedOutState
-                    } else if selectedTab == 1 {
-                        KGVocabView(searchText: $searchText)
-                    } else {
-                        KnowledgeGraphView()
-                    }
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(.none, value: selectedTab)
+            VocabularyListPresenter(
+                state: presenterState,
+                selectedTab: $selectedTab,
+                searchText: $searchText
+            ) {
+                routedContent
             }
-            .vocabCanvasBackground()
             .navigationTitle("生詞庫")
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -163,6 +140,27 @@ struct VocabularyListView: View {
     }
 
     // MARK: - Local Vocab Content
+
+    private var presenterState: VocabularyListPresenterState {
+        .init(
+            tabOptions: tabOptions,
+            showsSearchField: showsSearchField,
+            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字" : "搜尋知識庫"
+        )
+    }
+
+    @ViewBuilder
+    private var routedContent: some View {
+        if selectedTab == 0 {
+            localVocabContent
+        } else if !authManager.isLoggedIn {
+            loggedOutState
+        } else if selectedTab == 1 {
+            KGVocabView(searchText: $searchText)
+        } else {
+            KnowledgeGraphView()
+        }
+    }
 
     @ViewBuilder
     private var localVocabContent: some View {

@@ -6,6 +6,7 @@
 import SwiftUI
 
 struct SettingsView: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
     @Environment(\.colorScheme) private var colorScheme
 
@@ -60,7 +61,7 @@ struct SettingsView: View {
                 .padding(.top, 12)
                 .padding(.bottom, 48)
             }
-            .background(Color(uiColor: .systemGroupedBackground).ignoresSafeArea())
+            .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("設定")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -127,28 +128,31 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var authSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SectionHeader(title: "帳號", icon: "person.crop.circle")
 
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    if authManager.isLoggedIn {
-                        loggedInView
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.97).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                    } else {
-                        loginView
-                            .transition(.asymmetric(
-                                insertion: .scale(scale: 0.97).combined(with: .opacity),
-                                removal: .opacity
-                            ))
-                    }
+            VStack(spacing: 0) {
+                if authManager.isLoggedIn {
+                    loggedInView
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.97).combined(with: .opacity),
+                            removal: .opacity
+                        ))
+                } else {
+                    loginView
+                        .transition(.asymmetric(
+                            insertion: .scale(scale: 0.97).combined(with: .opacity),
+                            removal: .opacity
+                        ))
                 }
             }
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
             .animation(.spring(response: 0.45, dampingFraction: 0.85), value: authManager.isLoggedIn)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
         }
     }
 
@@ -167,16 +171,19 @@ struct SettingsView: View {
 
                 VStack(spacing: 4) {
                     Text("解鎖完整功能")
-                        .font(.headline)
+                        .font(vocabSkin.typography.displayTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
                     Text("AI 翻譯・知識圖譜・雲端同步")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
             }
             .padding(.vertical, 24)
             .frame(maxWidth: .infinity)
 
-            Divider().opacity(0.4)
+            Rectangle()
+                .fill(vocabSkin.palette.divider)
+                .frame(height: 1)
 
             // 登入按鈕
             VStack(spacing: 10) {
@@ -198,30 +205,23 @@ struct SettingsView: View {
                         Spacer()
                         Image(systemName: "chevron.right")
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
                 }
-                .buttonStyle(.morandi(colorScheme: colorScheme))
-
-                Button {
-                    authManager.loginWithApple(modelContainer: modelContext.container)
-                } label: {
-                    HStack(spacing: 12) {
-                        Image(systemName: "apple.logo")
-                            .font(.system(size: 15))
-                            .frame(width: 22)
-                        Text("以 Apple 繼續")
-                            .fontWeight(.medium)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(.caption2)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .buttonStyle(.morandi(colorScheme: colorScheme))
+                .buttonStyle(.plain)
+                .padding()
+                .background(vocabSkin.palette.pageBackground)
+                .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
 
 #if DEBUG
-                Divider().opacity(0.4)
+                Rectangle()
+                    .fill(vocabSkin.palette.divider)
+                    .frame(height: 1)
+                    .padding(.vertical, 8)
 
                 HStack(spacing: 8) {
                     TextField("帳號 ID（手動）", text: $manualLoginUserId)
@@ -275,7 +275,7 @@ struct SettingsView: View {
                 // 頭像
                 ZStack {
                     Circle()
-                        .fill(AppColors.accent(colorScheme).opacity(0.12))
+                        .fill(vocabSkin.palette.mutedFill)
                         .frame(width: 46, height: 46)
 
                     if let avatarURL = authManager.avatarURL {
@@ -284,30 +284,30 @@ struct SettingsView: View {
                         } placeholder: {
                             Image(systemName: "person.fill")
                                 .font(.system(size: 19))
-                                .foregroundStyle(AppColors.accent(colorScheme))
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
                         .frame(width: 46, height: 46)
                         .clipShape(Circle())
                     } else if let initials = userInitials {
                         Text(initials)
                             .font(.system(size: 17, weight: .semibold))
-                            .foregroundStyle(AppColors.accent(colorScheme))
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                     } else {
                         Image(systemName: "person.fill")
                             .font(.system(size: 19))
-                            .foregroundStyle(AppColors.accent(colorScheme))
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
                 }
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(authManager.displayName ?? authManager.userEmail ?? "已登入")
-                        .font(.subheadline)
-                        .fontWeight(.semibold)
+                        .font(vocabSkin.typography.sectionTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
                         .lineLimit(1)
                     if let email = authManager.userEmail, authManager.displayName != nil {
                         Text(email)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                             .lineLimit(1)
                     }
                 }
@@ -317,27 +317,29 @@ struct SettingsView: View {
                 VStack(alignment: .trailing, spacing: 6) {
                     Image(systemName: "checkmark.circle.fill")
                         .font(.title3)
-                        .foregroundStyle(AppColors.saved(colorScheme))
+                        .foregroundStyle(vocabSkin.palette.success)
                         .symbolEffect(.bounce, value: authManager.isLoggedIn)
 #if DEBUG
                     if isCurrentAccountDeveloper {
                         Text("DEVELOPER")
-                            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                            .font(vocabSkin.typography.monoLabel)
                             .foregroundStyle(.orange)
                     }
 #endif
                 }
             }
-            .padding(16)
+            .padding(vocabSkin.spacing.cardPadding)
 
-            Divider().opacity(0.4)
+            Rectangle()
+                .fill(vocabSkin.palette.divider)
+                .frame(height: 1)
 
             Button(role: .destructive) {
                 authManager.logout(modelContainer: modelContext.container, reason: "settings_logout")
             } label: {
                 Text("登出帳號")
-                    .font(.subheadline)
-                    .foregroundStyle(AppColors.destructive(colorScheme))
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(vocabSkin.palette.destructive)
                     .frame(maxWidth: .infinity)
                     .padding(.vertical, 13)
             }
@@ -363,69 +365,81 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var kgSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SectionHeader(title: "Knowledge Graph", icon: "brain.head.profile")
 
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    // 伺服器位址
-                    SettingsGlassRow(icon: "server.rack", label: "伺服器") {
-                        Text(KGService.getServerURL())
-                            .font(.system(size: 12, design: .monospaced))
-                            .multilineTextAlignment(.trailing)
-                            .foregroundStyle(.secondary)
+            VStack(spacing: 0) {
+                // 伺服器位址
+                SettingsRow(icon: "server.rack", label: "伺服器") {
+                    Text(KGService.getServerURL())
+                        .font(vocabSkin.typography.monoLabel)
+                        .multilineTextAlignment(.trailing)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                Rectangle()
+                    .fill(vocabSkin.palette.divider)
+                    .frame(height: 1)
+                    .padding(.leading, 50)
+
+                // 連線狀態
+                SettingsRow(icon: "antenna.radiowaves.left.and.right", label: "連線狀態") {
+                    HStack(spacing: 8) {
+                        Circle()
+                            .fill(kgService.isConnected ? vocabSkin.palette.success : Color.orange)
+                            .frame(width: 8, height: 8)
+                            .shadow(
+                                color: (kgService.isConnected ? vocabSkin.palette.success : Color.orange).opacity(0.6),
+                                radius: connectionPulse ? 5 : 2
+                            )
+                            .animation(
+                                kgService.isConnected
+                                    ? .easeInOut(duration: 1.2).repeatForever(autoreverses: true)
+                                    : .default,
+                                value: connectionPulse
+                            )
+                        Text(kgService.isConnected ? "已連線" : "離線")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
+                }
 
-                    Divider().opacity(0.4).padding(.leading, 50)
+                if kgService.isConnected {
+                    Rectangle()
+                        .fill(vocabSkin.palette.divider)
+                        .frame(height: 1)
+                        .padding(.leading, 50)
 
-                    // 連線狀態
-                    SettingsGlassRow(icon: "antenna.radiowaves.left.and.right", label: "連線狀態") {
-                        HStack(spacing: 8) {
-                            Circle()
-                                .fill(kgService.isConnected ? Color.green : Color.orange)
-                                .frame(width: 8, height: 8)
-                                .shadow(
-                                    color: (kgService.isConnected ? Color.green : Color.orange).opacity(0.6),
-                                    radius: connectionPulse ? 5 : 2
-                                )
-                                .animation(
-                                    kgService.isConnected
-                                        ? .easeInOut(duration: 1.2).repeatForever(autoreverses: true)
-                                        : .default,
-                                    value: connectionPulse
-                                )
-                            Text(kgService.isConnected ? "已連線" : "離線")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                        }
+                    SettingsRow(icon: "text.book.closed", label: "字庫卡片") {
+                        Text("\(kgService.serverCardCount) 張")
+                            .font(.system(size: 13, design: .monospaced))
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
+                    .transition(.move(edge: .top).combined(with: .opacity))
 
-                    if kgService.isConnected {
-                        Divider().opacity(0.4).padding(.leading, 50)
+                    if let lastSync = kgService.lastSyncDate {
+                        Rectangle()
+                            .fill(vocabSkin.palette.divider)
+                            .frame(height: 1)
+                            .padding(.leading, 50)
 
-                        SettingsGlassRow(icon: "text.book.closed", label: "字庫卡片") {
-                            Text("\(kgService.serverCardCount) 張")
-                                .font(.system(size: 13, design: .monospaced))
-                                .foregroundStyle(.secondary)
+                        SettingsRow(icon: "arrow.clockwise", label: "最後同步") {
+                            Text(lastSync, format: .relative(presentation: .named))
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
                         .transition(.move(edge: .top).combined(with: .opacity))
-
-                        if let lastSync = kgService.lastSyncDate {
-                            Divider().opacity(0.4).padding(.leading, 50)
-
-                            SettingsGlassRow(icon: "arrow.clockwise", label: "最後同步") {
-                                Text(lastSync, format: .relative(presentation: .named))
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                            }
-                            .transition(.move(edge: .top).combined(with: .opacity))
-                        }
                     }
                 }
             }
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kgService.isConnected)
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kgService.serverCardCount)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
 
             SectionFooter("KG 伺服器負責生詞 AI 增強與 Mochi 同步。")
         }
@@ -435,33 +449,36 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var mochiSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SectionHeader(title: "第三方整合", icon: "puzzlepiece.extension")
 
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    SettingsGlassRow(icon: "m.square.fill", label: "Mochi API Key") {
-                        HStack(spacing: 6) {
-                            SecureField("可選", text: $mochiApiKey)
-                                .font(.system(size: 12, design: .monospaced))
-                                .multilineTextAlignment(.trailing)
-                                .autocorrectionDisabled()
-                                .textInputAutocapitalization(.never)
-                                .disabled(!authManager.isLoggedIn)
+            VStack(spacing: 0) {
+                SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
+                    HStack(spacing: 6) {
+                        SecureField("可選", text: $mochiApiKey)
+                            .font(.system(size: 12, design: .monospaced))
+                            .multilineTextAlignment(.trailing)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+                            .disabled(!authManager.isLoggedIn)
 
-                            Button {
-                                showMochiInfo = true
-                            } label: {
-                                Image(systemName: "info.circle")
-                                    .font(.callout)
-                                    .foregroundStyle(AppColors.accent(colorScheme).opacity(0.7))
-                            }
-                            .buttonStyle(.plain)
+                        Button {
+                            showMochiInfo = true
+                        } label: {
+                            Image(systemName: "info.circle")
+                                .font(.callout)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
+                        .buttonStyle(.plain)
                     }
                 }
             }
-            .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
 
             SectionFooter("可選。這是你的使用者層 Mochi 設定，填入後自動將生詞同步至 Mochi 單字卡。")
         }
@@ -471,38 +488,47 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var aboutSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SectionHeader(title: "關於", icon: "info.circle")
 
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    SettingsGlassRow(icon: "tag", label: "版本") {
-                        Text("1.1.0")
-                            .font(.system(size: 13, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                    }
+            VStack(spacing: 0) {
+                SettingsRow(icon: "tag", label: "版本") {
+                    Text("1.1.0")
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
 
-                    Divider().opacity(0.4).padding(.leading, 50)
+                Rectangle()
+                    .fill(vocabSkin.palette.divider)
+                    .frame(height: 1)
+                    .padding(.leading, 50)
 
-                    SettingsGlassRow(icon: "person.circle", label: "開發者") {
-                        Text("陳亮宇")
-                            .font(.subheadline)
-                            .foregroundStyle(.secondary)
-                    }
+                SettingsRow(icon: "person.circle", label: "開發者") {
+                    Text("陳亮宇")
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
 
 #if DEBUG
-                    Divider().opacity(0.4).padding(.leading, 50)
+                Rectangle()
+                    .fill(vocabSkin.palette.divider)
+                    .frame(height: 1)
+                    .padding(.leading, 50)
 
-                    SettingsGlassRow(icon: "wrench.and.screwdriver", label: "開發者帳號 ID") {
-                        Text(developerAccountId.isEmpty ? "未設定" : developerAccountId)
-                            .font(.system(size: 12, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .lineLimit(1)
-                    }
-#endif
+                SettingsRow(icon: "wrench.and.screwdriver", label: "開發者帳號 ID") {
+                    Text(developerAccountId.isEmpty ? "未設定" : developerAccountId)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(1)
                 }
+#endif
             }
-            .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
         }
     }
 
@@ -510,32 +536,35 @@ struct SettingsView: View {
 
     @ViewBuilder
     private var dangerSection: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SectionHeader(title: "危險操作", icon: "exclamationmark.triangle")
 
-            GlassEffectContainer {
-                VStack(spacing: 0) {
-                    Button(role: .destructive) {
-                        showDeleteAccountConfirm = true
-                    } label: {
-                        HStack {
-                            Text(isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料")
-                                .font(.subheadline)
-                                .foregroundStyle(AppColors.destructive(colorScheme))
-                            Spacer()
-                            Image(systemName: "trash")
-                                .font(.caption)
-                                .foregroundStyle(AppColors.destructive(colorScheme))
-                        }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 13)
-                        .padding(.horizontal, 16)
+            VStack(spacing: 0) {
+                Button(role: .destructive) {
+                    showDeleteAccountConfirm = true
+                } label: {
+                    HStack {
+                        Text(isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料")
+                            .font(vocabSkin.typography.body)
+                            .foregroundStyle(vocabSkin.palette.destructive)
+                        Spacer()
+                        Image(systemName: "trash")
+                            .font(.caption)
+                            .foregroundStyle(vocabSkin.palette.destructive)
                     }
-                    .buttonStyle(.plain)
-                    .disabled(isDeletingAccount)
+                    .frame(maxWidth: .infinity)
+                    .padding(.vertical, 13)
+                    .padding(.horizontal, 16)
                 }
+                .buttonStyle(.plain)
+                .disabled(isDeletingAccount)
             }
-            .glassEffect(in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.destructive.opacity(0.5), lineWidth: 1)
+            )
 
             SectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。")
         }
@@ -545,32 +574,34 @@ struct SettingsView: View {
 // MARK: - 子組件
 
 private struct SectionHeader: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let icon: String
 
     var body: some View {
         Label(title, systemImage: icon)
-            .font(.footnote)
-            .fontWeight(.medium)
-            .foregroundStyle(.secondary)
+            .font(vocabSkin.typography.captionStrong)
+            .foregroundStyle(vocabSkin.palette.secondaryText)
             .padding(.leading, 4)
     }
 }
 
 private struct SectionFooter: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let text: String
     init(_ text: String) { self.text = text }
 
     var body: some View {
         Text(text)
-            .font(.caption2)
-            .foregroundStyle(.tertiary)
+            .font(vocabSkin.typography.caption)
+            .foregroundStyle(vocabSkin.palette.tertiaryText)
             .lineSpacing(3)
             .padding(.horizontal, 4)
     }
 }
 
-private struct SettingsGlassRow<Content: View>: View {
+private struct SettingsRow<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let icon: String
     let label: String
     let content: Content
@@ -585,18 +616,18 @@ private struct SettingsGlassRow<Content: View>: View {
         HStack(spacing: 12) {
             Image(systemName: icon)
                 .font(.system(size: 14))
-                .foregroundStyle(.secondary)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
                 .frame(width: 22, alignment: .center)
 
             Text(label)
-                .font(.subheadline)
-                .foregroundStyle(.primary)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
 
             Spacer()
 
             content
         }
-        .padding(.horizontal, 16)
+        .padding(.horizontal, vocabSkin.spacing.cardPadding)
         .padding(.vertical, 13)
         .frame(minHeight: 50)
     }
@@ -605,6 +636,7 @@ private struct SettingsGlassRow<Content: View>: View {
 // MARK: - Mochi Info Sheet
 
 struct MochiInfoSheetView: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
 
     var body: some View {
@@ -613,21 +645,25 @@ struct MochiInfoSheetView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(.system(size: 48))
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(vocabSkin.palette.accent)
                         .padding(.bottom, 8)
 
                     Text("關於 Mochi 同步")
-                        .font(.title)
-                        .fontWeight(.bold)
+                        .font(vocabSkin.typography.displayTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
 
                     Text("如果你有在使用 Mochi (mochi.cards) 來複習單字，BooksBrowser 可以自動將你查過並儲存的單字建立成 Mochi 卡片。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。")
-                        .font(.body)
-                        .lineSpacing(4)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineSpacing(6)
 
-                    Divider()
+                    Rectangle()
+                        .fill(vocabSkin.palette.divider)
+                        .frame(height: 1)
 
                     Text("如何取得 API Key？")
-                        .font(.headline)
+                        .font(vocabSkin.typography.sectionTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
 
                     VStack(alignment: .leading, spacing: 12) {
                         Label("1. 登入網頁版的 app.mochi.cards", systemImage: "1.circle.fill")
@@ -635,16 +671,17 @@ struct MochiInfoSheetView: View {
                         Label("3. 選擇 API 分頁", systemImage: "3.circle.fill")
                         Label("4. 點擊 Generate API key 並複製貼上到前面設定中", systemImage: "4.circle.fill")
                     }
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
 
                     Text("這是一個可選功能，就算不填寫 API Key，BooksBrowser 也能完美獨立運作！")
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                         .padding(.top, 16)
                 }
                 .padding(24)
             }
+            .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
