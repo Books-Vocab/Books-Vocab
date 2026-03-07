@@ -98,7 +98,6 @@ struct KGVocabView: View {
                 }
 
                 if !syncedEntries.isEmpty {
-                    overviewSection
                     browserSection
                 } else {
                     emptyState
@@ -110,69 +109,42 @@ struct KGVocabView: View {
         .vocabCanvasBackground()
     }
 
-    // MARK: - Overview Section
-
-    private var overviewSection: some View {
-        VocabCard {
-            VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .top, spacing: 12) {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text("Review")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                        Text(todaySessionEntries.isEmpty ? "今天沒有待處理卡片" : "\(todaySessionEntries.count) 張待處理")
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-                    }
-
-                    Spacer(minLength: 12)
-
-                    Button(todaySessionEntries.isEmpty ? "暫無待複習" : "開始複習") {
-                        startTodayReview()
-                    }
-                    .buttonStyle(.vocabAction(todaySessionEntries.isEmpty ? .neutral : .primary))
-                    .disabled(todaySessionEntries.isEmpty)
-                }
-
-                HStack(spacing: 18) {
-                    statText(title: "待複習", value: dueEntries.count, tone: vocabSkin.tierColor(for: "intermediate"))
-                    statText(title: "未學習", value: unlearnedEntries.count, tone: vocabSkin.palette.secondaryText)
-                    statText(title: "已複習", value: reviewedEntries.count, tone: vocabSkin.palette.success)
-                }
-
-                Divider()
-
-                VStack(alignment: .leading, spacing: 10) {
-                    Text("篩選")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                    VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
-                }
-            }
-        }
-    }
-
     // MARK: - Browser Section
 
     private var browserSection: some View {
-        VocabCard(padding: 18) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    VStack(alignment: .leading, spacing: 4) {
+        VocabCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                VStack(alignment: .leading, spacing: 10) {
+                    HStack(alignment: .firstTextBaseline) {
                         Text(selectedReviewState.title)
                             .font(vocabSkin.typography.sectionTitle)
                             .foregroundStyle(vocabSkin.palette.primaryText)
-                        Text("\(filteredEntries.count) 張卡片")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        Spacer()
+                        if selectedReviewState == .due || selectedReviewState == .unlearned {
+                            Button(todaySessionEntries.isEmpty ? "暫無待複習" : "開始複習") {
+                                startTodayReview()
+                            }
+                            .buttonStyle(.vocabAction(todaySessionEntries.isEmpty ? .neutral : .primary))
+                            .disabled(todaySessionEntries.isEmpty)
+                        } else {
+                            Text("\(filteredEntries.count) 張卡片")
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        }
                     }
-                    Spacer()
+
+                    VocabTabSelector(options: reviewStateOptions, selection: $selectedReviewState)
                 }
+                .padding(.horizontal, 16)
+                .padding(.top, 16)
+                .padding(.bottom, 12)
+
+                Divider()
+                    .padding(.horizontal, 16)
 
                 if filteredEntries.isEmpty {
                     emptyState
+                        .padding(16)
                 } else {
                     LazyVStack(spacing: 0) {
                         ForEach(Array(filteredEntries.enumerated()), id: \.element.id) { index, entry in
@@ -185,7 +157,8 @@ struct KGVocabView: View {
                                 chapterTitle: nil,
                                 nextReviewAt: entry.nextReviewAt,
                                 reviewState: entry.reviewState,
-                                syncStatus: nil
+                                syncStatus: nil,
+                                showsReviewState: false
                             )
                             .contentShape(Rectangle())
                             .onTapGesture { selectedEntry = entry }
@@ -196,10 +169,11 @@ struct KGVocabView: View {
                                     Label("刪除卡片", systemImage: "trash")
                                 }
                             }
+                            .padding(.horizontal, 16)
 
                             if index < filteredEntries.count - 1 {
                                 Divider()
-                                    .padding(.vertical, AppMetrics.spacingMedium)
+                                    .padding(.leading, 16)
                             }
                         }
                     }
@@ -219,17 +193,6 @@ struct KGVocabView: View {
     }
 
     // MARK: - Components
-
-    private func statText(title: String, value: Int, tone: Color) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(title)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-            Text("\(value)")
-                .font(vocabSkin.typography.displayTitle)
-                .foregroundStyle(tone)
-        }
-    }
 
     // MARK: - Computed
 

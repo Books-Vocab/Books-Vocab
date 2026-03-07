@@ -28,51 +28,51 @@ struct VocabTabSelector<ID: Hashable>: View {
     @Binding var selection: ID
 
     var body: some View {
-        ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: 8) {
-                ForEach(options) { option in
-                    Button {
-                        withAnimation(.easeOut(duration: 0.18)) {
-                            selection = option.id
-                        }
-                    } label: {
-                        HStack(spacing: 8) {
-                            if let systemImage = option.systemImage {
-                                Image(systemName: systemImage)
-                                    .font(.system(size: 12, weight: .medium))
-                            }
-
-                            Text(option.title)
-                                .font(vocabSkin.typography.captionStrong)
-
-                            if let count = option.count {
-                                Text("\(count)")
-                                    .font(vocabSkin.typography.monoLabel)
-                                    .padding(.horizontal, 6)
-                                    .padding(.vertical, 2)
-                                    .background(
-                                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                                            .fill((selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.mutedFill).opacity(selection == option.id ? 0.08 : 1))
-                                    )
-                            }
-                        }
-                        .foregroundStyle(selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-                        .padding(.horizontal, 12)
-                        .padding(.vertical, 8)
-                        .background(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .fill(selection == option.id ? vocabSkin.palette.cardBackground : vocabSkin.palette.stageBackground)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(selection == option.id ? vocabSkin.palette.cardBorder : vocabSkin.palette.borderSoftOrDivider, lineWidth: 1)
-                        )
+        HStack(spacing: 8) {
+            ForEach(options) { option in
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        selection = option.id
                     }
-                    .buttonStyle(.plain)
+                } label: {
+                    HStack(spacing: 8) {
+                        if let systemImage = option.systemImage {
+                            Image(systemName: systemImage)
+                                .font(.system(size: 12, weight: .medium))
+                        }
+
+                        Text(option.title)
+                            .font(vocabSkin.typography.captionStrong)
+                            .lineLimit(1)
+
+                        if let count = option.count {
+                            Text("\(count)")
+                                .font(vocabSkin.typography.monoLabel)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                                        .fill((selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.mutedFill).opacity(selection == option.id ? 0.08 : 1))
+                                )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .foregroundStyle(selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+                    .padding(.horizontal, 10)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                            .fill(selection == option.id ? vocabSkin.palette.cardBackground : vocabSkin.palette.stageBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                            .stroke(selection == option.id ? vocabSkin.palette.cardBorder : vocabSkin.palette.borderSoftOrDivider, lineWidth: 1)
+                    )
                 }
+                .buttonStyle(.plain)
             }
-            .padding(3)
         }
+        .padding(3)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control + 4, style: .continuous)
                 .fill(vocabSkin.palette.stageBackground)

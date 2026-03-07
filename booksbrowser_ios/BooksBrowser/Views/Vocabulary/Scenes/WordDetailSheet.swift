@@ -31,15 +31,29 @@ struct WordDetailSheet: View {
     var body: some View {
         Group {
             if wrapInNavigation {
-                NavigationStack {
-                    detailContent
+                VStack(spacing: 0) {
+                    VocabOverlayHeader(
+                        title: card.word,
+                        systemImage: "book.closed",
+                        onClose: {
+                            // When wrapInNavigation is true, this is the root sheet.
+                            // We need a way to dismiss the root sheet. Since we don't have
+                            // @Environment(\.dismiss) yet, I will add it.
+                            dismiss()
+                        }
+                    )
+                    
+                    detailContentScroll
                 }
+                .vocabCanvasBackground()
             } else {
-                detailContent
+                detailContentScroll
             }
         }
     }
 
+    @Environment(\.dismiss) private var dismiss
+    
     private var card: CardPresentation {
         entry.cardPresentation
     }
@@ -50,7 +64,7 @@ struct WordDetailSheet: View {
 
     // MARK: - Single Card Layout
 
-    private var detailContent: some View {
+    private var detailContentScroll: some View {
         ScrollView {
             VocabCard(padding: 0) {
                 VStack(alignment: .leading, spacing: 0) {
@@ -108,11 +122,10 @@ struct WordDetailSheet: View {
                 }
             }
             .padding(AppMetrics.spacingLarge)
+            .padding(.bottom, AppMetrics.spacingLarge * 2) // Extra padding for scrolling
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
-        .navigationTitle(card.word)
-        .navigationBarTitleDisplayMode(.inline)
         .overlay {
             // Only top-level WordDetailSheet renders the overlay stack.
             // Inner sheets (inside LinkedCardOverlayStack) share the same binding

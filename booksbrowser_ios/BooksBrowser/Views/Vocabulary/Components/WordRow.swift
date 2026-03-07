@@ -12,6 +12,7 @@ struct WordRow: View {
     let reviewState: VocabularyReviewState?
     let syncStatus: Int?
     var actionType: String = "add"
+    var showsReviewState: Bool = true
 
     private var isDelete: Bool { actionType == "delete" }
     private var isDue: Bool { nextReviewAt <= Date() }
@@ -54,7 +55,7 @@ struct WordRow: View {
                         Text(translation)
                             .font(vocabSkin.typography.body)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineSpacing(2)
+                            .lineLimit(2)
                     }
                 }
 
@@ -72,10 +73,11 @@ struct WordRow: View {
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
 
-                if !isDelete {
+                if !isDelete && showsReviewState {
                     Text(statusSubtitle)
                         .font(vocabSkin.typography.caption)
-                    .foregroundStyle(statusTone)
+                        .foregroundStyle(statusTone)
+                        .lineLimit(1)
                 }
             }
 
@@ -87,19 +89,19 @@ struct WordRow: View {
                 }
             }
         }
-        .padding(.vertical, vocabSkin.spacing.rowPadding)
+        .padding(.vertical, 7)
     }
 
     private var statusSubtitle: String {
         switch reviewState {
         case .unlearned:
-            return "尚未進入複習流程"
+            return "未複習"
         case .due:
-            return "現在可複習"
+            return "待複習"
         case .reviewed:
             return "下次 \(nextReviewAt.reviewRelativeDescription())"
         case nil:
-            return isDue ? "現在可複習" : "下次 \(nextReviewAt.reviewRelativeDescription())"
+            return isDue ? "待複習" : "下次 \(nextReviewAt.reviewRelativeDescription())"
         }
     }
 
