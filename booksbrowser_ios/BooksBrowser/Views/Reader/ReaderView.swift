@@ -148,6 +148,15 @@ struct ReaderView: View {
         )
     }
 
+    private var vocabularyContext: ReaderVocabularyContext {
+        ReaderVocabularyContext(
+            vocabulary: allVocabulary,
+            modelContext: modelContext,
+            book: book,
+            currentLocator: currentLocator
+        )
+    }
+
     @ViewBuilder
     private var readerMainContent: some View {
         if let publication = publication {
@@ -201,11 +210,7 @@ struct ReaderView: View {
                 isExplanationOnly: handler.isExplanationOnly,
                 onExpand: { handler.handleExpand() },
                 onDelete: {
-                    handler.deleteFromVocabulary(
-                        selection.word,
-                        vocabulary: allVocabulary,
-                        modelContext: modelContext
-                    )
+                    handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
                 },
                 onDismiss: { handler.dismiss() }
             )
@@ -266,10 +271,7 @@ struct ReaderView: View {
         handler.handleWordSelected(
             word: word,
             context: context,
-            vocabulary: allVocabulary,
-            modelContext: modelContext,
-            book: book,
-            currentLocator: currentLocator
+            vocabularyContext: vocabularyContext
         )
     }
 
@@ -277,10 +279,7 @@ struct ReaderView: View {
         handler.handlePhraseSelected(
             phrase: phrase,
             context: context,
-            vocabulary: allVocabulary,
-            modelContext: modelContext,
-            book: book,
-            currentLocator: currentLocator
+            vocabularyContext: vocabularyContext
         )
     }
 
