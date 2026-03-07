@@ -28,15 +28,9 @@ struct VocabularyListView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
-                // Segmented toggle
-                Picker("", selection: $selectedTab) {
-                    Text("待收錄").tag(0)
-                    Text("知識庫 (\(authManager.isLoggedIn ? kgService.serverCardCount : 0))").tag(1)
-                    Text("關聯圖").tag(2)
-                }
-                .pickerStyle(.segmented)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+                VocabTabSelector(options: tabOptions, selection: $selectedTab)
+                    .padding(.horizontal)
+                    .padding(.vertical, 8)
 
                 // Content
                 Group {
@@ -192,6 +186,19 @@ struct VocabularyListView: View {
 
     private var pendingCount: Int {
         pendingEntries.count
+    }
+
+    private var tabOptions: [VocabTabOption<Int>] {
+        [
+            .init(id: 0, title: "待收錄", count: pendingCount, systemImage: "tray"),
+            .init(
+                id: 1,
+                title: "知識庫",
+                count: authManager.isLoggedIn ? kgService.serverCardCount : 0,
+                systemImage: "books.vertical"
+            ),
+            .init(id: 2, title: "關聯圖", systemImage: "point.3.connected.trianglepath.dotted")
+        ]
     }
 
     private var filteredEntries: [VocabularyEntry] {
