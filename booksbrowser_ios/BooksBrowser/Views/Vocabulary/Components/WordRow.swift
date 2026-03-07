@@ -37,7 +37,7 @@ struct WordRow: View {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     if let systemImage = viewData.leadingSystemImage {
                         Image(systemName: systemImage)
-                            .font(.system(size: 12, weight: .thin))
+                            .font(vocabSkin.typography.iconSmall)
                             .foregroundStyle(resolveTone(viewData.leadingTone ?? .tertiary))
                     }
 
@@ -74,7 +74,7 @@ struct WordRow: View {
                 if let book = viewData.bookTitle, !book.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "book.closed")
-                            .font(.system(size: 10, weight: .thin))
+                            .font(vocabSkin.typography.iconTiny)
                         Text(book)
                             .font(vocabSkin.typography.caption)
                         if let chapter = viewData.chapterTitle {

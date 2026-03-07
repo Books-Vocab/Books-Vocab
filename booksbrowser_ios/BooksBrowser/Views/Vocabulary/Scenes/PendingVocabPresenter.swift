@@ -65,7 +65,7 @@ struct PendingVocabPresenter: View {
                                         onActionTapped(item.id)
                                     } label: {
                                         Image(systemName: item.actionSystemImage)
-                                            .font(.system(size: 15, weight: .medium))
+                                            .font(vocabSkin.typography.iconToolbar)
                                             .foregroundStyle(resolveTone(item.actionTone))
                                             .frame(width: 30, height: 30)
                                             .background(

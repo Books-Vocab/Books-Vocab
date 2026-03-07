@@ -33,7 +33,17 @@ struct VocabSkin {
         let caption: Font
         let captionStrong: Font
         let monoLabel: Font
+        let monoBody: Font
+        let monoBodyStrong: Font
+        let monoEmphasis: Font
         let numericHero: Font
+        let iconTiny: Font
+        let iconSmall: Font
+        let iconMedium: Font
+        let iconToolbar: Font
+        let iconNavigation: Font
+        let symbolLarge: Font
+        let symbolHero: Font
     }
 
     struct Radii {
@@ -121,7 +131,17 @@ extension VocabSkin {
             caption: .system(size: 12, weight: .medium, design: .default),
             captionStrong: .system(size: 12, weight: .semibold, design: .default),
             monoLabel: .system(size: 10, weight: .medium, design: .monospaced),
-            numericHero: .system(size: 38, weight: .semibold, design: .default)
+            monoBody: .system(size: 14, weight: .regular, design: .monospaced),
+            monoBodyStrong: .system(size: 14, weight: .semibold, design: .monospaced),
+            monoEmphasis: .system(size: 16, weight: .semibold, design: .monospaced),
+            numericHero: .system(size: 38, weight: .semibold, design: .default),
+            iconTiny: .system(size: 10, weight: .thin, design: .default),
+            iconSmall: .system(size: 12, weight: .medium, design: .default),
+            iconMedium: .system(size: 14, weight: .medium, design: .default),
+            iconToolbar: .system(size: 15, weight: .medium, design: .default),
+            iconNavigation: .system(size: 16, weight: .thin, design: .default),
+            symbolLarge: .system(size: 30, weight: .light, design: .default),
+            symbolHero: .system(size: 44, weight: .light, design: .default)
         ),
         radii: .init(
             stage: 14,

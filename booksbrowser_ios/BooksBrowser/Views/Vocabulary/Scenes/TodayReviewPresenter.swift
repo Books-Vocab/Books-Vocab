@@ -206,13 +206,13 @@ struct TodayReviewPresenter: View {
             HStack(spacing: AppMetrics.spacingSmall) {
                 Button(action: onPrevious) {
                     Image(systemName: "chevron.left")
-                        .font(.system(size: 16, weight: .thin))
+                        .font(vocabSkin.typography.iconNavigation)
                 }
                 .disabled(!state.canGoPrevious)
 
                 Button(action: onNext) {
                     Image(systemName: "chevron.right")
-                        .font(.system(size: 16, weight: .thin))
+                        .font(vocabSkin.typography.iconNavigation)
                 }
                 .disabled(!state.canGoNext)
             }
@@ -265,7 +265,7 @@ struct TodayReviewPresenter: View {
     private func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {
         HStack(alignment: .top, spacing: 8) {
             Image(systemName: "paperclip")
-                .font(.system(size: 13, weight: .thin))
+                .font(vocabSkin.typography.iconTiny)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .padding(.top, 2)
 
@@ -281,7 +281,7 @@ struct TodayReviewPresenter: View {
                                 onLinkTap(item)
                             } label: {
                                 Text(item.word)
-                                    .font(.system(size: 16, weight: .semibold, design: .monospaced))
+                                    .font(vocabSkin.typography.monoEmphasis)
                                     .foregroundStyle(vocabSkin.palette.primaryText)
                             }
                             .buttonStyle(.plain)

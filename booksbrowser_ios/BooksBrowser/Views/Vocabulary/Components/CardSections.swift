@@ -37,7 +37,7 @@ struct CardSectionLabel: View {
                 .font(vocabSkin.typography.caption)
         } icon: {
             Image(systemName: systemImage)
-                .font(.system(size: 10, weight: .thin))
+                .font(vocabSkin.typography.iconTiny)
         }
         .foregroundStyle(vocabSkin.palette.tertiaryText)
     }
@@ -152,7 +152,7 @@ struct CardSourceSection: View {
 
             HStack(spacing: 6) {
                 Image(systemName: "book.closed")
-                    .font(.system(size: 10, weight: .thin))
+                    .font(vocabSkin.typography.iconTiny)
                 Text(bookTitle)
                 if let chapter = chapterTitle {
                     Text("· \(chapter)")
@@ -208,7 +208,7 @@ struct CardFormsSection: View {
                     ForEach(Array(forms.enumerated()), id: \.offset) { _, form in
                         let isRoot = form == rootForm
                         Text(form)
-                            .font(.system(size: 14, weight: isRoot ? .semibold : .regular, design: .monospaced))
+                            .font(isRoot ? vocabSkin.typography.monoBodyStrong : vocabSkin.typography.monoBody)
                             .foregroundStyle(isRoot ? vocabSkin.palette.accent : vocabSkin.palette.secondaryText)
                     }
                 }

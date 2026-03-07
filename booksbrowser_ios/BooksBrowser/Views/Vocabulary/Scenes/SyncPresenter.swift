@@ -78,7 +78,7 @@ struct SyncPresenter: View {
         if !state.isLoggedIn {
             VStack(spacing: 12) {
                 Image(systemName: "person.crop.circle.badge.exclamationmark")
-                    .font(.system(size: 44, weight: .light))
+                    .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                 Text("尚未登入帳號")
                     .font(vocabSkin.typography.sectionTitle)
@@ -93,7 +93,7 @@ struct SyncPresenter: View {
             case .ready:
                 VStack(spacing: 8) {
                     Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(.system(size: 44, weight: .light))
+                        .font(vocabSkin.typography.symbolHero)
                         .foregroundStyle(vocabSkin.palette.accent)
 
                     if state.pendingCount == 0 {
@@ -126,7 +126,7 @@ struct SyncPresenter: View {
             case .completed:
                 VStack(spacing: 8) {
                     Image(systemName: "checkmark.circle.fill")
-                        .font(.system(size: 44, weight: .light))
+                        .font(vocabSkin.typography.symbolHero)
                         .foregroundStyle(vocabSkin.palette.success)
                         .symbolEffect(.bounce)
                     Text("同步完成")
@@ -136,7 +136,7 @@ struct SyncPresenter: View {
             case .failed:
                 VStack(spacing: 8) {
                     Image(systemName: "exclamationmark.triangle.fill")
-                        .font(.system(size: 44, weight: .light))
+                        .font(vocabSkin.typography.symbolHero)
                         .foregroundStyle(vocabSkin.palette.destructive)
                     Text("同步失敗")
                         .font(vocabSkin.typography.sectionTitle)

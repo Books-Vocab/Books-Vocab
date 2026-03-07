@@ -127,7 +127,7 @@ struct WordDetailPresenter: View {
             ForEach(Array(state.metadataItems.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: 4) {
                     Image(systemName: item.icon)
-                        .font(.system(size: 10, weight: .thin))
+                        .font(vocabSkin.typography.iconTiny)
                     Text(item.text)
                 }
             }

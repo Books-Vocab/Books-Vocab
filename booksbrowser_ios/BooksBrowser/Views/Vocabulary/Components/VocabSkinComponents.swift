@@ -77,7 +77,7 @@ struct VocabEmptyStateContent: View {
     var body: some View {
         VStack(spacing: 14) {
             Image(systemName: systemImage)
-                .font(.system(size: 30, weight: .light))
+                .font(vocabSkin.typography.symbolLarge)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 
             Text(title)

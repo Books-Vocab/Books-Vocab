@@ -38,7 +38,7 @@ struct WordDetailGraphLinkRow: View {
 
             if showsAccessory {
                 Image(systemName: "arrow.up.right")
-                    .font(.system(size: 10, weight: .thin))
+                    .font(vocabSkin.typography.iconTiny)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
         }

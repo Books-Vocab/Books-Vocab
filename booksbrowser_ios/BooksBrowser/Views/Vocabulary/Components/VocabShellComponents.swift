@@ -38,7 +38,7 @@ struct VocabTabSelector<ID: Hashable>: View {
                     HStack(spacing: 8) {
                         if let systemImage = option.systemImage {
                             Image(systemName: systemImage)
-                                .font(.system(size: 12, weight: .medium))
+                                .font(vocabSkin.typography.iconSmall)
                         }
 
                         Text(option.title)
@@ -90,7 +90,7 @@ struct VocabChromePill: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .semibold))
+                .font(vocabSkin.typography.iconSmall)
 
             Text(title)
                 .font(vocabSkin.typography.captionStrong)
@@ -128,7 +128,7 @@ struct VocabSearchField: View {
     var body: some View {
         HStack(spacing: 8) {
             Image(systemName: "magnifyingglass")
-                .font(.system(size: 13, weight: .medium))
+                .font(vocabSkin.typography.iconSmall)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 
             TextField(prompt, text: $text)
@@ -142,7 +142,7 @@ struct VocabSearchField: View {
                     text = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 14, weight: .medium))
+                        .font(vocabSkin.typography.iconMedium)
                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
                 .buttonStyle(.plain)
@@ -176,7 +176,7 @@ struct VocabToolbarGlyph: View {
     var body: some View {
         HStack(spacing: 4) {
             Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .medium))
+                .font(vocabSkin.typography.iconToolbar)
                 .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
 
             if let badge {
@@ -203,7 +203,7 @@ struct VocabChromeIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(.system(size: 14, weight: .medium))
+                .font(vocabSkin.typography.iconMedium)
                 .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
                 .frame(width: 32, height: 32)
                 .background(
