@@ -127,7 +127,7 @@ final class TranslationService: Translating {
         }
         
         guard let url = URL(string: "\(cleanURL)\(endpoint)") else {
-            throw TranslationError.apiError("無效的後端 URL")
+            throw TranslationError.apiError(L10n.string("無效的後端 URL"))
         }
 
         var request = URLRequest(url: url)
@@ -138,7 +138,7 @@ final class TranslationService: Translating {
         if let token = authSession.token {
             request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         } else {
-            throw TranslationError.apiError("未登入，無法調用翻譯 API")
+            throw TranslationError.apiError(L10n.string("未登入，無法調用翻譯 API"))
         }
 
         let body: [String: String] = [
@@ -151,16 +151,20 @@ final class TranslationService: Translating {
         let (data, response) = try await sharedURLSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
-            throw TranslationError.apiError("無法取得 HTTP 回應")
+            throw TranslationError.apiError(L10n.string("無法取得 HTTP 回應"))
         }
 
         guard httpResponse.statusCode == 200 else {
-            let errorBody = String(data: data, encoding: .utf8) ?? "(無法讀取)"
+            let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
             print("❌ Backend API 錯誤 [\(httpResponse.statusCode)]: \(errorBody)")
             
-            if httpResponse.statusCode == 401 { throw TranslationError.apiError("登入憑證已失效，請重新登入") }
-            if httpResponse.statusCode == 429 { throw TranslationError.apiError("請求過於頻繁，請稍後再試") }
-            throw TranslationError.apiError("後端伺服器錯誤 (\(httpResponse.statusCode))")
+            if httpResponse.statusCode == 401 {
+                throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))
+            }
+            if httpResponse.statusCode == 429 {
+                throw TranslationError.apiError(L10n.string("請求過於頻繁，請稍後再試"))
+            }
+            throw TranslationError.apiError(L10n.format("後端伺服器錯誤 (%@)", "\(httpResponse.statusCode)"))
         }
 
         return data
@@ -175,8 +179,8 @@ enum TranslationError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .apiError(let msg): return "API 錯誤：\(msg)"
-        case .parseError(let msg): return "解析錯誤：\(msg)"
+        case .apiError(let msg): return L10n.format("API 錯誤：%@", msg)
+        case .parseError(let msg): return L10n.format("解析錯誤：%@", msg)
         }
     }
 }

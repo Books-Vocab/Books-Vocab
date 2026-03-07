@@ -55,7 +55,7 @@ struct AppTag: View {
     let tone: Color
 
     var body: some View {
-        Text(text)
+        Text(text.localized)
             .font(AppFonts.caption(weight: .semibold))
             .padding(.horizontal, 10)
             .padding(.vertical, 5)

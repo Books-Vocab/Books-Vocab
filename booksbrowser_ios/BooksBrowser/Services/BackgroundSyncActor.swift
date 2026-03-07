@@ -35,7 +35,7 @@ actor BackgroundSyncActor {
         let totalCards = fetchedCards.count
         for (index, card) in fetchedCards.enumerated() {
             if index % 50 == 0 {
-                progress("同步最新卡片...", index, totalCards)
+                progress(L10n.string("同步最新卡片..."), index, totalCards)
             }
             let lowerContent = card.content.lowercased()
             fetchedCardWords.insert(lowerContent)
@@ -96,7 +96,7 @@ actor BackgroundSyncActor {
         // Any local entry that has `syncStatus == 1` but is MISSING from the remote fetched list
         // means it was deleted remotely before soft-deletes were implemented.
         if !isIncremental {
-            progress("清理無效卡片...", totalCards, totalCards)
+            progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
             for entry in localEntries {
                 if entry.syncStatus == 1 && entry.actionType != "delete" {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {

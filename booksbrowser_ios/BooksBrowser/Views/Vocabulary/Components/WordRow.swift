@@ -54,7 +54,7 @@ struct WordRow: View {
 
                     if let trailingLabel = viewData.trailingLabel {
                         Spacer()
-                        Text(trailingLabel)
+                        Text(trailingLabel.localized)
                             .font(vocabSkin.typography.monoLabel)
                             .foregroundStyle(resolveTone(viewData.trailingTone ?? .tertiary))
                     }
@@ -86,7 +86,7 @@ struct WordRow: View {
                 }
 
                 if let statusText = viewData.statusText, !statusText.isEmpty {
-                    Text(statusText)
+                    Text(statusText.localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(resolveTone(viewData.statusTone ?? .tertiary))
                         .lineLimit(1)

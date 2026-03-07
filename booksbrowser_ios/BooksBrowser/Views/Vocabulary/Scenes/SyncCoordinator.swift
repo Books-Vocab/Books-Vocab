@@ -90,7 +90,7 @@ final class SyncCoordinator: ObservableObject {
                             status: .done,
                             current: deleted,
                             total: deleted,
-                            detail: "已刪除 \(deleted) 個單字"
+                            detail: L10n.format("已刪除 %@ 個單字", "\(deleted)")
                         )
                     } else {
                         updateStep(
@@ -98,7 +98,7 @@ final class SyncCoordinator: ObservableObject {
                             status: .error,
                             current: deleted,
                             total: deletes.count,
-                            detail: "部分失敗: \(failedWords.joined(separator: ", "))"
+                            detail: L10n.format("部分失敗: %@", failedWords.joined(separator: ", "))
                         )
                     }
                 }
@@ -121,7 +121,7 @@ final class SyncCoordinator: ObservableObject {
                             status: .done,
                             current: adds.count,
                             total: adds.count,
-                            detail: "\(response.created) 新增, \(response.skipped) 已存在"
+                            detail: L10n.format("%@ 新增, %@ 已存在", "\(response.created)", "\(response.skipped)")
                         )
                     } catch {
                         updateStep(
@@ -137,19 +137,19 @@ final class SyncCoordinator: ObservableObject {
                 updateStep("trigger", status: .running)
                 do {
                     try await kgService.triggerPipeline()
-                    updateStep("trigger", status: .done, detail: "已交由伺服器背景處理")
+                    updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
-                    updateStep("trigger", status: .error, detail: "無法觸發: \(error.localizedDescription)")
+                    updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
                 }
 
-                updateStep("pull", status: .running, detail: "Fetching cards from KG...")
+                updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
                 try await kgService.pullCardsToLocal(container: modelContext.container) { [weak self] detail, current, total in
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
                 }
 
-                updateStep("pull", status: .done, current: 1, total: 1, detail: "本地知識庫已建立完成")
+                updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
                 phase = .completed
             } catch {
                 summaryText = error.localizedDescription
@@ -162,7 +162,7 @@ final class SyncCoordinator: ObservableObject {
         pipelineTask?.cancel()
         pipelineTask = nil
         phase = .failed
-        summaryText = "同步已取消"
+        summaryText = L10n.string("同步已取消")
     }
 
     func resetForRetry(deleteCount: Int, addCount: Int) {

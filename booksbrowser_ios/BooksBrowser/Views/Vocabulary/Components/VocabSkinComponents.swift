@@ -34,7 +34,7 @@ struct VocabToneChip: View {
     let tone: Color
 
     var body: some View {
-        Text(text)
+        Text(text.localized)
             .font(vocabSkin.typography.captionStrong)
             .foregroundStyle(tone)
             .padding(.horizontal, 10)
@@ -80,11 +80,11 @@ struct VocabEmptyStateContent: View {
                 .font(vocabSkin.typography.symbolLarge)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 
-            Text(title)
+            Text(title.localized)
                 .font(vocabSkin.typography.sectionTitle)
                 .foregroundStyle(vocabSkin.palette.primaryText)
 
-            Text(description)
+            Text(description.localized)
                 .font(vocabSkin.typography.body)
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .multilineTextAlignment(.center)

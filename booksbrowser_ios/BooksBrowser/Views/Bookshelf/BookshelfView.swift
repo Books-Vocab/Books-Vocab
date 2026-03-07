@@ -76,7 +76,7 @@ struct BookshelfView: View {
             .alert("匯入錯誤", isPresented: $showError) {
                 Button("確定", role: .cancel) {}
             } message: {
-                Text(errorMessage ?? "未知錯誤")
+                Text((errorMessage ?? "未知錯誤").localized)
             }
             .sheet(isPresented: $showSettings) {
                 SettingsView()
@@ -185,13 +185,13 @@ struct BookshelfView: View {
 
     private func importEPUB(from url: URL) {
         isLoading = true
-        loadingMessage = "正在匯入書籍..."
+        loadingMessage = L10n.string("正在匯入書籍...")
 
         Task {
             do {
                 print("🚀 BookshelfView: starting import from \(url)")
                 let readiumService = ReadiumService.shared
-                loadingMessage = "正在解析 EPUB..."
+                loadingMessage = L10n.string("正在解析 EPUB...")
 
                 let (fileName, publication) = try await readiumService.importEPUB(from: url)
                 print("🚀 import succeeded: \(fileName)")
@@ -201,7 +201,7 @@ struct BookshelfView: View {
                 print("🚀 cover: \(coverData?.count ?? 0) bytes")
 
                 await MainActor.run {
-                    loadingMessage = "正在儲存..."
+                    loadingMessage = L10n.string("正在儲存...")
 
                     let book = Book(
                         title: metadata.title,

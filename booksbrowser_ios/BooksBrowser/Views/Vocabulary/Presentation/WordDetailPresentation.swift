@@ -33,7 +33,7 @@ enum WordDetailPresentation {
             ),
             .init(
                 icon: "link",
-                text: "\(card.totalLinkCount) connections"
+                text: L10n.format("%@ 個連結", "\(card.totalLinkCount)")
             ),
             syncMetadataItem(for: card.syncStatus)
         ]
@@ -44,11 +44,11 @@ enum WordDetailPresentation {
     ) -> WordDetailPresenter.State.MetadataItem {
         switch syncStatus {
         case 1:
-            return .init(icon: "checkmark.circle", text: "已同步")
+            return .init(icon: "checkmark.circle", text: L10n.string("已同步"))
         case 2:
-            return .init(icon: "exclamationmark.circle", text: "同步失敗")
+            return .init(icon: "exclamationmark.circle", text: L10n.string("同步失敗"))
         default:
-            return .init(icon: "clock", text: "待同步")
+            return .init(icon: "clock", text: L10n.string("待同步"))
         }
     }
 }

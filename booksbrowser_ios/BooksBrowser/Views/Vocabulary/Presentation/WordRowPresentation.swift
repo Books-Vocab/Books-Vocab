@@ -39,7 +39,7 @@ extension VocabularyEntry {
         case .due:
             return ("待複習", .reviewDue)
         case .reviewed:
-            return ("下次 \(nextReviewAt.reviewRelativeDescription())", .secondary)
+            return (L10n.format("下次 %@", nextReviewAt.reviewRelativeDescription()), .secondary)
         }
     }
 }

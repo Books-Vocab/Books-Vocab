@@ -61,7 +61,7 @@ struct WordDetailMetadataRow<Content: View>: View {
 
     var body: some View {
         HStack {
-            Text(title)
+            Text(title.localized)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.quaternaryText)
             Spacer()

@@ -71,7 +71,7 @@ struct SettingsView: View {
                 isLoggedIn: authManager.isLoggedIn,
                 userInitials: userInitials,
                 avatarURL: authManager.avatarURL,
-                displayName: authManager.displayName ?? authManager.userEmail ?? "已登入",
+                displayName: authManager.displayName ?? authManager.userEmail ?? L10n.string("已登入"),
                 email: authManager.displayName != nil ? authManager.userEmail : nil,
                 authError: authManager.authError,
                 iconBreathing: iconBreathing,
@@ -168,7 +168,7 @@ struct SettingsView: View {
         )) {
             Button("好") { deleteAccountError = nil }
         } message: {
-            Text(deleteAccountError ?? "請稍後再試")
+            Text((deleteAccountError ?? "請稍後再試").localized)
         }
     }
 
@@ -182,7 +182,7 @@ struct SettingsView: View {
             try await kgService.deleteAccount()
             authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
         } catch {
-            deleteAccountError = "無法刪除帳號：\(error.localizedDescription)"
+            deleteAccountError = L10n.format("無法刪除帳號：%@", error.localizedDescription)
         }
     }
 

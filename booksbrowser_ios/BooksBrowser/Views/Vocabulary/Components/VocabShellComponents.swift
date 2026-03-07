@@ -41,7 +41,7 @@ struct VocabTabSelector<ID: Hashable>: View {
                                 .font(vocabSkin.typography.iconSmall)
                         }
 
-                        Text(option.title)
+                        Text(option.title.localized)
                             .font(vocabSkin.typography.captionStrong)
                             .lineLimit(1)
 
@@ -92,7 +92,7 @@ struct VocabChromePill: View {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconSmall)
 
-            Text(title)
+            Text(title.localized)
                 .font(vocabSkin.typography.captionStrong)
 
             if let count {
@@ -131,7 +131,7 @@ struct VocabSearchField: View {
                 .font(vocabSkin.typography.iconSmall)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 
-            TextField(prompt, text: $text)
+            TextField(prompt.localized, text: $text)
                 .textInputAutocapitalization(.never)
                 .autocorrectionDisabled()
                 .font(vocabSkin.typography.body)
@@ -245,7 +245,7 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
         HStack(spacing: 10) {
             leadingAccessory
 
-            Label(title, systemImage: systemImage)
+            Label(title.localized, systemImage: systemImage)
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 

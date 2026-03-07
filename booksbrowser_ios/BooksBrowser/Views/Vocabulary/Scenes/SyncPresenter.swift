@@ -101,14 +101,20 @@ struct SyncPresenter: View {
                             .font(vocabSkin.typography.sectionTitle)
                     } else {
                         VStack(spacing: 4) {
-                            Text("\(state.pendingCount) 個待處理動作")
+                            Text(L10n.format("%@ 個待處理動作", "\(state.pendingCount)"))
                                 .font(vocabSkin.typography.sectionTitle)
                             HStack(spacing: vocabSkin.spacing.inlineGap) {
                                 if state.addCount > 0 {
-                                    VocabToneChip(text: "\(state.addCount) 新增", tone: vocabSkin.palette.success)
+                                    VocabToneChip(
+                                        text: L10n.format("%@ 新增", "\(state.addCount)"),
+                                        tone: vocabSkin.palette.success
+                                    )
                                 }
                                 if state.deleteCount > 0 {
-                                    VocabToneChip(text: "\(state.deleteCount) 刪除", tone: vocabSkin.palette.destructive)
+                                    VocabToneChip(
+                                        text: L10n.format("%@ 刪除", "\(state.deleteCount)"),
+                                        tone: vocabSkin.palette.destructive
+                                    )
                                 }
                             }
                         }
@@ -176,7 +182,7 @@ struct SyncPresenter: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 HStack {
-                    Text(step.label)
+                    Text(step.label.localized)
                         .font(vocabSkin.typography.body.weight(.medium))
                         .foregroundStyle(step.status == .waiting ? vocabSkin.palette.tertiaryText : vocabSkin.palette.primaryText)
                     Spacer()
@@ -192,7 +198,7 @@ struct SyncPresenter: View {
                 }
 
                 if !step.detail.isEmpty && step.status != .waiting {
-                    Text(step.detail)
+                    Text(step.detail.localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(detailColor(for: step.status))
                         .lineLimit(2)

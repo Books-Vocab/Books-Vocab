@@ -33,7 +33,7 @@ struct CardSectionLabel: View {
 
     var body: some View {
         Label {
-            Text(title)
+            Text(title.localized)
                 .font(vocabSkin.typography.caption)
         } icon: {
             Image(systemName: systemImage)

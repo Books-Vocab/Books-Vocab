@@ -47,7 +47,7 @@ extension AuthManager {
                     )
                 } catch {
                     print("❌ Backend verification failed: \(error)")
-                    self.setAuthError("伺服器驗證失敗，請稍後再試。")
+                    self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 }
             }
         }
