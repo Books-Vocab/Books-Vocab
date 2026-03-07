@@ -100,19 +100,19 @@ struct VocabularyListView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button {
-                                exportAsCSV()
+                                exportCSV()
                             } label: {
                                 Label("匯出 CSV", systemImage: "tablecells")
                             }
 
                             Button {
-                                exportAsJSON()
+                                exportJSON()
                             } label: {
                                 Label("匯出 JSON", systemImage: "doc.text")
                             }
 
                             Button {
-                                exportAsAnki()
+                                exportAnki()
                             } label: {
                                 Label("匯出 Anki TSV", systemImage: "rectangle.stack")
                             }
@@ -237,67 +237,11 @@ struct VocabularyListView: View {
         try? modelContext.save()
     }
 
-    // MARK: - 匯出功能
+    // MARK: - 匯出功能（委派給 VocabularyExporter）
 
-    private func exportAsCSV() {
-        var csv = "Word,Translation,Part of Speech,Pronunciation,Context,Book,Chapter,Date\n"
-        for entry in pendingEntries {
-            let fields = [
-                escapeCSV(entry.word),
-                escapeCSV(entry.translation),
-                escapeCSV(""),
-                escapeCSV(entry.pronunciation ?? ""),
-                escapeCSV(entry.context),
-                escapeCSV(entry.bookTitle),
-                escapeCSV(entry.chapterTitle ?? ""),
-                escapeCSV(entry.dateAdded.formatted(.iso8601))
-            ]
-            csv += fields.joined(separator: ",") + "\n"
-        }
-        saveAndShare(content: csv, filename: "vocabulary.csv")
-    }
-
-    private func exportAsJSON() {
-        let items = pendingEntries.map { entry -> [String: String] in
-            var dict: [String: String] = [
-                "word": entry.word,
-                "translation": entry.translation,
-                "context": entry.context,
-                "bookTitle": entry.bookTitle,
-                "dateAdded": entry.dateAdded.formatted(.iso8601)
-            ]
-
-            if let pron = entry.pronunciation { dict["pronunciation"] = pron }
-            if let exp = entry.explanation { dict["explanation"] = exp }
-            if let ch = entry.chapterTitle { dict["chapterTitle"] = ch }
-            return dict
-        }
-
-        if let data = try? JSONSerialization.data(withJSONObject: items, options: .prettyPrinted),
-           let json = String(data: data, encoding: .utf8) {
-            saveAndShare(content: json, filename: "vocabulary.json")
-        }
-    }
-
-    private func exportAsAnki() {
-        var tsv = ""
-        for entry in pendingEntries {
-            let front = "\(entry.word)\n<small>\(entry.context)</small>"
-            var back = entry.translation
-
-            if let pron = entry.pronunciation { back += "\n\(pron)" }
-            if let exp = entry.explanation { back += "\n\(exp)" }
-
-            tsv += "\(escapeTab(front))\t\(escapeTab(back))\n"
-        }
-        saveAndShare(content: tsv, filename: "vocabulary_anki.tsv")
-    }
-
-    private func saveAndShare(content: String, filename: String) {
-        let tempURL = FileManager.default.temporaryDirectory.appendingPathComponent(filename)
-        try? content.write(to: tempURL, atomically: true, encoding: .utf8)
-        exportURL = tempURL
-    }
+    private func exportCSV()  { exportURL = VocabularyExporter.exportAsCSV(entries: pendingEntries) }
+    private func exportJSON() { exportURL = VocabularyExporter.exportAsJSON(entries: pendingEntries) }
+    private func exportAnki() { exportURL = VocabularyExporter.exportAsAnki(entries: pendingEntries) }
 
     @ViewBuilder
     private var loggedOutState: some View {
@@ -312,16 +256,6 @@ struct VocabularyListView: View {
             .buttonStyle(.borderedProminent)
             .buttonBorderShape(.capsule)
         }
-    }
-
-    private func escapeCSV(_ text: String) -> String {
-        let escaped = text.replacingOccurrences(of: "\"", with: "\"\"")
-        return "\"\(escaped)\""
-    }
-
-    private func escapeTab(_ text: String) -> String {
-        text.replacingOccurrences(of: "\t", with: " ")
-            .replacingOccurrences(of: "\n", with: "<br>")
     }
 }
 

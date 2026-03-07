@@ -98,7 +98,7 @@ struct TodayReviewView: View {
 
                 // Back content — visible after reveal, links are tappable
                 if showBack {
-                    cardDivider
+                    CardSectionDivider(horizontalPadding: AppMetrics.heroCardPadding)
 
                     reviewCardBack(current)
                 }
@@ -212,23 +212,15 @@ struct TodayReviewView: View {
 
             // Explanation
             if let explanation = card.explanation, !explanation.isEmpty {
-                cardDivider
+                CardSectionDivider(horizontalPadding: AppMetrics.heroCardPadding)
 
-                CardRichTextRenderer.text(
-                    explanation,
-                    style: CardRichTextStyle(
-                        font: .system(size: 16, weight: .regular, design: .default),
-                        textColor: .secondary,
-                        highlightColor: AppColors.accent(.light),
-                        italic: false
-                    )
-                )
-                .lineSpacing(4)
+                CardExplanationSection(explanation: explanation, colorScheme: .light)
+                    .lineSpacing(4)
             }
 
             // Links
             if !card.linkGroups.isEmpty {
-                cardDivider
+                CardSectionDivider(horizontalPadding: AppMetrics.heroCardPadding)
 
                 reviewLinkStrip(for: current)
             }
@@ -237,12 +229,7 @@ struct TodayReviewView: View {
         .transition(.opacity.combined(with: .move(edge: .top)))
     }
 
-    private var cardDivider: some View {
-        Rectangle()
-            .fill(Color.primary.opacity(0.06))
-            .frame(height: 0.5)
-            .padding(.horizontal, AppMetrics.heroCardPadding)
-    }
+
 
     // MARK: - Bottom Toolbar (Mochi-style)
 
