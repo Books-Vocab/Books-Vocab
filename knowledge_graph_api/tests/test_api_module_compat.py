@@ -3,11 +3,14 @@ from __future__ import annotations
 import inspect
 
 import kg.api as api_mod
+from kg.settings import KGSettings
 
 
 def test_api_module_exposes_legacy_surface():
     expected_symbols = [
         "app",
+        "create_app",
+        "configure_runtime",
         "DATA_DIR",
         "USERS_FILE",
         "USERS_LOCK_FILE",
@@ -59,6 +62,8 @@ def test_api_module_keeps_expected_callable_shapes():
     assert inspect.iscoroutinefunction(api_mod.get_user_lock)
     assert callable(api_mod.load_users)
     assert callable(api_mod.save_users)
+    assert callable(api_mod.create_app)
+    assert callable(api_mod.configure_runtime)
     assert callable(api_mod._card_store)
     assert callable(api_mod._graph_store)
     assert callable(api_mod._embedding_store)
@@ -78,3 +83,33 @@ def test_api_module_keeps_expected_callable_shapes():
     assert callable(api_mod._card_response)
     assert callable(api_mod._run_pipeline_background)
     assert callable(api_mod.run_pipeline)
+
+
+def test_create_app_accepts_explicit_settings(tmp_path):
+    original_settings = KGSettings(
+        data_dir=api_mod.DATA_DIR,
+        jwt_secret=api_mod.JWT_SECRET,
+        jwt_algorithm=api_mod.JWT_ALGORITHM,
+        jwt_expiry_minutes=api_mod.JWT_EXPIRY_MINUTES,
+        google_client_id=api_mod.GOOGLE_CLIENT_ID,
+        apple_bundle_id=api_mod.APPLE_BUNDLE_ID,
+        app_store_allow_unsigned_sync=api_mod.APP_STORE_ALLOW_UNSIGNED_SYNC,
+        app_store_allow_unsigned_notifications=api_mod.APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
+        admin_token=api_mod.ADMIN_TOKEN,
+    )
+    settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret="test-secret",
+        admin_token="adm-token",
+        app_store_allow_unsigned_sync=True,
+        app_store_allow_unsigned_notifications=True,
+    )
+
+    try:
+        custom_app = api_mod.create_app(settings)
+
+        assert custom_app.state.kg_settings == settings
+        assert api_mod.DATA_DIR == tmp_path
+        assert api_mod.USERS_FILE == tmp_path / "users.json"
+    finally:
+        api_mod.configure_runtime(original_settings)

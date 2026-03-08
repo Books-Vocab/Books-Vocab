@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -75,8 +74,6 @@ _attach_memory_log_handler("uvicorn")
 _attach_memory_log_handler("uvicorn.error")
 _attach_memory_log_handler("uvicorn.access")
 
-from .cards import CardStore
-from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind, LINK_LABELS
 from .difficulty import get_tier
 from .apple_auth import verify_apple_token
@@ -110,7 +107,6 @@ from .api_models import (
     VocabAddResponse,
     VocabEntry,
 )
-from .route_registration import register_routes
 from .translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -132,6 +128,22 @@ from .admin_test_matrix import (
     run_pytest_matrix,
     store_last_test_run,
 )
+from .admin_handlers import (
+    admin_last_test_run_response,
+    admin_logs_response,
+    admin_run_tests_response,
+    admin_stats_response,
+    admin_test_catalog_response,
+    admin_tests_ui_response,
+    admin_ui_response,
+    require_admin,
+)
+from .auth_handlers import auth_verify_response
+from .billing_handlers import (
+    app_store_notifications_response,
+    reconcile_app_store_subscription_response,
+    sync_app_store_subscription_response,
+)
 from .billing import (
     append_app_store_event,
     build_entitlements_response,
@@ -144,7 +156,44 @@ from .billing import (
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
+from .pipeline_handlers import queue_pipeline_response
+from .runtime_state import (
+    runtime_notifications_file,
+    runtime_settings,
+    runtime_users_file,
+    runtime_users_lock_file,
+)
+from .routers import (
+    build_admin_router,
+    build_auth_router,
+    build_billing_router,
+    build_pipeline_router,
+    build_static_pages_router,
+    build_translate_router,
+    build_user_router,
+    build_vocab_router,
+)
 from .auth_service import create_jwt_token, resolve_and_link_user
+from .settings import KGSettings, load_settings
+from .service_factories import (
+    create_card_store,
+    create_embedding_store,
+    create_gemini_client,
+    create_graph_store,
+)
+from .translate_handlers import (
+    translate_explain_response,
+    translate_phrase_response,
+    translate_quick_response,
+)
+from .user_handlers import (
+    delete_user_account_response,
+    get_user_config_response,
+    get_user_entitlements_response,
+    health_response,
+    update_user_config_response,
+)
+from .user_context import resolve_current_user
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -152,18 +201,15 @@ from .user_store import (
     parse_datetime,
     save_users_to,
 )
+from .vocab_handlers import (
+    add_vocab_response,
+    delete_word_response,
+    get_graph_links_response,
+    list_vocab_response,
+    lookup_word_response,
+)
 
 load_dotenv()
-
-app = FastAPI(title="Knowledge Graph API", version="0.1.0")
-
-# Allow BooksBrowser (iOS Simulator / device) to connect
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 def get_privacy_policy():
     """Serve the static privacy policy HTML."""
@@ -182,19 +228,148 @@ def get_support():
 # ---------------------------------------------------------------------------
 # Data directory & Multi-User
 # ---------------------------------------------------------------------------
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
-USERS_FILE = DATA_DIR / "users.json"
-USERS_LOCK_FILE = DATA_DIR / "users.json.lock"
-APP_STORE_NOTIFICATIONS_FILE = DATA_DIR / "app_store_notifications.ndjson"
+DATA_DIR = Path()
+USERS_FILE = Path()
+USERS_LOCK_FILE = Path()
+APP_STORE_NOTIFICATIONS_FILE = Path()
 
-# JWT Configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+# JWT / auth / admin configuration
+JWT_SECRET = ""
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = 60 * 24 * 365 # 1 year
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-APPLE_BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser")
-APP_STORE_ALLOW_UNSIGNED_SYNC = os.getenv("APP_STORE_ALLOW_UNSIGNED_SYNC", "").strip().lower() in {"1", "true", "yes"}
-APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = os.getenv("APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", "").strip().lower() in {"1", "true", "yes"}
+GOOGLE_CLIENT_ID = ""
+APPLE_BUNDLE_ID = "com.Max0228.BooksBrowser"
+APP_STORE_ALLOW_UNSIGNED_SYNC = False
+APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = False
+ADMIN_TOKEN = ""
+
+
+def configure_runtime(settings: KGSettings) -> KGSettings:
+    """Apply settings to the legacy module-level runtime surface."""
+    global DATA_DIR
+    global USERS_FILE
+    global USERS_LOCK_FILE
+    global APP_STORE_NOTIFICATIONS_FILE
+    global JWT_SECRET
+    global JWT_ALGORITHM
+    global JWT_EXPIRY_MINUTES
+    global GOOGLE_CLIENT_ID
+    global APPLE_BUNDLE_ID
+    global APP_STORE_ALLOW_UNSIGNED_SYNC
+    global APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS
+    global ADMIN_TOKEN
+
+    DATA_DIR = settings.data_dir
+    USERS_FILE = settings.users_file
+    USERS_LOCK_FILE = settings.users_lock_file
+    APP_STORE_NOTIFICATIONS_FILE = settings.app_store_notifications_file
+    JWT_SECRET = settings.jwt_secret
+    JWT_ALGORITHM = settings.jwt_algorithm
+    JWT_EXPIRY_MINUTES = settings.jwt_expiry_minutes
+    GOOGLE_CLIENT_ID = settings.google_client_id
+    APPLE_BUNDLE_ID = settings.apple_bundle_id
+    APP_STORE_ALLOW_UNSIGNED_SYNC = settings.app_store_allow_unsigned_sync
+    APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = settings.app_store_allow_unsigned_notifications
+    ADMIN_TOKEN = settings.admin_token
+    return settings
+
+
+def _runtime_settings() -> KGSettings:
+    """Read the current legacy runtime surface as a single settings object."""
+    return runtime_settings(
+        data_dir=DATA_DIR,
+        jwt_secret=JWT_SECRET,
+        jwt_algorithm=JWT_ALGORITHM,
+        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        google_client_id=GOOGLE_CLIENT_ID,
+        apple_bundle_id=APPLE_BUNDLE_ID,
+        app_store_allow_unsigned_sync=APP_STORE_ALLOW_UNSIGNED_SYNC,
+        app_store_allow_unsigned_notifications=APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
+        admin_token=ADMIN_TOKEN,
+    )
+
+
+def _runtime_users_file() -> Path:
+    return runtime_users_file(explicit_users_file=USERS_FILE, settings=_runtime_settings())
+
+
+def _runtime_users_lock_file() -> Path:
+    return runtime_users_lock_file(explicit_users_lock_file=USERS_LOCK_FILE, settings=_runtime_settings())
+
+
+def _runtime_notifications_file() -> Path:
+    return runtime_notifications_file(
+        explicit_notifications_file=APP_STORE_NOTIFICATIONS_FILE,
+        settings=_runtime_settings(),
+    )
+
+
+def create_app(settings: KGSettings | None = None) -> FastAPI:
+    runtime_settings = configure_runtime(settings or load_settings())
+
+    app = FastAPI(title="Knowledge Graph API", version="0.1.0")
+    app.state.kg_settings = runtime_settings
+
+    # Allow BooksBrowser (iOS Simulator / device) to connect
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    app.include_router(
+        build_static_pages_router(
+            get_privacy_policy=get_privacy_policy,
+            get_support=get_support,
+        )
+    )
+    app.include_router(
+        build_user_router(
+            get_user_config=get_user_config,
+            get_user_entitlements=get_user_entitlements,
+            update_user_config=update_user_config,
+            delete_user_account=delete_user_account,
+            health=health,
+        )
+    )
+    app.include_router(
+        build_billing_router(
+            sync_app_store_subscription=sync_app_store_subscription,
+            app_store_notifications=app_store_notifications,
+            reconcile_app_store_subscription=reconcile_app_store_subscription,
+        )
+    )
+    app.include_router(
+        build_vocab_router(
+            list_vocab=list_vocab,
+            lookup_word=lookup_word,
+            delete_word=delete_word,
+            get_graph_links=get_graph_links,
+            add_vocab=add_vocab,
+        )
+    )
+    app.include_router(build_pipeline_router(run_pipeline=run_pipeline))
+    app.include_router(
+        build_translate_router(
+            translate_quick=translate_quick,
+            translate_phrase=translate_phrase,
+            translate_explain=translate_explain,
+        )
+    )
+    app.include_router(build_auth_router(auth_verify=auth_verify))
+    app.include_router(
+        build_admin_router(
+            admin_ui=admin_ui,
+            admin_stats=admin_stats,
+            admin_logs=admin_logs,
+            admin_run_tests=admin_run_tests,
+            admin_last_test_run=admin_last_test_run,
+            admin_test_catalog=admin_test_catalog,
+            admin_tests_ui=admin_tests_ui,
+        )
+    )
+    return app
 
 security = HTTPBearer()
 
@@ -216,10 +391,10 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
 
 
 def load_users() -> dict[str, dict[str, Any]]:
-    return load_users_from(USERS_FILE, _normalize_users_payload)
+    return load_users_from(_runtime_users_file(), _normalize_users_payload)
 
 def save_users(users: dict[str, dict[str, Any]]) -> None:
-    save_users_to(USERS_FILE, users, _normalize_users_payload)
+    save_users_to(_runtime_users_file(), users, _normalize_users_payload)
 
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
@@ -229,101 +404,28 @@ def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
-    token = credentials.credentials.strip()
-    token_iat: datetime | None = None
-
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Token cannot be empty",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Try JWT first (new format)
-    try:
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
-        user_id = decoded.get("sub")
-        if not user_id:
-            raise ValueError("No sub in token")
-        token_iat = _parse_datetime(decoded.get("iat")) or datetime.now(tz=timezone.utc)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError:
-        # Fallback: treat as direct user_id (for backward compatibility)
-        user_id = token
-
-    if not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    users = load_users()
-    revoked_before = users.get("_revoked_before", {})
-    if isinstance(revoked_before, dict):
-        revoked_at = _parse_datetime(revoked_before.get(user_id))
-        if revoked_at and (token_iat is None or token_iat <= revoked_at):
-            raise HTTPException(
-                status_code=401,
-                detail="Account was deleted. Please sign in again.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-    record = users.get(user_id, {})
-    if isinstance(record, dict):
-        linked_to = record.get("_linked_to")
-        if linked_to and isinstance(revoked_before, dict):
-            revoked_at = _parse_datetime(revoked_before.get(linked_to))
-            if revoked_at and (token_iat is None or token_iat <= revoked_at):
-                raise HTTPException(
-                    status_code=401,
-                    detail="Account was deleted. Please sign in again.",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-    user_dir = DATA_DIR / "users" / user_id
-    user_dir.mkdir(parents=True, exist_ok=True)
-
-    return {
-        "id": user_id,
-        "dir": user_dir,
-        "record": record,
-        "config": record.get("config", {}),
-    }
+    return resolve_current_user(
+        credentials.credentials,
+        settings=_runtime_settings(),
+        load_users=load_users,
+        parse_datetime=_parse_datetime,
+    )
 
 
-def _card_store(user_dir: Path) -> CardStore:
-    return CardStore(user_dir / "cards.db")
+def _card_store(user_dir: Path):
+    return create_card_store(user_dir)
 
 
 def _graph_store(user_dir: Path) -> GraphStore:
-    return GraphStore(user_dir / "graph.json", user_dir / "candidates.json")
+    return create_graph_store(user_dir)
 
 
 def _gemini_client():
-    from openai import OpenAI
-
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
-    return OpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-    )
+    return create_gemini_client()
 
 
-def _embedding_store(user_dir: Path, user_id: str | None = None) -> EmbeddingStore:
-    return EmbeddingStore(
-        user_dir / "embeddings.npy",
-        user_dir / "card_ids.json",
-        _gemini_client(),
-        user_id=user_id,
-    )
+def _embedding_store(user_dir: Path, user_id: str | None = None):
+    return create_embedding_store(user_dir, gemini_client_factory=_gemini_client, user_id=user_id)
 
 
 def _build_links_by_kind(
@@ -376,7 +478,7 @@ def _require_pro_access(user: dict[str, Any], capability: str) -> None:
 
 
 def _append_app_store_event(payload: dict[str, Any]) -> None:
-    append_app_store_event(APP_STORE_NOTIFICATIONS_FILE, payload)
+    append_app_store_event(_runtime_notifications_file(), payload)
 
 
 def _resolve_user_id_from_subscription_index(users: dict[str, Any], original_transaction_id: str | None, transaction_id: str | None) -> str | None:
@@ -421,17 +523,18 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
 def _decode_signed_transaction_info(signed_transaction_info: str) -> dict[str, Any]:
     return decode_signed_transaction_info(
         signed_transaction_info,
-        bundle_id=APPLE_BUNDLE_ID,
+        bundle_id=_runtime_settings().apple_bundle_id,
         parse_datetime_fn=_parse_datetime,
         verify_signed_jws=verify_and_decode_signed_jws,
     )
 
 
 def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    settings = _runtime_settings()
     return decode_notification_payload(
         req,
-        bundle_id=APPLE_BUNDLE_ID,
-        allow_unsigned_notifications=APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
+        bundle_id=settings.apple_bundle_id,
+        allow_unsigned_notifications=settings.app_store_allow_unsigned_notifications,
         parse_datetime_fn=_parse_datetime,
         verify_signed_jws=verify_and_decode_signed_jws,
     )
@@ -442,9 +545,7 @@ def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict
 # ---------------------------------------------------------------------------
 def get_user_config(user: dict = Depends(get_current_user)):
     """Get user configuration."""
-    return UserConfigResponse(
-        mochi_api_key=user["config"].get("mochi_api_key")
-    )
+    return get_user_config_response(user)
 
 
 # ---------------------------------------------------------------------------
@@ -452,7 +553,10 @@ def get_user_config(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def get_user_entitlements(user: dict = Depends(get_current_user)):
     """Get the current user's subscription entitlement snapshot."""
-    return _build_entitlements_response(user.get("record"))
+    return get_user_entitlements_response(
+        user,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -460,51 +564,18 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
-    try:
-        if req.signed_transaction_info:
-            snapshot = _decode_signed_transaction_info(req.signed_transaction_info)
-            if req.transaction_id and snapshot["transaction_id"] and req.transaction_id != snapshot["transaction_id"]:
-                raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
-            if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
-                raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
-        else:
-            if not APP_STORE_ALLOW_UNSIGNED_SYNC and req.environment.lower() != "xcode":
-                raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
-            snapshot = {
-                "product_id": req.product_id,
-                "transaction_id": req.transaction_id,
-                "original_transaction_id": req.original_transaction_id,
-                "environment": req.environment,
-                "status": req.status,
-                "is_trial": req.is_trial,
-                "expires_at": req.expires_at,
-                "will_renew": req.will_renew,
-                "price_display": req.price_display,
-            }
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        record = _write_subscription_snapshot(
-            users,
-            user["id"],
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=snapshot["price_display"],
-            source="app_store",
-        )
-        save_users(users)
-
-    return _build_entitlements_response(record)
+    settings = _runtime_settings()
+    return sync_app_store_subscription_response(
+        req,
+        user,
+        allow_unsigned_sync=settings.app_store_allow_unsigned_sync,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        decode_signed_transaction_info=_decode_signed_transaction_info,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -512,61 +583,18 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
-    try:
-        snapshot, decoded_payload = _decode_notification_payload(req)
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    event = {
-        "received_at": datetime.now(tz=timezone.utc).isoformat(),
-        "notification_type": req.notification_type,
-        "subtype": req.subtype,
-        "product_id": snapshot["product_id"],
-        "transaction_id": snapshot["transaction_id"],
-        "original_transaction_id": snapshot["original_transaction_id"],
-        "environment": snapshot["environment"],
-        "status": snapshot["status"],
-        "is_trial": snapshot["is_trial"],
-        "expires_at": snapshot["expires_at"],
-        "will_renew": snapshot["will_renew"],
-        "signed_payload": req.signed_payload,
-        "raw_payload": decoded_payload or req.raw_payload,
-    }
-    _append_app_store_event(event)
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        user_id = _resolve_user_id_from_subscription_index(
-            users,
-            snapshot["original_transaction_id"],
-            snapshot["transaction_id"],
-        )
-        if not user_id:
-            return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
-        record = _write_subscription_snapshot(
-            users,
-            user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
-            source="app_store_notification",
-        )
-        save_users(users)
-
-    return {
-        "status": "accepted",
-        "updated": True,
-        "user_id": user_id,
-        "entitlements": _build_entitlements_response(record).model_dump(),
-    }
+    settings = _runtime_settings()
+    return app_store_notifications_response(
+        req,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        decode_notification_payload=_decode_notification_payload,
+        append_app_store_event=_append_app_store_event,
+        resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -574,49 +602,20 @@ def app_store_notifications(req: AppStoreNotificationRequest):
 # ---------------------------------------------------------------------------
 async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
     """Fetch transaction state from Apple's App Store Server API and persist it."""
-    try:
-        server_response = await fetch_transaction_info(
-            req.transaction_id,
-            bundle_id=APPLE_BUNDLE_ID,
-            environment=req.environment,
-        )
-        signed_transaction_info = server_response.get("signedTransactionInfo")
-        if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
-            raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
-        snapshot = _decode_signed_transaction_info(signed_transaction_info)
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: {exc}") from exc
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        resolved_user_id = _resolve_user_id_from_subscription_index(
-            users,
-            snapshot["original_transaction_id"],
-            snapshot["transaction_id"],
-        ) or user["id"]
-        record = _write_subscription_snapshot(
-            users,
-            resolved_user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
-            source="app_store_server_api",
-        )
-        save_users(users)
-
-    return _build_entitlements_response(record)
+    settings = _runtime_settings()
+    return await reconcile_app_store_subscription_response(
+        req,
+        user,
+        apple_bundle_id=settings.apple_bundle_id,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        fetch_transaction_info=fetch_transaction_info,
+        decode_signed_transaction_info=_decode_signed_transaction_info,
+        resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -624,23 +623,13 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        user_id = user["id"]
-
-        if user_id not in users:
-            users[user_id] = {}
-
-        if "config" not in users[user_id]:
-            users[user_id]["config"] = {}
-
-        if req.mochi_api_key is not None:
-            users[user_id]["config"]["mochi_api_key"] = req.mochi_api_key.strip()
-
-        save_users(users)
-
-    return UserConfigResponse(
-        mochi_api_key=users[user_id]["config"].get("mochi_api_key")
+    settings = _runtime_settings()
+    return update_user_config_response(
+        req,
+        user,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
     )
 
 
@@ -649,49 +638,15 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 def delete_user_account(user: dict = Depends(get_current_user)):
     """Permanently delete the current account and all related user data."""
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
-    user_id = user["id"]
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        canonical_id, ids_to_delete = _collect_account_ids_for_deletion(users, user_id)
-
-        revoked_before = users.get("_revoked_before")
-        if not isinstance(revoked_before, dict):
-            revoked_before = {}
-        for uid in ids_to_delete:
-            revoked_before[uid] = now_iso
-        users["_revoked_before"] = revoked_before
-
-        email_index = users.get("_email_index")
-        if isinstance(email_index, dict):
-            stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
-            for email in stale_emails:
-                email_index.pop(email, None)
-            if not email_index:
-                users.pop("_email_index", None)
-
-        for uid in ids_to_delete:
-            users.pop(uid, None)
-
-        save_users(users)
-
-    deleted_dirs: list[str] = []
-    for uid in ids_to_delete:
-        user_dir = DATA_DIR / "users" / uid
-        if not user_dir.exists():
-            continue
-        try:
-            shutil.rmtree(user_dir)
-            deleted_dirs.append(uid)
-        except Exception as e:
-            logger.exception("Failed to delete user directory %s: %s", user_dir, e)
-            raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}")
-
-    return DeleteAccountResponse(
-        deleted_user_id=canonical_id,
-        linked_ids=[uid for uid in ids_to_delete if uid != canonical_id],
-        deleted_dirs=deleted_dirs,
+    settings = _runtime_settings()
+    return delete_user_account_response(
+        user,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
+        data_dir=settings.data_dir,
+        logger=logger,
     )
 
 
@@ -700,22 +655,10 @@ def delete_user_account(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def health(user: dict = Depends(get_current_user)):
     """Server health + stats per user."""
-    cards = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-
-    # Last modified time of cards.json
-    cards_path = user["dir"] / "cards.json"
-    last_mod = None
-    if cards_path.exists():
-        ts = cards_path.stat().st_mtime
-        last_mod = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-
-    return HealthResponse(
-        status="ok",
-        cards=cards.count(),
-        links=graph.link_count(),
-        pendingCandidates=graph.candidate_count(),
-        lastModified=last_mod,
+    return health_response(
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
     )
 
 
@@ -724,13 +667,12 @@ def health(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
-    _require_pro_access(user, "knowledge_sync")
-    cards_store = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-    return list_vocab_cards(
+    return list_vocab_response(
         since=since,
-        cards_store=cards_store,
-        graph=graph,
+        user=user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
 
@@ -740,13 +682,12 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
 # ---------------------------------------------------------------------------
 def lookup_word(word: str, user: dict = Depends(get_current_user)):
     """Lookup a word in the current user's card store."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-    return lookup_vocab_word(
+    return lookup_word_response(
         word,
-        cards_store=cards,
-        graph=graph,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
 
@@ -756,32 +697,36 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def delete_word(word: str, user: dict = Depends(get_current_user)):
     """Delete a word from the current user's card store."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    return delete_vocab_word(word, cards_store=cards)
+    return delete_word_response(
+        word,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+    )
 
 # ---------------------------------------------------------------------------
 # GET /api/graph/links
 # ---------------------------------------------------------------------------
 def get_graph_links(user: dict = Depends(get_current_user)):
     """Get all active graph connections for the user."""
-    _require_pro_access(user, "knowledge_graph")
-    graph = _graph_store(user["dir"])
-    return graph_links_payload(graph=graph)
+    return get_graph_links_response(
+        user,
+        require_pro_access=_require_pro_access,
+        graph_store_factory=_graph_store,
+    )
 
 # ---------------------------------------------------------------------------
 # POST /api/vocab  — Batch add from BooksBrowser
 # ---------------------------------------------------------------------------
 def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
     """Add vocabulary entries from BooksBrowser → KG Cards."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    return add_vocab_entries(
+    return add_vocab_response(
         entries,
-        user=user,
-        cards=cards,
-        embeddings=_embedding_store(user["dir"], user_id=user["id"]),
-        graph=_graph_store(user["dir"]),
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        embedding_store_factory=_embedding_store,
+        graph_store_factory=_graph_store,
         logger=logger,
     )
 
@@ -807,42 +752,43 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 
     Returns immediately with accepted status.
     """
-    _require_pro_access(user, "knowledge_sync")
-    background_tasks.add_task(_run_pipeline_background, user)
-    return {"status": "queued", "message": "Pipeline started in the background"}
+    return queue_pipeline_response(
+        background_tasks,
+        user,
+        require_pro_access=_require_pro_access,
+        run_pipeline_background_fn=_run_pipeline_background,
+    )
 
 # ---------------------------------------------------------------------------
 # POST /api/translate/quick & /api/translate/explain
 # ---------------------------------------------------------------------------
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Perform a quick UI translation via Gemini API (proxy)."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_quick_translate(req, user, client=client, logger=logger)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("translate/quick failed: %s", e, exc_info=True)
-        raise HTTPException(500, f"Quick translation failed: {e}")
+    return translate_quick_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+        logger=logger,
+    )
 
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Translate a multi-word phrase or expression. Returns translation only."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_phrase_translate(req, user, client=client)
-    except Exception as e:
-        raise HTTPException(500, f"Phrase translation failed: {e}")
+    return translate_phrase_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+    )
 
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_explain_translate(req, user, client=client)
-    except Exception as e:
-        raise HTTPException(500, f"Explanation failed: {e}")
+    return translate_explain_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -850,12 +796,13 @@ def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_us
 # ---------------------------------------------------------------------------
 
 def _create_jwt_token(user_id: str, provider: str) -> str:
+    settings = _runtime_settings()
     return create_jwt_token(
         user_id,
         provider,
-        jwt_secret=JWT_SECRET,
-        jwt_algorithm=JWT_ALGORITHM,
-        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
+        jwt_expiry_minutes=settings.jwt_expiry_minutes,
     )
 
 
@@ -863,7 +810,7 @@ def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | No
     return resolve_and_link_user(
         provider_user_id,
         provider,
-        users_lock_file=str(USERS_LOCK_FILE),
+        users_lock_file=str(_runtime_users_lock_file()),
         load_users_fn=load_users,
         save_users_fn=save_users,
         email=email,
@@ -888,25 +835,16 @@ async def auth_verify(req: AuthVerifyRequest):
             "expires_in": 900
         }
     """
-    if req.provider == "google":
-        if not GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
-        provider_user_id = await verify_google_token(req.token, GOOGLE_CLIENT_ID)
-    elif req.provider == "apple":
-        provider_user_id = verify_apple_token(req.token, APPLE_BUNDLE_ID)
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {req.provider}")
-
-    # Resolve and link user by email
-    canonical_user_id = _resolve_and_link_user(provider_user_id, req.provider, req.email)
-
-    # Create JWT token with canonical user_id
-    access_token = _create_jwt_token(canonical_user_id, req.provider)
-
-    return AuthVerifyResponse(
-        access_token=access_token,
-        user_id=canonical_user_id,
-        expires_in=JWT_EXPIRY_MINUTES * 60,
+    settings = _runtime_settings()
+    return await auth_verify_response(
+        req,
+        google_client_id=settings.google_client_id,
+        apple_bundle_id=settings.apple_bundle_id,
+        jwt_expiry_minutes=settings.jwt_expiry_minutes,
+        verify_google_token=verify_google_token,
+        verify_apple_token=verify_apple_token,
+        resolve_and_link_user=_resolve_and_link_user,
+        create_jwt_token=_create_jwt_token,
     )
 
 
@@ -914,14 +852,8 @@ async def auth_verify(req: AuthVerifyRequest):
 # Admin endpoints
 # ---------------------------------------------------------------------------
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
-
-
 def _check_admin(token: str | None):
-    if not ADMIN_TOKEN:
-        raise HTTPException(403, "ADMIN_TOKEN not configured")
-    if token != ADMIN_TOKEN:
-        raise HTTPException(403, "Forbidden")
+    require_admin(token, admin_token=_runtime_settings().admin_token)
 
 
 def _build_test_catalog() -> dict[str, Any]:
@@ -934,129 +866,71 @@ def _run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any
 
 def admin_ui(token: str | None = None):
     """Admin dashboard UI."""
-    _check_admin(token)
-    return HTMLResponse(ADMIN_HTML)
+    return admin_ui_response(token, admin_token=_runtime_settings().admin_token, admin_html=ADMIN_HTML)
 
 
 def admin_stats(token: str | None = None):
     """Return per-user token + vocab stats for admin dashboard."""
-    _check_admin(token)
-
     from .token_tracker import get_all_stats
-
-    users_data = load_users()
-    token_stats = get_all_stats()
-
-    IN_PER_M = 0.10
-    OUT_PER_M = 0.40
-    EMB_PER_M = 0.00025
-
-    result = []
-    for uid, info in users_data.items():
-        if uid.startswith("_"):
-            continue
-
-        # Vocab count from cards.db
-        user_dir = DATA_DIR / "users" / uid
-        vocab_count = 0
-        try:
-            store = _card_store(user_dir)
-            vocab_count = sum(1 for c in store.all() if not c.is_deleted)
-        except Exception:
-            pass
-
-        utoken = token_stats.get(uid, {})
-        total_input = sum(d["input_tokens"] for d in utoken.values())
-        total_output = sum(d["output_tokens"] for d in utoken.values())
-
-        est_cost = 0.0
-        for call_type, d in utoken.items():
-            if call_type == "embed":
-                est_cost += (d["input_tokens"] / 1_000_000) * EMB_PER_M
-            else:
-                est_cost += (d["input_tokens"] / 1_000_000) * IN_PER_M
-                est_cost += (d["output_tokens"] / 1_000_000) * OUT_PER_M
-
-        config = info.get("config", {}) if isinstance(info, dict) else {}
-        result.append({
-            "user_id": uid,
-            "email": info.get("email") if isinstance(info, dict) else None,
-            "provider": info.get("provider") if isinstance(info, dict) else None,
-            "last_login": info.get("last_login") if isinstance(info, dict) else None,
-            "vocab_count": vocab_count,
-            "has_mochi": bool(config.get("mochi_api_key")),
-            "tokens": utoken,
-            "total_input": total_input,
-            "total_output": total_output,
-            "est_cost_usd": round(est_cost, 6),
-        })
-
-    result.sort(key=lambda x: x["vocab_count"], reverse=True)
-    return {"users": result}
+    settings = _runtime_settings()
+    return admin_stats_response(
+        token,
+        admin_token=settings.admin_token,
+        load_users=load_users,
+        get_all_stats=get_all_stats,
+        data_dir=settings.data_dir,
+        card_store_factory=_card_store,
+    )
 
 
 def admin_logs(token: str | None = None, n: int = 200, level: str | None = None):
     """Return recent in-memory log entries for the admin dashboard."""
-    _check_admin(token)
-    return {"logs": _mem_log.get(n=n, level=level or None)}
+    return admin_logs_response(
+        token,
+        admin_token=_runtime_settings().admin_token,
+        log_getter=_mem_log.get,
+        n=n,
+        level=level,
+    )
 
 
 def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None):
     """Run test suite and return matrix view data."""
-    _check_admin(token)
-    selected = req.itemIds if req else []
-    return store_last_test_run(_run_pytest_matrix(selected_items=selected))
+    return admin_run_tests_response(
+        token,
+        admin_token=_runtime_settings().admin_token,
+        req=req,
+        run_pytest_matrix=_run_pytest_matrix,
+        store_last_test_run=store_last_test_run,
+    )
 
 
 def admin_last_test_run(token: str | None = None):
     """Get latest test run result for matrix page."""
-    _check_admin(token)
-    last_run = get_last_test_run()
-    if last_run is None:
-        return {"status": "idle"}
-    return last_run
+    return admin_last_test_run_response(
+        token,
+        admin_token=_runtime_settings().admin_token,
+        get_last_test_run=get_last_test_run,
+    )
 
 
 def admin_test_catalog(token: str | None = None):
     """Return clickable test-matrix catalog."""
-    _check_admin(token)
-    return _build_test_catalog()
+    return admin_test_catalog_response(
+        token,
+        admin_token=_runtime_settings().admin_token,
+        build_test_catalog=_build_test_catalog,
+    )
 
 
 
 def admin_tests_ui(token: str | None = None):
     """Minimal grayscale test matrix dashboard."""
-    _check_admin(token)
-    return HTMLResponse(ADMIN_TESTS_HTML)
+    return admin_tests_ui_response(
+        token,
+        admin_token=_runtime_settings().admin_token,
+        admin_tests_html=ADMIN_TESTS_HTML,
+    )
 
 
-register_routes(
-    app,
-    get_privacy_policy=get_privacy_policy,
-    get_support=get_support,
-    get_user_config=get_user_config,
-    get_user_entitlements=get_user_entitlements,
-    sync_app_store_subscription=sync_app_store_subscription,
-    app_store_notifications=app_store_notifications,
-    reconcile_app_store_subscription=reconcile_app_store_subscription,
-    update_user_config=update_user_config,
-    delete_user_account=delete_user_account,
-    health=health,
-    list_vocab=list_vocab,
-    lookup_word=lookup_word,
-    delete_word=delete_word,
-    get_graph_links=get_graph_links,
-    add_vocab=add_vocab,
-    run_pipeline=run_pipeline,
-    translate_quick=translate_quick,
-    translate_phrase=translate_phrase,
-    translate_explain=translate_explain,
-    auth_verify=auth_verify,
-    admin_ui=admin_ui,
-    admin_stats=admin_stats,
-    admin_logs=admin_logs,
-    admin_run_tests=admin_run_tests,
-    admin_last_test_run=admin_last_test_run,
-    admin_test_catalog=admin_test_catalog,
-    admin_tests_ui=admin_tests_ui,
-)
+app = create_app()
