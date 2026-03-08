@@ -4,11 +4,14 @@ import CryptoKit
 
 enum SubscriptionPurchaseError: LocalizedError {
     case unverifiedTransaction
+    case productNotFound(productID: String)
 
     var errorDescription: String? {
         switch self {
         case .unverifiedTransaction:
             return "無法驗證 App Store 交易。"
+        case .productNotFound(let productID):
+            return "App Store 找不到商品 \(productID)。請確認 App Store Connect 的訂閱 Product ID、Bundle ID 與目前測試環境是否一致。"
         }
     }
 }
@@ -28,6 +31,7 @@ protocol SubscriptionManaging: AnyObject {
     var lastError: String? { get }
     var activePaywallSource: PaywallSource? { get set }
     var proProduct: Product? { get }
+    var proProductIdentifier: String { get }
     var purchaseStatusMessage: String? { get }
     var hasProAccess: Bool { get }
 
@@ -62,6 +66,7 @@ final class SubscriptionManager: SubscriptionManaging {
     var lastError: String?
     var activePaywallSource: PaywallSource?
     var proProduct: Product?
+    var proProductIdentifier: String { Self.proProductID }
     var purchaseStatusMessage: String?
     var hasProAccess: Bool { entitlements.pro.is_active }
 
@@ -86,9 +91,13 @@ final class SubscriptionManager: SubscriptionManaging {
     }
 
     func loadProducts() async {
+        lastError = nil
         do {
             let products = try await Product.products(for: [Self.proProductID])
             proProduct = products.first
+            guard proProduct != nil else {
+                throw SubscriptionPurchaseError.productNotFound(productID: Self.proProductID)
+            }
             if let product = proProduct, entitlements.pro.price_display == nil {
                 entitlements = KGEntitlements(
                     pro: merge(
@@ -98,6 +107,7 @@ final class SubscriptionManager: SubscriptionManaging {
                 )
             }
         } catch {
+            proProduct = nil
             lastError = error.localizedDescription
         }
     }
