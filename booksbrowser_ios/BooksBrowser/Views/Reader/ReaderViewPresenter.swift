@@ -1,13 +1,35 @@
 import SwiftUI
 
+enum HeaderState: Equatable {
+    case compact
+    case expanded
+}
+
+enum ReaderChromeOverlay: Equatable {
+    case none
+    case translation
+    case settings
+}
+
+struct ReaderChromeState: Equatable {
+    var header: HeaderState = .compact
+    var overlay: ReaderChromeOverlay = .none
+
+    var blocksReaderInteraction: Bool {
+        overlay != .none
+    }
+
+    var showsHeader: Bool {
+        overlay == .none
+    }
+}
+
 struct ReaderViewPresenterState {
     let paperColor: Color
     let isWebViewReady: Bool
     let loadingPhase: String
     let underlineProgress: Double?
-    let showsTranslationPanel: Bool
-    let showsReaderSettings: Bool
-    let headerState: HeaderState
+    let chrome: ReaderChromeState
     let totalProgression: Double
     let bookTitle: String
 }
@@ -112,7 +134,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         VStack {
             Spacer()
 
-            if state.showsTranslationPanel {
+            if state.chrome.overlay == .translation {
                 translationPanel
                     .padding(.horizontal)
                     .padding(.bottom, 8)
@@ -122,8 +144,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
 
     private var topOverlay: some View {
         VStack {
-            if !state.showsTranslationPanel && !state.showsReaderSettings {
-                switch state.headerState {
+            if state.chrome.showsHeader {
+                switch state.chrome.header {
                 case .expanded:
                     expandedHeader
                 case .compact:
@@ -223,4 +245,123 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         .padding(.trailing, 20)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
+}
+
+private struct ReaderChromePreviewScene: View {
+    let state: ReaderViewPresenterState
+
+    var body: some View {
+        ReaderViewPresenter(
+            state: state,
+            onDismiss: {},
+            onShowTableOfContents: {},
+            onShowReaderSettings: {},
+            onExpandHeader: {},
+            onCollapseHeader: {}
+        ) {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        state.paperColor.opacity(0.96),
+                        state.paperColor.opacity(0.88),
+                        Color.brown.opacity(0.08)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: 18) {
+                    ForEach(0..<8, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                            .fill(Color.primary.opacity(index == 2 ? 0.22 : 0.12))
+                            .frame(height: index.isMultiple(of: 3) ? 12 : 10)
+                            .padding(.trailing, CGFloat((index % 3) * 28))
+                    }
+                    Spacer()
+                }
+                .padding(.top, 120)
+                .padding(.horizontal, 28)
+                .padding(.bottom, 60)
+            }
+            .ignoresSafeArea()
+        } translationPanel: {
+            TranslationPanel(
+                word: "resilient",
+                result: TranslationResult(
+                    translation: "有韌性的；能快速恢復的",
+                    partOfSpeech: "adj.",
+                    pronunciation: nil,
+                    explanation: nil
+                ),
+                pronunciation: "/rɪˈzɪljənt/",
+                isLoading: false,
+                isSaved: true,
+                isLoggedIn: true,
+                isExpanded: true,
+                explanation: "在這段語境中指角色面對壓力後仍能迅速回到穩定狀態。",
+                isLoadingExplanation: false,
+                statusMessage: nil,
+                isExplanationOnly: false,
+                onExpand: {},
+                onDelete: {},
+                onDismiss: {}
+            )
+        }
+    }
+}
+
+#Preview("Reader Chrome / Loading") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: Color(red: 0.96, green: 0.93, blue: 0.87),
+            isWebViewReady: false,
+            loadingPhase: "渲染頁面…",
+            underlineProgress: 0.42,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.18,
+            bookTitle: "The Left Hand of Darkness"
+        )
+    )
+}
+
+#Preview("Reader Chrome / Compact") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: Color(red: 0.97, green: 0.95, blue: 0.9),
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness"
+        )
+    )
+}
+
+#Preview("Reader Chrome / Expanded") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: Color(red: 0.97, green: 0.95, blue: 0.9),
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .expanded, overlay: .none),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness"
+        )
+    )
+}
+
+#Preview("Reader Chrome / Translation") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: Color(red: 0.95, green: 0.92, blue: 0.86),
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .compact, overlay: .translation),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness"
+        )
+    )
 }
