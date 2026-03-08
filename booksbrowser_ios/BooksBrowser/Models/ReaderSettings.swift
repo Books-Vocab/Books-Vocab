@@ -53,12 +53,35 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
 }
 }
 
+/// 翻譯面板顯示模式
+enum TranslationPanelMode: String, CaseIterable, Identifiable {
+    case glass = "Glass"  // 預設：iOS 26 glassEffect 風格
+    case vocab = "Vocab"  // Vocabulary 組件風格（VocabSkin）
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .glass: return "Glass"
+        case .vocab: return "Vocab"
+        }
+    }
+
+    var icon: String {
+        switch self {
+        case .glass: return "rectangle.and.sparkles"
+        case .vocab: return "character.book.closed"
+        }
+    }
+}
+
 struct ReaderViewConfiguration: Equatable {
     let paperColor: SwiftUI.Color
     let epubPreferences: EPUBPreferences
     let underlineOpacity: Double
     let showHitTestingDebug: Bool
     let swiftUIColorScheme: ColorScheme
+    let translationPanelMode: TranslationPanelMode
 }
 
 /// 閱讀器偏好設定模型 — 全域單例，直接讀寫 UserDefaults
@@ -73,6 +96,7 @@ final class ReaderSettings {
     private let kTheme = "reader_settings_theme"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
+    private let kTranslationPanelMode = "reader_settings_translationPanelMode"
     
     var font: ReaderFont = .serif {
         didSet { defaults.set(font.rawValue, forKey: kFont) }
@@ -98,6 +122,10 @@ final class ReaderSettings {
     var showHitTestingDebug: Bool = false {
         didSet { defaults.set(showHitTestingDebug, forKey: kShowHitTestingDebug) }
     }
+
+    var translationPanelMode: TranslationPanelMode = .glass {
+        didSet { defaults.set(translationPanelMode.rawValue, forKey: kTranslationPanelMode) }
+    }
     
     private init() {
         // Load persisted values from UserDefaults
@@ -121,8 +149,13 @@ final class ReaderSettings {
             self.underlineOpacity = savedOpacity
         }
         
-        
+
         self.showHitTestingDebug = defaults.bool(forKey: kShowHitTestingDebug)
+
+        if let raw = defaults.string(forKey: kTranslationPanelMode),
+           let value = TranslationPanelMode(rawValue: raw) {
+            self.translationPanelMode = value
+        }
     }
     
     // MARK: - Readium 轉換
@@ -165,7 +198,8 @@ final class ReaderSettings {
             epubPreferences: epubPreferences,
             underlineOpacity: underlineOpacity,
             showHitTestingDebug: showHitTestingDebug,
-            swiftUIColorScheme: swiftUIColorScheme
+            swiftUIColorScheme: swiftUIColorScheme,
+            translationPanelMode: translationPanelMode
         )
     }
 }

@@ -41,17 +41,19 @@ struct TodayReviewPresenter: View {
                 if let currentCard = state.currentCard {
                     topBar
 
-                    ScrollView {
-                        reviewCard(currentCard)
-                            .padding(.horizontal, AppMetrics.spacingLarge)
-                            .padding(.top, AppMetrics.spacingMedium)
-                            .padding(.bottom, AppMetrics.spacingXXL)
-                            .frame(maxWidth: .infinity)
-                            .contentShape(Rectangle())
-                            .onTapGesture {
-                                guard !state.revealStage.showsDetails else { return }
-                                onAdvanceReveal()
-                            }
+                    GeometryReader { geo in
+                        ScrollView {
+                            reviewCard(currentCard)
+                                .padding(.horizontal, AppMetrics.spacingLarge)
+                                .padding(.top, AppMetrics.spacingMedium)
+                                .padding(.bottom, AppMetrics.spacingXXL)
+                                .frame(maxWidth: .infinity, minHeight: geo.size.height)
+                                .contentShape(Rectangle())
+                                .onTapGesture {
+                                    guard !state.revealStage.showsDetails else { return }
+                                    onAdvanceReveal()
+                                }
+                        }
                     }
 
                     bottomToolbar
