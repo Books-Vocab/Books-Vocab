@@ -125,6 +125,19 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     // MARK: - Coordinator
 
     class Coordinator: NSObject, EPUBNavigatorDelegate {
+        enum BridgeCommand {
+            case setInteractionBlocked(Bool)
+            case clearActiveHighlight
+            case clearAllVocabHighlights
+            case markVocabWords([String])
+            case markNewVocabWord(String)
+            case removeVocabWord(String)
+            case navigate(Locator)
+            case applyPreferences(EPUBPreferences)
+            case setUnderlineOpacity(Double)
+            case setDebugMode(Bool)
+        }
+
         var parent: ReadiumNavigatorView
         weak var navigator: EPUBNavigatorViewController?
         var lastClearHighlightTrigger: UUID?
@@ -150,158 +163,194 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             with snapshot: ReadiumNavigatorView.BridgeSnapshot,
             in host: NavigatorHostViewController
         ) {
-            syncInteractionBlocker(in: host, isBlocked: snapshot.isInteractionBlocked)
-            syncClearHighlight(trigger: snapshot.clearHighlightTrigger)
-            syncVocabularyHighlights(
-                lookedUpWords: snapshot.lookedUpWords,
-                bookUniqueWords: snapshot.bookUniqueWords
+            let commands = makeCommands(
+                from: snapshot,
+                in: host
             )
-            syncRemovedWord(trigger: snapshot.removeWordTrigger)
-            syncNavigation(trigger: snapshot.navigateToLocator)
-            syncPreferences(snapshot.viewConfiguration.epubPreferences, in: host)
-            syncUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity)
-            syncDebugMode(snapshot.viewConfiguration.showHitTestingDebug)
+            apply(commands, in: host)
         }
 
-        private func syncInteractionBlocker(in host: NavigatorHostViewController, isBlocked: Bool) {
-            if let blocker = host.view.viewWithTag(9001) {
-                blocker.isUserInteractionEnabled = isBlocked
+        private func makeCommands(
+            from snapshot: ReadiumNavigatorView.BridgeSnapshot,
+            in host: NavigatorHostViewController
+        ) -> [BridgeCommand] {
+            var commands: [BridgeCommand] = []
+
+            commands.append(.setInteractionBlocked(snapshot.isInteractionBlocked))
+            commands.append(contentsOf: commandsForClearHighlight(trigger: snapshot.clearHighlightTrigger))
+            commands.append(contentsOf: commandsForVocabularyHighlights(
+                lookedUpWords: snapshot.lookedUpWords,
+                bookUniqueWords: snapshot.bookUniqueWords
+            ))
+            commands.append(contentsOf: commandsForRemovedWord(trigger: snapshot.removeWordTrigger))
+            commands.append(contentsOf: commandsForNavigation(trigger: snapshot.navigateToLocator))
+            commands.append(contentsOf: commandsForPreferences(snapshot.viewConfiguration.epubPreferences))
+            commands.append(contentsOf: commandsForUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity))
+            commands.append(contentsOf: commandsForDebugMode(snapshot.viewConfiguration.showHitTestingDebug))
+            return commands
+        }
+
+        private func apply(_ commands: [BridgeCommand], in host: NavigatorHostViewController) {
+            for command in commands {
+                switch command {
+                case .setInteractionBlocked(let isBlocked):
+                    if let blocker = host.view.viewWithTag(9001) {
+                        blocker.isUserInteractionEnabled = isBlocked
+                    }
+                case .clearActiveHighlight:
+                    clearActiveHighlight()
+                case .clearAllVocabHighlights:
+                    clearAllVocabHighlights()
+                case .markVocabWords(let words):
+                    markVocabWords(words)
+                case .markNewVocabWord(let word):
+                    markNewVocabWord(word)
+                case .removeVocabWord(let word):
+                    removeVocabWord(word)
+                case .navigate(let locator):
+                    Task { @MainActor in
+                        print("🧭 Attempting navigation to: \(locator.href)")
+                        let success = await navigator?.go(to: locator)
+                        print("🧭 Navigation result: \(String(describing: success))")
+                    }
+                case .applyPreferences(let preferences):
+                    isApplyingPreferences = true
+                    Task { @MainActor in
+                        host.epubNavigator?.submitPreferences(preferences)
+                        try? await Task.sleep(for: .milliseconds(800))
+                        self.isApplyingPreferences = false
+                    }
+                case .setUnderlineOpacity(let opacity):
+                    let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');"
+                    Task { @MainActor in
+                        _ = await navigator?.evaluateJavaScript(js)
+                    }
+                case .setDebugMode(let isEnabled):
+                    let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));"
+                    Task { @MainActor in
+                        _ = await navigator?.evaluateJavaScript(js)
+                    }
+                }
             }
         }
 
-        private func syncClearHighlight(trigger: UUID) {
-            guard lastClearHighlightTrigger != trigger else { return }
+        private func commandsForClearHighlight(trigger: UUID) -> [BridgeCommand] {
+            guard lastClearHighlightTrigger != trigger else { return [] }
             lastClearHighlightTrigger = trigger
-            clearActiveHighlight()
+            return [.clearActiveHighlight]
         }
 
-        private func syncVocabularyHighlights(
+        private func commandsForVocabularyHighlights(
             lookedUpWords: [String],
             bookUniqueWords: Set<String>?
-        ) {
+        ) -> [BridgeCommand] {
             let previousCount = lastVocabCount
             let currentCount = lookedUpWords.count
             let currentSet = Set(lookedUpWords)
             let didLoadBookWords = (bookUniqueWords != nil && lastBookUniqueWordsCount == nil)
+            var commands: [BridgeCommand] = []
 
             if currentCount < previousCount {
                 let removedWords = lastVocabWordsSet.subtracting(currentSet)
-                handleRemovedVocabulary(
+                commands.append(contentsOf: commandsForRemovedVocabulary(
                     newCount: currentCount,
                     removedWords: removedWords,
                     remainingWords: currentSet,
                     bookUniqueWords: bookUniqueWords
-                )
+                ))
             } else if currentCount > previousCount || didLoadBookWords {
-                handleAddedVocabulary(
+                commands.append(contentsOf: commandsForAddedVocabulary(
                     lookedUpWords: lookedUpWords,
                     didLoadBookWords: didLoadBookWords,
                     bookUniqueWords: bookUniqueWords
-                )
+                ))
             }
 
             lastVocabCount = currentCount
             lastVocabWordsSet = currentSet
+            return commands
         }
 
-        private func handleRemovedVocabulary(
+        private func commandsForRemovedVocabulary(
             newCount: Int,
             removedWords: Set<String>,
             remainingWords: Set<String>,
             bookUniqueWords: Set<String>?
-        ) {
+        ) -> [BridgeCommand] {
             if newCount == 0 || removedWords.count > 10 {
-                clearAllVocabHighlights()
+                var commands: [BridgeCommand] = [.clearAllVocabHighlights]
                 if newCount > 0 {
                     let validWords = filterValidWords(remainingWords, bookWords: bookUniqueWords)
                     if !validWords.isEmpty {
-                        markVocabWords(validWords)
+                        commands.append(.markVocabWords(validWords))
                     }
                 }
-                return
+                return commands
             }
 
-            for word in removedWords {
-                removeVocabWord(word)
-            }
+            return removedWords.map { .removeVocabWord($0) }
         }
 
-        private func handleAddedVocabulary(
+        private func commandsForAddedVocabulary(
             lookedUpWords: [String],
             didLoadBookWords: Bool,
             bookUniqueWords: Set<String>?
-        ) {
+        ) -> [BridgeCommand] {
             if didLoadBookWords {
                 lastBookUniqueWordsCount = bookUniqueWords?.count ?? 0
                 let validWords = filterValidWords(lookedUpWords, bookWords: bookUniqueWords)
                 print("📊 生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
-                markVocabWords(validWords)
-                return
+                return validWords.isEmpty ? [] : [.markVocabWords(validWords)]
             }
 
             let addedWords = lookedUpWords.filter { !lastVocabWordsSet.contains($0) }
             if addedWords.count == 1 {
-                markNewVocabWord(addedWords[0])
+                return [.markNewVocabWord(addedWords[0])]
             } else if !addedWords.isEmpty {
                 let validNew = filterValidWords(addedWords, bookWords: bookUniqueWords)
                 if !validNew.isEmpty {
-                    markVocabWords(validNew)
+                    return [.markVocabWords(validNew)]
                 }
             }
+            return []
         }
 
-        private func syncRemovedWord(trigger: (word: String, id: UUID)?) {
-            guard let trigger, lastRemoveWordId != trigger.id else { return }
+        private func commandsForRemovedWord(trigger: (word: String, id: UUID)?) -> [BridgeCommand] {
+            guard let trigger, lastRemoveWordId != trigger.id else { return [] }
             lastRemoveWordId = trigger.id
-            removeVocabWord(trigger.word)
+            return [.removeVocabWord(trigger.word)]
         }
 
-        private func syncNavigation(trigger: (locator: Locator, id: UUID)?) {
-            guard let trigger, lastNavigateId != trigger.id else { return }
+        private func commandsForNavigation(trigger: (locator: Locator, id: UUID)?) -> [BridgeCommand] {
+            guard let trigger, lastNavigateId != trigger.id else { return [] }
             lastNavigateId = trigger.id
-            Task { @MainActor in
-                print("🧭 Attempting navigation to: \(trigger.locator.href)")
-                let success = await navigator?.go(to: trigger.locator)
-                print("🧭 Navigation result: \(String(describing: success))")
-            }
+            return [.navigate(trigger.locator)]
         }
 
-        private func syncPreferences(
-            _ preferences: EPUBPreferences,
-            in host: NavigatorHostViewController
-        ) {
-            guard lastPreferences != preferences else { return }
+        private func commandsForPreferences(_ preferences: EPUBPreferences) -> [BridgeCommand] {
+            guard lastPreferences != preferences else { return [] }
             lastPreferences = preferences
-            isApplyingPreferences = true
-            Task { @MainActor in
-                host.epubNavigator?.submitPreferences(preferences)
-                try? await Task.sleep(for: .milliseconds(800))
-                self.isApplyingPreferences = false
-            }
+            return [.applyPreferences(preferences)]
         }
 
-        private func syncUnderlineOpacity(_ opacity: Double) {
+        private func commandsForUnderlineOpacity(_ opacity: Double) -> [BridgeCommand] {
             if let lastUnderlineOpacity, opacity != lastUnderlineOpacity {
                 self.lastUnderlineOpacity = opacity
-                let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');"
-                Task { @MainActor in
-                    _ = await navigator?.evaluateJavaScript(js)
-                }
+                return [.setUnderlineOpacity(opacity)]
             } else if lastUnderlineOpacity == nil {
                 lastUnderlineOpacity = opacity
             }
+            return []
         }
 
-        private func syncDebugMode(_ isEnabled: Bool) {
+        private func commandsForDebugMode(_ isEnabled: Bool) -> [BridgeCommand] {
             if let lastHitTestingDebug, isEnabled != lastHitTestingDebug {
                 self.lastHitTestingDebug = isEnabled
-                let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));"
-                Task { @MainActor in
-                    _ = await navigator?.evaluateJavaScript(js)
-                }
+                return [.setDebugMode(isEnabled)]
             } else if lastHitTestingDebug == nil {
                 lastHitTestingDebug = isEnabled
             }
+            return []
         }
 
         // MARK: NavigatorDelegate
