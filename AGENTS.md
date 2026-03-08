@@ -82,9 +82,9 @@ Use this section as the "what already exists" checklist before proposing or chan
 - deploy: `./ops/devops_kg_safe.sh deploy`
 
 ## Git Repos
-- **Backend**: `knowledge_graph_api/.git` — commit backend code changes here
-- **iOS**: `booksbrowser_ios/.git` — commit iOS changes here
-- **Workspace-level files** (`devops.sh`, `ops/`, `docs/`): NOT inside any git repo, not version-controlled
+- **Monorepo root**: workspace root (`.git`) — covers iOS app, backend API, ops/docs
+- Use commit prefix to clarify scope: `ios:` / `api:` / `ops:` / `docs:`
+- See `docs/super_repo_submodules.md` for detailed commit strategy and typical flows
 
 ## Cross-Project Note
 If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `AGENTS.md`.

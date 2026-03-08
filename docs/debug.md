@@ -12,9 +12,9 @@
 ## 30 秒快速診斷
 
 ```bash
-cd /Users/chenliangyu/Desktop/Development/BooksBrowserWorkspace
-./devops.sh status   # HTTP code 判斷根因
-./devops.sh logs 50
+cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace
+./ops/devops_kg_safe.sh status   # HTTP code 判斷根因
+./ops/devops_kg_safe.sh logs 50
 ```
 
 ```
@@ -218,7 +218,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 # 3. 推回好的備份
 scp -i ~/.ssh/lightsail_default.pem -r \
-  /Users/chenliangyu/Desktop/Development/BooksBrowserWorkspace/backups/data_<日期> \
+  /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/backups/data_<日期> \
   ubuntu@54.95.189.179:~/knowledge_graph_api/data
 
 # 4. 重啟

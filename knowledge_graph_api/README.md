@@ -15,7 +15,7 @@ Mochi 整合目前採用使用者層設定：
 - iOS app 透過 `/api/user/config` 讀寫
 - 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
 
-> 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見上層目錄：[👉 `../System_Architecture.md`](../System_Architecture.md)
+> 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../booksbrowser_ios/Architecture.md`](../booksbrowser_ios/Architecture.md)
 
 ## 快速啟動
 
@@ -245,18 +245,6 @@ POST /api/pipeline                         # 觸發背景 Pipeline
   "reason": "兩個單字都與金錢相關..."
 }
 ```
-
-## 命令列指令參考
-
-*   `kg auto <file>`: **一鍵自動化** — Import → Enrich → Link → Difficulty → Sync。
-*   `kg sync full`: 完整同步 (含 Graph Links)。
-*   `kg sync standard`: 快速同步 (不含 Links)。
-*   `kg sync full --pull`: 從 Mochi 拉取變更到本地。
-*   `kg difficulty`: 動態難度評分（預設）。
-*   `kg enrich`: 使用 LLM 批量生成詞性與教學筆記。
-*   `kg import-readlang <file>`: 匯入 Readlang TSV。
-
-*(若是使用 CLI 工具開發/除錯特定用戶的卡片，可加上 `--user <ID>` 選項，例如 `kg --user chen sync full`)*
 
 ## Development
 
