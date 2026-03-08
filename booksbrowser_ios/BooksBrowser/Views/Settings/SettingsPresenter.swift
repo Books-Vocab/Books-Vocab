@@ -757,6 +757,29 @@ struct SubscriptionPaywallSheet: View {
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
 
+                    if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
+                        VStack(alignment: .leading, spacing: 8) {
+                            Text("App Store 載入失敗")
+                                .font(vocabSkin.typography.captionStrong)
+                                .foregroundStyle(vocabSkin.palette.destructive)
+                            Text(lastError)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                            Text("目前商品 ID：\(subscriptionManager.proProductIdentifier)")
+                                .font(vocabSkin.typography.monoLabel)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                .textSelection(.enabled)
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(12)
+                        .background(vocabSkin.palette.cardBackground)
+                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                .stroke(vocabSkin.palette.destructive.opacity(0.25), lineWidth: 1)
+                        )
+                    }
+
                     Text("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -791,6 +814,9 @@ struct SubscriptionPaywallSheet: View {
         }
         if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
             return remotePrice
+        }
+        if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
+            return "無法載入 App Store 價格"
         }
         return "載入 App Store 價格中…"
     }
