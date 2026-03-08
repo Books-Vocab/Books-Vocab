@@ -9,6 +9,20 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
+private enum BookshelfMetrics {
+    static let emptyStateSpacing: CGFloat = 20
+    static let cardSpacing: CGFloat = 10
+    static let cardMetadataSpacing: CGFloat = 3
+    static let coverHeight: CGFloat = 210
+    static let coverCornerRadius: CGFloat = 6
+    static let coverStrokeWidth: CGFloat = 0.5
+    static let coverShadowOpacity: Double = 0.06
+    static let coverShadowRadius: CGFloat = 4
+    static let coverShadowY: CGFloat = 2
+    static let progressBarHeight: CGFloat = 3
+    static let progressBarAccentOpacity: Double = 0.55
+}
+
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
@@ -79,7 +93,7 @@ struct BookshelfView: View {
     // MARK: - 空狀態
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: BookshelfMetrics.emptyStateSpacing) {
             Spacer()
 
             AppEmptyStateContent(
@@ -159,34 +173,49 @@ struct BookCard: View {
     let book: Book
 
     var body: some View {
-        VStack(spacing: 10) {
+        VStack(spacing: BookshelfMetrics.cardSpacing) {
             // 封面
             if let coverData = book.coverImageData,
                let uiImage = UIImage(data: coverData) {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(2/3, contentMode: .fill)
-                    .frame(height: 210)
-                    .clipShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
-                    .shadow(color: .black.opacity(0.06), radius: 4, y: 2)
+                    .frame(height: BookshelfMetrics.coverHeight)
+                    .clipShape(
+                        RoundedRectangle(
+                            cornerRadius: BookshelfMetrics.coverCornerRadius,
+                            style: .continuous
+                        )
+                    )
+                    .shadow(
+                        color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
+                        radius: BookshelfMetrics.coverShadowRadius,
+                        y: BookshelfMetrics.coverShadowY
+                    )
                     .overlay(alignment: .bottom) {
                         if let progress = book.progression, progress > 0 {
                             GeometryReader { geo in
                                 Rectangle()
                                     .fill(appTheme.palette.pageBackground.opacity(0.82))
-                                    .frame(width: geo.size.width * progress, height: 3)
+                                    .frame(
+                                        width: geo.size.width * progress,
+                                        height: BookshelfMetrics.progressBarHeight
+                                    )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .frame(height: 3)
+                            .frame(height: BookshelfMetrics.progressBarHeight)
                         }
                     }
             } else {
                 // 無封面佔位 — 極簡風格
-                RoundedRectangle(cornerRadius: 6, style: .continuous)
+                RoundedRectangle(
+                    cornerRadius: BookshelfMetrics.coverCornerRadius,
+                    style: .continuous
+                )
                     .fill(appTheme.palette.mutedFill)
-                    .frame(height: 210)
+                    .frame(height: BookshelfMetrics.coverHeight)
                     .overlay {
-                        VStack(spacing: 10) {
+                        VStack(spacing: BookshelfMetrics.cardSpacing) {
                             Image(systemName: "book")
                                 .font(AppFonts.h1(weight: .regular))
                                 .foregroundStyle(appTheme.palette.tertiaryText)
@@ -198,23 +227,32 @@ struct BookCard: View {
                         }
                     }
                     .overlay(
-                        RoundedRectangle(cornerRadius: 6, style: .continuous)
-                            .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
+                        RoundedRectangle(
+                            cornerRadius: BookshelfMetrics.coverCornerRadius,
+                            style: .continuous
+                        )
+                        .strokeBorder(
+                            appTheme.palette.cardBorder,
+                            lineWidth: BookshelfMetrics.coverStrokeWidth
+                        )
                     )
                     .overlay(alignment: .bottom) {
                         if let progress = book.progression, progress > 0 {
                             GeometryReader { geo in
                                 Rectangle()
-                                    .fill(appTheme.palette.accent.opacity(0.55))
-                                    .frame(width: geo.size.width * progress, height: 3)
+                                    .fill(appTheme.palette.accent.opacity(BookshelfMetrics.progressBarAccentOpacity))
+                                    .frame(
+                                        width: geo.size.width * progress,
+                                        height: BookshelfMetrics.progressBarHeight
+                                    )
                                     .frame(maxWidth: .infinity, alignment: .leading)
                             }
-                            .frame(height: 3)
+                            .frame(height: BookshelfMetrics.progressBarHeight)
                         }
                     }
             }
 
-            VStack(spacing: 3) {
+            VStack(spacing: BookshelfMetrics.cardMetadataSpacing) {
                 Text(book.title)
                     .font(AppFonts.caption())
                     .lineLimit(2)

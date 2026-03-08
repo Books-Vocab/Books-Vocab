@@ -70,14 +70,14 @@ struct SettingsPresenter: View {
 
     private var loginView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: 10) {
+            VStack(spacing: SettingsMetrics.authHeroSpacing) {
                 Image(systemName: "sparkles")
                     .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(.tertiary)
                     .opacity(state.auth.iconBreathing ? 0.45 : 0.75)
                     .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: state.auth.iconBreathing)
 
-                VStack(spacing: 4) {
+                VStack(spacing: SettingsMetrics.authCopySpacing) {
                     Text("解鎖完整功能")
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
@@ -86,52 +86,25 @@ struct SettingsPresenter: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
             }
-            .padding(.vertical, 24)
+            .padding(.vertical, SettingsMetrics.authHeroVerticalPadding)
             .frame(maxWidth: .infinity)
 
             Rectangle()
                 .fill(vocabSkin.palette.divider)
                 .frame(height: 1)
 
-            VStack(spacing: 10) {
+            VStack(spacing: SettingsMetrics.authActionSpacing) {
                 Button(action: actions.loginWithGoogle) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(vocabSkin.palette.cardBackground)
-                                .frame(width: 22, height: 22)
-                                .shadow(color: vocabSkin.palette.shadow.opacity(0.9), radius: 2, y: 1)
-                            Text("G")
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(Color(red: 0.87, green: 0.19, blue: 0.19))
-                        }
-                        Text("以 Google 繼續")
-                            .fontWeight(.medium)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    SettingsAuthButton(title: "以 Google 繼續") {
+                        SettingsSocialBadge(kind: .google)
                     }
                 }
                 .buttonStyle(.plain)
                 .appSettingsButtonChrome()
 
                 Button(action: actions.loginWithApple) {
-                    HStack(spacing: 12) {
-                        ZStack {
-                            Circle()
-                                .fill(.black)
-                                .frame(width: 22, height: 22)
-                            Image(systemName: "apple.logo")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(.white)
-                        }
-                        Text("以 Apple 繼續")
-                            .fontWeight(.medium)
-                        Spacer()
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    SettingsAuthButton(title: "以 Apple 繼續") {
+                        SettingsSocialBadge(kind: .apple)
                     }
                 }
                 .buttonStyle(.plain)
@@ -183,69 +156,14 @@ struct SettingsPresenter: View {
                         .padding(.bottom, 4)
                 }
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 16)
+            .padding(.horizontal, SettingsMetrics.authBlockPadding)
+            .padding(.vertical, SettingsMetrics.authBlockPadding)
         }
     }
 
     private var loggedInView: some View {
         VStack(spacing: 0) {
-            HStack(spacing: 14) {
-                ZStack {
-                    Circle()
-                        .fill(vocabSkin.palette.mutedFill)
-                        .frame(width: 46, height: 46)
-
-                    if let avatarURL = state.auth.avatarURL {
-                        AsyncImage(url: avatarURL) { image in
-                            image.resizable().scaledToFill()
-                        } placeholder: {
-                            Image(systemName: "person.fill")
-                                .font(vocabSkin.typography.symbolLarge)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                        }
-                        .frame(width: 46, height: 46)
-                        .clipShape(Circle())
-                    } else if let initials = state.auth.userInitials {
-                        Text(initials)
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                    } else {
-                        Image(systemName: "person.fill")
-                            .font(vocabSkin.typography.symbolLarge)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                    }
-                }
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(state.auth.displayName)
-                        .font(vocabSkin.typography.sectionTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                        .lineLimit(1)
-                    if let email = state.auth.email {
-                        Text(email)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-
-                Spacer()
-
-                VStack(alignment: .trailing, spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(vocabSkin.typography.symbolLarge)
-                        .foregroundStyle(vocabSkin.palette.success)
-                        .symbolEffect(.bounce, value: state.auth.isLoggedIn)
-#if DEBUG
-                    if state.auth.isDeveloper {
-                        Text("DEVELOPER")
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(appTheme.palette.warning)
-                    }
-#endif
-                }
-            }
+            SettingsAuthSummary(state: state.auth)
             .padding(vocabSkin.spacing.cardPadding)
 
             Rectangle()
@@ -545,6 +463,176 @@ private struct SettingsDivider: View {
     }
 }
 
+private enum SettingsSocialKind {
+    case google
+    case apple
+}
+
+private enum SettingsMetrics {
+    static let authHeroSpacing: CGFloat = 10
+    static let authCopySpacing: CGFloat = 4
+    static let authActionSpacing: CGFloat = 10
+    static let authHeroVerticalPadding: CGFloat = 24
+    static let authBlockPadding: CGFloat = 16
+    static let authButtonSpacing: CGFloat = 12
+    static let authRowSpacing: CGFloat = 14
+    static let authStatusSpacing: CGFloat = 6
+    static let authAvatarSize: CGFloat = 46
+    static let authSocialBadgeSize: CGFloat = 22
+    static let authSocialShadowRadius: CGFloat = 2
+    static let authSocialShadowY: CGFloat = 1
+}
+
+private struct SettingsSocialBadge: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let kind: SettingsSocialKind
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(backgroundColor)
+                .frame(
+                    width: SettingsMetrics.authSocialBadgeSize,
+                    height: SettingsMetrics.authSocialBadgeSize
+                )
+                .shadow(
+                    color: shadowColor,
+                    radius: SettingsMetrics.authSocialShadowRadius,
+                    y: SettingsMetrics.authSocialShadowY
+                )
+
+            Group {
+                switch kind {
+                case .google:
+                    Text("G")
+                        .font(vocabSkin.typography.captionStrong)
+                        .foregroundStyle(Color(red: 0.87, green: 0.19, blue: 0.19))
+                case .apple:
+                    Image(systemName: "apple.logo")
+                        .font(vocabSkin.typography.iconTiny)
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch kind {
+        case .google:
+            return vocabSkin.palette.cardBackground
+        case .apple:
+            return .black
+        }
+    }
+
+    private var shadowColor: Color {
+        switch kind {
+        case .google:
+            return vocabSkin.palette.shadow.opacity(0.9)
+        case .apple:
+            return .clear
+        }
+    }
+}
+
+private struct SettingsAuthButton<Leading: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    @ViewBuilder let leading: Leading
+
+    var body: some View {
+        HStack(spacing: SettingsMetrics.authButtonSpacing) {
+            leading
+
+            Text(title.localized)
+                .font(vocabSkin.typography.body.weight(.medium))
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(vocabSkin.typography.iconTiny)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+    }
+}
+
+private struct SettingsAuthSummary: View {
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.vocabSkin) private var vocabSkin
+    let state: SettingsPresenterState.AuthSection
+
+    var body: some View {
+        HStack(spacing: SettingsMetrics.authRowSpacing) {
+            avatar
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(state.displayName)
+                    .font(vocabSkin.typography.sectionTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .lineLimit(1)
+
+                if let email = state.email {
+                    Text(email)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: SettingsMetrics.authStatusSpacing) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(vocabSkin.typography.symbolLarge)
+                    .foregroundStyle(vocabSkin.palette.success)
+                    .symbolEffect(.bounce, value: state.isLoggedIn)
+#if DEBUG
+                if state.isDeveloper {
+                    Text("DEVELOPER")
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(appTheme.palette.warning)
+                }
+#endif
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        ZStack {
+            Circle()
+                .fill(vocabSkin.palette.mutedFill)
+                .frame(
+                    width: SettingsMetrics.authAvatarSize,
+                    height: SettingsMetrics.authAvatarSize
+                )
+
+            if let avatarURL = state.avatarURL {
+                AsyncImage(url: avatarURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Image(systemName: "person.fill")
+                        .font(vocabSkin.typography.symbolLarge)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+                .frame(
+                    width: SettingsMetrics.authAvatarSize,
+                    height: SettingsMetrics.authAvatarSize
+                )
+                .clipShape(Circle())
+            } else if let initials = state.userInitials {
+                Text(initials)
+                    .font(vocabSkin.typography.sectionTitle)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(vocabSkin.typography.symbolLarge)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            }
+        }
+    }
+}
+
 private struct SettingsRow<Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let icon: String
@@ -589,11 +677,11 @@ private struct SettingsButtonChromeModifier: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .padding()
+            .padding(SettingsMetrics.authBlockPadding)
             .background(vocabSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control)
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
             )
     }
@@ -602,36 +690,6 @@ private struct SettingsButtonChromeModifier: ViewModifier {
 private extension View {
     func appSettingsButtonChrome() -> some View {
         modifier(SettingsButtonChromeModifier())
-    }
-}
-
-private extension AppSectionCardStyle {
-    static func settings(_ skin: VocabSkin) -> AppSectionCardStyle {
-        .init(
-            background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
-            shadow: .clear,
-            cornerRadius: skin.radii.card,
-            borderOpacity: 1,
-            shadowRadius: 0,
-            shadowY: 0
-        )
-    }
-}
-
-private extension AppKeyValueRowStyle {
-    static func settings(_ skin: VocabSkin) -> AppKeyValueRowStyle {
-        .init(
-            iconFont: skin.typography.iconSmall,
-            iconColor: skin.palette.secondaryText,
-            labelFont: skin.typography.body,
-            labelColor: skin.palette.primaryText,
-            horizontalPadding: skin.spacing.cardPadding,
-            verticalPadding: 13,
-            minHeight: 50,
-            iconWidth: 22,
-            spacing: 12
-        )
     }
 }
 

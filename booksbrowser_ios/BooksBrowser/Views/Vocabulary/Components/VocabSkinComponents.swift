@@ -109,32 +109,3 @@ extension View {
         modifier(VocabCanvasBackgroundModifier())
     }
 }
-
-private extension AppSectionCardStyle {
-    static func vocab(_ skin: VocabSkin) -> AppSectionCardStyle {
-        .init(
-            background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
-            shadow: skin.palette.shadow,
-            cornerRadius: skin.radii.card,
-            borderOpacity: 0.7,
-            shadowRadius: 6,
-            shadowY: 2
-        )
-    }
-}
-
-private extension AppEmptyStateStyle {
-    static func vocab(_ skin: VocabSkin) -> AppEmptyStateStyle {
-        .init(
-            iconFont: skin.typography.symbolLarge,
-            iconColor: skin.palette.tertiaryText,
-            titleFont: skin.typography.sectionTitle,
-            titleColor: skin.palette.primaryText,
-            descriptionFont: skin.typography.body,
-            descriptionColor: skin.palette.secondaryText,
-            spacing: 14,
-            verticalPadding: 12
-        )
-    }
-}
