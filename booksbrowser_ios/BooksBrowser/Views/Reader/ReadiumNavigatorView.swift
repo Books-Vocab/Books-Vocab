@@ -32,6 +32,28 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     let onWordDeselected: () -> Void
     var onMarkingProgress: ((Double) -> Void)?
 
+    struct BridgeSnapshot {
+        let lookedUpWords: [String]
+        let bookUniqueWords: Set<String>?
+        let viewConfiguration: ReaderViewConfiguration
+        let clearHighlightTrigger: UUID
+        let removeWordTrigger: (word: String, id: UUID)?
+        let navigateToLocator: (locator: Locator, id: UUID)?
+        let isInteractionBlocked: Bool
+    }
+
+    var bridgeSnapshot: BridgeSnapshot {
+        .init(
+            lookedUpWords: lookedUpWords,
+            bookUniqueWords: bookUniqueWords,
+            viewConfiguration: viewConfiguration,
+            clearHighlightTrigger: clearHighlightTrigger,
+            removeWordTrigger: removeWordTrigger,
+            navigateToLocator: navigateToLocator,
+            isInteractionBlocked: isInteractionBlocked
+        )
+    }
+
     func makeCoordinator() -> Coordinator {
         Coordinator(parent: self)
     }
@@ -97,120 +119,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     func updateUIViewController(_ uiViewController: NavigatorHostViewController, context: Context) {
         // 同步最新的 SwiftUI View 給 Coordinator，避免舊的 state capture 導致閉包操作拿不到最新的 bookUniqueWords
         context.coordinator.parent = self
-
-        // 同步觸控攔截層狀態
-        if let blocker = uiViewController.view.viewWithTag(9001) {
-            blocker.isUserInteractionEnabled = isInteractionBlocked
-        }
-
-        // 清除 highlight 觸發
-        if context.coordinator.lastClearHighlightTrigger != clearHighlightTrigger {
-            context.coordinator.lastClearHighlightTrigger = clearHighlightTrigger
-            context.coordinator.clearActiveHighlight()
-        }
-
-        // 偵測生字庫新增 → 即時標記新字的底線
-        let oldCount = context.coordinator.lastVocabCount
-        let newCount = lookedUpWords.count
-        
-        // 如果 bookUniqueWords 剛載入完成，觸發全量標記
-        let didLoadBookWords = (bookUniqueWords != nil && context.coordinator.lastBookUniqueWordsCount == nil)
-        
-        if newCount < oldCount {
-            let newSet = Set(lookedUpWords)
-            let removedWords = context.coordinator.lastVocabWordsSet.subtracting(newSet)
-            if newCount == 0 || removedWords.count > 10 {
-                // 大量移除（如登出）→ 全清更有效率
-                context.coordinator.clearAllVocabHighlights()
-                if newCount > 0 {
-                    let validWords = filterValidWords(newSet, bookWords: bookUniqueWords)
-                    if !validWords.isEmpty {
-                        context.coordinator.markVocabWords(validWords)
-                    }
-                }
-            } else {
-                // 少量移除（例如刪除單字）→ 精準逐字移除，避免全清閃爍
-                for word in removedWords {
-                    context.coordinator.removeVocabWord(word)
-                }
-            }
-        } else if newCount > oldCount || didLoadBookWords {
-            if didLoadBookWords {
-                context.coordinator.lastBookUniqueWordsCount = bookUniqueWords?.count ?? 0
-                
-                // 進行交集過濾
-                let validWords = filterValidWords(lookedUpWords, bookWords: bookUniqueWords)
-                print("📊 生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
-                
-                context.coordinator.markVocabWords(validWords)
-            } else {
-                // 用 Set Diff 找出真正新增的字，避免 loadLookedUpWords 重排後 suffix() 取到錯誤的字
-                let addedWords = lookedUpWords.filter { !context.coordinator.lastVocabWordsSet.contains($0) }
-                if addedWords.count == 1 {
-                    context.coordinator.markNewVocabWord(addedWords[0])
-                } else if !addedWords.isEmpty {
-                    let validNew = filterValidWords(addedWords, bookWords: bookUniqueWords)
-                    if !validNew.isEmpty { context.coordinator.markVocabWords(validNew) }
-                }
-            }
-        }
-        context.coordinator.lastVocabCount = newCount
-        context.coordinator.lastVocabWordsSet = Set(lookedUpWords)
-
-        // 移除生字觸發
-        if let trigger = removeWordTrigger,
-           context.coordinator.lastRemoveWordId != trigger.id {
-            context.coordinator.lastRemoveWordId = trigger.id
-            context.coordinator.removeVocabWord(trigger.word)
-        }
-
-        // 導航觸發
-        if let nav = navigateToLocator,
-           context.coordinator.lastNavigateId != nav.id {
-            context.coordinator.lastNavigateId = nav.id
-            Task { @MainActor in
-                print("🧭 Attempting navigation to: \(nav.locator.href)")
-                let success = await context.coordinator.navigator?.go(to: nav.locator)
-                print("🧭 Navigation result: \(String(describing: success))")
-            }
-        }
-
-        // 偵測閱讀設定變化
-        let oldPrefs = context.coordinator.lastPreferences
-        let newPrefs = viewConfiguration.epubPreferences
-        if oldPrefs != newPrefs {
-            context.coordinator.lastPreferences = newPrefs
-            context.coordinator.isApplyingPreferences = true
-            Task { @MainActor in
-                uiViewController.epubNavigator?.submitPreferences(newPrefs)
-                try? await Task.sleep(for: .milliseconds(800))
-                context.coordinator.isApplyingPreferences = false
-            }
-        }
-        
-        // 偵測底線透明度變化
-        let currentOpacity = viewConfiguration.underlineOpacity
-        if let lastOpacity = context.coordinator.lastUnderlineOpacity, currentOpacity != lastOpacity {
-            context.coordinator.lastUnderlineOpacity = currentOpacity
-            let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(currentOpacity)');"
-            Task { @MainActor in
-                _ = await context.coordinator.navigator?.evaluateJavaScript(js)
-            }
-        } else if context.coordinator.lastUnderlineOpacity == nil {
-            context.coordinator.lastUnderlineOpacity = currentOpacity
-        }
-        
-        // 偵測除錯按鈕變化：即時標記/移除所有單字 token
-        let currentDebug = viewConfiguration.showHitTestingDebug
-        if let lastDebug = context.coordinator.lastHitTestingDebug, currentDebug != lastDebug {
-            context.coordinator.lastHitTestingDebug = currentDebug
-            let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(currentDebug ? "true" : "false"));"
-            Task { @MainActor in
-                _ = await context.coordinator.navigator?.evaluateJavaScript(js)
-            }
-        } else if context.coordinator.lastHitTestingDebug == nil {
-            context.coordinator.lastHitTestingDebug = currentDebug
-        }
+        context.coordinator.sync(with: bridgeSnapshot, in: uiViewController)
     }
 
     // MARK: - Coordinator
@@ -235,6 +144,164 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
         init(parent: ReadiumNavigatorView) {
             self.parent = parent
+        }
+
+        func sync(
+            with snapshot: ReadiumNavigatorView.BridgeSnapshot,
+            in host: NavigatorHostViewController
+        ) {
+            syncInteractionBlocker(in: host, isBlocked: snapshot.isInteractionBlocked)
+            syncClearHighlight(trigger: snapshot.clearHighlightTrigger)
+            syncVocabularyHighlights(
+                lookedUpWords: snapshot.lookedUpWords,
+                bookUniqueWords: snapshot.bookUniqueWords
+            )
+            syncRemovedWord(trigger: snapshot.removeWordTrigger)
+            syncNavigation(trigger: snapshot.navigateToLocator)
+            syncPreferences(snapshot.viewConfiguration.epubPreferences, in: host)
+            syncUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity)
+            syncDebugMode(snapshot.viewConfiguration.showHitTestingDebug)
+        }
+
+        private func syncInteractionBlocker(in host: NavigatorHostViewController, isBlocked: Bool) {
+            if let blocker = host.view.viewWithTag(9001) {
+                blocker.isUserInteractionEnabled = isBlocked
+            }
+        }
+
+        private func syncClearHighlight(trigger: UUID) {
+            guard lastClearHighlightTrigger != trigger else { return }
+            lastClearHighlightTrigger = trigger
+            clearActiveHighlight()
+        }
+
+        private func syncVocabularyHighlights(
+            lookedUpWords: [String],
+            bookUniqueWords: Set<String>?
+        ) {
+            let previousCount = lastVocabCount
+            let currentCount = lookedUpWords.count
+            let currentSet = Set(lookedUpWords)
+            let didLoadBookWords = (bookUniqueWords != nil && lastBookUniqueWordsCount == nil)
+
+            if currentCount < previousCount {
+                let removedWords = lastVocabWordsSet.subtracting(currentSet)
+                handleRemovedVocabulary(
+                    newCount: currentCount,
+                    removedWords: removedWords,
+                    remainingWords: currentSet,
+                    bookUniqueWords: bookUniqueWords
+                )
+            } else if currentCount > previousCount || didLoadBookWords {
+                handleAddedVocabulary(
+                    lookedUpWords: lookedUpWords,
+                    didLoadBookWords: didLoadBookWords,
+                    bookUniqueWords: bookUniqueWords
+                )
+            }
+
+            lastVocabCount = currentCount
+            lastVocabWordsSet = currentSet
+        }
+
+        private func handleRemovedVocabulary(
+            newCount: Int,
+            removedWords: Set<String>,
+            remainingWords: Set<String>,
+            bookUniqueWords: Set<String>?
+        ) {
+            if newCount == 0 || removedWords.count > 10 {
+                clearAllVocabHighlights()
+                if newCount > 0 {
+                    let validWords = filterValidWords(remainingWords, bookWords: bookUniqueWords)
+                    if !validWords.isEmpty {
+                        markVocabWords(validWords)
+                    }
+                }
+                return
+            }
+
+            for word in removedWords {
+                removeVocabWord(word)
+            }
+        }
+
+        private func handleAddedVocabulary(
+            lookedUpWords: [String],
+            didLoadBookWords: Bool,
+            bookUniqueWords: Set<String>?
+        ) {
+            if didLoadBookWords {
+                lastBookUniqueWordsCount = bookUniqueWords?.count ?? 0
+                let validWords = filterValidWords(lookedUpWords, bookWords: bookUniqueWords)
+                print("📊 生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
+                markVocabWords(validWords)
+                return
+            }
+
+            let addedWords = lookedUpWords.filter { !lastVocabWordsSet.contains($0) }
+            if addedWords.count == 1 {
+                markNewVocabWord(addedWords[0])
+            } else if !addedWords.isEmpty {
+                let validNew = filterValidWords(addedWords, bookWords: bookUniqueWords)
+                if !validNew.isEmpty {
+                    markVocabWords(validNew)
+                }
+            }
+        }
+
+        private func syncRemovedWord(trigger: (word: String, id: UUID)?) {
+            guard let trigger, lastRemoveWordId != trigger.id else { return }
+            lastRemoveWordId = trigger.id
+            removeVocabWord(trigger.word)
+        }
+
+        private func syncNavigation(trigger: (locator: Locator, id: UUID)?) {
+            guard let trigger, lastNavigateId != trigger.id else { return }
+            lastNavigateId = trigger.id
+            Task { @MainActor in
+                print("🧭 Attempting navigation to: \(trigger.locator.href)")
+                let success = await navigator?.go(to: trigger.locator)
+                print("🧭 Navigation result: \(String(describing: success))")
+            }
+        }
+
+        private func syncPreferences(
+            _ preferences: EPUBPreferences,
+            in host: NavigatorHostViewController
+        ) {
+            guard lastPreferences != preferences else { return }
+            lastPreferences = preferences
+            isApplyingPreferences = true
+            Task { @MainActor in
+                host.epubNavigator?.submitPreferences(preferences)
+                try? await Task.sleep(for: .milliseconds(800))
+                self.isApplyingPreferences = false
+            }
+        }
+
+        private func syncUnderlineOpacity(_ opacity: Double) {
+            if let lastUnderlineOpacity, opacity != lastUnderlineOpacity {
+                self.lastUnderlineOpacity = opacity
+                let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');"
+                Task { @MainActor in
+                    _ = await navigator?.evaluateJavaScript(js)
+                }
+            } else if lastUnderlineOpacity == nil {
+                lastUnderlineOpacity = opacity
+            }
+        }
+
+        private func syncDebugMode(_ isEnabled: Bool) {
+            if let lastHitTestingDebug, isEnabled != lastHitTestingDebug {
+                self.lastHitTestingDebug = isEnabled
+                let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));"
+                Task { @MainActor in
+                    _ = await navigator?.evaluateJavaScript(js)
+                }
+            } else if lastHitTestingDebug == nil {
+                lastHitTestingDebug = isEnabled
+            }
         }
 
         // MARK: NavigatorDelegate
