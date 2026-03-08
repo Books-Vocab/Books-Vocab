@@ -17,9 +17,7 @@ struct KGVocabView: View {
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
 
-    @State private var isLoading = false
-    @State private var errorMessage: String?
-    @State private var selectedEntry: VocabularyEntry?
+    @StateObject private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
 
     @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
@@ -45,32 +43,27 @@ struct KGVocabView: View {
                 }
                 .padding(AppMetrics.spacingLarge)
                 .vocabCanvasBackground()
-            } else if isLoading && syncedEntries.isEmpty {
+            } else if coordinator.isLoading && syncedEntries.isEmpty {
                 ProgressView("載入知識庫...")
             } else {
                 content
             }
         }
-        .sheet(item: $selectedEntry) { entry in
+        .sheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry)
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
         .task {
-            guard authManager.isLoggedIn else { return }
-
-            isLoading = true
-            do {
-                try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
-                errorMessage = nil
-                if dueEntries.isEmpty && !unlearnedEntries.isEmpty {
-                    selectedReviewState = .unlearned
-                }
-            } catch {
-                errorMessage = error.localizedDescription
-            }
-            isLoading = false
+            await coordinator.loadInitialData(
+                authManager: authManager,
+                kgService: kgService,
+                modelContext: modelContext,
+                dueEntries: dueEntries,
+                unlearnedEntries: unlearnedEntries,
+                selectedReviewState: $selectedReviewState
+            )
         }
     }
 
@@ -78,10 +71,22 @@ struct KGVocabView: View {
         KGVocabPresenter(
             state: presenterState,
             selectedReviewState: $selectedReviewState,
-            onDismissBanner: errorMessage == nil ? nil : { errorMessage = nil },
-            onRetryBanner: pendingDeletes.isEmpty ? nil : { Task { await retryPendingDeletes() } },
-            onRowTapped: handleRowTap,
-            onDeleteTapped: handleDeleteTap
+            onDismissBanner: coordinator.errorMessage == nil ? nil : { coordinator.dismissBanner() },
+            onRetryBanner: pendingDeletes.isEmpty ? nil : {
+                Task {
+                    await coordinator.retryPendingDeletes(
+                        pendingDeletes: pendingDeletes,
+                        kgService: kgService,
+                        modelContext: modelContext
+                    )
+                }
+            },
+            onRowTapped: { entryID in
+                handleRowTap(entryID)
+            },
+            onDeleteTapped: { entryID in
+                handleDeleteTap(entryID)
+            }
         )
     }
 
@@ -126,7 +131,7 @@ struct KGVocabView: View {
                 canRetry: true
             )
         }
-        if let errorMessage {
+        if let errorMessage = coordinator.errorMessage {
             return .init(
                 message: L10n.format("離線模式，同步失敗：%@", errorMessage),
                 canDismiss: true,
@@ -201,30 +206,15 @@ struct KGVocabView: View {
         )
     }
 
-    private func markForDeletion(_ entry: VocabularyEntry) {
-        entry.actionType = "delete"
-        entry.syncStatus = 0
-        try? modelContext.save()
-    }
-
     private func handleRowTap(_ entryID: UUID) {
-        selectedEntry = syncedEntries.first { $0.id == entryID }
+        coordinator.handleRowTap(entryID, syncedEntries: syncedEntries)
     }
 
     private func handleDeleteTap(_ entryID: UUID) {
-        guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
-        markForDeletion(entry)
-    }
-
-    private func retryPendingDeletes() async {
-        for entry in pendingDeletes {
-            do {
-                try await kgService.deleteCard(word: entry.word)
-                modelContext.delete(entry)
-            } catch {
-            }
-        }
-        try? modelContext.save()
-        await kgService.healthCheck()
+        coordinator.handleDeleteTap(
+            entryID,
+            syncedEntries: syncedEntries,
+            modelContext: modelContext
+        )
     }
 }

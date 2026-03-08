@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import SwiftUI
 
 @MainActor
 final class KGVocabCoordinator: ObservableObject {
