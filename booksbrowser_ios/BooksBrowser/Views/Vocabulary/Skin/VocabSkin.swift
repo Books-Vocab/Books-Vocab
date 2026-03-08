@@ -1,3 +1,23 @@
+//
+//  VocabSkin.swift
+//  BooksBrowser
+//
+//  Vocabulary 功能的唯一 UI Token 來源（顏色、字型、圓角、間距）
+//  ─────────────────────────────────────────────────────────────────────
+//  使用方式：
+//    所有 Vocabulary 組件透過 @Environment(\.vocabSkin) 讀取此值，
+//    不應直接使用 AppColors、AppTheme 或硬編碼色彩。
+//
+//  組裝來源有兩種：
+//    1. VocabSkin.themed(appTheme)  — 由 AppTheme（Light/Dark）組裝，
+//       99% 情況下使用這個，可隨系統深淺色模式自動切換。
+//    2. VocabSkin.mochiNeutral     — 硬編碼的靜態 Mochi 淺色 skin，
+//       僅用於 SwiftUI Preview 或特定固定場景，不受系統深淺色影響。
+//
+//  設計哲學：Morandi × Mochi 排版
+//    低飽和度、紙張質感，typography 以 monospaced 為主視覺重心。
+//  ─────────────────────────────────────────────────────────────────────
+
 import SwiftUI
 
 struct VocabSkin {
@@ -140,6 +160,8 @@ extension VocabSkin {
         rowPadding: 9
     )
 
+    /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
+    /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
     static func themed(_ theme: AppTheme) -> VocabSkin {
         VocabSkin(
             palette: .init(
@@ -173,6 +195,8 @@ extension VocabSkin {
         )
     }
 
+    /// 硬編碼的靜態 Mochi 淺色 skin，不受系統深淺色模式影響。
+    /// 僅用於 SwiftUI Preview 或特定固定呈現場景，正常業務請改用 themed()。
     static let mochiNeutral = VocabSkin(
         palette: .init(
             pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),

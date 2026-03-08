@@ -27,6 +27,14 @@ enum TodayReviewRevealStage: Int {
             self = .details
         }
     }
+
+    mutating func retract() {
+        switch self {
+        case .front: break
+        case .back: self = .front
+        case .details: self = .back
+        }
+    }
 }
 
 struct TodayReviewView: View {
@@ -51,6 +59,7 @@ struct TodayReviewView: View {
             state: presenterState,
             onClose: onClose,
             onAdvanceReveal: advanceReveal,
+            onCollapseReveal: retractReveal,
             onShuffle: shuffleQueue,
             onPrevious: goPrevious,
             onNext: goNext,
@@ -112,6 +121,13 @@ struct TodayReviewView: View {
         guard !isAdvancing else { return }
         withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
             revealStage.advance()
+        }
+    }
+
+    private func retractReveal() {
+        guard !isAdvancing else { return }
+        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+            revealStage.retract()
         }
     }
 
