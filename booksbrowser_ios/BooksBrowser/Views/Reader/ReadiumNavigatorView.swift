@@ -19,7 +19,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
     let httpServer: HTTPServer
     let lookedUpWords: [String]
     let bookUniqueWords: Set<String>?
-    let preferences: EPUBPreferences
+    let viewConfiguration: ReaderViewConfiguration
     let clearHighlightTrigger: UUID
     let removeWordTrigger: (word: String, id: UUID)?
     let navigateToLocator: (locator: Locator, id: UUID)?
@@ -57,7 +57,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 publication: publication,
                 initialLocation: initialLocator,
                 config: .init(
-                    preferences: preferences,
+                    preferences: viewConfiguration.epubPreferences,
                     defaults: EPUBDefaults(
                         scroll: false
                     ),
@@ -177,7 +177,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
         // 偵測閱讀設定變化
         let oldPrefs = context.coordinator.lastPreferences
-        let newPrefs = preferences
+        let newPrefs = viewConfiguration.epubPreferences
         if oldPrefs != newPrefs {
             context.coordinator.lastPreferences = newPrefs
             context.coordinator.isApplyingPreferences = true
@@ -189,7 +189,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
         
         // 偵測底線透明度變化
-        let currentOpacity = ReaderSettings.shared.underlineOpacity
+        let currentOpacity = viewConfiguration.underlineOpacity
         if let lastOpacity = context.coordinator.lastUnderlineOpacity, currentOpacity != lastOpacity {
             context.coordinator.lastUnderlineOpacity = currentOpacity
             let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(currentOpacity)');"
@@ -201,7 +201,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
         
         // 偵測除錯按鈕變化：即時標記/移除所有單字 token
-        let currentDebug = ReaderSettings.shared.showHitTestingDebug
+        let currentDebug = viewConfiguration.showHitTestingDebug
         if let lastDebug = context.coordinator.lastHitTestingDebug, currentDebug != lastDebug {
             context.coordinator.lastHitTestingDebug = currentDebug
             let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(currentDebug ? "true" : "false"));"
@@ -284,11 +284,11 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             let fontFaceCSS = Self.buildFontFaceCSS()
 
             // ★ 傳遞除錯模式開關
-            let isDebugMode = ReaderSettings.shared.showHitTestingDebug ? "true" : "false"
+            let isDebugMode = parent.viewConfiguration.showHitTestingDebug ? "true" : "false"
 
             let js = ReadiumNavigatorJS.buildInjectionScript(
                 fontFaceCSS: fontFaceCSS,
-                underlineOpacity: ReaderSettings.shared.underlineOpacity,
+                underlineOpacity: parent.viewConfiguration.underlineOpacity,
                 isDebugMode: isDebugMode
             )
 

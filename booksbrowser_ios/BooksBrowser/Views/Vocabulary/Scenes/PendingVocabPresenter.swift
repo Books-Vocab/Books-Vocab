@@ -27,8 +27,8 @@ struct PendingVocabPresenter: View {
                     systemImage: "character.book.closed",
                     description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。"
                 )
-                .padding(.horizontal)
-                .padding(.top, 16)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                .padding(.top, AppMetrics.spacingMedium)
             }
         } else {
             ScrollView {
@@ -86,9 +86,9 @@ struct PendingVocabPresenter: View {
                         }
                     }
                 }
-                .padding(.horizontal)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                 .padding(.top, 10)
-                .padding(.bottom, 24)
+                .padding(.bottom, AppShellMetrics.pageBottomPadding / 2)
             }
         }
     }

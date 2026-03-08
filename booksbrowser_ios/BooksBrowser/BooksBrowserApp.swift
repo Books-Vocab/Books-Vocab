@@ -16,8 +16,13 @@ struct BooksBrowserApp: App {
     let authManager = AuthManager.shared
     let kgService = KGService()
     let subscriptionManager = SubscriptionManager.shared
+    let readiumService: any ReadiumServing = ReadiumService.shared
+    let bookshelfImportService: any BookshelfImporting
+    let bookFileManager: any BookFileManaging
 
     init() {
+        bookshelfImportService = BookshelfImportService(readiumService: readiumService)
+        bookFileManager = LocalBookFileManager()
         let schema = Schema([Book.self, VocabularyEntry.self])
 
         if let container = try? ModelContainer(for: schema) {
@@ -53,6 +58,9 @@ struct BooksBrowserApp: App {
                     .environment(\.kgService, kgService)
                     .environment(\.subscriptionManager, subscriptionManager)
                     .tint(AppColors.tint)
+                    .environment(\.readiumService, readiumService)
+                    .environment(\.bookshelfImportService, bookshelfImportService)
+                    .environment(\.bookFileManager, bookFileManager)
                     .onOpenURL { url in
                         GIDSignIn.sharedInstance.handle(url)
                     }

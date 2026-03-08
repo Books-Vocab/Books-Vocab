@@ -1,0 +1,15 @@
+import Foundation
+import ReadiumShared
+import ReadiumAdapterGCDWebServer
+
+/// Readium-related behavior contract for dependency injection and testing.
+@MainActor
+protocol ReadiumServing: AnyObject {
+    var httpServer: GCDHTTPServer { get }
+
+    func openPublication(at url: URL) async throws -> Publication
+    func importEPUB(from sourceURL: URL) async throws -> (fileName: String, publication: Publication)
+    func extractMetadata(from publication: Publication) -> (title: String, author: String)
+    func extractCover(from publication: Publication) async -> Data?
+    func extractUniqueWords(from publication: Publication) async -> Set<String>
+}

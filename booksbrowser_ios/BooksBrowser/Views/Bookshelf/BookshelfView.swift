@@ -13,17 +13,13 @@ import UniformTypeIdentifiers
 struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.bookshelfImportService) private var bookshelfImportService
+    @Environment(\.bookFileManager) private var bookFileManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
-
-    @State private var isImporting = false
-    @State private var isLoading = false
-    @State private var loadingMessage = ""
-    @State private var errorMessage: String?
-    @State private var showError = false
-    @State private var showSettings = false
+    @StateObject private var coordinator = BookshelfCoordinator()
 
     private let columns = [
-        GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)
+        GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
     ]
 
     var body: some View {
@@ -38,7 +34,7 @@ struct BookshelfView: View {
                     bookGrid
                 }
 
-                if isLoading {
+                if coordinator.isLoading {
                     loadingOverlay
                 }
             }
@@ -47,38 +43,34 @@ struct BookshelfView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 15, weight: .light))
-                            .foregroundStyle(.secondary)
+                    Button(action: coordinator.presentSettings) {
+                        AppToolbarGlyph(systemImage: "gearshape")
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isImporting = true
-                    } label: {
-                        Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .light))
-                            .foregroundStyle(.secondary)
+                    Button(action: coordinator.presentImporter) {
+                        AppToolbarGlyph(systemImage: "plus")
                     }
                 }
             }
             .fileImporter(
-                isPresented: $isImporting,
+                isPresented: $coordinator.isImporting,
                 allowedContentTypes: [UTType(filenameExtension: "epub") ?? .data],
                 allowsMultipleSelection: false
             ) { result in
-                handleFileImport(result)
+                coordinator.handleFileImport(
+                    result,
+                    modelContext: modelContext,
+                    importService: bookshelfImportService
+                )
             }
-            .alert("匯入錯誤", isPresented: $showError) {
-                Button("確定", role: .cancel) {}
+            .alert("匯入錯誤", isPresented: $coordinator.showError) {
+                Button("確定", role: .cancel, action: coordinator.dismissError)
             } message: {
-                Text((errorMessage ?? "未知錯誤").localized)
+                Text((coordinator.errorMessage ?? "未知錯誤").localized)
             }
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
         }
@@ -90,61 +82,49 @@ struct BookshelfView: View {
         VStack(spacing: 20) {
             Spacer()
 
-            Image(systemName: "book")
-                .font(.system(size: 48, weight: .ultraLight))
-                .foregroundStyle(.quaternary)
+            AppEmptyStateContent(
+                title: "尚無書籍",
+                systemImage: "book",
+                description: "匯入 EPUB 電子書開始閱讀",
+                style: .bookshelf(appTheme)
+            )
 
-            VStack(spacing: 6) {
-                Text("尚無書籍")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-
-                Text("匯入 EPUB 電子書開始閱讀")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
+            Button("匯入") {
+                coordinator.presentImporter()
             }
-
-            Button {
-                isImporting = true
-            } label: {
-                Text("匯入")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule()
-                            .strokeBorder(.secondary.opacity(0.3), lineWidth: 0.5)
-                    )
-                    .foregroundStyle(.primary)
-            }
+            .buttonStyle(.appAction(.outline))
+            .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
         }
+        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
     }
 
     // MARK: - 書籍網格
 
     private var bookGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 24) {
+            LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
                         BookCard(book: book)
                     }
                     .contextMenu {
                         Button(role: .destructive) {
-                            deleteBook(book)
+                            coordinator.deleteBook(
+                                book,
+                                modelContext: modelContext,
+                                fileManager: bookFileManager
+                            )
                         } label: {
                             Label("刪除", systemImage: "trash")
                         }
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppMetrics.spacingSmall)
+            .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .navigationDestination(for: Book.self) { book in
             ReaderView(book: book)
@@ -161,83 +141,15 @@ struct BookshelfView: View {
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.0)
-                Text(loadingMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                Text(coordinator.loadingMessage)
+                    .font(AppFonts.caption())
+                    .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(28)
             .glassEffect(.regular, in: .rect(cornerRadius: 14))
         }
     }
 
-    // MARK: - 檔案匯入（Readium 版）
-
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            importEPUB(from: url)
-        case .failure(let error):
-            errorMessage = error.localizedDescription
-            showError = true
-        }
-    }
-
-    private func importEPUB(from url: URL) {
-        isLoading = true
-        loadingMessage = L10n.string("正在匯入書籍...")
-
-        Task {
-            do {
-                print("🚀 BookshelfView: starting import from \(url)")
-                let readiumService = ReadiumService.shared
-                loadingMessage = L10n.string("正在解析 EPUB...")
-
-                let (fileName, publication) = try await readiumService.importEPUB(from: url)
-                print("🚀 import succeeded: \(fileName)")
-                let metadata = readiumService.extractMetadata(from: publication)
-                print("🚀 metadata: \(metadata)")
-                let coverData = await readiumService.extractCover(from: publication)
-                print("🚀 cover: \(coverData?.count ?? 0) bytes")
-
-                await MainActor.run {
-                    loadingMessage = L10n.string("正在儲存...")
-
-                    let book = Book(
-                        title: metadata.title,
-                        author: metadata.author,
-                        coverImageData: coverData,
-                        epubFileName: fileName
-                    )
-
-                    modelContext.insert(book)
-                    try? modelContext.save()
-                    print("🚀 book saved: \(book.title)")
-
-                    isLoading = false
-                    loadingMessage = ""
-                }
-            } catch {
-                print("❌ BookshelfView import error: \(error)")
-                print("❌ error type: \(type(of: error))")
-                await MainActor.run {
-                    isLoading = false
-                    loadingMessage = ""
-                    errorMessage = "\(error)"
-                    showError = true
-                }
-            }
-        }
-    }
-
-    // MARK: - 刪除書籍
-
-    private func deleteBook(_ book: Book) {
-        // 刪除 EPUB 檔案
-        ReadiumService.shared.deleteEPUB(fileName: book.epubFileName)
-        // 從資料庫刪除
-        modelContext.delete(book)
-    }
 }
 
 // MARK: - 書籍卡片
@@ -276,11 +188,11 @@ struct BookCard: View {
                     .overlay {
                         VStack(spacing: 10) {
                             Image(systemName: "book")
-                                .font(.system(size: 28, weight: .ultraLight))
-                                .foregroundStyle(.tertiary)
+                                .font(AppFonts.h1(weight: .regular))
+                                .foregroundStyle(appTheme.palette.tertiaryText)
                             Text(book.title)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .font(AppFonts.caption2())
+                                .foregroundStyle(appTheme.palette.secondaryText)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 12)
                         }
@@ -304,15 +216,14 @@ struct BookCard: View {
 
             VStack(spacing: 3) {
                 Text(book.title)
-                    .font(.caption)
-                    .fontWeight(.regular)
+                    .font(AppFonts.caption())
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(appTheme.palette.primaryText)
 
                 Text(book.author)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(AppFonts.caption2())
+                    .foregroundStyle(appTheme.palette.tertiaryText)
                     .lineLimit(1)
             }
         }
