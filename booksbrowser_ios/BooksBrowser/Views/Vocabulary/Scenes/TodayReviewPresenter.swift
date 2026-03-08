@@ -15,8 +15,7 @@ struct TodayReviewPresenterState {
 
     let progressText: String
     let currentCard: CurrentCard?
-    let showBack: Bool
-    let isExpanded: Bool
+    let revealStage: TodayReviewRevealStage
     let canShuffle: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
@@ -27,8 +26,7 @@ struct TodayReviewPresenter: View {
 
     let state: TodayReviewPresenterState
     let onClose: () -> Void
-    let onToggleCard: () -> Void
-    let onToggleExpansion: () -> Void
+    let onAdvanceReveal: () -> Void
     let onShuffle: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -100,56 +98,26 @@ struct TodayReviewPresenter: View {
 
     private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         VStack(spacing: 0) {
-            ZStack(alignment: .top) {
-                backPaperSurface(currentCard)
-                    .rotation3DEffect(
-                        .degrees(state.showBack ? 0 : 180),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: 0.8
-                    )
-                    .opacity(state.showBack ? 1 : 0)
-                    .shadow(
-                        color: vocabSkin.palette.shadow.opacity(state.showBack ? 0.92 : 0),
-                        radius: 6,
-                        y: 3
-                    )
-                    .zIndex(state.showBack ? 2 : 0)
-                    .allowsHitTesting(state.showBack)
+            frontFoldSurface(currentCard.card)
 
-                frontPaperCover(currentCard.card)
-                    .rotation3DEffect(
-                        .degrees(state.showBack ? -180 : 0),
-                        axis: (x: 0, y: 1, z: 0),
-                        perspective: 0.8
-                    )
-                    .opacity(state.showBack ? 0 : 1)
-                    .shadow(
-                        color: vocabSkin.palette.shadow.opacity(state.showBack ? 0 : 0.95),
-                        radius: 7,
-                        y: 4
-                    )
-                    .zIndex(2)
-                    .allowsHitTesting(!state.showBack)
+            if state.revealStage.showsAnswer {
+                answerFoldSurface(currentCard.card)
+                    .padding(.top, -1)
+                    .transition(.paperFoldFromTop)
             }
 
-            if state.showBack, state.isExpanded {
+            if state.revealStage.showsDetails {
                 detailFoldSheet(currentCard)
                     .padding(.top, -1)
                     .transition(.paperFoldFromTop)
             }
         }
-        .animation(.easeInOut(duration: 0.18), value: state.showBack)
-        .animation(.spring(response: 0.48, dampingFraction: 0.88), value: state.isExpanded)
+        .animation(.spring(response: 0.42, dampingFraction: 0.88), value: state.revealStage)
     }
 
     private func reviewCardFront(_ card: CardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
-                if let pos = card.partOfSpeech {
-                    Text(pos)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
                 Spacer()
                 if let tier = card.difficultyTier {
                     VocabTierLabel(tier: tier)
@@ -161,16 +129,16 @@ struct TodayReviewPresenter: View {
             switch card.reviewMode {
             case .recognition:
                 Text(card.word)
-                    .font(reviewWordFont(for: card.word))
+                    .font(reviewFrontWordFont(for: card.word))
                     .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(4)
-                    .minimumScaleFactor(0.5)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.7)
                     .fixedSize(horizontal: false, vertical: true)
             case .production:
                 Text(card.translation)
-                    .font(vocabSkin.typography.translationTitle)
+                    .font(vocabSkin.typography.body.weight(.semibold))
                     .foregroundStyle(vocabSkin.palette.primaryText.opacity(0.84))
-                    .minimumScaleFactor(0.6)
+                    .minimumScaleFactor(0.75)
             }
 
             if card.reviewMode == .production, let example = card.examples.first {
@@ -191,18 +159,18 @@ struct TodayReviewPresenter: View {
             Spacer(minLength: 10)
         }
         .padding(reviewCardPadding)
-        .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
-        .frame(minHeight: 300)
+        .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
+        .frame(minHeight: frontCardHeight)
     }
 
-    private func frontPaperCover(_ card: CardPresentation) -> some View {
-        topFoldSurface(expanded: false) {
-            Button(action: onToggleCard) {
+    private func frontFoldSurface(_ card: CardPresentation) -> some View {
+        foldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
+            Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
-                    .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+                    .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, minHeight: 300, alignment: .topLeading)
+            .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
         }
     }
@@ -226,7 +194,7 @@ struct TodayReviewPresenter: View {
 
             Spacer()
 
-            if state.showBack {
+            if state.revealStage.showsAnswer {
                 HStack(spacing: 10) {
                     Button(action: onForgot) {
                         Label("忘記", systemImage: "xmark")
@@ -315,9 +283,12 @@ struct TodayReviewPresenter: View {
         24
     }
 
-    private func backPaperSurface(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
-        let card = currentCard.card
-        return topFoldSurface(expanded: state.isExpanded) {
+    private var frontCardHeight: CGFloat {
+        208
+    }
+
+    private func answerFoldSurface(_ card: CardPresentation) -> some View {
+        foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
             VStack(alignment: .leading, spacing: 0) {
                 VStack(alignment: .leading, spacing: 14) {
                     HStack(spacing: 6) {
@@ -341,19 +312,24 @@ struct TodayReviewPresenter: View {
                             Text(card.translation)
                         }
                     }
-                    .font(reviewWordFont(for: card.reviewMode == .production ? card.word : card.translation))
+                    .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
                     .foregroundStyle(vocabSkin.palette.primaryText)
                     .lineLimit(4)
-                    .minimumScaleFactor(0.5)
+                    .minimumScaleFactor(0.65)
                     .fixedSize(horizontal: false, vertical: true)
 
+                    if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
+                        Text("/\(pronunciation)/")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    }
                 }
                 .padding(reviewCardPadding)
-                .frame(minHeight: state.isExpanded ? 176 : 214, alignment: .topLeading)
+                .frame(minHeight: 188, alignment: .topLeading)
                 .contentShape(Rectangle())
-                .onTapGesture(perform: onToggleCard)
+                .onTapGesture(perform: onAdvanceReveal)
 
-                if !state.isExpanded {
+                if !state.revealStage.showsDetails {
                     backFoldZone()
                 } else {
                     Rectangle()
@@ -368,7 +344,7 @@ struct TodayReviewPresenter: View {
     }
 
     private func backFoldZone() -> some View {
-        Button(action: onToggleExpansion) {
+        Button(action: onAdvanceReveal) {
             VStack(spacing: 0) {
                 Rectangle()
                     .fill(vocabSkin.palette.divider.opacity(0.75))
@@ -403,7 +379,7 @@ struct TodayReviewPresenter: View {
 
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         let card = currentCard.card
-        return unfoldedDetailSurface {
+        return foldSurface(position: .bottom) {
             VStack(alignment: .leading, spacing: 16) {
                 CardDocumentView(document: reviewBackDocument(for: card))
 
@@ -418,46 +394,46 @@ struct TodayReviewPresenter: View {
         }
     }
 
-    private func topFoldSurface<Content: View>(expanded: Bool, @ViewBuilder content: () -> Content) -> some View {
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: vocabSkin.radii.card,
-            bottomLeadingRadius: expanded ? 4 : vocabSkin.radii.card,
-            bottomTrailingRadius: expanded ? 4 : vocabSkin.radii.card,
-            topTrailingRadius: vocabSkin.radii.card,
-            style: .continuous
-        )
-
-        return content()
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(shape)
-            .overlay(shape.stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1))
-            .shadow(color: vocabSkin.palette.shadow, radius: 6, y: 2)
-    }
-
-    private func unfoldedDetailSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        let shape = UnevenRoundedRectangle(
-            topLeadingRadius: 4,
-            bottomLeadingRadius: vocabSkin.radii.card,
-            bottomTrailingRadius: vocabSkin.radii.card,
-            topTrailingRadius: 4,
-            style: .continuous
-        )
-
-        return content()
+    private func foldSurface<Content: View>(
+        position: FoldSegmentPosition,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
             .background(vocabSkin.palette.cardBackground.opacity(0.985))
-            .clipShape(shape)
-            .overlay(shape.stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1))
+            .clipShape(foldShape(for: position))
+            .overlay(foldShape(for: position).stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1))
             .overlay(alignment: .top) {
-                Rectangle()
-                    .fill(vocabSkin.palette.divider.opacity(0.85))
-                    .frame(height: 0.5)
-                    .padding(.horizontal, 18)
+                if position != .top && position != .single {
+                    Rectangle()
+                        .fill(vocabSkin.palette.divider.opacity(0.85))
+                        .frame(height: 0.5)
+                        .padding(.horizontal, 18)
+                }
             }
-            .padding(.top, -2)
-            .shadow(color: vocabSkin.palette.shadow.opacity(0.7), radius: 3, y: 1)
+            .shadow(color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : 0.7), radius: 6, y: 2)
     }
 
-    private func reviewWordFont(for text: String) -> Font {
+    private func foldShape(for position: FoldSegmentPosition) -> UnevenRoundedRectangle {
+        let topRadius = position == .single || position == .top ? vocabSkin.radii.card : 4
+        let bottomRadius = position == .single || position == .bottom ? vocabSkin.radii.card : 4
+
+        return UnevenRoundedRectangle(
+            topLeadingRadius: topRadius,
+            bottomLeadingRadius: bottomRadius,
+            bottomTrailingRadius: bottomRadius,
+            topTrailingRadius: topRadius,
+            style: .continuous
+        )
+    }
+
+    private func reviewFrontWordFont(for text: String) -> Font {
+        let count = text.count
+        if count > 20 { return .system(size: 22, weight: .semibold, design: .monospaced) }
+        if count > 12 { return .system(size: 26, weight: .semibold, design: .monospaced) }
+        return .system(size: 30, weight: .semibold, design: .monospaced)
+    }
+
+    private func reviewAnswerWordFont(for text: String) -> Font {
         let count = text.count
         if count > 20 { return vocabSkin.typography.translationTitle }
         if count > 12 { return .system(size: 28, weight: .semibold, design: .monospaced) }
@@ -476,6 +452,13 @@ struct TodayReviewPresenter: View {
 
         return CardDocument(blocks: blocks)
     }
+}
+
+private enum FoldSegmentPosition {
+    case single
+    case top
+    case middle
+    case bottom
 }
 
 private struct PaperFoldModifier: ViewModifier {
