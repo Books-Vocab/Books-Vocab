@@ -145,6 +145,7 @@ from .billing import (
     write_subscription_snapshot,
 )
 from .auth_service import create_jwt_token, resolve_and_link_user
+from .settings import KGSettings, load_settings
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -154,16 +155,6 @@ from .user_store import (
 )
 
 load_dotenv()
-
-app = FastAPI(title="Knowledge Graph API", version="0.1.0")
-
-# Allow BooksBrowser (iOS Simulator / device) to connect
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 def get_privacy_policy():
     """Serve the static privacy policy HTML."""
@@ -182,19 +173,97 @@ def get_support():
 # ---------------------------------------------------------------------------
 # Data directory & Multi-User
 # ---------------------------------------------------------------------------
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
-USERS_FILE = DATA_DIR / "users.json"
-USERS_LOCK_FILE = DATA_DIR / "users.json.lock"
-APP_STORE_NOTIFICATIONS_FILE = DATA_DIR / "app_store_notifications.ndjson"
+DATA_DIR = Path()
+USERS_FILE = Path()
+USERS_LOCK_FILE = Path()
+APP_STORE_NOTIFICATIONS_FILE = Path()
 
-# JWT Configuration
-JWT_SECRET = os.getenv("JWT_SECRET", "dev-secret-change-in-production")
+# JWT / auth / admin configuration
+JWT_SECRET = ""
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRY_MINUTES = 60 * 24 * 365 # 1 year
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-APPLE_BUNDLE_ID = os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser")
-APP_STORE_ALLOW_UNSIGNED_SYNC = os.getenv("APP_STORE_ALLOW_UNSIGNED_SYNC", "").strip().lower() in {"1", "true", "yes"}
-APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = os.getenv("APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", "").strip().lower() in {"1", "true", "yes"}
+GOOGLE_CLIENT_ID = ""
+APPLE_BUNDLE_ID = "com.Max0228.BooksBrowser"
+APP_STORE_ALLOW_UNSIGNED_SYNC = False
+APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = False
+ADMIN_TOKEN = ""
+
+
+def configure_runtime(settings: KGSettings) -> KGSettings:
+    """Apply settings to the legacy module-level runtime surface."""
+    global DATA_DIR
+    global USERS_FILE
+    global USERS_LOCK_FILE
+    global APP_STORE_NOTIFICATIONS_FILE
+    global JWT_SECRET
+    global JWT_ALGORITHM
+    global JWT_EXPIRY_MINUTES
+    global GOOGLE_CLIENT_ID
+    global APPLE_BUNDLE_ID
+    global APP_STORE_ALLOW_UNSIGNED_SYNC
+    global APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS
+    global ADMIN_TOKEN
+
+    DATA_DIR = settings.data_dir
+    USERS_FILE = settings.users_file
+    USERS_LOCK_FILE = settings.users_lock_file
+    APP_STORE_NOTIFICATIONS_FILE = settings.app_store_notifications_file
+    JWT_SECRET = settings.jwt_secret
+    JWT_ALGORITHM = settings.jwt_algorithm
+    JWT_EXPIRY_MINUTES = settings.jwt_expiry_minutes
+    GOOGLE_CLIENT_ID = settings.google_client_id
+    APPLE_BUNDLE_ID = settings.apple_bundle_id
+    APP_STORE_ALLOW_UNSIGNED_SYNC = settings.app_store_allow_unsigned_sync
+    APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = settings.app_store_allow_unsigned_notifications
+    ADMIN_TOKEN = settings.admin_token
+    return settings
+
+
+def create_app(settings: KGSettings | None = None) -> FastAPI:
+    runtime_settings = configure_runtime(settings or load_settings())
+
+    app = FastAPI(title="Knowledge Graph API", version="0.1.0")
+    app.state.kg_settings = runtime_settings
+
+    # Allow BooksBrowser (iOS Simulator / device) to connect
+    app.add_middleware(
+        CORSMiddleware,
+        allow_origins=["*"],
+        allow_methods=["*"],
+        allow_headers=["*"],
+    )
+
+    register_routes(
+        app,
+        get_privacy_policy=get_privacy_policy,
+        get_support=get_support,
+        get_user_config=get_user_config,
+        get_user_entitlements=get_user_entitlements,
+        sync_app_store_subscription=sync_app_store_subscription,
+        app_store_notifications=app_store_notifications,
+        reconcile_app_store_subscription=reconcile_app_store_subscription,
+        update_user_config=update_user_config,
+        delete_user_account=delete_user_account,
+        health=health,
+        list_vocab=list_vocab,
+        lookup_word=lookup_word,
+        delete_word=delete_word,
+        get_graph_links=get_graph_links,
+        add_vocab=add_vocab,
+        run_pipeline=run_pipeline,
+        translate_quick=translate_quick,
+        translate_phrase=translate_phrase,
+        translate_explain=translate_explain,
+        auth_verify=auth_verify,
+        admin_ui=admin_ui,
+        admin_stats=admin_stats,
+        admin_logs=admin_logs,
+        admin_run_tests=admin_run_tests,
+        admin_last_test_run=admin_last_test_run,
+        admin_test_catalog=admin_test_catalog,
+        admin_tests_ui=admin_tests_ui,
+    )
+    return app
 
 security = HTTPBearer()
 
@@ -914,9 +983,6 @@ async def auth_verify(req: AuthVerifyRequest):
 # Admin endpoints
 # ---------------------------------------------------------------------------
 
-ADMIN_TOKEN = os.getenv("ADMIN_TOKEN", "")
-
-
 def _check_admin(token: str | None):
     if not ADMIN_TOKEN:
         raise HTTPException(403, "ADMIN_TOKEN not configured")
@@ -1030,33 +1096,4 @@ def admin_tests_ui(token: str | None = None):
     return HTMLResponse(ADMIN_TESTS_HTML)
 
 
-register_routes(
-    app,
-    get_privacy_policy=get_privacy_policy,
-    get_support=get_support,
-    get_user_config=get_user_config,
-    get_user_entitlements=get_user_entitlements,
-    sync_app_store_subscription=sync_app_store_subscription,
-    app_store_notifications=app_store_notifications,
-    reconcile_app_store_subscription=reconcile_app_store_subscription,
-    update_user_config=update_user_config,
-    delete_user_account=delete_user_account,
-    health=health,
-    list_vocab=list_vocab,
-    lookup_word=lookup_word,
-    delete_word=delete_word,
-    get_graph_links=get_graph_links,
-    add_vocab=add_vocab,
-    run_pipeline=run_pipeline,
-    translate_quick=translate_quick,
-    translate_phrase=translate_phrase,
-    translate_explain=translate_explain,
-    auth_verify=auth_verify,
-    admin_ui=admin_ui,
-    admin_stats=admin_stats,
-    admin_logs=admin_logs,
-    admin_run_tests=admin_run_tests,
-    admin_last_test_run=admin_last_test_run,
-    admin_test_catalog=admin_test_catalog,
-    admin_tests_ui=admin_tests_ui,
-)
+app = create_app()
