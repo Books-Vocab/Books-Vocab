@@ -15,16 +15,10 @@ struct VocabularyListView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var searchText = ""
-    @State private var showExportSheet = false
-    @State private var showSyncView = false
-    @State private var showSettings = false
-    @State private var exportURL: URL?
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
-    @State private var isForceRefreshing = false
-    @State private var selectedEntry: VocabularyEntry?
-    @State private var activeReviewSession: TodayReviewSession?
+    @StateObject private var coordinator = VocabularyListCoordinator()
 
     var body: some View {
         NavigationStack {
@@ -41,9 +35,7 @@ struct VocabularyListView: View {
             .toolbar {
                 // Sync button
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSyncView = true
-                    } label: {
+                    Button(action: coordinator.presentSyncView) {
                         VocabToolbarGlyph(
                             systemImage: "arrow.triangle.2.circlepath",
                             badge: pendingCount > 0 ? "\(pendingCount)" : nil
@@ -56,7 +48,7 @@ struct VocabularyListView: View {
                     if knowledgeReviewCount > 0 {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
-                                startKnowledgeReview()
+                                coordinator.startKnowledgeReview(entries: knowledgeReviewEntries)
                             } label: {
                                 VocabToolbarGlyph(
                                     systemImage: "rectangle.stack.badge.play",
@@ -68,15 +60,20 @@ struct VocabularyListView: View {
 
                     ToolbarItem(placement: .topBarTrailing) {
                         Button {
-                            Task { await forceRefresh() }
+                            Task {
+                                await coordinator.forceRefresh(
+                                    kgService: kgService,
+                                    modelContext: modelContext
+                                )
+                            }
                         } label: {
-                            if isForceRefreshing {
+                            if coordinator.isForceRefreshing {
                                 ProgressView().scaleEffect(0.8)
                             } else {
                                 VocabToolbarGlyph(systemImage: "arrow.clockwise")
                             }
                         }
-                        .disabled(isForceRefreshing)
+                        .disabled(coordinator.isForceRefreshing)
                     }
                 }
 
@@ -85,19 +82,19 @@ struct VocabularyListView: View {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
                             Button {
-                                exportCSV()
+                                coordinator.exportCSV(entries: pendingEntries)
                             } label: {
                                 Label("匯出 CSV", systemImage: "tablecells")
                             }
 
                             Button {
-                                exportJSON()
+                                coordinator.exportJSON(entries: pendingEntries)
                             } label: {
                                 Label("匯出 JSON", systemImage: "doc.text")
                             }
 
                             Button {
-                                exportAnki()
+                                coordinator.exportAnki(entries: pendingEntries)
                             } label: {
                                 Label("匯出 Anki TSV", systemImage: "rectangle.stack")
                             }
@@ -107,25 +104,25 @@ struct VocabularyListView: View {
                     }
                 }
             }
-            .sheet(isPresented: $showSyncView) {
+            .sheet(isPresented: $coordinator.showSyncView) {
                 SyncView()
             }
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
-            .sheet(item: $exportURL) { url in
+            .sheet(item: $coordinator.exportURL) { url in
                 ShareSheet(url: url)
             }
-            .sheet(item: $selectedEntry) { entry in
+            .sheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry)
                     .presentationDetents([.medium, .large])
                     .presentationDragIndicator(.visible)
                     .presentationContentInteraction(.scrolls)
             }
-            .fullScreenCover(item: $activeReviewSession) { session in
+            .fullScreenCover(item: $coordinator.activeReviewSession) { session in
                 TodayReviewView(
                     entries: session.entries,
-                    onClose: { activeReviewSession = nil }
+                    onClose: { coordinator.activeReviewSession = nil }
                 )
             }
             .task {
@@ -225,47 +222,16 @@ struct VocabularyListView: View {
         )
     }
 
-    // MARK: - 強制刷新
-
-    private func forceRefresh() async {
-        guard !isForceRefreshing else { return }
-        isForceRefreshing = true
-        await kgService.clearLocalData(container: modelContext.container, reason: "force_refresh")
-        try? await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
-        await kgService.healthCheck()
-        isForceRefreshing = false
-    }
-
-    // MARK: - 刪除
-
-    private func handlePendingRemoval(_ entry: VocabularyEntry) {
-        if entry.actionType == "delete" {
-            entry.syncStatus = 1
-            entry.actionType = "add"
-        } else {
-            modelContext.delete(entry)
-        }
-        try? modelContext.save()
-    }
-
-    // MARK: - 匯出功能（委派給 VocabularyExporter）
-
-    private func exportCSV()  { exportURL = VocabularyExporter.exportAsCSV(entries: pendingEntries) }
-    private func exportJSON() { exportURL = VocabularyExporter.exportAsJSON(entries: pendingEntries) }
-    private func exportAnki() { exportURL = VocabularyExporter.exportAsAnki(entries: pendingEntries) }
-
-    private func startKnowledgeReview() {
-        guard !knowledgeReviewEntries.isEmpty else { return }
-        activeReviewSession = TodayReviewSession(entries: knowledgeReviewEntries)
-    }
-
     private func handlePendingRowTap(_ entryID: UUID) {
-        selectedEntry = pendingEntries.first { $0.id == entryID }
+        coordinator.handlePendingRowTap(entryID, pendingEntries: pendingEntries)
     }
 
     private func handlePendingActionTap(_ entryID: UUID) {
-        guard let entry = pendingEntries.first(where: { $0.id == entryID }) else { return }
-        handlePendingRemoval(entry)
+        coordinator.handlePendingActionTap(
+            entryID,
+            pendingEntries: pendingEntries,
+            modelContext: modelContext
+        )
     }
 
     @ViewBuilder
@@ -280,7 +246,7 @@ struct VocabularyListView: View {
                     )
 
                     Button("前往設定登入") {
-                        showSettings = true
+                        coordinator.presentSettings()
                     }
                     .buttonStyle(.vocabAction(.primary))
                     .frame(maxWidth: .infinity)
