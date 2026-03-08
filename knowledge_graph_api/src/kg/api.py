@@ -74,8 +74,6 @@ _attach_memory_log_handler("uvicorn")
 _attach_memory_log_handler("uvicorn.error")
 _attach_memory_log_handler("uvicorn.access")
 
-from .cards import CardStore
-from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind, LINK_LABELS
 from .difficulty import get_tier
 from .apple_auth import verify_apple_token
@@ -159,6 +157,12 @@ from .billing import (
     write_subscription_snapshot,
 )
 from .pipeline_handlers import queue_pipeline_response
+from .runtime_state import (
+    runtime_notifications_file,
+    runtime_settings,
+    runtime_users_file,
+    runtime_users_lock_file,
+)
 from .routers import (
     build_admin_router,
     build_auth_router,
@@ -171,6 +175,12 @@ from .routers import (
 )
 from .auth_service import create_jwt_token, resolve_and_link_user
 from .settings import KGSettings, load_settings
+from .service_factories import (
+    create_card_store,
+    create_embedding_store,
+    create_gemini_client,
+    create_graph_store,
+)
 from .translate_handlers import (
     translate_explain_response,
     translate_phrase_response,
@@ -263,6 +273,36 @@ def configure_runtime(settings: KGSettings) -> KGSettings:
     return settings
 
 
+def _runtime_settings() -> KGSettings:
+    """Read the current legacy runtime surface as a single settings object."""
+    return runtime_settings(
+        data_dir=DATA_DIR,
+        jwt_secret=JWT_SECRET,
+        jwt_algorithm=JWT_ALGORITHM,
+        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        google_client_id=GOOGLE_CLIENT_ID,
+        apple_bundle_id=APPLE_BUNDLE_ID,
+        app_store_allow_unsigned_sync=APP_STORE_ALLOW_UNSIGNED_SYNC,
+        app_store_allow_unsigned_notifications=APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
+        admin_token=ADMIN_TOKEN,
+    )
+
+
+def _runtime_users_file() -> Path:
+    return runtime_users_file(explicit_users_file=USERS_FILE, settings=_runtime_settings())
+
+
+def _runtime_users_lock_file() -> Path:
+    return runtime_users_lock_file(explicit_users_lock_file=USERS_LOCK_FILE, settings=_runtime_settings())
+
+
+def _runtime_notifications_file() -> Path:
+    return runtime_notifications_file(
+        explicit_notifications_file=APP_STORE_NOTIFICATIONS_FILE,
+        settings=_runtime_settings(),
+    )
+
+
 def create_app(settings: KGSettings | None = None) -> FastAPI:
     runtime_settings = configure_runtime(settings or load_settings())
 
@@ -350,10 +390,10 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
 
 
 def load_users() -> dict[str, dict[str, Any]]:
-    return load_users_from(USERS_FILE, _normalize_users_payload)
+    return load_users_from(_runtime_users_file(), _normalize_users_payload)
 
 def save_users(users: dict[str, dict[str, Any]]) -> None:
-    save_users_to(USERS_FILE, users, _normalize_users_payload)
+    save_users_to(_runtime_users_file(), users, _normalize_users_payload)
 
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
@@ -363,6 +403,7 @@ def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
+    settings = _runtime_settings()
     token = credentials.credentials.strip()
     token_iat: datetime | None = None
 
@@ -375,7 +416,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
     # Try JWT first (new format)
     try:
-        decoded = jwt.decode(token, JWT_SECRET, algorithms=[JWT_ALGORITHM])
+        decoded = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
         user_id = decoded.get("sub")
         if not user_id:
             raise ValueError("No sub in token")
@@ -420,7 +461,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
                     headers={"WWW-Authenticate": "Bearer"},
                 )
 
-    user_dir = DATA_DIR / "users" / user_id
+    user_dir = settings.data_dir / "users" / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
 
     return {
@@ -431,33 +472,20 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     }
 
 
-def _card_store(user_dir: Path) -> CardStore:
-    return CardStore(user_dir / "cards.db")
+def _card_store(user_dir: Path):
+    return create_card_store(user_dir)
 
 
 def _graph_store(user_dir: Path) -> GraphStore:
-    return GraphStore(user_dir / "graph.json", user_dir / "candidates.json")
+    return create_graph_store(user_dir)
 
 
 def _gemini_client():
-    from openai import OpenAI
-
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
-    return OpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
-    )
+    return create_gemini_client()
 
 
-def _embedding_store(user_dir: Path, user_id: str | None = None) -> EmbeddingStore:
-    return EmbeddingStore(
-        user_dir / "embeddings.npy",
-        user_dir / "card_ids.json",
-        _gemini_client(),
-        user_id=user_id,
-    )
+def _embedding_store(user_dir: Path, user_id: str | None = None):
+    return create_embedding_store(user_dir, gemini_client_factory=_gemini_client, user_id=user_id)
 
 
 def _build_links_by_kind(
@@ -510,7 +538,7 @@ def _require_pro_access(user: dict[str, Any], capability: str) -> None:
 
 
 def _append_app_store_event(payload: dict[str, Any]) -> None:
-    append_app_store_event(APP_STORE_NOTIFICATIONS_FILE, payload)
+    append_app_store_event(_runtime_notifications_file(), payload)
 
 
 def _resolve_user_id_from_subscription_index(users: dict[str, Any], original_transaction_id: str | None, transaction_id: str | None) -> str | None:
@@ -555,17 +583,18 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
 def _decode_signed_transaction_info(signed_transaction_info: str) -> dict[str, Any]:
     return decode_signed_transaction_info(
         signed_transaction_info,
-        bundle_id=APPLE_BUNDLE_ID,
+        bundle_id=_runtime_settings().apple_bundle_id,
         parse_datetime_fn=_parse_datetime,
         verify_signed_jws=verify_and_decode_signed_jws,
     )
 
 
 def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict[str, Any], dict[str, Any] | None]:
+    settings = _runtime_settings()
     return decode_notification_payload(
         req,
-        bundle_id=APPLE_BUNDLE_ID,
-        allow_unsigned_notifications=APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
+        bundle_id=settings.apple_bundle_id,
+        allow_unsigned_notifications=settings.app_store_allow_unsigned_notifications,
         parse_datetime_fn=_parse_datetime,
         verify_signed_jws=verify_and_decode_signed_jws,
     )
@@ -595,11 +624,12 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
+    settings = _runtime_settings()
     return sync_app_store_subscription_response(
         req,
         user,
-        allow_unsigned_sync=APP_STORE_ALLOW_UNSIGNED_SYNC,
-        users_lock_file=USERS_LOCK_FILE,
+        allow_unsigned_sync=settings.app_store_allow_unsigned_sync,
+        users_lock_file=_runtime_users_lock_file(),
         load_users=load_users,
         save_users=save_users,
         decode_signed_transaction_info=_decode_signed_transaction_info,
@@ -613,9 +643,10 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
+    settings = _runtime_settings()
     return app_store_notifications_response(
         req,
-        users_lock_file=USERS_LOCK_FILE,
+        users_lock_file=_runtime_users_lock_file(),
         load_users=load_users,
         save_users=save_users,
         decode_notification_payload=_decode_notification_payload,
@@ -631,11 +662,12 @@ def app_store_notifications(req: AppStoreNotificationRequest):
 # ---------------------------------------------------------------------------
 async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
     """Fetch transaction state from Apple's App Store Server API and persist it."""
+    settings = _runtime_settings()
     return await reconcile_app_store_subscription_response(
         req,
         user,
-        apple_bundle_id=APPLE_BUNDLE_ID,
-        users_lock_file=USERS_LOCK_FILE,
+        apple_bundle_id=settings.apple_bundle_id,
+        users_lock_file=_runtime_users_lock_file(),
         load_users=load_users,
         save_users=save_users,
         fetch_transaction_info=fetch_transaction_info,
@@ -651,10 +683,11 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
+    settings = _runtime_settings()
     return update_user_config_response(
         req,
         user,
-        users_lock_file=USERS_LOCK_FILE,
+        users_lock_file=_runtime_users_lock_file(),
         load_users=load_users,
         save_users=save_users,
     )
@@ -665,13 +698,14 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 def delete_user_account(user: dict = Depends(get_current_user)):
     """Permanently delete the current account and all related user data."""
+    settings = _runtime_settings()
     return delete_user_account_response(
         user,
-        users_lock_file=USERS_LOCK_FILE,
+        users_lock_file=_runtime_users_lock_file(),
         load_users=load_users,
         save_users=save_users,
         collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
-        data_dir=DATA_DIR,
+        data_dir=settings.data_dir,
         logger=logger,
     )
 
@@ -822,12 +856,13 @@ def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_us
 # ---------------------------------------------------------------------------
 
 def _create_jwt_token(user_id: str, provider: str) -> str:
+    settings = _runtime_settings()
     return create_jwt_token(
         user_id,
         provider,
-        jwt_secret=JWT_SECRET,
-        jwt_algorithm=JWT_ALGORITHM,
-        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        jwt_secret=settings.jwt_secret,
+        jwt_algorithm=settings.jwt_algorithm,
+        jwt_expiry_minutes=settings.jwt_expiry_minutes,
     )
 
 
@@ -835,7 +870,7 @@ def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | No
     return resolve_and_link_user(
         provider_user_id,
         provider,
-        users_lock_file=str(USERS_LOCK_FILE),
+        users_lock_file=str(_runtime_users_lock_file()),
         load_users_fn=load_users,
         save_users_fn=save_users,
         email=email,
@@ -860,11 +895,12 @@ async def auth_verify(req: AuthVerifyRequest):
             "expires_in": 900
         }
     """
+    settings = _runtime_settings()
     return await auth_verify_response(
         req,
-        google_client_id=GOOGLE_CLIENT_ID,
-        apple_bundle_id=APPLE_BUNDLE_ID,
-        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        google_client_id=settings.google_client_id,
+        apple_bundle_id=settings.apple_bundle_id,
+        jwt_expiry_minutes=settings.jwt_expiry_minutes,
         verify_google_token=verify_google_token,
         verify_apple_token=verify_apple_token,
         resolve_and_link_user=_resolve_and_link_user,
@@ -877,7 +913,7 @@ async def auth_verify(req: AuthVerifyRequest):
 # ---------------------------------------------------------------------------
 
 def _check_admin(token: str | None):
-    require_admin(token, admin_token=ADMIN_TOKEN)
+    require_admin(token, admin_token=_runtime_settings().admin_token)
 
 
 def _build_test_catalog() -> dict[str, Any]:
@@ -890,18 +926,19 @@ def _run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any
 
 def admin_ui(token: str | None = None):
     """Admin dashboard UI."""
-    return admin_ui_response(token, admin_token=ADMIN_TOKEN, admin_html=ADMIN_HTML)
+    return admin_ui_response(token, admin_token=_runtime_settings().admin_token, admin_html=ADMIN_HTML)
 
 
 def admin_stats(token: str | None = None):
     """Return per-user token + vocab stats for admin dashboard."""
     from .token_tracker import get_all_stats
+    settings = _runtime_settings()
     return admin_stats_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=settings.admin_token,
         load_users=load_users,
         get_all_stats=get_all_stats,
-        data_dir=DATA_DIR,
+        data_dir=settings.data_dir,
         card_store_factory=_card_store,
     )
 
@@ -910,7 +947,7 @@ def admin_logs(token: str | None = None, n: int = 200, level: str | None = None)
     """Return recent in-memory log entries for the admin dashboard."""
     return admin_logs_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=_runtime_settings().admin_token,
         log_getter=_mem_log.get,
         n=n,
         level=level,
@@ -921,7 +958,7 @@ def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = 
     """Run test suite and return matrix view data."""
     return admin_run_tests_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=_runtime_settings().admin_token,
         req=req,
         run_pytest_matrix=_run_pytest_matrix,
         store_last_test_run=store_last_test_run,
@@ -932,7 +969,7 @@ def admin_last_test_run(token: str | None = None):
     """Get latest test run result for matrix page."""
     return admin_last_test_run_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=_runtime_settings().admin_token,
         get_last_test_run=get_last_test_run,
     )
 
@@ -941,7 +978,7 @@ def admin_test_catalog(token: str | None = None):
     """Return clickable test-matrix catalog."""
     return admin_test_catalog_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=_runtime_settings().admin_token,
         build_test_catalog=_build_test_catalog,
     )
 
@@ -951,7 +988,7 @@ def admin_tests_ui(token: str | None = None):
     """Minimal grayscale test matrix dashboard."""
     return admin_tests_ui_response(
         token,
-        admin_token=ADMIN_TOKEN,
+        admin_token=_runtime_settings().admin_token,
         admin_tests_html=ADMIN_TESTS_HTML,
     )
 
