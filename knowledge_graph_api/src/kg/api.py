@@ -131,6 +131,17 @@ from .admin_test_matrix import (
     run_pytest_matrix,
     store_last_test_run,
 )
+from .admin_handlers import (
+    admin_last_test_run_response,
+    admin_logs_response,
+    admin_run_tests_response,
+    admin_stats_response,
+    admin_test_catalog_response,
+    admin_tests_ui_response,
+    admin_ui_response,
+    require_admin,
+)
+from .auth_handlers import auth_verify_response
 from .billing_handlers import (
     app_store_notifications_response,
     reconcile_app_store_subscription_response,
@@ -150,6 +161,8 @@ from .billing import (
 )
 from .pipeline_handlers import queue_pipeline_response
 from .routers import (
+    build_admin_router,
+    build_auth_router,
     build_billing_router,
     build_pipeline_router,
     build_translate_router,
@@ -297,18 +310,22 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             translate_explain=translate_explain,
         )
     )
+    app.include_router(build_auth_router(auth_verify=auth_verify))
+    app.include_router(
+        build_admin_router(
+            admin_ui=admin_ui,
+            admin_stats=admin_stats,
+            admin_logs=admin_logs,
+            admin_run_tests=admin_run_tests,
+            admin_last_test_run=admin_last_test_run,
+            admin_test_catalog=admin_test_catalog,
+            admin_tests_ui=admin_tests_ui,
+        )
+    )
     register_routes(
         app,
         get_privacy_policy=get_privacy_policy,
         get_support=get_support,
-        auth_verify=auth_verify,
-        admin_ui=admin_ui,
-        admin_stats=admin_stats,
-        admin_logs=admin_logs,
-        admin_run_tests=admin_run_tests,
-        admin_last_test_run=admin_last_test_run,
-        admin_test_catalog=admin_test_catalog,
-        admin_tests_ui=admin_tests_ui,
     )
     return app
 
@@ -842,25 +859,15 @@ async def auth_verify(req: AuthVerifyRequest):
             "expires_in": 900
         }
     """
-    if req.provider == "google":
-        if not GOOGLE_CLIENT_ID:
-            raise HTTPException(status_code=500, detail="GOOGLE_CLIENT_ID not configured")
-        provider_user_id = await verify_google_token(req.token, GOOGLE_CLIENT_ID)
-    elif req.provider == "apple":
-        provider_user_id = verify_apple_token(req.token, APPLE_BUNDLE_ID)
-    else:
-        raise HTTPException(status_code=400, detail=f"Unknown provider: {req.provider}")
-
-    # Resolve and link user by email
-    canonical_user_id = _resolve_and_link_user(provider_user_id, req.provider, req.email)
-
-    # Create JWT token with canonical user_id
-    access_token = _create_jwt_token(canonical_user_id, req.provider)
-
-    return AuthVerifyResponse(
-        access_token=access_token,
-        user_id=canonical_user_id,
-        expires_in=JWT_EXPIRY_MINUTES * 60,
+    return await auth_verify_response(
+        req,
+        google_client_id=GOOGLE_CLIENT_ID,
+        apple_bundle_id=APPLE_BUNDLE_ID,
+        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
+        verify_google_token=verify_google_token,
+        verify_apple_token=verify_apple_token,
+        resolve_and_link_user=_resolve_and_link_user,
+        create_jwt_token=_create_jwt_token,
     )
 
 
@@ -869,10 +876,7 @@ async def auth_verify(req: AuthVerifyRequest):
 # ---------------------------------------------------------------------------
 
 def _check_admin(token: str | None):
-    if not ADMIN_TOKEN:
-        raise HTTPException(403, "ADMIN_TOKEN not configured")
-    if token != ADMIN_TOKEN:
-        raise HTTPException(403, "Forbidden")
+    require_admin(token, admin_token=ADMIN_TOKEN)
 
 
 def _build_test_catalog() -> dict[str, Any]:
@@ -885,100 +889,70 @@ def _run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any
 
 def admin_ui(token: str | None = None):
     """Admin dashboard UI."""
-    _check_admin(token)
-    return HTMLResponse(ADMIN_HTML)
+    return admin_ui_response(token, admin_token=ADMIN_TOKEN, admin_html=ADMIN_HTML)
 
 
 def admin_stats(token: str | None = None):
     """Return per-user token + vocab stats for admin dashboard."""
-    _check_admin(token)
-
     from .token_tracker import get_all_stats
-
-    users_data = load_users()
-    token_stats = get_all_stats()
-
-    IN_PER_M = 0.10
-    OUT_PER_M = 0.40
-    EMB_PER_M = 0.00025
-
-    result = []
-    for uid, info in users_data.items():
-        if uid.startswith("_"):
-            continue
-
-        # Vocab count from cards.db
-        user_dir = DATA_DIR / "users" / uid
-        vocab_count = 0
-        try:
-            store = _card_store(user_dir)
-            vocab_count = sum(1 for c in store.all() if not c.is_deleted)
-        except Exception:
-            pass
-
-        utoken = token_stats.get(uid, {})
-        total_input = sum(d["input_tokens"] for d in utoken.values())
-        total_output = sum(d["output_tokens"] for d in utoken.values())
-
-        est_cost = 0.0
-        for call_type, d in utoken.items():
-            if call_type == "embed":
-                est_cost += (d["input_tokens"] / 1_000_000) * EMB_PER_M
-            else:
-                est_cost += (d["input_tokens"] / 1_000_000) * IN_PER_M
-                est_cost += (d["output_tokens"] / 1_000_000) * OUT_PER_M
-
-        config = info.get("config", {}) if isinstance(info, dict) else {}
-        result.append({
-            "user_id": uid,
-            "email": info.get("email") if isinstance(info, dict) else None,
-            "provider": info.get("provider") if isinstance(info, dict) else None,
-            "last_login": info.get("last_login") if isinstance(info, dict) else None,
-            "vocab_count": vocab_count,
-            "has_mochi": bool(config.get("mochi_api_key")),
-            "tokens": utoken,
-            "total_input": total_input,
-            "total_output": total_output,
-            "est_cost_usd": round(est_cost, 6),
-        })
-
-    result.sort(key=lambda x: x["vocab_count"], reverse=True)
-    return {"users": result}
+    return admin_stats_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        load_users=load_users,
+        get_all_stats=get_all_stats,
+        data_dir=DATA_DIR,
+        card_store_factory=_card_store,
+    )
 
 
 def admin_logs(token: str | None = None, n: int = 200, level: str | None = None):
     """Return recent in-memory log entries for the admin dashboard."""
-    _check_admin(token)
-    return {"logs": _mem_log.get(n=n, level=level or None)}
+    return admin_logs_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        log_getter=_mem_log.get,
+        n=n,
+        level=level,
+    )
 
 
 def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None):
     """Run test suite and return matrix view data."""
-    _check_admin(token)
-    selected = req.itemIds if req else []
-    return store_last_test_run(_run_pytest_matrix(selected_items=selected))
+    return admin_run_tests_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        req=req,
+        run_pytest_matrix=_run_pytest_matrix,
+        store_last_test_run=store_last_test_run,
+    )
 
 
 def admin_last_test_run(token: str | None = None):
     """Get latest test run result for matrix page."""
-    _check_admin(token)
-    last_run = get_last_test_run()
-    if last_run is None:
-        return {"status": "idle"}
-    return last_run
+    return admin_last_test_run_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        get_last_test_run=get_last_test_run,
+    )
 
 
 def admin_test_catalog(token: str | None = None):
     """Return clickable test-matrix catalog."""
-    _check_admin(token)
-    return _build_test_catalog()
+    return admin_test_catalog_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        build_test_catalog=_build_test_catalog,
+    )
 
 
 
 def admin_tests_ui(token: str | None = None):
     """Minimal grayscale test matrix dashboard."""
-    _check_admin(token)
-    return HTMLResponse(ADMIN_TESTS_HTML)
+    return admin_tests_ui_response(
+        token,
+        admin_token=ADMIN_TOKEN,
+        admin_tests_html=ADMIN_TESTS_HTML,
+    )
 
 
 app = create_app()
