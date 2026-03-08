@@ -34,6 +34,12 @@ REQUIRED_ENV_KEYS=(
   "APP_STORE_CONNECT_PRIVATE_KEY_PATH"
 )
 
+# 允許本地/遠端路徑不同，但要求指向同名檔案並符合各自主機上的預期目錄
+HOST_SPECIFIC_ENV_KEYS=(
+  "APP_STORE_ROOT_CA_PATH"
+  "APP_STORE_CONNECT_PRIVATE_KEY_PATH"
+)
+
 # ── 工具函式 ──────────────────────────────────────────────────────────────────
 info()    { echo "▶ $*"; }
 ok()      { echo "✓ $*"; }
@@ -94,6 +100,103 @@ cmd_env_check() {
   fi
 }
 
+cmd_env_drift() {
+  section "檢查本地/遠端 .env 一致性"
+
+  local remote_real_dir
+  remote_real_dir=$(run_remote "cd $REMOTE_DIR >/dev/null 2>&1 && pwd")
+
+  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$remote_real_dir" <<'PY'
+import os
+import subprocess
+import sys
+from pathlib import Path
+
+local_env_path = Path(sys.argv[1])
+remote_env_path = sys.argv[2]
+local_dir = Path(sys.argv[3]).resolve()
+remote_dir = Path(sys.argv[4]).strip()
+
+host_specific = {
+    "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{remote_dir}/certs"),
+    "APP_STORE_CONNECT_PRIVATE_KEY_PATH": (local_dir / "certs", f"{remote_dir}/certs"),
+}
+
+def parse_env_text(text: str):
+    result = {}
+    for raw in text.splitlines():
+        line = raw.strip()
+        if not line or line.startswith("#") or "=" not in line:
+            continue
+        key, value = line.split("=", 1)
+        result[key] = value
+    return result
+
+def parse_local_env(path: Path):
+    if not path.exists():
+        raise SystemExit(f"✗ 本地 .env 不存在：{path}")
+    return parse_env_text(path.read_text())
+
+def parse_remote_env(path: str):
+    proc = subprocess.run(
+        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_default.pem"), "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "ubuntu@54.95.189.179", f"cat {path}"],
+        capture_output=True,
+        text=True,
+        check=False,
+    )
+    if proc.returncode != 0:
+        raise SystemExit(f"✗ 無法讀取遠端 .env：{proc.stderr.strip()}")
+    return parse_env_text(proc.stdout)
+
+local_env = parse_local_env(local_env_path)
+remote_env = parse_remote_env(remote_env_path)
+
+missing_remote = sorted(set(local_env) - set(remote_env))
+missing_local = sorted(set(remote_env) - set(local_env))
+value_mismatches = []
+
+for key in sorted(set(local_env) & set(remote_env)):
+    lv = local_env[key]
+    rv = remote_env[key]
+    if key in host_specific:
+        local_base_dir, remote_base_dir = host_specific[key]
+        local_name = Path(lv).name
+        remote_name = Path(rv).name
+        expected_local_prefix = str(local_base_dir)
+        expected_remote_prefix = remote_base_dir
+        if not lv.startswith(expected_local_prefix + "/"):
+            value_mismatches.append((key, lv, rv, f"本地值應位於 {expected_local_prefix}/ 下"))
+            continue
+        if not rv.startswith(expected_remote_prefix + "/"):
+            value_mismatches.append((key, lv, rv, f"遠端值應位於 {expected_remote_prefix}/ 下"))
+            continue
+        if local_name != remote_name:
+            value_mismatches.append((key, lv, rv, "本地與遠端指向的檔名不同"))
+        continue
+    if lv != rv:
+        value_mismatches.append((key, lv, rv, "值不同"))
+
+if missing_remote or missing_local or value_mismatches:
+    if missing_remote:
+        print("✗ 遠端缺少以下 key:")
+        for key in missing_remote:
+            print(f"  - {key}")
+    if missing_local:
+        print("✗ 本地缺少以下 key:")
+        for key in missing_local:
+            print(f"  - {key}")
+    if value_mismatches:
+        print("✗ 本地/遠端 .env 存在不一致:")
+        for key, lv, rv, reason in value_mismatches:
+            print(f"  - {key}: {reason}")
+            print(f"      local : {lv}")
+            print(f"      remote: {rv}")
+    raise SystemExit(1)
+
+print("✓ 本地/遠端 .env 已一致（host-specific path key 已正規化檢查）")
+PY
+}
+
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
 cmd_deploy() {
   preflight
@@ -106,6 +209,8 @@ cmd_deploy() {
     --exclude '.venv' \
     --exclude '__pycache__' \
     --exclude '.git' \
+    --exclude '.env' \
+    --exclude 'certs' \
     --exclude 'data' \
     --exclude '.pytest_cache' \
     --exclude '*.pyc' \
@@ -131,6 +236,9 @@ cmd_deploy() {
     run_remote "docker logs knowledge-graph-api -n 30"
     err "部署後健康檢查失敗 (HTTP $http_code)，請確認日誌"
   fi
+
+  section "Step 5/5: .env 一致性驗證"
+  cmd_env_drift
 
   ok "部署完成。"
 }
@@ -299,6 +407,7 @@ case "${1:-help}" in
   setup)        cmd_setup "${2:-}" ;;
   push-env)     cmd_push_env "${2:-}" ;;
   env-check)    cmd_env_check ;;
+  env-drift)    cmd_env_drift ;;
   migrate)      cmd_migrate ;;
   restart)      cmd_restart ;;
   status)       cmd_status ;;
@@ -322,6 +431,7 @@ case "${1:-help}" in
   restart                 重啟容器（不重新 build）
   migrate                 對所有用戶 DB 執行 idempotent schema migration"
     echo "  env-check               檢查遠端 .env 是否包含所有必要環境變數"
+    echo "  env-drift               檢查本地/遠端 .env 是否一致（path key 正規化）"
     echo "  status                  Docker / Caddy / 磁碟 / 用戶數概覽"
     echo "  logs [n]                最新 n 行日誌（預設 50）"
     echo "  backup                  備份 data/ 到本地 backups/"
