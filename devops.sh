@@ -115,7 +115,7 @@ from pathlib import Path
 local_env_path = Path(sys.argv[1])
 remote_env_path = sys.argv[2]
 local_dir = Path(sys.argv[3]).resolve()
-remote_dir = Path(sys.argv[4]).strip()
+remote_dir = sys.argv[4].strip()
 
 host_specific = {
     "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{remote_dir}/certs"),
