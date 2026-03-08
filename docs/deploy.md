@@ -42,7 +42,7 @@ cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_worksp
 ./devops.sh logs 50     # 如有問題查日誌
 ```
 
-`deploy` 內部流程：backup → env-check → rsync → docker build → migrate → health check（非 200 自動中止）。
+`deploy` 內部流程：backup → env-check → rsync → docker build → migrate → health check → env-drift（非通過自動中止）。
 
 ---
 
@@ -77,6 +77,11 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appsto
 `./devops.sh env-check` 現在會同時檢查：
 - 必要 App Store 驗簽 key 是否存在
 - unsigned fallback 開關是否被錯誤打開
+
+`./devops.sh env-drift` 會在 deploy 後檢查本地/遠端 `.env` 是否一致：
+- 一般 key 要求值完全相同
+- host-specific path key（例如 App Store cert path）允許本地/遠端主機路徑不同，但要求檔名一致且位於各自主機的預期 `certs/` 目錄
+- 若 drift 存在，deploy 會直接失敗，避免 runtime 配置悄悄偏離
 
 ### 新增 Card Schema 欄位（SQLite）
 
@@ -149,6 +154,7 @@ deploy 失敗
 ./devops.sh user-info <id>  # 用戶單字統計
 ./devops.sh backup          # 備份 data/ 到本地
 ./devops.sh env-check       # 確認遠端 .env 必要 key 齊全
+./devops.sh env-drift       # 檢查本地/遠端 .env 一致性（含 path 正規化）
 ./devops.sh run "<cmd>"     # 在遠端 host 執行任意指令
 ./devops.sh push-env        # 推送本地 .env 到遠端
 ./devops.sh migrate         # 只跑 DB migration

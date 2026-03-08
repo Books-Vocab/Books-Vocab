@@ -18,6 +18,7 @@ usage:
   $0 logs [n]
   $0 backup
   $0 env-check
+  $0 env-drift
   $0 migrate
   $0 users
   $0 user-info <id>
@@ -50,7 +51,7 @@ main() {
     preflight)
       preflight
       ;;
-    deploy|restart|status|backup|env-check|migrate|users)
+    deploy|restart|status|backup|env-check|env-drift|migrate|users)
       preflight
       "$BASE" "$sub"
       ;;
