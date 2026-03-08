@@ -7,6 +7,7 @@ struct SettingsPresenter: View {
     let state: SettingsPresenterState
     let mochiApiKey: Binding<String>
     let manualLoginUserId: Binding<String>?
+    let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
 
     var body: some View {
@@ -231,6 +232,39 @@ struct SettingsPresenter: View {
                         .transition(.move(edge: .top).combined(with: .opacity))
                     }
                 }
+
+#if DEBUG
+                if let debug = kg.debug, let debugLocalServerURL {
+                    SettingsDivider()
+
+                    VStack(alignment: .leading, spacing: 12) {
+                        Text("DEBUG 後端")
+                            .font(vocabSkin.typography.captionStrong)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+
+                        HStack(spacing: 8) {
+                            Button("遠端正式站", action: actions.useProductionBackend)
+                                .buttonStyle(.borderedProminent)
+                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
+
+                            Button("本地開發站", action: actions.useLocalBackend)
+                                .buttonStyle(.borderedProminent)
+                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
+                        }
+
+                        TextField("本地伺服器 URL", text: debugLocalServerURL)
+                            .font(vocabSkin.typography.monoLabel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+
+                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。" : "目前使用遠端正式站。")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                    .padding(vocabSkin.spacing.cardPadding)
+                }
+#endif
             }
             .settingsCard()
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kg.isConnected)

@@ -13,12 +13,16 @@ final class SettingsCoordinator: ObservableObject {
     @Published var deleteAccountError: String?
     @Published var manualLoginUserId = ""
     @Published var developerAccountId = ""
+    @Published var debugLocalServerURL = ""
 
     private let developerAccountKey = "developer_account_id"
     private var saveTask: Task<Void, Never>?
 
     init() {
         developerAccountId = UserDefaults.standard.string(forKey: developerAccountKey) ?? ""
+        #if DEBUG
+        debugLocalServerURL = KGService.getDebugLocalServerURL()
+        #endif
     }
 
     deinit {
@@ -109,4 +113,25 @@ final class SettingsCoordinator: ObservableObject {
         developerAccountId = ""
         UserDefaults.standard.removeObject(forKey: developerAccountKey)
     }
+
+    #if DEBUG
+    func useProductionBackend(
+        authManager: any AuthManaging,
+        kgService: any KGServing
+    ) async {
+        KGService.useProductionServer()
+        debugLocalServerURL = KGService.getDebugLocalServerURL()
+        await loadData(authManager: authManager, kgService: kgService)
+    }
+
+    func useLocalBackend(
+        authManager: any AuthManaging,
+        kgService: any KGServing
+    ) async {
+        KGService.setDebugLocalServerURL(debugLocalServerURL)
+        KGService.useLocalServer()
+        debugLocalServerURL = KGService.getDebugLocalServerURL()
+        await loadData(authManager: authManager, kgService: kgService)
+    }
+    #endif
 }

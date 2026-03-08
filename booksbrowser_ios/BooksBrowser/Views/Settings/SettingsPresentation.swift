@@ -18,11 +18,17 @@ struct SettingsPresenterState {
     }
 
     struct KGSection {
+        struct DebugSection {
+            let isUsingLocalServer: Bool
+            let localServerURL: String
+        }
+
         let serverURL: String
         let isConnected: Bool
         let connectionPulse: Bool
         let serverCardCount: Int
         let lastSyncDescription: String?
+        let debug: DebugSection?
     }
 
     struct SubscriptionSection {
@@ -71,6 +77,8 @@ struct SettingsPresenterActions {
     let manualLogin: () -> Void
     let setDeveloperAccount: () -> Void
     let clearDeveloperAccount: () -> Void
+    let useProductionBackend: () -> Void
+    let useLocalBackend: () -> Void
     let showSubscriptionPaywall: () -> Void
     let showMochiInfo: () -> Void
     let requestDeleteAccount: () -> Void
