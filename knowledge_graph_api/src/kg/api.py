@@ -109,7 +109,6 @@ from .api_models import (
     VocabAddResponse,
     VocabEntry,
 )
-from .route_registration import register_routes
 from .translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -165,6 +164,7 @@ from .routers import (
     build_auth_router,
     build_billing_router,
     build_pipeline_router,
+    build_static_pages_router,
     build_translate_router,
     build_user_router,
     build_vocab_router,
@@ -278,6 +278,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     )
 
     app.include_router(
+        build_static_pages_router(
+            get_privacy_policy=get_privacy_policy,
+            get_support=get_support,
+        )
+    )
+    app.include_router(
         build_user_router(
             get_user_config=get_user_config,
             get_user_entitlements=get_user_entitlements,
@@ -321,11 +327,6 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             admin_test_catalog=admin_test_catalog,
             admin_tests_ui=admin_tests_ui,
         )
-    )
-    register_routes(
-        app,
-        get_privacy_policy=get_privacy_policy,
-        get_support=get_support,
     )
     return app
 

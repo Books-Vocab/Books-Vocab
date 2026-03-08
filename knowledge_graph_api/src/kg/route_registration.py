@@ -3,7 +3,8 @@ from __future__ import annotations
 from typing import Any, Callable
 
 from fastapi import FastAPI
-from fastapi.responses import FileResponse
+
+from .routers.static_pages import build_static_pages_router
 
 
 def register_routes(
@@ -12,5 +13,9 @@ def register_routes(
     get_privacy_policy: Callable[..., Any],
     get_support: Callable[..., Any],
 ) -> None:
-    app.get("/privacy.html", response_class=FileResponse)(get_privacy_policy)
-    app.get("/support.html", response_class=FileResponse)(get_support)
+    app.include_router(
+        build_static_pages_router(
+            get_privacy_policy=get_privacy_policy,
+            get_support=get_support,
+        )
+    )
