@@ -15,8 +15,13 @@ struct BooksBrowserApp: App {
     let modelContainer: ModelContainer
     let authManager = AuthManager.shared
     let kgService = KGService()
+    let readiumService: any ReadiumServing = ReadiumService.shared
+    let bookshelfImportService: any BookshelfImporting
+    let bookFileManager: any BookFileManaging
 
     init() {
+        bookshelfImportService = BookshelfImportService(readiumService: readiumService)
+        bookFileManager = LocalBookFileManager()
         let schema = Schema([Book.self, VocabularyEntry.self])
 
         // 先嘗試正常建立
@@ -53,6 +58,9 @@ struct BooksBrowserApp: App {
                 ContentView()
                     .environment(\.authManager, authManager)
                     .environment(\.kgService, kgService)
+                    .environment(\.readiumService, readiumService)
+                    .environment(\.bookshelfImportService, bookshelfImportService)
+                    .environment(\.bookFileManager, bookFileManager)
                     .onOpenURL { url in
                         GIDSignIn.sharedInstance.handle(url)
                     }

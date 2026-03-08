@@ -13,14 +13,10 @@ import UniformTypeIdentifiers
 struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.bookshelfImportService) private var bookshelfImportService
+    @Environment(\.bookFileManager) private var bookFileManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
-
-    @State private var isImporting = false
-    @State private var isLoading = false
-    @State private var loadingMessage = ""
-    @State private var errorMessage: String?
-    @State private var showError = false
-    @State private var showSettings = false
+    @StateObject private var coordinator = BookshelfCoordinator()
 
     private let columns = [
         GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)
@@ -38,7 +34,7 @@ struct BookshelfView: View {
                     bookGrid
                 }
 
-                if isLoading {
+                if coordinator.isLoading {
                     loadingOverlay
                 }
             }
@@ -47,9 +43,7 @@ struct BookshelfView: View {
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
-                    Button {
-                        showSettings = true
-                    } label: {
+                    Button(action: coordinator.presentSettings) {
                         Image(systemName: "gearshape")
                             .font(.system(size: 15, weight: .light))
                             .foregroundStyle(.secondary)
@@ -57,9 +51,7 @@ struct BookshelfView: View {
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        isImporting = true
-                    } label: {
+                    Button(action: coordinator.presentImporter) {
                         Image(systemName: "plus")
                             .font(.system(size: 15, weight: .light))
                             .foregroundStyle(.secondary)
@@ -67,18 +59,22 @@ struct BookshelfView: View {
                 }
             }
             .fileImporter(
-                isPresented: $isImporting,
+                isPresented: $coordinator.isImporting,
                 allowedContentTypes: [UTType(filenameExtension: "epub") ?? .data],
                 allowsMultipleSelection: false
             ) { result in
-                handleFileImport(result)
+                coordinator.handleFileImport(
+                    result,
+                    modelContext: modelContext,
+                    importService: bookshelfImportService
+                )
             }
-            .alert("匯入錯誤", isPresented: $showError) {
-                Button("確定", role: .cancel) {}
+            .alert("匯入錯誤", isPresented: $coordinator.showError) {
+                Button("確定", role: .cancel, action: coordinator.dismissError)
             } message: {
-                Text((errorMessage ?? "未知錯誤").localized)
+                Text((coordinator.errorMessage ?? "未知錯誤").localized)
             }
-            .sheet(isPresented: $showSettings) {
+            .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
         }
@@ -106,7 +102,7 @@ struct BookshelfView: View {
             }
 
             Button {
-                isImporting = true
+                coordinator.presentImporter()
             } label: {
                 Text("匯入")
                     .font(.subheadline)
@@ -135,7 +131,11 @@ struct BookshelfView: View {
                     }
                     .contextMenu {
                         Button(role: .destructive) {
-                            deleteBook(book)
+                            coordinator.deleteBook(
+                                book,
+                                modelContext: modelContext,
+                                fileManager: bookFileManager
+                            )
                         } label: {
                             Label("刪除", systemImage: "trash")
                         }
@@ -161,7 +161,7 @@ struct BookshelfView: View {
             VStack(spacing: 16) {
                 ProgressView()
                     .scaleEffect(1.0)
-                Text(loadingMessage)
+                Text(coordinator.loadingMessage)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -170,74 +170,6 @@ struct BookshelfView: View {
         }
     }
 
-    // MARK: - 檔案匯入（Readium 版）
-
-    private func handleFileImport(_ result: Result<[URL], Error>) {
-        switch result {
-        case .success(let urls):
-            guard let url = urls.first else { return }
-            importEPUB(from: url)
-        case .failure(let error):
-            errorMessage = error.localizedDescription
-            showError = true
-        }
-    }
-
-    private func importEPUB(from url: URL) {
-        isLoading = true
-        loadingMessage = L10n.string("正在匯入書籍...")
-
-        Task {
-            do {
-                print("🚀 BookshelfView: starting import from \(url)")
-                let readiumService = ReadiumService.shared
-                loadingMessage = L10n.string("正在解析 EPUB...")
-
-                let (fileName, publication) = try await readiumService.importEPUB(from: url)
-                print("🚀 import succeeded: \(fileName)")
-                let metadata = readiumService.extractMetadata(from: publication)
-                print("🚀 metadata: \(metadata)")
-                let coverData = await readiumService.extractCover(from: publication)
-                print("🚀 cover: \(coverData?.count ?? 0) bytes")
-
-                await MainActor.run {
-                    loadingMessage = L10n.string("正在儲存...")
-
-                    let book = Book(
-                        title: metadata.title,
-                        author: metadata.author,
-                        coverImageData: coverData,
-                        epubFileName: fileName
-                    )
-
-                    modelContext.insert(book)
-                    try? modelContext.save()
-                    print("🚀 book saved: \(book.title)")
-
-                    isLoading = false
-                    loadingMessage = ""
-                }
-            } catch {
-                print("❌ BookshelfView import error: \(error)")
-                print("❌ error type: \(type(of: error))")
-                await MainActor.run {
-                    isLoading = false
-                    loadingMessage = ""
-                    errorMessage = "\(error)"
-                    showError = true
-                }
-            }
-        }
-    }
-
-    // MARK: - 刪除書籍
-
-    private func deleteBook(_ book: Book) {
-        // 刪除 EPUB 檔案
-        ReadiumService.shared.deleteEPUB(fileName: book.epubFileName)
-        // 從資料庫刪除
-        modelContext.delete(book)
-    }
 }
 
 // MARK: - 書籍卡片

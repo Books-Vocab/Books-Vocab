@@ -21,6 +21,7 @@ struct ReaderView: View {
     @Bindable var book: Book
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.readiumService) private var readiumService
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
     )
@@ -163,7 +164,7 @@ struct ReaderView: View {
             ReadiumNavigatorView(
                 publication: publication,
                 initialLocator: initialLocator,
-                httpServer: ReadiumService.shared.httpServer,
+                httpServer: readiumService.httpServer,
                 lookedUpWords: handler.lookedUpWords,
                 bookUniqueWords: handler.bookUniqueWords,
                 preferences: settings.epubPreferences,
@@ -229,7 +230,7 @@ struct ReaderView: View {
     private func loadPublication() async {
         do {
             await MainActor.run { loadingPhase = L10n.string("開啟書本…") }
-            let pub = try await ReadiumService.shared.openPublication(at: book.epubFileURL)
+            let pub = try await readiumService.openPublication(at: book.epubFileURL)
 
             await MainActor.run {
                 loadingPhase = L10n.string("渲染頁面…")
@@ -240,7 +241,7 @@ struct ReaderView: View {
 
             // 背景提取這本書的專屬單字庫
             Task {
-                let uniqueWords = await ReadiumService.shared.extractUniqueWords(from: pub)
+                let uniqueWords = await readiumService.extractUniqueWords(from: pub)
                 await MainActor.run {
                     handler.bookUniqueWords = uniqueWords
                 }
