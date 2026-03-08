@@ -193,6 +193,7 @@ from .user_handlers import (
     health_response,
     update_user_config_response,
 )
+from .user_context import resolve_current_user
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -403,73 +404,12 @@ def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
 
 def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
-    settings = _runtime_settings()
-    token = credentials.credentials.strip()
-    token_iat: datetime | None = None
-
-    if not token:
-        raise HTTPException(
-            status_code=401,
-            detail="Token cannot be empty",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    # Try JWT first (new format)
-    try:
-        decoded = jwt.decode(token, settings.jwt_secret, algorithms=[settings.jwt_algorithm])
-        user_id = decoded.get("sub")
-        if not user_id:
-            raise ValueError("No sub in token")
-        token_iat = _parse_datetime(decoded.get("iat")) or datetime.now(tz=timezone.utc)
-    except jwt.ExpiredSignatureError:
-        raise HTTPException(
-            status_code=401,
-            detail="Token has expired",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-    except jwt.InvalidTokenError:
-        # Fallback: treat as direct user_id (for backward compatibility)
-        user_id = token
-
-    if not user_id:
-        raise HTTPException(
-            status_code=401,
-            detail="Invalid token",
-            headers={"WWW-Authenticate": "Bearer"},
-        )
-
-    users = load_users()
-    revoked_before = users.get("_revoked_before", {})
-    if isinstance(revoked_before, dict):
-        revoked_at = _parse_datetime(revoked_before.get(user_id))
-        if revoked_at and (token_iat is None or token_iat <= revoked_at):
-            raise HTTPException(
-                status_code=401,
-                detail="Account was deleted. Please sign in again.",
-                headers={"WWW-Authenticate": "Bearer"},
-            )
-
-    record = users.get(user_id, {})
-    if isinstance(record, dict):
-        linked_to = record.get("_linked_to")
-        if linked_to and isinstance(revoked_before, dict):
-            revoked_at = _parse_datetime(revoked_before.get(linked_to))
-            if revoked_at and (token_iat is None or token_iat <= revoked_at):
-                raise HTTPException(
-                    status_code=401,
-                    detail="Account was deleted. Please sign in again.",
-                    headers={"WWW-Authenticate": "Bearer"},
-                )
-
-    user_dir = settings.data_dir / "users" / user_id
-    user_dir.mkdir(parents=True, exist_ok=True)
-
-    return {
-        "id": user_id,
-        "dir": user_dir,
-        "record": record,
-        "config": record.get("config", {}),
-    }
+    return resolve_current_user(
+        credentials.credentials,
+        settings=_runtime_settings(),
+        load_users=load_users,
+        parse_datetime=_parse_datetime,
+    )
 
 
 def _card_store(user_dir: Path):
