@@ -6,15 +6,10 @@ from fastapi import FastAPI
 from fastapi.responses import FileResponse, HTMLResponse
 
 from .api_models import (
-    AppStoreReconcileRequest,
     AuthVerifyResponse,
-    DeleteAccountResponse,
-    EntitlementsResponse,
     ExplainResponse,
     GraphLinkResponse,
-    HealthResponse,
     QuickTranslateResponse,
-    UserConfigResponse,
     VocabAddResponse,
 )
 
@@ -24,14 +19,6 @@ def register_routes(
     *,
     get_privacy_policy: Callable[..., Any],
     get_support: Callable[..., Any],
-    get_user_config: Callable[..., Any],
-    get_user_entitlements: Callable[..., Any],
-    sync_app_store_subscription: Callable[..., Any],
-    app_store_notifications: Callable[..., Any],
-    reconcile_app_store_subscription: Callable[..., Any],
-    update_user_config: Callable[..., Any],
-    delete_user_account: Callable[..., Any],
-    health: Callable[..., Any],
     list_vocab: Callable[..., Any],
     lookup_word: Callable[..., Any],
     delete_word: Callable[..., Any],
@@ -53,14 +40,6 @@ def register_routes(
     app.get("/privacy.html", response_class=FileResponse)(get_privacy_policy)
     app.get("/support.html", response_class=FileResponse)(get_support)
 
-    app.get("/api/user/config", response_model=UserConfigResponse)(get_user_config)
-    app.get("/api/user/entitlements", response_model=EntitlementsResponse)(get_user_entitlements)
-    app.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)(sync_app_store_subscription)
-    app.post("/api/billing/app-store/notifications")(app_store_notifications)
-    app.post("/api/billing/app-store/reconcile", response_model=EntitlementsResponse)(reconcile_app_store_subscription)
-    app.put("/api/user/config", response_model=UserConfigResponse)(update_user_config)
-    app.delete("/api/user/account", response_model=DeleteAccountResponse)(delete_user_account)
-    app.get("/api/health", response_model=HealthResponse)(health)
     app.get("/api/vocab")(list_vocab)
     app.get("/api/vocab/{word}")(lookup_word)
     app.delete("/api/vocab/{word}")(delete_word)

@@ -14,7 +14,6 @@ import json
 import logging
 import os
 import re
-import shutil
 import subprocess
 import sys
 from datetime import datetime, timedelta, timezone
@@ -132,6 +131,11 @@ from .admin_test_matrix import (
     run_pytest_matrix,
     store_last_test_run,
 )
+from .billing_handlers import (
+    app_store_notifications_response,
+    reconcile_app_store_subscription_response,
+    sync_app_store_subscription_response,
+)
 from .billing import (
     append_app_store_event,
     build_entitlements_response,
@@ -144,8 +148,16 @@ from .billing import (
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
+from .routers import build_billing_router, build_user_router
 from .auth_service import create_jwt_token, resolve_and_link_user
 from .settings import KGSettings, load_settings
+from .user_handlers import (
+    delete_user_account_response,
+    get_user_config_response,
+    get_user_entitlements_response,
+    health_response,
+    update_user_config_response,
+)
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -233,18 +245,26 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    app.include_router(
+        build_user_router(
+            get_user_config=get_user_config,
+            get_user_entitlements=get_user_entitlements,
+            update_user_config=update_user_config,
+            delete_user_account=delete_user_account,
+            health=health,
+        )
+    )
+    app.include_router(
+        build_billing_router(
+            sync_app_store_subscription=sync_app_store_subscription,
+            app_store_notifications=app_store_notifications,
+            reconcile_app_store_subscription=reconcile_app_store_subscription,
+        )
+    )
     register_routes(
         app,
         get_privacy_policy=get_privacy_policy,
         get_support=get_support,
-        get_user_config=get_user_config,
-        get_user_entitlements=get_user_entitlements,
-        sync_app_store_subscription=sync_app_store_subscription,
-        app_store_notifications=app_store_notifications,
-        reconcile_app_store_subscription=reconcile_app_store_subscription,
-        update_user_config=update_user_config,
-        delete_user_account=delete_user_account,
-        health=health,
         list_vocab=list_vocab,
         lookup_word=lookup_word,
         delete_word=delete_word,
@@ -511,9 +531,7 @@ def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict
 # ---------------------------------------------------------------------------
 def get_user_config(user: dict = Depends(get_current_user)):
     """Get user configuration."""
-    return UserConfigResponse(
-        mochi_api_key=user["config"].get("mochi_api_key")
-    )
+    return get_user_config_response(user)
 
 
 # ---------------------------------------------------------------------------
@@ -521,7 +539,10 @@ def get_user_config(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def get_user_entitlements(user: dict = Depends(get_current_user)):
     """Get the current user's subscription entitlement snapshot."""
-    return _build_entitlements_response(user.get("record"))
+    return get_user_entitlements_response(
+        user,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -529,51 +550,17 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
-    try:
-        if req.signed_transaction_info:
-            snapshot = _decode_signed_transaction_info(req.signed_transaction_info)
-            if req.transaction_id and snapshot["transaction_id"] and req.transaction_id != snapshot["transaction_id"]:
-                raise HTTPException(status_code=400, detail="transaction_id does not match signed_transaction_info")
-            if req.original_transaction_id and snapshot["original_transaction_id"] and req.original_transaction_id != snapshot["original_transaction_id"]:
-                raise HTTPException(status_code=400, detail="original_transaction_id does not match signed_transaction_info")
-        else:
-            if not APP_STORE_ALLOW_UNSIGNED_SYNC and req.environment.lower() != "xcode":
-                raise HTTPException(status_code=400, detail="signed_transaction_info is required for production App Store sync")
-            snapshot = {
-                "product_id": req.product_id,
-                "transaction_id": req.transaction_id,
-                "original_transaction_id": req.original_transaction_id,
-                "environment": req.environment,
-                "status": req.status,
-                "is_trial": req.is_trial,
-                "expires_at": req.expires_at,
-                "will_renew": req.will_renew,
-                "price_display": req.price_display,
-            }
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        record = _write_subscription_snapshot(
-            users,
-            user["id"],
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=snapshot["price_display"],
-            source="app_store",
-        )
-        save_users(users)
-
-    return _build_entitlements_response(record)
+    return sync_app_store_subscription_response(
+        req,
+        user,
+        allow_unsigned_sync=APP_STORE_ALLOW_UNSIGNED_SYNC,
+        users_lock_file=USERS_LOCK_FILE,
+        load_users=load_users,
+        save_users=save_users,
+        decode_signed_transaction_info=_decode_signed_transaction_info,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -581,61 +568,17 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
-    try:
-        snapshot, decoded_payload = _decode_notification_payload(req)
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-
-    event = {
-        "received_at": datetime.now(tz=timezone.utc).isoformat(),
-        "notification_type": req.notification_type,
-        "subtype": req.subtype,
-        "product_id": snapshot["product_id"],
-        "transaction_id": snapshot["transaction_id"],
-        "original_transaction_id": snapshot["original_transaction_id"],
-        "environment": snapshot["environment"],
-        "status": snapshot["status"],
-        "is_trial": snapshot["is_trial"],
-        "expires_at": snapshot["expires_at"],
-        "will_renew": snapshot["will_renew"],
-        "signed_payload": req.signed_payload,
-        "raw_payload": decoded_payload or req.raw_payload,
-    }
-    _append_app_store_event(event)
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        user_id = _resolve_user_id_from_subscription_index(
-            users,
-            snapshot["original_transaction_id"],
-            snapshot["transaction_id"],
-        )
-        if not user_id:
-            return {"status": "accepted", "updated": False, "reason": "unmapped_transaction"}
-        record = _write_subscription_snapshot(
-            users,
-            user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
-            source="app_store_notification",
-        )
-        save_users(users)
-
-    return {
-        "status": "accepted",
-        "updated": True,
-        "user_id": user_id,
-        "entitlements": _build_entitlements_response(record).model_dump(),
-    }
+    return app_store_notifications_response(
+        req,
+        users_lock_file=USERS_LOCK_FILE,
+        load_users=load_users,
+        save_users=save_users,
+        decode_notification_payload=_decode_notification_payload,
+        append_app_store_event=_append_app_store_event,
+        resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -643,49 +586,19 @@ def app_store_notifications(req: AppStoreNotificationRequest):
 # ---------------------------------------------------------------------------
 async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
     """Fetch transaction state from Apple's App Store Server API and persist it."""
-    try:
-        server_response = await fetch_transaction_info(
-            req.transaction_id,
-            bundle_id=APPLE_BUNDLE_ID,
-            environment=req.environment,
-        )
-        signed_transaction_info = server_response.get("signedTransactionInfo")
-        if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
-            raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
-        snapshot = _decode_signed_transaction_info(signed_transaction_info)
-    except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
-    except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
-    except httpx.HTTPStatusError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
-    except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: {exc}") from exc
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        resolved_user_id = _resolve_user_id_from_subscription_index(
-            users,
-            snapshot["original_transaction_id"],
-            snapshot["transaction_id"],
-        ) or user["id"]
-        record = _write_subscription_snapshot(
-            users,
-            resolved_user_id,
-            product_id=snapshot["product_id"],
-            status=snapshot["status"],
-            is_trial=snapshot["is_trial"],
-            expires_at=snapshot["expires_at"],
-            will_renew=snapshot["will_renew"],
-            environment=snapshot["environment"],
-            transaction_id=snapshot["transaction_id"],
-            original_transaction_id=snapshot["original_transaction_id"],
-            price_display=None,
-            source="app_store_server_api",
-        )
-        save_users(users)
-
-    return _build_entitlements_response(record)
+    return await reconcile_app_store_subscription_response(
+        req,
+        user,
+        apple_bundle_id=APPLE_BUNDLE_ID,
+        users_lock_file=USERS_LOCK_FILE,
+        load_users=load_users,
+        save_users=save_users,
+        fetch_transaction_info=fetch_transaction_info,
+        decode_signed_transaction_info=_decode_signed_transaction_info,
+        resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
+        write_subscription_snapshot=_write_subscription_snapshot,
+        build_entitlements_response=_build_entitlements_response,
+    )
 
 
 # ---------------------------------------------------------------------------
@@ -693,23 +606,12 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        user_id = user["id"]
-
-        if user_id not in users:
-            users[user_id] = {}
-
-        if "config" not in users[user_id]:
-            users[user_id]["config"] = {}
-
-        if req.mochi_api_key is not None:
-            users[user_id]["config"]["mochi_api_key"] = req.mochi_api_key.strip()
-
-        save_users(users)
-
-    return UserConfigResponse(
-        mochi_api_key=users[user_id]["config"].get("mochi_api_key")
+    return update_user_config_response(
+        req,
+        user,
+        users_lock_file=USERS_LOCK_FILE,
+        load_users=load_users,
+        save_users=save_users,
     )
 
 
@@ -718,49 +620,14 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 def delete_user_account(user: dict = Depends(get_current_user)):
     """Permanently delete the current account and all related user data."""
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
-    user_id = user["id"]
-
-    with FileLock(str(USERS_LOCK_FILE)):
-        users = load_users()
-        canonical_id, ids_to_delete = _collect_account_ids_for_deletion(users, user_id)
-
-        revoked_before = users.get("_revoked_before")
-        if not isinstance(revoked_before, dict):
-            revoked_before = {}
-        for uid in ids_to_delete:
-            revoked_before[uid] = now_iso
-        users["_revoked_before"] = revoked_before
-
-        email_index = users.get("_email_index")
-        if isinstance(email_index, dict):
-            stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
-            for email in stale_emails:
-                email_index.pop(email, None)
-            if not email_index:
-                users.pop("_email_index", None)
-
-        for uid in ids_to_delete:
-            users.pop(uid, None)
-
-        save_users(users)
-
-    deleted_dirs: list[str] = []
-    for uid in ids_to_delete:
-        user_dir = DATA_DIR / "users" / uid
-        if not user_dir.exists():
-            continue
-        try:
-            shutil.rmtree(user_dir)
-            deleted_dirs.append(uid)
-        except Exception as e:
-            logger.exception("Failed to delete user directory %s: %s", user_dir, e)
-            raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}")
-
-    return DeleteAccountResponse(
-        deleted_user_id=canonical_id,
-        linked_ids=[uid for uid in ids_to_delete if uid != canonical_id],
-        deleted_dirs=deleted_dirs,
+    return delete_user_account_response(
+        user,
+        users_lock_file=USERS_LOCK_FILE,
+        load_users=load_users,
+        save_users=save_users,
+        collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
+        data_dir=DATA_DIR,
+        logger=logger,
     )
 
 
@@ -769,22 +636,10 @@ def delete_user_account(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def health(user: dict = Depends(get_current_user)):
     """Server health + stats per user."""
-    cards = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-
-    # Last modified time of cards.json
-    cards_path = user["dir"] / "cards.json"
-    last_mod = None
-    if cards_path.exists():
-        ts = cards_path.stat().st_mtime
-        last_mod = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
-
-    return HealthResponse(
-        status="ok",
-        cards=cards.count(),
-        links=graph.link_count(),
-        pendingCandidates=graph.candidate_count(),
-        lastModified=last_mod,
+    return health_response(
+        user,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
     )
 
 
