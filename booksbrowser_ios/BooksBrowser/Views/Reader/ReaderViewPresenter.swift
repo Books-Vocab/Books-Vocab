@@ -1,13 +1,35 @@
 import SwiftUI
 
+enum HeaderState: Equatable {
+    case compact
+    case expanded
+}
+
+enum ReaderChromeOverlay: Equatable {
+    case none
+    case translation
+    case settings
+}
+
+struct ReaderChromeState: Equatable {
+    var header: HeaderState = .compact
+    var overlay: ReaderChromeOverlay = .none
+
+    var blocksReaderInteraction: Bool {
+        overlay != .none
+    }
+
+    var showsHeader: Bool {
+        overlay == .none
+    }
+}
+
 struct ReaderViewPresenterState {
     let paperColor: Color
     let isWebViewReady: Bool
     let loadingPhase: String
     let underlineProgress: Double?
-    let showsTranslationPanel: Bool
-    let showsReaderSettings: Bool
-    let headerState: HeaderState
+    let chrome: ReaderChromeState
     let totalProgression: Double
     let bookTitle: String
 }
@@ -112,7 +134,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         VStack {
             Spacer()
 
-            if state.showsTranslationPanel {
+            if state.chrome.overlay == .translation {
                 translationPanel
                     .padding(.horizontal)
                     .padding(.bottom, 8)
@@ -122,8 +144,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
 
     private var topOverlay: some View {
         VStack {
-            if !state.showsTranslationPanel && !state.showsReaderSettings {
-                switch state.headerState {
+            if state.chrome.showsHeader {
+                switch state.chrome.header {
                 case .expanded:
                     expandedHeader
                 case .compact:
