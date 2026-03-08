@@ -8,19 +8,7 @@ enum VocabActionTone {
     case destructive
 }
 
-struct VocabTabOption<ID: Hashable>: Identifiable, Hashable {
-    let id: ID
-    let title: String
-    let count: Int?
-    let systemImage: String?
-
-    init(id: ID, title: String, count: Int? = nil, systemImage: String? = nil) {
-        self.id = id
-        self.title = title
-        self.count = count
-        self.systemImage = systemImage
-    }
-}
+typealias VocabTabOption<ID: Hashable> = AppTabOption<ID>
 
 struct VocabTabSelector<ID: Hashable>: View {
     @Environment(\.vocabSkin) private var vocabSkin
@@ -28,62 +16,10 @@ struct VocabTabSelector<ID: Hashable>: View {
     @Binding var selection: ID
 
     var body: some View {
-        HStack(spacing: 8) {
-            ForEach(options) { option in
-                Button {
-                    withAnimation(.easeOut(duration: 0.18)) {
-                        selection = option.id
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        if let systemImage = option.systemImage {
-                            Image(systemName: systemImage)
-                                .font(vocabSkin.typography.iconSmall)
-                                .fixedSize()
-                        }
-
-                        Text(option.title.localized)
-                            .font(vocabSkin.typography.captionStrong)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .layoutPriority(1)
-
-                        if let count = option.count {
-                            Text("\(count)")
-                                .font(vocabSkin.typography.monoLabel)
-                                .minimumScaleFactor(0.7)
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: 26)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                                        .fill((selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.mutedFill).opacity(selection == option.id ? 0.08 : 1))
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .foregroundStyle(selection == option.id ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                            .fill(selection == option.id ? vocabSkin.palette.cardBackground : vocabSkin.palette.stageBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                            .stroke(selection == option.id ? vocabSkin.palette.cardBorder : vocabSkin.palette.borderSoftOrDivider, lineWidth: 1)
-                    )
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control + 4, style: .continuous)
-                .fill(vocabSkin.palette.stageBackground)
+        AppTabSelector(
+            options: options,
+            selection: $selection,
+            style: .vocab(vocabSkin)
         )
     }
 }
@@ -134,42 +70,16 @@ struct VocabSearchField: View {
     let prompt: String
 
     var body: some View {
-        HStack(spacing: 8) {
-            Image(systemName: "magnifyingglass")
-                .font(vocabSkin.typography.iconSmall)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-            TextField(prompt.localized, text: $text)
-                .textInputAutocapitalization(.never)
-                .autocorrectionDisabled()
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-
-            if !text.isEmpty {
-                Button {
-                    text = ""
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
-                }
-                .buttonStyle(.plain)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+        AppSearchField(
+            text: $text,
+            prompt: prompt,
+            style: .vocab(vocabSkin)
         )
     }
 }
 
 struct VocabToolbarGlyph: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let systemImage: String
     let badge: String?
     let tone: Color?
@@ -181,7 +91,11 @@ struct VocabToolbarGlyph: View {
     }
 
     var body: some View {
-        AppToolbarGlyph(systemImage: systemImage, badge: badge, tone: tone)
+        AppToolbarGlyph(
+            systemImage: systemImage,
+            badge: badge,
+            style: .vocab(vocabSkin, tone: tone)
+        )
     }
 }
 
@@ -320,6 +234,12 @@ struct VocabActionButtonStyle: ButtonStyle {
                 vocabSkin.palette.cardBackground,
                 vocabSkin.palette.cardBorder
             )
+        case .outline:
+            return (
+                vocabSkin.palette.primaryText,
+                .clear,
+                vocabSkin.palette.secondaryText.opacity(0.3)
+            )
         case .destructive:
             return (
                 vocabSkin.palette.destructive,
@@ -339,5 +259,57 @@ extension ButtonStyle where Self == VocabActionButtonStyle {
 private extension VocabSkin.Palette {
     var borderSoftOrDivider: Color {
         divider.opacity(0.8)
+    }
+}
+
+private extension AppToolbarGlyphStyle {
+    static func vocab(_ skin: VocabSkin, tone: Color? = nil) -> AppToolbarGlyphStyle {
+        .init(
+            iconFont: skin.typography.iconToolbar,
+            iconColor: tone ?? skin.palette.secondaryText,
+            badgeFont: skin.typography.monoLabel,
+            badgeForeground: .white,
+            badgeBackground: tone ?? skin.palette.destructive,
+            spacing: 4
+        )
+    }
+}
+
+private extension AppTabSelectorStyle {
+    static func vocab(_ skin: VocabSkin) -> AppTabSelectorStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            titleFont: skin.typography.captionStrong,
+            countFont: skin.typography.monoLabel,
+            iconSelectedColor: skin.palette.primaryText,
+            iconUnselectedColor: skin.palette.secondaryText,
+            textSelectedColor: skin.palette.primaryText,
+            textUnselectedColor: skin.palette.secondaryText,
+            countSelectedFill: skin.palette.primaryText.opacity(0.08),
+            countUnselectedFill: skin.palette.mutedFill,
+            selectedBackground: skin.palette.cardBackground,
+            unselectedBackground: skin.palette.stageBackground,
+            selectedBorder: skin.palette.cardBorder,
+            unselectedBorder: skin.palette.borderSoftOrDivider,
+            containerBackground: skin.palette.stageBackground,
+            controlRadius: skin.radii.control,
+            containerRadius: skin.radii.control + 4
+        )
+    }
+}
+
+private extension AppSearchFieldStyle {
+    static func vocab(_ skin: VocabSkin) -> AppSearchFieldStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            iconColor: skin.palette.tertiaryText,
+            textFont: skin.typography.body,
+            textColor: skin.palette.primaryText,
+            clearButtonFont: skin.typography.iconMedium,
+            clearButtonColor: skin.palette.quaternaryText,
+            background: skin.palette.cardBackground,
+            border: skin.palette.cardBorder,
+            cornerRadius: skin.radii.control
+        )
     }
 }

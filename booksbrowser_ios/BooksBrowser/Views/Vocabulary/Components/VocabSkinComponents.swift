@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct VocabCard<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let padding: CGFloat
     @ViewBuilder let content: Content
 
@@ -13,7 +14,10 @@ struct VocabCard<Content: View>: View {
     }
 
     var body: some View {
-        AppSectionCard(padding: padding) {
+        AppSectionCard(
+            padding: padding,
+            style: .vocab(vocabSkin)
+        ) {
             content
         }
     }
@@ -60,6 +64,7 @@ struct VocabTierLabel: View {
 }
 
 struct VocabEmptyStateContent: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let systemImage: String
     let description: String
@@ -68,12 +73,14 @@ struct VocabEmptyStateContent: View {
         AppEmptyStateContent(
             title: title,
             systemImage: systemImage,
-            description: description
+            description: description,
+            style: .vocab(vocabSkin)
         )
     }
 }
 
 struct VocabEmptyStateCard: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let systemImage: String
     let description: String
@@ -82,7 +89,9 @@ struct VocabEmptyStateCard: View {
         AppEmptyStateCard(
             title: title,
             systemImage: systemImage,
-            description: description
+            description: description,
+            cardStyle: .vocab(vocabSkin),
+            contentStyle: .vocab(vocabSkin)
         )
     }
 }
@@ -98,5 +107,34 @@ private struct VocabCanvasBackgroundModifier: ViewModifier {
 extension View {
     func vocabCanvasBackground() -> some View {
         modifier(VocabCanvasBackgroundModifier())
+    }
+}
+
+private extension AppSectionCardStyle {
+    static func vocab(_ skin: VocabSkin) -> AppSectionCardStyle {
+        .init(
+            background: skin.palette.cardBackground,
+            border: skin.palette.cardBorder,
+            shadow: skin.palette.shadow,
+            cornerRadius: skin.radii.card,
+            borderOpacity: 0.7,
+            shadowRadius: 6,
+            shadowY: 2
+        )
+    }
+}
+
+private extension AppEmptyStateStyle {
+    static func vocab(_ skin: VocabSkin) -> AppEmptyStateStyle {
+        .init(
+            iconFont: skin.typography.symbolLarge,
+            iconColor: skin.palette.tertiaryText,
+            titleFont: skin.typography.sectionTitle,
+            titleColor: skin.palette.primaryText,
+            descriptionFont: skin.typography.body,
+            descriptionColor: skin.palette.secondaryText,
+            spacing: 14,
+            verticalPadding: 12
+        )
     }
 }

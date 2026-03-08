@@ -24,12 +24,49 @@ enum AppShellMetrics {
 enum AppActionTone {
     case primary
     case neutral
+    case outline
     case destructive
+}
+
+struct AppSectionCardStyle {
+    let background: Color
+    let border: Color
+    let shadow: Color
+    let cornerRadius: CGFloat
+    let borderOpacity: Double
+    let shadowRadius: CGFloat
+    let shadowY: CGFloat
+}
+
+struct AppToolbarGlyphStyle {
+    let iconFont: Font
+    let iconColor: Color
+    let badgeFont: Font
+    let badgeForeground: Color
+    let badgeBackground: Color
+    let spacing: CGFloat
+}
+
+struct AppSectionTextStyle {
+    let font: Font
+    let color: Color
+}
+
+struct AppEmptyStateStyle {
+    let iconFont: Font
+    let iconColor: Color
+    let titleFont: Font
+    let titleColor: Color
+    let descriptionFont: Font
+    let descriptionColor: Color
+    let spacing: CGFloat
+    let verticalPadding: CGFloat
 }
 
 struct AppSectionCard<Content: View>: View {
     @Environment(\.appTheme) private var appTheme
     let padding: CGFloat
+    let customStyle: AppSectionCardStyle?
     @ViewBuilder let content: Content
 
     init(
@@ -37,30 +74,42 @@ struct AppSectionCard<Content: View>: View {
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding
+        self.customStyle = nil
+        self.content = content()
+    }
+
+    init(
+        padding: CGFloat = AppShellMetrics.cardPadding,
+        style: AppSectionCardStyle,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.padding = padding
+        self.customStyle = style
         self.content = content()
     }
 
     var body: some View {
+        let style = customStyle ?? .themed(appTheme)
         content
             .padding(padding)
-            .background(appTheme.palette.cardBackground)
+            .background(style.background)
             .clipShape(
                 RoundedRectangle(
-                    cornerRadius: AppShellMetrics.cardCornerRadius,
+                    cornerRadius: style.cornerRadius,
                     style: .continuous
                 )
             )
             .overlay(
                 RoundedRectangle(
-                    cornerRadius: AppShellMetrics.cardCornerRadius,
+                    cornerRadius: style.cornerRadius,
                     style: .continuous
                 )
-                .stroke(appTheme.palette.cardBorder.opacity(0.7), lineWidth: 1)
+                .stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
             )
             .shadow(
-                color: appTheme.palette.shadow,
-                radius: AppShellMetrics.cardShadowRadius,
-                y: AppShellMetrics.cardShadowY
+                color: style.shadow,
+                radius: style.shadowRadius,
+                y: style.shadowY
             )
     }
 }
@@ -69,24 +118,34 @@ struct AppToolbarGlyph: View {
     @Environment(\.appTheme) private var appTheme
     let systemImage: String
     let badge: String?
+    let customStyle: AppToolbarGlyphStyle?
     let tone: Color?
 
     init(systemImage: String, badge: String? = nil, tone: Color? = nil) {
         self.systemImage = systemImage
         self.badge = badge
+        self.customStyle = nil
         self.tone = tone
     }
 
+    init(systemImage: String, badge: String? = nil, style: AppToolbarGlyphStyle) {
+        self.systemImage = systemImage
+        self.badge = badge
+        self.customStyle = style
+        self.tone = nil
+    }
+
     var body: some View {
-        HStack(spacing: AppMetrics.spacingExtraSmall) {
+        let style = customStyle ?? .themed(appTheme, tone: tone)
+        HStack(spacing: style.spacing) {
             Image(systemName: systemImage)
-                .font(AppFonts.caption(weight: .medium))
-                .foregroundStyle(tone ?? appTheme.palette.secondaryText)
+                .font(style.iconFont)
+                .foregroundStyle(style.iconColor)
 
             if let badge {
                 Text(badge)
-                    .font(AppFonts.monoNumbers(size: 10))
-                    .foregroundStyle(.white)
+                    .font(style.badgeFont)
+                    .foregroundStyle(style.badgeForeground)
                     .padding(.horizontal, AppShellMetrics.toolbarBadgeHorizontalPadding)
                     .padding(.vertical, AppShellMetrics.toolbarBadgeVerticalPadding)
                     .background(
@@ -94,7 +153,7 @@ struct AppToolbarGlyph: View {
                             cornerRadius: AppMetrics.cornerRadiusSmall - 1,
                             style: .continuous
                         )
-                        .fill(tone ?? appTheme.palette.destructive)
+                        .fill(style.badgeBackground)
                     )
             }
         }
@@ -105,11 +164,19 @@ struct AppSectionHeader: View {
     @Environment(\.appTheme) private var appTheme
     let title: String
     let systemImage: String
+    let customStyle: AppSectionTextStyle?
+
+    init(title: String, systemImage: String, style: AppSectionTextStyle? = nil) {
+        self.title = title
+        self.systemImage = systemImage
+        self.customStyle = style
+    }
 
     var body: some View {
+        let style = customStyle ?? .header(appTheme)
         Label(title.localized, systemImage: systemImage)
-            .font(AppFonts.caption(weight: .semibold))
-            .foregroundStyle(appTheme.palette.secondaryText)
+            .font(style.font)
+            .foregroundStyle(style.color)
             .padding(.leading, AppMetrics.spacingExtraSmall)
     }
 }
@@ -117,11 +184,18 @@ struct AppSectionHeader: View {
 struct AppSectionFooter: View {
     @Environment(\.appTheme) private var appTheme
     let text: String
+    let customStyle: AppSectionTextStyle?
+
+    init(text: String, style: AppSectionTextStyle? = nil) {
+        self.text = text
+        self.customStyle = style
+    }
 
     var body: some View {
+        let style = customStyle ?? .footer(appTheme)
         Text(text.localized)
-            .font(AppFonts.caption())
-            .foregroundStyle(appTheme.palette.tertiaryText)
+            .font(style.font)
+            .foregroundStyle(style.color)
             .lineSpacing(3)
             .padding(.horizontal, AppMetrics.spacingExtraSmall)
     }
@@ -132,20 +206,29 @@ struct AppEmptyStateContent: View {
     let title: String
     let systemImage: String
     let description: String
+    let customStyle: AppEmptyStateStyle?
+
+    init(title: String, systemImage: String, description: String, style: AppEmptyStateStyle? = nil) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.customStyle = style
+    }
 
     var body: some View {
-        VStack(spacing: 14) {
+        let style = customStyle ?? .themed(appTheme)
+        VStack(spacing: style.spacing) {
             Image(systemName: systemImage)
-                .font(AppFonts.hero(weight: .light))
-                .foregroundStyle(appTheme.palette.tertiaryText)
+                .font(style.iconFont)
+                .foregroundStyle(style.iconColor)
 
             Text(title.localized)
-                .font(AppFonts.h2(weight: .semibold))
-                .foregroundStyle(appTheme.palette.primaryText)
+                .font(style.titleFont)
+                .foregroundStyle(style.titleColor)
 
             Text(description.localized)
-                .font(AppFonts.body())
-                .foregroundStyle(appTheme.palette.secondaryText)
+                .font(style.descriptionFont)
+                .foregroundStyle(style.descriptionColor)
                 .multilineTextAlignment(.center)
         }
         .frame(maxWidth: .infinity)
@@ -153,19 +236,244 @@ struct AppEmptyStateContent: View {
 }
 
 struct AppEmptyStateCard: View {
+    @Environment(\.appTheme) private var appTheme
     let title: String
     let systemImage: String
     let description: String
+    let customCardStyle: AppSectionCardStyle?
+    let customContentStyle: AppEmptyStateStyle?
+
+    init(
+        title: String,
+        systemImage: String,
+        description: String,
+        cardStyle: AppSectionCardStyle? = nil,
+        contentStyle: AppEmptyStateStyle? = nil
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.customCardStyle = cardStyle
+        self.customContentStyle = contentStyle
+    }
 
     var body: some View {
-        AppSectionCard {
+        let cardStyle = customCardStyle ?? .themed(appTheme)
+        let contentStyle = customContentStyle ?? .themed(appTheme)
+
+        AppSectionCard(style: cardStyle) {
             AppEmptyStateContent(
                 title: title,
                 systemImage: systemImage,
-                description: description
+                description: description,
+                style: contentStyle
             )
-            .padding(.vertical, 12)
+            .padding(.vertical, contentStyle.verticalPadding)
         }
+    }
+}
+
+struct AppTabOption<ID: Hashable>: Identifiable, Hashable {
+    let id: ID
+    let title: String
+    let count: Int?
+    let systemImage: String?
+
+    init(id: ID, title: String, count: Int? = nil, systemImage: String? = nil) {
+        self.id = id
+        self.title = title
+        self.count = count
+        self.systemImage = systemImage
+    }
+}
+
+struct AppTabSelectorStyle {
+    let iconFont: Font
+    let titleFont: Font
+    let countFont: Font
+    let iconSelectedColor: Color
+    let iconUnselectedColor: Color
+    let textSelectedColor: Color
+    let textUnselectedColor: Color
+    let countSelectedFill: Color
+    let countUnselectedFill: Color
+    let selectedBackground: Color
+    let unselectedBackground: Color
+    let selectedBorder: Color
+    let unselectedBorder: Color
+    let containerBackground: Color
+    let controlRadius: CGFloat
+    let containerRadius: CGFloat
+}
+
+struct AppTabSelector<ID: Hashable>: View {
+    let options: [AppTabOption<ID>]
+    @Binding var selection: ID
+    let style: AppTabSelectorStyle
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(options) { option in
+                Button {
+                    withAnimation(.easeOut(duration: 0.18)) {
+                        selection = option.id
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if let systemImage = option.systemImage {
+                            Image(systemName: systemImage)
+                                .font(style.iconFont)
+                                .foregroundStyle(selection == option.id ? style.iconSelectedColor : style.iconUnselectedColor)
+                                .fixedSize()
+                        }
+
+                        Text(option.title.localized)
+                            .font(style.titleFont)
+                            .foregroundStyle(selection == option.id ? style.textSelectedColor : style.textUnselectedColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .layoutPriority(1)
+
+                        if let count = option.count {
+                            Text("\(count)")
+                                .font(style.countFont)
+                                .minimumScaleFactor(0.7)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(minWidth: 26)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall - 1, style: .continuous)
+                                        .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
+                                )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                            .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                            .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
+                    )
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
+                .fill(style.containerBackground)
+        )
+    }
+}
+
+struct AppSearchFieldStyle {
+    let iconFont: Font
+    let iconColor: Color
+    let textFont: Font
+    let textColor: Color
+    let clearButtonFont: Font
+    let clearButtonColor: Color
+    let background: Color
+    let border: Color
+    let cornerRadius: CGFloat
+}
+
+struct AppSearchField: View {
+    @Binding var text: String
+    let prompt: String
+    let style: AppSearchFieldStyle
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: "magnifyingglass")
+                .font(style.iconFont)
+                .foregroundStyle(style.iconColor)
+
+            TextField(prompt.localized, text: $text)
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .font(style.textFont)
+                .foregroundStyle(style.textColor)
+
+            if !text.isEmpty {
+                Button {
+                    text = ""
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(style.clearButtonFont)
+                        .foregroundStyle(style.clearButtonColor)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .padding(.horizontal, 12)
+        .padding(.vertical, 9)
+        .background(
+            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                .fill(style.background)
+        )
+        .overlay(
+            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                .stroke(style.border, lineWidth: 1)
+        )
+    }
+}
+
+struct AppKeyValueRowStyle {
+    let iconFont: Font
+    let iconColor: Color
+    let labelFont: Font
+    let labelColor: Color
+    let horizontalPadding: CGFloat
+    let verticalPadding: CGFloat
+    let minHeight: CGFloat
+    let iconWidth: CGFloat
+    let spacing: CGFloat
+}
+
+struct AppKeyValueRow<Content: View>: View {
+    let icon: String
+    let label: String
+    let style: AppKeyValueRowStyle
+    let content: Content
+
+    init(
+        icon: String,
+        label: String,
+        style: AppKeyValueRowStyle,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.icon = icon
+        self.label = label
+        self.style = style
+        self.content = content()
+    }
+
+    var body: some View {
+        HStack(spacing: style.spacing) {
+            Image(systemName: icon)
+                .font(style.iconFont)
+                .foregroundStyle(style.iconColor)
+                .frame(width: style.iconWidth, alignment: .center)
+
+            Text(label.localized)
+                .font(style.labelFont)
+                .foregroundStyle(style.labelColor)
+
+            Spacer()
+
+            content
+        }
+        .padding(.horizontal, style.horizontalPadding)
+        .padding(.vertical, style.verticalPadding)
+        .frame(minHeight: style.minHeight)
     }
 }
 
@@ -211,6 +519,12 @@ struct AppActionButtonStyle: ButtonStyle {
                 appTheme.palette.cardBackground,
                 appTheme.palette.cardBorder
             )
+        case .outline:
+            return (
+                appTheme.palette.primaryText,
+                .clear,
+                appTheme.palette.secondaryText.opacity(0.3)
+            )
         case .destructive:
             return (
                 appTheme.palette.destructive,
@@ -224,6 +538,71 @@ struct AppActionButtonStyle: ButtonStyle {
 extension ButtonStyle where Self == AppActionButtonStyle {
     static func appAction(_ tone: AppActionTone = .primary) -> AppActionButtonStyle {
         AppActionButtonStyle(tone: tone)
+    }
+}
+
+extension AppSectionCardStyle {
+    static func themed(_ theme: AppTheme) -> AppSectionCardStyle {
+        .init(
+            background: theme.palette.cardBackground,
+            border: theme.palette.cardBorder,
+            shadow: theme.palette.shadow,
+            cornerRadius: AppShellMetrics.cardCornerRadius,
+            borderOpacity: 0.7,
+            shadowRadius: AppShellMetrics.cardShadowRadius,
+            shadowY: AppShellMetrics.cardShadowY
+        )
+    }
+}
+
+extension AppToolbarGlyphStyle {
+    static func themed(_ theme: AppTheme, tone: Color? = nil) -> AppToolbarGlyphStyle {
+        .init(
+            iconFont: AppFonts.caption(weight: .medium),
+            iconColor: tone ?? theme.palette.secondaryText,
+            badgeFont: AppFonts.monoNumbers(size: 10),
+            badgeForeground: .white,
+            badgeBackground: tone ?? theme.palette.destructive,
+            spacing: AppMetrics.spacingExtraSmall
+        )
+    }
+}
+
+extension AppSectionTextStyle {
+    static func header(_ theme: AppTheme) -> AppSectionTextStyle {
+        .init(font: AppFonts.caption(weight: .semibold), color: theme.palette.secondaryText)
+    }
+
+    static func footer(_ theme: AppTheme) -> AppSectionTextStyle {
+        .init(font: AppFonts.caption(), color: theme.palette.tertiaryText)
+    }
+}
+
+extension AppEmptyStateStyle {
+    static func themed(_ theme: AppTheme) -> AppEmptyStateStyle {
+        .init(
+            iconFont: AppFonts.hero(weight: .light),
+            iconColor: theme.palette.tertiaryText,
+            titleFont: AppFonts.h2(weight: .semibold),
+            titleColor: theme.palette.primaryText,
+            descriptionFont: AppFonts.body(),
+            descriptionColor: theme.palette.secondaryText,
+            spacing: 14,
+            verticalPadding: 12
+        )
+    }
+
+    static func bookshelf(_ theme: AppTheme) -> AppEmptyStateStyle {
+        .init(
+            iconFont: .system(size: 48, weight: .ultraLight),
+            iconColor: theme.palette.quaternaryText,
+            titleFont: AppFonts.subhead(weight: .medium),
+            titleColor: theme.palette.secondaryText,
+            descriptionFont: AppFonts.caption(),
+            descriptionColor: theme.palette.tertiaryText,
+            spacing: 6,
+            verticalPadding: 0
+        )
     }
 }
 

@@ -79,22 +79,21 @@ struct BookshelfView: View {
     // MARK: - 空狀態
 
     private var emptyState: some View {
-        VStack {
+        VStack(spacing: 20) {
             Spacer()
 
-            AppEmptyStateCard(
+            AppEmptyStateContent(
                 title: "尚無書籍",
                 systemImage: "book",
-                description: "匯入 EPUB 電子書開始閱讀"
+                description: "匯入 EPUB 電子書開始閱讀",
+                style: .bookshelf(appTheme)
             )
-            .overlay(alignment: .bottom) {
-                Button("匯入") {
-                    coordinator.presentImporter()
-                }
-                .buttonStyle(.appAction(.neutral))
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .offset(y: 34)
+
+            Button("匯入") {
+                coordinator.presentImporter()
             }
+            .buttonStyle(.appAction(.outline))
+            .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
         }

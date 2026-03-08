@@ -416,7 +416,14 @@ private struct SettingsSectionHeader: View {
     let icon: String
 
     var body: some View {
-        AppSectionHeader(title: title, systemImage: icon)
+        AppSectionHeader(
+            title: title,
+            systemImage: icon,
+            style: .init(
+                font: vocabSkin.typography.captionStrong,
+                color: vocabSkin.palette.secondaryText
+            )
+        )
     }
 }
 
@@ -429,7 +436,13 @@ private struct SettingsSectionFooter: View {
     }
 
     var body: some View {
-        AppSectionFooter(text: text)
+        AppSectionFooter(
+            text: text,
+            style: .init(
+                font: vocabSkin.typography.caption,
+                color: vocabSkin.palette.tertiaryText
+            )
+        )
     }
 }
 
@@ -457,23 +470,13 @@ private struct SettingsRow<Content: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
-            Image(systemName: icon)
-                .font(vocabSkin.typography.iconSmall)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .frame(width: 22, alignment: .center)
-
-            Text(label.localized)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-
-            Spacer()
-
+        AppKeyValueRow(
+            icon: icon,
+            label: label,
+            style: .settings(vocabSkin)
+        ) {
             content
         }
-        .padding(.horizontal, vocabSkin.spacing.cardPadding)
-        .padding(.vertical, 13)
-        .frame(minHeight: 50)
     }
 }
 
@@ -487,7 +490,7 @@ private struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
     func body(content: Content) -> some View {
-        AppSectionCard(padding: 0) {
+        AppSectionCard(padding: 0, style: .settings(vocabSkin)) {
             content
         }
     }
@@ -511,6 +514,36 @@ private struct SettingsButtonChromeModifier: ViewModifier {
 private extension View {
     func appSettingsButtonChrome() -> some View {
         modifier(SettingsButtonChromeModifier())
+    }
+}
+
+private extension AppSectionCardStyle {
+    static func settings(_ skin: VocabSkin) -> AppSectionCardStyle {
+        .init(
+            background: skin.palette.cardBackground,
+            border: skin.palette.cardBorder,
+            shadow: .clear,
+            cornerRadius: skin.radii.card,
+            borderOpacity: 1,
+            shadowRadius: 0,
+            shadowY: 0
+        )
+    }
+}
+
+private extension AppKeyValueRowStyle {
+    static func settings(_ skin: VocabSkin) -> AppKeyValueRowStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            iconColor: skin.palette.secondaryText,
+            labelFont: skin.typography.body,
+            labelColor: skin.palette.primaryText,
+            horizontalPadding: skin.spacing.cardPadding,
+            verticalPadding: 13,
+            minHeight: 50,
+            iconWidth: 22,
+            spacing: 12
+        )
     }
 }
 
