@@ -148,9 +148,21 @@ from .billing import (
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
-from .routers import build_billing_router, build_user_router
+from .pipeline_handlers import queue_pipeline_response
+from .routers import (
+    build_billing_router,
+    build_pipeline_router,
+    build_translate_router,
+    build_user_router,
+    build_vocab_router,
+)
 from .auth_service import create_jwt_token, resolve_and_link_user
 from .settings import KGSettings, load_settings
+from .translate_handlers import (
+    translate_explain_response,
+    translate_phrase_response,
+    translate_quick_response,
+)
 from .user_handlers import (
     delete_user_account_response,
     get_user_config_response,
@@ -164,6 +176,13 @@ from .user_store import (
     normalize_users_payload,
     parse_datetime,
     save_users_to,
+)
+from .vocab_handlers import (
+    add_vocab_response,
+    delete_word_response,
+    get_graph_links_response,
+    list_vocab_response,
+    lookup_word_response,
 )
 
 load_dotenv()
@@ -261,19 +280,27 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             reconcile_app_store_subscription=reconcile_app_store_subscription,
         )
     )
+    app.include_router(
+        build_vocab_router(
+            list_vocab=list_vocab,
+            lookup_word=lookup_word,
+            delete_word=delete_word,
+            get_graph_links=get_graph_links,
+            add_vocab=add_vocab,
+        )
+    )
+    app.include_router(build_pipeline_router(run_pipeline=run_pipeline))
+    app.include_router(
+        build_translate_router(
+            translate_quick=translate_quick,
+            translate_phrase=translate_phrase,
+            translate_explain=translate_explain,
+        )
+    )
     register_routes(
         app,
         get_privacy_policy=get_privacy_policy,
         get_support=get_support,
-        list_vocab=list_vocab,
-        lookup_word=lookup_word,
-        delete_word=delete_word,
-        get_graph_links=get_graph_links,
-        add_vocab=add_vocab,
-        run_pipeline=run_pipeline,
-        translate_quick=translate_quick,
-        translate_phrase=translate_phrase,
-        translate_explain=translate_explain,
         auth_verify=auth_verify,
         admin_ui=admin_ui,
         admin_stats=admin_stats,
@@ -648,13 +675,12 @@ def health(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
-    _require_pro_access(user, "knowledge_sync")
-    cards_store = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-    return list_vocab_cards(
+    return list_vocab_response(
         since=since,
-        cards_store=cards_store,
-        graph=graph,
+        user=user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
 
@@ -664,13 +690,12 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
 # ---------------------------------------------------------------------------
 def lookup_word(word: str, user: dict = Depends(get_current_user)):
     """Lookup a word in the current user's card store."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    graph = _graph_store(user["dir"])
-    return lookup_vocab_word(
+    return lookup_word_response(
         word,
-        cards_store=cards,
-        graph=graph,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
 
@@ -680,32 +705,36 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 def delete_word(word: str, user: dict = Depends(get_current_user)):
     """Delete a word from the current user's card store."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    return delete_vocab_word(word, cards_store=cards)
+    return delete_word_response(
+        word,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+    )
 
 # ---------------------------------------------------------------------------
 # GET /api/graph/links
 # ---------------------------------------------------------------------------
 def get_graph_links(user: dict = Depends(get_current_user)):
     """Get all active graph connections for the user."""
-    _require_pro_access(user, "knowledge_graph")
-    graph = _graph_store(user["dir"])
-    return graph_links_payload(graph=graph)
+    return get_graph_links_response(
+        user,
+        require_pro_access=_require_pro_access,
+        graph_store_factory=_graph_store,
+    )
 
 # ---------------------------------------------------------------------------
 # POST /api/vocab  — Batch add from BooksBrowser
 # ---------------------------------------------------------------------------
 def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
     """Add vocabulary entries from BooksBrowser → KG Cards."""
-    _require_pro_access(user, "knowledge_sync")
-    cards = _card_store(user["dir"])
-    return add_vocab_entries(
+    return add_vocab_response(
         entries,
-        user=user,
-        cards=cards,
-        embeddings=_embedding_store(user["dir"], user_id=user["id"]),
-        graph=_graph_store(user["dir"]),
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        embedding_store_factory=_embedding_store,
+        graph_store_factory=_graph_store,
         logger=logger,
     )
 
@@ -731,42 +760,43 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 
     Returns immediately with accepted status.
     """
-    _require_pro_access(user, "knowledge_sync")
-    background_tasks.add_task(_run_pipeline_background, user)
-    return {"status": "queued", "message": "Pipeline started in the background"}
+    return queue_pipeline_response(
+        background_tasks,
+        user,
+        require_pro_access=_require_pro_access,
+        run_pipeline_background_fn=_run_pipeline_background,
+    )
 
 # ---------------------------------------------------------------------------
 # POST /api/translate/quick & /api/translate/explain
 # ---------------------------------------------------------------------------
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Perform a quick UI translation via Gemini API (proxy)."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_quick_translate(req, user, client=client, logger=logger)
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error("translate/quick failed: %s", e, exc_info=True)
-        raise HTTPException(500, f"Quick translation failed: {e}")
+    return translate_quick_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+        logger=logger,
+    )
 
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Translate a multi-word phrase or expression. Returns translation only."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_phrase_translate(req, user, client=client)
-    except Exception as e:
-        raise HTTPException(500, f"Phrase translation failed: {e}")
+    return translate_phrase_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+    )
 
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
-    _require_pro_access(user, "reader_ai")
-    client = _gemini_client()
-    try:
-        return run_explain_translate(req, user, client=client)
-    except Exception as e:
-        raise HTTPException(500, f"Explanation failed: {e}")
+    return translate_explain_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        gemini_client_factory=_gemini_client,
+    )
 
 
 # ---------------------------------------------------------------------------

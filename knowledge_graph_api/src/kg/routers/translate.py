@@ -1,0 +1,20 @@
+from __future__ import annotations
+
+from typing import Any, Callable
+
+from fastapi import APIRouter
+
+from ..api_models import ExplainResponse, QuickTranslateResponse
+
+
+def build_translate_router(
+    *,
+    translate_quick: Callable[..., Any],
+    translate_phrase: Callable[..., Any],
+    translate_explain: Callable[..., Any],
+) -> APIRouter:
+    router = APIRouter()
+    router.post("/api/translate/quick", response_model=QuickTranslateResponse)(translate_quick)
+    router.post("/api/translate/phrase", response_model=dict)(translate_phrase)
+    router.post("/api/translate/explain", response_model=ExplainResponse)(translate_explain)
+    return router

@@ -7,10 +7,6 @@ from fastapi.responses import FileResponse, HTMLResponse
 
 from .api_models import (
     AuthVerifyResponse,
-    ExplainResponse,
-    GraphLinkResponse,
-    QuickTranslateResponse,
-    VocabAddResponse,
 )
 
 
@@ -19,15 +15,6 @@ def register_routes(
     *,
     get_privacy_policy: Callable[..., Any],
     get_support: Callable[..., Any],
-    list_vocab: Callable[..., Any],
-    lookup_word: Callable[..., Any],
-    delete_word: Callable[..., Any],
-    get_graph_links: Callable[..., Any],
-    add_vocab: Callable[..., Any],
-    run_pipeline: Callable[..., Any],
-    translate_quick: Callable[..., Any],
-    translate_phrase: Callable[..., Any],
-    translate_explain: Callable[..., Any],
     auth_verify: Callable[..., Any],
     admin_ui: Callable[..., Any],
     admin_stats: Callable[..., Any],
@@ -39,16 +26,6 @@ def register_routes(
 ) -> None:
     app.get("/privacy.html", response_class=FileResponse)(get_privacy_policy)
     app.get("/support.html", response_class=FileResponse)(get_support)
-
-    app.get("/api/vocab")(list_vocab)
-    app.get("/api/vocab/{word}")(lookup_word)
-    app.delete("/api/vocab/{word}")(delete_word)
-    app.get("/api/graph/links", response_model=list[GraphLinkResponse])(get_graph_links)
-    app.post("/api/vocab", response_model=VocabAddResponse)(add_vocab)
-    app.post("/api/pipeline")(run_pipeline)
-    app.post("/api/translate/quick", response_model=QuickTranslateResponse)(translate_quick)
-    app.post("/api/translate/phrase", response_model=dict)(translate_phrase)
-    app.post("/api/translate/explain", response_model=ExplainResponse)(translate_explain)
     app.post("/auth/verify", response_model=AuthVerifyResponse)(auth_verify)
 
     app.get("/admin", response_class=HTMLResponse, include_in_schema=False)(admin_ui)
