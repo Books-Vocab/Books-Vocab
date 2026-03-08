@@ -593,3 +593,126 @@ extension AppEmptyStateStyle {
         )
     }
 }
+
+#Preview("AppShell") {
+    AppThemeContainer {
+        AppShellPreview()
+    }
+}
+
+private struct AppShellPreview: View {
+    @Environment(\.appTheme) private var appTheme
+    @State private var selectedTab = 0
+    @State private var searchText = "mystery"
+
+    var body: some View {
+        ScrollView {
+            VStack(alignment: .leading, spacing: AppShellMetrics.sectionSpacing) {
+                AppSectionHeader(title: "Shell", systemImage: "square.grid.2x2")
+
+                AppSectionCard {
+                    VStack(alignment: .leading, spacing: 16) {
+                        AppTabSelector(
+                            options: [
+                                .init(id: 0, title: "書庫", count: 12, systemImage: "books.vertical"),
+                                .init(id: 1, title: "生詞庫", count: 248, systemImage: "character.book.closed"),
+                                .init(id: 2, title: "設定", systemImage: "gearshape")
+                            ],
+                            selection: $selectedTab,
+                            style: .themed(appTheme)
+                        )
+
+                        AppSearchField(
+                            text: $searchText,
+                            prompt: "搜尋",
+                            style: .themed(appTheme)
+                        )
+
+                        AppKeyValueRow(
+                            icon: "server.rack",
+                            label: "伺服器",
+                            style: .themed(appTheme)
+                        ) {
+                            Text("wordnexus.lol")
+                                .font(AppFonts.monoNumbers(size: 12))
+                                .foregroundStyle(appTheme.palette.secondaryText)
+                        }
+                    }
+                }
+
+                AppEmptyStateCard(
+                    title: "尚無內容",
+                    systemImage: "tray",
+                    description: "這個 preview 用來保護 shared shell 元件的基本輸出。"
+                )
+
+                HStack(spacing: 12) {
+                    AppToolbarGlyph(systemImage: "arrow.clockwise")
+                    AppToolbarGlyph(systemImage: "tray.full", badge: "7")
+                }
+
+                Button("主要操作") {}
+                    .buttonStyle(.appAction(.primary))
+            }
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppShellMetrics.pageTopPadding)
+            .padding(.bottom, AppShellMetrics.pageBottomPadding)
+        }
+        .background(appTheme.palette.pageBackground.ignoresSafeArea())
+    }
+}
+
+private extension AppTabSelectorStyle {
+    static func themed(_ theme: AppTheme) -> AppTabSelectorStyle {
+        .init(
+            iconFont: AppFonts.caption(weight: .medium),
+            titleFont: AppFonts.caption(weight: .semibold),
+            countFont: AppFonts.monoNumbers(size: 10),
+            iconSelectedColor: theme.palette.primaryText,
+            iconUnselectedColor: theme.palette.secondaryText,
+            textSelectedColor: theme.palette.primaryText,
+            textUnselectedColor: theme.palette.secondaryText,
+            countSelectedFill: theme.palette.primaryText.opacity(0.08),
+            countUnselectedFill: theme.palette.mutedFill,
+            selectedBackground: theme.palette.cardBackground,
+            unselectedBackground: theme.palette.stageBackground,
+            selectedBorder: theme.palette.cardBorder,
+            unselectedBorder: theme.palette.divider.opacity(0.8),
+            containerBackground: theme.palette.stageBackground,
+            controlRadius: AppMetrics.cornerRadiusMedium - 2,
+            containerRadius: AppMetrics.cornerRadiusMedium + 2
+        )
+    }
+}
+
+private extension AppSearchFieldStyle {
+    static func themed(_ theme: AppTheme) -> AppSearchFieldStyle {
+        .init(
+            iconFont: AppFonts.caption(weight: .medium),
+            iconColor: theme.palette.tertiaryText,
+            textFont: AppFonts.body(),
+            textColor: theme.palette.primaryText,
+            clearButtonFont: AppFonts.caption(weight: .medium),
+            clearButtonColor: theme.palette.quaternaryText,
+            background: theme.palette.cardBackground,
+            border: theme.palette.cardBorder,
+            cornerRadius: AppMetrics.cornerRadiusMedium - 2
+        )
+    }
+}
+
+private extension AppKeyValueRowStyle {
+    static func themed(_ theme: AppTheme) -> AppKeyValueRowStyle {
+        .init(
+            iconFont: AppFonts.caption(weight: .medium),
+            iconColor: theme.palette.secondaryText,
+            labelFont: AppFonts.body(),
+            labelColor: theme.palette.primaryText,
+            horizontalPadding: AppShellMetrics.cardPadding,
+            verticalPadding: 13,
+            minHeight: 50,
+            iconWidth: 22,
+            spacing: 12
+        )
+    }
+}
