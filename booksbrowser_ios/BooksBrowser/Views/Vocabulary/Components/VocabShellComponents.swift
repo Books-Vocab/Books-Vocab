@@ -51,8 +51,11 @@ struct VocabTabSelector<ID: Hashable>: View {
                         if let count = option.count {
                             Text("\(count)")
                                 .font(vocabSkin.typography.monoLabel)
+                                .minimumScaleFactor(0.7)
+                                .monospacedDigit()
                                 .lineLimit(1)
                                 .fixedSize(horizontal: true, vertical: false)
+                                .frame(minWidth: 26)
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(

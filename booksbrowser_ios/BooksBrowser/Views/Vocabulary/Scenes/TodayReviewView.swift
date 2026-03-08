@@ -90,7 +90,7 @@ struct TodayReviewView: View {
 
     private func toggleCard() {
         guard !isAdvancing else { return }
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.85)) {
+        withAnimation(.easeInOut(duration: 0.18)) {
             if showBack {
                 isExpanded = false
             }
