@@ -2,17 +2,27 @@
 //  AppColors.swift
 //  BooksBrowser
 //
-//  集中化的語義色彩 Token 系統
+//  ⚠️  使用範圍：Reader 功能 + 全域 UI（ErrorBanner、App tint）
 //  ─────────────────────────────────────────────────────────────────────
-//  設計哲學：莫蘭迪色系（Morandi Palette）— 明亮版
+//  此檔案 *不是* Vocabulary UI 的顏色來源。
+//  Vocabulary 功能的所有顏色請透過 @Environment(\.vocabSkin) 取得，
+//  其背後由 AppTheme → VocabSkin.themed() 組裝而成。
+//
+//  設計哲學：莫蘭迪色系（Morandi Palette）
 //    · 低飽和度（25-30%）但保持足夠亮度，不顯沉悶
 //    · 色彩如同早晨窗邊透光的紗幔 — 柔和卻明確
 //    · 紙張模擬 — 米白取代純白，深暖灰取代純黑
 //  ─────────────────────────────────────────────────────────────────────
+//  顏色分組（依使用方）
+//    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
+//    [Reader]  accent, saved, destructive, warning（TranslationPanel 使用）
+//    [Global]  tint（BooksBrowserApp 注入 SwiftUI tint）
+//    [Legacy]  tier*, glassClearBackground（保留相容，新代碼請用 VocabSkin）
+//  ─────────────────────────────────────────────────────────────────────
 
 import SwiftUI
 
-// MARK: - 莫蘭迪色彩 Token
+// MARK: - 莫蘭迪色彩 Token（Reader ＆ 全域）
 
 enum AppColors {
 
@@ -41,7 +51,9 @@ enum AppColors {
     static let destructiveLight = Color(hue: 355/360, saturation: 0.26, brightness: 0.66)
     static let destructiveDark  = Color(hue: 355/360, saturation: 0.25, brightness: 0.68)
 
-    // ── 難度 Tier ─────────────────────────────────────────────────────
+    // ── 難度 Tier（Legacy — 新代碼請改用 vocabSkin.tierColor(for:)）──────
+    // 這些 token 已由 VocabSkin.tierColor() 內建處理，
+    // 僅為舊呼叫端保留相容，請勿在新的 Vocabulary 組件中直接使用。
     static let tierCoreLight         = savedLight
     static let tierCoreDark          = savedDark
     static let tierIntermediateLight = Color(hue: 40/360, saturation: 0.28, brightness: 0.55)
@@ -55,7 +67,7 @@ enum AppColors {
     // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
     static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
 
-    // ── Glass-era Token ───────────────────────────────────────────────────
+    // ── Glass-era Token（Legacy — 目前僅作佔位，可安全忽略）──────────────
     static let glassClearBackground = Color.clear
 
     // ── Highlight Mark (Mochi-style 螢光筆) ──────────────────────────────

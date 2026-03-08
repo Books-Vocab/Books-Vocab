@@ -27,6 +27,7 @@ struct TodayReviewPresenter: View {
     let state: TodayReviewPresenterState
     let onClose: () -> Void
     let onAdvanceReveal: () -> Void
+    let onCollapseReveal: () -> Void
     let onShuffle: () -> Void
     let onPrevious: () -> Void
     let onNext: () -> Void
@@ -45,6 +46,12 @@ struct TodayReviewPresenter: View {
                             .padding(.horizontal, AppMetrics.spacingLarge)
                             .padding(.top, AppMetrics.spacingMedium)
                             .padding(.bottom, AppMetrics.spacingXXL)
+                            .frame(maxWidth: .infinity)
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                guard !state.revealStage.showsDetails else { return }
+                                onAdvanceReveal()
+                            }
                     }
 
                     bottomToolbar
@@ -289,57 +296,51 @@ struct TodayReviewPresenter: View {
 
     private func answerFoldSurface(_ card: CardPresentation) -> some View {
         foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(spacing: 6) {
-                        if let pos = card.partOfSpeech {
-                            Text(pos)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-                        Spacer()
-                        if let tier = card.difficultyTier {
-                            VocabTierLabel(tier: tier)
-                        }
-                    }
-
-                    Spacer(minLength: 18)
-
-                    Group {
-                        if card.reviewMode == .production {
-                            Text(card.word)
-                        } else {
-                            Text(card.translation)
-                        }
-                    }
-                    .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(4)
-                    .minimumScaleFactor(0.65)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                    if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
-                        Text("/\(pronunciation)/")
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(spacing: 6) {
+                    if let pos = card.partOfSpeech {
+                        Text(pos)
                             .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                    Spacer()
+                    if let tier = card.difficultyTier {
+                        VocabTierLabel(tier: tier)
+                    }
+                    if !state.revealStage.showsDetails {
+                        Button(action: onCollapseReveal) {
+                            Image(systemName: "chevron.up")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                .padding(6)
+                        }
+                        .buttonStyle(.plain)
                     }
                 }
-                .padding(reviewCardPadding)
-                .frame(minHeight: 188, alignment: .topLeading)
-                .contentShape(Rectangle())
-                .onTapGesture(perform: onAdvanceReveal)
 
-                if !state.revealStage.showsDetails {
-                    backFoldZone()
-                } else {
-                    Rectangle()
-                        .fill(vocabSkin.palette.divider.opacity(0.75))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 10)
+                Spacer(minLength: 18)
+
+                Group {
+                    if card.reviewMode == .production {
+                        Text(card.word)
+                    } else {
+                        Text(card.translation)
+                    }
+                }
+                .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
+                .foregroundStyle(vocabSkin.palette.primaryText)
+                .lineLimit(4)
+                .minimumScaleFactor(0.65)
+                .fixedSize(horizontal: false, vertical: true)
+
+                if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
+                    Text("/\(pronunciation)/")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
             }
-            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .padding(reviewCardPadding)
+            .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
         }
     }
 
@@ -381,15 +382,26 @@ struct TodayReviewPresenter: View {
         let card = currentCard.card
         return foldSurface(position: .bottom) {
             VStack(alignment: .leading, spacing: 16) {
+                HStack {
+                    Spacer()
+                    Button(action: onCollapseReveal) {
+                        Image(systemName: "chevron.up")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            .padding(6)
+                    }
+                    .buttonStyle(.plain)
+                }
+
                 CardDocumentView(document: reviewBackDocument(for: card))
 
                 if !currentCard.linkGroups.isEmpty {
-                    CardSectionDivider(horizontalPadding: reviewCardPadding)
+                    CardSectionDivider(horizontalPadding: 0)
                     reviewLinkStrip(currentCard.linkGroups)
                 }
             }
             .padding(.horizontal, reviewCardPadding)
-            .padding(.top, 18)
+            .padding(.top, 12)
             .padding(.bottom, reviewCardPadding)
         }
     }
