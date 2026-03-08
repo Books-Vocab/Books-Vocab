@@ -21,7 +21,6 @@ extension ReaderTranslationHandler {
                 pronunciation = existing.pronunciation
                 isSaved = true
                 isTranslating = false
-                showTranslationPanel = true
                 isExpanded = false
                 explanationText = nil
             }
@@ -31,7 +30,6 @@ extension ReaderTranslationHandler {
 
         if !authManager.isLoggedIn {
             withAnimation(.spring(response: 0.3)) {
-                showTranslationPanel = true
                 isTranslating = false
                 translationResult = nil
                 isSaved = false
@@ -51,7 +49,6 @@ extension ReaderTranslationHandler {
         }
 
         withAnimation(.spring(response: 0.3)) {
-            showTranslationPanel = true
             isTranslating = true
             translationResult = nil
             pronunciation = nil
@@ -128,7 +125,6 @@ extension ReaderTranslationHandler {
         wordSelection = selection
 
         withAnimation(.spring(response: 0.3)) {
-            showTranslationPanel = true
             isTranslating = true
             translationResult = nil
             pronunciation = nil
@@ -187,7 +183,6 @@ extension ReaderTranslationHandler {
         wordSelection = selection
 
         withAnimation(.spring(response: 0.3)) {
-            showTranslationPanel = true
             isTranslating = false
             translationResult = nil
             pronunciation = nil

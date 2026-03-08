@@ -10,12 +10,6 @@ import SwiftData
 import ReadiumShared
 import ReadiumNavigator
 
-/// 浮動導覽列狀態
-enum HeaderState {
-    case compact
-    case expanded
-}
-
 /// 閱讀器主介面（Readium 版）
 struct ReaderView: View {
     @Bindable var book: Book
@@ -45,8 +39,8 @@ struct ReaderView: View {
     @State private var currentLocator: Locator?
     @State private var totalProgression: Double = 0
 
-    // 浮動 header 顯示狀態
-    @State private var headerState: HeaderState = .compact
+    // 閱讀殼層狀態：集中 header / overlay / blocker 的控制面
+    @State private var chromeState = ReaderChromeState()
 
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
@@ -57,7 +51,6 @@ struct ReaderView: View {
 
     // 閱讀設定（全域單例）
     private var settings = ReaderSettings.shared
-    @State private var showReaderSettings = false
     @State private var showSubscriptionPaywall = false
 
     private var viewConfiguration: ReaderViewConfiguration {
@@ -118,11 +111,11 @@ struct ReaderView: View {
                 handler.clearHighlightTrigger = UUID()
             }
         }
-        .sheet(isPresented: $showReaderSettings) {
+        .sheet(isPresented: readerSettingsBinding) {
             ReaderSettingsPanel(
                 settings: settings,
                 onDismiss: {
-                    showReaderSettings = false
+                    closeOverlay(.settings)
                 }
             )
             .presentationDetents([.medium, .large])
@@ -141,11 +134,23 @@ struct ReaderView: View {
             isWebViewReady: isWebViewReady,
             loadingPhase: loadingPhase,
             underlineProgress: underlineProgress,
-            showsTranslationPanel: handler.showTranslationPanel,
-            showsReaderSettings: showReaderSettings,
-            headerState: headerState,
+            chrome: chromeState,
             totalProgression: totalProgression,
             bookTitle: book.title
+        )
+    }
+
+    private var readerSettingsBinding: Binding<Bool> {
+        Binding(
+            get: { chromeState.overlay == .settings },
+            set: { isPresented in
+                if isPresented {
+                    chromeState.overlay = .settings
+                    chromeState.header = .compact
+                } else if chromeState.overlay == .settings {
+                    chromeState.overlay = .none
+                }
+            }
         )
     }
 
@@ -171,12 +176,13 @@ struct ReaderView: View {
                 clearHighlightTrigger: handler.clearHighlightTrigger,
                 removeWordTrigger: handler.removeWordTrigger,
                 navigateToLocator: navigateToLocator,
-                isInteractionBlocked: handler.showTranslationPanel || showReaderSettings,
+                isInteractionBlocked: chromeState.blocksReaderInteraction,
                 onLocationChanged: handleLocationChange,
                 onWordSelected: handleWordSelected,
                 onPhraseSelected: handlePhraseSelected,
                 onExplainSelected: { text, context in
                     guard canUseProReaderFeature() else { return }
+                    chromeState.overlay = .translation
                     handler.handleExplainSelected(text: text, context: context)
                 },
                 onWordDeselected: handleWordDeselected,
@@ -213,8 +219,12 @@ struct ReaderView: View {
                 onExpand: { handler.handleExpand() },
                 onDelete: {
                     handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
+                    closeOverlay(.translation)
                 },
-                onDismiss: { handler.dismiss() }
+                onDismiss: {
+                    handler.dismiss()
+                    closeOverlay(.translation)
+                }
             )
         }
     }
@@ -271,6 +281,7 @@ struct ReaderView: View {
 
     private func handleWordSelected(_ word: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
+        chromeState.overlay = .translation
         handler.handleWordSelected(
             word: word,
             context: context,
@@ -280,6 +291,7 @@ struct ReaderView: View {
 
     private func handlePhraseSelected(_ phrase: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
+        chromeState.overlay = .translation
         handler.handlePhraseSelected(
             phrase: phrase,
             context: context,
@@ -304,31 +316,37 @@ struct ReaderView: View {
 
     private func showReaderSettingsPanel() {
         withAnimation(.spring(response: 0.3)) {
-            showReaderSettings = true
-            headerState = .compact
+            chromeState.overlay = .settings
+            chromeState.header = .compact
         }
     }
 
     private func expandHeader() {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            headerState = .expanded
+            chromeState.header = .expanded
         }
     }
 
     private func collapseHeader() {
         withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
-            headerState = .compact
+            chromeState.header = .compact
         }
+    }
+
+    private func closeOverlay(_ overlay: ReaderChromeOverlay) {
+        guard chromeState.overlay == overlay else { return }
+        chromeState.overlay = .none
     }
 
     // MARK: - 取消選取（再次點擊 highlight 的字或點擊空白處）
 
     private func handleWordDeselected() {
-        if handler.showTranslationPanel {
+        if chromeState.overlay == .translation {
             handler.dismiss()
-        } else if showReaderSettings {
+            closeOverlay(.translation)
+        } else if chromeState.overlay == .settings {
             withAnimation(.spring(response: 0.3)) {
-                showReaderSettings = false
+                closeOverlay(.settings)
             }
             handler.clearHighlightTrigger = UUID()
         } else {

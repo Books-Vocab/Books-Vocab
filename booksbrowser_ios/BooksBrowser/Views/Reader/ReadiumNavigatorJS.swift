@@ -11,6 +11,18 @@ enum ReadiumNavigatorJS {
         underlineOpacity: Double,
         isDebugMode: String
     ) -> String {
+        [
+            buildStyleScript(fontFaceCSS: fontFaceCSS, underlineOpacity: underlineOpacity),
+            buildHighlightScript(),
+            buildDebugScript(isDebugMode: isDebugMode),
+            buildSelectionScript(isDebugMode: isDebugMode)
+        ].joined(separator: "\n\n")
+    }
+
+    private static func buildStyleScript(
+        fontFaceCSS: String,
+        underlineOpacity: Double
+    ) -> String {
         """
         (function() {
             // Inject custom @font-face declarations so WKWebView can use bundled fonts
@@ -96,7 +108,7 @@ enum ReadiumNavigatorJS {
                 :root[data-readium-theme="dark"] .active-word .vocab-word {
                     background: rgba(200, 195, 185, 0.06) !important;
                 }
-                
+
                 /* ── 排版基線 ── */
                 * {
                     text-align: left !important;
@@ -128,7 +140,7 @@ enum ReadiumNavigatorJS {
                     background-color: rgba(255, 255, 0, 0.1);
                     border-color: rgba(255, 255, 0, 0.5);
                 }
-                
+
                 /* 全域單字框 (Token Calculator 效果) */
                 .debug-word-box {
                     outline: 1px solid rgba(130, 130, 130, 0.40);
@@ -138,7 +150,11 @@ enum ReadiumNavigatorJS {
             `;
             document.head.appendChild(style);
         })();
+        """
+    }
 
+    private static func buildHighlightScript() -> String {
+        """
         // 標記單一生字（底線）
         window.__markVocabWord = function(word) {
             var lowerWord = word.toLowerCase();
@@ -252,7 +268,11 @@ enum ReadiumNavigatorJS {
                 }
             });
         };
+        """
+    }
 
+    private static func buildDebugScript(isDebugMode: String) -> String {
+        """
         // 全版標記：Token Calculator 除錯效果
         window.__toggleDebugBoxes = function(enabled) {
             if (!enabled) {
@@ -314,7 +334,11 @@ enum ReadiumNavigatorJS {
         if (\(isDebugMode)) {
             setTimeout(function() { window.__toggleDebugBoxes(true); }, 500);
         }
+        """
+    }
 
+    private static func buildSelectionScript(isDebugMode: String) -> String {
+        """
         // 監聽原生的文字選取狀態
         document.addEventListener('selectionchange', function() {
             var sel = window.getSelection();
@@ -325,6 +349,117 @@ enum ReadiumNavigatorJS {
             }
         });
 
+        function dismissActiveSelection() {
+            window.getSelection().removeAllRanges();
+            window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
+        }
+
+        function getDistanceToRect(x, y, rect) {
+            var dx = Math.max(rect.left - x, 0, x - rect.right);
+            var dy = Math.max(rect.top - y, 0, y - rect.bottom);
+            return Math.sqrt(dx * dx + dy * dy);
+        }
+
+        function drawDebugBox(rect, isSuccess, isDebug) {
+            if (!isDebug) return;
+            var box = document.createElement('div');
+            box.className = 'debug-hit-box ' + (isSuccess ? 'success' : 'fail');
+            box.style.left = (rect.left + window.scrollX) + 'px';
+            box.style.top = (rect.top + window.scrollY) + 'px';
+            box.style.width = rect.width + 'px';
+            box.style.height = rect.height + 'px';
+            document.body.appendChild(box);
+        }
+
+        function clearDebugMarkers(isDebug, event) {
+            document.querySelectorAll('.debug-tap-point, .debug-hit-box').forEach(function(el) {
+                el.remove();
+            });
+
+            if (!isDebug) return;
+            var dot = document.createElement('div');
+            dot.className = 'debug-tap-point';
+            dot.style.left = (event.clientX + window.scrollX) + 'px';
+            dot.style.top = (event.clientY + window.scrollY) + 'px';
+            document.body.appendChild(dot);
+        }
+
+        function unwrapActiveElement(el) {
+            if (el.classList.contains('vocab-word') || el.classList.contains('debug-word-box')) {
+                el.classList.remove('active-word');
+                return;
+            }
+
+            var parent = el.parentNode;
+            while (el.firstChild) parent.insertBefore(el.firstChild, el);
+            parent.removeChild(el);
+            parent.normalize();
+        }
+
+        function clearExistingActiveWords() {
+            document.querySelectorAll('.active-word').forEach(function(el) {
+                unwrapActiveElement(el);
+            });
+        }
+
+        function findContextContainer(startEl) {
+            var container = startEl;
+            while (container && container.tagName !== 'P' && container.tagName !== 'DIV'
+                   && container.tagName !== 'SECTION' && container.tagName !== 'BODY') {
+                container = container.parentElement;
+            }
+            return container;
+        }
+
+        function extractContextFromElement(startEl, fallbackText) {
+            var container = findContextContainer(startEl);
+            var context = container ? container.textContent : fallbackText;
+            if (context.length > 500) context = context.substring(0, 500);
+            return context.trim();
+        }
+
+        function buildWordRangeFromPoint(event) {
+            var range = document.caretRangeFromPoint(event.clientX, event.clientY);
+            if (!range) return null;
+
+            var textNode = range.startContainer;
+            if (textNode.nodeType !== Node.TEXT_NODE) return null;
+
+            var text = textNode.textContent;
+            var offset = range.startOffset;
+            var start = offset;
+            while (start > 0 && /[a-zA-Z'\\\\-]/.test(text[start - 1])) start--;
+            var end = offset;
+            while (end < text.length && /[a-zA-Z'\\\\-]/.test(text[end])) end++;
+
+            var word = text.slice(start, end).replace(/^['-]+|['-]+$/g, '');
+            if (word.length < 2) return null;
+
+            var wordRange = document.createRange();
+            wordRange.setStart(textNode, start);
+            wordRange.setEnd(textNode, end);
+            return {
+                textNode: textNode,
+                text: text,
+                word: word,
+                range: wordRange,
+                rect: wordRange.getBoundingClientRect()
+            };
+        }
+
+        function activateWordRange(wordData) {
+            try {
+                var parentEl = wordData.textNode.parentElement;
+                if (parentEl && (parentEl.classList.contains('vocab-word') || parentEl.classList.contains('debug-word-box'))) {
+                    parentEl.classList.add('active-word');
+                } else {
+                    var span = document.createElement('span');
+                    span.className = 'active-word';
+                    wordData.range.surroundContents(span);
+                }
+            } catch (err) {}
+        }
+
         // 單字點擊偵測
         document.addEventListener('click', function(e) {
             if (e.target.closest('a')) return;
@@ -332,75 +467,23 @@ enum ReadiumNavigatorJS {
             var isDebug = \(isDebugMode);
             var maxHitDistance = 12.0; // 允許的最大點擊誤差（px）
 
-            // 清理舊的 Debug 標記
-            document.querySelectorAll('.debug-tap-point, .debug-hit-box').forEach(function(el) {
-                el.remove();
-            });
-
-            // 畫出點擊位置 (Debug)
-            if (isDebug) {
-                var dot = document.createElement('div');
-                dot.className = 'debug-tap-point';
-                dot.style.left = (e.clientX + window.scrollX) + 'px';
-                dot.style.top = (e.clientY + window.scrollY) + 'px';
-                document.body.appendChild(dot);
-            }
-
-            // 計算點到矩形的最短距離
-            function getDistanceToRect(x, y, rect) {
-                var dx = Math.max(rect.left - x, 0, x - rect.right);
-                var dy = Math.max(rect.top - y, 0, y - rect.bottom);
-                return Math.sqrt(dx * dx + dy * dy);
-            }
-
-            // 畫出範圍框 (Debug)
-            function drawDebugBox(rect, isSuccess) {
-                if (!isDebug) return;
-                var box = document.createElement('div');
-                box.className = 'debug-hit-box ' + (isSuccess ? 'success' : 'fail');
-                box.style.left = (rect.left + window.scrollX) + 'px';
-                box.style.top = (rect.top + window.scrollY) + 'px';
-                box.style.width = rect.width + 'px';
-                box.style.height = rect.height + 'px';
-                document.body.appendChild(box);
-            }
+            clearDebugMarkers(isDebug, e);
 
             // 檢查是否點擊的是已經 active-word 的元素（toggle off）
             var clickedActive = e.target.closest('.active-word');
             if (clickedActive) {
                 var dist = getDistanceToRect(e.clientX, e.clientY, clickedActive.getBoundingClientRect());
                 if (dist > maxHitDistance) {
-                   // 點擊偏移過大，視為空白點擊
-                   window.getSelection().removeAllRanges();
-                   window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
-                   return;
+                    dismissActiveSelection();
+                    return;
                 }
 
-                // toggle off：移除 highlight，發送 deselect
-                if (clickedActive.classList.contains('vocab-word') || clickedActive.classList.contains('debug-word-box')) {
-                    clickedActive.classList.remove('active-word');
-                } else {
-                    var parent = clickedActive.parentNode;
-                    while (clickedActive.firstChild) parent.insertBefore(clickedActive.firstChild, clickedActive);
-                    parent.removeChild(clickedActive);
-                    parent.normalize();
-                }
-                window.getSelection().removeAllRanges();
-                window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
+                unwrapActiveElement(clickedActive);
+                dismissActiveSelection();
                 return;
             }
 
-            // 清除舊的 active-word（保留 vocab-word 或 debug-word-box）
-            document.querySelectorAll('.active-word').forEach(function(el) {
-                if (el.classList.contains('vocab-word') || el.classList.contains('debug-word-box')) {
-                    el.classList.remove('active-word');
-                    return;
-                }
-                var parent = el.parentNode;
-                while (el.firstChild) parent.insertBefore(el.firstChild, el);
-                parent.removeChild(el);
-                parent.normalize();
-            });
+            clearExistingActiveWords();
 
             // ★ 優先偵測：點擊位置是否在 .vocab-word 內（片語優先）
             var vocabSpan = e.target.closest('.vocab-word');
@@ -409,99 +492,49 @@ enum ReadiumNavigatorJS {
                 var dist = getDistanceToRect(e.clientX, e.clientY, rect);
                 
                 if (dist <= maxHitDistance) {
-                    drawDebugBox(rect, true);
+                    drawDebugBox(rect, true, isDebug);
                     var vocabWord = vocabSpan.textContent.trim();
                     if (vocabWord.length >= 2) {
                         vocabSpan.classList.add('active-word');
-                        var container = vocabSpan.parentElement;
-                        while (container && container.tagName !== 'P' && container.tagName !== 'DIV'
-                               && container.tagName !== 'SECTION' && container.tagName !== 'BODY') {
-                            container = container.parentElement;
-                        }
-                        var context = container ? container.textContent : vocabWord;
-                        if (context.length > 500) context = context.substring(0, 500);
                         window.webkit.messageHandlers.wordTap.postMessage(
-                            JSON.stringify({word: vocabWord, context: context.trim()})
+                            JSON.stringify({
+                                word: vocabWord,
+                                context: extractContextFromElement(vocabSpan.parentElement, vocabWord)
+                            })
                         );
                         return;
                     }
                 } else {
-                    drawDebugBox(rect, false);
+                    drawDebugBox(rect, false, isDebug);
                 }
             }
 
             // 處理一般文字點擊 (Caret Range 吸附)
-            var range = document.caretRangeFromPoint(e.clientX, e.clientY);
-            if (!range) {
-                window.getSelection().removeAllRanges();
-                window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
+            var wordData = buildWordRangeFromPoint(e);
+            if (!wordData) {
+                dismissActiveSelection();
                 return;
             }
-
-            var textNode = range.startContainer;
-            if (textNode.nodeType !== Node.TEXT_NODE) {
-                window.getSelection().removeAllRanges();
-                window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
-                return;
-            }
-
-            var text = textNode.textContent;
-            var offset = range.startOffset;
-
-            // 擴展取得單字邊界
-            var start = offset;
-            while (start > 0 && /[a-zA-Z'\\\\-]/.test(text[start - 1])) start--;
-            var end = offset;
-            while (end < text.length && /[a-zA-Z'\\\\-]/.test(text[end])) end++;
-
-            var word = text.slice(start, end).replace(/^['-]+|['-]+$/g, '');
-            if (word.length < 2) {
-                window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
-                return;
-            }
-
-            // 量測吸附單字實際的 Bounding Box
-            var wordRange = document.createRange();
-            wordRange.setStart(textNode, start);
-            wordRange.setEnd(textNode, end);
-            var wordRect = wordRange.getBoundingClientRect();
 
             // 判斷落點與單字外框的距離
-            var dist = getDistanceToRect(e.clientX, e.clientY, wordRect);
+            var dist = getDistanceToRect(e.clientX, e.clientY, wordData.rect);
             console.log('Distance: ' + dist);
 
             if (dist > maxHitDistance) {
-                drawDebugBox(wordRect, false);
-                // 距離過遠 -> 視為點擊空白處
-                window.getSelection().removeAllRanges();
-                window.webkit.messageHandlers.wordDeselect.postMessage('deselect');
+                drawDebugBox(wordData.rect, false, isDebug);
+                dismissActiveSelection();
                 return;
             }
             
             // 距離在容許範圍內 -> 成功觸發選取
-            drawDebugBox(wordRect, true);
-
-            var container = textNode.parentElement;
-            while (container && container.tagName !== 'P' && container.tagName !== 'DIV'
-                   && container.tagName !== 'SECTION' && container.tagName !== 'BODY') {
-                container = container.parentElement;
-            }
-            var context = container ? container.textContent : text;
-            if (context.length > 500) context = context.substring(0, 500);
-
-            try {
-                var parentEl = textNode.parentElement;
-                if (parentEl && (parentEl.classList.contains('vocab-word') || parentEl.classList.contains('debug-word-box'))) {
-                    parentEl.classList.add('active-word');
-                } else {
-                    var span = document.createElement('span');
-                    span.className = 'active-word';
-                    wordRange.surroundContents(span);
-                }
-            } catch (err) {}
+            drawDebugBox(wordData.rect, true, isDebug);
+            activateWordRange(wordData);
 
             window.webkit.messageHandlers.wordTap.postMessage(
-                JSON.stringify({word: word, context: context.trim()})
+                JSON.stringify({
+                    word: wordData.word,
+                    context: extractContextFromElement(wordData.textNode.parentElement, wordData.text)
+                })
             );
         }, true);
         """

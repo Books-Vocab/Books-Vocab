@@ -17,7 +17,6 @@ final class ReaderTranslationHandler {
     var translationResult: TranslationResult?
     var pronunciation: String?
     var isTranslating = false
-    var showTranslationPanel = false
     var isSaved = false
     var isExpanded = false
     var explanationText: String?
