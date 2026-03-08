@@ -14,7 +14,7 @@ import ReadiumAdapterGCDWebServer
 
 /// Readium 服務 — 封裝 EPUB 開啟與 Publication 管理
 @MainActor
-final class ReadiumService {
+final class ReadiumService: ReadiumServing {
     static let shared = ReadiumService()
 
     private let httpClient: HTTPClient

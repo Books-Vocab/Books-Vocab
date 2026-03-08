@@ -53,6 +53,13 @@ enum ReaderTheme: String, CaseIterable, Identifiable {
 }
 }
 
+struct ReaderViewConfiguration: Equatable {
+    let paperColor: SwiftUI.Color
+    let epubPreferences: EPUBPreferences
+    let underlineOpacity: Double
+    let showHitTestingDebug: Bool
+    let swiftUIColorScheme: ColorScheme
+}
 
 /// 閱讀器偏好設定模型 — 全域單例，直接讀寫 UserDefaults
 @Observable
@@ -150,5 +157,15 @@ final class ReaderSettings {
         case .light, .sepia: return .light
         case .dark: return .dark
         }
+    }
+
+    var viewConfiguration: ReaderViewConfiguration {
+        ReaderViewConfiguration(
+            paperColor: paperColor,
+            epubPreferences: epubPreferences,
+            underlineOpacity: underlineOpacity,
+            showHitTestingDebug: showHitTestingDebug,
+            swiftUIColorScheme: swiftUIColorScheme
+        )
     }
 }

@@ -88,7 +88,8 @@ struct KGVocabPresenter: View {
                     }
                 }
             }
-            .padding(AppMetrics.spacingLarge)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppMetrics.spacingLarge)
             .padding(.bottom, 120)
         }
         .vocabCanvasBackground()

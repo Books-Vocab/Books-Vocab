@@ -27,16 +27,16 @@ struct VocabularyListPresenter<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             VocabTabSelector(options: state.tabOptions, selection: $selectedTab)
-                .padding(.horizontal)
-                .padding(.vertical, 8)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                .padding(.vertical, AppMetrics.spacingSmall)
 
             if state.showsSearchField {
                 VocabSearchField(
                     text: $searchText,
                     prompt: state.searchPrompt
                 )
-                .padding(.horizontal)
-                .padding(.bottom, 8)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                .padding(.bottom, AppMetrics.spacingSmall)
             }
 
             content
