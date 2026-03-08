@@ -21,10 +21,12 @@ struct VocabularyListView: View {
     @State private var exportURL: URL?
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    @Environment(\.subscriptionManager) private var subscriptionManager
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State private var isForceRefreshing = false
     @State private var selectedEntry: VocabularyEntry?
     @State private var activeReviewSession: TodayReviewSession?
+    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -52,7 +54,7 @@ struct VocabularyListView: View {
                 }
 
                 // Force refresh (知識庫 tab only)
-                if selectedTab == 1 && authManager.isLoggedIn {
+                if selectedTab == 1 && authManager.isLoggedIn && subscriptionManager.hasProAccess {
                     if knowledgeReviewCount > 0 {
                         ToolbarItem(placement: .topBarTrailing) {
                             Button {
@@ -113,6 +115,9 @@ struct VocabularyListView: View {
             .sheet(isPresented: $showSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showPaywall) {
+                SubscriptionPaywallSheet()
+            }
             .sheet(item: $exportURL) { url in
                 ShareSheet(url: url)
             }
@@ -157,6 +162,14 @@ struct VocabularyListView: View {
             )
         } else if !authManager.isLoggedIn {
             loggedOutState
+        } else if !subscriptionManager.hasProAccess {
+            proGateState(
+                source: selectedTab == 1 ? .knowledge : .graph,
+                title: selectedTab == 1 ? "知識庫需 Pro" : "關聯圖需 Pro",
+                description: selectedTab == 1
+                    ? "升級後即可同步雲端字庫、啟動知識庫複習與跨裝置狀態。"
+                    : "升級後即可查看單字之間的關聯圖、節點結構與連結脈絡。"
+            )
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
         } else {
@@ -257,6 +270,24 @@ struct VocabularyListView: View {
     private func startKnowledgeReview() {
         guard !knowledgeReviewEntries.isEmpty else { return }
         activeReviewSession = TodayReviewSession(entries: knowledgeReviewEntries)
+    }
+
+    private func proGateState(source: PaywallSource, title: String, description: String) -> some View {
+        VStack {
+            Spacer()
+            ProAccessGateCard(
+                title: title,
+                description: description,
+                actionTitle: "開始免費試用",
+                systemImage: "sparkles.rectangle.stack"
+            ) {
+                subscriptionManager.activePaywallSource = source
+                showPaywall = true
+            }
+            Spacer()
+        }
+        .padding(AppMetrics.spacingLarge)
+        .vocabCanvasBackground()
     }
 
     private func handlePendingRowTap(_ entryID: UUID) {

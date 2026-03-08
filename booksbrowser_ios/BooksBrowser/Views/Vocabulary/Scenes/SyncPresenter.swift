@@ -2,6 +2,7 @@ import SwiftUI
 
 struct SyncPresenterState {
     let isLoggedIn: Bool
+    let hasProAccess: Bool
     let isConnected: Bool
     let phase: SyncPhase
     let pendingCount: Int
@@ -19,6 +20,7 @@ struct SyncPresenter: View {
     let onPrimaryAction: () -> Void
     let onCancel: () -> Void
     let onShowSettings: () -> Void
+    let onShowPaywall: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -27,7 +29,7 @@ struct SyncPresenter: View {
                 .padding(.bottom, 24)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: state.phase)
 
-            if state.isLoggedIn && !state.steps.isEmpty {
+            if state.isLoggedIn && state.hasProAccess && !state.steps.isEmpty {
                 VocabCard(padding: 0) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.steps.enumerated()), id: \.element.id) { index, step in
@@ -83,6 +85,19 @@ struct SyncPresenter: View {
                 Text("尚未登入帳號")
                     .font(vocabSkin.typography.sectionTitle)
                 Text("登入後即可將您的生詞庫同步至雲端與 Mochi。")
+                    .font(vocabSkin.typography.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .padding(.horizontal, 40)
+            }
+        } else if !state.hasProAccess {
+            VStack(spacing: 12) {
+                Image(systemName: "sparkles.rectangle.stack")
+                    .font(vocabSkin.typography.symbolHero)
+                    .foregroundStyle(vocabSkin.palette.accent)
+                Text("同步需 Pro")
+                    .font(vocabSkin.typography.sectionTitle)
+                Text("升級後即可將待收錄生詞同步到雲端、知識庫與 Mochi。")
                     .font(vocabSkin.typography.body)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -212,7 +227,7 @@ struct SyncPresenter: View {
         VStack(spacing: 8) {
             switch state.phase {
             case .ready:
-                if state.isLoggedIn {
+                if state.isLoggedIn && state.hasProAccess {
                     Button(action: onPrimaryAction) {
                         Label("開始同步", systemImage: "arrow.triangle.2.circlepath")
                             .frame(maxWidth: .infinity)
@@ -226,8 +241,8 @@ struct SyncPresenter: View {
                             .foregroundStyle(vocabSkin.palette.destructive)
                     }
                 } else {
-                    Button(action: onShowSettings) {
-                        Text("前往設定登入")
+                    Button(action: state.isLoggedIn ? onShowPaywall : onShowSettings) {
+                        Text(state.isLoggedIn ? "升級為 Pro" : "前往設定登入")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.vocabAction(.neutral))

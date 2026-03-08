@@ -49,6 +49,7 @@ struct ReaderView: View {
 
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    @Environment(\.subscriptionManager) private var subscriptionManager
 
     // 目錄
     @State private var showTableOfContents = false
@@ -56,6 +57,7 @@ struct ReaderView: View {
     // 閱讀設定（全域單例）
     private var settings = ReaderSettings.shared
     @State private var showReaderSettings = false
+    @State private var showSubscriptionPaywall = false
 
     // 紙張背景色，填補 safeAreaInset 造成的系統預設白邊
     private var paperColor: SwiftUI.Color {
@@ -132,6 +134,9 @@ struct ReaderView: View {
             .presentationBackground(.ultraThinMaterial)
             .preferredColorScheme(settings.swiftUIColorScheme)
         }
+        .sheet(isPresented: $showSubscriptionPaywall) {
+            SubscriptionPaywallSheet()
+        }
     }
 
     private var presenterState: ReaderViewPresenterState {
@@ -175,6 +180,7 @@ struct ReaderView: View {
                 onWordSelected: handleWordSelected,
                 onPhraseSelected: handlePhraseSelected,
                 onExplainSelected: { text, context in
+                    guard canUseProReaderFeature() else { return }
                     handler.handleExplainSelected(text: text, context: context)
                 },
                 onWordDeselected: handleWordDeselected,
@@ -202,7 +208,7 @@ struct ReaderView: View {
                 pronunciation: handler.pronunciation,
                 isLoading: handler.isTranslating,
                 isSaved: handler.isSaved,
-                isLoggedIn: authManager.isLoggedIn,
+                isLoggedIn: authManager.isLoggedIn && subscriptionManager.hasProAccess,
                 isExpanded: handler.isExpanded,
                 explanation: handler.explanationText,
                 isLoadingExplanation: handler.isLoadingExplanation,
@@ -268,6 +274,7 @@ struct ReaderView: View {
     }
 
     private func handleWordSelected(_ word: String, _ context: String) {
+        guard canUseProReaderFeature() else { return }
         handler.handleWordSelected(
             word: word,
             context: context,
@@ -276,6 +283,7 @@ struct ReaderView: View {
     }
 
     private func handlePhraseSelected(_ phrase: String, _ context: String) {
+        guard canUseProReaderFeature() else { return }
         handler.handlePhraseSelected(
             phrase: phrase,
             context: context,
@@ -331,6 +339,16 @@ struct ReaderView: View {
             // 如果沒有開啟任何面板，也要確保清除原生的多字 Highlight 與 active-word
             handler.clearHighlightTrigger = UUID()
         }
+    }
+
+    private func canUseProReaderFeature() -> Bool {
+        guard authManager.isLoggedIn else { return true }
+        guard subscriptionManager.hasProAccess else {
+            subscriptionManager.activePaywallSource = .reader
+            showSubscriptionPaywall = true
+            return false
+        }
+        return true
     }
 }
 

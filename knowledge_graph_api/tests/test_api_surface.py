@@ -34,6 +34,7 @@ def isolated_api(tmp_path):
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
     lock_file = data_dir / "users.json.lock"
+    notifications_file = data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps(
             {
@@ -47,6 +48,16 @@ def isolated_api(tmp_path):
         )
     )
 
+    users_data = json.loads(users_file.read_text())
+    users_data[user_id]["subscription"] = {
+        "is_active": True,
+        "status": "active",
+        "plan_name": "BooksBrowser Pro",
+        "trial_days": 7,
+        "will_renew": True,
+    }
+    users_file.write_text(json.dumps(users_data))
+
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
@@ -54,6 +65,9 @@ def isolated_api(tmp_path):
         patch.object(api_mod, "DATA_DIR", data_dir),
         patch.object(api_mod, "USERS_FILE", users_file),
         patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
+        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
+        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", True),
+        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", True),
     ):
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
@@ -254,6 +268,28 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert "Quick translation failed" in r.text
 
 
+def test_translate_requires_pro_subscription(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": False,
+        "status": "inactive",
+        "trial_days": 7,
+        "will_renew": False,
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    r = client.post(
+        "/api/translate/quick",
+        json={"word": "evoke", "context": "The story can evoke deep memories."},
+        headers=headers,
+    )
+    assert r.status_code == 402, r.text
+    assert "pro_required" in r.text
+
+
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):
     client = isolated_api.client
 
@@ -308,6 +344,35 @@ def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
 
     assert users["legacy_user"]["config"]["mochi_api_key"] == "mk_legacy"
     assert "mochi_api_key" not in users["legacy_user"]
+
+
+def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": True,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "BooksBrowser Pro",
+        "price_display": "$1.00/month",
+        "status": "trial",
+        "is_trial": True,
+        "trial_days": 7,
+        "will_renew": True,
+        "expires_at": "2026-03-14T00:00:00+00:00",
+        "last_synced_at": "2026-03-07T00:00:00+00:00",
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    r = client.get("/api/user/entitlements", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()["pro"]
+    assert body["is_active"] is True
+    assert body["status"] == "trial"
+    assert body["product_id"] == "com.wordnexus.pro.monthly"
+    assert body["price_display"] == "$1.00/month"
+    assert body["will_renew"] is True
 
 
 def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
@@ -413,9 +478,13 @@ def test_admin_test_matrix_endpoints(isolated_api):
         patch.object(api_mod, "_run_pytest_matrix", run_mock),
     ):
         assert client.get("/admin/tests").status_code == 403
+        assert client.get("/admin/test").status_code == 403
         r_ui = client.get("/admin/tests", params={"token": "adm-secret"})
         assert r_ui.status_code == 200
         assert "KG Test Matrix" in r_ui.text
+        r_ui_alias = client.get("/admin/test", params={"token": "adm-secret"})
+        assert r_ui_alias.status_code == 200
+        assert "KG Test Matrix" in r_ui_alias.text
 
         r_catalog = client.get("/api/admin/tests/catalog", params={"token": "adm-secret"})
         assert r_catalog.status_code == 200

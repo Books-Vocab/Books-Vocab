@@ -50,6 +50,37 @@ struct KGUserConfig: Codable {
     let mochi_api_key: String?
 }
 
+struct KGSubscriptionStatus: Codable, Equatable {
+    let is_active: Bool
+    let product_id: String?
+    let plan_name: String?
+    let price_display: String?
+    let status: String
+    let is_trial: Bool
+    let trial_days: Int?
+    let will_renew: Bool
+    let expires_at: String?
+    let source: String
+    let last_synced_at: String?
+}
+
+struct KGEntitlements: Codable, Equatable {
+    let pro: KGSubscriptionStatus
+}
+
+struct KGAppStoreSubscriptionSyncRequest: Codable {
+    let product_id: String
+    let transaction_id: String?
+    let original_transaction_id: String?
+    let environment: String
+    let status: String
+    let is_trial: Bool
+    let expires_at: String?
+    let will_renew: Bool
+    let price_display: String?
+    let signed_transaction_info: String?
+}
+
 // MARK: - Service
 
 /// Manages communication with the Knowledge Graph API server
@@ -255,6 +286,49 @@ final class KGService: KGServing, LocalDataClearing {
 
         print("✅ [KGService] Fetched config successfully")
         return try JSONDecoder().decode(KGUserConfig.self, from: data)
+    }
+
+    func fetchEntitlements() async throws -> KGEntitlements {
+        let url = baseURL.appendingPathComponent("api/user/entitlements")
+        var request = URLRequest(url: url)
+        try applyAuth(to: &request)
+
+        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.serverError("Failed to fetch entitlements (HTTP \(httpResponse.statusCode))")
+        }
+
+        print("✅ [KGService] Fetched entitlements successfully")
+        return try JSONDecoder().decode(KGEntitlements.self, from: data)
+    }
+
+    func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements {
+        let url = baseURL.appendingPathComponent("api/billing/app-store/sync")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try applyAuth(to: &request)
+        request.httpBody = try JSONEncoder().encode(snapshot)
+
+        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.serverError("Failed to sync subscription (HTTP \(httpResponse.statusCode))")
+        }
+
+        print("✅ [KGService] Synced App Store subscription successfully")
+        return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
     func updateUserConfig(mochiKey: String?) async throws -> KGUserConfig {

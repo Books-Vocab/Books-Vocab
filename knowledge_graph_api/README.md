@@ -2,6 +2,13 @@
 
 這是一個以 SQLite + Mochi 卡片盒為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、火速背景 Pipeline、以及增量同步機制。
 
+## Backend Layout
+
+- `src/kg/api.py`: app composition root + legacy compatibility surface
+- `src/kg/route_registration.py`: 集中 route registration，避免 handler 與 decorator 混在一起
+- `src/kg/*_service.py`: translate / auth / vocab / pipeline / billing 等業務邏輯
+- `tests/test_api_module_compat.py`、`tests/test_api_startup_smoke.py`、`tests/test_route_registration.py`: 重構遷移的 guardrails
+
 Mochi 整合目前採用使用者層設定：
 
 - 權威來源是 `users.json -> <user_id> -> config -> mochi_api_key`

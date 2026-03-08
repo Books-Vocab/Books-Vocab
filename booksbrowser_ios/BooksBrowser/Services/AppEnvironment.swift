@@ -5,4 +5,5 @@ import SwiftUI
 extension EnvironmentValues {
     @Entry var authManager: any AuthManaging = AuthManager.shared
     @Entry var kgService: any KGServing = KGService()
+    @Entry var subscriptionManager: any SubscriptionManaging = SubscriptionManager.shared
 }

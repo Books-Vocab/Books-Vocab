@@ -58,6 +58,26 @@ cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_worksp
 ```
 **注意**：`.env` 變動不能只 `restart`，容器讀不到新值。
 
+### App Store 訂閱驗簽必備 env
+
+production 現在預設只接受 signed App Store payload。下列 key 缺一不可：
+
+```bash
+APP_STORE_ROOT_CA_PATH=/home/ubuntu/knowledge_graph_api/certs/apple_root_ca.pem
+APP_STORE_CONNECT_ISSUER_ID=<issuer-id>
+APP_STORE_CONNECT_KEY_ID=<key-id>
+APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appstore_connect.p8
+```
+
+補充規則：
+- `APP_STORE_ALLOW_UNSIGNED_SYNC` 不應在 production 設為 `true`
+- `APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS` 不應在 production 設為 `true`
+- `APPLE_BUNDLE_ID` 必須與 App Store Connect 訂閱商品所屬 app 相同
+
+`./devops.sh env-check` 現在會同時檢查：
+- 必要 App Store 驗簽 key 是否存在
+- unsigned fallback 開關是否被錯誤打開
+
 ### 新增 Card Schema 欄位（SQLite）
 
 ```bash
