@@ -12,7 +12,6 @@ extension ReaderTranslationHandler {
 
     func dismiss() {
         withAnimation(.spring(response: 0.3)) {
-            showTranslationPanel = false
             wordSelection = nil
             translationResult = nil
             pronunciation = nil
