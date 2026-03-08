@@ -170,7 +170,6 @@ struct VocabSearchField: View {
 }
 
 struct VocabToolbarGlyph: View {
-    @Environment(\.vocabSkin) private var vocabSkin
     let systemImage: String
     let badge: String?
     let tone: Color?
@@ -182,23 +181,7 @@ struct VocabToolbarGlyph: View {
     }
 
     var body: some View {
-        HStack(spacing: 4) {
-            Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconToolbar)
-                .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
-
-            if let badge {
-                Text(badge)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, 5)
-                    .padding(.vertical, 2)
-                    .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                            .fill(tone ?? vocabSkin.palette.destructive)
-                    )
-            }
-        }
+        AppToolbarGlyph(systemImage: systemImage, badge: badge, tone: tone)
     }
 }
 
@@ -306,13 +289,9 @@ struct VocabActionButtonStyle: ButtonStyle {
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            return (.white, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
+            return styleFromShared(.primary)
         case .neutral:
-            return (
-                vocabSkin.palette.primaryText,
-                vocabSkin.palette.cardBackground,
-                vocabSkin.palette.cardBorder
-            )
+            return styleFromShared(.neutral)
         case .success:
             return (
                 vocabSkin.palette.success,
@@ -325,6 +304,21 @@ struct VocabActionButtonStyle: ButtonStyle {
                 warning,
                 warning.opacity(0.12),
                 warning.opacity(0.22)
+            )
+        case .destructive:
+            return styleFromShared(.destructive)
+        }
+    }
+
+    private func styleFromShared(_ tone: AppActionTone) -> (foreground: Color, background: Color, border: Color) {
+        switch tone {
+        case .primary:
+            return (.white, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
+        case .neutral:
+            return (
+                vocabSkin.palette.primaryText,
+                vocabSkin.palette.cardBackground,
+                vocabSkin.palette.cardBorder
             )
         case .destructive:
             return (

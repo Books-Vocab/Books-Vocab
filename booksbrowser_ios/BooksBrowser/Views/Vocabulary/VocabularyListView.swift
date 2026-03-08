@@ -237,24 +237,20 @@ struct VocabularyListView: View {
     @ViewBuilder
     private var loggedOutState: some View {
         ScrollView {
-            VocabCard {
-                VStack(spacing: 16) {
-                    VocabEmptyStateContent(
-                        title: "需登入帳號",
-                        systemImage: "person.crop.circle.badge.exclamationmark",
-                        description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。"
-                    )
+            VStack(spacing: AppShellMetrics.sectionSpacing) {
+                AppEmptyStateCard(
+                    title: "需登入帳號",
+                    systemImage: "person.crop.circle.badge.exclamationmark",
+                    description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。"
+                )
 
-                    Button("前往設定登入") {
-                        coordinator.presentSettings()
-                    }
-                    .buttonStyle(.vocabAction(.primary))
-                    .frame(maxWidth: .infinity)
+                Button("前往設定登入") {
+                    coordinator.presentSettings()
                 }
-                .padding(.vertical, 12)
+                .buttonStyle(.appAction(.primary))
             }
-            .padding(.horizontal)
-            .padding(.top, 16)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppMetrics.spacingMedium)
         }
     }
 }

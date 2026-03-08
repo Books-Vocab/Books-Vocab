@@ -12,7 +12,7 @@ struct SettingsPresenter: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: 24) {
+                VStack(spacing: AppShellMetrics.sectionSpacing) {
                     authSection
                     if let kg = state.kg {
                         kgSection(kg)
@@ -25,9 +25,9 @@ struct SettingsPresenter: View {
                         dangerSection(danger)
                     }
                 }
-                .padding(.horizontal, 20)
-                .padding(.top, 12)
-                .padding(.bottom, 48)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                .padding(.top, AppShellMetrics.pageTopPadding)
+                .padding(.bottom, AppShellMetrics.pageBottomPadding)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("設定")
@@ -111,13 +111,7 @@ struct SettingsPresenter: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .padding()
-                .background(vocabSkin.palette.pageBackground)
-                .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
+                .appSettingsButtonChrome()
 
                 Button(action: actions.loginWithApple) {
                     HStack(spacing: 12) {
@@ -138,13 +132,7 @@ struct SettingsPresenter: View {
                     }
                 }
                 .buttonStyle(.plain)
-                .padding()
-                .background(vocabSkin.palette.pageBackground)
-                .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
+                .appSettingsButtonChrome()
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.auth.debug {
@@ -265,10 +253,9 @@ struct SettingsPresenter: View {
                 Text("登出帳號")
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.destructive)
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
             }
-            .buttonStyle(.plain)
+            .buttonStyle(.appAction(.destructive))
+            .padding(vocabSkin.spacing.cardPadding)
         }
     }
 
@@ -412,19 +399,11 @@ struct SettingsPresenter: View {
                             .font(vocabSkin.typography.iconTiny)
                             .foregroundStyle(vocabSkin.palette.destructive)
                     }
-                    .frame(maxWidth: .infinity)
-                    .padding(.vertical, 13)
-                    .padding(.horizontal, 16)
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.appAction(.destructive))
                 .disabled(danger.isDeletingAccount)
             }
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .stroke(vocabSkin.palette.destructive.opacity(0.5), lineWidth: 1)
-            )
+            .settingsCard()
 
             SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。")
         }
@@ -437,10 +416,7 @@ private struct SettingsSectionHeader: View {
     let icon: String
 
     var body: some View {
-        Label(title.localized, systemImage: icon)
-            .font(vocabSkin.typography.captionStrong)
-            .foregroundStyle(vocabSkin.palette.secondaryText)
-            .padding(.leading, 4)
+        AppSectionHeader(title: title, systemImage: icon)
     }
 }
 
@@ -453,11 +429,7 @@ private struct SettingsSectionFooter: View {
     }
 
     var body: some View {
-        Text(text.localized)
-            .font(vocabSkin.typography.caption)
-            .foregroundStyle(vocabSkin.palette.tertiaryText)
-            .lineSpacing(3)
-            .padding(.horizontal, 4)
+        AppSectionFooter(text: text)
     }
 }
 
@@ -515,13 +487,30 @@ private struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
     func body(content: Content) -> some View {
+        AppSectionCard(padding: 0) {
+            content
+        }
+    }
+}
+
+private struct SettingsButtonChromeModifier: ViewModifier {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    func body(content: Content) -> some View {
         content
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .padding()
+            .background(vocabSkin.palette.pageBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control))
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control)
                     .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
             )
+    }
+}
+
+private extension View {
+    func appSettingsButtonChrome() -> some View {
+        modifier(SettingsButtonChromeModifier())
     }
 }
 

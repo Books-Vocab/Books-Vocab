@@ -19,7 +19,7 @@ struct BookshelfView: View {
     @StateObject private var coordinator = BookshelfCoordinator()
 
     private let columns = [
-        GridItem(.adaptive(minimum: 150, maximum: 200), spacing: 20)
+        GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
     ]
 
     var body: some View {
@@ -44,17 +44,13 @@ struct BookshelfView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: coordinator.presentSettings) {
-                        Image(systemName: "gearshape")
-                            .font(.system(size: 15, weight: .light))
-                            .foregroundStyle(.secondary)
+                        AppToolbarGlyph(systemImage: "gearshape")
                     }
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: coordinator.presentImporter) {
-                        Image(systemName: "plus")
-                            .font(.system(size: 15, weight: .light))
-                            .foregroundStyle(.secondary)
+                        AppToolbarGlyph(systemImage: "plus")
                     }
                 }
             }
@@ -83,48 +79,33 @@ struct BookshelfView: View {
     // MARK: - 空狀態
 
     private var emptyState: some View {
-        VStack(spacing: 20) {
+        VStack {
             Spacer()
 
-            Image(systemName: "book")
-                .font(.system(size: 48, weight: .ultraLight))
-                .foregroundStyle(.quaternary)
-
-            VStack(spacing: 6) {
-                Text("尚無書籍")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .foregroundStyle(.secondary)
-
-                Text("匯入 EPUB 電子書開始閱讀")
-                    .font(.caption)
-                    .foregroundStyle(.tertiary)
-            }
-
-            Button {
-                coordinator.presentImporter()
-            } label: {
-                Text("匯入")
-                    .font(.subheadline)
-                    .fontWeight(.medium)
-                    .padding(.horizontal, 24)
-                    .padding(.vertical, 10)
-                    .background(
-                        Capsule()
-                            .strokeBorder(.secondary.opacity(0.3), lineWidth: 0.5)
-                    )
-                    .foregroundStyle(.primary)
+            AppEmptyStateCard(
+                title: "尚無書籍",
+                systemImage: "book",
+                description: "匯入 EPUB 電子書開始閱讀"
+            )
+            .overlay(alignment: .bottom) {
+                Button("匯入") {
+                    coordinator.presentImporter()
+                }
+                .buttonStyle(.appAction(.neutral))
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                .offset(y: 34)
             }
 
             Spacer()
         }
+        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
     }
 
     // MARK: - 書籍網格
 
     private var bookGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: 24) {
+            LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
                         BookCard(book: book)
@@ -142,9 +123,9 @@ struct BookshelfView: View {
                     }
                 }
             }
-            .padding(.horizontal, 20)
-            .padding(.top, 8)
-            .padding(.bottom, 32)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+            .padding(.top, AppMetrics.spacingSmall)
+            .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .navigationDestination(for: Book.self) { book in
             ReaderView(book: book)
@@ -162,8 +143,8 @@ struct BookshelfView: View {
                 ProgressView()
                     .scaleEffect(1.0)
                 Text(coordinator.loadingMessage)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                    .font(AppFonts.caption())
+                    .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(28)
             .glassEffect(.regular, in: .rect(cornerRadius: 14))
@@ -208,11 +189,11 @@ struct BookCard: View {
                     .overlay {
                         VStack(spacing: 10) {
                             Image(systemName: "book")
-                                .font(.system(size: 28, weight: .ultraLight))
-                                .foregroundStyle(.tertiary)
+                                .font(AppFonts.h1(weight: .regular))
+                                .foregroundStyle(appTheme.palette.tertiaryText)
                             Text(book.title)
-                                .font(.caption2)
-                                .foregroundStyle(.secondary)
+                                .font(AppFonts.caption2())
+                                .foregroundStyle(appTheme.palette.secondaryText)
                                 .multilineTextAlignment(.center)
                                 .padding(.horizontal, 12)
                         }
@@ -236,15 +217,14 @@ struct BookCard: View {
 
             VStack(spacing: 3) {
                 Text(book.title)
-                    .font(.caption)
-                    .fontWeight(.regular)
+                    .font(AppFonts.caption())
                     .lineLimit(2)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(appTheme.palette.primaryText)
 
                 Text(book.author)
-                    .font(.caption2)
-                    .foregroundStyle(.tertiary)
+                    .font(AppFonts.caption2())
+                    .foregroundStyle(appTheme.palette.tertiaryText)
                     .lineLimit(1)
             }
         }

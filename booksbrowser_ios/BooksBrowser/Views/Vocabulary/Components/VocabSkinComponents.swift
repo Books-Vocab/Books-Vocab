@@ -1,7 +1,6 @@
 import SwiftUI
 
 struct VocabCard<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
     let padding: CGFloat
     @ViewBuilder let content: Content
 
@@ -14,17 +13,9 @@ struct VocabCard<Content: View>: View {
     }
 
     var body: some View {
-        content
-            .padding(padding)
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder.opacity(0.7), lineWidth: 1)
-            )
-            .shadow(color: vocabSkin.palette.shadow, radius: 6, y: 2)
+        AppSectionCard(padding: padding) {
+            content
+        }
     }
 }
 
@@ -69,27 +60,16 @@ struct VocabTierLabel: View {
 }
 
 struct VocabEmptyStateContent: View {
-    @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let systemImage: String
     let description: String
 
     var body: some View {
-        VStack(spacing: 14) {
-            Image(systemName: systemImage)
-                .font(vocabSkin.typography.symbolLarge)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-            Text(title.localized)
-                .font(vocabSkin.typography.sectionTitle)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-
-            Text(description.localized)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
+        AppEmptyStateContent(
+            title: title,
+            systemImage: systemImage,
+            description: description
+        )
     }
 }
 
@@ -99,14 +79,11 @@ struct VocabEmptyStateCard: View {
     let description: String
 
     var body: some View {
-        VocabCard {
-            VocabEmptyStateContent(
-                title: title,
-                systemImage: systemImage,
-                description: description
-            )
-            .padding(.vertical, 12)
-        }
+        AppEmptyStateCard(
+            title: title,
+            systemImage: systemImage,
+            description: description
+        )
     }
 }
 
