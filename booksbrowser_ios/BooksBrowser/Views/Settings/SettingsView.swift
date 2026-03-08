@@ -10,20 +10,7 @@ struct SettingsView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
-
-#if DEBUG
-    @AppStorage("developer_account_id") private var developerAccountId: String = ""
-    @State private var manualLoginUserId: String = ""
-#endif
-    @State private var mochiApiKey: String = ""
-    @State private var fetchedKey: String = ""
-    @State private var saveTask: Task<Void, Never>? = nil
-    @State private var showMochiInfo = false
-    @State private var connectionPulse = false
-    @State private var iconBreathing = false
-    @State private var showDeleteAccountConfirm = false
-    @State private var isDeletingAccount = false
-    @State private var deleteAccountError: String?
+    @StateObject private var coordinator = SettingsCoordinator()
 
     private var userInitials: String? {
         guard let name = authManager.displayName, !name.isEmpty else { return nil }
@@ -37,13 +24,13 @@ struct SettingsView: View {
 #if DEBUG
     private var isCurrentAccountDeveloper: Bool {
         guard let userId = authManager.userId else { return false }
-        return !developerAccountId.isEmpty && developerAccountId == userId
+        return !coordinator.developerAccountId.isEmpty && coordinator.developerAccountId == userId
     }
 #endif
 
     private var authDebugState: SettingsPresenterState.DebugAuthSection? {
 #if DEBUG
-        SettingsPresenterState.DebugAuthSection(developerAccountId: developerAccountId)
+        SettingsPresenterState.DebugAuthSection(developerAccountId: coordinator.developerAccountId)
 #else
         nil
 #endif
@@ -59,7 +46,7 @@ struct SettingsView: View {
 
     private var aboutDeveloperAccountId: String? {
 #if DEBUG
-        developerAccountId
+        coordinator.developerAccountId
 #else
         nil
 #endif
@@ -74,7 +61,7 @@ struct SettingsView: View {
                 displayName: authManager.displayName ?? authManager.userEmail ?? L10n.string("已登入"),
                 email: authManager.displayName != nil ? authManager.userEmail : nil,
                 authError: authManager.authError,
-                iconBreathing: iconBreathing,
+                iconBreathing: coordinator.iconBreathing,
                 isDeveloper: authIsDeveloper,
                 debug: authDebugState
             ),
@@ -82,7 +69,7 @@ struct SettingsView: View {
                 ? .init(
                     serverURL: KGService.getServerURL(),
                     isConnected: kgService.isConnected,
-                    connectionPulse: connectionPulse,
+                    connectionPulse: coordinator.connectionPulse,
                     serverCardCount: kgService.serverCardCount,
                     lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named))
                 )
@@ -93,7 +80,7 @@ struct SettingsView: View {
                 developerName: "陳亮宇",
                 developerAccountId: aboutDeveloperAccountId
             ),
-            danger: authManager.isLoggedIn ? .init(isDeletingAccount: isDeletingAccount) : nil
+            danger: authManager.isLoggedIn ? .init(isDeletingAccount: coordinator.isDeletingAccount) : nil
         )
     }
 
@@ -103,114 +90,72 @@ struct SettingsView: View {
             loginWithGoogle: { authManager.loginWithGoogle(modelContainer: modelContext.container) },
             loginWithApple: { authManager.loginWithApple(modelContainer: modelContext.container) },
             logout: { authManager.logout(modelContainer: modelContext.container, reason: "settings_logout") },
-            manualLogin: handleManualLogin,
-            setDeveloperAccount: setDeveloperAccount,
-            clearDeveloperAccount: clearDeveloperAccount,
-            showMochiInfo: { showMochiInfo = true },
-            requestDeleteAccount: { showDeleteAccountConfirm = true }
+            manualLogin: { coordinator.handleManualLogin(authManager: authManager) },
+            setDeveloperAccount: coordinator.setDeveloperAccount,
+            clearDeveloperAccount: coordinator.clearDeveloperAccount,
+            showMochiInfo: coordinator.presentMochiInfo,
+            requestDeleteAccount: coordinator.requestDeleteAccount
         )
     }
 
     var body: some View {
         SettingsPresenter(
             state: presenterState,
-            mochiApiKey: $mochiApiKey,
+            mochiApiKey: mochiApiKeyBinding,
             manualLoginUserId: manualLoginBinding,
             actions: presenterActions
         )
         .task(id: authManager.isLoggedIn) {
-            await kgService.healthCheck()
-            connectionPulse.toggle()
-
-            if authManager.isLoggedIn {
-                if let config = try? await kgService.fetchUserConfig() {
-                    let fetched = config.mochi_api_key ?? ""
-                    fetchedKey = fetched
-                    mochiApiKey = fetched
-                }
-            } else {
-                fetchedKey = ""
-                mochiApiKey = ""
-            }
+            await coordinator.loadData(authManager: authManager, kgService: kgService)
         }
-        .onChange(of: mochiApiKey) {
-            guard mochiApiKey != fetchedKey else { return }
-            saveTask?.cancel()
-            saveTask = Task {
-                try? await Task.sleep(for: .milliseconds(600))
-                guard !Task.isCancelled else { return }
-                if authManager.isLoggedIn {
-                    _ = try? await kgService.updateUserConfig(mochiKey: mochiApiKey.isEmpty ? nil : mochiApiKey)
-                    fetchedKey = mochiApiKey
-                }
-            }
+        .onChange(of: coordinator.mochiApiKey) { _, _ in
+            coordinator.scheduleMochiSave(authManager: authManager, kgService: kgService)
         }
         .onAppear {
-            iconBreathing = true
-#if DEBUG
-            manualLoginUserId = developerAccountId
-#endif
+            coordinator.handleAppear()
         }
-        .sheet(isPresented: $showMochiInfo) {
+        .sheet(isPresented: $coordinator.showMochiInfo) {
             MochiInfoSheetView()
         }
-        .alert("刪除帳號與雲端資料？", isPresented: $showDeleteAccountConfirm) {
+        .alert("刪除帳號與雲端資料？", isPresented: $coordinator.showDeleteAccountConfirm) {
             Button("取消", role: .cancel) {}
             Button("確認刪除", role: .destructive) {
-                Task { await deleteAccount() }
+                Task {
+                    await coordinator.deleteAccount(
+                        authManager: authManager,
+                        kgService: kgService,
+                        modelContext: modelContext
+                    )
+                }
             }
         } message: {
             Text("此操作會永久刪除帳號、雲端生詞資料與同步設定，且無法復原。")
         }
         .alert("刪除失敗", isPresented: Binding(
-            get: { deleteAccountError != nil },
-            set: { if !$0 { deleteAccountError = nil } }
+            get: { coordinator.deleteAccountError != nil },
+            set: { if !$0 { coordinator.clearDeleteAccountError() } }
         )) {
-            Button("好") { deleteAccountError = nil }
+            Button("好", action: coordinator.clearDeleteAccountError)
         } message: {
-            Text((deleteAccountError ?? "請稍後再試").localized)
+            Text((coordinator.deleteAccountError ?? "請稍後再試").localized)
         }
     }
 
-    @MainActor
-    private func deleteAccount() async {
-        guard authManager.isLoggedIn, !isDeletingAccount else { return }
-        isDeletingAccount = true
-        defer { isDeletingAccount = false }
-
-        do {
-            try await kgService.deleteAccount()
-            authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
-        } catch {
-            deleteAccountError = L10n.format("無法刪除帳號：%@", error.localizedDescription)
-        }
+    private var mochiApiKeyBinding: Binding<String> {
+        Binding(
+            get: { coordinator.mochiApiKey },
+            set: { coordinator.mochiApiKey = $0 }
+        )
     }
 
     private var manualLoginBinding: Binding<String>? {
 #if DEBUG
-        $manualLoginUserId
+        Binding(
+            get: { coordinator.manualLoginUserId },
+            set: { coordinator.manualLoginUserId = $0 }
+        )
 #else
         nil
-#endif
-    }
-
-    private func handleManualLogin() {
-#if DEBUG
-        let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !id.isEmpty else { return }
-        authManager.login(customToken: id)
-#endif
-    }
-
-    private func setDeveloperAccount() {
-#if DEBUG
-        developerAccountId = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
-#endif
-    }
-
-    private func clearDeveloperAccount() {
-#if DEBUG
-        developerAccountId = ""
 #endif
     }
 }

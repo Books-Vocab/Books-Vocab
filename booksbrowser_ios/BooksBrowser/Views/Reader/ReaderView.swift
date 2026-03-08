@@ -58,13 +58,8 @@ struct ReaderView: View {
     private var settings = ReaderSettings.shared
     @State private var showReaderSettings = false
 
-    // 紙張背景色，填補 safeAreaInset 造成的系統預設白邊
-    private var paperColor: SwiftUI.Color {
-        switch settings.theme {
-        case .light: return AppColors.paperLight
-        case .sepia: return AppColors.paperSepia
-        case .dark:  return AppColors.paperDark
-        }
+    private var viewConfiguration: ReaderViewConfiguration {
+        settings.viewConfiguration
     }
 
     init(book: Book) {
@@ -84,7 +79,7 @@ struct ReaderView: View {
         } translationPanel: {
             translationPanelContent
         }
-        .preferredColorScheme(settings.swiftUIColorScheme)
+        .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
@@ -131,13 +126,13 @@ struct ReaderView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
-            .preferredColorScheme(settings.swiftUIColorScheme)
+            .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         }
     }
 
     private var presenterState: ReaderViewPresenterState {
         .init(
-            paperColor: paperColor,
+            paperColor: viewConfiguration.paperColor,
             isWebViewReady: isWebViewReady,
             loadingPhase: loadingPhase,
             underlineProgress: underlineProgress,
@@ -167,7 +162,7 @@ struct ReaderView: View {
                 httpServer: readiumService.httpServer,
                 lookedUpWords: handler.lookedUpWords,
                 bookUniqueWords: handler.bookUniqueWords,
-                preferences: settings.epubPreferences,
+                viewConfiguration: viewConfiguration,
                 clearHighlightTrigger: handler.clearHighlightTrigger,
                 removeWordTrigger: handler.removeWordTrigger,
                 navigateToLocator: navigateToLocator,
