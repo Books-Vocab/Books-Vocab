@@ -110,6 +110,7 @@ from .api_models import (
     VocabAddResponse,
     VocabEntry,
 )
+from .route_registration import register_routes
 from .translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -164,7 +165,6 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-@app.get("/privacy.html", response_class=FileResponse)
 def get_privacy_policy():
     """Serve the static privacy policy HTML."""
     privacy_path = Path(__file__).resolve().parent.parent.parent / "privacy.html"
@@ -172,7 +172,6 @@ def get_privacy_policy():
         return HTMLResponse("<h1>Privacy Policy Not Found</h1>", status_code=404)
     return FileResponse(privacy_path)
 
-@app.get("/support.html", response_class=FileResponse)
 def get_support():
     """Serve the support page HTML."""
     support_path = Path(__file__).resolve().parent.parent.parent / "support.html"
@@ -441,7 +440,6 @@ def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
-@app.get("/api/user/config", response_model=UserConfigResponse)
 def get_user_config(user: dict = Depends(get_current_user)):
     """Get user configuration."""
     return UserConfigResponse(
@@ -452,7 +450,6 @@ def get_user_config(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # GET /api/user/entitlements
 # ---------------------------------------------------------------------------
-@app.get("/api/user/entitlements", response_model=EntitlementsResponse)
 def get_user_entitlements(user: dict = Depends(get_current_user)):
     """Get the current user's subscription entitlement snapshot."""
     return _build_entitlements_response(user.get("record"))
@@ -461,7 +458,6 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/sync
 # ---------------------------------------------------------------------------
-@app.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
 def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
     """Persist the latest App Store subscription snapshot for the current user."""
     try:
@@ -514,7 +510,6 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/notifications
 # ---------------------------------------------------------------------------
-@app.post("/api/billing/app-store/notifications")
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
     try:
@@ -577,7 +572,6 @@ def app_store_notifications(req: AppStoreNotificationRequest):
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/reconcile
 # ---------------------------------------------------------------------------
-@app.post("/api/billing/app-store/reconcile", response_model=EntitlementsResponse)
 async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
     """Fetch transaction state from Apple's App Store Server API and persist it."""
     try:
@@ -628,7 +622,6 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 # PUT /api/user/config
 # ---------------------------------------------------------------------------
-@app.put("/api/user/config", response_model=UserConfigResponse)
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
     with FileLock(str(USERS_LOCK_FILE)):
@@ -654,7 +647,6 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 # DELETE /api/user/account
 # ---------------------------------------------------------------------------
-@app.delete("/api/user/account", response_model=DeleteAccountResponse)
 def delete_user_account(user: dict = Depends(get_current_user)):
     """Permanently delete the current account and all related user data."""
     now_iso = datetime.now(tz=timezone.utc).isoformat()
@@ -706,7 +698,6 @@ def delete_user_account(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # GET /api/health
 # ---------------------------------------------------------------------------
-@app.get("/api/health", response_model=HealthResponse)
 def health(user: dict = Depends(get_current_user)):
     """Server health + stats per user."""
     cards = _card_store(user["dir"])
@@ -731,7 +722,6 @@ def health(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # GET /api/vocab
 # ---------------------------------------------------------------------------
-@app.get("/api/vocab")
 def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
     _require_pro_access(user, "knowledge_sync")
@@ -748,7 +738,6 @@ def list_vocab(since: str | None = None, user: dict = Depends(get_current_user))
 # ---------------------------------------------------------------------------
 # GET /api/vocab/{word}
 # ---------------------------------------------------------------------------
-@app.get("/api/vocab/{word}")
 def lookup_word(word: str, user: dict = Depends(get_current_user)):
     """Lookup a word in the current user's card store."""
     _require_pro_access(user, "knowledge_sync")
@@ -765,7 +754,6 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # DELETE /api/vocab/{word}
 # ---------------------------------------------------------------------------
-@app.delete("/api/vocab/{word}")
 def delete_word(word: str, user: dict = Depends(get_current_user)):
     """Delete a word from the current user's card store."""
     _require_pro_access(user, "knowledge_sync")
@@ -775,7 +763,6 @@ def delete_word(word: str, user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # GET /api/graph/links
 # ---------------------------------------------------------------------------
-@app.get("/api/graph/links", response_model=list[GraphLinkResponse])
 def get_graph_links(user: dict = Depends(get_current_user)):
     """Get all active graph connections for the user."""
     _require_pro_access(user, "knowledge_graph")
@@ -785,7 +772,6 @@ def get_graph_links(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # POST /api/vocab  — Batch add from BooksBrowser
 # ---------------------------------------------------------------------------
-@app.post("/api/vocab", response_model=VocabAddResponse)
 def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
     """Add vocabulary entries from BooksBrowser → KG Cards."""
     _require_pro_access(user, "knowledge_sync")
@@ -816,7 +802,6 @@ async def _run_pipeline_background(user: dict):
     )
 
 
-@app.post("/api/pipeline")
 async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
     """Run enrich → link → difficulty → sync pipeline for the user in the background.
 
@@ -829,7 +814,6 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 # POST /api/translate/quick & /api/translate/explain
 # ---------------------------------------------------------------------------
-@app.post("/api/translate/quick", response_model=QuickTranslateResponse)
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Perform a quick UI translation via Gemini API (proxy)."""
     _require_pro_access(user, "reader_ai")
@@ -842,7 +826,6 @@ def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user
         logger.error("translate/quick failed: %s", e, exc_info=True)
         raise HTTPException(500, f"Quick translation failed: {e}")
 
-@app.post("/api/translate/phrase", response_model=dict)
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Translate a multi-word phrase or expression. Returns translation only."""
     _require_pro_access(user, "reader_ai")
@@ -852,7 +835,6 @@ def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_use
     except Exception as e:
         raise HTTPException(500, f"Phrase translation failed: {e}")
 
-@app.post("/api/translate/explain", response_model=ExplainResponse)
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user)):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
     _require_pro_access(user, "reader_ai")
@@ -888,7 +870,6 @@ def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | No
     )
 
 
-@app.post("/auth/verify", response_model=AuthVerifyResponse)
 async def auth_verify(req: AuthVerifyRequest):
     """Verify Google/Apple token and return JWT access token.
 
@@ -951,14 +932,12 @@ def _run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any
     return run_pytest_matrix(selected_items=selected_items)
 
 
-@app.get("/admin", response_class=HTMLResponse, include_in_schema=False)
 def admin_ui(token: str | None = None):
     """Admin dashboard UI."""
     _check_admin(token)
     return HTMLResponse(ADMIN_HTML)
 
 
-@app.get("/api/admin/stats", include_in_schema=False)
 def admin_stats(token: str | None = None):
     """Return per-user token + vocab stats for admin dashboard."""
     _check_admin(token)
@@ -1016,14 +995,12 @@ def admin_stats(token: str | None = None):
     return {"users": result}
 
 
-@app.get("/api/admin/logs", include_in_schema=False)
 def admin_logs(token: str | None = None, n: int = 200, level: str | None = None):
     """Return recent in-memory log entries for the admin dashboard."""
     _check_admin(token)
     return {"logs": _mem_log.get(n=n, level=level or None)}
 
 
-@app.post("/api/admin/tests/run", include_in_schema=False)
 def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None):
     """Run test suite and return matrix view data."""
     _check_admin(token)
@@ -1031,7 +1008,6 @@ def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = 
     return store_last_test_run(_run_pytest_matrix(selected_items=selected))
 
 
-@app.get("/api/admin/tests/last", include_in_schema=False)
 def admin_last_test_run(token: str | None = None):
     """Get latest test run result for matrix page."""
     _check_admin(token)
@@ -1041,7 +1017,6 @@ def admin_last_test_run(token: str | None = None):
     return last_run
 
 
-@app.get("/api/admin/tests/catalog", include_in_schema=False)
 def admin_test_catalog(token: str | None = None):
     """Return clickable test-matrix catalog."""
     _check_admin(token)
@@ -1049,9 +1024,39 @@ def admin_test_catalog(token: str | None = None):
 
 
 
-@app.get("/admin/tests", response_class=HTMLResponse, include_in_schema=False)
-@app.get("/admin/test", response_class=HTMLResponse, include_in_schema=False)
 def admin_tests_ui(token: str | None = None):
     """Minimal grayscale test matrix dashboard."""
     _check_admin(token)
     return HTMLResponse(ADMIN_TESTS_HTML)
+
+
+register_routes(
+    app,
+    get_privacy_policy=get_privacy_policy,
+    get_support=get_support,
+    get_user_config=get_user_config,
+    get_user_entitlements=get_user_entitlements,
+    sync_app_store_subscription=sync_app_store_subscription,
+    app_store_notifications=app_store_notifications,
+    reconcile_app_store_subscription=reconcile_app_store_subscription,
+    update_user_config=update_user_config,
+    delete_user_account=delete_user_account,
+    health=health,
+    list_vocab=list_vocab,
+    lookup_word=lookup_word,
+    delete_word=delete_word,
+    get_graph_links=get_graph_links,
+    add_vocab=add_vocab,
+    run_pipeline=run_pipeline,
+    translate_quick=translate_quick,
+    translate_phrase=translate_phrase,
+    translate_explain=translate_explain,
+    auth_verify=auth_verify,
+    admin_ui=admin_ui,
+    admin_stats=admin_stats,
+    admin_logs=admin_logs,
+    admin_run_tests=admin_run_tests,
+    admin_last_test_run=admin_last_test_run,
+    admin_test_catalog=admin_test_catalog,
+    admin_tests_ui=admin_tests_ui,
+)
