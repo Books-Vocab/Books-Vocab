@@ -50,7 +50,7 @@ def require_pro_access(user: dict[str, Any], capability: str) -> None:
         return
     bypass_ids_raw = os.getenv("PRO_DEVELOPER_BYPASS_USER_IDS", "")
     if bypass_ids_raw.strip():
-        user_id = str(user.get("user_id") or "").strip()
+        user_id = str(user.get("id") or user.get("user_id") or "").strip()
         bypass_ids = {
             candidate.strip()
             for candidate in bypass_ids_raw.split(",")
