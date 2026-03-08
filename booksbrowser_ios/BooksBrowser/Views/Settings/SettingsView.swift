@@ -74,7 +74,8 @@ struct SettingsView: View {
                     isConnected: kgService.isConnected,
                     connectionPulse: coordinator.connectionPulse,
                     serverCardCount: kgService.serverCardCount,
-                    lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named))
+                    lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named)),
+                    debug: kgDebugState
                 )
                 : nil,
             subscription: authManager.isLoggedIn
@@ -107,6 +108,20 @@ struct SettingsView: View {
             manualLogin: { coordinator.handleManualLogin(authManager: authManager) },
             setDeveloperAccount: coordinator.setDeveloperAccount,
             clearDeveloperAccount: coordinator.clearDeveloperAccount,
+            useProductionBackend: {
+                #if DEBUG
+                Task {
+                    await coordinator.useProductionBackend(authManager: authManager, kgService: kgService)
+                }
+                #endif
+            },
+            useLocalBackend: {
+                #if DEBUG
+                Task {
+                    await coordinator.useLocalBackend(authManager: authManager, kgService: kgService)
+                }
+                #endif
+            },
             showSubscriptionPaywall: {
                 subscriptionManager.activePaywallSource = .settings
                 showSubscriptionPaywall = true
@@ -121,6 +136,7 @@ struct SettingsView: View {
             state: presenterState,
             mochiApiKey: mochiApiKeyBinding,
             manualLoginUserId: manualLoginBinding,
+            debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions
         )
         .task(id: authManager.isLoggedIn) {
@@ -178,6 +194,28 @@ struct SettingsView: View {
         Binding(
             get: { coordinator.manualLoginUserId },
             set: { coordinator.manualLoginUserId = $0 }
+        )
+#else
+        nil
+#endif
+    }
+
+    private var debugLocalServerURLBinding: Binding<String>? {
+#if DEBUG
+        Binding(
+            get: { coordinator.debugLocalServerURL },
+            set: { coordinator.debugLocalServerURL = $0 }
+        )
+#else
+        nil
+#endif
+    }
+
+    private var kgDebugState: SettingsPresenterState.KGSection.DebugSection? {
+#if DEBUG
+        .init(
+            isUsingLocalServer: KGService.getDebugServerMode() == .local,
+            localServerURL: coordinator.debugLocalServerURL
         )
 #else
         nil

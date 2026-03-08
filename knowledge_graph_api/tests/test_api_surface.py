@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import uuid
 from datetime import datetime, timedelta, timezone
 from types import SimpleNamespace
@@ -288,6 +289,58 @@ def test_translate_requires_pro_subscription(isolated_api):
     )
     assert r.status_code == 402, r.text
     assert "pro_required" in r.text
+
+
+def test_vocab_allows_debug_subscription_bypass(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": False,
+        "status": "inactive",
+        "trial_days": 7,
+        "will_renew": False,
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    original = os.environ.get("DEBUG_BYPASS_SUBSCRIPTION")
+    os.environ["DEBUG_BYPASS_SUBSCRIPTION"] = "1"
+    try:
+        r = client.get("/api/vocab", headers=headers)
+    finally:
+        if original is None:
+            os.environ.pop("DEBUG_BYPASS_SUBSCRIPTION", None)
+        else:
+            os.environ["DEBUG_BYPASS_SUBSCRIPTION"] = original
+
+    assert r.status_code == 200, r.text
+
+
+def test_vocab_allows_whitelisted_developer_bypass(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": False,
+        "status": "inactive",
+        "trial_days": 7,
+        "will_renew": False,
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    original = os.environ.get("PRO_DEVELOPER_BYPASS_USER_IDS")
+    os.environ["PRO_DEVELOPER_BYPASS_USER_IDS"] = isolated_api.user_id
+    try:
+        r = client.get("/api/vocab", headers=headers)
+    finally:
+        if original is None:
+            os.environ.pop("PRO_DEVELOPER_BYPASS_USER_IDS", None)
+        else:
+            os.environ["PRO_DEVELOPER_BYPASS_USER_IDS"] = original
+
+    assert r.status_code == 200, r.text
 
 
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):
