@@ -126,14 +126,26 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
     class Coordinator: NSObject, EPUBNavigatorDelegate {
         enum BridgeCommand {
+            case host(HostCommand)
+            case navigator(NavigatorCommand)
+            case dom(DOMCommand)
+        }
+
+        enum HostCommand {
             case setInteractionBlocked(Bool)
+        }
+
+        enum NavigatorCommand {
+            case navigate(Locator)
+            case applyPreferences(EPUBPreferences)
+        }
+
+        enum DOMCommand {
             case clearActiveHighlight
             case clearAllVocabHighlights
             case markVocabWords([String])
             case markNewVocabWord(String)
             case removeVocabWord(String)
-            case navigate(Locator)
-            case applyPreferences(EPUBPreferences)
             case setUnderlineOpacity(Double)
             case setDebugMode(Bool)
         }
@@ -176,7 +188,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         ) -> [BridgeCommand] {
             var commands: [BridgeCommand] = []
 
-            commands.append(.setInteractionBlocked(snapshot.isInteractionBlocked))
+            commands.append(.host(.setInteractionBlocked(snapshot.isInteractionBlocked)))
             commands.append(contentsOf: commandsForClearHighlight(trigger: snapshot.clearHighlightTrigger))
             commands.append(contentsOf: commandsForVocabularyHighlights(
                 lookedUpWords: snapshot.lookedUpWords,
@@ -193,43 +205,64 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         private func apply(_ commands: [BridgeCommand], in host: NavigatorHostViewController) {
             for command in commands {
                 switch command {
-                case .setInteractionBlocked(let isBlocked):
-                    if let blocker = host.view.viewWithTag(9001) {
-                        blocker.isUserInteractionEnabled = isBlocked
-                    }
-                case .clearActiveHighlight:
-                    clearActiveHighlight()
-                case .clearAllVocabHighlights:
-                    clearAllVocabHighlights()
-                case .markVocabWords(let words):
-                    markVocabWords(words)
-                case .markNewVocabWord(let word):
-                    markNewVocabWord(word)
-                case .removeVocabWord(let word):
-                    removeVocabWord(word)
-                case .navigate(let locator):
-                    Task { @MainActor in
-                        print("🧭 Attempting navigation to: \(locator.href)")
-                        let success = await navigator?.go(to: locator)
-                        print("🧭 Navigation result: \(String(describing: success))")
-                    }
-                case .applyPreferences(let preferences):
-                    isApplyingPreferences = true
-                    Task { @MainActor in
-                        host.epubNavigator?.submitPreferences(preferences)
-                        try? await Task.sleep(for: .milliseconds(800))
-                        self.isApplyingPreferences = false
-                    }
-                case .setUnderlineOpacity(let opacity):
-                    let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');"
-                    Task { @MainActor in
-                        _ = await navigator?.evaluateJavaScript(js)
-                    }
-                case .setDebugMode(let isEnabled):
-                    let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));"
-                    Task { @MainActor in
-                        _ = await navigator?.evaluateJavaScript(js)
-                    }
+                case .host(let hostCommand):
+                    apply(hostCommand, in: host)
+                case .navigator(let navigatorCommand):
+                    apply(navigatorCommand, in: host)
+                case .dom(let domCommand):
+                    apply(domCommand)
+                }
+            }
+        }
+
+        private func apply(_ command: HostCommand, in host: NavigatorHostViewController) {
+            switch command {
+            case .setInteractionBlocked(let isBlocked):
+                if let blocker = host.view.viewWithTag(9001) {
+                    blocker.isUserInteractionEnabled = isBlocked
+                }
+            }
+        }
+
+        private func apply(_ command: NavigatorCommand, in host: NavigatorHostViewController) {
+            switch command {
+            case .navigate(let locator):
+                Task { @MainActor in
+                    print("🧭 Attempting navigation to: \(locator.href)")
+                    let success = await navigator?.go(to: locator)
+                    print("🧭 Navigation result: \(String(describing: success))")
+                }
+            case .applyPreferences(let preferences):
+                isApplyingPreferences = true
+                Task { @MainActor in
+                    host.epubNavigator?.submitPreferences(preferences)
+                    try? await Task.sleep(for: .milliseconds(800))
+                    self.isApplyingPreferences = false
+                }
+            }
+        }
+
+        private func apply(_ command: DOMCommand) {
+            switch command {
+            case .clearActiveHighlight:
+                clearActiveHighlight()
+            case .clearAllVocabHighlights:
+                clearAllVocabHighlights()
+            case .markVocabWords(let words):
+                markVocabWords(words)
+            case .markNewVocabWord(let word):
+                markNewVocabWord(word)
+            case .removeVocabWord(let word):
+                removeVocabWord(word)
+            case .setUnderlineOpacity(let opacity):
+                let js = "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');"
+                Task { @MainActor in
+                    _ = await navigator?.evaluateJavaScript(js)
+                }
+            case .setDebugMode(let isEnabled):
+                let js = "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));"
+                Task { @MainActor in
+                    _ = await navigator?.evaluateJavaScript(js)
                 }
             }
         }
@@ -237,7 +270,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         private func commandsForClearHighlight(trigger: UUID) -> [BridgeCommand] {
             guard lastClearHighlightTrigger != trigger else { return [] }
             lastClearHighlightTrigger = trigger
-            return [.clearActiveHighlight]
+            return [.dom(.clearActiveHighlight)]
         }
 
         private func commandsForVocabularyHighlights(
@@ -278,17 +311,17 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             bookUniqueWords: Set<String>?
         ) -> [BridgeCommand] {
             if newCount == 0 || removedWords.count > 10 {
-                var commands: [BridgeCommand] = [.clearAllVocabHighlights]
+                var commands: [BridgeCommand] = [.dom(.clearAllVocabHighlights)]
                 if newCount > 0 {
                     let validWords = filterValidWords(remainingWords, bookWords: bookUniqueWords)
                     if !validWords.isEmpty {
-                        commands.append(.markVocabWords(validWords))
+                        commands.append(.dom(.markVocabWords(validWords)))
                     }
                 }
                 return commands
             }
 
-            return removedWords.map { .removeVocabWord($0) }
+            return removedWords.map { .dom(.removeVocabWord($0)) }
         }
 
         private func commandsForAddedVocabulary(
@@ -300,16 +333,16 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 lastBookUniqueWordsCount = bookUniqueWords?.count ?? 0
                 let validWords = filterValidWords(lookedUpWords, bookWords: bookUniqueWords)
                 print("📊 生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
-                return validWords.isEmpty ? [] : [.markVocabWords(validWords)]
+                return validWords.isEmpty ? [] : [.dom(.markVocabWords(validWords))]
             }
 
             let addedWords = lookedUpWords.filter { !lastVocabWordsSet.contains($0) }
             if addedWords.count == 1 {
-                return [.markNewVocabWord(addedWords[0])]
+                return [.dom(.markNewVocabWord(addedWords[0]))]
             } else if !addedWords.isEmpty {
                 let validNew = filterValidWords(addedWords, bookWords: bookUniqueWords)
                 if !validNew.isEmpty {
-                    return [.markVocabWords(validNew)]
+                    return [.dom(.markVocabWords(validNew))]
                 }
             }
             return []
@@ -318,25 +351,25 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         private func commandsForRemovedWord(trigger: (word: String, id: UUID)?) -> [BridgeCommand] {
             guard let trigger, lastRemoveWordId != trigger.id else { return [] }
             lastRemoveWordId = trigger.id
-            return [.removeVocabWord(trigger.word)]
+            return [.dom(.removeVocabWord(trigger.word))]
         }
 
         private func commandsForNavigation(trigger: (locator: Locator, id: UUID)?) -> [BridgeCommand] {
             guard let trigger, lastNavigateId != trigger.id else { return [] }
             lastNavigateId = trigger.id
-            return [.navigate(trigger.locator)]
+            return [.navigator(.navigate(trigger.locator))]
         }
 
         private func commandsForPreferences(_ preferences: EPUBPreferences) -> [BridgeCommand] {
             guard lastPreferences != preferences else { return [] }
             lastPreferences = preferences
-            return [.applyPreferences(preferences)]
+            return [.navigator(.applyPreferences(preferences))]
         }
 
         private func commandsForUnderlineOpacity(_ opacity: Double) -> [BridgeCommand] {
             if let lastUnderlineOpacity, opacity != lastUnderlineOpacity {
                 self.lastUnderlineOpacity = opacity
-                return [.setUnderlineOpacity(opacity)]
+                return [.dom(.setUnderlineOpacity(opacity))]
             } else if lastUnderlineOpacity == nil {
                 lastUnderlineOpacity = opacity
             }
@@ -346,7 +379,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         private func commandsForDebugMode(_ isEnabled: Bool) -> [BridgeCommand] {
             if let lastHitTestingDebug, isEnabled != lastHitTestingDebug {
                 self.lastHitTestingDebug = isEnabled
-                return [.setDebugMode(isEnabled)]
+                return [.dom(.setDebugMode(isEnabled))]
             } else if lastHitTestingDebug == nil {
                 lastHitTestingDebug = isEnabled
             }
