@@ -6,14 +6,36 @@ struct TodayReviewSession: Identifiable {
     let entries: [VocabularyEntry]
 }
 
+enum TodayReviewRevealStage: Int {
+    case front
+    case back
+    case details
+
+    var showsAnswer: Bool {
+        self != .front
+    }
+
+    var showsDetails: Bool {
+        self == .details
+    }
+
+    mutating func advance() {
+        switch self {
+        case .front:
+            self = .back
+        case .back, .details:
+            self = .details
+        }
+    }
+}
+
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allEntries: [VocabularyEntry]
 
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
-    @State private var showBack = false
-    @State private var isExpanded = false
+    @State private var revealStage: TodayReviewRevealStage = .front
     @State private var isAdvancing = false
     @State private var linkedCardStack: [VocabularyEntry] = []
 
@@ -28,8 +50,7 @@ struct TodayReviewView: View {
         TodayReviewPresenter(
             state: presenterState,
             onClose: onClose,
-            onToggleCard: toggleCard,
-            onToggleExpansion: toggleExpansion,
+            onAdvanceReveal: advanceReveal,
             onShuffle: shuffleQueue,
             onPrevious: goPrevious,
             onNext: goNext,
@@ -46,8 +67,7 @@ struct TodayReviewView: View {
         TodayReviewPresenterState(
             progressText: progressText,
             currentCard: currentCardState,
-            showBack: showBack,
-            isExpanded: isExpanded,
+            revealStage: revealStage,
             canShuffle: queue.count > 1,
             canGoPrevious: currentIndex > 0,
             canGoNext: currentIndex < queue.count - 1
@@ -88,20 +108,10 @@ struct TodayReviewView: View {
         linkedCardStack.append(target)
     }
 
-    private func toggleCard() {
+    private func advanceReveal() {
         guard !isAdvancing else { return }
-        withAnimation(.easeInOut(duration: 0.18)) {
-            if showBack {
-                isExpanded = false
-            }
-            showBack.toggle()
-        }
-    }
-
-    private func toggleExpansion() {
-        guard showBack, !isAdvancing else { return }
         withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
-            isExpanded.toggle()
+            revealStage.advance()
         }
     }
 
@@ -110,16 +120,14 @@ struct TodayReviewView: View {
         withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
             queue.shuffle()
             currentIndex = 0
-            showBack = false
-            isExpanded = false
+            revealStage = .front
         }
     }
 
     private func goPrevious() {
         guard currentIndex > 0 else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-            showBack = false
-            isExpanded = false
+            revealStage = .front
             currentIndex -= 1
         }
     }
@@ -127,8 +135,7 @@ struct TodayReviewView: View {
     private func goNext() {
         guard currentIndex < queue.count - 1 else { return }
         withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
-            showBack = false
-            isExpanded = false
+            revealStage = .front
             currentIndex += 1
         }
     }
@@ -140,8 +147,7 @@ struct TodayReviewView: View {
         current.applyReviewFeedback(feedback)
 
         withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
-            showBack = false
-            isExpanded = false
+            revealStage = .front
             currentIndex += 1
         }
 
