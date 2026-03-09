@@ -43,16 +43,15 @@ struct TodayReviewPresenter: View {
 
                     GeometryReader { geo in
                         ScrollView {
-                            reviewCard(currentCard)
-                                .padding(.horizontal, AppMetrics.spacingLarge)
-                                .padding(.top, AppMetrics.spacingMedium)
-                                .padding(.bottom, AppMetrics.spacingXXL)
-                                .frame(maxWidth: .infinity, minHeight: geo.size.height)
-                                .contentShape(Rectangle())
-                                .onTapGesture {
-                                    guard !state.revealStage.showsDetails else { return }
-                                    onAdvanceReveal()
-                                }
+                            VStack(spacing: 0) {
+                                reviewCard(currentCard)
+                                    .padding(.horizontal, AppMetrics.spacingLarge)
+                                    .padding(.top, AppMetrics.spacingMedium)
+                                    .padding(.bottom, AppMetrics.spacingXXL)
+
+                                Spacer(minLength: 0)
+                            }
+                            .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
                     }
 
@@ -111,6 +110,12 @@ struct TodayReviewPresenter: View {
 
             if state.revealStage.showsAnswer {
                 answerFoldSurface(currentCard.card)
+                    .padding(.top, -1)
+                    .transition(.paperFoldFromTop)
+            }
+
+            if state.revealStage == .back {
+                backFoldZone()
                     .padding(.top, -1)
                     .transition(.paperFoldFromTop)
             }
@@ -310,13 +315,7 @@ struct TodayReviewPresenter: View {
                         VocabTierLabel(tier: tier)
                     }
                     if !state.revealStage.showsDetails {
-                        Button(action: onCollapseReveal) {
-                            Image(systemName: "chevron.up")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                                .padding(6)
-                        }
-                        .buttonStyle(.plain)
+                        foldChevronButton(action: onCollapseReveal)
                     }
                 }
 
@@ -386,13 +385,7 @@ struct TodayReviewPresenter: View {
             VStack(alignment: .leading, spacing: 16) {
                 HStack {
                     Spacer()
-                    Button(action: onCollapseReveal) {
-                        Image(systemName: "chevron.up")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
-                            .padding(6)
-                    }
-                    .buttonStyle(.plain)
+                    foldChevronButton(action: onCollapseReveal)
                 }
 
                 CardDocumentView(document: reviewBackDocument(for: card))
@@ -465,6 +458,25 @@ struct TodayReviewPresenter: View {
         }
 
         return CardDocument(blocks: blocks)
+    }
+
+    private func foldChevronButton(action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .font(vocabSkin.typography.iconTiny.weight(.bold))
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .frame(width: 30, height: 30)
+                .background(
+                    Circle()
+                        .fill(vocabSkin.palette.mutedFill.opacity(0.96))
+                )
+                .overlay(
+                    Circle()
+                        .stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .contentShape(Circle())
     }
 }
 

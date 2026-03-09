@@ -28,7 +28,8 @@ struct ReaderSettingsPanel: View {
                 font: $settings.font,
                 theme: $settings.theme,
                 underlineOpacity: $settings.underlineOpacity,
-                showHitTestingDebug: $settings.showHitTestingDebug
+                showHitTestingDebug: $settings.showHitTestingDebug,
+                translationPanelMode: $settings.translationPanelMode
             ),
             onDecreaseFontSize: {
                 settings.fontSize = max(0.75, settings.fontSize - 0.125)

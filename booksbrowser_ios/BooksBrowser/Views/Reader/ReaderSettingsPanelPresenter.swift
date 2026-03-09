@@ -13,6 +13,7 @@ struct ReaderSettingsPanelPresenter: View {
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
         let showHitTestingDebug: Binding<Bool>
+        let translationPanelMode: Binding<TranslationPanelMode>
     }
 
     let state: State
@@ -154,6 +155,17 @@ struct ReaderSettingsPanelPresenter: View {
                         .tint(.primary)
                 } header: {
                     Text("開發者與除錯")
+                }
+
+                Section {
+                    Picker("面板風格", selection: bindings.translationPanelMode) {
+                        ForEach(TranslationPanelMode.allCases) { mode in
+                            Label(mode.label, systemImage: mode.icon).tag(mode)
+                        }
+                    }
+                    .pickerStyle(.segmented)
+                } header: {
+                    Text("翻譯面板")
                 }
             }
             .formStyle(.grouped)

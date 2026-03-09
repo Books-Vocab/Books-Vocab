@@ -57,6 +57,10 @@ struct ReaderView: View {
         settings.viewConfiguration
     }
 
+    private var appTheme: AppTheme {
+        AppTheme.resolve(for: viewConfiguration.swiftUIColorScheme)
+    }
+
     init(book: Book) {
         self._book = Bindable(book)
     }
@@ -226,6 +230,8 @@ struct ReaderView: View {
                     closeOverlay(.translation)
                 }
             )
+            .environment(\.readerPanelMode, viewConfiguration.translationPanelMode)
+            .vocabSkin(VocabSkin.themed(appTheme))
         }
     }
 
