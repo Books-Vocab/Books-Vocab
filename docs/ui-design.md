@@ -2,10 +2,10 @@
 
 > 文檔網絡：
 > - 開發入口與編譯流程：`docs/ios-dev.md`
-> - App 架構與 UI 脈絡：`booksbrowser_ios/Architecture.md`
-> - Vocabulary 設計系統稽核：`docs/vocab_design_system_audit.md`
-> - 元件 / pattern 現況清單：`docs/ui_component_pattern_inventory.md`
-> - 狀態覆蓋矩陣：`docs/ui_state_matrix.md`
+> - App 架構與 UI 脈絡：`docs/architecture.md`
+> - Vocabulary 設計系統稽核：`docs/references/vocab_design_system_audit.md`
+> - 元件 / pattern 現況清單：`docs/references/ui_component_pattern_inventory.md`
+> - 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
 
 > 適用：iOS 26.0+、Xcode 26.0+
 
@@ -114,7 +114,7 @@ BooksBrowser 的 motion system 不再接受各頁自由書寫 `.spring(...)` / `
 - 若是要排查編譯或 SwiftUI 實作錯誤：
   回到 `docs/ios-dev.md`
 - 若是要理解 UI 為何出現在某個資料流程中：
-  回到 `booksbrowser_ios/Architecture.md`
+  回到 `docs/architecture.md`
 
 ---
 
