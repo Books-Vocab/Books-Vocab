@@ -96,6 +96,37 @@ struct VocabEmptyStateCard: View {
     }
 }
 
+struct VocabStateMessageCard<Accessory: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let systemImage: String
+    let description: String?
+    @ViewBuilder let accessory: Accessory
+
+    init(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        AppStateMessageCard(
+            title: title,
+            systemImage: systemImage,
+            description: description,
+            style: .vocab(vocabSkin)
+        ) {
+            accessory
+        }
+    }
+}
+
 private struct VocabCanvasBackgroundModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 

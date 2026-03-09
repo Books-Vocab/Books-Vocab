@@ -912,32 +912,23 @@ struct SubscriptionPaywallSheet: View {
                     }
 
                     if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
-                        Text(purchaseStatusMessage)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                        VocabStateMessageCard(
+                            title: purchaseStatusMessage,
+                            systemImage: "checkmark.circle"
+                        )
                     }
 
                     if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
-                        VStack(alignment: .leading, spacing: 8) {
-                            Text("App Store 載入失敗")
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.destructive)
-                            Text(lastError)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                        VocabStateMessageCard(
+                            title: "App Store 載入失敗",
+                            systemImage: "exclamationmark.triangle.fill",
+                            description: lastError
+                        ) {
                             Text(L10n.format("目前商品 ID：%@", subscriptionManager.proProductIdentifier))
                                 .font(vocabSkin.typography.monoLabel)
                                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                                 .textSelection(.enabled)
                         }
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(12)
-                        .background(vocabSkin.palette.cardBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(vocabSkin.palette.destructive.opacity(0.25), lineWidth: 1)
-                        )
                     }
 
                     Text("價格與免費試用長度會以 App Store 與你的地區顯示為準。")

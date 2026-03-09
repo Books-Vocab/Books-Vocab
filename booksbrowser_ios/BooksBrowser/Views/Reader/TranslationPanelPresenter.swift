@@ -139,16 +139,18 @@ struct TranslationPanelPresenter: View {
     private var panelBody: some View {
         switch state.contentMode {
         case .loading:
-            HStack(spacing: 8) {
-                ProgressView().scaleEffect(0.8)
-                Text((state.statusMessage ?? "翻譯中...").localized)
-                    .foregroundStyle(.secondary)
-                    .font(ReaderGlassTypography.body)
-                Spacer()
-                if let timerText = state.activeTimerText {
-                    Text(timerText)
-                        .font(ReaderGlassTypography.numericMono)
-                        .foregroundStyle(.tertiary)
+            stateMessageContent(
+                title: state.statusMessage ?? "翻譯中...",
+                systemImage: "translate"
+            ) {
+                HStack {
+                    ProgressView().scaleEffect(0.8)
+                    Spacer()
+                    if let timerText = state.activeTimerText {
+                        Text(timerText)
+                            .font(ReaderGlassTypography.numericMono)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
             }
             .padding(.vertical, ReaderPresentationMetrics.Panel.messageVerticalInset)
@@ -165,21 +167,11 @@ struct TranslationPanelPresenter: View {
 
     private var guestModeBody: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: state.isSaved ? "checkmark.circle.fill" : "clock")
-                        .font(ReaderGlassTypography.label)
-                        .foregroundStyle(state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme))
-                    Text((state.isSaved ? "已加入待收錄" : "正在記錄…").localized)
-                        .font(ReaderGlassTypography.body.weight(.bold))
-                        .foregroundStyle(state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme))
-                }
-
-                Text("登入後即可獲得 AI 翻譯，並同步至知識庫。")
-                    .font(ReaderGlassTypography.label)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
+            stateMessageContent(
+                title: state.isSaved ? "已加入待收錄" : "正在記錄…",
+                systemImage: state.isSaved ? "checkmark.circle.fill" : "clock",
+                description: "登入後即可獲得 AI 翻譯，並同步至知識庫。"
+            )
             .padding(.vertical, ReaderPresentationMetrics.Panel.statusInsetVertical)
             .padding(.horizontal, ReaderPresentationMetrics.Panel.statusInsetHorizontal)
             .background((state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme)).opacity(0.06))
@@ -204,15 +196,17 @@ struct TranslationPanelPresenter: View {
                 .foregroundStyle(.tertiary)
 
             if state.isLoadingExplanation {
-                HStack(spacing: 8) {
-                    ProgressView().scaleEffect(0.7)
-                    Text((state.statusMessage ?? "載入解釋...").localized)
-                        .font(ReaderGlassTypography.label)
-                        .foregroundStyle(.secondary)
-                    Spacer()
-                    Text(state.timerText)
-                        .font(ReaderGlassTypography.numericMono)
-                        .foregroundStyle(.tertiary)
+                stateMessageContent(
+                    title: state.statusMessage ?? "載入解釋...",
+                    systemImage: "text.bubble"
+                ) {
+                    HStack {
+                        ProgressView().scaleEffect(0.7)
+                        Spacer()
+                        Text(state.timerText)
+                            .font(ReaderGlassTypography.numericMono)
+                            .foregroundStyle(.tertiary)
+                    }
                 }
                 .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
             } else if let explanation = state.explanation {
@@ -240,15 +234,17 @@ struct TranslationPanelPresenter: View {
                     .foregroundStyle(.tertiary)
 
                 if state.isLoadingExplanation {
-                    HStack(spacing: 8) {
-                        ProgressView().scaleEffect(0.7)
-                        Text((state.statusMessage ?? "載入解釋...").localized)
-                            .font(ReaderGlassTypography.label)
-                            .foregroundStyle(.secondary)
-                        Spacer()
-                        Text(state.timerText)
-                            .font(ReaderGlassTypography.numericMono)
-                            .foregroundStyle(.tertiary)
+                    stateMessageContent(
+                        title: state.statusMessage ?? "載入解釋...",
+                        systemImage: "text.bubble"
+                    ) {
+                        HStack {
+                            ProgressView().scaleEffect(0.7)
+                            Spacer()
+                            Text(state.timerText)
+                                .font(ReaderGlassTypography.numericMono)
+                                .foregroundStyle(.tertiary)
+                        }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
                 } else if let explanation = state.explanation {
@@ -260,6 +256,21 @@ struct TranslationPanelPresenter: View {
             }
 
             panelToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
+        }
+    }
+
+    private func stateMessageContent<Accessory: View>(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) -> some View {
+        AppStateMessageContent(
+            title: title,
+            systemImage: systemImage,
+            description: description
+        ) {
+            accessory()
         }
     }
 
