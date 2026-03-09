@@ -114,12 +114,6 @@ struct TodayReviewPresenter: View {
                     .transition(.paperFoldFromTop)
             }
 
-            if state.revealStage == .back {
-                backFoldZone()
-                    .padding(.top, -1)
-                    .transition(.paperFoldFromTop)
-            }
-
             if state.revealStage.showsDetails {
                 detailFoldSheet(currentCard)
                     .padding(.top, -1)
@@ -185,6 +179,13 @@ struct TodayReviewPresenter: View {
         foldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
+                    .overlay(alignment: .bottom) {
+                        if !state.revealStage.showsAnswer {
+                            foldExpandHint(title: "查看答案")
+                                .padding(.horizontal, reviewCardPadding)
+                                .padding(.bottom, 18)
+                        }
+                    }
                     .frame(
                         maxWidth: .infinity,
                         minHeight: frontCardHeight,
@@ -200,6 +201,7 @@ struct TodayReviewPresenter: View {
                 alignment: .topLeading
             )
             .contentShape(Rectangle())
+            .disabled(state.revealStage.showsAnswer)
         }
     }
 
@@ -317,80 +319,71 @@ struct TodayReviewPresenter: View {
 
     private func answerFoldSurface(_ card: CardPresentation) -> some View {
         foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
-            VStack(alignment: .leading, spacing: 14) {
-                HStack(spacing: 6) {
-                    if let pos = card.partOfSpeech {
-                        Text(pos)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+            ZStack(alignment: .topTrailing) {
+                if state.revealStage == .back {
+                    Button(action: onAdvanceReveal) {
+                        answerFoldContent(card, showsExpandHint: true)
                     }
-                    Spacer()
-                    if let tier = card.difficultyTier {
-                        VocabTierLabel(tier: tier)
-                    }
-                    if !state.revealStage.showsDetails {
-                        foldChevronButton(action: onCollapseReveal)
-                    }
+                    .buttonStyle(.plain)
+                    .contentShape(Rectangle())
+                } else {
+                    answerFoldContent(card, showsExpandHint: false)
                 }
 
-                Spacer(minLength: 18)
-
-                Group {
-                    if card.reviewMode == .production {
-                        Text(card.word)
-                    } else {
-                        Text(card.translation)
-                    }
-                }
-                .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-                .foregroundStyle(vocabSkin.palette.primaryText)
-                .lineLimit(4)
-                .minimumScaleFactor(0.65)
-                .fixedSize(horizontal: false, vertical: true)
-
-                if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
-                    Text("/\(pronunciation)/")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                if !state.revealStage.showsDetails {
+                    foldChevronButton(action: onCollapseReveal)
+                        .padding(reviewCardPadding)
                 }
             }
-            .padding(reviewCardPadding)
-            .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
         }
     }
 
-    private func backFoldZone() -> some View {
-        Button(action: onAdvanceReveal) {
-            VStack(spacing: 0) {
-                Rectangle()
-                    .fill(vocabSkin.palette.divider.opacity(0.75))
-                    .frame(height: 0.5)
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 18)
-
-                Spacer(minLength: 0)
-
-                Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(0.18))
-                    .frame(width: 42, height: 4)
-
-                Spacer(minLength: 0)
+    private func answerFoldContent(_ card: CardPresentation, showsExpandHint: Bool) -> some View {
+        VStack(alignment: .leading, spacing: 14) {
+            HStack(spacing: 6) {
+                if let pos = card.partOfSpeech {
+                    Text(pos)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
+                Spacer()
+                if let tier = card.difficultyTier {
+                    VocabTierLabel(tier: tier)
+                }
             }
-            .padding(.horizontal, reviewCardPadding)
-            .padding(.bottom, 22)
-            .frame(maxWidth: .infinity, minHeight: 118, alignment: .top)
-            .background(
-                LinearGradient(
-                    colors: [
-                        vocabSkin.palette.cardBackground.opacity(0.0),
-                        vocabSkin.palette.mutedFill.opacity(0.34)
-                    ],
-                    startPoint: .top,
-                    endPoint: .bottom
-                )
-            )
+
+            Spacer(minLength: 18)
+
+            Group {
+                if card.reviewMode == .production {
+                    Text(card.word)
+                } else {
+                    Text(card.translation)
+                }
+            }
+            .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
+            .foregroundStyle(vocabSkin.palette.primaryText)
+            .lineLimit(4)
+            .minimumScaleFactor(0.65)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
+                Text("/\(pronunciation)/")
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+
+            if showsExpandHint {
+                Spacer(minLength: 0)
+                foldExpandHint(title: "查看細節")
+                    .padding(.top, 18)
+            }
+
+            Spacer(minLength: 0)
         }
-        .buttonStyle(.plain)
+        .padding(reviewCardPadding)
+        .padding(.trailing, showsExpandHint ? 40 : 0)
+        .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
     }
 
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
@@ -491,6 +484,19 @@ struct TodayReviewPresenter: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
+    }
+
+    private func foldExpandHint(title: String) -> some View {
+        VStack(spacing: 8) {
+            Capsule(style: .continuous)
+                .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
+                .frame(width: 42, height: 4)
+
+            Text(title)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+        .frame(maxWidth: .infinity)
     }
 }
 
