@@ -86,10 +86,42 @@ struct VocabSkin {
         let rowPadding: CGFloat
     }
 
+    struct Metrics {
+        let pageHorizontalInset: CGFloat
+        let pageTopInset: CGFloat
+        let pageBottomInset: CGFloat
+        let sectionHeaderGap: CGFloat
+        let listRowHorizontalInset: CGFloat
+        let listDividerInset: CGFloat
+        let heroSectionSpacing: CGFloat
+        let accessoryTopOffset: CGFloat
+        let overlayHorizontalInset: CGFloat
+        let overlayVerticalInset: CGFloat
+        let summaryHorizontalInset: CGFloat
+        let reviewCardHorizontalInset: CGFloat
+        let reviewCardTopInset: CGFloat
+        let reviewCardBottomInset: CGFloat
+        let reviewTopBarHorizontalInset: CGFloat
+        let reviewTopBarTopInset: CGFloat
+        let reviewTopBarBottomInset: CGFloat
+        let reviewToolbarHorizontalInset: CGFloat
+        let reviewToolbarVerticalInset: CGFloat
+        let reviewFoldPadding: CGFloat
+        let reviewFoldSectionSpacing: CGFloat
+        let reviewFoldHintBottomInset: CGFloat
+        let reviewFoldHintTopInset: CGFloat
+        let reviewFrontMinHeight: CGFloat
+        let reviewAnswerMinHeight: CGFloat
+        let reviewActionMinWidth: CGFloat
+        let reviewChevronButtonSize: CGFloat
+        let reviewHintCapsuleWidth: CGFloat
+    }
+
     let palette: Palette
     let typography: Typography
     let radii: Radii
     let spacing: Spacing
+    let metrics: Metrics
 
     func tierColor(for tier: String?) -> Color {
         switch tier {
@@ -164,6 +196,37 @@ extension VocabSkin {
         rowPadding: 9
     )
 
+    static let baseMetrics = Metrics(
+        pageHorizontalInset: AppShellMetrics.pageHorizontalPadding,
+        pageTopInset: 16,
+        pageBottomInset: 120,
+        sectionHeaderGap: 10,
+        listRowHorizontalInset: 16,
+        listDividerInset: 16,
+        heroSectionSpacing: 16,
+        accessoryTopOffset: 10,
+        overlayHorizontalInset: 20,
+        overlayVerticalInset: 20,
+        summaryHorizontalInset: 24,
+        reviewCardHorizontalInset: AppMetrics.spacingLarge,
+        reviewCardTopInset: AppMetrics.spacingMedium,
+        reviewCardBottomInset: AppMetrics.spacingXXL,
+        reviewTopBarHorizontalInset: 20,
+        reviewTopBarTopInset: 10,
+        reviewTopBarBottomInset: 6,
+        reviewToolbarHorizontalInset: 20,
+        reviewToolbarVerticalInset: 12,
+        reviewFoldPadding: 24,
+        reviewFoldSectionSpacing: 16,
+        reviewFoldHintBottomInset: 18,
+        reviewFoldHintTopInset: 18,
+        reviewFrontMinHeight: 208,
+        reviewAnswerMinHeight: 188,
+        reviewActionMinWidth: 92,
+        reviewChevronButtonSize: 30,
+        reviewHintCapsuleWidth: 42
+    )
+
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
     /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
     static func themed(_ theme: AppTheme) -> VocabSkin {
@@ -201,7 +264,8 @@ extension VocabSkin {
             ),
             typography: baseTypography,
             radii: baseRadii,
-            spacing: baseSpacing
+            spacing: baseSpacing,
+            metrics: baseMetrics
         )
     }
 
@@ -233,7 +297,8 @@ extension VocabSkin {
         ),
         typography: baseTypography,
         radii: baseRadii,
-        spacing: baseSpacing
+        spacing: baseSpacing,
+        metrics: baseMetrics
     )
 }
 

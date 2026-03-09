@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct KGVocabPresenter: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
     struct State {
         struct Banner {
             let message: String
@@ -34,7 +36,7 @@ struct KGVocabPresenter: View {
 
     var body: some View {
         ScrollView {
-            VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                 if let banner = state.banner {
                     ErrorBannerView(
                         message: banner.message,
@@ -44,7 +46,7 @@ struct KGVocabPresenter: View {
                 }
 
                 VocabListCard {
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: vocabSkin.metrics.sectionHeaderGap) {
                         VocabSectionHeader(
                             title: selectedReviewState.title,
                             trailingText: state.rows.isEmpty ? nil : "\(state.rows.count)"
@@ -58,7 +60,7 @@ struct KGVocabPresenter: View {
                             systemImage: state.emptyState.systemImage,
                             description: state.emptyState.description
                         )
-                        .padding(16)
+                        .padding(vocabSkin.metrics.listRowHorizontalInset)
                         .padding(.vertical, 4)
                     } else {
                         LazyVStack(spacing: 0) {
@@ -73,20 +75,20 @@ struct KGVocabPresenter: View {
                                             Label("刪除卡片", systemImage: "trash")
                                         }
                                     }
-                                    .padding(.horizontal, 16)
+                                    .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
 
                                 if index < state.rows.count - 1 {
                                     Divider()
-                                        .padding(.leading, 16)
+                                        .padding(.leading, vocabSkin.metrics.listDividerInset)
                                 }
                             }
                         }
                     }
                 }
             }
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppMetrics.spacingLarge)
-            .padding(.bottom, 120)
+            .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+            .padding(.top, vocabSkin.metrics.pageTopInset)
+            .padding(.bottom, vocabSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
     }
