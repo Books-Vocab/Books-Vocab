@@ -181,6 +181,6 @@ App 的 `KGService` 透過 `Settings → Knowledge Graph → 伺服器位址` �
 
 - **UI 設計相關** → `bb-ui-design` skill（iOS 26 Liquid Glass 完整 API）
 - `docs/ui-design.md` — Liquid Glass + motion contract + shared UI motion 語意層
-- `docs/ui_component_pattern_inventory.md` — 現有 component / pattern inventory，開新 UI 前先查
-- `docs/ui_state_matrix.md` — 各主畫面 state coverage matrix，補 UX 時先查有哪些狀態不能漏
-- `booksbrowser_ios/Architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
+- `docs/references/ui_component_pattern_inventory.md` — 現有 component / pattern inventory，開新 UI 前先查
+- `docs/references/ui_state_matrix.md` — 各主畫面 state coverage matrix，補 UX 時先查有哪些狀態不能漏
+- `docs/architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解

@@ -5,9 +5,9 @@ Scope: `booksbrowser_ios/BooksBrowser`
 
 文檔網絡：
 - 設計規範主文檔：`docs/ui-design.md`
-- 元件 / pattern inventory：`docs/ui_component_pattern_inventory.md`
+- 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
 - 開發入口：`docs/ios-dev.md`
-- App 架構脈絡：`booksbrowser_ios/Architecture.md`
+- App 架構脈絡：`docs/architecture.md`
 
 ## 這份文件是幹嘛的
 

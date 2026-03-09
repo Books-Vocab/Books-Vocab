@@ -23,7 +23,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 - `syncStatus` 已由 `VocabularySyncState` 封裝：`pending` / `synced` / `failed`
 - `actionType` 已由 `VocabularySyncAction` 封裝：`add` / `delete` / `edit`
 - 實際持久化仍保留原始欄位，避免 SwiftData migration 成本，但業務邏輯應優先走 typed helper，如 `queueDelete()`、`markSynced()`
-- 更完整的規則表見 [../docs/sync_lifecycle.md](../docs/sync_lifecycle.md)
+- 更完整的規則表見 [references/sync_lifecycle.md](references/sync_lifecycle.md)
 
 | `syncStatus` | `actionType` | 含義 | 在哪裡顯示？ |
 |-------------|--------------|------|-------------|
@@ -94,5 +94,5 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 這層規範的主文檔在 `docs/ui-design.md` 的 `Motion Contract`。
 若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。
-若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/ui_component_pattern_inventory.md`。
-若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/ui_state_matrix.md`。
+若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/references/ui_component_pattern_inventory.md`。
+若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/references/ui_state_matrix.md`。
