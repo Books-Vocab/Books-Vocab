@@ -1,0 +1,91 @@
+# KG Backend Dev Guide
+
+主入口：
+- 部署 / env / migration：`docs/deploy.md`
+- incident / debug / 502 / users：`docs/debug.md`
+- app 與 backend 共用架構：`docs/architecture.md`
+
+參考附錄：
+- backend 測試策略：`docs/references/backend_testing_strategy.md`
+- card 格式規範：`docs/references/backend_card_format.md`
+- sync lifecycle：`docs/references/sync_lifecycle.md`
+
+保留在 backend 目錄的分析資料：
+- `knowledge_graph_api/docs/analysis/`
+  原因：這些 markdown 與分析腳本綁在一起，屬於研究/分析工作區，不是主開發入口。
+
+## 這份文件是幹嘛的
+
+這份文件的角色是 backend 主入口，不是細節大全。
+
+它回答 3 個問題：
+- 後端日常開發先看哪裡
+- 後端部署/事故去哪裡查
+- backend 細節規範放在哪些 references
+
+## 日常開發入口
+
+後端相關任務，優先閱讀順序：
+
+1. `docs/backend-dev.md`
+2. `docs/deploy.md` 或 `docs/debug.md`
+3. 視需要再讀 `docs/references/*`
+
+## 常見任務對應
+
+### 跑測試
+
+先看：
+- `docs/references/backend_testing_strategy.md`
+
+標準命令：
+
+```bash
+cd knowledge_graph_api
+pytest -q
+```
+
+### 查部署 / migration / env
+
+先看：
+- `docs/deploy.md`
+
+### 查 502 / caddy / API 不通 / user 狀態
+
+先看：
+- `docs/debug.md`
+
+### 查 card 匯入 / 匯出格式
+
+先看：
+- `docs/references/backend_card_format.md`
+
+### 查 sync 與前後端資料流
+
+先看：
+- `docs/architecture.md`
+- `docs/references/sync_lifecycle.md`
+
+## 維護規則
+
+- backend 主規則變更：
+  優先更新這份文件或 `docs/deploy.md` / `docs/debug.md`
+- backend 細節規範變更：
+  更新 `docs/references/*`
+- backend 分析腳本或研究輸出：
+  留在 `knowledge_graph_api/docs/analysis/`
+
+## 文檔邊界
+
+- `docs/backend-dev.md`
+  backend 開發主入口
+- `docs/deploy.md`
+  安全部署、env、migration
+- `docs/debug.md`
+  事故、健康檢查、debug
+- `docs/references/backend_testing_strategy.md`
+  backend 測試體系
+- `docs/references/backend_card_format.md`
+  card data format
+- `docs/architecture.md`
+  iOS + backend 共用資料流與產品脈絡

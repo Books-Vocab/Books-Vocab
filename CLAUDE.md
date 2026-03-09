@@ -65,6 +65,8 @@ Use this section as the "what already exists" checklist before proposing or chan
   - backup artifacts and incident/debug docs are part of normal operations context
 
 ## Docs Router
+- backend development:
+  - `docs/backend-dev.md`
 - deploy / env / migration:
   - `docs/deploy.md`
 - incidents / 502 / caddy / users:

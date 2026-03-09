@@ -96,3 +96,4 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。
 若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/references/ui_component_pattern_inventory.md`。
 若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/references/ui_state_matrix.md`。
+若要查 backend 部署、debug、測試與格式規範入口，查 `docs/backend-dev.md`。
