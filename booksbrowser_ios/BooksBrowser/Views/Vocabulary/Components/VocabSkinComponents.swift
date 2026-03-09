@@ -32,8 +32,8 @@ struct VocabToneChip: View {
         Text(text.localized)
             .font(vocabSkin.typography.captionStrong)
             .foregroundStyle(tone)
-            .padding(.horizontal, 10)
-            .padding(.vertical, 6)
+            .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.08))
             .clipShape(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
@@ -50,8 +50,8 @@ struct VocabTierLabel: View {
         Text(vocabSkin.tierLabel(for: tier))
             .font(vocabSkin.typography.monoLabel)
             .foregroundStyle(vocabSkin.tierColor(for: tier).opacity(prominent ? 1 : 0.78))
-            .padding(.horizontal, prominent ? 8 : 0)
-            .padding(.vertical, prominent ? 4 : 0)
+            .padding(.horizontal, prominent ? vocabSkin.spacing.prominentChipHorizontalPadding : 0)
+            .padding(.vertical, prominent ? vocabSkin.spacing.prominentChipVerticalPadding : 0)
             .background(
                 Group {
                     if prominent {

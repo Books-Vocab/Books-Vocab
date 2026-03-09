@@ -54,6 +54,8 @@ enum AppMotion {
     static let progressLinear = Animation.linear(duration: 0.1)
     static let standardSpring = Animation.spring(response: 0.3, dampingFraction: 0.75)
     static let emphasizedSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
+    static let relaxedSpring = Animation.spring(response: 0.4, dampingFraction: 0.8)
+    static let systemSpring = Animation.spring()
     static let modalSwapSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
     static let buttonSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)
     static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)

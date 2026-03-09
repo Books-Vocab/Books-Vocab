@@ -408,7 +408,7 @@ struct TOCView: View {
                         dismiss()
                     } label: {
                         Text(link.title ?? "Untitled")
-                            .font(.body)
+                            .font(AppFonts.body())
                     }
                 }
             }

@@ -120,7 +120,7 @@ struct WordRow: View {
                 }
             }
         }
-        .padding(.vertical, 7)
+        .padding(.vertical, vocabSkin.spacing.compactRowVerticalPadding)
     }
 
     private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
@@ -133,7 +133,7 @@ struct WordRow: View {
 
             reviewProgressAccessory(progress)
         }
-        .padding(.top, 2)
+        .padding(.top, vocabSkin.spacing.compactRowAccessoryTopInset)
     }
 
     @ViewBuilder
@@ -187,9 +187,9 @@ struct WordRow: View {
         case .green:
             return vocabSkin.palette.success
         case .yellow:
-            return vocabSkin.tierColor(for: "intermediate")
+            return vocabSkin.palette.tierIntermediate
         case .orange:
-            return vocabSkin.tierColor(for: "advanced")
+            return vocabSkin.palette.tierAdvanced
         case .red:
             return vocabSkin.palette.destructive
         }

@@ -380,8 +380,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     VocabChromeIconButton(systemImage: "chevron.up", action: onCollapseHeader)
                 }
             }
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInset + 2)
+            .padding(.vertical, ReaderPresentationMetrics.Header.contentVerticalInset)
         }
         .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)

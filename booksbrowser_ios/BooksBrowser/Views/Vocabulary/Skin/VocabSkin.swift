@@ -35,6 +35,8 @@ struct VocabSkin {
         let translationText: Color
         let accent: Color
         let success: Color
+        let tierIntermediate: Color
+        let tierAdvanced: Color
         let warning: Color
         let retry: Color
         let info: Color
@@ -43,6 +45,9 @@ struct VocabSkin {
         let mutedFill: Color
         let link: Color
         let overlayScrim: Color
+        let readerThemeLightSwatch: Color
+        let readerThemeSepiaSwatch: Color
+        let readerThemeDarkSwatch: Color
     }
 
     struct Typography {
@@ -86,6 +91,12 @@ struct VocabSkin {
         let sectionGap: CGFloat
         let inlineGap: CGFloat
         let rowPadding: CGFloat
+        let chipHorizontalPadding: CGFloat
+        let chipVerticalPadding: CGFloat
+        let prominentChipHorizontalPadding: CGFloat
+        let prominentChipVerticalPadding: CGFloat
+        let compactRowVerticalPadding: CGFloat
+        let compactRowAccessoryTopInset: CGFloat
     }
 
     struct Metrics {
@@ -154,9 +165,9 @@ struct VocabSkin {
         case "core":
             return palette.success
         case "intermediate":
-            return Color(red: 0.72, green: 0.63, blue: 0.36)
+            return palette.tierIntermediate
         case "advanced":
-            return Color(red: 0.84, green: 0.54, blue: 0.28)
+            return palette.tierAdvanced
         case "rare":
             return palette.destructive
         default:
@@ -221,7 +232,13 @@ extension VocabSkin {
         cardPadding: 18,
         sectionGap: 14,
         inlineGap: 8,
-        rowPadding: 9
+        rowPadding: 9,
+        chipHorizontalPadding: 10,
+        chipVerticalPadding: 6,
+        prominentChipHorizontalPadding: 8,
+        prominentChipVerticalPadding: 4,
+        compactRowVerticalPadding: 7,
+        compactRowAccessoryTopInset: 2
     )
 
     static let baseMetrics = Metrics(
@@ -303,6 +320,8 @@ extension VocabSkin {
                     : Color(red: 0.54, green: 0.50, blue: 0.44),
                 accent: theme.palette.accent,
                 success: theme.palette.success,
+                tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
+                tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
                 warning: theme.palette.warning,
                 retry: theme.palette.warning,
                 info: link,
@@ -312,7 +331,10 @@ extension VocabSkin {
                     : Color(red: 0.90, green: 0.84, blue: 0.57),
                 mutedFill: theme.palette.mutedFill,
                 link: link,
-                overlayScrim: theme.palette.scrim
+                overlayScrim: theme.palette.scrim,
+                readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
+                readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
+                readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38)
             ),
             typography: baseTypography,
             radii: baseRadii,
@@ -338,6 +360,8 @@ extension VocabSkin {
             translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
             accent: Color(red: 0.49, green: 0.56, blue: 0.64),
             success: Color(red: 0.50, green: 0.64, blue: 0.50),
+            tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
+            tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
             warning: Color(red: 0.72, green: 0.63, blue: 0.36),
             retry: Color(red: 0.72, green: 0.63, blue: 0.36),
             info: Color(red: 0.47, green: 0.56, blue: 0.67),
@@ -345,13 +369,29 @@ extension VocabSkin {
             highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
             mutedFill: Color.black.opacity(0.035),
             link: Color(red: 0.47, green: 0.56, blue: 0.67),
-            overlayScrim: Color.black.opacity(0.20)
+            overlayScrim: Color.black.opacity(0.20),
+            readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
+            readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
+            readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38)
         ),
         typography: baseTypography,
         radii: baseRadii,
         spacing: baseSpacing,
         metrics: baseMetrics
     )
+}
+
+extension VocabSkin {
+    func readerThemeSwatchColor(_ theme: ReaderTheme) -> Color {
+        switch theme {
+        case .light:
+            return palette.readerThemeLightSwatch
+        case .sepia:
+            return palette.readerThemeSepiaSwatch
+        case .dark:
+            return palette.readerThemeDarkSwatch
+        }
+    }
 }
 
 private struct VocabSkinEnvironmentKey: EnvironmentKey {

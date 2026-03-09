@@ -27,7 +27,7 @@ struct SyncPresenter: View {
             headerView
                 .padding(.top, vocabSkin.metrics.overlayHorizontalInset + 12)
                 .padding(.bottom, vocabSkin.metrics.reviewFoldPadding)
-                .animation(.spring(response: 0.4, dampingFraction: 0.8), value: state.phase)
+                .animation(AppMotion.relaxedSpring, value: state.phase)
 
             if state.isLoggedIn && state.hasProAccess && !state.steps.isEmpty {
                 VocabCard(padding: 0) {
@@ -160,7 +160,7 @@ struct SyncPresenter: View {
                         .font(vocabSkin.typography.monoLabel)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .contentTransition(.numericText())
-                        .animation(.spring, value: step.current)
+                        .animation(AppMotion.systemSpring, value: step.current)
                 }
 
                 StepDurationView(step: step)
