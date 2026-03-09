@@ -5,6 +5,7 @@
 > - App 架構與 UI 脈絡：`booksbrowser_ios/Architecture.md`
 > - Vocabulary 設計系統稽核：`docs/vocab_design_system_audit.md`
 > - 元件 / pattern 現況清單：`docs/ui_component_pattern_inventory.md`
+> - 狀態覆蓋矩陣：`docs/ui_state_matrix.md`
 
 > 適用：iOS 26.0+、Xcode 26.0+
 
