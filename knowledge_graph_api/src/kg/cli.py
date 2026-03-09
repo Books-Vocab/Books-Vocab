@@ -18,6 +18,7 @@ from .graph import GraphStore, LinkKind
 from .judge import Judge
 from .mochi import MochiClient, MochiSync
 from .renderer import RenderIntent, CardRenderer
+from .user_store import resolve_mochi_api_key_from_config
 
 load_dotenv()
 
@@ -340,7 +341,7 @@ def sync(
     user_id = ctx.obj["user_id"]
     user_dir = ctx.obj["user_dir"]
     users = load_users()
-    mochi_key = users.get(user_id, {}).get("config", {}).get("mochi_api_key")
+    mochi_key = resolve_mochi_api_key_from_config(users.get(user_id, {}).get("config", {}))
     
     if not mochi_key:
         raise typer.Exit(f"MOCHI_API_KEY not configured for user {user_id}. Set it in users.json")

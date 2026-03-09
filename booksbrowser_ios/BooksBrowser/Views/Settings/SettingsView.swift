@@ -89,7 +89,7 @@ struct SettingsView: View {
                     isRefreshing: subscriptionManager.isLoading
                 )
                 : nil,
-            mochi: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
+            optionalIntegration: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
             about: .init(
                 version: "1.1.0",
                 developerName: "陳亮宇",
@@ -126,7 +126,7 @@ struct SettingsView: View {
                 subscriptionManager.activePaywallSource = .settings
                 showSubscriptionPaywall = true
             },
-            showMochiInfo: coordinator.presentMochiInfo,
+            showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount
         )
     }
@@ -134,7 +134,7 @@ struct SettingsView: View {
     var body: some View {
         SettingsPresenter(
             state: presenterState,
-            mochiApiKey: mochiApiKeyBinding,
+            optionalIntegrationApiKey: optionalIntegrationApiKeyBinding,
             manualLoginUserId: manualLoginBinding,
             debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions
@@ -146,14 +146,14 @@ struct SettingsView: View {
                 await subscriptionManager.refresh(using: kgService, authManager: authManager)
             }
         }
-        .onChange(of: coordinator.mochiApiKey) { _, _ in
-            coordinator.scheduleMochiSave(authManager: authManager, kgService: kgService)
+        .onChange(of: coordinator.optionalIntegrationApiKey) { _, _ in
+            coordinator.scheduleOptionalIntegrationSave(authManager: authManager, kgService: kgService)
         }
         .onAppear {
             coordinator.handleAppear()
         }
-        .sheet(isPresented: $coordinator.showMochiInfo) {
-            MochiInfoSheetView()
+        .sheet(isPresented: $coordinator.showOptionalIntegrationInfo) {
+            OptionalIntegrationInfoSheetView()
         }
         .sheet(isPresented: $showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
@@ -182,10 +182,10 @@ struct SettingsView: View {
         }
     }
 
-    private var mochiApiKeyBinding: Binding<String> {
+    private var optionalIntegrationApiKeyBinding: Binding<String> {
         Binding(
-            get: { coordinator.mochiApiKey },
-            set: { coordinator.mochiApiKey = $0 }
+            get: { coordinator.optionalIntegrationApiKey },
+            set: { coordinator.optionalIntegrationApiKey = $0 }
         )
     }
 

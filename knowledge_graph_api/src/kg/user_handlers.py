@@ -10,25 +10,11 @@ from fastapi import HTTPException
 from filelock import FileLock
 
 from .api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, UserConfigRequest, UserConfigResponse
+from .user_store import resolve_mochi_api_key_from_config
 
 
 def _resolve_mochi_api_key(config: dict[str, Any]) -> str | None:
-    integrations = config.get("integrations", {})
-    if isinstance(integrations, dict):
-        mochi = integrations.get("mochi", {})
-        if isinstance(mochi, dict):
-            nested = mochi.get("api_key")
-            if isinstance(nested, str):
-                nested = nested.strip()
-                if nested:
-                    return nested
-
-    legacy = config.get("mochi_api_key")
-    if isinstance(legacy, str):
-        legacy = legacy.strip()
-        if legacy:
-            return legacy
-    return None
+    return resolve_mochi_api_key_from_config(config)
 
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:

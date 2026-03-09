@@ -134,6 +134,26 @@ def parse_datetime(raw: Any) -> datetime | None:
     return None
 
 
+def resolve_mochi_api_key_from_config(config: dict[str, Any]) -> str | None:
+    integrations = config.get("integrations", {})
+    if isinstance(integrations, dict):
+        mochi = integrations.get("mochi", {})
+        if isinstance(mochi, dict):
+            nested = mochi.get("api_key")
+            if isinstance(nested, str):
+                nested = nested.strip()
+                if nested:
+                    return nested
+
+    legacy = config.get("mochi_api_key")
+    if isinstance(legacy, str):
+        legacy = legacy.strip()
+        if legacy:
+            return legacy
+
+    return None
+
+
 def collect_account_ids_for_deletion(users: dict[str, dict[str, Any]], user_id: str) -> tuple[str, list[str]]:
     """Return canonical id + all related ids that must be purged."""
     record = users.get(user_id, {})

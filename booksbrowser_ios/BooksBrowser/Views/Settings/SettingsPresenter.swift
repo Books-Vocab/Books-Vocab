@@ -5,7 +5,7 @@ struct SettingsPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     let state: SettingsPresenterState
-    let mochiApiKey: Binding<String>
+    let optionalIntegrationApiKey: Binding<String>
     let manualLoginUserId: Binding<String>?
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
@@ -21,8 +21,8 @@ struct SettingsPresenter: View {
                     if let kg = state.kg {
                         kgSection(kg)
                     }
-                    if let mochi = state.mochi {
-                        mochiSection(mochi)
+                    if let optionalIntegration = state.optionalIntegration {
+                        optionalIntegrationSection(optionalIntegration)
                     }
                     aboutSection
                     if let danger = state.danger {
@@ -337,21 +337,21 @@ struct SettingsPresenter: View {
         }
     }
 
-    private func mochiSection(_ mochi: SettingsPresenterState.MochiSection) -> some View {
+    private func optionalIntegrationSection(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "第三方整合", icon: "puzzlepiece.extension")
+            SettingsSectionHeader(title: "可選整合", icon: "puzzlepiece.extension")
 
             VStack(spacing: 0) {
-                SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
+                SettingsRow(icon: "m.square.fill", label: "Mochi API Key (Legacy)") {
                     HStack(spacing: 6) {
-                        SecureField("可選", text: mochiApiKey)
+                        SecureField("可選", text: optionalIntegrationApiKey)
                             .font(vocabSkin.typography.monoLabel)
                             .multilineTextAlignment(.trailing)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
-                            .disabled(!mochi.isEnabled)
+                            .disabled(!optionalIntegration.isEnabled)
 
-                        Button(action: actions.showMochiInfo) {
+                        Button(action: actions.showOptionalIntegrationInfo) {
                             Image(systemName: "info.circle")
                                 .font(vocabSkin.typography.iconMedium)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -362,7 +362,7 @@ struct SettingsPresenter: View {
             }
             .settingsCard()
 
-            SettingsSectionFooter("可選。只有在你仍使用 Mochi 時才需要填寫，填入後會將生詞同步到 Mochi。")
+            SettingsSectionFooter("Legacy optional。只有在你仍使用 Mochi 時才需要填寫；BooksBrowser 的雲端同步與複習不依賴它。")
         }
     }
 
@@ -727,7 +727,7 @@ private extension View {
     }
 }
 
-struct MochiInfoSheetView: View {
+struct OptionalIntegrationInfoSheetView: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
 
@@ -740,7 +740,7 @@ struct MochiInfoSheetView: View {
                         .foregroundStyle(vocabSkin.palette.accent)
                         .padding(.bottom, 8)
 
-                    Text("關於 Mochi 整合")
+                    Text("關於 Mochi 整合（Legacy）")
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
@@ -766,7 +766,7 @@ struct MochiInfoSheetView: View {
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
 
-                    Text("這是一個可選功能，就算不填寫 API Key，BooksBrowser 也能完美獨立運作！")
+                    Text("這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                         .padding(.top, 16)
