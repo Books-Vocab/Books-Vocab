@@ -126,35 +126,62 @@ struct TranslationPanel: View {
     }
 }
 
-#Preview {
-    ZStack {
-        Color.gray.opacity(0.3).ignoresSafeArea()
+private struct TranslationPanelPreviewScene: View {
+    let mode: TranslationPanelMode
+    let isExpanded: Bool
+    let isExplanationOnly: Bool
 
-        VStack {
-            Spacer()
+    var body: some View {
+        ZStack {
+            AppTheme.light.palette.scrim.opacity(0.12).ignoresSafeArea()
 
-            TranslationPanel(
-                word: "gorgeous",
-                result: TranslationResult(
-                    translation: "華麗的",
-                    partOfSpeech: "adj.",
-                    pronunciation: nil,
-                    explanation: nil
-                ),
-                pronunciation: "/ɡɔːrˈdʒəs/",
-                isLoading: false,
-                isSaved: true,
-                isLoggedIn: false,
-                isExpanded: false,
-                explanation: nil,
-                isLoadingExplanation: false,
-                statusMessage: nil,
-                isExplanationOnly: false,
-                onExpand: {},
-                onDelete: {},
-                onDismiss: {}
-            )
-            .padding(.horizontal)
+            VStack {
+                Spacer()
+
+                TranslationPanel(
+                    word: "gorgeous",
+                    result: TranslationResult(
+                        translation: "華麗的；令人驚豔的",
+                        partOfSpeech: "adj.",
+                        pronunciation: nil,
+                        explanation: nil
+                    ),
+                    pronunciation: "/ɡɔːrˈdʒəs/",
+                    isLoading: false,
+                    isSaved: true,
+                    isLoggedIn: true,
+                    isExpanded: isExpanded,
+                    explanation: isExpanded
+                        ? "常用來描述外觀、氣氛或令人印象深刻的事物，語氣通常偏正面且帶有審美色彩。"
+                        : nil,
+                    isLoadingExplanation: false,
+                    statusMessage: isExplanationOnly ? "以解釋模式顯示" : "已加入單字庫",
+                    isExplanationOnly: isExplanationOnly,
+                    onExpand: {},
+                    onDelete: {},
+                    onDismiss: {}
+                )
+                .environment(\.readerPanelMode, mode)
+                .padding(.horizontal)
+            }
         }
+    }
+}
+
+#Preview("Translation / Glass") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(mode: .glass, isExpanded: false, isExplanationOnly: false)
+    }
+}
+
+#Preview("Translation / Vocab Expanded") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(mode: .vocab, isExpanded: true, isExplanationOnly: false)
+    }
+}
+
+#Preview("Translation / Explain Only") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(mode: .vocab, isExpanded: true, isExplanationOnly: true)
     }
 }

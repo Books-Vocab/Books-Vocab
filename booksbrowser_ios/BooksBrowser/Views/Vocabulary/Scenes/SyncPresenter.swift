@@ -274,3 +274,127 @@ struct StepDurationView: View {
         String(format: "%.1fs", duration)
     }
 }
+
+private enum SyncPresenterPreviewData {
+    static let baseSteps: [PipelineStep] = [
+        .init(
+            id: "upload_add",
+            label: "上傳新單字",
+            status: .done,
+            current: 12,
+            total: 12,
+            detail: "10 新增, 2 已存在",
+            startTime: Date().addingTimeInterval(-9),
+            endTime: Date().addingTimeInterval(-6.4)
+        ),
+        .init(
+            id: "trigger",
+            label: "觸發背景 AI 處理",
+            status: .running,
+            current: 1,
+            total: 1,
+            detail: "背景管線執行中",
+            startTime: Date().addingTimeInterval(-2.2),
+            endTime: nil
+        ),
+        .init(
+            id: "pull",
+            label: "下載知識庫至本地",
+            status: .waiting,
+            current: 0,
+            total: 0,
+            detail: "",
+            startTime: nil,
+            endTime: nil
+        )
+    ]
+
+    static let ready = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: true,
+        isConnected: true,
+        phase: .ready,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: [],
+        summaryText: "這次會把待新增與待刪除的變更同步到雲端知識庫。"
+    )
+
+    static let running = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: true,
+        isConnected: true,
+        phase: .running,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: baseSteps,
+        summaryText: "請保持網路連線，系統會自動更新本地知識庫。"
+    )
+
+    static let failed = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: true,
+        isConnected: false,
+        phase: .failed,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: [
+            .init(
+                id: "upload_add",
+                label: "上傳新單字",
+                status: .error,
+                current: 4,
+                total: 12,
+                detail: "伺服器逾時，請稍後再試",
+                startTime: Date().addingTimeInterval(-12),
+                endTime: Date().addingTimeInterval(-9)
+            )
+        ],
+        summaryText: "同步在上傳階段失敗，請檢查伺服器狀態後重試。"
+    )
+}
+
+#Preview("Sync / Ready") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.ready,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / Running") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.running,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / Failed") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.failed,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
