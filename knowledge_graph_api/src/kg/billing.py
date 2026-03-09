@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
@@ -27,13 +26,69 @@ def default_subscription_payload() -> dict[str, Any]:
     }
 
 
-def build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
+def default_admin_grant_payload() -> dict[str, Any]:
+    return {
+        "is_active": False,
+        "plan_name": "BooksBrowser Pro",
+        "status": "inactive",
+        "source": "admin",
+        "expires_at": None,
+        "granted_at": None,
+        "granted_by": None,
+        "reason": None,
+        "last_synced_at": None,
+    }
+
+
+def _parse_iso_datetime(raw: Any) -> datetime | None:
+    if not isinstance(raw, str) or not raw.strip():
+        return None
+    try:
+        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+    except ValueError:
+        return None
+
+
+def current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
     record = user_record if isinstance(user_record, dict) else {}
-    raw_subscription = record.get("subscription")
-    subscription = default_subscription_payload()
-    if isinstance(raw_subscription, dict):
-        subscription.update(raw_subscription)
-    return EntitlementsResponse(pro=SubscriptionStatusResponse(**subscription))
+    raw_admin_grant = record.get("admin_grant")
+    admin_grant = default_admin_grant_payload()
+    if isinstance(raw_admin_grant, dict):
+        admin_grant.update(raw_admin_grant)
+    return admin_grant
+
+
+def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
+    admin_grant = current_admin_grant_record(user_record)
+    if not admin_grant.get("is_active"):
+        return False
+    expires_at = _parse_iso_datetime(admin_grant.get("expires_at"))
+    if expires_at and expires_at <= datetime.now(tz=timezone.utc):
+        return False
+    return True
+
+
+def current_pro_entitlement_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+    if admin_grant_is_active(user_record):
+        admin_grant = current_admin_grant_record(user_record)
+        return {
+            "is_active": True,
+            "product_id": None,
+            "plan_name": admin_grant.get("plan_name") or "BooksBrowser Pro",
+            "price_display": None,
+            "status": "active",
+            "is_trial": False,
+            "trial_days": None,
+            "will_renew": False,
+            "expires_at": admin_grant.get("expires_at"),
+            "source": "admin",
+            "last_synced_at": admin_grant.get("last_synced_at") or admin_grant.get("granted_at"),
+        }
+    return current_subscription_record(user_record)
+
+
+def build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
+    return EntitlementsResponse(pro=SubscriptionStatusResponse(**current_pro_entitlement_record(user_record)))
 
 
 def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
@@ -46,20 +101,8 @@ def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str,
 
 
 def require_pro_access(user: dict[str, Any], capability: str) -> None:
-    if os.getenv("DEBUG_BYPASS_SUBSCRIPTION", "").strip().lower() in {"1", "true", "yes"}:
-        return
-    bypass_ids_raw = os.getenv("PRO_DEVELOPER_BYPASS_USER_IDS", "")
-    if bypass_ids_raw.strip():
-        user_id = str(user.get("id") or user.get("user_id") or "").strip()
-        bypass_ids = {
-            candidate.strip()
-            for candidate in bypass_ids_raw.split(",")
-            if candidate.strip()
-        }
-        if user_id and user_id in bypass_ids:
-            return
-    subscription = current_subscription_record(user.get("record"))
-    if subscription.get("is_active"):
+    entitlement = current_pro_entitlement_record(user.get("record"))
+    if entitlement.get("is_active"):
         return
     raise HTTPException(
         status_code=402,

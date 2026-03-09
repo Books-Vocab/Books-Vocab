@@ -9,12 +9,11 @@ struct SettingsPresenterState {
         let email: String?
         let authError: String?
         let iconBreathing: Bool
-        let isDeveloper: Bool
         let debug: DebugAuthSection?
     }
 
     struct DebugAuthSection {
-        let developerAccountId: String
+        let manualLoginHint: String?
     }
 
     struct KGSection {
@@ -52,7 +51,6 @@ struct SettingsPresenterState {
     struct AboutSection {
         let version: String
         let developerName: String
-        let developerAccountId: String?
     }
 
     struct DangerSection {
@@ -80,8 +78,6 @@ struct SettingsPresenterActions {
     let loginWithApple: () -> Void
     let logout: () -> Void
     let manualLogin: () -> Void
-    let setDeveloperAccount: () -> Void
-    let clearDeveloperAccount: () -> Void
     let useProductionBackend: () -> Void
     let useLocalBackend: () -> Void
     let selectLanguage: (AppLanguage) -> Void

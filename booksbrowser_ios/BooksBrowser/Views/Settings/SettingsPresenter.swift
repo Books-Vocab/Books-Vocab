@@ -175,18 +175,8 @@ struct SettingsPresenter: View {
                             .controlSize(.small)
                     }
 
-                    HStack(spacing: 8) {
-                        Button("設為開發者帳號", action: actions.setDeveloperAccount)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-
-                        Button("清除開發者帳號", action: actions.clearDeveloperAccount)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-
-                    if !debug.developerAccountId.isEmpty {
-                        Text(L10n.format("目前開發者帳號：%@", debug.developerAccountId))
+                    if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
+                        Text(manualLoginHint)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
@@ -379,7 +369,7 @@ struct SettingsPresenter: View {
             }
             .settingsCard()
 
-            SettingsSectionFooter("目前先以狀態卡與 paywall 骨架接上，購買與 restore 流程下一步接 StoreKit 2。")
+            SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。")
         }
     }
 
@@ -431,18 +421,6 @@ struct SettingsPresenter: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
 
-#if DEBUG
-                if let developerAccountId = state.about.developerAccountId {
-                    SettingsDivider()
-
-                    SettingsRow(icon: "wrench.and.screwdriver", label: "開發者帳號 ID") {
-                        Text(developerAccountId.isEmpty ? L10n.string("未設定") : developerAccountId)
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineLimit(1)
-                    }
-                }
-#endif
             }
             .settingsCard()
         }
@@ -637,7 +615,6 @@ private struct SettingsAuthButton<Leading: View>: View {
 }
 
 private struct SettingsAuthSummary: View {
-    @Environment(\.appTheme) private var appTheme
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.AuthSection
 
@@ -666,13 +643,6 @@ private struct SettingsAuthSummary: View {
                     .font(vocabSkin.typography.symbolLarge)
                     .foregroundStyle(vocabSkin.palette.success)
                     .symbolEffect(.bounce, value: state.isLoggedIn)
-#if DEBUG
-                if state.isDeveloper {
-                    Text("DEVELOPER")
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(appTheme.palette.warning)
-                }
-#endif
             }
         }
     }
@@ -858,7 +828,10 @@ struct SubscriptionPaywallSheet: View {
                         Text(priceLine)
                             .font(vocabSkin.typography.sectionTitle)
                             .foregroundStyle(vocabSkin.palette.primaryText)
-                        Text(L10n.format("來源：%@", sourceLine))
+                        Text(L10n.format("權限來源：%@", entitlementSourceLine))
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        Text(L10n.format("打開位置：%@", sourceLine))
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
@@ -879,7 +852,9 @@ struct SubscriptionPaywallSheet: View {
                     VStack(spacing: 10) {
                         Button {
                             Task {
-                                if subscriptionManager.hasProAccess {
+                                if isAdminGranted {
+                                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                                } else if subscriptionManager.hasProAccess {
                                     await subscriptionManager.refresh(using: kgService, authManager: authManager)
                                 } else {
                                     await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
@@ -891,7 +866,7 @@ struct SubscriptionPaywallSheet: View {
                                     ProgressView()
                                         .controlSize(.small)
                                 }
-                                Text(subscriptionManager.hasProAccess ? "重新同步訂閱狀態" : "開始免費試用")
+                                Text(primaryActionTitle)
                                 Spacer()
                             }
                             .frame(maxWidth: .infinity)
@@ -899,16 +874,18 @@ struct SubscriptionPaywallSheet: View {
                         .buttonStyle(.vocabAction(.primary))
                         .disabled(subscriptionManager.isLoading)
 
-                        Button {
-                            Task {
-                                await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
+                        if !isAdminGranted {
+                            Button {
+                                Task {
+                                    await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
+                                }
+                            } label: {
+                                Text("恢復購買")
+                                    .frame(maxWidth: .infinity)
                             }
-                        } label: {
-                            Text("恢復購買")
-                                .frame(maxWidth: .infinity)
+                            .buttonStyle(.vocabAction(.neutral))
+                            .disabled(subscriptionManager.isLoading)
                         }
-                        .buttonStyle(.vocabAction(.neutral))
-                        .disabled(subscriptionManager.isLoading)
                     }
 
                     if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
@@ -931,7 +908,7 @@ struct SubscriptionPaywallSheet: View {
                         }
                     }
 
-                    Text("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
+                    Text(footerNote)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
@@ -952,13 +929,22 @@ struct SubscriptionPaywallSheet: View {
     }
 
     private var paywallSummaryText: String {
-        if subscriptionManager.hasProAccess {
-            return "目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。"
+        if isAdminGranted {
+            return L10n.string("目前帳號已由管理員授權為 Pro。功能已啟用，但這個權限不經由 App Store 管理。")
         }
-        return "解鎖閱讀器 AI、知識庫同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。"
+        if subscriptionManager.hasProAccess {
+            return L10n.string("目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。")
+        }
+        return L10n.string("解鎖閱讀器 AI、知識庫同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
     }
 
     private var priceLine: String {
+        if isAdminGranted {
+            if let expiresAt = subscriptionManager.entitlements.pro.expires_at, !expiresAt.isEmpty {
+                return L10n.format("管理員授權 · 有效至 %@", expiresAt)
+            }
+            return L10n.string("管理員授權")
+        }
         if let product = subscriptionManager.proProduct {
             let days = subscriptionManager.entitlements.pro.trial_days ?? 7
             return L10n.format("%@ / month · %@ 天免費試用", product.displayPrice, "\(days)")
@@ -967,9 +953,18 @@ struct SubscriptionPaywallSheet: View {
             return remotePrice
         }
         if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
-            return "無法載入 App Store 價格"
+            return L10n.string("無法載入 App Store 價格")
         }
-        return "載入 App Store 價格中…"
+        return L10n.string("載入 App Store 價格中…")
+    }
+
+    private var entitlementSourceLine: String {
+        switch subscriptionManager.entitlements.pro.source {
+        case "admin":
+            return L10n.string("管理員授權")
+        default:
+            return L10n.string("App Store 訂閱")
+        }
     }
 
     private var sourceLine: String {
@@ -987,6 +982,27 @@ struct SubscriptionPaywallSheet: View {
         case nil:
             return "訂閱"
         }
+    }
+
+    private var isAdminGranted: Bool {
+        subscriptionManager.entitlements.pro.is_active && subscriptionManager.entitlements.pro.source == "admin"
+    }
+
+    private var primaryActionTitle: String {
+        if isAdminGranted {
+            return L10n.string("重新整理權限狀態")
+        }
+        if subscriptionManager.hasProAccess {
+            return L10n.string("重新同步訂閱狀態")
+        }
+        return L10n.string("開始免費試用")
+    }
+
+    private var footerNote: String {
+        if isAdminGranted {
+            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整權限，請在後端 /admin 處理。")
+        }
+        return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
     }
 
     private func paywallFeatureRow(_ text: String) -> some View {

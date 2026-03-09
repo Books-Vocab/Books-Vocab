@@ -44,6 +44,7 @@ def test_create_app_with_explicit_settings_registers_all_domain_routes(tmp_path)
             ("/api/translate/quick", ("POST",)),
             ("/auth/verify", ("POST",)),
             ("/api/admin/stats", ("GET",)),
+            ("/api/admin/users/{user_id}/admin-grant", ("POST",)),
         }
 
         missing = expected - routes

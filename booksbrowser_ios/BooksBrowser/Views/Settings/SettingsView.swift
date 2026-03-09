@@ -24,32 +24,9 @@ struct SettingsView: View {
         return String(name.prefix(2)).uppercased()
     }
 
-#if DEBUG
-    private var isCurrentAccountDeveloper: Bool {
-        guard let userId = authManager.userId else { return false }
-        return !coordinator.developerAccountId.isEmpty && coordinator.developerAccountId == userId
-    }
-#endif
-
     private var authDebugState: SettingsPresenterState.DebugAuthSection? {
 #if DEBUG
-        SettingsPresenterState.DebugAuthSection(developerAccountId: coordinator.developerAccountId)
-#else
-        nil
-#endif
-    }
-
-    private var authIsDeveloper: Bool {
-#if DEBUG
-        isCurrentAccountDeveloper
-#else
-        false
-#endif
-    }
-
-    private var aboutDeveloperAccountId: String? {
-#if DEBUG
-        coordinator.developerAccountId
+        SettingsPresenterState.DebugAuthSection(manualLoginHint: L10n.string("手動登入只用於切換測試帳號；Pro 權限請改由 /admin 或 App Store 管理。"))
 #else
         nil
 #endif
@@ -66,7 +43,6 @@ struct SettingsView: View {
                 email: authManager.displayName != nil ? authManager.userEmail : nil,
                 authError: authManager.authError,
                 iconBreathing: coordinator.iconBreathing,
-                isDeveloper: authIsDeveloper,
                 debug: authDebugState
             ),
             preferences: .init(
@@ -89,15 +65,14 @@ struct SettingsView: View {
                     badgeTone: subscriptionBadgeTone(for: pro),
                     summary: subscriptionSummary(for: pro),
                     detail: subscriptionDetail(for: pro),
-                    ctaTitle: pro.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用"),
+                    ctaTitle: subscriptionCTA(for: pro),
                     isRefreshing: subscriptionManager.isLoading
                 )
                 : nil,
             optionalIntegration: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
             about: .init(
                 version: "1.1.0",
-                developerName: "陳亮宇",
-                developerAccountId: aboutDeveloperAccountId
+                developerName: "陳亮宇"
             ),
             danger: authManager.isLoggedIn ? .init(isDeletingAccount: coordinator.isDeletingAccount) : nil
         )
@@ -110,8 +85,6 @@ struct SettingsView: View {
             loginWithApple: { authManager.loginWithApple(modelContainer: modelContext.container) },
             logout: { authManager.logout(modelContainer: modelContext.container, reason: "settings_logout") },
             manualLogin: { coordinator.handleManualLogin(authManager: authManager) },
-            setDeveloperAccount: coordinator.setDeveloperAccount,
-            clearDeveloperAccount: coordinator.clearDeveloperAccount,
             useProductionBackend: {
                 #if DEBUG
                 Task {
@@ -228,6 +201,9 @@ struct SettingsView: View {
     }
 
     private func subscriptionBadgeText(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return "ADMIN"
+        }
         switch status.status {
         case "active":
             return "ACTIVE"
@@ -241,6 +217,9 @@ struct SettingsView: View {
     }
 
     private func subscriptionBadgeTone(for status: KGSubscriptionStatus) -> SubscriptionBadgeTone {
+        if status.source == "admin", status.is_active {
+            return .success
+        }
         switch status.status {
         case "active":
             return .success
@@ -252,6 +231,9 @@ struct SettingsView: View {
     }
 
     private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
+        }
         if status.is_trial {
             return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
@@ -262,6 +244,12 @@ struct SettingsView: View {
     }
 
     private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            if let expiresAt = status.expires_at, !expiresAt.isEmpty {
+                return L10n.format("來源：管理員授權 · 有效至 %@", expiresAt)
+            }
+            return L10n.string("來源：管理員授權 · 此權限不經由 App Store 續訂或恢復購買")
+        }
         if let price = subscriptionManager.proProduct?.displayPrice, !price.isEmpty, !status.is_active {
             let days = status.trial_days ?? 7
             return L10n.format("%@ / month · %@ 天免費試用", price, "\(days)")
@@ -276,6 +264,13 @@ struct SettingsView: View {
             return L10n.format("預設提供 %@ 天免費試用", "\(days)")
         }
         return L10n.string("價格與試用長度會以 App Store 顯示為準")
+    }
+
+    private func subscriptionCTA(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("查看權限")
+        }
+        return status.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用")
     }
 }
 
