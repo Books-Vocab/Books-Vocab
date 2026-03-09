@@ -216,7 +216,7 @@ private struct CardInlineText: View {
     private var baseFont: Font {
         switch style {
         case .example:
-            return vocabSkin.typography.example.italic()
+            return vocabSkin.typography.detailExampleSerif
         case .body:
             return vocabSkin.typography.body
         case .source:
@@ -227,7 +227,7 @@ private struct CardInlineText: View {
     private var markedFont: Font {
         switch style {
         case .example:
-            return vocabSkin.typography.example.weight(.medium).italic()
+            return vocabSkin.typography.detailExampleSerifStrong
         case .body:
             return vocabSkin.typography.body.weight(.medium)
         case .source:
