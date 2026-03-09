@@ -33,24 +33,11 @@ struct PendingVocabPresenter: View {
         } else {
             ScrollView {
                 VStack(spacing: 16) {
-                    VocabCard {
-                        HStack(alignment: .firstTextBaseline) {
-                            VStack(alignment: .leading, spacing: 4) {
-                                Text("待收錄")
-                                    .font(vocabSkin.typography.sectionTitle)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
-                                Text("同步前的本地收件匣，會保留新增與待刪除動作。")
-                                    .font(vocabSkin.typography.body)
-                                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                            }
-
-                            Spacer()
-
-                            Text("\(state.pendingCount)")
-                                .font(vocabSkin.typography.numericHero)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                    }
+                    VocabMetricHeroCard(
+                        title: "待收錄",
+                        description: "同步前的本地收件匣，會保留新增與待刪除動作。",
+                        value: "\(state.pendingCount)"
+                    )
 
                     VocabCard(padding: 0) {
                         LazyVStack(spacing: 0) {
@@ -61,19 +48,11 @@ struct PendingVocabPresenter: View {
                                         .contentShape(Rectangle())
                                         .onTapGesture { onRowTapped(item.id) }
 
-                                    Button {
-                                        onActionTapped(item.id)
-                                    } label: {
-                                        Image(systemName: item.actionSystemImage)
-                                            .font(vocabSkin.typography.iconToolbar)
-                                            .foregroundStyle(resolveTone(item.actionTone))
-                                            .frame(width: 30, height: 30)
-                                            .background(
-                                                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                                                    .fill(vocabSkin.palette.mutedFill)
-                                            )
-                                    }
-                                    .buttonStyle(.plain)
+                                    VocabAccessoryIconButton(
+                                        systemImage: item.actionSystemImage,
+                                        tone: resolveTone(item.actionTone),
+                                        action: { onActionTapped(item.id) }
+                                    )
                                     .padding(.top, 10)
                                 }
                                 .padding(.horizontal, 18)

@@ -78,149 +78,94 @@ struct SyncPresenter: View {
     @ViewBuilder
     private var headerView: some View {
         if !state.isLoggedIn {
-            VStack(spacing: 12) {
-                Image(systemName: "person.crop.circle.badge.exclamationmark")
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-                Text("尚未登入帳號")
-                    .font(vocabSkin.typography.sectionTitle)
-                Text("登入後即可將您的生詞庫同步至雲端與 Mochi。")
-                    .font(vocabSkin.typography.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, 40)
-            }
+            VocabStatusHero(
+                systemImage: "person.crop.circle.badge.exclamationmark",
+                tone: vocabSkin.palette.tertiaryText,
+                title: "尚未登入帳號",
+                description: "登入後即可將您的生詞庫同步至雲端與 Mochi。"
+            )
         } else if !state.hasProAccess {
-            VStack(spacing: 12) {
-                Image(systemName: "sparkles.rectangle.stack")
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(vocabSkin.palette.accent)
-                Text("同步需 Pro")
-                    .font(vocabSkin.typography.sectionTitle)
-                Text("升級後即可將待收錄生詞同步到雲端、知識庫與 Mochi。")
-                    .font(vocabSkin.typography.body)
-                    .multilineTextAlignment(.center)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, 40)
-            }
+            VocabStatusHero(
+                systemImage: "sparkles.rectangle.stack",
+                tone: vocabSkin.palette.accent,
+                title: "同步需 Pro",
+                description: "升級後即可將待收錄生詞同步到雲端、知識庫與 Mochi。"
+            )
         } else {
             switch state.phase {
             case .ready:
-                VStack(spacing: 8) {
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .font(vocabSkin.typography.symbolHero)
-                        .foregroundStyle(vocabSkin.palette.accent)
-
-                    if state.pendingCount == 0 {
-                        Text("強制同步到 Mochi")
-                            .font(vocabSkin.typography.sectionTitle)
-                    } else {
-                        VStack(spacing: 4) {
-                            Text(L10n.format("%@ 個待處理動作", "\(state.pendingCount)"))
-                                .font(vocabSkin.typography.sectionTitle)
-                            HStack(spacing: vocabSkin.spacing.inlineGap) {
-                                if state.addCount > 0 {
-                                    VocabToneChip(
-                                        text: L10n.format("%@ 新增", "\(state.addCount)"),
-                                        tone: vocabSkin.palette.success
-                                    )
-                                }
-                                if state.deleteCount > 0 {
-                                    VocabToneChip(
-                                        text: L10n.format("%@ 刪除", "\(state.deleteCount)"),
-                                        tone: vocabSkin.palette.destructive
-                                    )
-                                }
-                            }
+                VocabStatusHero(
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tone: vocabSkin.palette.accent,
+                    title: state.pendingCount == 0
+                        ? "強制同步到 Mochi"
+                        : L10n.format("%@ 個待處理動作", "\(state.pendingCount)")
+                ) {
+                    HStack(spacing: vocabSkin.spacing.inlineGap) {
+                        if state.addCount > 0 {
+                            VocabToneChip(
+                                text: L10n.format("%@ 新增", "\(state.addCount)"),
+                                tone: vocabSkin.palette.success
+                            )
+                        }
+                        if state.deleteCount > 0 {
+                            VocabToneChip(
+                                text: L10n.format("%@ 刪除", "\(state.deleteCount)"),
+                                tone: vocabSkin.palette.destructive
+                            )
                         }
                     }
                 }
                 .transition(.blurReplace)
             case .running:
-                VStack(spacing: 8) {
+                VocabStatusHero(
+                    systemImage: "arrow.triangle.2.circlepath",
+                    tone: vocabSkin.palette.accent,
+                    title: "同步中…"
+                ) {
                     ProgressView()
                         .controlSize(.large)
-                    Text("同步中…")
-                        .font(vocabSkin.typography.sectionTitle)
                 }
                 .transition(.blurReplace)
             case .completed:
-                VStack(spacing: 8) {
-                    Image(systemName: "checkmark.circle.fill")
-                        .font(vocabSkin.typography.symbolHero)
-                        .foregroundStyle(vocabSkin.palette.success)
-                        .symbolEffect(.bounce)
-                    Text("同步完成")
-                        .font(vocabSkin.typography.sectionTitle)
-                }
+                VocabStatusHero(
+                    systemImage: "checkmark.circle.fill",
+                    tone: vocabSkin.palette.success,
+                    title: "同步完成"
+                )
                 .transition(.blurReplace)
             case .failed:
-                VStack(spacing: 8) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                        .font(vocabSkin.typography.symbolHero)
-                        .foregroundStyle(vocabSkin.palette.destructive)
-                    Text("同步失敗")
-                        .font(vocabSkin.typography.sectionTitle)
-                }
+                VocabStatusHero(
+                    systemImage: "exclamationmark.triangle.fill",
+                    tone: vocabSkin.palette.destructive,
+                    title: "同步失敗"
+                )
                 .transition(.blurReplace)
             }
         }
     }
 
     private func stepRow(_ step: PipelineStep) -> some View {
-        HStack(spacing: 12) {
-            Group {
-                switch step.status {
-                case .waiting:
-                    Image(systemName: "circle")
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
-                case .running:
-                    ProgressView()
-                        .controlSize(.small)
-                case .retry:
-                    Image(systemName: "arrow.triangle.2.circlepath")
-                        .symbolEffect(.scale.up, options: .repeating)
-                        .foregroundStyle(vocabSkin.tierColor(for: "intermediate"))
-                case .done:
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(vocabSkin.palette.success)
-                        .symbolEffect(.bounce)
-                case .skipped:
-                    Image(systemName: "minus.circle.fill")
+        VocabTimelineRow(
+            title: step.label,
+            titleTone: step.status == .waiting ? vocabSkin.palette.tertiaryText : vocabSkin.palette.primaryText,
+            detail: step.status == .waiting ? nil : step.detail,
+            detailTone: detailColor(for: step.status)
+        ) {
+            statusSymbol(for: step.status)
+        } trailing: {
+            HStack(spacing: 8) {
+                if step.status == .running && step.total > 0 {
+                    Text("\(step.current)/\(step.total)")
+                        .font(vocabSkin.typography.monoLabel)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
-                case .error:
-                    Image(systemName: "xmark.circle.fill")
-                        .foregroundStyle(vocabSkin.palette.destructive)
-                }
-            }
-            .frame(width: 20)
-
-            VStack(alignment: .leading, spacing: 2) {
-                HStack {
-                    Text(step.label.localized)
-                        .font(vocabSkin.typography.body.weight(.medium))
-                        .foregroundStyle(step.status == .waiting ? vocabSkin.palette.tertiaryText : vocabSkin.palette.primaryText)
-                    Spacer()
-                    if step.status == .running && step.total > 0 {
-                        Text("\(step.current)/\(step.total)")
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .contentTransition(.numericText())
-                            .animation(.spring, value: step.current)
-                    }
-
-                    StepDurationView(step: step)
+                        .contentTransition(.numericText())
+                        .animation(.spring, value: step.current)
                 }
 
-                if !step.detail.isEmpty && step.status != .waiting {
-                    Text(step.detail.localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(detailColor(for: step.status))
-                        .lineLimit(2)
-                }
+                StepDurationView(step: step)
             }
         }
-        .padding(.vertical, AppMetrics.spacingMedium)
     }
 
     private var actionArea: some View {
@@ -275,6 +220,32 @@ struct SyncPresenter: View {
             return vocabSkin.tierColor(for: "intermediate")
         default:
             return vocabSkin.palette.secondaryText
+        }
+    }
+
+    @ViewBuilder
+    private func statusSymbol(for status: PipelineStep.StepStatus) -> some View {
+        switch status {
+        case .waiting:
+            Image(systemName: "circle")
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+        case .running:
+            ProgressView()
+                .controlSize(.small)
+        case .retry:
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .symbolEffect(.scale.up, options: .repeating)
+                .foregroundStyle(vocabSkin.tierColor(for: "intermediate"))
+        case .done:
+            Image(systemName: "checkmark.circle.fill")
+                .foregroundStyle(vocabSkin.palette.success)
+                .symbolEffect(.bounce)
+        case .skipped:
+            Image(systemName: "minus.circle.fill")
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+        case .error:
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(vocabSkin.palette.destructive)
         }
     }
 }
