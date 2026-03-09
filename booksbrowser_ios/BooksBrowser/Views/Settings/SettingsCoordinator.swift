@@ -43,7 +43,7 @@ final class SettingsCoordinator: ObservableObject {
 
         if authManager.isLoggedIn {
             if let config = try? await kgService.fetchUserConfig() {
-                let fetched = config.mochi_api_key ?? ""
+                let fetched = config.optionalIntegrationApiKey ?? ""
                 fetchedKey = fetched
                 optionalIntegrationApiKey = fetched
             }
@@ -64,7 +64,7 @@ final class SettingsCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
                 _ = try? await kgService.updateUserConfig(
-                    mochiKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey
+                    optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey
                 )
                 fetchedKey = optionalIntegrationApiKey
             }
