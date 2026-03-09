@@ -11,9 +11,8 @@ struct WordRow: View {
             }
 
             let statusLabel: String
-            let elapsedLabel: String
-            let totalLabel: String
-            let fraction: Double
+            let detailLabel: String?
+            let fraction: Double?
             let tone: Tone
         }
 
@@ -88,7 +87,7 @@ struct WordRow: View {
                 }
 
                 if let reviewProgress = viewData.reviewProgress, !viewData.isStrikethrough {
-                    reviewProgressView(reviewProgress)
+                    reviewProgressRow(reviewProgress)
                 }
 
                 if let book = viewData.bookTitle, !book.isEmpty {
@@ -124,33 +123,46 @@ struct WordRow: View {
         .padding(.vertical, 7)
     }
 
-    private func reviewProgressView(_ progress: ViewData.ReviewProgress) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(progress.statusLabel.localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(resolveProgressTone(progress.tone))
+    private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
+        HStack(alignment: .center, spacing: 12) {
+            Text(progress.statusLabel.localized)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(resolveProgressTone(progress.tone))
 
-                Spacer(minLength: 8)
+            Spacer(minLength: 8)
 
-                Text("\(progress.elapsedLabel) / \(progress.totalLabel)")
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-            }
-
-            GeometryReader { proxy in
-                ZStack(alignment: .leading) {
-                    Capsule(style: .continuous)
-                        .fill(vocabSkin.palette.mutedFill.opacity(1.25))
-
-                    Capsule(style: .continuous)
-                        .fill(resolveProgressTone(progress.tone))
-                        .frame(width: max(6, proxy.size.width * progress.fraction))
-                }
-            }
-            .frame(height: 5)
+            reviewProgressAccessory(progress)
         }
         .padding(.top, 2)
+    }
+
+    @ViewBuilder
+    private func reviewProgressAccessory(_ progress: ViewData.ReviewProgress) -> some View {
+        if let fraction = progress.fraction {
+            VStack(alignment: .trailing, spacing: 5) {
+                if let detailLabel = progress.detailLabel {
+                    Text(detailLabel)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(vocabSkin.palette.mutedFill.opacity(1.25))
+
+                        Capsule(style: .continuous)
+                            .fill(resolveProgressTone(progress.tone))
+                            .frame(width: max(6, proxy.size.width * fraction))
+                    }
+                }
+                .frame(width: 104, height: 5)
+            }
+        } else if let detailLabel = progress.detailLabel {
+            Text(detailLabel)
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+        }
     }
 
     private func resolveTone(_ tone: ViewData.Tone) -> Color {

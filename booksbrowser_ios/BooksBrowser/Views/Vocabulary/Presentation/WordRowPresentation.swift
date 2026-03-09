@@ -58,21 +58,26 @@ extension VocabularyEntry {
     ) -> WordRow.ViewData.ReviewProgress? {
         guard showsReviewProgress, !isDelete else { return nil }
 
-        let interval = max(nextReviewAt.timeIntervalSince(reviewProgressStartDate), 60)
-        let elapsed = max(0, now.timeIntervalSince(reviewProgressStartDate))
-        let fraction = min(max(elapsed / interval, 0), 1)
+        switch reviewState {
+        case .unlearned:
+            return .init(
+                statusLabel: reviewProgressStatusLabel,
+                detailLabel: "首輪 \(reviewIntervalHours.compactHourLabel)",
+                fraction: nil,
+                tone: .yellow
+            )
+        case .due, .reviewed:
+            let interval = max(nextReviewAt.timeIntervalSince(reviewProgressStartDate), 60)
+            let elapsed = max(0, now.timeIntervalSince(reviewProgressStartDate))
+            let fraction = min(max(elapsed / interval, 0), 1)
 
-        return .init(
-            statusLabel: reviewProgressStatusLabel,
-            elapsedLabel: elapsed.compactReviewProgressLabel,
-            totalLabel: interval.compactReviewProgressLabel,
-            fraction: fraction,
-            tone: reviewProgressTone(for: fraction)
-        )
-    }
-
-    private var reviewProgressStartDate: Date {
-        lastReviewedAt ?? dateAdded
+            return .init(
+                statusLabel: reviewProgressStatusLabel,
+                detailLabel: "\(elapsed.compactReviewProgressLabel) / \(interval.compactReviewProgressLabel)",
+                fraction: fraction,
+                tone: reviewProgressTone(for: fraction)
+            )
+        }
     }
 
     private var reviewProgressStatusLabel: String {
@@ -97,6 +102,10 @@ extension VocabularyEntry {
             return .yellow
         }
         return .green
+    }
+
+    private var reviewProgressStartDate: Date {
+        lastReviewedAt ?? dateAdded
     }
 }
 
@@ -132,6 +141,12 @@ private extension TimeInterval {
 
         let days = seconds / day
         return days < 10 ? days.singleDecimalString + "d" : "\(Int(days.rounded()))d"
+    }
+}
+
+private extension Double {
+    var compactHourLabel: String {
+        (self * 3600).compactReviewProgressLabel
     }
 }
 
