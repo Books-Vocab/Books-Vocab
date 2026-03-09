@@ -166,7 +166,7 @@ struct WordRow: View {
         case .destructive:
             return vocabSkin.palette.destructive
         case .reviewDue:
-            return vocabSkin.tierColor(for: "intermediate")
+            return vocabSkin.palette.warning
         }
     }
 

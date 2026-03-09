@@ -35,10 +35,14 @@ struct VocabSkin {
         let translationText: Color
         let accent: Color
         let success: Color
+        let warning: Color
+        let retry: Color
+        let info: Color
         let destructive: Color
         let highlightMark: Color
         let mutedFill: Color
         let link: Color
+        let overlayScrim: Color
     }
 
     struct Typography {
@@ -84,10 +88,48 @@ struct VocabSkin {
         let rowPadding: CGFloat
     }
 
+    struct Metrics {
+        let pageHorizontalInset: CGFloat
+        let pageTopInset: CGFloat
+        let pageBottomInset: CGFloat
+        let pageSectionVerticalInset: CGFloat
+        let sectionHeaderGap: CGFloat
+        let listRowHorizontalInset: CGFloat
+        let listDividerInset: CGFloat
+        let heroSectionSpacing: CGFloat
+        let accessoryTopOffset: CGFloat
+        let overlayHorizontalInset: CGFloat
+        let overlayVerticalInset: CGFloat
+        let summaryHorizontalInset: CGFloat
+        let reviewCardHorizontalInset: CGFloat
+        let reviewCardTopInset: CGFloat
+        let reviewCardBottomInset: CGFloat
+        let reviewTopBarHorizontalInset: CGFloat
+        let reviewTopBarTopInset: CGFloat
+        let reviewTopBarBottomInset: CGFloat
+        let reviewToolbarHorizontalInset: CGFloat
+        let reviewToolbarVerticalInset: CGFloat
+        let reviewFoldPadding: CGFloat
+        let reviewFoldSectionSpacing: CGFloat
+        let reviewFoldHintBottomInset: CGFloat
+        let reviewFoldHintTopInset: CGFloat
+        let reviewFrontMinHeight: CGFloat
+        let reviewAnswerMinHeight: CGFloat
+        let reviewActionMinWidth: CGFloat
+        let reviewChevronButtonSize: CGFloat
+        let reviewHintCapsuleWidth: CGFloat
+        let chromeButtonSize: CGFloat
+        let overlayHeaderHorizontalInset: CGFloat
+        let overlayHeaderVerticalInset: CGFloat
+        let listCardHeaderTopInset: CGFloat
+        let listCardHeaderBottomInset: CGFloat
+    }
+
     let palette: Palette
     let typography: Typography
     let radii: Radii
     let spacing: Spacing
+    let metrics: Metrics
 
     func tierColor(for tier: String?) -> Color {
         switch tier {
@@ -164,10 +206,51 @@ extension VocabSkin {
         rowPadding: 9
     )
 
+    static let baseMetrics = Metrics(
+        pageHorizontalInset: AppShellMetrics.pageHorizontalPadding,
+        pageTopInset: 16,
+        pageBottomInset: 120,
+        pageSectionVerticalInset: AppMetrics.spacingSmall,
+        sectionHeaderGap: 10,
+        listRowHorizontalInset: 16,
+        listDividerInset: 16,
+        heroSectionSpacing: 16,
+        accessoryTopOffset: 10,
+        overlayHorizontalInset: 20,
+        overlayVerticalInset: 20,
+        summaryHorizontalInset: 24,
+        reviewCardHorizontalInset: AppMetrics.spacingLarge,
+        reviewCardTopInset: AppMetrics.spacingMedium,
+        reviewCardBottomInset: AppMetrics.spacingXXL,
+        reviewTopBarHorizontalInset: 20,
+        reviewTopBarTopInset: 10,
+        reviewTopBarBottomInset: 6,
+        reviewToolbarHorizontalInset: 20,
+        reviewToolbarVerticalInset: 12,
+        reviewFoldPadding: 24,
+        reviewFoldSectionSpacing: 16,
+        reviewFoldHintBottomInset: 18,
+        reviewFoldHintTopInset: 18,
+        reviewFrontMinHeight: 208,
+        reviewAnswerMinHeight: 188,
+        reviewActionMinWidth: 92,
+        reviewChevronButtonSize: 30,
+        reviewHintCapsuleWidth: 42,
+        chromeButtonSize: 32,
+        overlayHeaderHorizontalInset: 16,
+        overlayHeaderVerticalInset: 12,
+        listCardHeaderTopInset: 14,
+        listCardHeaderBottomInset: 12
+    )
+
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
     /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
     static func themed(_ theme: AppTheme) -> VocabSkin {
-        VocabSkin(
+        let link = theme.colorScheme == .dark
+            ? Color(red: 0.62, green: 0.71, blue: 0.84)
+            : Color(red: 0.47, green: 0.56, blue: 0.67)
+
+        return VocabSkin(
             palette: .init(
                 pageBackground: theme.palette.pageBackground,
                 stageBackground: theme.palette.stageBackground,
@@ -184,18 +267,21 @@ extension VocabSkin {
                     : Color(red: 0.54, green: 0.50, blue: 0.44),
                 accent: theme.palette.accent,
                 success: theme.palette.success,
+                warning: theme.palette.warning,
+                retry: theme.palette.warning,
+                info: link,
                 destructive: theme.palette.destructive,
                 highlightMark: theme.colorScheme == .dark
                     ? Color(red: 0.73, green: 0.66, blue: 0.33)
                     : Color(red: 0.90, green: 0.84, blue: 0.57),
                 mutedFill: theme.palette.mutedFill,
-                link: theme.colorScheme == .dark
-                    ? Color(red: 0.62, green: 0.71, blue: 0.84)
-                    : Color(red: 0.47, green: 0.56, blue: 0.67)
+                link: link,
+                overlayScrim: theme.palette.scrim
             ),
             typography: baseTypography,
             radii: baseRadii,
-            spacing: baseSpacing
+            spacing: baseSpacing,
+            metrics: baseMetrics
         )
     }
 
@@ -216,14 +302,19 @@ extension VocabSkin {
             translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
             accent: Color(red: 0.49, green: 0.56, blue: 0.64),
             success: Color(red: 0.50, green: 0.64, blue: 0.50),
+            warning: Color(red: 0.72, green: 0.63, blue: 0.36),
+            retry: Color(red: 0.72, green: 0.63, blue: 0.36),
+            info: Color(red: 0.47, green: 0.56, blue: 0.67),
             destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
             highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
             mutedFill: Color.black.opacity(0.035),
-            link: Color(red: 0.47, green: 0.56, blue: 0.67)
+            link: Color(red: 0.47, green: 0.56, blue: 0.67),
+            overlayScrim: Color.black.opacity(0.20)
         ),
         typography: baseTypography,
         radii: baseRadii,
-        spacing: baseSpacing
+        spacing: baseSpacing,
+        metrics: baseMetrics
     )
 }
 

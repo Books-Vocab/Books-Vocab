@@ -45,9 +45,9 @@ struct TodayReviewPresenter: View {
                         ScrollView {
                             VStack(spacing: 0) {
                                 reviewCard(currentCard)
-                                    .padding(.horizontal, AppMetrics.spacingLarge)
-                                    .padding(.top, AppMetrics.spacingMedium)
-                                    .padding(.bottom, AppMetrics.spacingXXL)
+                                    .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
+                                    .padding(.top, vocabSkin.metrics.reviewCardTopInset)
+                                    .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
 
                                 if state.revealStage.showsAnswer {
                                     Spacer(minLength: 0)
@@ -103,9 +103,9 @@ struct TodayReviewPresenter: View {
 
             VocabChromeIconButton(systemImage: "xmark", action: onClose)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 10)
-        .padding(.bottom, 6)
+        .padding(.horizontal, vocabSkin.metrics.reviewTopBarHorizontalInset)
+        .padding(.top, vocabSkin.metrics.reviewTopBarTopInset)
+        .padding(.bottom, vocabSkin.metrics.reviewTopBarBottomInset)
     }
 
     private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
@@ -128,7 +128,7 @@ struct TodayReviewPresenter: View {
     }
 
     private func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             HStack(spacing: 6) {
                 if let pos = card.partOfSpeech {
                     Text(pos)
@@ -138,7 +138,7 @@ struct TodayReviewPresenter: View {
                 Spacer()
             }
 
-            Spacer(minLength: 18)
+            Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
 
             switch card.reviewMode {
             case .recognition:
@@ -170,7 +170,7 @@ struct TodayReviewPresenter: View {
                 .lineSpacing(4)
             }
 
-            Spacer(minLength: 10)
+            Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
         }
         .padding(reviewCardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -185,7 +185,7 @@ struct TodayReviewPresenter: View {
                         if !state.revealStage.showsAnswer {
                             foldExpandHint(title: "查看答案")
                                 .padding(.horizontal, reviewCardPadding)
-                                .padding(.bottom, 18)
+                                .padding(.bottom, vocabSkin.metrics.reviewFoldHintBottomInset)
                         }
                     }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
@@ -219,7 +219,7 @@ struct TodayReviewPresenter: View {
 
     private var bottomToolbar: some View {
         HStack(spacing: 0) {
-            HStack(spacing: AppMetrics.spacingSmall) {
+            HStack(spacing: vocabSkin.spacing.inlineGap) {
                 Button(action: onPrevious) {
                     Image(systemName: "chevron.left")
                         .font(vocabSkin.typography.iconNavigation)
@@ -237,24 +237,24 @@ struct TodayReviewPresenter: View {
             Spacer()
 
             if state.revealStage.showsAnswer {
-                HStack(spacing: 10) {
+                HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
                     Button(action: onForgot) {
                         Label("忘記", systemImage: "xmark")
-                            .frame(minWidth: 92)
+                            .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
                     }
                     .buttonStyle(.vocabAction(.destructive))
 
                     Button(action: onRemembered) {
                         Label("記得", systemImage: "checkmark")
-                            .frame(minWidth: 92)
+                            .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
                     }
                     .buttonStyle(.vocabAction(.success))
                 }
                 .transition(.opacity)
             }
         }
-        .padding(.horizontal, 20)
-        .padding(.vertical, 12)
+        .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
+        .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
@@ -279,13 +279,13 @@ struct TodayReviewPresenter: View {
     }
 
     private func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {
-        HStack(alignment: .top, spacing: 8) {
+        HStack(alignment: .top, spacing: vocabSkin.spacing.inlineGap) {
             Image(systemName: "paperclip")
                 .font(vocabSkin.typography.iconTiny)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .padding(.top, 2)
 
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
                     HStack(spacing: 4) {
                         Text(group.label.localized + "：")
@@ -322,11 +322,11 @@ struct TodayReviewPresenter: View {
     }
 
     private var reviewCardPadding: CGFloat {
-        24
+        vocabSkin.metrics.reviewFoldPadding
     }
 
     private var frontCardHeight: CGFloat {
-        208
+        vocabSkin.metrics.reviewFrontMinHeight
     }
 
     private var answerCardHeight: CGFloat {
@@ -355,7 +355,7 @@ struct TodayReviewPresenter: View {
     }
 
     private func answerFoldContent(_ card: CardPresentation, showsExpandHint: Bool) -> some View {
-        VStack(alignment: .leading, spacing: 14) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             HStack(spacing: 6) {
                 Spacer()
                 if let tier = card.difficultyTier {
@@ -363,7 +363,7 @@ struct TodayReviewPresenter: View {
                 }
             }
 
-            Spacer(minLength: 18)
+            Spacer(minLength: vocabSkin.metrics.reviewFoldHintTopInset)
 
             Group {
                 if card.reviewMode == .production {
@@ -395,7 +395,7 @@ struct TodayReviewPresenter: View {
                 foldExpandHint(title: "查看細節")
                     .padding(.leading, reviewCardPadding)
                     .padding(.trailing, reviewCardPadding + 40)
-                    .padding(.bottom, 18)
+                    .padding(.bottom, vocabSkin.metrics.reviewFoldHintBottomInset)
             }
         }
     }
@@ -403,7 +403,7 @@ struct TodayReviewPresenter: View {
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         let card = currentCard.card
         return foldSurface(position: .bottom) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
                 HStack {
                     Spacer()
                     foldChevronButton(action: onCollapseReveal)
@@ -417,7 +417,7 @@ struct TodayReviewPresenter: View {
                 }
             }
             .padding(.horizontal, reviewCardPadding)
-            .padding(.top, 12)
+            .padding(.top, vocabSkin.metrics.reviewToolbarVerticalInset)
             .padding(.bottom, reviewCardPadding)
         }
     }
@@ -432,10 +432,10 @@ struct TodayReviewPresenter: View {
             .overlay(foldShape(for: position).stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1))
             .overlay(alignment: .top) {
                 if position != .top && position != .single {
-                    Rectangle()
-                        .fill(vocabSkin.palette.divider.opacity(0.85))
-                        .frame(height: 0.5)
-                        .padding(.horizontal, 18)
+                        Rectangle()
+                            .fill(vocabSkin.palette.divider.opacity(0.85))
+                            .frame(height: 0.5)
+                            .padding(.horizontal, vocabSkin.spacing.cardPadding)
                 }
             }
             .shadow(color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : 0.7), radius: 6, y: 2)
@@ -486,7 +486,7 @@ struct TodayReviewPresenter: View {
             Image(systemName: "chevron.up")
                 .font(vocabSkin.typography.iconTiny.weight(.bold))
                 .foregroundStyle(vocabSkin.palette.secondaryText)
-                .frame(width: 30, height: 30)
+                .frame(width: vocabSkin.metrics.reviewChevronButtonSize, height: vocabSkin.metrics.reviewChevronButtonSize)
                 .background(
                     Circle()
                         .fill(vocabSkin.palette.mutedFill.opacity(0.96))
@@ -504,7 +504,7 @@ struct TodayReviewPresenter: View {
         VStack(spacing: 8) {
             Capsule(style: .continuous)
                 .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
-                .frame(width: 42, height: 4)
+                .frame(width: vocabSkin.metrics.reviewHintCapsuleWidth, height: 4)
 
             Text(title)
                 .font(vocabSkin.typography.caption)
