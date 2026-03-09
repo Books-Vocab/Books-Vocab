@@ -67,16 +67,10 @@ struct SettingsPresenter: View {
             VStack(spacing: 0) {
                 if state.auth.isLoggedIn {
                     loggedInView
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.97).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                        .transition(.modalSwap)
                 } else {
                     loginView
-                        .transition(.asymmetric(
-                            insertion: .scale(scale: 0.97).combined(with: .opacity),
-                            removal: .opacity
-                        ))
+                        .transition(.modalSwap)
                 }
             }
             .settingsCard()
@@ -271,7 +265,7 @@ struct SettingsPresenter: View {
                             .font(vocabSkin.typography.monoLabel)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.statusRowReveal)
 
                     if let lastSyncDescription = kg.lastSyncDescription {
                         SettingsDivider()
@@ -281,7 +275,7 @@ struct SettingsPresenter: View {
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
-                        .transition(.move(edge: .top).combined(with: .opacity))
+                        .transition(.statusRowReveal)
                     }
                 }
 

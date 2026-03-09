@@ -306,7 +306,7 @@ struct AppTabSelector<ID: Hashable>: View {
         HStack(spacing: 8) {
             ForEach(options) { option in
                 Button {
-                    withAnimation(.easeOut(duration: 0.18)) {
+                    withAnimation(AppMotion.chipSelectionEaseOut) {
                         selection = option.id
                     }
                 } label: {
@@ -508,7 +508,7 @@ struct AppActionButtonStyle: ButtonStyle {
             )
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.992 : 1)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+            .animation(AppMotion.controlEaseOut, value: configuration.isPressed)
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
