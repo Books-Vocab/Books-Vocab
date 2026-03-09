@@ -51,9 +51,9 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 1. **上傳刪除 (Upload Deletes)**
    App 找出所有 `actionType == "delete"` 的項目，呼叫 API 請 KG 後端刪除該單字。成功後，把這筆紀錄從手機徹底刪除。
 2. **上傳新增 (Upload Adds)**
-   App 找出所有 `syncStatus == 0` 的項目，這些是剛在書本裡查到的新單字。呼叫 API 送去 KG，成功後 KG 會開始它漫長的 Pipeline (AI Enrichment -> Mochi Sync)。
+   App 找出所有 `syncStatus == 0` 的項目，這些是剛在書本裡查到的新單字。呼叫 API 送去 KG，成功後 KG 會開始背景 Pipeline（AI Enrichment -> Link -> Difficulty -> Optional External Sync）。
 3. **觸發 AI 處理 (Fire-and-Forget)**
-   呼叫 `/api/pipeline` 交由伺服器在背景 (`BackgroundTasks`) 處理 (AI Enrichment -> Mochi Sync)，App 收回控制權準備進入第四步。（註：目前已移除 SSE 介面全時監聽）
+   呼叫 `/api/pipeline` 交由伺服器在背景 (`BackgroundTasks`) 處理（AI Enrichment -> Link -> Difficulty -> Optional External Sync），App 收回控制權準備進入第四步。（註：目前已移除 SSE 介面全時監聽）
 4. **下載遠端知識庫 (Pull & Merge)**
    這也是最關鍵的最後一步！當遠端處理完畢後，執行 `pullCardsToLocal`：
    - 帶上本地儲存的 `kg_last_incremental_sync` 時間戳記，發起 `api/vocab` 將遠端伺服器 *異動過* 的 KGCard 抓下來（**增量同步 Incremental Sync**）。

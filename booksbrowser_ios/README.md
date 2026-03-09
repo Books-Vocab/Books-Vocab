@@ -33,7 +33,7 @@
 - 與自架的 **Knowledge Graph (KG) FastAPI 伺服器**雙向同步生詞
 - **沙盒隔離**：支援多設備、多使用者，依據自訂 User ID 將資料完全隔離
 - **上傳**：待同步生詞推送至 KG（含新增與刪除操作）。
-- **觸發背景處理**：呼叫 `/api/pipeline` 交由伺服器在背景執行（AI Enrichment → Difficulty Tier 標記 → Mochi 卡片同步），App 即刻返回。
+- **觸發背景處理**：呼叫 `/api/pipeline` 交由伺服器在背景執行（AI Enrichment → Difficulty Tier 標記 → 可選第三方整合），App 即刻返回。
 - **增量下載合併 (Incremental Sync)**：App 從 KG 拉取**異動過**的最新卡片，透過背景 SwiftData Context 安全地覆寫本地翻譯、詞性、難易度。
 - **孤兒清理**：遠端已物理刪除的卡片，本地在全量同步時會自動移除，保持雙向一致
 
@@ -100,7 +100,7 @@ BooksBrowser/
 | Gemini API (`gemini-flash-lite-latest`) | 雲端 AI 翻譯（低 Token 成本）|
 | Apple FoundationModels (iOS 26+) | 端側 Apple Intelligence 翻譯 |
 | [Free Dictionary API](https://dictionaryapi.dev/) | IPA 音標（免費，零 Token）|
-| KG FastAPI Server（自架） | 知識圖譜、Mochi 同步後端 |
+| KG FastAPI Server（自架） | 知識圖譜、雲端同步與背景處理後端 |
 
 ---
 

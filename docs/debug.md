@@ -129,7 +129,7 @@ Step 1 Enrich → Gemini API key 無效/額度用完
 Step 2 Link → candidates.json 格式問題
   → ./devops.sh run "cat ~/knowledge_graph_api/data/users/<id>/candidates.json"
 
-Step 4 Mochi → Mochi API key 無效
+Step 4 Optional External Sync → Mochi API key 無效或未設定
   → ./devops.sh users
 ```
 
@@ -138,7 +138,7 @@ Step 4 Mochi → Mochi API key 無效
 ## 用戶管理
 
 ```bash
-./devops.sh users                    # 列出所有用戶及 Mochi 設定
+./devops.sh users                    # 列出所有用戶及可選第三方整合設定
 ./devops.sh user-info <user_id>      # 用戶單字統計
 ./devops.sh delete-user <user_id> --yes  # 刪除帳號 + 所有資料（不可恢復）
 ```

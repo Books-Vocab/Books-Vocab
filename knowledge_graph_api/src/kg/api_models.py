@@ -91,12 +91,22 @@ class AuthVerifyResponse(BaseModel):
     expires_in: int  # seconds
 
 
+class MochiIntegrationConfig(BaseModel):
+    api_key: str | None = None
+
+
+class UserIntegrationsConfig(BaseModel):
+    mochi: MochiIntegrationConfig | None = None
+
+
 class UserConfigRequest(BaseModel):
     mochi_api_key: str | None = None
+    integrations: UserIntegrationsConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
     mochi_api_key: str | None = None
+    integrations: UserIntegrationsConfig | None = None
 
 
 class SubscriptionStatusResponse(BaseModel):

@@ -44,7 +44,7 @@ Use this section as the "what already exists" checklist before proposing or chan
   - user config and account lifecycle APIs (including delete account)
   - vocabulary lifecycle APIs and graph-link APIs
   - translate/explain APIs and pipeline processing APIs
-  - card/graph/embedding/difficulty/enrichment/mochi integration modules
+  - card/graph/embedding/difficulty/enrichment and optional Mochi integration modules
   - static policy/support page serving (`privacy.html`, `support.html`)
 
 - Admin and internal tooling surface:

@@ -1,6 +1,6 @@
 # Knowledge Graph (Vocab) Backend — FastAPI 服務
 
-這是一個以 SQLite + Mochi 卡片盒為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、火速背景 Pipeline、以及增量同步機制。
+這是一個以 SQLite 為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、背景 Pipeline、增量同步機制，以及可選的 Mochi legacy 整合。
 
 ## Backend Layout
 
@@ -9,9 +9,10 @@
 - `src/kg/*_service.py`: translate / auth / vocab / pipeline / billing 等業務邏輯
 - `tests/test_api_module_compat.py`、`tests/test_api_startup_smoke.py`、`tests/test_route_registration.py`: 重構遷移的 guardrails
 
-Mochi 整合目前採用使用者層設定：
+Mochi 整合目前採用使用者層設定，且已降級為 optional / legacy integration：
 
-- 權威來源是 `users.json -> <user_id> -> config -> mochi_api_key`
+- 權威來源是 `users.json -> <user_id> -> config -> integrations -> mochi -> api_key`
+- 相容欄位仍保留 `config.mochi_api_key`
 - iOS app 透過 `/api/user/config` 讀寫
 - 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
 
@@ -73,7 +74,7 @@ data/users/
 
 `/api/pipeline` 採用 **Fire-and-Forget** 模式：
 - 呼叫後**立即回傳** `{"status": "queued"}`
-- 伺服器在背景獨立處理四步 Pipeline（Enrich → Link → Difficulty → Mochi Sync）
+- 伺服器在背景獨立處理四步 Pipeline（Enrich → Link → Difficulty → Optional External Sync）
 - 每個用戶有專屬的 `asyncio.Lock` 確保同時只有一個 Pipeline 在執行，避免競態
 
 ## 資料庫架構 (SQLite 遷移)
@@ -107,7 +108,7 @@ class Card(SQLModel, table=True):
     updated_at: datetime  # 用於增量同步
 ```
 
-## Mochi Integration (核心架構)
+## Mochi Integration (Optional / Legacy)
 
 Mochi 的卡片並非單純的 Markdown 渲染器，它有一套獨特的**雙重內容模型 (Dual Content Model)**，這是官方文檔較少提及但至關重要的部分。
 

@@ -68,6 +68,11 @@ def main():
 
     if mochi_key:
         users[apple_id]["config"]["mochi_api_key"] = mochi_key
+        users[apple_id]["config"]["integrations"] = {
+            "mochi": {
+                "api_key": mochi_key
+            }
+        }
         print("   Mochi API Key linked to your Apple ID.")
         
     with open(users_file, "w") as f:
