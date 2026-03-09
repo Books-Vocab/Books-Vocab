@@ -167,12 +167,8 @@ struct TodayReviewPresenter: View {
             Spacer(minLength: 10)
         }
         .padding(reviewCardPadding)
-        .frame(
-            maxWidth: .infinity,
-            minHeight: frontCardHeight,
-            maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
-            alignment: .topLeading
-        )
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: frontCardHeight, alignment: .topLeading)
     }
 
     private func frontFoldSurface(_ card: CardPresentation) -> some View {
@@ -186,20 +182,12 @@ struct TodayReviewPresenter: View {
                                 .padding(.bottom, 18)
                         }
                     }
-                    .frame(
-                        maxWidth: .infinity,
-                        minHeight: frontCardHeight,
-                        maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
-                        alignment: .topLeading
-                    )
+                    .frame(maxWidth: .infinity, alignment: .topLeading)
+                    .frame(height: frontCardHeight, alignment: .topLeading)
             }
             .buttonStyle(.plain)
-            .frame(
-                maxWidth: .infinity,
-                minHeight: frontCardHeight,
-                maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
-                alignment: .topLeading
-            )
+            .frame(maxWidth: .infinity, alignment: .topLeading)
+            .frame(height: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer)
         }
@@ -317,6 +305,10 @@ struct TodayReviewPresenter: View {
         208
     }
 
+    private var answerCardHeight: CGFloat {
+        188
+    }
+
     private func answerFoldSurface(_ card: CardPresentation) -> some View {
         foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
             ZStack(alignment: .topTrailing) {
@@ -373,17 +365,20 @@ struct TodayReviewPresenter: View {
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
 
-            if showsExpandHint {
-                Spacer(minLength: 0)
-                foldExpandHint(title: "查看細節")
-                    .padding(.top, 18)
-            }
-
             Spacer(minLength: 0)
         }
         .padding(reviewCardPadding)
         .padding(.trailing, showsExpandHint ? 40 : 0)
-        .frame(maxWidth: .infinity, minHeight: 188, alignment: .topLeading)
+        .frame(maxWidth: .infinity, alignment: .topLeading)
+        .frame(height: answerCardHeight, alignment: .topLeading)
+        .overlay(alignment: .bottom) {
+            if showsExpandHint {
+                foldExpandHint(title: "查看細節")
+                    .padding(.leading, reviewCardPadding)
+                    .padding(.trailing, reviewCardPadding + 40)
+                    .padding(.bottom, 18)
+            }
+        }
     }
 
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
