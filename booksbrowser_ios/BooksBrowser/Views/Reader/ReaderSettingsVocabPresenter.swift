@@ -445,14 +445,7 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private func themeSwatchColor(_ theme: ReaderTheme) -> Color {
-        switch theme {
-        case .light:
-            return Color(red: 0.90, green: 0.90, blue: 0.88)
-        case .sepia:
-            return Color(red: 0.82, green: 0.73, blue: 0.58)
-        case .dark:
-            return Color(red: 0.34, green: 0.35, blue: 0.38)
-        }
+        vocabSkin.readerThemeSwatchColor(theme)
     }
 
     private func highlightPreviewColor(for value: Double) -> Color {

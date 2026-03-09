@@ -69,13 +69,13 @@ enum KnowledgeGraphPresentation {
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [
                 "core": cssHex(skin.palette.success),
-                "intermediate": cssHex(skin.tierColor(for: "intermediate")),
-                "advanced": cssHex(skin.tierColor(for: "advanced")),
+                "intermediate": cssHex(skin.palette.tierIntermediate),
+                "advanced": cssHex(skin.palette.tierAdvanced),
                 "rare": cssHex(skin.palette.destructive),
                 "unknown": cssHex(skin.palette.secondaryText)
             ],
             edgeHexes: [
-                "confusable": cssHex(skin.tierColor(for: "advanced")),
+                "confusable": cssHex(skin.palette.tierAdvanced),
                 "contrasts_with": cssHex(skin.palette.link),
                 "shares_usage": cssHex(skin.palette.success)
             ],
