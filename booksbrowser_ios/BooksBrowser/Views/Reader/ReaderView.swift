@@ -294,7 +294,7 @@ struct ReaderView: View {
 
     private func handleLocationChange(_ locator: Locator) {
         if !isWebViewReady {
-            withAnimation(.easeOut(duration: 0.3)) { isWebViewReady = true }
+            withAnimation(AppMotion.loadingState) { isWebViewReady = true }
         }
         currentLocator = locator
         totalProgression = locator.locations.totalProgression ?? 0
@@ -325,12 +325,12 @@ struct ReaderView: View {
 
     private func handleMarkingProgress(_ progress: Double) {
         guard !hasCompletedInitialMarking else { return }
-        withAnimation(.linear(duration: 0.1)) {
+        withAnimation(AppMotion.progressLinear) {
             underlineProgress = progress
         }
         if progress >= 1.0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(.easeOut(duration: 0.3)) {
+                withAnimation(AppMotion.contentFade) {
                     underlineProgress = nil
                 }
                 hasCompletedInitialMarking = true
@@ -339,20 +339,20 @@ struct ReaderView: View {
     }
 
     private func showReaderSettingsPanel() {
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             chromeState.overlay = .settings
             chromeState.header = .compact
         }
     }
 
     private func expandHeader() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(AppMotion.headerState) {
             chromeState.header = .expanded
         }
     }
 
     private func collapseHeader() {
-        withAnimation(.spring(response: 0.4, dampingFraction: 0.8)) {
+        withAnimation(AppMotion.headerState) {
             chromeState.header = .compact
         }
     }
@@ -369,7 +369,7 @@ struct ReaderView: View {
             handler.dismiss()
             closeOverlay(.translation)
         } else if chromeState.overlay == .settings {
-            withAnimation(.spring(response: 0.3)) {
+            withAnimation(AppMotion.panelState) {
                 closeOverlay(.settings)
             }
             handler.clearHighlightTrigger = UUID()

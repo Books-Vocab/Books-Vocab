@@ -140,7 +140,7 @@ struct TodayReviewPresenter: View {
                     .transition(.paperFoldFromTop)
             }
         }
-        .animation(AppMotion.relaxedSpring, value: state.revealStage)
+        .animation(AppMotion.reviewRevealSpring, value: state.revealStage)
     }
 
     private func reviewCardFront(_ card: CardPresentation) -> some View {
@@ -263,7 +263,7 @@ struct TodayReviewPresenter: View {
                     }
                     .buttonStyle(.vocabAction(.success))
                 }
-                .transition(.opacity)
+                .transition(.overlayFade)
             }
         }
         .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)

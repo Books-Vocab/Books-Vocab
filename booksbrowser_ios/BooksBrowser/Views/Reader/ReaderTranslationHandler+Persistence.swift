@@ -11,7 +11,7 @@ extension ReaderTranslationHandler {
     }
 
     func dismiss() {
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             wordSelection = nil
             translationResult = nil
             pronunciation = nil
@@ -30,7 +30,7 @@ extension ReaderTranslationHandler {
     ) {
         if context.existingEntry(matching: selection.word) != nil {
             appendLookedUpWordIfNeeded(selection.word)
-            withAnimation { isSaved = true }
+            withAnimation(AppMotion.feedbackPulse) { isSaved = true }
             return
         }
 
@@ -44,7 +44,7 @@ extension ReaderTranslationHandler {
             print("✅ Auto-saved: \(selection.word)")
         }
         appendLookedUpWordIfNeeded(selection.word)
-        withAnimation { isSaved = true }
+        withAnimation(AppMotion.feedbackPulse) { isSaved = true }
     }
 
     func guestSaveToVocabulary(
@@ -54,7 +54,7 @@ extension ReaderTranslationHandler {
     ) {
         if context.existingEntry(matching: selection.word) != nil {
             appendLookedUpWordIfNeeded(selection.word)
-            withAnimation { isSaved = true }
+            withAnimation(AppMotion.feedbackPulse) { isSaved = true }
             return
         }
 
@@ -67,7 +67,7 @@ extension ReaderTranslationHandler {
             print("✅ Guest saved: \(selection.word)")
         }
         appendLookedUpWordIfNeeded(selection.word)
-        withAnimation { isSaved = true }
+        withAnimation(AppMotion.feedbackPulse) { isSaved = true }
     }
 
     func normalizeWord(_ word: String) -> String {

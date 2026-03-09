@@ -102,7 +102,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                                     .font(vocabSkin.typography.body.weight(.semibold))
                                     .foregroundStyle(vocabSkin.palette.primaryText)
                                     .contentTransition(.numericText())
-                                    .animation(.default, value: state.loadingPhase)
+                                    .animation(AppMotion.loadingState, value: state.loadingPhase)
                             }
                             .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
                             .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)
@@ -121,7 +121,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                                 .fontWeight(.medium)
                                 .foregroundStyle(.primary)
                                 .contentTransition(.numericText())
-                                .animation(.default, value: state.loadingPhase)
+                                .animation(AppMotion.loadingState, value: state.loadingPhase)
                         }
                         .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
                         .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)
@@ -201,7 +201,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
             Spacer()
         }
         .allowsHitTesting(false)
-        .transition(.opacity)
+        .transition(.overlayFade)
     }
 
     private var bottomOverlay: some View {
@@ -311,7 +311,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         )
         .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
-        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+        .transition(.headerSwap)
     }
 
     private var glassCompactHeader: some View {
@@ -346,7 +346,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
             }
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
-        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+        .transition(.headerSwap)
     }
 
     private var vocabExpandedHeader: some View {
@@ -385,7 +385,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         }
         .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
-        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+        .transition(.headerSwap)
     }
 
     private var vocabCompactHeader: some View {
@@ -416,7 +416,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
-        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+        .transition(.headerSwap)
     }
 }
 

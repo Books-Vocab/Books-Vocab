@@ -220,7 +220,7 @@ struct TranslationVocabPresenter: View {
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.success)
                     .symbolEffect(.bounce, value: state.isSaved)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .transition(.feedbackBadge)
             }
 
             if let timerValue {

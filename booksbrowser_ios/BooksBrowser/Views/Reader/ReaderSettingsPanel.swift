@@ -69,13 +69,13 @@ struct ReaderSettingsPanel: View {
     }
 
     private func selectTheme(_ theme: ReaderTheme) {
-        withAnimation(AppMotion.standardSpring) {
+        withAnimation(AppMotion.panelState) {
             settings.theme = theme
         }
     }
 
     private func selectUnderlineOpacity(_ value: Double) {
-        withAnimation(AppMotion.standardSpring) {
+        withAnimation(AppMotion.panelState) {
             settings.underlineOpacity = value
         }
     }

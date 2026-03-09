@@ -19,7 +19,7 @@ struct LinkedCardOverlayStack: View {
                         .allowsHitTesting(index == stack.count - 1)
                 }
             }
-            .transition(.opacity)
+            .transition(.overlayFade)
         }
     }
 
@@ -57,7 +57,7 @@ struct LinkedCardOverlayStack: View {
         .padding(.vertical, AppMetrics.spacingExtraLarge + CGFloat(index * 8))
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
         .offset(x: CGFloat(index * 8), y: CGFloat(index * 10))
-        .transition(.scale(scale: 0.96).combined(with: .opacity))
+        .transition(.linkedOverlayCard)
     }
 
     private func close(from index: Int) {
