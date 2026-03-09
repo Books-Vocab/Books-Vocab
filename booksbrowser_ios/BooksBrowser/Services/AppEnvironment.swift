@@ -18,10 +18,20 @@ private struct BookFileManagerEnvironmentKey: EnvironmentKey {
     static let defaultValue: any BookFileManaging = LocalBookFileManager()
 }
 
+private struct SubscriptionManagerEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any SubscriptionManaging = MainActor.assumeIsolated {
+        SubscriptionManager.shared
+    }
+}
+
 extension EnvironmentValues {
     @Entry var authManager: any AuthManaging = AuthManager.shared
     @Entry var kgService: any KGServing = KGService()
-    @Entry var subscriptionManager: any SubscriptionManaging = SubscriptionManager.shared
+
+    var subscriptionManager: any SubscriptionManaging {
+        get { self[SubscriptionManagerEnvironmentKey.self] }
+        set { self[SubscriptionManagerEnvironmentKey.self] = newValue }
+    }
 
     var readiumService: any ReadiumServing {
         get { self[ReadiumServiceEnvironmentKey.self] }
