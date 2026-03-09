@@ -217,7 +217,7 @@ struct SyncPresenter: View {
         case .error:
             return vocabSkin.palette.destructive
         case .retry:
-            return vocabSkin.tierColor(for: "intermediate")
+            return vocabSkin.palette.retry
         default:
             return vocabSkin.palette.secondaryText
         }
@@ -235,7 +235,7 @@ struct SyncPresenter: View {
         case .retry:
             Image(systemName: "arrow.triangle.2.circlepath")
                 .symbolEffect(.scale.up, options: .repeating)
-                .foregroundStyle(vocabSkin.tierColor(for: "intermediate"))
+                .foregroundStyle(vocabSkin.palette.retry)
         case .done:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(vocabSkin.palette.success)
@@ -264,7 +264,7 @@ struct StepDurationView: View {
                 TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
                     Text(formatDuration(timeline.date.timeIntervalSince(start)))
                         .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(step.status == .retry ? vocabSkin.tierColor(for: "intermediate") : vocabSkin.palette.secondaryText)
+                        .foregroundStyle(step.status == .retry ? vocabSkin.palette.retry : vocabSkin.palette.secondaryText)
                 }
             }
         }

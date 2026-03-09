@@ -7,7 +7,7 @@ struct LinkedCardOverlayStack: View {
     var body: some View {
         if !stack.isEmpty {
             ZStack {
-                vocabSkin.palette.primaryText.opacity(0.10)
+                vocabSkin.palette.overlayScrim
                     .ignoresSafeArea()
                     .onTapGesture {
                         _ = stack.popLast()

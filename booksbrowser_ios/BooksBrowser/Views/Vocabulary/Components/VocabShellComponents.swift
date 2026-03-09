@@ -462,7 +462,7 @@ struct VocabActionButtonStyle: ButtonStyle {
                 vocabSkin.palette.success.opacity(0.22)
             )
         case .warning:
-            let warning = vocabSkin.tierColor(for: "intermediate")
+            let warning = vocabSkin.palette.warning
             return (
                 warning,
                 warning.opacity(0.12),
