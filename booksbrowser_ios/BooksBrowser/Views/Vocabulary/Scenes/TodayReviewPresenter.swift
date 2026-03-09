@@ -173,18 +173,32 @@ struct TodayReviewPresenter: View {
             Spacer(minLength: 10)
         }
         .padding(reviewCardPadding)
-        .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
-        .frame(minHeight: frontCardHeight)
+        .frame(
+            maxWidth: .infinity,
+            minHeight: frontCardHeight,
+            maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
+            alignment: .topLeading
+        )
     }
 
     private func frontFoldSurface(_ card: CardPresentation) -> some View {
         foldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
-                    .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
+                    .frame(
+                        maxWidth: .infinity,
+                        minHeight: frontCardHeight,
+                        maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
+                        alignment: .topLeading
+                    )
             }
             .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, minHeight: frontCardHeight, alignment: .topLeading)
+            .frame(
+                maxWidth: .infinity,
+                minHeight: frontCardHeight,
+                maxHeight: state.revealStage.showsAnswer ? nil : frontCardHeight,
+                alignment: .topLeading
+            )
             .contentShape(Rectangle())
         }
     }
