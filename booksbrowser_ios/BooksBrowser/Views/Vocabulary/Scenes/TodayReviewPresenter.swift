@@ -524,6 +524,144 @@ private enum FoldSegmentPosition {
     case bottom
 }
 
+private enum TodayReviewPresenterPreviewData {
+    static let baseCard = CardPresentation(
+        word: "meticulous",
+        translation: "一絲不苟的；非常仔細的",
+        pronunciation: "məˈtɪkjələs",
+        partOfSpeech: "adj.",
+        difficultyTier: "advanced",
+        reviewMode: .recognition,
+        examples: ["The editor was meticulous about every line break and caption."],
+        sourceContext: "The editor was meticulous about every line break and caption.",
+        bookTitle: "Designing Interfaces",
+        chapterTitle: "Writing Tone",
+        explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+        forms: ["meticulously", "meticulousness"],
+        syncStatus: 1,
+        dateAdded: Date(timeIntervalSince1970: 1_736_000_000),
+        linkGroups: [
+            .init(
+                id: "confusable",
+                label: "易混",
+                items: [
+                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
+                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關")
+                ]
+            )
+        ],
+        document: CardDocument(
+            blocks: [
+                .meaning(
+                    .init(
+                        title: "Meaning",
+                        paragraphs: [
+                            .init(inlines: [.text("做事"), .mark("非常仔細"), .text("，幾乎不放過任何細節。")])
+                        ]
+                    )
+                ),
+                .divider,
+                .example(
+                    .init(inlines: [.text("The editor was "), .mark("meticulous"), .text(" about every line break and caption.")])
+                ),
+                .source(
+                    .init(
+                        context: .init(inlines: [.text("The editor was meticulous about every line break and caption.")]),
+                        bookTitle: "Designing Interfaces",
+                        chapterTitle: "Writing Tone"
+                    )
+                )
+            ]
+        )
+    )
+
+    static let currentCard = TodayReviewPresenterState.CurrentCard(
+        card: baseCard,
+        linkGroups: [
+            .init(
+                id: "confusable",
+                label: "易混",
+                items: [
+                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
+                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關")
+                ],
+                overflowCount: 1
+            )
+        ]
+    )
+
+    static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
+        .init(
+            progressText: "3 / 12",
+            currentCard: currentCard,
+            revealStage: stage,
+            canShuffle: true,
+            canGoPrevious: true,
+            canGoNext: true
+        )
+    }
+
+    static let completedState = TodayReviewPresenterState(
+        progressText: "12 / 12",
+        currentCard: nil,
+        revealStage: .front,
+        canShuffle: false,
+        canGoPrevious: false,
+        canGoNext: false
+    )
+}
+
+#Preview("Today Review / Front") {
+    AppThemeContainer {
+        TodayReviewPresenter(
+            state: TodayReviewPresenterPreviewData.state(stage: .front),
+            onClose: {},
+            onAdvanceReveal: {},
+            onCollapseReveal: {},
+            onShuffle: {},
+            onPrevious: {},
+            onNext: {},
+            onForgot: {},
+            onRemembered: {},
+            onLinkTap: { _ in }
+        )
+    }
+}
+
+#Preview("Today Review / Details") {
+    AppThemeContainer {
+        TodayReviewPresenter(
+            state: TodayReviewPresenterPreviewData.state(stage: .details),
+            onClose: {},
+            onAdvanceReveal: {},
+            onCollapseReveal: {},
+            onShuffle: {},
+            onPrevious: {},
+            onNext: {},
+            onForgot: {},
+            onRemembered: {},
+            onLinkTap: { _ in }
+        )
+    }
+}
+
+#Preview("Today Review / Completed") {
+    AppThemeContainer {
+        TodayReviewPresenter(
+            state: TodayReviewPresenterPreviewData.completedState,
+            onClose: {},
+            onAdvanceReveal: {},
+            onCollapseReveal: {},
+            onShuffle: {},
+            onPrevious: {},
+            onNext: {},
+            onForgot: {},
+            onRemembered: {},
+            onLinkTap: { _ in }
+        )
+    }
+}
+
 private struct PaperFoldModifier: ViewModifier {
     let progress: CGFloat
 

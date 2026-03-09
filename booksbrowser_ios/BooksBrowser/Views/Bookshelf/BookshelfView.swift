@@ -271,3 +271,43 @@ struct BookCard: View {
         }
     }
 }
+
+private enum BookshelfPreviewData {
+    static let activeBook: Book = {
+        let book = Book(
+            title: "The Architecture of Words",
+            author: "Lena Harper",
+            epubFileName: "architecture-of-words.epub"
+        )
+        book.progression = 0.64
+        return book
+    }()
+
+    static let placeholderBook: Book = {
+        let book = Book(
+            title: "A Very Long Book Title For Empty Cover Placeholder",
+            author: "M. Rivera",
+            epubFileName: "placeholder.epub"
+        )
+        book.progression = 0.18
+        return book
+    }()
+}
+
+#Preview("Bookshelf Card / Progress") {
+    AppThemeContainer {
+        BookCard(book: BookshelfPreviewData.activeBook)
+            .padding()
+            .frame(width: 180)
+            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+    }
+}
+
+#Preview("Bookshelf Card / Placeholder") {
+    AppThemeContainer {
+        BookCard(book: BookshelfPreviewData.placeholderBook)
+            .padding()
+            .frame(width: 180)
+            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+    }
+}

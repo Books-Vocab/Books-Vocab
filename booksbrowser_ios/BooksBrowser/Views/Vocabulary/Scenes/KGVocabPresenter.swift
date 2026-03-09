@@ -93,3 +93,123 @@ struct KGVocabPresenter: View {
         .vocabCanvasBackground()
     }
 }
+
+private enum KGVocabPresenterPreviewData {
+    static let options = VocabularyReviewState.allCases.map {
+        VocabTabOption(id: $0, title: $0.title, count: count(for: $0))
+    }
+
+    static let rows: [KGVocabPresenter.State.RowItem] = [
+        .init(
+            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+            row: WordRow.ViewData(
+                id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
+                word: "meticulous",
+                wordTone: .primary,
+                isStrikethrough: false,
+                partOfSpeech: "adj.",
+                translation: "一絲不苟的；非常仔細的",
+                bookTitle: nil,
+                chapterTitle: nil,
+                difficultyTier: nil,
+                reviewProgress: .init(
+                    statusLabel: "待複習",
+                    detailLabel: "18h / 24h",
+                    fraction: 0.75,
+                    tone: .orange
+                ),
+                leadingSystemImage: nil,
+                leadingTone: nil,
+                trailingLabel: nil,
+                trailingTone: nil,
+                statusText: nil,
+                statusTone: nil
+            )
+        ),
+        .init(
+            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+            row: WordRow.ViewData(
+                id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
+                word: "nuance",
+                wordTone: .primary,
+                isStrikethrough: false,
+                partOfSpeech: "n.",
+                translation: "細微差異；語氣層次",
+                bookTitle: nil,
+                chapterTitle: nil,
+                difficultyTier: nil,
+                reviewProgress: .init(
+                    statusLabel: "已複習",
+                    detailLabel: "3d / 7d",
+                    fraction: 0.43,
+                    tone: .yellow
+                ),
+                leadingSystemImage: nil,
+                leadingTone: nil,
+                trailingLabel: nil,
+                trailingTone: nil,
+                statusText: nil,
+                statusTone: nil
+            )
+        )
+    ]
+
+    static let populatedState = KGVocabPresenter.State(
+        banner: .init(message: "2 個單字刪除待同步", canDismiss: false, canRetry: true),
+        reviewStateOptions: options,
+        rows: rows,
+        emptyState: .init(
+            title: "今天沒有到期卡片",
+            systemImage: "checkmark.seal",
+            description: "目前沒有需要處理的生字。"
+        )
+    )
+
+    static let emptyState = KGVocabPresenter.State(
+        banner: nil,
+        reviewStateOptions: options,
+        rows: [],
+        emptyState: .init(
+            title: "沒有符合的單字",
+            systemImage: "magnifyingglass",
+            description: "試試其他關鍵字，或切換到別的狀態。"
+        )
+    )
+
+    private static func count(for state: VocabularyReviewState) -> Int {
+        switch state {
+        case .unlearned:
+            return 3
+        case .due:
+            return 12
+        case .reviewed:
+            return 27
+        }
+    }
+}
+
+#Preview("KG List / Populated") {
+    AppThemeContainer {
+        KGVocabPresenter(
+            state: KGVocabPresenterPreviewData.populatedState,
+            selectedReviewState: .constant(.due),
+            onDismissBanner: {},
+            onRetryBanner: {},
+            onRowTapped: { _ in },
+            onDeleteTapped: { _ in }
+        )
+    }
+}
+
+#Preview("KG List / Empty Search") {
+    AppThemeContainer {
+        KGVocabPresenter(
+            state: KGVocabPresenterPreviewData.emptyState,
+            selectedReviewState: .constant(.reviewed),
+            onDismissBanner: nil,
+            onRetryBanner: nil,
+            onRowTapped: { _ in },
+            onDeleteTapped: { _ in }
+        )
+    }
+}
