@@ -22,8 +22,7 @@ final class KGVocabCoordinator: ObservableObject {
         modelContext: ModelContext
     ) {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
-        entry.actionType = "delete"
-        entry.syncStatus = 0
+        entry.queueDelete()
         try? modelContext.save()
     }
 

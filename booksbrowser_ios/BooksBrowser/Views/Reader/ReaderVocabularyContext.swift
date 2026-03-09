@@ -22,9 +22,8 @@ struct ReaderVocabularyContext {
     func deleteEntry(matching word: String) {
         guard let entry = existingEntry(matching: word) else { return }
 
-        if entry.syncStatus == 1 {
-            entry.actionType = "delete"
-            entry.syncStatus = 0
+        if entry.isSynced {
+            entry.queueDelete()
             print("🗑️ Queued KG delete action for: \(word)")
         } else {
             modelContext.delete(entry)

@@ -8,6 +8,18 @@
 import Foundation
 import SwiftData
 
+enum VocabularySyncState: Int, Codable {
+    case pending = 0
+    case synced = 1
+    case failed = 2
+}
+
+enum VocabularySyncAction: String, Codable {
+    case add
+    case delete
+    case edit
+}
+
 /// 生詞條目 — 記錄使用者在閱讀中查詢的單字/短語
 @Model
 final class VocabularyEntry {
@@ -47,8 +59,18 @@ final class VocabularyEntry {
     var book: Book?
 
     /// Sync status convenience
-    var isSynced: Bool { syncStatus == 1 }
-    var isPending: Bool { syncStatus == 0 }
+    var syncState: VocabularySyncState {
+        get { VocabularySyncState(rawValue: syncStatus) ?? .pending }
+        set { syncStatus = newValue.rawValue }
+    }
+
+    var syncAction: VocabularySyncAction {
+        get { VocabularySyncAction(rawValue: actionType) ?? .add }
+        set { actionType = newValue.rawValue }
+    }
+
+    var isSynced: Bool { syncState == .synced }
+    var isPending: Bool { syncState == .pending }
 
     init(
         word: String,
@@ -74,6 +96,21 @@ final class VocabularyEntry {
 }
 
 extension VocabularyEntry {
+    func queueDelete() {
+        syncAction = .delete
+        syncState = .pending
+    }
+
+    func restorePendingEntry() {
+        syncAction = .add
+        syncState = .pending
+    }
+
+    func markSynced() {
+        syncAction = .add
+        syncState = .synced
+    }
+
     var reviewMode: VocabularyCardMode {
         get { VocabularyCardMode(rawValue: reviewModeRaw) ?? .recognition }
         set { reviewModeRaw = newValue.rawValue }

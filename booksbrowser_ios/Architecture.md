@@ -20,6 +20,10 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 閱讀器中所有的生詞、以及知識庫中所有的卡片，在手機端都統一對應到同一個 SwiftData Model: `VocabularyEntry`。
 我們透過 `syncStatus` 與 `actionType` 這兩個欄位來控制單字的狀態與流向。
 
+- `syncStatus` 已由 `VocabularySyncState` 封裝：`pending` / `synced` / `failed`
+- `actionType` 已由 `VocabularySyncAction` 封裝：`add` / `delete` / `edit`
+- 實際持久化仍保留原始欄位，避免 SwiftData migration 成本，但業務邏輯應優先走 typed helper，如 `queueDelete()`、`markSynced()`
+
 | `syncStatus` | `actionType` | 含義 | 在哪裡顯示？ |
 |-------------|--------------|------|-------------|
 | 0 | `"add"` (預設) | **待收錄**：在手機新增，但尚未上傳至 KG 伺服器 | `VocabularyListView` 頁籤「待收錄」清單、`SyncView` 的上傳階段 |
@@ -53,7 +57,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 2. **上傳新增 (Upload Adds)**
    App 找出所有 `syncStatus == 0` 的項目，這些是剛在書本裡查到的新單字。呼叫 API 送去 KG，成功後 KG 會開始背景 Pipeline（AI Enrichment -> Link -> Difficulty -> Optional External Sync）。
 3. **觸發 AI 處理 (Fire-and-Forget)**
-   呼叫 `/api/pipeline` 交由伺服器在背景 (`BackgroundTasks`) 處理（AI Enrichment -> Link -> Difficulty -> Optional External Sync），App 收回控制權準備進入第四步。（註：目前已移除 SSE 介面全時監聽）
+   呼叫 `/api/pipeline` 交由伺服器在背景 (`BackgroundTasks`) 處理（AI Enrichment -> Link -> Difficulty -> Optional External Sync），App 收回控制權準備進入第四步。同步頁目前只顯示本地工作流進度，不再維持 SSE 連線監看伺服器內部步驟。
 4. **下載遠端知識庫 (Pull & Merge)**
    這也是最關鍵的最後一步！當遠端處理完畢後，執行 `pullCardsToLocal`：
    - 帶上本地儲存的 `kg_last_incremental_sync` 時間戳記，發起 `api/vocab` 將遠端伺服器 *異動過* 的 KGCard 抓下來（**增量同步 Incremental Sync**）。

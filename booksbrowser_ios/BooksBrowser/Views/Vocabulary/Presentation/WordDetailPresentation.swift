@@ -42,12 +42,12 @@ enum WordDetailPresentation {
     private static func syncMetadataItem(
         for syncStatus: Int
     ) -> WordDetailPresenter.State.MetadataItem {
-        switch syncStatus {
-        case 1:
+        switch VocabularySyncState(rawValue: syncStatus) ?? .pending {
+        case .synced:
             return .init(icon: "checkmark.circle", text: L10n.string("已同步"))
-        case 2:
+        case .failed:
             return .init(icon: "exclamationmark.circle", text: L10n.string("同步失敗"))
-        default:
+        case .pending:
             return .init(icon: "clock", text: L10n.string("待同步"))
         }
     }

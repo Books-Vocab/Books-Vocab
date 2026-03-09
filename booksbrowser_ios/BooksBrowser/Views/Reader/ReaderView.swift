@@ -17,7 +17,7 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.readiumService) private var readiumService
     @Query(
-        filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
+        filter: #Predicate<VocabularyEntry> { $0.actionType != VocabularySyncAction.delete.rawValue }
     )
     private var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
 
