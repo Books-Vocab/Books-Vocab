@@ -12,8 +12,66 @@ from filelock import FileLock
 from .api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, UserConfigRequest, UserConfigResponse
 
 
+def _resolve_mochi_api_key(config: dict[str, Any]) -> str | None:
+    integrations = config.get("integrations", {})
+    if isinstance(integrations, dict):
+        mochi = integrations.get("mochi", {})
+        if isinstance(mochi, dict):
+            nested = mochi.get("api_key")
+            if isinstance(nested, str):
+                nested = nested.strip()
+                if nested:
+                    return nested
+
+    legacy = config.get("mochi_api_key")
+    if isinstance(legacy, str):
+        legacy = legacy.strip()
+        if legacy:
+            return legacy
+    return None
+
+
+def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
+    mochi_api_key = _resolve_mochi_api_key(config)
+    return UserConfigResponse(
+        mochi_api_key=mochi_api_key,
+        integrations={
+            "mochi": {
+                "api_key": mochi_api_key,
+            }
+        },
+    )
+
+
+def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
+    integrations = config.get("integrations")
+    if not isinstance(integrations, dict):
+        integrations = {}
+
+    mochi = integrations.get("mochi")
+    if not isinstance(mochi, dict):
+        mochi = {}
+
+    nested_request_key = None
+    if req.integrations and req.integrations.mochi:
+        nested_request_key = req.integrations.mochi.api_key
+
+    if req.mochi_api_key is not None:
+        resolved_key = req.mochi_api_key.strip()
+    elif nested_request_key is not None:
+        resolved_key = nested_request_key.strip()
+    else:
+        config["integrations"] = integrations
+        return
+
+    config["mochi_api_key"] = resolved_key
+    mochi["api_key"] = resolved_key
+    integrations["mochi"] = mochi
+    config["integrations"] = integrations
+
+
 def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:
-    return UserConfigResponse(mochi_api_key=user["config"].get("mochi_api_key"))
+    return _build_user_config_response(user["config"])
 
 
 def get_user_entitlements_response(
@@ -42,12 +100,11 @@ def update_user_config_response(
         if "config" not in users[user_id]:
             users[user_id]["config"] = {}
 
-        if req.mochi_api_key is not None:
-            users[user_id]["config"]["mochi_api_key"] = req.mochi_api_key.strip()
+        _merge_user_config(users[user_id]["config"], req)
 
         save_users(users)
 
-    return UserConfigResponse(mochi_api_key=users[user_id]["config"].get("mochi_api_key"))
+    return _build_user_config_response(users[user_id]["config"])
 
 
 def delete_user_account_response(

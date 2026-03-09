@@ -45,9 +45,25 @@ struct KGGraphLink: Codable, Identifiable, Equatable {
     let reason: String
 }
 
+struct KGMochiIntegrationConfig: Codable {
+    let api_key: String?
+}
+
+struct KGUserIntegrationsConfig: Codable {
+    let mochi: KGMochiIntegrationConfig?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let mochi_api_key: String?
+    let integrations: KGUserIntegrationsConfig?
+
+    init(mochi_api_key: String?, integrations: KGUserIntegrationsConfig? = nil) {
+        self.mochi_api_key = mochi_api_key
+        self.integrations = integrations ?? KGUserIntegrationsConfig(
+            mochi: KGMochiIntegrationConfig(api_key: mochi_api_key)
+        )
+    }
 }
 
 struct KGSubscriptionStatus: Codable, Equatable {
