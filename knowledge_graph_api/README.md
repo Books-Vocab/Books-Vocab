@@ -17,6 +17,8 @@ Mochi 整合目前採用使用者層設定，且已降級為 optional / legacy i
 - iOS app 透過 `/api/user/config` 讀寫
 - 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
 
+> 💡 **後端開發入口**：部署、測試、格式規範與 debug 路徑，請先看：[👉 `../docs/backend-dev.md`](../docs/backend-dev.md)
+>
 > 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../docs/architecture.md`](../docs/architecture.md)
 
 ## 快速啟動
