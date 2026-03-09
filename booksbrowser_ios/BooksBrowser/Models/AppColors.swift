@@ -74,6 +74,11 @@ enum AppColors {
     static let highlightMark = Color(hue: 45/360, saturation: 0.50, brightness: 0.95)
 }
 
+enum AppBrandColors {
+    static let googleRed = Color(red: 0.87, green: 0.19, blue: 0.19)
+    static let appleBlack = Color.black
+}
+
 // MARK: - 環境感知
 
 extension AppColors {

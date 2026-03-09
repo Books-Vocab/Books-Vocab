@@ -95,7 +95,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 state.paperColor.ignoresSafeArea()
                     .overlay {
                         AppSectionCard(style: .vocab(vocabSkin)) {
-                            VStack(spacing: 14) {
+                            VStack(spacing: ReaderPresentationMetrics.Overlay.loadingSpacing) {
                                 ProgressView()
                                     .tint(vocabSkin.palette.primaryText)
                                 Text(state.loadingPhase)
@@ -104,28 +104,31 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                                     .contentTransition(.numericText())
                                     .animation(.default, value: state.loadingPhase)
                             }
-                            .padding(.horizontal, 28)
-                            .padding(.vertical, 20)
+                            .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
+                            .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)
                         }
-                        .frame(maxWidth: 320)
-                        .padding(.horizontal, 20)
+                        .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
+                        .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
                     }
             } else {
                 state.paperColor.ignoresSafeArea()
                     .overlay {
-                        VStack(spacing: 14) {
+                        VStack(spacing: ReaderPresentationMetrics.Overlay.loadingSpacing) {
                             ProgressView()
                                 .tint(.primary)
                             Text(state.loadingPhase)
-                                .font(.subheadline)
+                                .font(ReaderGlassTypography.body)
                                 .fontWeight(.medium)
                                 .foregroundStyle(.primary)
                                 .contentTransition(.numericText())
                                 .animation(.default, value: state.loadingPhase)
                         }
-                        .padding(.horizontal, 28)
-                        .padding(.vertical, 20)
-                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                        .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
+                        .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)
+                        .glassEffect(
+                            .regular,
+                            in: .rect(cornerRadius: ReaderPresentationMetrics.Panel.cornerRadius)
+                        )
                     }
             }
         }
@@ -140,42 +143,60 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             ZStack(alignment: .leading) {
                                 Capsule()
                                     .fill(vocabSkin.palette.mutedFill)
-                                    .frame(width: 80, height: 3)
+                                    .frame(
+                                        width: ReaderPresentationMetrics.Overlay.progressBarWidth,
+                                        height: ReaderPresentationMetrics.Overlay.progressBarHeight
+                                    )
                                 Capsule()
                                     .fill(vocabSkin.palette.accent)
-                                    .frame(width: max(3, 80 * progress), height: 3)
-                                    .animation(.linear(duration: 0.1), value: progress)
+                                    .frame(
+                                        width: max(
+                                            ReaderPresentationMetrics.Overlay.progressBarHeight,
+                                            ReaderPresentationMetrics.Overlay.progressBarWidth * progress
+                                        ),
+                                        height: ReaderPresentationMetrics.Overlay.progressBarHeight
+                                    )
+                                    .animation(AppMotion.progressLinear, value: progress)
                             }
                             Text("\(Int(progress * 100))%")
                                 .font(vocabSkin.typography.monoLabel)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .frame(width: 30, alignment: .trailing)
+                                .frame(width: ReaderPresentationMetrics.Overlay.progressTextWidth, alignment: .trailing)
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 10)
+                        .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
+                        .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
                     }
                 } else {
                     HStack(spacing: 10) {
                         ZStack(alignment: .leading) {
                             Capsule()
                                 .fill(.quaternary)
-                                .frame(width: 80, height: 3)
+                                .frame(
+                                    width: ReaderPresentationMetrics.Overlay.progressBarWidth,
+                                    height: ReaderPresentationMetrics.Overlay.progressBarHeight
+                                )
                             Capsule()
                                 .fill(Color.accentColor)
-                                .frame(width: max(3, 80 * progress), height: 3)
-                                .animation(.linear(duration: 0.1), value: progress)
+                                .frame(
+                                    width: max(
+                                        ReaderPresentationMetrics.Overlay.progressBarHeight,
+                                        ReaderPresentationMetrics.Overlay.progressBarWidth * progress
+                                    ),
+                                    height: ReaderPresentationMetrics.Overlay.progressBarHeight
+                                )
+                                .animation(AppMotion.progressLinear, value: progress)
                         }
                         Text("\(Int(progress * 100))%")
-                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .font(ReaderGlassTypography.progressText)
                             .foregroundStyle(.secondary)
-                            .frame(width: 30, alignment: .trailing)
+                            .frame(width: ReaderPresentationMetrics.Overlay.progressTextWidth, alignment: .trailing)
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 10)
+                    .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
+                    .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
                     .glassEffect(.regular, in: .capsule)
                 }
             }
-            .padding(.top, 8)
+            .padding(.top, ReaderPresentationMetrics.Overlay.topInset)
 
             Spacer()
         }
@@ -190,11 +211,11 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
             if state.chrome.overlay == .translation {
                 translationPanel
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
             } else if state.chrome.overlay == .settings && state.panelMode == .vocab {
                 settingsPanel
                     .padding(.horizontal)
-                    .padding(.bottom, 8)
+                    .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
             }
         }
     }
@@ -224,86 +245,107 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 Button(action: onDismiss) {
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
-                            .font(.system(size: 15, weight: .semibold))
+                            .font(ReaderGlassTypography.headerBackIcon)
                         Text("書庫")
-                            .font(.system(size: 15))
+                            .font(ReaderGlassTypography.headerBackLabel)
                     }
                     .foregroundStyle(.primary)
-                    .padding(.leading, 4)
+                    .padding(.leading, ReaderPresentationMetrics.Header.trailingInset)
                 }
 
                 Spacer()
 
                 Text(state.bookTitle)
-                    .font(.caption)
-                    .fontWeight(.medium)
+                    .font(ReaderGlassTypography.headerTitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .frame(maxWidth: 160)
+                    .frame(maxWidth: ReaderPresentationMetrics.Header.titleMaxWidth)
 
                 Spacer()
 
                 HStack(spacing: 2) {
                     Button(action: onShowTableOfContents) {
                         Image(systemName: "list.bullet")
-                            .font(.system(size: 15))
+                            .font(ReaderGlassTypography.headerAction)
                             .foregroundStyle(.primary)
-                            .frame(width: 34, height: 34)
+                            .frame(
+                                width: ReaderPresentationMetrics.Header.buttonSize,
+                                height: ReaderPresentationMetrics.Header.buttonSize
+                            )
                             .contentShape(Rectangle())
                     }
 
                     Button(action: onShowReaderSettings) {
                         Image(systemName: "textformat.size")
-                            .font(.system(size: 15))
+                            .font(ReaderGlassTypography.headerAction)
                             .foregroundStyle(.primary)
-                            .frame(width: 34, height: 34)
+                            .frame(
+                                width: ReaderPresentationMetrics.Header.buttonSize,
+                                height: ReaderPresentationMetrics.Header.buttonSize
+                            )
                             .contentShape(Rectangle())
                     }
 
                     Button(action: onCollapseHeader) {
                         Image(systemName: "chevron.up")
-                            .font(.system(size: 14, weight: .semibold))
+                            .font(ReaderGlassTypography.headerCollapse)
                             .foregroundStyle(.primary)
-                            .frame(width: 34, height: 34)
+                            .frame(
+                                width: ReaderPresentationMetrics.Header.buttonSize,
+                                height: ReaderPresentationMetrics.Header.buttonSize
+                            )
                             .contentShape(Rectangle())
                     }
                 }
-                .padding(.trailing, 4)
+                .padding(.trailing, ReaderPresentationMetrics.Header.trailingInset)
             }
-            .padding(.horizontal, 12)
-            .padding(.vertical, 10)
+            .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInset)
+            .padding(.vertical, ReaderPresentationMetrics.Header.contentVerticalInset)
         }
         .glassEffect(in: Capsule())
-        .shadow(color: .black.opacity(0.08), radius: 16, x: 0, y: 4)
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .shadow(
+            color: .black.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
+            radius: ReaderPresentationMetrics.Header.expandedShadowRadius,
+            x: 0,
+            y: ReaderPresentationMetrics.Header.shadowY
+        )
+        .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
+        .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 
     private var glassCompactHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ReaderPresentationMetrics.Header.compactSpacing) {
             Spacer()
 
             if state.totalProgression > 0 {
                 Text(String(format: "%.1f%%", state.totalProgression * 100))
-                    .font(.system(size: 11, weight: .light, design: .monospaced))
+                    .font(ReaderGlassTypography.progressText)
                     .foregroundStyle(.tertiary)
-                    .padding(.trailing, 4)
+                    .padding(.trailing, ReaderPresentationMetrics.Header.trailingInset)
             }
 
             Button(action: onExpandHeader) {
                 GlassEffectContainer {
                     Image(systemName: "ellipsis")
-                        .font(.system(size: 18, weight: .medium))
+                        .font(ReaderGlassTypography.compactMenuIcon)
                         .foregroundStyle(.secondary)
-                        .frame(width: 44, height: 44)
+                        .frame(
+                            width: ReaderPresentationMetrics.Header.compactButtonSize,
+                            height: ReaderPresentationMetrics.Header.compactButtonSize
+                        )
                         .contentShape(Circle())
                 }
                 .glassEffect(in: Circle())
-                .shadow(color: .black.opacity(0.08), radius: 10, x: 0, y: 4)
+                .shadow(
+                    color: .black.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
+                    radius: ReaderPresentationMetrics.Header.compactShadowRadius,
+                    x: 0,
+                    y: ReaderPresentationMetrics.Header.shadowY
+                )
             }
         }
-        .padding(.trailing, 20)
+        .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 
@@ -328,7 +370,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                     .lineLimit(1)
-                    .frame(maxWidth: 160)
+                    .frame(maxWidth: ReaderPresentationMetrics.Header.titleMaxWidth)
 
                 Spacer()
 
@@ -341,13 +383,13 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
             .padding(.horizontal, 14)
             .padding(.vertical, 10)
         }
-        .padding(.horizontal, 20)
-        .padding(.top, 8)
+        .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
+        .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 
     private var vocabCompactHeader: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: ReaderPresentationMetrics.Header.compactSpacing) {
             Spacer()
 
             if state.totalProgression > 0 {
@@ -358,8 +400,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                         .font(vocabSkin.typography.monoLabel)
                 }
                 .foregroundStyle(vocabSkin.palette.secondaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, ReaderPresentationMetrics.Header.compactProgressInsetHorizontal)
+                .padding(.vertical, ReaderPresentationMetrics.Header.compactProgressInsetVertical)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.cardBackground)
@@ -372,8 +414,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
 
             VocabChromeIconButton(systemImage: "ellipsis", action: onExpandHeader)
         }
-        .padding(.trailing, 20)
-        .padding(.top, 8)
+        .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
+        .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 }
@@ -401,18 +443,18 @@ private struct ReaderChromePreviewScene: View {
                     endPoint: .bottom
                 )
 
-                VStack(alignment: .leading, spacing: 18) {
+                VStack(alignment: .leading, spacing: ReaderPresentationMetrics.Preview.blockSpacing) {
                     ForEach(0..<8, id: \.self) { index in
-                        RoundedRectangle(cornerRadius: 4, style: .continuous)
+                        RoundedRectangle(cornerRadius: ReaderPresentationMetrics.Preview.blockCornerRadius, style: .continuous)
                             .fill(Color.primary.opacity(index == 2 ? 0.22 : 0.12))
                             .frame(height: index.isMultiple(of: 3) ? 12 : 10)
-                            .padding(.trailing, CGFloat((index % 3) * 28))
+                            .padding(.trailing, CGFloat(index % 3) * ReaderPresentationMetrics.Preview.trailingStep)
                     }
                     Spacer()
                 }
-                .padding(.top, 120)
-                .padding(.horizontal, 28)
-                .padding(.bottom, 60)
+                .padding(.top, ReaderPresentationMetrics.Preview.topInset)
+                .padding(.horizontal, ReaderPresentationMetrics.Preview.horizontalInset)
+                .padding(.bottom, ReaderPresentationMetrics.Preview.bottomInset)
             }
             .ignoresSafeArea()
         } translationPanel: {

@@ -81,7 +81,7 @@ struct TranslationPanel: View {
                         if value.translation.height > 100 {
                             onDismiss()
                         }
-                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                        withAnimation(AppMotion.standardSpring) {
                             dragOffset = 0
                         }
                     }

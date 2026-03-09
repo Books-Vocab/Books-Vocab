@@ -8,20 +8,20 @@
 import SwiftUI
 
 struct ErrorBannerView: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var appTheme
     let message: String
     var onDismiss: (() -> Void)? = nil
     var onRetry: (() -> Void)? = nil
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: AppBannerMetrics.spacing) {
             Image(systemName: "exclamationmark.triangle.fill")
-                .font(.footnote)
-                .foregroundStyle(AppColors.warning(colorScheme))
+                .font(AppFonts.caption(weight: .semibold))
+                .foregroundStyle(appTheme.palette.warning)
 
             Text(message.localized)
-                .font(.caption)
-                .foregroundStyle(.secondary)
+                .font(AppFonts.caption())
+                .foregroundStyle(appTheme.palette.secondaryText)
                 .lineLimit(2)
 
             Spacer()
@@ -29,26 +29,26 @@ struct ErrorBannerView: View {
             if let retry = onRetry {
                 Button(action: retry) {
                     Image(systemName: "arrow.clockwise")
-                        .font(.caption)
-                        .foregroundStyle(AppColors.accent(colorScheme))
+                        .font(AppFonts.caption())
+                        .foregroundStyle(appTheme.palette.accent)
                 }
             }
 
             if let dismiss = onDismiss {
                 Button(action: dismiss) {
                     Image(systemName: "xmark")
-                        .font(.caption2)
-                        .foregroundStyle(.tertiary)
+                        .font(AppFonts.caption2())
+                        .foregroundStyle(appTheme.palette.tertiaryText)
                 }
             }
         }
-        .padding(.horizontal, 14)
-        .padding(.vertical, 8)
-        .background(AppColors.warning(colorScheme).opacity(0.08))
+        .padding(.horizontal, AppBannerMetrics.horizontalPadding)
+        .padding(.vertical, AppBannerMetrics.verticalPadding)
+        .background(appTheme.palette.warning.opacity(AppBannerMetrics.backgroundOpacity))
         .overlay(
             Rectangle()
                 .frame(height: 1)
-                .foregroundStyle(AppColors.warning(colorScheme).opacity(0.2)),
+                .foregroundStyle(appTheme.palette.warning.opacity(AppBannerMetrics.borderOpacity)),
             alignment: .bottom
         )
     }

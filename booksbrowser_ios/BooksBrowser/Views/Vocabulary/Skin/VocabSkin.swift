@@ -123,6 +123,24 @@ struct VocabSkin {
         let overlayHeaderVerticalInset: CGFloat
         let listCardHeaderTopInset: CGFloat
         let listCardHeaderBottomInset: CGFloat
+        let readerPanelHorizontalInset: CGFloat
+        let readerPanelBottomInset: CGFloat
+        let readerPanelHandleWidth: CGFloat
+        let readerPanelHandleHeight: CGFloat
+        let readerPanelHandleTopInset: CGFloat
+        let readerPanelHandleBottomInset: CGFloat
+        let readerSettingsHandleWidth: CGFloat
+        let readerSettingsHandleHeight: CGFloat
+        let readerSettingsHandleTopInset: CGFloat
+        let readerSettingsHandleBottomInset: CGFloat
+        let readerPanelShadowOpacity: Double
+        let readerPanelShadowRadius: CGFloat
+        let readerPanelShadowY: CGFloat
+        let readerSettingsSectionSpacing: CGFloat
+        let readerSettingsHorizontalInset: CGFloat
+        let readerSettingsBottomInset: CGFloat
+        let readerSettingsHeaderSpacing: CGFloat
+        let readerSettingsHeaderBottomInset: CGFloat
     }
 
     let palette: Palette
@@ -240,7 +258,25 @@ extension VocabSkin {
         overlayHeaderHorizontalInset: 16,
         overlayHeaderVerticalInset: 12,
         listCardHeaderTopInset: 14,
-        listCardHeaderBottomInset: 12
+        listCardHeaderBottomInset: 12,
+        readerPanelHorizontalInset: 18,
+        readerPanelBottomInset: 16,
+        readerPanelHandleWidth: 32,
+        readerPanelHandleHeight: 4,
+        readerPanelHandleTopInset: 10,
+        readerPanelHandleBottomInset: 12,
+        readerSettingsHandleWidth: 48,
+        readerSettingsHandleHeight: 5,
+        readerSettingsHandleTopInset: 12,
+        readerSettingsHandleBottomInset: 14,
+        readerPanelShadowOpacity: 0.72,
+        readerPanelShadowRadius: 10,
+        readerPanelShadowY: -3,
+        readerSettingsSectionSpacing: 18,
+        readerSettingsHorizontalInset: 18,
+        readerSettingsBottomInset: 20,
+        readerSettingsHeaderSpacing: 14,
+        readerSettingsHeaderBottomInset: 16
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。

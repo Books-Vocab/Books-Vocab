@@ -57,8 +57,8 @@ struct AppTag: View {
     var body: some View {
         Text(text.localized)
             .font(AppFonts.caption(weight: .semibold))
-            .padding(.horizontal, 10)
-            .padding(.vertical, 5)
+            .padding(.horizontal, AppTagMetrics.horizontalPadding)
+            .padding(.vertical, AppTagMetrics.verticalPadding)
             .background(tone.opacity(colorScheme == .dark ? 0.18 : 0.08))
             .foregroundStyle(tone)
             .clipShape(Capsule())
@@ -74,14 +74,14 @@ struct GhostButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .foregroundStyle(tone)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 10)
+            .padding(.horizontal, AppGhostButtonMetrics.horizontalPadding)
+            .padding(.vertical, AppGhostButtonMetrics.verticalPadding)
             .background(
                 Capsule()
                     .fill(tone.opacity(configuration.isPressed ? 0.08 : 0))
             )
             .opacity(configuration.isPressed ? 0.7 : 1.0)
-            .animation(.easeOut(duration: 0.15), value: configuration.isPressed)
+            .animation(AppMotion.quickEaseOut, value: configuration.isPressed)
     }
 }
 

@@ -23,30 +23,37 @@ struct ReaderSettingsVocabPresenter: View {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
                     .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
-                    .frame(width: 48, height: 5)
-                    .padding(.top, 12)
-                    .padding(.bottom, 14)
+                    .frame(
+                        width: vocabSkin.metrics.readerSettingsHandleWidth,
+                        height: vocabSkin.metrics.readerSettingsHandleHeight
+                    )
+                    .padding(.top, vocabSkin.metrics.readerSettingsHandleTopInset)
+                    .padding(.bottom, vocabSkin.metrics.readerSettingsHandleBottomInset)
 
                 headerBlock
 
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 18) {
+                    VStack(alignment: .leading, spacing: vocabSkin.metrics.readerSettingsSectionSpacing) {
                         typographySection
                         appearanceSection
                         highlightSection
                         modeSection
                         debugSection
                     }
-                    .padding(.horizontal, 18)
-                    .padding(.bottom, 20)
+                    .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
+                    .padding(.bottom, vocabSkin.metrics.readerSettingsBottomInset)
                 }
             }
         }
-        .shadow(color: vocabSkin.palette.shadow.opacity(0.72), radius: 10, y: -3)
+        .shadow(
+            color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.readerPanelShadowOpacity),
+            radius: vocabSkin.metrics.readerPanelShadowRadius,
+            y: vocabSkin.metrics.readerPanelShadowY
+        )
     }
 
     private var headerBlock: some View {
-        HStack(alignment: .top, spacing: 14) {
+        HStack(alignment: .top, spacing: vocabSkin.metrics.readerSettingsHeaderSpacing) {
             VStack(alignment: .leading, spacing: 6) {
                 Text("reader")
                     .font(vocabSkin.typography.monoLabel)
@@ -62,8 +69,8 @@ struct ReaderSettingsVocabPresenter: View {
 
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
-        .padding(.horizontal, 18)
-        .padding(.bottom, 16)
+        .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
+        .padding(.bottom, vocabSkin.metrics.readerSettingsHeaderBottomInset)
     }
 
     private var typographySection: some View {

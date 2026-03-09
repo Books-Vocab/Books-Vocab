@@ -23,19 +23,26 @@ struct TranslationVocabPresenter: View {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
                     .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
-                    .frame(width: 32, height: 4)
-                    .padding(.top, 10)
-                    .padding(.bottom, 12)
+                    .frame(
+                        width: vocabSkin.metrics.readerPanelHandleWidth,
+                        height: vocabSkin.metrics.readerPanelHandleHeight
+                    )
+                    .padding(.top, vocabSkin.metrics.readerPanelHandleTopInset)
+                    .padding(.bottom, vocabSkin.metrics.readerPanelHandleBottomInset)
 
                 VStack(alignment: .leading, spacing: 12) {
                     heroSection
                     panelBody
                 }
-                .padding(.horizontal, AppMetrics.spacingLarge)
-                .padding(.bottom, 16)
+                .padding(.horizontal, vocabSkin.metrics.readerPanelHorizontalInset)
+                .padding(.bottom, vocabSkin.metrics.readerPanelBottomInset)
             }
         }
-        .shadow(color: vocabSkin.palette.shadow.opacity(0.72), radius: 10, y: -3)
+        .shadow(
+            color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.readerPanelShadowOpacity),
+            radius: vocabSkin.metrics.readerPanelShadowRadius,
+            y: vocabSkin.metrics.readerPanelShadowY
+        )
     }
 
     private var heroSection: some View {
