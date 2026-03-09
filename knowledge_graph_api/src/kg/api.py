@@ -1,7 +1,7 @@
 """FastAPI server for Knowledge Graph — lightweight bridge for BooksBrowser.
 
 Wraps existing KG modules (cards, enrich, link, difficulty, mochi sync)
-behind REST endpoints with SSE streaming for pipeline progress.
+behind REST endpoints and background pipeline orchestration.
 
 Usage:
     uvicorn kg.api:app --reload --port 8000
@@ -163,16 +163,7 @@ from .runtime_state import (
     runtime_users_file,
     runtime_users_lock_file,
 )
-from .routers import (
-    build_admin_router,
-    build_auth_router,
-    build_billing_router,
-    build_pipeline_router,
-    build_static_pages_router,
-    build_translate_router,
-    build_user_router,
-    build_vocab_router,
-)
+from .route_registration import register_routes
 from .auth_service import create_jwt_token, resolve_and_link_user
 from .settings import KGSettings, load_settings
 from .service_factories import (
@@ -318,56 +309,35 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
-    app.include_router(
-        build_static_pages_router(
-            get_privacy_policy=get_privacy_policy,
-            get_support=get_support,
-        )
-    )
-    app.include_router(
-        build_user_router(
-            get_user_config=get_user_config,
-            get_user_entitlements=get_user_entitlements,
-            update_user_config=update_user_config,
-            delete_user_account=delete_user_account,
-            health=health,
-        )
-    )
-    app.include_router(
-        build_billing_router(
-            sync_app_store_subscription=sync_app_store_subscription,
-            app_store_notifications=app_store_notifications,
-            reconcile_app_store_subscription=reconcile_app_store_subscription,
-        )
-    )
-    app.include_router(
-        build_vocab_router(
-            list_vocab=list_vocab,
-            lookup_word=lookup_word,
-            delete_word=delete_word,
-            get_graph_links=get_graph_links,
-            add_vocab=add_vocab,
-        )
-    )
-    app.include_router(build_pipeline_router(run_pipeline=run_pipeline))
-    app.include_router(
-        build_translate_router(
-            translate_quick=translate_quick,
-            translate_phrase=translate_phrase,
-            translate_explain=translate_explain,
-        )
-    )
-    app.include_router(build_auth_router(auth_verify=auth_verify))
-    app.include_router(
-        build_admin_router(
-            admin_ui=admin_ui,
-            admin_stats=admin_stats,
-            admin_logs=admin_logs,
-            admin_run_tests=admin_run_tests,
-            admin_last_test_run=admin_last_test_run,
-            admin_test_catalog=admin_test_catalog,
-            admin_tests_ui=admin_tests_ui,
-        )
+    register_routes(
+        app,
+        get_privacy_policy=get_privacy_policy,
+        get_support=get_support,
+        get_user_config=get_user_config,
+        get_user_entitlements=get_user_entitlements,
+        update_user_config=update_user_config,
+        delete_user_account=delete_user_account,
+        health=health,
+        sync_app_store_subscription=sync_app_store_subscription,
+        app_store_notifications=app_store_notifications,
+        reconcile_app_store_subscription=reconcile_app_store_subscription,
+        list_vocab=list_vocab,
+        lookup_word=lookup_word,
+        delete_word=delete_word,
+        get_graph_links=get_graph_links,
+        add_vocab=add_vocab,
+        run_pipeline=run_pipeline,
+        translate_quick=translate_quick,
+        translate_phrase=translate_phrase,
+        translate_explain=translate_explain,
+        auth_verify=auth_verify,
+        admin_ui=admin_ui,
+        admin_stats=admin_stats,
+        admin_logs=admin_logs,
+        admin_run_tests=admin_run_tests,
+        admin_last_test_run=admin_last_test_run,
+        admin_test_catalog=admin_test_catalog,
+        admin_tests_ui=admin_tests_ui,
     )
     return app
 

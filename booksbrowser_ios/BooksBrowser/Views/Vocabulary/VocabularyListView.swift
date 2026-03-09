@@ -183,8 +183,8 @@ struct VocabularyListView: View {
                 .init(
                     id: entry.id,
                     row: entry.wordRowViewData(),
-                    actionSystemImage: entry.actionType == "delete" ? "arrow.uturn.backward.circle" : "trash",
-                    actionTone: entry.actionType == "delete" ? .secondary : .tertiary
+                    actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
+                    actionTone: entry.syncAction == .delete ? .secondary : .tertiary
                 )
             }
         )

@@ -20,12 +20,15 @@ struct KGVocabView: View {
     @StateObject private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
 
-    @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
+    @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == VocabularySyncAction.delete.rawValue })
     private var pendingDeletes: [VocabularyEntry]
 
     init(searchText: Binding<String>) {
         self._searchText = searchText
-        let filter = #Predicate<VocabularyEntry> { $0.syncStatus == 1 && $0.actionType != "delete" }
+        let filter = #Predicate<VocabularyEntry> {
+            $0.syncStatus == VocabularySyncState.synced.rawValue &&
+            $0.actionType != VocabularySyncAction.delete.rawValue
+        }
         self._syncedEntries = Query(filter: filter)
     }
 

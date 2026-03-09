@@ -13,7 +13,7 @@ struct SyncView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
-    @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
+    @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != VocabularySyncState.synced.rawValue })
     private var pendingEntries: [VocabularyEntry]
 
     @StateObject private var coordinator = SyncCoordinator()
@@ -62,11 +62,11 @@ struct SyncView: View {
     }
 
     private var deleteActions: [VocabularyEntry] {
-        pendingEntries.filter { $0.actionType == "delete" }
+        pendingEntries.filter { $0.syncAction == .delete }
     }
 
     private var addActions: [VocabularyEntry] {
-        pendingEntries.filter { $0.actionType == "add" }
+        pendingEntries.filter { $0.syncAction == .add }
     }
 
     private func handlePrimaryAction() {

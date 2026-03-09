@@ -48,7 +48,7 @@ actor BackgroundSyncActor {
                     continue
                 }
                 
-                if existingEntry.actionType == "delete" {
+                if existingEntry.syncAction == .delete {
                     // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
                 } else {
                     // Update existing record
@@ -61,8 +61,7 @@ actor BackgroundSyncActor {
                     existingEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
-                    existingEntry.syncStatus = 1
-                    existingEntry.actionType = "add"
+                    existingEntry.markSynced()
                 }
             } else {
                 // If it's softly deleted but we don't have it locally, ignore it
@@ -84,8 +83,7 @@ actor BackgroundSyncActor {
                 newEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
-                newEntry.syncStatus = 1
-                newEntry.actionType = "add"
+                newEntry.markSynced()
                 
                 modelContext.insert(newEntry)
                 localDict[lowerContent] = newEntry
@@ -98,7 +96,7 @@ actor BackgroundSyncActor {
         if !isIncremental {
             progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
             for entry in localEntries {
-                if entry.syncStatus == 1 && entry.actionType != "delete" {
+                if entry.syncState == .synced && entry.syncAction != .delete {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {
                         print("🧹 Cleaning up remote orphan: \(entry.word)")
                         modelContext.delete(entry)
@@ -128,7 +126,7 @@ actor BackgroundSyncActor {
     /// while preserving locally-created pending words (syncStatus == 0).
     func clearSyncedData() throws {
         let descriptor = FetchDescriptor<VocabularyEntry>(
-            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == VocabularySyncState.synced.rawValue }
         )
         let entries = try modelContext.fetch(descriptor)
         guard !entries.isEmpty else { return }
