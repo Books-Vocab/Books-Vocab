@@ -36,9 +36,8 @@ struct AddVocabularyIntent: AppIntent {
         // 2. 檢查是否已存在
         let descriptor = FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.word == targetWord })
         if let existing = try? modelContext.fetch(descriptor).first {
-            if existing.actionType == "delete" {
-                existing.actionType = "add"
-                existing.syncStatus = 0
+            if existing.syncAction == .delete {
+                existing.restorePendingEntry()
                 try? modelContext.save()
                 return .result(dialog: IntentDialog(stringLiteral: L10n.format("已為您恢復追蹤單字「%@」。", targetWord)))
             } else {
@@ -46,15 +45,14 @@ struct AddVocabularyIntent: AppIntent {
             }
         }
 
-        // 3. 建立新單字，設定狀態為待同步 (syncStatus = 0)
+        // 3. 建立新單字，標記為待同步
         let entry = VocabularyEntry(
             word: targetWord,
             translation: "",       // 稍後由背景 Task 補上
             context: context ?? "",
             bookTitle: "加入自系統外"
         )
-        entry.syncStatus = 0
-        entry.actionType = "add"
+        entry.restorePendingEntry()
         modelContext.insert(entry)
         try? modelContext.save()
         

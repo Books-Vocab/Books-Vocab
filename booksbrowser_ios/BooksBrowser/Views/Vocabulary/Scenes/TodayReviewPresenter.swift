@@ -547,7 +547,7 @@ private enum TodayReviewPresenterPreviewData {
         entry.difficultyTier = "advanced"
         entry.reviewMode = .recognition
         entry.reviewExamples = ["The editor was meticulous about every line break and caption."]
-        entry.syncStatus = 1
+        entry.syncState = .synced
         entry.rootForm = "meticulous"
         entry.inflections = ["meticulously", "meticulousness"]
         entry.graphLinksByKind = [

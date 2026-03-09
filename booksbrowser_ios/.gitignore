@@ -26,3 +26,10 @@ build.log
 build_warnings.log
 build.log
 build_*.log
+real_build*.log
+xcodebuild.log
+error_log.txt
+test.swift
+test2.swift
+test_db.swift
+test_swiftdata.swift

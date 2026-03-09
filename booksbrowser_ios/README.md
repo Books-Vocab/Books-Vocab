@@ -64,7 +64,7 @@ BooksBrowser/
 │
 ├── Services/
 │   ├── TranslationService.swift   # AI 翻譯（Gemini API + Apple Intelligence 雙引擎）
-│   ├── KGService.swift            # KG 伺服器通訊（health check / batch add / pipeline SSE / pull & merge）
+│   ├── KGService.swift            # KG 伺服器通訊（health check / batch add / background pipeline / pull & merge）
 │   ├── DictionaryService.swift    # Free Dictionary API（IPA 音標）
 │   ├── SpeechService.swift        # 單字朗讀（AVSpeechSynthesizer）
 │   └── BooksBrowserAppIntents.swift # App Intents（Siri / Visual Intelligence 整合）
@@ -80,7 +80,7 @@ BooksBrowser/
 │   ├── Vocabulary/
 │   │   ├── VocabularyListView.swift    # 待收錄生詞清單
 │   │   ├── KGVocabView.swift           # 已同步知識庫單字列表
-│   │   └── SyncView.swift              # 雙向同步控制台（Pipeline 進度 SSE 顯示）
+│   │   └── SyncView.swift              # 雙向同步控制台（本地步驟進度 + 背景處理觸發）
 │   └── Settings/
 │       └── SettingsView.swift          # API Key、KG 伺服器 URL、AI 引擎 設定
 │
