@@ -33,11 +33,11 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     var titleKey: String {
         switch self {
         case .system:
-            return "跟隨系統"
+            return L10n.string("跟隨系統")
         case .english:
-            return "English"
+            return L10n.string("English")
         case .traditionalChinese:
-            return "繁體中文"
+            return L10n.string("繁體中文")
         }
     }
 

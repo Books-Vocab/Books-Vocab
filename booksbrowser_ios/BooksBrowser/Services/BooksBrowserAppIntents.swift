@@ -30,7 +30,7 @@ struct AddVocabularyIntent: AppIntent {
         
         let targetWord = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !targetWord.isEmpty else {
-            return .result(dialog: "請提供要加入的單字。")
+            return .result(dialog: IntentDialog(stringLiteral: L10n.string("請提供要加入的單字。")))
         }
 
         // 2. 檢查是否已存在
@@ -40,9 +40,9 @@ struct AddVocabularyIntent: AppIntent {
                 existing.actionType = "add"
                 existing.syncStatus = 0
                 try? modelContext.save()
-                return .result(dialog: "已為您恢復追蹤單字「\(targetWord)」。")
+                return .result(dialog: IntentDialog(stringLiteral: L10n.format("已為您恢復追蹤單字「%@」。", targetWord)))
             } else {
-                return .result(dialog: "單字「\(targetWord)」已經在您的生字庫中了。")
+                return .result(dialog: IntentDialog(stringLiteral: L10n.format("單字「%@」已經在您的生字庫中了。", targetWord)))
             }
         }
 
@@ -68,6 +68,6 @@ struct AddVocabularyIntent: AppIntent {
             }
         }
 
-        return .result(dialog: "已成功將「\(targetWord)」加入 BooksBrowser 生字庫。")
+        return .result(dialog: IntentDialog(stringLiteral: L10n.format("已成功將「%@」加入 BooksBrowser 生字庫。", targetWord)))
     }
 }

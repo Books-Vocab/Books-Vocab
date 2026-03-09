@@ -255,7 +255,7 @@ struct ReaderSettingsVocabPresenter: View {
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
                     .tracking(1.0)
-                Text(title)
+                Text(title.localized)
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
@@ -272,7 +272,7 @@ struct ReaderSettingsVocabPresenter: View {
             VStack(spacing: 6) {
                 Text(title)
                     .font(.system(size: size, weight: .medium))
-                Text(enabled ? "調整" : "上限")
+                Text((enabled ? "調整" : "上限").localized)
                     .font(vocabSkin.typography.monoLabel)
                     .opacity(enabled ? 0.72 : 0.5)
             }
@@ -458,9 +458,9 @@ struct ReaderSettingsVocabPresenter: View {
     private func modeDescription(_ mode: TranslationPanelMode) -> String {
         switch mode {
         case .glass:
-            return "保留中性、透明、較輕的 reader chrome。"
+            return L10n.string("保留中性、透明、較輕的 reader chrome。")
         case .vocab:
-            return "使用詞庫語言，讓 panel 與內文標記更一致。"
+            return L10n.string("使用詞庫語言，讓 panel 與內文標記更一致。")
         }
     }
 }

@@ -43,9 +43,9 @@ extension VocabularyEntry {
 
         switch reviewState {
         case .unlearned:
-            return ("未複習", .tertiary)
+            return (L10n.string("未複習"), .tertiary)
         case .due:
-            return ("待複習", .reviewDue)
+            return (L10n.string("待複習"), .reviewDue)
         case .reviewed:
             return (L10n.format("下次 %@", nextReviewAt.reviewRelativeDescription()), .secondary)
         }
@@ -62,7 +62,7 @@ extension VocabularyEntry {
         case .unlearned:
             return .init(
                 statusLabel: reviewProgressStatusLabel,
-                detailLabel: "首輪 \(reviewIntervalHours.compactHourLabel)",
+                detailLabel: L10n.format("首輪 %@", reviewIntervalHours.compactHourLabel),
                 fraction: nil,
                 tone: .yellow
             )
@@ -83,11 +83,11 @@ extension VocabularyEntry {
     private var reviewProgressStatusLabel: String {
         switch reviewState {
         case .unlearned:
-            return "未學習"
+            return L10n.string("未學習")
         case .due:
-            return "待複習"
+            return L10n.string("待複習")
         case .reviewed:
-            return "已複習"
+            return L10n.string("已複習")
         }
     }
 
