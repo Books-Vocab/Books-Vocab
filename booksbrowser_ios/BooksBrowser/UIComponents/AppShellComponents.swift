@@ -55,6 +55,22 @@ struct AppEmptyStateStyle {
     let verticalPadding: CGFloat
 }
 
+struct AppStateMessageStyle {
+    let iconFont: Font
+    let iconColor: Color
+    let titleFont: Font
+    let titleColor: Color
+    let descriptionFont: Font
+    let descriptionColor: Color
+    let accentColor: Color
+    let background: Color
+    let border: Color
+    let spacing: CGFloat
+    let verticalPadding: CGFloat
+    let horizontalPadding: CGFloat
+    let cornerRadius: CGFloat
+}
+
 struct AppSectionCard<Content: View>: View {
     @Environment(\.appTheme) private var appTheme
     let padding: CGFloat
@@ -258,6 +274,101 @@ struct AppEmptyStateCard: View {
             )
             .padding(.vertical, contentStyle.verticalPadding)
         }
+    }
+}
+
+struct AppStateMessageContent<Accessory: View>: View {
+    @Environment(\.appTheme) private var appTheme
+    let title: String
+    let systemImage: String
+    let description: String?
+    let customStyle: AppStateMessageStyle?
+    @ViewBuilder let accessory: Accessory
+
+    init(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        style: AppStateMessageStyle? = nil,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.customStyle = style
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        let style = customStyle ?? .themed(appTheme)
+        VStack(alignment: .leading, spacing: style.spacing) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: systemImage)
+                    .font(style.iconFont)
+                    .foregroundStyle(style.iconColor)
+
+                Text(title.localized)
+                    .font(style.titleFont)
+                    .foregroundStyle(style.titleColor)
+
+                Spacer()
+            }
+
+            if let description, !description.isEmpty {
+                Text(description.localized)
+                    .font(style.descriptionFont)
+                    .foregroundStyle(style.descriptionColor)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
+
+            accessory
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+}
+
+struct AppStateMessageCard<Accessory: View>: View {
+    @Environment(\.appTheme) private var appTheme
+    let title: String
+    let systemImage: String
+    let description: String?
+    let customStyle: AppStateMessageStyle?
+    @ViewBuilder let accessory: Accessory
+
+    init(
+        title: String,
+        systemImage: String,
+        description: String? = nil,
+        style: AppStateMessageStyle? = nil,
+        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.customStyle = style
+        self.accessory = accessory()
+    }
+
+    var body: some View {
+        let style = customStyle ?? .themed(appTheme)
+        AppSectionCard(padding: 0) {
+            AppStateMessageContent(
+                title: title,
+                systemImage: systemImage,
+                description: description,
+                style: style
+            ) {
+                accessory
+            }
+            .padding(.horizontal, style.horizontalPadding)
+            .padding(.vertical, style.verticalPadding)
+        }
+        .background(style.background)
+        .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
+                .stroke(style.border, lineWidth: 1)
+        )
     }
 }
 
@@ -652,6 +763,44 @@ extension AppEmptyStateStyle {
             descriptionColor: theme.palette.tertiaryText,
             spacing: 6,
             verticalPadding: 0
+        )
+    }
+}
+
+extension AppStateMessageStyle {
+    static func themed(_ theme: AppTheme) -> AppStateMessageStyle {
+        .init(
+            iconFont: AppFonts.body(weight: .semibold),
+            iconColor: theme.palette.accent,
+            titleFont: AppFonts.body(weight: .semibold),
+            titleColor: theme.palette.primaryText,
+            descriptionFont: AppFonts.caption(),
+            descriptionColor: theme.palette.secondaryText,
+            accentColor: theme.palette.accent,
+            background: theme.palette.cardBackground,
+            border: theme.palette.cardBorder.opacity(0.9),
+            spacing: 8,
+            verticalPadding: 12,
+            horizontalPadding: 14,
+            cornerRadius: AppMetrics.cornerRadiusMedium
+        )
+    }
+
+    static func vocab(_ skin: VocabSkin) -> AppStateMessageStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            iconColor: skin.palette.accent,
+            titleFont: skin.typography.body.weight(.semibold),
+            titleColor: skin.palette.primaryText,
+            descriptionFont: skin.typography.caption,
+            descriptionColor: skin.palette.secondaryText,
+            accentColor: skin.palette.accent,
+            background: skin.palette.cardBackground,
+            border: skin.palette.cardBorder,
+            spacing: 8,
+            verticalPadding: 12,
+            horizontalPadding: 14,
+            cornerRadius: skin.radii.control
         )
     }
 }

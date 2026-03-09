@@ -92,44 +92,28 @@ struct TranslationVocabPresenter: View {
     }
 
     private var loadingSection: some View {
-        HStack(spacing: 8) {
-            ProgressView().scaleEffect(0.8)
-            Text((state.statusMessage ?? "翻譯中...").localized)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-            Spacer()
-            if let timerText = state.activeTimerText {
-                Text(timerText)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+        VocabStateMessageCard(
+            title: state.statusMessage ?? "翻譯中...",
+            systemImage: "translate"
+        ) {
+            HStack {
+                ProgressView().scaleEffect(0.8)
+                Spacer()
+                if let timerText = state.activeTimerText {
+                    Text(timerText)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                }
             }
         }
-        .padding(.vertical, 12)
     }
 
     private var guestModeBody: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 6) {
-                HStack(spacing: 6) {
-                    Image(systemName: state.isSaved ? "checkmark.circle.fill" : "clock")
-                        .font(vocabSkin.typography.iconSmall)
-                        .foregroundStyle(state.isSaved ? vocabSkin.palette.success : vocabSkin.palette.accent)
-
-                    Text((state.isSaved ? "已加入待收錄" : "正在記錄…").localized)
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(state.isSaved ? vocabSkin.palette.success : vocabSkin.palette.accent)
-                }
-
-                Text("登入後即可獲得 AI 翻譯，並同步至知識庫。")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .padding(.vertical, 8)
-            .padding(.horizontal, 10)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .fill((state.isSaved ? vocabSkin.palette.success : vocabSkin.palette.accent).opacity(0.08))
+            VocabStateMessageCard(
+                title: state.isSaved ? "已加入待收錄" : "正在記錄…",
+                systemImage: state.isSaved ? "checkmark.circle.fill" : "clock",
+                description: "登入後即可獲得 AI 翻譯，並同步至知識庫。"
             )
 
             footerToolbar(showChevron: false, timerValue: nil)
@@ -146,16 +130,18 @@ struct TranslationVocabPresenter: View {
                 .foregroundStyle(vocabSkin.palette.quaternaryText)
 
             if state.isLoadingExplanation {
-                HStack(spacing: 8) {
-                    ProgressView().scaleEffect(0.7)
-                    Text((state.statusMessage ?? "載入解釋...").localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                    Spacer()
-                    if let timerText = state.activeTimerText {
-                        Text(timerText)
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                VocabStateMessageCard(
+                    title: state.statusMessage ?? "載入解釋...",
+                    systemImage: "text.bubble"
+                ) {
+                    HStack {
+                        ProgressView().scaleEffect(0.7)
+                        Spacer()
+                        if let timerText = state.activeTimerText {
+                            Text(timerText)
+                                .font(vocabSkin.typography.monoLabel)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        }
                     }
                 }
                 .padding(.vertical, 4)
@@ -186,16 +172,18 @@ struct TranslationVocabPresenter: View {
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
 
                 if state.isLoadingExplanation {
-                    HStack(spacing: 8) {
-                        ProgressView().scaleEffect(0.7)
-                        Text((state.statusMessage ?? "載入解釋...").localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                        Spacer()
-                        if let timerText = state.activeTimerText {
-                            Text(timerText)
-                                .font(vocabSkin.typography.monoLabel)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    VocabStateMessageCard(
+                        title: state.statusMessage ?? "載入解釋...",
+                        systemImage: "text.bubble"
+                    ) {
+                        HStack {
+                            ProgressView().scaleEffect(0.7)
+                            Spacer()
+                            if let timerText = state.activeTimerText {
+                                Text(timerText)
+                                    .font(vocabSkin.typography.monoLabel)
+                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            }
                         }
                     }
                     .padding(.vertical, 4)

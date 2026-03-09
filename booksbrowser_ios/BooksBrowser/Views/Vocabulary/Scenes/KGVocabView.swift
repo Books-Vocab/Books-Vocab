@@ -47,7 +47,19 @@ struct KGVocabView: View {
                 .padding(AppMetrics.spacingLarge)
                 .vocabCanvasBackground()
             } else if coordinator.isLoading && syncedEntries.isEmpty {
-                ProgressView("載入知識庫...")
+                VStack {
+                    Spacer()
+                    VocabStateMessageCard(
+                        title: "載入知識庫...",
+                        systemImage: "arrow.clockwise"
+                    ) {
+                        ProgressView()
+                            .controlSize(.small)
+                    }
+                    Spacer()
+                }
+                .padding(AppMetrics.spacingLarge)
+                .vocabCanvasBackground()
             } else {
                 content
             }
