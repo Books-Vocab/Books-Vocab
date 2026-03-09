@@ -2,7 +2,7 @@
 //  KGVocabView.swift
 //  BooksBrowser
 //
-//  Mochi-inspired knowledge base browser.
+//  Typography-driven knowledge base browser.
 //  Clean white cards, generous spacing, ghost buttons, typography-driven hierarchy.
 //
 

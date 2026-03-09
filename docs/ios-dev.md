@@ -4,7 +4,7 @@
 
 - **專案路徑**: `booksbrowser_ios/BooksBrowser.xcodeproj`
 - **Scheme**: `BooksBrowser`
-- **工作目錄**: `/Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/`
+- **工作目錄**: `/Users/chenliangyu/.codex/worktrees/17eb/booksbrowser_workspace/`
 - **最低支援**: iOS（參考 Info.plist，當前目標為現代 iOS）
 
 ---

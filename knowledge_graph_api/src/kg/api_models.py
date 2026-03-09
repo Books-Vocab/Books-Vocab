@@ -100,12 +100,10 @@ class UserIntegrationsConfig(BaseModel):
 
 
 class UserConfigRequest(BaseModel):
-    mochi_api_key: str | None = None
     integrations: UserIntegrationsConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
-    mochi_api_key: str | None = None
     integrations: UserIntegrationsConfig | None = None
 
 
