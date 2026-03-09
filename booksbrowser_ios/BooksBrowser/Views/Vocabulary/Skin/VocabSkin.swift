@@ -11,10 +11,10 @@
 //  組裝來源有兩種：
 //    1. VocabSkin.themed(appTheme)  — 由 AppTheme（Light/Dark）組裝，
 //       99% 情況下使用這個，可隨系統深淺色模式自動切換。
-//    2. VocabSkin.mochiNeutral     — 硬編碼的靜態 Mochi 淺色 skin，
+//    2. VocabSkin.previewNeutral   — 硬編碼的靜態淺色 skin，
 //       僅用於 SwiftUI Preview 或特定固定場景，不受系統深淺色影響。
 //
-//  設計哲學：Morandi × Mochi 排版
+//  設計哲學：Morandi 紙本排版
 //    低飽和度、紙張質感，typography 以 monospaced 為主視覺重心。
 //  ─────────────────────────────────────────────────────────────────────
 
@@ -195,9 +195,9 @@ extension VocabSkin {
         )
     }
 
-    /// 硬編碼的靜態 Mochi 淺色 skin，不受系統深淺色模式影響。
+    /// 硬編碼的靜態淺色 skin，不受系統深淺色模式影響。
     /// 僅用於 SwiftUI Preview 或特定固定呈現場景，正常業務請改用 themed()。
-    static let mochiNeutral = VocabSkin(
+    static let previewNeutral = VocabSkin(
         palette: .init(
             pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),
             stageBackground: Color(red: 0.972, green: 0.970, blue: 0.964),

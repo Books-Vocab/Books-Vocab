@@ -45,24 +45,30 @@ struct KGGraphLink: Codable, Identifiable, Equatable {
     let reason: String
 }
 
-struct KGMochiIntegrationConfig: Codable {
+struct KGOptionalIntegrationProviderConfig: Codable {
     let api_key: String?
 }
 
 struct KGUserIntegrationsConfig: Codable {
-    let mochi: KGMochiIntegrationConfig?
+    let mochi: KGOptionalIntegrationProviderConfig?
 }
 
 /// User config request/response
 struct KGUserConfig: Codable {
-    let mochi_api_key: String?
     let integrations: KGUserIntegrationsConfig?
 
-    init(mochi_api_key: String?, integrations: KGUserIntegrationsConfig? = nil) {
-        self.mochi_api_key = mochi_api_key
-        self.integrations = integrations ?? KGUserIntegrationsConfig(
-            mochi: KGMochiIntegrationConfig(api_key: mochi_api_key)
+    init(optionalIntegrationKey: String?, integrations: KGUserIntegrationsConfig? = nil) {
+        self.integrations = integrations ?? (
+            optionalIntegrationKey == nil
+                ? nil
+                : KGUserIntegrationsConfig(
+                    mochi: KGOptionalIntegrationProviderConfig(api_key: optionalIntegrationKey)
+                )
         )
+    }
+
+    var optionalIntegrationApiKey: String? {
+        integrations?.mochi?.api_key
     }
 }
 
@@ -411,14 +417,14 @@ final class KGService: KGServing, LocalDataClearing {
         return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
-    func updateUserConfig(mochiKey: String?) async throws -> KGUserConfig {
+    func updateUserConfig(optionalIntegrationKey: String?) async throws -> KGUserConfig {
         let url = baseURL.appendingPathComponent("api/user/config")
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         try applyAuth(to: &request)
 
-        let payload = KGUserConfig(mochi_api_key: mochiKey)
+        let payload = KGUserConfig(optionalIntegrationKey: optionalIntegrationKey)
         request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }

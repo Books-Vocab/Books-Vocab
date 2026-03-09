@@ -9,23 +9,24 @@ from typing import Any, Callable
 from fastapi import HTTPException
 from filelock import FileLock
 
-from .api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, UserConfigRequest, UserConfigResponse
+from .api_models import (
+    DeleteAccountResponse,
+    EntitlementsResponse,
+    HealthResponse,
+    MochiIntegrationConfig,
+    UserConfigRequest,
+    UserConfigResponse,
+    UserIntegrationsConfig,
+)
 from .user_store import resolve_mochi_api_key_from_config
 
 
-def _resolve_mochi_api_key(config: dict[str, Any]) -> str | None:
-    return resolve_mochi_api_key_from_config(config)
-
-
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
-    mochi_api_key = _resolve_mochi_api_key(config)
+    mochi_api_key = resolve_mochi_api_key_from_config(config)
     return UserConfigResponse(
-        mochi_api_key=mochi_api_key,
-        integrations={
-            "mochi": {
-                "api_key": mochi_api_key,
-            }
-        },
+        integrations=UserIntegrationsConfig(
+            mochi=MochiIntegrationConfig(api_key=mochi_api_key)
+        ) if mochi_api_key else None,
     )
 
 
@@ -38,22 +39,23 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
     if not isinstance(mochi, dict):
         mochi = {}
 
-    nested_request_key = None
-    if req.integrations and req.integrations.mochi:
-        nested_request_key = req.integrations.mochi.api_key
-
-    if req.mochi_api_key is not None:
-        resolved_key = req.mochi_api_key.strip()
-    elif nested_request_key is not None:
-        resolved_key = nested_request_key.strip()
-    else:
+    if not req.integrations or not req.integrations.mochi or req.integrations.mochi.api_key is None:
         config["integrations"] = integrations
         return
 
-    config["mochi_api_key"] = resolved_key
-    mochi["api_key"] = resolved_key
-    integrations["mochi"] = mochi
-    config["integrations"] = integrations
+    resolved_key = req.integrations.mochi.api_key.strip()
+    if resolved_key:
+        mochi["api_key"] = resolved_key
+        integrations["mochi"] = mochi
+        config["integrations"] = integrations
+        return
+
+    mochi.pop("api_key", None)
+    integrations.pop("mochi", None)
+    if integrations:
+        config["integrations"] = integrations
+    else:
+        config.pop("integrations", None)
 
 
 def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:

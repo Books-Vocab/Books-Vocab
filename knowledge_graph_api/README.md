@@ -12,7 +12,7 @@
 Mochi 整合目前採用使用者層設定，且已降級為 optional / legacy integration：
 
 - 權威來源是 `users.json -> <user_id> -> config -> integrations -> mochi -> api_key`
-- 相容欄位仍保留 `config.mochi_api_key`
+- 權威欄位為 `config.integrations.mochi.api_key`
 - iOS app 透過 `/api/user/config` 讀寫
 - 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
 
@@ -57,7 +57,7 @@ Authorization: Bearer google-oauth2|1234567890  # Google Sign-In ID
 
 ```
 data/users/
-├── users.json                    # 全域用戶索引與 per-user config（含 config.mochi_api_key）
+├── users.json                    # 全域用戶索引與 per-user config（含 config.integrations.mochi.api_key）
 ├── chen/
 │   ├── cards.db                 # SQLite 卡片資料庫
 │   ├── graph.json               # 知識圖譜連結

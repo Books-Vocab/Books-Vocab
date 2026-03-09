@@ -27,8 +27,7 @@ def resolve_mochi_api_key() -> tuple[str | None, str]:
             nested = resolve_mochi_api_key_from_config(config)
             if nested:
                 return nested
-        legacy = str(record.get("mochi_api_key", "")).strip()
-        return legacy
+        return ""
 
     if preferred_user_id:
         record = users.get(preferred_user_id, {})
