@@ -90,6 +90,7 @@ struct VocabSkin {
         let pageHorizontalInset: CGFloat
         let pageTopInset: CGFloat
         let pageBottomInset: CGFloat
+        let pageSectionVerticalInset: CGFloat
         let sectionHeaderGap: CGFloat
         let listRowHorizontalInset: CGFloat
         let listDividerInset: CGFloat
@@ -115,6 +116,11 @@ struct VocabSkin {
         let reviewActionMinWidth: CGFloat
         let reviewChevronButtonSize: CGFloat
         let reviewHintCapsuleWidth: CGFloat
+        let chromeButtonSize: CGFloat
+        let overlayHeaderHorizontalInset: CGFloat
+        let overlayHeaderVerticalInset: CGFloat
+        let listCardHeaderTopInset: CGFloat
+        let listCardHeaderBottomInset: CGFloat
     }
 
     let palette: Palette
@@ -200,6 +206,7 @@ extension VocabSkin {
         pageHorizontalInset: AppShellMetrics.pageHorizontalPadding,
         pageTopInset: 16,
         pageBottomInset: 120,
+        pageSectionVerticalInset: AppMetrics.spacingSmall,
         sectionHeaderGap: 10,
         listRowHorizontalInset: 16,
         listDividerInset: 16,
@@ -224,7 +231,12 @@ extension VocabSkin {
         reviewAnswerMinHeight: 188,
         reviewActionMinWidth: 92,
         reviewChevronButtonSize: 30,
-        reviewHintCapsuleWidth: 42
+        reviewHintCapsuleWidth: 42,
+        chromeButtonSize: 32,
+        overlayHeaderHorizontalInset: 16,
+        overlayHeaderVerticalInset: 12,
+        listCardHeaderTopInset: 14,
+        listCardHeaderBottomInset: 12
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
