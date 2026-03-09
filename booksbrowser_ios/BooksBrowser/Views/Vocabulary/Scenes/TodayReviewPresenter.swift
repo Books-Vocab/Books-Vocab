@@ -49,10 +49,20 @@ struct TodayReviewPresenter: View {
                                     .padding(.top, vocabSkin.metrics.reviewCardTopInset)
                                     .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
 
-                                if state.revealStage.showsAnswer {
+                                if state.revealStage == .front {
+                                    revealExpandZone(
+                                        title: "點一下展開",
+                                        minHeight: max(geo.size.height * 0.28, 180),
+                                        action: onAdvanceReveal
+                                    )
+                                } else if state.revealStage == .back {
+                                    revealExpandZone(
+                                        title: "點一下查看細節",
+                                        minHeight: max(geo.size.height * 0.22, 140),
+                                        action: onAdvanceReveal
+                                    )
+                                } else if state.revealStage.showsAnswer {
                                     Spacer(minLength: 0)
-                                } else {
-                                    frontExpandZone(minHeight: max(geo.size.height * 0.28, 180))
                                 }
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
@@ -181,13 +191,6 @@ struct TodayReviewPresenter: View {
         foldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
-                    .overlay(alignment: .bottom) {
-                        if !state.revealStage.showsAnswer {
-                            foldExpandHint(title: "查看答案")
-                                .padding(.horizontal, reviewCardPadding)
-                                .padding(.bottom, vocabSkin.metrics.reviewFoldHintBottomInset)
-                        }
-                    }
                     .frame(maxWidth: .infinity, alignment: .topLeading)
                     .frame(height: frontCardHeight, alignment: .topLeading)
             }
@@ -199,14 +202,18 @@ struct TodayReviewPresenter: View {
         }
     }
 
-    private func frontExpandZone(minHeight: CGFloat) -> some View {
-        Button(action: onAdvanceReveal) {
+    private func revealExpandZone(
+        title: String,
+        minHeight: CGFloat,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
             VStack(spacing: 10) {
                 Capsule(style: .continuous)
                     .fill(vocabSkin.palette.quaternaryText.opacity(0.14))
                     .frame(width: 56, height: 3)
 
-                Text("下方空白處也可展開")
+                Text(title)
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(0.72))
             }
@@ -390,14 +397,6 @@ struct TodayReviewPresenter: View {
         .padding(.trailing, showsExpandHint ? 40 : 0)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(height: answerCardHeight, alignment: .topLeading)
-        .overlay(alignment: .bottom) {
-            if showsExpandHint {
-                foldExpandHint(title: "查看細節")
-                    .padding(.leading, reviewCardPadding)
-                    .padding(.trailing, reviewCardPadding + 40)
-                    .padding(.bottom, vocabSkin.metrics.reviewFoldHintBottomInset)
-            }
-        }
     }
 
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
