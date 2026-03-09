@@ -23,6 +23,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 - `syncStatus` 已由 `VocabularySyncState` 封裝：`pending` / `synced` / `failed`
 - `actionType` 已由 `VocabularySyncAction` 封裝：`add` / `delete` / `edit`
 - 實際持久化仍保留原始欄位，避免 SwiftData migration 成本，但業務邏輯應優先走 typed helper，如 `queueDelete()`、`markSynced()`
+- 更完整的規則表見 [../docs/sync_lifecycle.md](../docs/sync_lifecycle.md)
 
 | `syncStatus` | `actionType` | 含義 | 在哪裡顯示？ |
 |-------------|--------------|------|-------------|

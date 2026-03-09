@@ -63,8 +63,8 @@ final class SyncCoordinator: ObservableObject {
 
         pipelineTask = Task {
             do {
-                let deletes = pendingEntries.filter { $0.syncAction == .delete }
-                let adds = pendingEntries.filter { $0.syncAction == .add }
+                let deletes = pendingEntries.filter(\.isPendingDelete)
+                let adds = pendingEntries.filter(\.isPendingAdd)
 
                 if !deletes.isEmpty {
                     updateStep("upload_delete", status: .running, total: deletes.count)

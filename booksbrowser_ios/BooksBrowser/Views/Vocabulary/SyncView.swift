@@ -62,11 +62,11 @@ struct SyncView: View {
     }
 
     private var deleteActions: [VocabularyEntry] {
-        pendingEntries.filter { $0.syncAction == .delete }
+        pendingEntries.filter(\.isPendingDelete)
     }
 
     private var addActions: [VocabularyEntry] {
-        pendingEntries.filter { $0.syncAction == .add }
+        pendingEntries.filter(\.isPendingAdd)
     }
 
     private func handlePrimaryAction() {

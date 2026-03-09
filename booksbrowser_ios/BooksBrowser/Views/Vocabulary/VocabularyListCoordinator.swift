@@ -63,7 +63,7 @@ final class VocabularyListCoordinator: ObservableObject {
     }
 
     private func handlePendingRemoval(_ entry: VocabularyEntry, modelContext: ModelContext) {
-        if entry.syncAction == .delete {
+        if entry.isPendingDelete {
             entry.markSynced()
         } else {
             modelContext.delete(entry)
