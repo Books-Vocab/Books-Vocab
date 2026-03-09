@@ -12,14 +12,10 @@ final class SettingsCoordinator: ObservableObject {
     @Published var isDeletingAccount = false
     @Published var deleteAccountError: String?
     @Published var manualLoginUserId = ""
-    @Published var developerAccountId = ""
     @Published var debugLocalServerURL = ""
-
-    private let developerAccountKey = "developer_account_id"
     private var saveTask: Task<Void, Never>?
 
     init() {
-        developerAccountId = UserDefaults.standard.string(forKey: developerAccountKey) ?? ""
         #if DEBUG
         debugLocalServerURL = KGService.getDebugLocalServerURL()
         #endif
@@ -31,7 +27,6 @@ final class SettingsCoordinator: ObservableObject {
 
     func handleAppear() {
         iconBreathing = true
-        manualLoginUserId = developerAccountId
     }
 
     func loadData(
@@ -104,16 +99,6 @@ final class SettingsCoordinator: ObservableObject {
         let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return }
         authManager.login(customToken: id)
-    }
-
-    func setDeveloperAccount() {
-        developerAccountId = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
-        UserDefaults.standard.set(developerAccountId, forKey: developerAccountKey)
-    }
-
-    func clearDeveloperAccount() {
-        developerAccountId = ""
-        UserDefaults.standard.removeObject(forKey: developerAccountKey)
     }
 
     #if DEBUG

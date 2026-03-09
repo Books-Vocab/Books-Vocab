@@ -291,7 +291,7 @@ def test_translate_requires_pro_subscription(isolated_api):
     assert "pro_required" in r.text
 
 
-def test_vocab_allows_debug_subscription_bypass(isolated_api):
+def test_vocab_ignores_removed_debug_subscription_bypass_env(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
 
@@ -314,10 +314,10 @@ def test_vocab_allows_debug_subscription_bypass(isolated_api):
         else:
             os.environ["DEBUG_BYPASS_SUBSCRIPTION"] = original
 
-    assert r.status_code == 200, r.text
+    assert r.status_code == 402, r.text
 
 
-def test_vocab_allows_whitelisted_developer_bypass(isolated_api):
+def test_vocab_ignores_removed_whitelisted_developer_bypass_env(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
 
@@ -340,7 +340,7 @@ def test_vocab_allows_whitelisted_developer_bypass(isolated_api):
         else:
             os.environ["PRO_DEVELOPER_BYPASS_USER_IDS"] = original
 
-    assert r.status_code == 200, r.text
+    assert r.status_code == 402, r.text
 
 
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):
@@ -427,6 +427,43 @@ def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
     assert body["product_id"] == "com.wordnexus.pro.monthly"
     assert body["price_display"] == "$1.00/month"
     assert body["will_renew"] is True
+
+
+def test_get_entitlements_prefers_active_admin_grant(isolated_api):
+    client = isolated_api.client
+    headers = isolated_api.headers
+
+    users_data = json.loads(isolated_api.users_file.read_text())
+    users_data[isolated_api.user_id]["subscription"] = {
+        "is_active": True,
+        "product_id": "com.wordnexus.pro.monthly",
+        "plan_name": "BooksBrowser Pro",
+        "price_display": "$1.00/month",
+        "status": "active",
+        "is_trial": False,
+        "trial_days": 7,
+        "will_renew": True,
+    }
+    users_data[isolated_api.user_id]["admin_grant"] = {
+        "is_active": True,
+        "plan_name": "BooksBrowser Pro",
+        "status": "active",
+        "source": "admin",
+        "expires_at": None,
+        "granted_at": "2026-03-09T00:00:00+00:00",
+        "granted_by": "admin",
+        "reason": "manual override",
+        "last_synced_at": "2026-03-09T00:00:00+00:00",
+    }
+    isolated_api.users_file.write_text(json.dumps(users_data))
+
+    r = client.get("/api/user/entitlements", headers=headers)
+    assert r.status_code == 200, r.text
+    body = r.json()["pro"]
+    assert body["is_active"] is True
+    assert body["source"] == "admin"
+    assert body["will_renew"] is False
+    assert body["price_display"] is None
 
 
 def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
@@ -519,6 +556,36 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
         r_logs = client.get("/api/admin/logs", params={"token": "adm-secret", "n": 20})
         assert r_logs.status_code == 200
         assert isinstance(r_logs.json().get("logs"), list)
+
+
+def test_admin_can_grant_and_revoke_pro_access(isolated_api):
+    client = isolated_api.client
+
+    with patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"):
+        grant = client.post(
+            "/api/admin/users/other_user/admin-grant",
+            params={"token": "adm-secret"},
+            json={"reason": "internal test", "granted_by": "admin"},
+        )
+        assert grant.status_code == 200, grant.text
+        granted_body = grant.json()
+        assert granted_body["user_id"] == "other_user"
+        assert granted_body["pro"]["is_active"] is True
+        assert granted_body["pro"]["source"] == "admin"
+        assert granted_body["admin_grant"]["is_active"] is True
+        assert granted_body["admin_grant"]["reason"] == "internal test"
+
+        stored = json.loads(isolated_api.users_file.read_text())
+        assert stored["other_user"]["admin_grant"]["is_active"] is True
+
+        revoke = client.delete(
+            "/api/admin/users/other_user/admin-grant",
+            params={"token": "adm-secret"},
+        )
+        assert revoke.status_code == 200, revoke.text
+        revoked_body = revoke.json()
+        assert revoked_body["pro"]["is_active"] is False
+        assert revoked_body["admin_grant"]["is_active"] is False
 
 
 def test_admin_test_matrix_endpoints(isolated_api):

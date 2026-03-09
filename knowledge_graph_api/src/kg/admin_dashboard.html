@@ -271,6 +271,33 @@ tbody tr:hover td { background: #f6f4ef; }
   color: var(--sub);
   font-size: 10px;
 }
+.status-stack {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.status-note {
+  font-size: 11px;
+  color: var(--sub);
+}
+.row-actions {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+.btn-mini {
+  height: 28px;
+  padding: 0 10px;
+  font-size: 10px;
+}
+.btn-danger {
+  border-color: var(--dev);
+  color: var(--dev);
+}
+.btn-danger:hover {
+  background: var(--dev);
+  color: #fff;
+}
 .no-data {
   color: var(--sub);
   font-family: 'JetBrains Mono', monospace;
@@ -420,7 +447,7 @@ tbody tr:hover td { background: #f6f4ef; }
         <thead><tr>
           <th>用戶</th><th>Provider</th><th>最後登入</th>
           <th>單字數</th><th>Mochi Opt-In</th>
-          <th>Token 用量</th><th>預估費用</th><th>各功能明細</th>
+          <th>Pro</th><th>操作</th><th>Token 用量</th><th>預估費用</th><th>各功能明細</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -480,6 +507,42 @@ function fmtDate(iso) {
   return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
 
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
+}
+
+async function grantPro(userId) {
+  const reason = window.prompt('授權原因（可留空）', 'manual admin grant');
+  if (reason === null) return;
+  const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ reason: reason || null, granted_by: 'admin' }),
+  });
+  if (!r.ok) {
+    window.alert('Grant 失敗: ' + await r.text());
+    return;
+  }
+  await loadStats();
+}
+
+async function revokePro(userId) {
+  if (!window.confirm('確定撤銷這個帳號的管理員 Pro 權限？')) return;
+  const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
+    method: 'DELETE',
+  });
+  if (!r.ok) {
+    window.alert('Revoke 失敗: ' + await r.text());
+    return;
+  }
+  await loadStats();
+}
+
 async function loadStats() {
   document.getElementById('loading').style.display = '';
   document.getElementById('app').style.display = 'none';
@@ -510,6 +573,13 @@ function renderStats(data) {
     const pc=u.provider||'manual';
     const total=u.total_input+u.total_output;
     const pct=Math.round((total/maxTok)*100);
+    const pro=u.pro||{is_active:false,status:'inactive',source:'app_store'};
+    const adminGrant=u.admin_grant||{is_active:false};
+    const proBadgeClass=pro.is_active?'b-google':'b-manual';
+    const proLabel=pro.is_active?`${pro.source||'unknown'}:${pro.status||'active'}`:'inactive';
+    const statusNote=pro.source==='admin'
+      ? `管理員授權${adminGrant.expires_at ? ` · 到期 ${fmtDate(adminGrant.expires_at)}` : ''}`
+      : (pro.price_display || 'App Store');
     const chips=Object.entries(u.tokens||{}).map(([t,d])=>{
       return `<span class="chip"><span class="chip-dot"></span><span class="chip-name">${t.replace('translate_','tr.')}</span><span class="chip-val">${fmt(d.input_tokens)}↑${fmt(d.output_tokens)}↓</span><span class="chip-calls">×${d.calls}</span></span>`;
     }).join('');
@@ -519,6 +589,19 @@ function renderStats(data) {
       <td style="color:var(--ink-light);font-size:12px">${fmtDate(u.last_login)}</td>
       <td style="font-variant-numeric:tabular-nums">${u.vocab_count.toLocaleString()}</td>
       <td>${u.has_mochi?'<span class="mochi-yes">✓</span>':'<span class="mochi-no">—</span>'}</td>
+      <td>
+        <div class="status-stack">
+          <span class="badge ${proBadgeClass}">${escapeHtml(proLabel)}</span>
+          <span class="status-note">${statusNote}</span>
+        </div>
+      </td>
+      <td>
+        <div class="row-actions">
+          ${adminGrant.is_active
+            ? `<button class="btn btn-mini btn-danger" onclick="revokePro('${escapeHtml(u.user_id)}')">Revoke</button>`
+            : `<button class="btn btn-mini" onclick="grantPro('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
+        </div>
+      </td>
       <td style="min-width:160px">
         <div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-label">${fmt(total)}</span></div>
         <div style="font-size:11px;color:var(--sub);margin-top:3px">${fmt(u.total_input)}↑ / ${fmt(u.total_output)}↓</div>

@@ -125,6 +125,30 @@ class EntitlementsResponse(BaseModel):
     pro: SubscriptionStatusResponse
 
 
+class AdminGrantStatusResponse(BaseModel):
+    is_active: bool
+    status: str
+    plan_name: str | None = None
+    source: str = "admin"
+    expires_at: str | None = None
+    granted_at: str | None = None
+    granted_by: str | None = None
+    reason: str | None = None
+    last_synced_at: str | None = None
+
+
+class AdminGrantRequest(BaseModel):
+    reason: str | None = None
+    expires_at: str | None = None
+    granted_by: str | None = None
+
+
+class AdminUserEntitlementResponse(BaseModel):
+    user_id: str
+    pro: SubscriptionStatusResponse
+    admin_grant: AdminGrantStatusResponse
+
+
 class AppStoreSyncRequest(BaseModel):
     product_id: str
     transaction_id: str | None = None

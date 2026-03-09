@@ -86,6 +86,7 @@ from .app_store import (
 from .google_auth import verify_google_token
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML
 from .api_models import (
+    AdminGrantRequest,
     AdminTestRunRequest,
     AppStoreNotificationRequest,
     AppStoreReconcileRequest,
@@ -129,13 +130,16 @@ from .admin_test_matrix import (
     store_last_test_run,
 )
 from .admin_handlers import (
+    admin_grant_pro_access_response,
     admin_last_test_run_response,
     admin_logs_response,
+    admin_revoke_pro_access_response,
     admin_run_tests_response,
     admin_stats_response,
     admin_test_catalog_response,
     admin_tests_ui_response,
     admin_ui_response,
+    admin_user_entitlement_response,
     require_admin,
 )
 from .auth_handlers import auth_verify_response
@@ -147,6 +151,7 @@ from .billing_handlers import (
 from .billing import (
     append_app_store_event,
     build_entitlements_response,
+    current_admin_grant_record,
     current_subscription_record,
     decode_notification_payload,
     decode_signed_transaction_info,
@@ -334,6 +339,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         admin_ui=admin_ui,
         admin_stats=admin_stats,
         admin_logs=admin_logs,
+        admin_user_entitlement=admin_user_entitlement,
+        admin_grant_pro_access=admin_grant_pro_access,
+        admin_revoke_pro_access=admin_revoke_pro_access,
         admin_run_tests=admin_run_tests,
         admin_last_test_run=admin_last_test_run,
         admin_test_catalog=admin_test_catalog,
@@ -437,6 +445,10 @@ def _default_subscription_payload() -> dict[str, Any]:
 
 def _build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
     return build_entitlements_response(user_record)
+
+
+def _current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
+    return current_admin_grant_record(user_record)
 
 
 def _current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
@@ -848,6 +860,8 @@ def admin_stats(token: str | None = None):
         admin_token=settings.admin_token,
         load_users=load_users,
         get_all_stats=get_all_stats,
+        build_entitlements_response=_build_entitlements_response,
+        current_admin_grant_record=_current_admin_grant_record,
         data_dir=settings.data_dir,
         card_store_factory=_card_store,
     )
@@ -861,6 +875,47 @@ def admin_logs(token: str | None = None, n: int = 200, level: str | None = None)
         log_getter=_mem_log.get,
         n=n,
         level=level,
+    )
+
+
+def admin_user_entitlement(user_id: str, token: str | None = None):
+    """Return one user's computed Pro entitlement plus raw admin grant metadata."""
+    return admin_user_entitlement_response(
+        token,
+        user_id,
+        admin_token=_runtime_settings().admin_token,
+        load_users=load_users,
+        build_entitlements_response=_build_entitlements_response,
+        current_admin_grant_record=_current_admin_grant_record,
+    )
+
+
+def admin_grant_pro_access(req: AdminGrantRequest, user_id: str, token: str | None = None):
+    """Manually grant Pro access for a user through the admin surface."""
+    return admin_grant_pro_access_response(
+        token,
+        user_id,
+        req,
+        admin_token=_runtime_settings().admin_token,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        current_admin_grant_record=_current_admin_grant_record,
+        build_entitlements_response=_build_entitlements_response,
+    )
+
+
+def admin_revoke_pro_access(user_id: str, token: str | None = None):
+    """Remove manual Pro access for a user through the admin surface."""
+    return admin_revoke_pro_access_response(
+        token,
+        user_id,
+        admin_token=_runtime_settings().admin_token,
+        users_lock_file=_runtime_users_lock_file(),
+        load_users=load_users,
+        save_users=save_users,
+        current_admin_grant_record=_current_admin_grant_record,
+        build_entitlements_response=_build_entitlements_response,
     )
 
 

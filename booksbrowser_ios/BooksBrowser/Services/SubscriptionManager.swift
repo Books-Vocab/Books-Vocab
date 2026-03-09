@@ -69,11 +69,7 @@ final class SubscriptionManager: SubscriptionManaging {
     var proProductIdentifier: String { Self.proProductID }
     var purchaseStatusMessage: String?
     var hasProAccess: Bool {
-#if DEBUG
-        true
-#else
         entitlements.pro.is_active
-#endif
     }
 
     private init() {}
