@@ -3,9 +3,9 @@ import SwiftData
 
 @MainActor
 final class SettingsCoordinator: ObservableObject {
-    @Published var mochiApiKey = ""
+    @Published var optionalIntegrationApiKey = ""
     @Published var fetchedKey = ""
-    @Published var showMochiInfo = false
+    @Published var showOptionalIntegrationInfo = false
     @Published var connectionPulse = false
     @Published var iconBreathing = false
     @Published var showDeleteAccountConfirm = false
@@ -45,26 +45,28 @@ final class SettingsCoordinator: ObservableObject {
             if let config = try? await kgService.fetchUserConfig() {
                 let fetched = config.mochi_api_key ?? ""
                 fetchedKey = fetched
-                mochiApiKey = fetched
+                optionalIntegrationApiKey = fetched
             }
         } else {
             fetchedKey = ""
-            mochiApiKey = ""
+            optionalIntegrationApiKey = ""
         }
     }
 
-    func scheduleMochiSave(
+    func scheduleOptionalIntegrationSave(
         authManager: any AuthManaging,
         kgService: any KGServing
     ) {
-        guard mochiApiKey != fetchedKey else { return }
+        guard optionalIntegrationApiKey != fetchedKey else { return }
         saveTask?.cancel()
         saveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
-                _ = try? await kgService.updateUserConfig(mochiKey: mochiApiKey.isEmpty ? nil : mochiApiKey)
-                fetchedKey = mochiApiKey
+                _ = try? await kgService.updateUserConfig(
+                    mochiKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey
+                )
+                fetchedKey = optionalIntegrationApiKey
             }
         }
     }
@@ -77,8 +79,8 @@ final class SettingsCoordinator: ObservableObject {
         deleteAccountError = nil
     }
 
-    func presentMochiInfo() {
-        showMochiInfo = true
+    func presentOptionalIntegrationInfo() {
+        showOptionalIntegrationInfo = true
     }
 
     func deleteAccount(

@@ -3,6 +3,8 @@ from __future__ import annotations
 import asyncio
 from typing import Any, Callable
 
+from .user_store import resolve_mochi_api_key_from_config
+
 
 async def run_pipeline_background(
     user: dict[str, Any],
@@ -157,7 +159,7 @@ async def run_pipeline_background(
 
             try:
                 logger.info("[%s] Step 4: Optional External Sync", uid)
-                mochi_key = user["config"].get("mochi_api_key")
+                mochi_key = resolve_mochi_api_key_from_config(user["config"])
                 if not mochi_key:
                     logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
                 else:
