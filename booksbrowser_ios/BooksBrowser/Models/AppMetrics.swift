@@ -59,6 +59,9 @@ enum AppMotion {
     static let modalSwapSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
     static let buttonSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)
     static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
+    static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
+    static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
+    static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
 }
 
 enum AppShadows {

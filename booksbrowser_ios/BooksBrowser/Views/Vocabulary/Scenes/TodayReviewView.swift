@@ -46,6 +46,9 @@ struct TodayReviewView: View {
     @State private var revealStage: TodayReviewRevealStage = .front
     @State private var isAdvancing = false
     @State private var linkedCardStack: [VocabularyEntry] = []
+    @State private var rememberedFeedbackTrigger = 0
+    @State private var forgotFeedbackTrigger = 0
+    @State private var pendingSaveTask: Task<Void, Never>?
 
     let onClose: () -> Void
 
@@ -79,7 +82,9 @@ struct TodayReviewView: View {
             revealStage: revealStage,
             canShuffle: queue.count > 1,
             canGoPrevious: currentIndex > 0,
-            canGoNext: currentIndex < queue.count - 1
+            canGoNext: currentIndex < queue.count - 1,
+            rememberedFeedbackTrigger: rememberedFeedbackTrigger,
+            forgotFeedbackTrigger: forgotFeedbackTrigger
         )
     }
 
@@ -119,21 +124,21 @@ struct TodayReviewView: View {
 
     private func advanceReveal() {
         guard !isAdvancing else { return }
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+        withAnimation(AppMotion.reviewRevealSpring) {
             revealStage.advance()
         }
     }
 
     private func retractReveal() {
         guard !isAdvancing else { return }
-        withAnimation(.spring(response: 0.42, dampingFraction: 0.88)) {
+        withAnimation(AppMotion.reviewRevealSpring) {
             revealStage.retract()
         }
     }
 
     private func shuffleQueue() {
         guard queue.count > 1, !isAdvancing else { return }
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.9)) {
+        withAnimation(AppMotion.reviewNavigationSpring) {
             queue.shuffle()
             currentIndex = 0
             revealStage = .front
@@ -142,7 +147,7 @@ struct TodayReviewView: View {
 
     private func goPrevious() {
         guard currentIndex > 0 else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+        withAnimation(AppMotion.reviewNavigationSpring) {
             revealStage = .front
             currentIndex -= 1
         }
@@ -150,7 +155,7 @@ struct TodayReviewView: View {
 
     private func goNext() {
         guard currentIndex < queue.count - 1 else { return }
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.86)) {
+        withAnimation(AppMotion.reviewNavigationSpring) {
             revealStage = .front
             currentIndex += 1
         }
@@ -159,15 +164,23 @@ struct TodayReviewView: View {
     private func submit(_ feedback: ReviewFeedback) {
         guard let current = currentEntry, !isAdvancing else { return }
         isAdvancing = true
+        pendingSaveTask?.cancel()
 
         current.applyReviewFeedback(feedback)
+        switch feedback {
+        case .remembered:
+            rememberedFeedbackTrigger += 1
+        case .forgot:
+            forgotFeedbackTrigger += 1
+        }
 
-        withAnimation(.spring(response: 0.32, dampingFraction: 0.86)) {
+        withAnimation(AppMotion.reviewCardSwapSpring) {
             revealStage = .front
             currentIndex += 1
         }
 
-        Task { @MainActor in
+        pendingSaveTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(220))
             try? modelContext.save()
             isAdvancing = false
         }
