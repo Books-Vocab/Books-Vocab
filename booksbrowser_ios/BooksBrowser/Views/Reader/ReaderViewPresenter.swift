@@ -32,9 +32,12 @@ struct ReaderViewPresenterState {
     let chrome: ReaderChromeState
     let totalProgression: Double
     let bookTitle: String
+    let panelMode: TranslationPanelMode
 }
 
-struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: View {
+struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
     let state: ReaderViewPresenterState
     let onDismiss: () -> Void
     let onShowTableOfContents: () -> Void
@@ -43,6 +46,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
     let onCollapseHeader: () -> Void
     @ViewBuilder let mainContent: MainContent
     @ViewBuilder let translationPanel: TranslationPanelContent
+    @ViewBuilder let settingsPanel: SettingsPanelContent
 
     init(
         state: ReaderViewPresenterState,
@@ -52,7 +56,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         onExpandHeader: @escaping () -> Void,
         onCollapseHeader: @escaping () -> Void,
         @ViewBuilder mainContent: () -> MainContent,
-        @ViewBuilder translationPanel: () -> TranslationPanelContent
+        @ViewBuilder translationPanel: () -> TranslationPanelContent,
+        @ViewBuilder settingsPanel: () -> SettingsPanelContent
     ) {
         self.state = state
         self.onDismiss = onDismiss
@@ -62,6 +67,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         self.onCollapseHeader = onCollapseHeader
         self.mainContent = mainContent()
         self.translationPanel = translationPanel()
+        self.settingsPanel = settingsPanel()
     }
 
     var body: some View {
@@ -84,44 +90,91 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
     }
 
     private var loadingOverlay: some View {
-        state.paperColor.ignoresSafeArea()
-            .overlay {
-                VStack(spacing: 14) {
-                    ProgressView()
-                        .tint(.primary)
-                    Text(state.loadingPhase)
-                        .font(.subheadline)
-                        .fontWeight(.medium)
-                        .foregroundStyle(.primary)
-                        .contentTransition(.numericText())
-                        .animation(.default, value: state.loadingPhase)
-                }
-                .padding(.horizontal, 28)
-                .padding(.vertical, 20)
-                .glassEffect(.regular, in: .rect(cornerRadius: 20))
+        Group {
+            if state.panelMode == .vocab {
+                state.paperColor.ignoresSafeArea()
+                    .overlay {
+                        AppSectionCard(style: .vocab(vocabSkin)) {
+                            VStack(spacing: 14) {
+                                ProgressView()
+                                    .tint(vocabSkin.palette.primaryText)
+                                Text(state.loadingPhase)
+                                    .font(vocabSkin.typography.body.weight(.semibold))
+                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                                    .contentTransition(.numericText())
+                                    .animation(.default, value: state.loadingPhase)
+                            }
+                            .padding(.horizontal, 28)
+                            .padding(.vertical, 20)
+                        }
+                        .frame(maxWidth: 320)
+                        .padding(.horizontal, 20)
+                    }
+            } else {
+                state.paperColor.ignoresSafeArea()
+                    .overlay {
+                        VStack(spacing: 14) {
+                            ProgressView()
+                                .tint(.primary)
+                            Text(state.loadingPhase)
+                                .font(.subheadline)
+                                .fontWeight(.medium)
+                                .foregroundStyle(.primary)
+                                .contentTransition(.numericText())
+                                .animation(.default, value: state.loadingPhase)
+                        }
+                        .padding(.horizontal, 28)
+                        .padding(.vertical, 20)
+                        .glassEffect(.regular, in: .rect(cornerRadius: 20))
+                    }
             }
+        }
     }
 
     private func underlineProgressOverlay(_ progress: Double) -> some View {
         VStack {
-            HStack(spacing: 10) {
-                ZStack(alignment: .leading) {
-                    Capsule()
-                        .fill(.quaternary)
-                        .frame(width: 80, height: 3)
-                    Capsule()
-                        .fill(Color.accentColor)
-                        .frame(width: max(3, 80 * progress), height: 3)
-                        .animation(.linear(duration: 0.1), value: progress)
+            Group {
+                if state.panelMode == .vocab {
+                    AppSectionCard(style: .vocab(vocabSkin)) {
+                        HStack(spacing: 10) {
+                            ZStack(alignment: .leading) {
+                                Capsule()
+                                    .fill(vocabSkin.palette.mutedFill)
+                                    .frame(width: 80, height: 3)
+                                Capsule()
+                                    .fill(vocabSkin.palette.accent)
+                                    .frame(width: max(3, 80 * progress), height: 3)
+                                    .animation(.linear(duration: 0.1), value: progress)
+                            }
+                            Text("\(Int(progress * 100))%")
+                                .font(vocabSkin.typography.monoLabel)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .frame(width: 30, alignment: .trailing)
+                        }
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 10)
+                    }
+                } else {
+                    HStack(spacing: 10) {
+                        ZStack(alignment: .leading) {
+                            Capsule()
+                                .fill(.quaternary)
+                                .frame(width: 80, height: 3)
+                            Capsule()
+                                .fill(Color.accentColor)
+                                .frame(width: max(3, 80 * progress), height: 3)
+                                .animation(.linear(duration: 0.1), value: progress)
+                        }
+                        Text("\(Int(progress * 100))%")
+                            .font(.system(size: 11, weight: .medium, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .frame(width: 30, alignment: .trailing)
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 10)
+                    .glassEffect(.regular, in: .capsule)
                 }
-                Text("\(Int(progress * 100))%")
-                    .font(.system(size: 11, weight: .medium, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .frame(width: 30, alignment: .trailing)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 10)
-            .glassEffect(.regular, in: .capsule)
             .padding(.top, 8)
 
             Spacer()
@@ -138,6 +191,10 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
                 translationPanel
                     .padding(.horizontal)
                     .padding(.bottom, 8)
+            } else if state.chrome.overlay == .settings && state.panelMode == .vocab {
+                settingsPanel
+                    .padding(.horizontal)
+                    .padding(.bottom, 8)
             }
         }
     }
@@ -145,11 +202,15 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
     private var topOverlay: some View {
         VStack {
             if state.chrome.showsHeader {
-                switch state.chrome.header {
-                case .expanded:
-                    expandedHeader
-                case .compact:
-                    compactHeader
+                switch (state.panelMode, state.chrome.header) {
+                case (.vocab, .expanded):
+                    vocabExpandedHeader
+                case (.vocab, .compact):
+                    vocabCompactHeader
+                case (_, .expanded):
+                    glassExpandedHeader
+                case (_, .compact):
+                    glassCompactHeader
                 }
             }
 
@@ -157,7 +218,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         }
     }
 
-    private var expandedHeader: some View {
+    private var glassExpandedHeader: some View {
         GlassEffectContainer {
             HStack(spacing: 0) {
                 Button(action: onDismiss) {
@@ -219,7 +280,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 
-    private var compactHeader: some View {
+    private var glassCompactHeader: some View {
         HStack(spacing: 8) {
             Spacer()
 
@@ -243,6 +304,76 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View>: Vi
             }
         }
         .padding(.trailing, 20)
+        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+    }
+
+    private var vocabExpandedHeader: some View {
+        AppSectionCard(padding: 0, style: .vocab(vocabSkin)) {
+            HStack(spacing: 10) {
+                Button(action: onDismiss) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "chevron.left")
+                            .font(vocabSkin.typography.iconToolbar)
+                        Text("書庫")
+                            .font(vocabSkin.typography.body.weight(.semibold))
+                    }
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+
+                Spacer()
+
+                Text(state.bookTitle)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .lineLimit(1)
+                    .frame(maxWidth: 160)
+
+                Spacer()
+
+                HStack(spacing: 6) {
+                    VocabChromeIconButton(systemImage: "list.bullet", action: onShowTableOfContents)
+                    VocabChromeIconButton(systemImage: "textformat.size", action: onShowReaderSettings)
+                    VocabChromeIconButton(systemImage: "chevron.up", action: onCollapseHeader)
+                }
+            }
+            .padding(.horizontal, 14)
+            .padding(.vertical, 10)
+        }
+        .padding(.horizontal, 20)
+        .padding(.top, 8)
+        .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
+    }
+
+    private var vocabCompactHeader: some View {
+        HStack(spacing: 8) {
+            Spacer()
+
+            if state.totalProgression > 0 {
+                HStack(spacing: 6) {
+                    Image(systemName: "book.closed")
+                        .font(vocabSkin.typography.iconSmall)
+                    Text(String(format: "%.1f%%", state.totalProgression * 100))
+                        .font(vocabSkin.typography.monoLabel)
+                }
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 8)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.cardBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+            }
+
+            VocabChromeIconButton(systemImage: "ellipsis", action: onExpandHeader)
+        }
+        .padding(.trailing, 20)
+        .padding(.top, 8)
         .transition(.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity))
     }
 }
@@ -306,6 +437,8 @@ private struct ReaderChromePreviewScene: View {
                 onDelete: {},
                 onDismiss: {}
             )
+        } settingsPanel: {
+            EmptyView()
         }
     }
 }
@@ -319,7 +452,8 @@ private struct ReaderChromePreviewScene: View {
             underlineProgress: 0.42,
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.18,
-            bookTitle: "The Left Hand of Darkness"
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
         )
     )
 }
@@ -333,7 +467,8 @@ private struct ReaderChromePreviewScene: View {
             underlineProgress: nil,
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.37,
-            bookTitle: "The Left Hand of Darkness"
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
         )
     )
 }
@@ -347,7 +482,8 @@ private struct ReaderChromePreviewScene: View {
             underlineProgress: nil,
             chrome: .init(header: .expanded, overlay: .none),
             totalProgression: 0.37,
-            bookTitle: "The Left Hand of Darkness"
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
         )
     )
 }
@@ -361,7 +497,8 @@ private struct ReaderChromePreviewScene: View {
             underlineProgress: nil,
             chrome: .init(header: .compact, overlay: .translation),
             totalProgression: 0.37,
-            bookTitle: "The Left Hand of Darkness"
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
         )
     )
 }

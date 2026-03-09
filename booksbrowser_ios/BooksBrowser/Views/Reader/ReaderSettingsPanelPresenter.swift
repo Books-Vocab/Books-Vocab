@@ -158,14 +158,14 @@ struct ReaderSettingsPanelPresenter: View {
                 }
 
                 Section {
-                    Picker("翻譯面板風格", selection: bindings.translationPanelMode) {
+                    Picker("閱讀介面風格", selection: bindings.translationPanelMode) {
                         ForEach(TranslationPanelMode.allCases) { mode in
                             Label(mode.label, systemImage: mode.icon).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("翻譯面板外觀")
+                    Text("閱讀介面風格")
                 }
             }
             .formStyle(.grouped)

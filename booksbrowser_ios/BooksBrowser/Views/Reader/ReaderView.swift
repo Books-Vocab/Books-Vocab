@@ -77,7 +77,10 @@ struct ReaderView: View {
             readerMainContent
         } translationPanel: {
             translationPanelContent
+        } settingsPanel: {
+            settingsPanelContent
         }
+        .vocabSkin(VocabSkin.themed(appTheme))
         .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
@@ -115,7 +118,7 @@ struct ReaderView: View {
                 handler.clearHighlightTrigger = UUID()
             }
         }
-        .sheet(isPresented: readerSettingsBinding) {
+        .sheet(isPresented: glassReaderSettingsBinding) {
             ReaderSettingsPanel(
                 settings: settings,
                 onDismiss: {
@@ -140,13 +143,16 @@ struct ReaderView: View {
             underlineProgress: underlineProgress,
             chrome: chromeState,
             totalProgression: totalProgression,
-            bookTitle: book.title
+            bookTitle: book.title,
+            panelMode: viewConfiguration.translationPanelMode
         )
     }
 
-    private var readerSettingsBinding: Binding<Bool> {
+    private var glassReaderSettingsBinding: Binding<Bool> {
         Binding(
-            get: { chromeState.overlay == .settings },
+            get: {
+                chromeState.overlay == .settings && viewConfiguration.translationPanelMode == .glass
+            },
             set: { isPresented in
                 if isPresented {
                     chromeState.overlay = .settings
@@ -206,6 +212,19 @@ struct ReaderView: View {
     }
 
     @ViewBuilder
+    private var settingsPanelContent: some View {
+        if viewConfiguration.translationPanelMode == .vocab {
+            ReaderSettingsPanel(
+                settings: settings,
+                onDismiss: {
+                    closeOverlay(.settings)
+                }
+            )
+            .vocabSkin(VocabSkin.themed(appTheme))
+        }
+    }
+
+    @ViewBuilder
     private var translationPanelContent: some View {
         if let selection = handler.wordSelection {
             TranslationPanel(
@@ -231,7 +250,6 @@ struct ReaderView: View {
                 }
             )
             .environment(\.readerPanelMode, viewConfiguration.translationPanelMode)
-            .vocabSkin(VocabSkin.themed(appTheme))
         }
     }
 

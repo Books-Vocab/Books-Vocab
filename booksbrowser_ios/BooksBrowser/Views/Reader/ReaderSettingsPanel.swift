@@ -7,7 +7,6 @@
 
 import SwiftUI
 
-/// 仿 Apple Books 的閱讀設定面板
 struct ReaderSettingsPanel: View {
     @Bindable var settings: ReaderSettings
     let onDismiss: () -> Void
@@ -21,34 +20,64 @@ struct ReaderSettingsPanel: View {
     }
     
     var body: some View {
-        ReaderSettingsPanelPresenter(
-            state: presenterState,
-            bindings: .init(
-                lineHeight: $settings.lineHeight,
-                font: $settings.font,
-                theme: $settings.theme,
-                underlineOpacity: $settings.underlineOpacity,
-                showHitTestingDebug: $settings.showHitTestingDebug,
-                translationPanelMode: $settings.translationPanelMode
-            ),
-            onDecreaseFontSize: {
-                settings.fontSize = max(0.75, settings.fontSize - 0.125)
-            },
-            onIncreaseFontSize: {
-                settings.fontSize = min(2.0, settings.fontSize + 0.125)
-            },
-            onSelectTheme: { theme in
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    settings.theme = theme
-                }
-            },
-            onSelectUnderlineOpacity: { value in
-                withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                    settings.underlineOpacity = value
-                }
-            },
-            onDismiss: onDismiss
+        panelPresenter
+    }
+
+    @ViewBuilder
+    private var panelPresenter: some View {
+        switch settings.translationPanelMode {
+        case .glass:
+            ReaderSettingsPanelPresenter(
+                state: presenterState,
+                bindings: presenterBindings,
+                onDecreaseFontSize: decreaseFontSize,
+                onIncreaseFontSize: increaseFontSize,
+                onSelectTheme: selectTheme,
+                onSelectUnderlineOpacity: selectUnderlineOpacity,
+                onDismiss: onDismiss
+            )
+        case .vocab:
+            ReaderSettingsVocabPresenter(
+                state: presenterState,
+                bindings: presenterBindings,
+                onDecreaseFontSize: decreaseFontSize,
+                onIncreaseFontSize: increaseFontSize,
+                onSelectTheme: selectTheme,
+                onSelectUnderlineOpacity: selectUnderlineOpacity,
+                onDismiss: onDismiss
+            )
+        }
+    }
+
+    private var presenterBindings: ReaderSettingsPanelPresenter.Bindings {
+        .init(
+            lineHeight: $settings.lineHeight,
+            font: $settings.font,
+            theme: $settings.theme,
+            underlineOpacity: $settings.underlineOpacity,
+            showHitTestingDebug: $settings.showHitTestingDebug,
+            translationPanelMode: $settings.translationPanelMode
         )
+    }
+
+    private func decreaseFontSize() {
+        settings.fontSize = max(0.75, settings.fontSize - 0.125)
+    }
+
+    private func increaseFontSize() {
+        settings.fontSize = min(2.0, settings.fontSize + 0.125)
+    }
+
+    private func selectTheme(_ theme: ReaderTheme) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            settings.theme = theme
+        }
+    }
+
+    private func selectUnderlineOpacity(_ value: Double) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+            settings.underlineOpacity = value
+        }
     }
 }
 
