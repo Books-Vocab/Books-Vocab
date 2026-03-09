@@ -46,7 +46,7 @@ struct KnowledgeGraphPresenter: View {
 
                     if state.showsSettings {
                         settingsOverlay
-                            .transition(.move(edge: .bottom).combined(with: .opacity))
+                            .transition(.readerPanelReveal)
                     }
                 }
                 .toolbar {

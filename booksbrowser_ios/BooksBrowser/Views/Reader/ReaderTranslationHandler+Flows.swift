@@ -221,7 +221,7 @@ extension ReaderTranslationHandler {
     }
 
     func handleExpand() {
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             isExpanded.toggle()
         }
 

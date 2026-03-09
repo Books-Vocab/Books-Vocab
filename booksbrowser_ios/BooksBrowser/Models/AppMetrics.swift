@@ -79,6 +79,11 @@ extension AnyTransition {
     static let headerSwap = AnyTransition.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity)
     static let feedbackBadge = AnyTransition.scale(scale: 0.8).combined(with: .opacity)
     static let linkedOverlayCard = AnyTransition.scale(scale: 0.96).combined(with: .opacity)
+    static let modalSwap = AnyTransition.asymmetric(
+        insertion: .scale(scale: 0.97).combined(with: .opacity),
+        removal: .opacity
+    )
+    static let statusRowReveal = AnyTransition.move(edge: .top).combined(with: .opacity)
 }
 
 enum AppShadows {
