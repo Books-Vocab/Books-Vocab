@@ -68,9 +68,6 @@ private struct CardDocumentHeroBlock: View {
                 }
             }
 
-            Text(hero.reviewModeTitle)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
         }
     }
 }
