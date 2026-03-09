@@ -7,6 +7,19 @@
 
 import SwiftUI
 
+// MARK: - Environment Key
+
+private struct ReaderPanelModeKey: EnvironmentKey {
+    static let defaultValue: TranslationPanelMode = .glass
+}
+
+extension EnvironmentValues {
+    var readerPanelMode: TranslationPanelMode {
+        get { self[ReaderPanelModeKey.self] }
+        set { self[ReaderPanelModeKey.self] = newValue }
+    }
+}
+
 struct TranslationPanel: View {
     let word: String
     let result: TranslationResult?
@@ -53,43 +66,62 @@ struct TranslationPanel: View {
     }
 
     var body: some View {
-        TranslationPanelPresenter(
-            state: presenterState,
-            onSpeak: {
-                SpeechService.shared.speak(word)
-                isSpeaking.toggle()
-            },
-            onExpand: onExpand,
-            onDelete: onDelete,
-            onDismiss: onDismiss
-        )
-        .offset(y: dragOffset)
-        .gesture(
-            DragGesture()
-                .onChanged { value in
-                    if value.translation.height > 0 {
-                        dragOffset = value.translation.height
+        // ⚠️ TranslationPanelPresenterState 若有更動，
+        //    TranslationPanelPresenter 與 TranslationVocabPresenter 需同步確認。
+        panelContent
+            .offset(y: dragOffset)
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        if value.translation.height > 0 {
+                            dragOffset = value.translation.height
+                        }
                     }
-                }
-                .onEnded { value in
-                    if value.translation.height > 100 {
-                        onDismiss()
+                    .onEnded { value in
+                        if value.translation.height > 100 {
+                            onDismiss()
+                        }
+                        withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
+                            dragOffset = 0
+                        }
                     }
-                    withAnimation(.spring(response: 0.3, dampingFraction: 0.75)) {
-                        dragOffset = 0
-                    }
-                }
-        )
-        .transition(.move(edge: .bottom).combined(with: .opacity))
-        .sensoryFeedback(.success, trigger: isSaved)
-        .onReceive(ticker) { _ in
-            if isActive { elapsedTime += 0.1 }
-        }
-        .onChange(of: isLoading) { _, new in
-            if new { elapsedTime = 0 }
-        }
-        .onChange(of: isLoadingExplanation) { _, new in
-            if new { elapsedTime = 0 }
+            )
+            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .sensoryFeedback(.success, trigger: isSaved)
+            .onReceive(ticker) { _ in
+                if isActive { elapsedTime += 0.1 }
+            }
+            .onChange(of: isLoading) { _, new in
+                if new { elapsedTime = 0 }
+            }
+            .onChange(of: isLoadingExplanation) { _, new in
+                if new { elapsedTime = 0 }
+            }
+    }
+
+    // MARK: - 模式分支
+
+    @Environment(\.readerPanelMode) private var panelMode
+
+    @ViewBuilder
+    private var panelContent: some View {
+        switch panelMode {
+        case .glass:
+            TranslationPanelPresenter(
+                state: presenterState,
+                onSpeak: { SpeechService.shared.speak(word); isSpeaking.toggle() },
+                onExpand: onExpand,
+                onDelete: onDelete,
+                onDismiss: onDismiss
+            )
+        case .vocab:
+            TranslationVocabPresenter(
+                state: presenterState,
+                onSpeak: { SpeechService.shared.speak(word); isSpeaking.toggle() },
+                onExpand: onExpand,
+                onDelete: onDelete,
+                onDismiss: onDismiss
+            )
         }
     }
 }
