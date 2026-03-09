@@ -864,7 +864,7 @@ struct SubscriptionPaywallSheet: View {
                         Text(priceLine)
                             .font(vocabSkin.typography.sectionTitle)
                             .foregroundStyle(vocabSkin.palette.primaryText)
-                        Text("來源：\(sourceLine)")
+                        Text(L10n.format("來源：%@", sourceLine))
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
@@ -931,7 +931,7 @@ struct SubscriptionPaywallSheet: View {
                             Text(lastError)
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Text("目前商品 ID：\(subscriptionManager.proProductIdentifier)")
+                            Text(L10n.format("目前商品 ID：%@", subscriptionManager.proProductIdentifier))
                                 .font(vocabSkin.typography.monoLabel)
                                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                                 .textSelection(.enabled)
@@ -976,7 +976,7 @@ struct SubscriptionPaywallSheet: View {
     private var priceLine: String {
         if let product = subscriptionManager.proProduct {
             let days = subscriptionManager.entitlements.pro.trial_days ?? 7
-            return "\(product.displayPrice) / month · \(days) 天免費試用"
+            return L10n.format("%@ / month · %@ 天免費試用", product.displayPrice, "\(days)")
         }
         if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
             return remotePrice

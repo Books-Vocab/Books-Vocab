@@ -89,7 +89,7 @@ struct SettingsView: View {
                     badgeTone: subscriptionBadgeTone(for: pro),
                     summary: subscriptionSummary(for: pro),
                     detail: subscriptionDetail(for: pro),
-                    ctaTitle: pro.is_active ? "管理訂閱" : "開始免費試用",
+                    ctaTitle: pro.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用"),
                     isRefreshing: subscriptionManager.isLoading
                 )
                 : nil,
@@ -253,29 +253,29 @@ struct SettingsView: View {
 
     private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
         if status.is_trial {
-            return "免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。"
+            return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
         if status.is_active {
-            return "你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。"
+            return L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。")
         }
-        return "升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。"
+        return L10n.string("升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。")
     }
 
     private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {
         if let price = subscriptionManager.proProduct?.displayPrice, !price.isEmpty, !status.is_active {
             let days = status.trial_days ?? 7
-            return "\(price) / month · \(days) 天免費試用"
+            return L10n.format("%@ / month · %@ 天免費試用", price, "\(days)")
         }
         if let price = status.price_display, !price.isEmpty {
             if let expiresAt = status.expires_at, !expiresAt.isEmpty {
-                return "\(price) · 到期 \(expiresAt)"
+                return L10n.format("%@ · 到期 %@", price, expiresAt)
             }
             return price
         }
         if let days = status.trial_days, !status.is_active {
-            return "預設提供 \(days) 天免費試用"
+            return L10n.format("預設提供 %@ 天免費試用", "\(days)")
         }
-        return "價格與試用長度會以 App Store 顯示為準"
+        return L10n.string("價格與試用長度會以 App Store 顯示為準")
     }
 }
 

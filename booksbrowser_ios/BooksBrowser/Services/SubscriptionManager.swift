@@ -9,9 +9,9 @@ enum SubscriptionPurchaseError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .unverifiedTransaction:
-            return "無法驗證 App Store 交易。"
+            return L10n.string("無法驗證 App Store 交易。")
         case .productNotFound(let productID):
-            return "App Store 找不到商品 \(productID)。請確認 App Store Connect 的訂閱 Product ID、Bundle ID 與目前測試環境是否一致。"
+            return L10n.format("App Store 找不到商品 %@。請確認 App Store Connect 的訂閱 Product ID、Bundle ID 與目前測試環境是否一致。", productID)
         }
     }
 }
@@ -120,12 +120,12 @@ final class SubscriptionManager: SubscriptionManaging {
 
     func purchasePro(using kgService: any KGServing, authManager: any AuthManaging) async {
         guard let product = proProduct else {
-            purchaseStatusMessage = "尚未取得產品價格，請稍後再試。"
+            purchaseStatusMessage = L10n.string("尚未取得產品價格，請稍後再試。")
             await loadProducts()
             return
         }
         guard authManager.isLoggedIn else {
-            purchaseStatusMessage = "請先登入，再開始免費試用或訂閱。"
+            purchaseStatusMessage = L10n.string("請先登入，再開始免費試用或訂閱。")
             return
         }
 
@@ -138,7 +138,7 @@ final class SubscriptionManager: SubscriptionManaging {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
-                purchaseStatusMessage = "購買成功，正在同步訂閱狀態。"
+                purchaseStatusMessage = L10n.string("購買成功，正在同步訂閱狀態。")
                 entitlements = optimisticEntitlements(from: product, status: inferredStatus(for: product))
                 try? await syncTransaction(
                     transaction,
@@ -148,14 +148,14 @@ final class SubscriptionManager: SubscriptionManaging {
                 )
                 await refresh(using: kgService, authManager: authManager)
             case .userCancelled:
-                purchaseStatusMessage = "已取消購買。"
+                purchaseStatusMessage = L10n.string("已取消購買。")
             case .pending:
-                purchaseStatusMessage = "購買待確認，Apple 完成後會自動更新。"
+                purchaseStatusMessage = L10n.string("購買待確認，Apple 完成後會自動更新。")
             @unknown default:
-                purchaseStatusMessage = "購買結果未知，請稍後在設定頁重新整理。"
+                purchaseStatusMessage = L10n.string("購買結果未知，請稍後在設定頁重新整理。")
             }
         } catch {
-            purchaseStatusMessage = "購買失敗：\(error.localizedDescription)"
+            purchaseStatusMessage = L10n.format("購買失敗：%@", error.localizedDescription)
             lastError = error.localizedDescription
         }
     }
@@ -167,10 +167,10 @@ final class SubscriptionManager: SubscriptionManaging {
         do {
             try await AppStore.sync()
             await syncCurrentEntitlements(using: kgService)
-            purchaseStatusMessage = "已向 App Store 要求恢復購買。"
+            purchaseStatusMessage = L10n.string("已向 App Store 要求恢復購買。")
             await refresh(using: kgService, authManager: authManager)
         } catch {
-            purchaseStatusMessage = "恢復失敗：\(error.localizedDescription)"
+            purchaseStatusMessage = L10n.format("恢復失敗：%@", error.localizedDescription)
             lastError = error.localizedDescription
         }
     }
