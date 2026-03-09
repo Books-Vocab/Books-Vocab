@@ -17,6 +17,53 @@ struct TranslationPanelPresenterState {
     let isSpeaking: Bool
 }
 
+enum TranslationPanelContentMode: Equatable {
+    case loading
+    case guest
+    case explanationOnly
+    case translation(String)
+    case empty
+}
+
+extension TranslationPanelPresenterState {
+    var contentMode: TranslationPanelContentMode {
+        if isLoading {
+            return .loading
+        }
+        if !isLoggedIn {
+            return .guest
+        }
+        if isExplanationOnly {
+            return .explanationOnly
+        }
+        if let translation {
+            return .translation(translation)
+        }
+        return .empty
+    }
+
+    var activeTimerText: String? {
+        guard !timerText.isEmpty, isLoading || isLoadingExplanation else { return nil }
+        return timerText
+    }
+
+    var statusTimerText: String? {
+        timerText.isEmpty ? nil : timerText
+    }
+
+    var showsExpandAction: Bool {
+        isLoggedIn && translation != nil && !isExplanationOnly
+    }
+
+    var showsSavedStatus: Bool {
+        isSaved && isLoggedIn
+    }
+
+    var showsDeleteAction: Bool {
+        isSaved
+    }
+}
+
 struct TranslationPanelPresenter: View {
     @Environment(\.colorScheme) private var colorScheme
 
@@ -79,24 +126,29 @@ struct TranslationPanelPresenter: View {
 
     @ViewBuilder
     private var panelBody: some View {
-        if state.isLoading {
+        switch state.contentMode {
+        case .loading:
             HStack(spacing: 8) {
                 ProgressView().scaleEffect(0.8)
                 Text((state.statusMessage ?? "翻譯中...").localized)
                     .foregroundStyle(.secondary)
                     .font(.subheadline)
                 Spacer()
-                Text(state.timerText)
-                    .font(.system(size: 10, design: .monospaced))
-                    .foregroundStyle(.tertiary)
+                if let timerText = state.activeTimerText {
+                    Text(timerText)
+                        .font(.system(size: 10, design: .monospaced))
+                        .foregroundStyle(.tertiary)
+                }
             }
             .padding(.vertical, 12)
-        } else if !state.isLoggedIn {
+        case .guest:
             guestModeBody
-        } else if state.isExplanationOnly {
+        case .explanationOnly:
             explanationOnlyBody
-        } else if let translation = state.translation {
+        case .translation(let translation):
             translationBody(translation)
+        case .empty:
+            EmptyView()
         }
     }
 
@@ -154,7 +206,7 @@ struct TranslationPanelPresenter: View {
                     .lineSpacing(3)
             }
 
-            panelToolbar(showChevron: false, timerValue: state.timerText.isEmpty ? nil : state.timerText)
+            panelToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
     }
 
@@ -192,14 +244,14 @@ struct TranslationPanelPresenter: View {
                 }
             }
 
-            panelToolbar(showChevron: state.isLoggedIn, timerValue: state.timerText.isEmpty ? nil : state.timerText)
+            panelToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
         }
     }
 
     @ViewBuilder
     private func panelToolbar(showChevron: Bool, timerValue: String?) -> some View {
         HStack(spacing: 4) {
-            if state.isSaved && state.isLoggedIn {
+            if state.showsSavedStatus {
                 Label("已加入", systemImage: "checkmark.circle.fill")
                     .font(.system(size: 11, weight: .medium))
                     .foregroundStyle(AppColors.saved(colorScheme))
@@ -211,7 +263,7 @@ struct TranslationPanelPresenter: View {
                 Text(timerValue)
                     .font(.system(size: 10, design: .monospaced))
                     .foregroundStyle(.tertiary)
-                    .padding(.leading, state.isSaved && state.isLoggedIn ? 8 : 0)
+                    .padding(.leading, state.showsSavedStatus ? 8 : 0)
             }
 
             Spacer()
@@ -228,7 +280,7 @@ struct TranslationPanelPresenter: View {
                 }
             }
 
-            if state.isSaved {
+            if state.showsDeleteAction {
                 Button(action: onDelete) {
                     Image(systemName: "trash")
                         .font(.callout)
