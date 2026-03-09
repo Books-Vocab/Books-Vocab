@@ -156,10 +156,10 @@ async def run_pipeline_background(
                 logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
 
             try:
-                logger.info("[%s] Step 4: Mochi Sync", uid)
+                logger.info("[%s] Step 4: Optional External Sync", uid)
                 mochi_key = user["config"].get("mochi_api_key")
                 if not mochi_key:
-                    logger.info("[%s] Mochi API key not set, skipping sync", uid)
+                    logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
                 else:
                     from .mochi import MochiClient, MochiSync
                     from .renderer import RenderIntent
@@ -181,11 +181,11 @@ async def run_pipeline_background(
 
                     stats = await loop.run_in_executor(None, _run_sync)
                     logger.info(
-                        "[%s] Mochi Sync: %d created, %d updated, %d deleted",
+                        "[%s] Optional external sync (Mochi): %d created, %d updated, %d deleted",
                         uid, stats["created"], stats["updated"], stats["deleted"],
                     )
             except Exception as exc:
-                logger.error("[%s] Step 4 (Mochi Sync) failed: %s", uid, exc, exc_info=True)
+                logger.error("[%s] Step 4 (Optional External Sync) failed: %s", uid, exc, exc_info=True)
 
             logger.info("[%s] Pipeline completed.", uid)
 

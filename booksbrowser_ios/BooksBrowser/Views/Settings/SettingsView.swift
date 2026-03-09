@@ -248,12 +248,12 @@ struct SettingsView: View {
 
     private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
         if status.is_trial {
-            return "免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與 Mochi 同步。"
+            return "免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。"
         }
         if status.is_active {
             return "你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。"
         }
-        return "升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與 Mochi 同步。"
+        return "升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。"
     }
 
     private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {

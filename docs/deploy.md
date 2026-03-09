@@ -150,7 +150,7 @@ deploy 失敗
 ```bash
 ./devops.sh status          # 健康狀態 + HTTP code
 ./devops.sh logs [n]        # 查日誌（預設 50 行）
-./devops.sh users           # 列出用戶 + Mochi 設定
+./devops.sh users           # 列出用戶 + 可選第三方整合設定
 ./devops.sh user-info <id>  # 用戶單字統計
 ./devops.sh backup          # 備份 data/ 到本地
 ./devops.sh env-check       # 確認遠端 .env 必要 key 齊全
