@@ -11,6 +11,7 @@ struct SettingsView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
+    @EnvironmentObject private var appLanguage: AppLanguageStore
     @State private var showSubscriptionPaywall = false
     @StateObject private var coordinator = SettingsCoordinator()
 
@@ -68,6 +69,9 @@ struct SettingsView: View {
                 isDeveloper: authIsDeveloper,
                 debug: authDebugState
             ),
+            preferences: .init(
+                selectedLanguage: L10n.string(appLanguage.selection.titleKey)
+            ),
             kg: authManager.isLoggedIn
                 ? .init(
                     serverURL: KGService.getServerURL(),
@@ -122,6 +126,7 @@ struct SettingsView: View {
                 }
                 #endif
             },
+            selectLanguage: { appLanguage.setLanguage($0) },
             showSubscriptionPaywall: {
                 subscriptionManager.activePaywallSource = .settings
                 showSubscriptionPaywall = true

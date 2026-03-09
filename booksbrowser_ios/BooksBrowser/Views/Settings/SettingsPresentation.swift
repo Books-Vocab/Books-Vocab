@@ -41,6 +41,10 @@ struct SettingsPresenterState {
         let isRefreshing: Bool
     }
 
+    struct PreferencesSection {
+        let selectedLanguage: String
+    }
+
     struct OptionalIntegrationSection {
         let isEnabled: Bool
     }
@@ -56,6 +60,7 @@ struct SettingsPresenterState {
     }
 
     let auth: AuthSection
+    let preferences: PreferencesSection
     let kg: KGSection?
     let subscription: SubscriptionSection?
     let optionalIntegration: OptionalIntegrationSection?
@@ -79,6 +84,7 @@ struct SettingsPresenterActions {
     let clearDeveloperAccount: () -> Void
     let useProductionBackend: () -> Void
     let useLocalBackend: () -> Void
+    let selectLanguage: (AppLanguage) -> Void
     let showSubscriptionPaywall: () -> Void
     let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void

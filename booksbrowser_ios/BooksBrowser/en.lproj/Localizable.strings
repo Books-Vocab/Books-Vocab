@@ -4,6 +4,7 @@
 "3. 選擇 API 分頁" = "3. Open the API tab";
 "4. 點擊 Generate API key 並複製貼上到前面設定中" = "4. Click Generate API key and paste it into the setting above";
 "AI 翻譯・知識圖譜・雲端同步" = "AI translation, knowledge graph, and cloud sync";
+"English" = "English";
 "API 錯誤：%@" = "API error: %@";
 "KG 伺服器未連線" = "KG server unavailable";
 "KG 伺服器負責生詞 AI 增強、知識連結與可選的第三方整合。" = "The KG server handles AI enrichment, knowledge links, and optional third-party integrations.";
@@ -92,6 +93,7 @@
 "生字庫" = "Vocabulary";
 "生字底線強度" = "Vocabulary Underline Strength";
 "版本" = "Version";
+"偏好設定" = "Preferences";
 "產出" = "Production";
 "登入" = "Sign In";
 "登入後，您在閱讀時標記的生詞將會自動整理於此。" = "After signing in, words you mark while reading will be organized here automatically.";
@@ -122,6 +124,10 @@
 "載入知識庫..." = "Loading knowledge base...";
 "載入解釋..." = "Loading explanation...";
 "設定" = "Settings";
+"語言" = "Language";
+"跟隨系統" = "Follow System";
+"繁體中文" = "Traditional Chinese";
+"切換後會立即套用到 app 介面文字。" = "Changes apply to the app interface immediately.";
 "解析錯誤：%@" = "Parse error: %@";
 "辨識" = "Recognition";
 "連線狀態" = "Connection";

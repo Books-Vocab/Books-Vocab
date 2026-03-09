@@ -216,7 +216,7 @@
 				};
 			};
 			buildConfigurationList = E9EC4E0F2F4DD27100C3FFB6 /* Build configuration list for PBXProject "BooksBrowser" */;
-			developmentRegion = "zh-Hant";
+			developmentRegion = en;
 			hasScannedForEncodings = 0;
 			knownRegions = (
 				en,
