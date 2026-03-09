@@ -27,12 +27,12 @@ struct PendingVocabPresenter: View {
                     systemImage: "character.book.closed",
                     description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。"
                 )
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .padding(.top, AppMetrics.spacingMedium)
+                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                .padding(.top, vocabSkin.metrics.pageTopInset)
             }
         } else {
             ScrollView {
-                VStack(spacing: 16) {
+                VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
                     VocabMetricHeroCard(
                         title: "待收錄",
                         description: "同步前的本地收件匣，會保留新增與待刪除動作。",
@@ -53,20 +53,20 @@ struct PendingVocabPresenter: View {
                                         tone: resolveTone(item.actionTone),
                                         action: { onActionTapped(item.id) }
                                     )
-                                    .padding(.top, 10)
+                                    .padding(.top, vocabSkin.metrics.accessoryTopOffset)
                                 }
-                                .padding(.horizontal, 18)
+                                .padding(.horizontal, vocabSkin.spacing.cardPadding)
 
                                 if index < state.rows.count - 1 {
                                     Divider()
-                                        .padding(.leading, 18)
+                                        .padding(.leading, vocabSkin.spacing.cardPadding)
                                 }
                             }
                         }
                     }
                 }
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .padding(.top, 10)
+                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                .padding(.top, vocabSkin.metrics.pageTopInset)
                 .padding(.bottom, AppShellMetrics.pageBottomPadding / 2)
             }
         }

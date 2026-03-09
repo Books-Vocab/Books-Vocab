@@ -25,8 +25,8 @@ struct SyncPresenter: View {
     var body: some View {
         VStack(spacing: 0) {
             headerView
-                .padding(.top, 32)
-                .padding(.bottom, 24)
+                .padding(.top, vocabSkin.metrics.overlayHorizontalInset + 12)
+                .padding(.bottom, vocabSkin.metrics.reviewFoldPadding)
                 .animation(.spring(response: 0.4, dampingFraction: 0.8), value: state.phase)
 
             if state.isLoggedIn && state.hasProAccess && !state.steps.isEmpty {
@@ -37,14 +37,14 @@ struct SyncPresenter: View {
 
                             if index < state.steps.count - 1 {
                                 Divider()
-                                    .padding(.leading, 32)
+                                    .padding(.leading, vocabSkin.metrics.overlayHorizontalInset + 12)
                             }
                         }
                     }
-                    .padding(.horizontal, 16)
-                    .padding(.vertical, 6)
+                    .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                    .padding(.vertical, vocabSkin.metrics.reviewTopBarBottomInset)
                 }
-                .padding(.horizontal, 20)
+                .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
             }
 
             Spacer()
@@ -54,13 +54,13 @@ struct SyncPresenter: View {
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(state.phase == .failed ? vocabSkin.palette.destructive : vocabSkin.palette.secondaryText)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 24)
-                    .padding(.bottom, 12)
+                    .padding(.horizontal, vocabSkin.metrics.summaryHorizontalInset)
+                    .padding(.bottom, vocabSkin.metrics.reviewToolbarVerticalInset)
             }
 
             actionArea
-                .padding(.horizontal, 20)
-                .padding(.bottom, 20)
+                .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
+                .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
         }
         .vocabCanvasBackground()
         .navigationTitle("同步")
