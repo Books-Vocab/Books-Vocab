@@ -42,6 +42,12 @@ def normalize_users_payload(
         config = dict(normalized_record.get("config", {})) if had_config else {}
         legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
         subscription = normalized_record.get("subscription")
+        integrations = config.get("integrations")
+        if not isinstance(integrations, dict):
+            integrations = {}
+        mochi_integration = integrations.get("mochi")
+        if not isinstance(mochi_integration, dict):
+            mochi_integration = {}
 
         if "mochi_api_key" in record:
             changed = True
@@ -49,6 +55,40 @@ def normalize_users_payload(
                 legacy_mochi_key = legacy_mochi_key.strip()
             if legacy_mochi_key and not config.get("mochi_api_key"):
                 config["mochi_api_key"] = legacy_mochi_key
+
+        nested_mochi_key = mochi_integration.get("api_key")
+        if isinstance(nested_mochi_key, str):
+            nested_mochi_key = nested_mochi_key.strip()
+            if nested_mochi_key != mochi_integration.get("api_key"):
+                changed = True
+                mochi_integration["api_key"] = nested_mochi_key
+            if nested_mochi_key and not config.get("mochi_api_key"):
+                config["mochi_api_key"] = nested_mochi_key
+                changed = True
+
+        flat_mochi_key = config.get("mochi_api_key")
+        if isinstance(flat_mochi_key, str):
+            flat_mochi_key = flat_mochi_key.strip()
+            if flat_mochi_key != config.get("mochi_api_key"):
+                changed = True
+                config["mochi_api_key"] = flat_mochi_key
+            if flat_mochi_key and mochi_integration.get("api_key") != flat_mochi_key:
+                mochi_integration["api_key"] = flat_mochi_key
+                changed = True
+
+        if mochi_integration:
+            integrations["mochi"] = mochi_integration
+        elif "mochi" in integrations:
+            integrations.pop("mochi", None)
+            changed = True
+
+        if integrations:
+            if config.get("integrations") != integrations:
+                changed = True
+            config["integrations"] = integrations
+        elif "integrations" in config:
+            config.pop("integrations", None)
+            changed = True
 
         if had_config or config:
             if normalized_record.get("config") != config:
@@ -91,6 +131,26 @@ def parse_datetime(raw: Any) -> datetime | None:
                 return datetime.fromtimestamp(float(raw), tz=timezone.utc)
             except ValueError:
                 return None
+    return None
+
+
+def resolve_mochi_api_key_from_config(config: dict[str, Any]) -> str | None:
+    integrations = config.get("integrations", {})
+    if isinstance(integrations, dict):
+        mochi = integrations.get("mochi", {})
+        if isinstance(mochi, dict):
+            nested = mochi.get("api_key")
+            if isinstance(nested, str):
+                nested = nested.strip()
+                if nested:
+                    return nested
+
+    legacy = config.get("mochi_api_key")
+    if isinstance(legacy, str):
+        legacy = legacy.strip()
+        if legacy:
+            return legacy
+
     return None
 
 

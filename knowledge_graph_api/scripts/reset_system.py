@@ -4,6 +4,7 @@ import json
 from pathlib import Path
 from dotenv import load_dotenv
 from src.kg.mochi import MochiClient
+from src.kg.user_store import resolve_mochi_api_key_from_config
 
 load_dotenv()
 DATA_DIR = Path(os.getenv("KG_DATA_DIR", "./data"))
@@ -23,7 +24,7 @@ def resolve_mochi_api_key() -> tuple[str | None, str]:
     def key_for(record: dict) -> str:
         config = record.get("config", {})
         if isinstance(config, dict):
-            nested = str(config.get("mochi_api_key", "")).strip()
+            nested = resolve_mochi_api_key_from_config(config)
             if nested:
                 return nested
         legacy = str(record.get("mochi_api_key", "")).strip()

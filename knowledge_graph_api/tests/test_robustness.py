@@ -116,9 +116,11 @@ class TestBatchA_UsersJsonLock:
                        headers=headers)
         assert r.status_code == 200, r.text
         assert r.json()["mochi_api_key"] == "mk_abc123"
+        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_abc123"
 
         data = json.loads((data_dir / "users.json").read_text())
         assert data[user_id]["config"]["mochi_api_key"] == "mk_abc123"
+        assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc123"
 
     def test_concurrent_writes_no_json_corruption(self, user_env):
         """10 concurrent PUT /api/user/config must not corrupt users.json."""
@@ -160,6 +162,23 @@ class TestBatchA_UsersJsonLock:
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
         assert r.json()["mochi_api_key"] == "mk_xyz"
+        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_xyz"
+
+    def test_nested_integrations_payload_is_accepted(self, user_env):
+        client, user_id, headers, data_dir = user_env
+
+        r = client.put(
+            "/api/user/config",
+            json={"integrations": {"mochi": {"api_key": "mk_nested"}}},
+            headers=headers,
+        )
+        assert r.status_code == 200, r.text
+        assert r.json()["mochi_api_key"] == "mk_nested"
+        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_nested"
+
+        data = json.loads((data_dir / "users.json").read_text())
+        assert data[user_id]["config"]["mochi_api_key"] == "mk_nested"
+        assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
 
     def test_get_entitlements_returns_default_subscription_snapshot(self, user_env):
         """GET /api/user/entitlements should return a stable default snapshot."""

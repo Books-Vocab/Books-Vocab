@@ -5,6 +5,8 @@ from typing import Any, Callable
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
 
+from .user_store import resolve_mochi_api_key_from_config
+
 
 def require_admin(token: str | None, *, admin_token: str) -> None:
     if not admin_token:
@@ -69,7 +71,7 @@ def admin_stats_response(
                 "provider": info.get("provider") if isinstance(info, dict) else None,
                 "last_login": info.get("last_login") if isinstance(info, dict) else None,
                 "vocab_count": vocab_count,
-                "has_mochi": bool(config.get("mochi_api_key")),
+                "has_mochi": bool(resolve_mochi_api_key_from_config(config)),
                 "tokens": utoken,
                 "total_input": total_input,
                 "total_output": total_output,

@@ -41,7 +41,7 @@ struct SettingsPresenterState {
         let isRefreshing: Bool
     }
 
-    struct MochiSection {
+    struct OptionalIntegrationSection {
         let isEnabled: Bool
     }
 
@@ -58,7 +58,7 @@ struct SettingsPresenterState {
     let auth: AuthSection
     let kg: KGSection?
     let subscription: SubscriptionSection?
-    let mochi: MochiSection?
+    let optionalIntegration: OptionalIntegrationSection?
     let about: AboutSection
     let danger: DangerSection?
 }
@@ -80,6 +80,6 @@ struct SettingsPresenterActions {
     let useProductionBackend: () -> Void
     let useLocalBackend: () -> Void
     let showSubscriptionPaywall: () -> Void
-    let showMochiInfo: () -> Void
+    let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
 }
