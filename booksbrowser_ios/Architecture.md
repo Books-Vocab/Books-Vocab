@@ -94,3 +94,4 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 這層規範的主文檔在 `docs/ui-design.md` 的 `Motion Contract`。
 若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。
+若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/ui_component_pattern_inventory.md`。
