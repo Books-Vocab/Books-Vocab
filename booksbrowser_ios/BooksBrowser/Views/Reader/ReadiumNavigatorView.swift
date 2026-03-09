@@ -146,6 +146,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             case markVocabWords([String])
             case markNewVocabWord(String)
             case removeVocabWord(String)
+            case setContentStyle(String)
             case setUnderlineOpacity(Double)
             case setDebugMode(Bool)
         }
@@ -158,6 +159,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             var lastVocabWordsSet: Set<String> = []
             var lastBookUniqueWordsCount: Int?
             var lastPreferences: EPUBPreferences?
+            var lastPanelMode: TranslationPanelMode?
             var lastUnderlineOpacity: Double?
             var lastHitTestingDebug: Bool?
 
@@ -175,6 +177,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 commands.append(contentsOf: commandsForRemovedWord(trigger: snapshot.removeWordTrigger))
                 commands.append(contentsOf: commandsForNavigation(trigger: snapshot.navigateToLocator))
                 commands.append(contentsOf: commandsForPreferences(snapshot.viewConfiguration.epubPreferences))
+                commands.append(contentsOf: commandsForContentStyle(snapshot.viewConfiguration.translationPanelMode))
                 commands.append(contentsOf: commandsForUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity))
                 commands.append(contentsOf: commandsForDebugMode(snapshot.viewConfiguration.showHitTestingDebug))
                 return commands
@@ -277,6 +280,17 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 guard lastPreferences != preferences else { return [] }
                 lastPreferences = preferences
                 return [.navigator(.applyPreferences(preferences))]
+            }
+
+            private mutating func commandsForContentStyle(_ mode: TranslationPanelMode) -> [BridgeCommand] {
+                if let lastPanelMode, mode != lastPanelMode {
+                    self.lastPanelMode = mode
+                    let css = ReaderContentStyleFactory.make(mode: mode).css()
+                    return [.dom(.setContentStyle(css))]
+                } else if lastPanelMode == nil {
+                    lastPanelMode = mode
+                }
+                return []
             }
 
             private mutating func commandsForUnderlineOpacity(_ opacity: Double) -> [BridgeCommand] {
@@ -432,9 +446,13 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
             // ★ 傳遞除錯模式開關
             let isDebugMode = parent.viewConfiguration.showHitTestingDebug ? "true" : "false"
+            let contentStyleCSS = ReaderContentStyleFactory.make(
+                mode: parent.viewConfiguration.translationPanelMode
+            ).css()
 
             let js = ReadiumNavigatorJS.buildInjectionScript(
                 fontFaceCSS: fontFaceCSS,
+                contentStyleCSS: contentStyleCSS,
                 underlineOpacity: parent.viewConfiguration.underlineOpacity,
                 isDebugMode: isDebugMode
             )

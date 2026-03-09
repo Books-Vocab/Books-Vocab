@@ -8,18 +8,20 @@ import Foundation
 enum ReadiumNavigatorJS {
     static func buildInjectionScript(
         fontFaceCSS: String,
+        contentStyleCSS: String,
         underlineOpacity: Double,
         isDebugMode: String
     ) -> String {
         [
-            buildStyleScript(fontFaceCSS: fontFaceCSS, underlineOpacity: underlineOpacity),
+            buildBaseStyleScript(fontFaceCSS: fontFaceCSS, underlineOpacity: underlineOpacity),
+            buildContentStyleScript(contentStyleCSS: contentStyleCSS),
             buildHighlightScript(),
             buildDebugScript(isDebugMode: isDebugMode),
             buildSelectionScript(isDebugMode: isDebugMode)
         ].joined(separator: "\n\n")
     }
 
-    private static func buildStyleScript(
+    private static func buildBaseStyleScript(
         fontFaceCSS: String,
         underlineOpacity: Double
     ) -> String {
@@ -33,19 +35,15 @@ enum ReadiumNavigatorJS {
                 document.head.appendChild(fontStyle);
             }
 
-            var style = document.createElement('style');
-            style.textContent = `
-                /* ═══════════════════════════════════════════════
-                   莫蘭迪色彩系統 × 介面隱形化
-                   ─ 1px 細線、低對比底線、克制的存在感 ─
-                   ═══════════════════════════════════════════════ */
+            if (!document.getElementById('reader-base-style')) {
+                var style = document.createElement('style');
+                style.id = 'reader-base-style';
+                document.head.appendChild(style);
+            }
 
+            document.getElementById('reader-base-style').textContent = `
                 :root {
                     --vocab-opacity: \(underlineOpacity);
-                    /* 增加頂部間距，避免浮動 Liquid Glass Header 擋住由上往下看的文字 */
-                    --RS__pageGutterTop: 72px !important;
-                    /* 增加底部間距，避免極簡進度條或未來可能的版型擋住最下面一行 */
-                    --RS__pageGutterBottom: 48px !important;
                 }
 
                 html, body {
@@ -53,68 +51,10 @@ enum ReadiumNavigatorJS {
                     overscroll-behavior-x: none;
                 }
 
-                /* ── Light Mode ── */
-                .active-word {
-                    outline: 1px solid rgba(80, 80, 80, 0.40);
-                    outline-offset: 1.5px;
-                    border-radius: 3px;
-                    background: rgba(80, 80, 80, 0.04) !important;
-                }
-                .vocab-word {
-                    background: linear-gradient(to top, hsla(215, 30%, 58%, var(--vocab-opacity)) 35%, transparent 35%);
-                    border-radius: 2px;
-                }
-                .active-word.vocab-word {
-                    outline: 1px solid rgba(80, 80, 80, 0.40);
-                    outline-offset: 1.5px;
-                    background: rgba(80, 80, 80, 0.04) !important;
-                }
-                .active-word .vocab-word {
-                    background: rgba(80, 80, 80, 0.04) !important;
-                }
-
-                /* ── Sepia Mode（暖紙調） ── */
-                :root[data-readium-theme="sepia"] .active-word {
-                    outline: 1px solid rgba(90, 70, 50, 0.40);
-                    outline-offset: 1.5px;
-                    background: rgba(90, 70, 50, 0.05) !important;
-                }
-                :root[data-readium-theme="sepia"] .vocab-word {
-                    background: linear-gradient(to top, hsla(22, 28%, 55%, var(--vocab-opacity)) 35%, transparent 35%);
-                }
-                :root[data-readium-theme="sepia"] .active-word.vocab-word {
-                    outline: 1px solid rgba(90, 70, 50, 0.40);
-                    outline-offset: 1.5px;
-                    background: rgba(90, 70, 50, 0.05) !important;
-                }
-                :root[data-readium-theme="sepia"] .active-word .vocab-word {
-                    background: rgba(90, 70, 50, 0.05) !important;
-                }
-
-                /* ── Dark Mode（深暖灰） ── */
-                :root[data-readium-theme="dark"] .active-word {
-                    outline: 1px solid rgba(200, 195, 185, 0.35);
-                    outline-offset: 1.5px;
-                    background: rgba(200, 195, 185, 0.06) !important;
-                }
-                :root[data-readium-theme="dark"] .vocab-word {
-                    background: linear-gradient(to top, hsla(215, 28%, 70%, clamp(0, calc(var(--vocab-opacity) * 1.6), 1)) 35%, transparent 35%);
-                }
-                :root[data-readium-theme="dark"] .active-word.vocab-word {
-                    outline: 1px solid rgba(200, 195, 185, 0.35);
-                    outline-offset: 1.5px;
-                    background: rgba(200, 195, 185, 0.06) !important;
-                }
-                :root[data-readium-theme="dark"] .active-word .vocab-word {
-                    background: rgba(200, 195, 185, 0.06) !important;
-                }
-
-                /* ── 排版基線 ── */
                 * {
                     text-align: left !important;
                 }
 
-                /* ── Debug 標記樣式 ── */
                 .debug-tap-point {
                     position: absolute;
                     width: 6px;
@@ -141,14 +81,34 @@ enum ReadiumNavigatorJS {
                     border-color: rgba(255, 255, 0, 0.5);
                 }
 
-                /* 全域單字框 (Token Calculator 效果) */
                 .debug-word-box {
                     outline: 1px solid rgba(130, 130, 130, 0.40);
                     border-radius: 2px;
                     background-color: transparent !important;
                 }
             `;
-            document.head.appendChild(style);
+        })();
+        """
+    }
+
+    private static func buildContentStyleScript(contentStyleCSS: String) -> String {
+        """
+        (function() {
+            function ensureContentStyleTag() {
+                var style = document.getElementById('reader-content-style');
+                if (!style) {
+                    style = document.createElement('style');
+                    style.id = 'reader-content-style';
+                    document.head.appendChild(style);
+                }
+                return style;
+            }
+
+            window.__applyReaderContentStyle = function(css) {
+                ensureContentStyleTag().textContent = css;
+            };
+
+            window.__applyReaderContentStyle(`\(contentStyleCSS)`);
         })();
         """
     }
