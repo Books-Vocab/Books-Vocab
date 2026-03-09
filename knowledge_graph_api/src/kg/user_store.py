@@ -41,6 +41,7 @@ def normalize_users_payload(
         had_config = isinstance(normalized_record.get("config"), dict)
         config = dict(normalized_record.get("config", {})) if had_config else {}
         legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
+        flat_mochi_key = config.pop("mochi_api_key", None)
         subscription = normalized_record.get("subscription")
         integrations = config.get("integrations")
         if not isinstance(integrations, dict):
@@ -51,30 +52,37 @@ def normalize_users_payload(
 
         if "mochi_api_key" in record:
             changed = True
-            if isinstance(legacy_mochi_key, str):
-                legacy_mochi_key = legacy_mochi_key.strip()
-            if legacy_mochi_key and not config.get("mochi_api_key"):
-                config["mochi_api_key"] = legacy_mochi_key
+        if "mochi_api_key" in config:
+            changed = True
+
+        if isinstance(legacy_mochi_key, str):
+            legacy_mochi_key = legacy_mochi_key.strip()
+        else:
+            legacy_mochi_key = None
+
+        if isinstance(flat_mochi_key, str):
+            flat_mochi_key = flat_mochi_key.strip()
+        else:
+            flat_mochi_key = None
 
         nested_mochi_key = mochi_integration.get("api_key")
         if isinstance(nested_mochi_key, str):
             nested_mochi_key = nested_mochi_key.strip()
             if nested_mochi_key != mochi_integration.get("api_key"):
                 changed = True
+            if nested_mochi_key:
                 mochi_integration["api_key"] = nested_mochi_key
-            if nested_mochi_key and not config.get("mochi_api_key"):
-                config["mochi_api_key"] = nested_mochi_key
+            elif "api_key" in mochi_integration:
+                mochi_integration.pop("api_key", None)
                 changed = True
+        else:
+            nested_mochi_key = None
 
-        flat_mochi_key = config.get("mochi_api_key")
-        if isinstance(flat_mochi_key, str):
-            flat_mochi_key = flat_mochi_key.strip()
-            if flat_mochi_key != config.get("mochi_api_key"):
+        resolved_mochi_key = nested_mochi_key or flat_mochi_key or legacy_mochi_key
+        if resolved_mochi_key:
+            if mochi_integration.get("api_key") != resolved_mochi_key:
                 changed = True
-                config["mochi_api_key"] = flat_mochi_key
-            if flat_mochi_key and mochi_integration.get("api_key") != flat_mochi_key:
-                mochi_integration["api_key"] = flat_mochi_key
-                changed = True
+            mochi_integration["api_key"] = resolved_mochi_key
 
         if mochi_integration:
             integrations["mochi"] = mochi_integration
@@ -144,12 +152,6 @@ def resolve_mochi_api_key_from_config(config: dict[str, Any]) -> str | None:
                 nested = nested.strip()
                 if nested:
                     return nested
-
-    legacy = config.get("mochi_api_key")
-    if isinstance(legacy, str):
-        legacy = legacy.strip()
-        if legacy:
-            return legacy
 
     return None
 

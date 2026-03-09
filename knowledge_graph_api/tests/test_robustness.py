@@ -112,14 +112,12 @@ class TestBatchA_UsersJsonLock:
         client, user_id, headers, data_dir = user_env
 
         r = client.put("/api/user/config",
-                       json={"mochi_api_key": "mk_abc123"},
+                       json={"integrations": {"mochi": {"api_key": "mk_abc123"}}},
                        headers=headers)
         assert r.status_code == 200, r.text
-        assert r.json()["mochi_api_key"] == "mk_abc123"
         assert r.json()["integrations"]["mochi"]["api_key"] == "mk_abc123"
 
         data = json.loads((data_dir / "users.json").read_text())
-        assert data[user_id]["config"]["mochi_api_key"] == "mk_abc123"
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc123"
 
     def test_concurrent_writes_no_json_corruption(self, user_env):
@@ -131,7 +129,7 @@ class TestBatchA_UsersJsonLock:
         def do_put(key):
             try:
                 r = client.put("/api/user/config",
-                               json={"mochi_api_key": key},
+                               json={"integrations": {"mochi": {"api_key": key}}},
                                headers=headers)
                 statuses.append(r.status_code)
             except Exception as e:
@@ -152,16 +150,15 @@ class TestBatchA_UsersJsonLock:
         except json.JSONDecodeError as e:
             pytest.fail(f"users.json corrupted: {e}")
 
-        assert user_id in data and "mochi_api_key" in data[user_id]["config"]
+        assert user_id in data and "integrations" in data[user_id]["config"]
 
     def test_get_config_returns_current_value(self, user_env):
         """GET /api/user/config should reflect what was PUT."""
         client, user_id, headers, data_dir = user_env
 
-        client.put("/api/user/config", json={"mochi_api_key": "mk_xyz"}, headers=headers)
+        client.put("/api/user/config", json={"integrations": {"mochi": {"api_key": "mk_xyz"}}}, headers=headers)
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
-        assert r.json()["mochi_api_key"] == "mk_xyz"
         assert r.json()["integrations"]["mochi"]["api_key"] == "mk_xyz"
 
     def test_nested_integrations_payload_is_accepted(self, user_env):
@@ -173,11 +170,9 @@ class TestBatchA_UsersJsonLock:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert r.json()["mochi_api_key"] == "mk_nested"
         assert r.json()["integrations"]["mochi"]["api_key"] == "mk_nested"
 
         data = json.loads((data_dir / "users.json").read_text())
-        assert data[user_id]["config"]["mochi_api_key"] == "mk_nested"
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
 
     def test_get_entitlements_returns_default_subscription_snapshot(self, user_env):

@@ -41,7 +41,7 @@ def isolated_api(tmp_path):
             {
                 user_id: {"config": {}},
                 "other_user": {
-                    "config": {"mochi_api_key": "mk_live"},
+                    "config": {"integrations": {"mochi": {"api_key": "mk_live"}}},
                     "provider": "google",
                     "email": "other@example.com",
                 },
@@ -395,9 +395,9 @@ def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
     ):
         users = api_mod.load_users()
 
-    assert users["legacy_user"]["config"]["mochi_api_key"] == "mk_legacy"
     assert users["legacy_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_legacy"
     assert "mochi_api_key" not in users["legacy_user"]
+    assert "mochi_api_key" not in users["legacy_user"]["config"]
 
 
 def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
@@ -447,9 +447,9 @@ def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
         )
 
     stored = json.loads(users_file.read_text())
-    assert stored["legacy_user"]["config"]["mochi_api_key"] == "mk_legacy"
     assert stored["legacy_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_legacy"
     assert "mochi_api_key" not in stored["legacy_user"]
+    assert "mochi_api_key" not in stored["legacy_user"]["config"]
 
 
 def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
@@ -478,7 +478,6 @@ def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
     ):
         users = api_mod.load_users()
 
-    assert users["nested_user"]["config"]["mochi_api_key"] == "mk_nested"
     assert users["nested_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
 
 

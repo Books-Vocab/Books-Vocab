@@ -67,7 +67,6 @@ def main():
         users[apple_id]["config"] = {}
 
     if mochi_key:
-        users[apple_id]["config"]["mochi_api_key"] = mochi_key
         users[apple_id]["config"]["integrations"] = {
             "mochi": {
                 "api_key": mochi_key
