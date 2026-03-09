@@ -49,7 +49,11 @@ struct TodayReviewPresenter: View {
                                     .padding(.top, AppMetrics.spacingMedium)
                                     .padding(.bottom, AppMetrics.spacingXXL)
 
-                                Spacer(minLength: 0)
+                                if state.revealStage.showsAnswer {
+                                    Spacer(minLength: 0)
+                                } else {
+                                    frontExpandZone(minHeight: max(geo.size.height * 0.28, 180))
+                                }
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
@@ -191,6 +195,24 @@ struct TodayReviewPresenter: View {
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer)
         }
+    }
+
+    private func frontExpandZone(minHeight: CGFloat) -> some View {
+        Button(action: onAdvanceReveal) {
+            VStack(spacing: 10) {
+                Capsule(style: .continuous)
+                    .fill(vocabSkin.palette.quaternaryText.opacity(0.14))
+                    .frame(width: 56, height: 3)
+
+                Text("下方空白處也可展開")
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(0.72))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: minHeight, alignment: .top)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
     }
 
     private var bottomToolbar: some View {
