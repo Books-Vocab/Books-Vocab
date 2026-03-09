@@ -130,10 +130,12 @@ struct TodayReviewPresenter: View {
     private func reviewCardFront(_ card: CardPresentation) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
-                Spacer()
-                if let tier = card.difficultyTier {
-                    VocabTierLabel(tier: tier)
+                if let pos = card.partOfSpeech {
+                    Text(pos)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
+                Spacer()
             }
 
             Spacer(minLength: 18)
@@ -355,11 +357,6 @@ struct TodayReviewPresenter: View {
     private func answerFoldContent(_ card: CardPresentation, showsExpandHint: Bool) -> some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 6) {
-                if let pos = card.partOfSpeech {
-                    Text(pos)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
                 Spacer()
                 if let tier = card.difficultyTier {
                     VocabTierLabel(tier: tier)
