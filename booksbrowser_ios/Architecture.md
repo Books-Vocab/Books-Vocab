@@ -73,3 +73,19 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
   這個設定值保存在 `UserDefaults`，每次翻頁或設定異動時會透過 JS 即時套用至 DOM，不再需要重新 reload 書本。
 - **介面隱形化 (Invisible UI)**:
   底線不使用強烈的 border，改用柔和的 `linear-gradient` 底色覆蓋；點擊高亮 (Active Word) 不採用深色 Highlight，而是利用低對比度的粗邊框與 4% Alpha 的底色框住單字，達成「克制的存在感」。
+
+### Motion Layer
+
+除了色彩、字體與材質，BooksBrowser 現在也把 motion 視為設計系統的一部分。
+
+- 動畫語意層集中在 `BooksBrowser/Models/AppMetrics.swift` 的 `AppMotion`
+- 共享 transition 也集中在同一檔案，避免 feature 各自發明不同進出方式
+- Reader、Review、Sync 是目前優先完成收斂的三條主路徑
+
+目前映射原則：
+- Reader panel / header / loading → `panelState`、`headerState`、`loadingState`
+- Review reveal / navigation / swap → `reviewRevealSpring`、`reviewNavigationSpring`、`reviewCardSwapSpring`
+- Sync phase / step update → `phaseChange`、`feedbackPulse`
+
+這層規範的主文檔在 `docs/ui-design.md` 的 `Motion Contract`。
+若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。

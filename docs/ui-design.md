@@ -1,5 +1,10 @@
 # iOS 26 Liquid Glass 完整 API 參考
 
+> 文檔網絡：
+> - 開發入口與編譯流程：`docs/ios-dev.md`
+> - App 架構與 UI 脈絡：`booksbrowser_ios/Architecture.md`
+> - Vocabulary 設計系統稽核：`docs/vocab_design_system_audit.md`
+
 > 適用：iOS 26.0+、Xcode 26.0+
 
 ## 目錄
@@ -36,6 +41,78 @@
 // 自訂過渡
 .glassEffectTransition(_ transition: GlassEffectTransition, isEnabled: Bool = true) -> some View
 ```
+
+---
+
+## Motion Contract
+
+BooksBrowser 的 motion system 不再接受各頁自由書寫 `.spring(...)` / `.easeOut(...)`。
+動畫必須優先走 `BooksBrowser/Models/AppMetrics.swift` 中的 `AppMotion` 與共享 `AnyTransition` 語意 token。
+
+### 核心原則
+
+1. 先選語意，再選數值。
+2. 同一類互動跨 feature 必須共用同一 token。
+3. feedback 要成對出現：
+   視覺 feedback 與 haptic feedback 應一起設計。
+4. 不為了「有在動」而加動畫。
+   animation 只服務於 state change、hierarchy、feedback、continuity。
+
+### AppMotion 語意層
+
+| Token | 用途 | 目前主要路徑 |
+|------|------|-------------|
+| `panelState` | panel / drawer / settings 開合 | Reader、Translation、Graph Settings |
+| `panelSnapBack` | drag release 回位 | TranslationPanel |
+| `headerState` | compact / expanded header 切換 | Reader header |
+| `phaseChange` | 流程狀態切換 | Sync、Settings 狀態卡 |
+| `feedbackPulse` | 成功保存、數字跳動、局部確認 | Translation save、Sync step、Review feedback |
+| `contentFade` | 短暫內容淡出 | Reader progress / transient overlay |
+| `loadingState` | loading 文案、loading overlay 的 state swap | Reader loading |
+| `reviewRevealSpring` | review front/back/details 展開 | Today Review |
+| `reviewNavigationSpring` | review 上一張 / 下一張 / 洗牌 | Today Review |
+| `reviewCardSwapSpring` | review 回答後換卡 | Today Review |
+
+### Transition 語意層
+
+| Token | 用途 |
+|------|------|
+| `overlayFade` | scrim、暫時性 overlay、toolbar 進出 |
+| `readerPanelReveal` | 底部 panel / drawer 進出 |
+| `headerSwap` | header compact / expanded swap |
+| `feedbackBadge` | saved / success 類 badge |
+| `linkedOverlayCard` | linked card 疊層卡片 |
+| `modalSwap` | 同區塊登入/登出、模式切換 |
+| `statusRowReveal` | Settings / status row 延伸顯示 |
+
+### 禁止事項
+
+- 不要在 feature 檔案裡直接寫新的 `.spring(response:...)`，除非先把它提升為 `AppMotion` 語意 token。
+- 不要為相似 overlay 各自定義不同 transition。
+- 不要把 loading、success、error 都混用同一個動畫。
+- 不要用 `.default` 當正式產品互動動畫。
+
+### Feature Mapping
+
+- Reader：
+  `panelState`、`panelSnapBack`、`headerState`、`loadingState`、`feedbackBadge`
+- Review：
+  `reviewRevealSpring`、`reviewNavigationSpring`、`reviewCardSwapSpring`、`overlayFade`
+- Sync：
+  `phaseChange`、`feedbackPulse`、`blurReplace`
+- Settings：
+  `modalSwap`、`statusRowReveal`
+
+### 文件責任
+
+- 若是要改 token 定義：
+  先更新 `BooksBrowser/Models/AppMetrics.swift`
+- 若是要改互動規則：
+  先更新本頁，再改程式
+- 若是要排查編譯或 SwiftUI 實作錯誤：
+  回到 `docs/ios-dev.md`
+- 若是要理解 UI 為何出現在某個資料流程中：
+  回到 `booksbrowser_ios/Architecture.md`
 
 ---
 
