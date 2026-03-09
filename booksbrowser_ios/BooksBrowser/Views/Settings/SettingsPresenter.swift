@@ -14,19 +14,8 @@ struct SettingsPresenter: View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: AppShellMetrics.sectionSpacing) {
-                    authSection
-                    if let subscription = state.subscription {
-                        subscriptionSection(subscription)
-                    }
-                    if let kg = state.kg {
-                        kgSection(kg)
-                    }
-                    if let optionalIntegration = state.optionalIntegration {
-                        optionalIntegrationSection(optionalIntegration)
-                    }
-                    aboutSection
-                    if let danger = state.danger {
-                        dangerSection(danger)
+                    ForEach(Array(sectionViews.enumerated()), id: \.offset) { _, section in
+                        section
                     }
                 }
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -43,6 +32,30 @@ struct SettingsPresenter: View {
                 }
             }
         }
+    }
+
+    private var sectionViews: [AnyView] {
+        var sections: [AnyView] = [AnyView(authSection)]
+
+        if let subscription = state.subscription {
+            sections.append(AnyView(subscriptionSection(subscription)))
+        }
+
+        if let kg = state.kg {
+            sections.append(AnyView(kgSection(kg)))
+        }
+
+        if let optionalIntegration = state.optionalIntegration {
+            sections.append(AnyView(optionalIntegrationSection(optionalIntegration)))
+        }
+
+        sections.append(AnyView(aboutSection))
+
+        if let danger = state.danger {
+            sections.append(AnyView(dangerSection(danger)))
+        }
+
+        return sections
     }
 
     private var authSection: some View {
