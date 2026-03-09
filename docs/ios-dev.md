@@ -143,6 +143,21 @@ Apple/Google SSO
 
 任何 Liquid Glass / SwiftUI UI 設計需求 → 使用 **`bb-ui-design`** skill（已獨立為 UI 設計技能）。
 
+### Motion Design System
+
+BooksBrowser 的動畫系統已收斂到 `BooksBrowser/Models/AppMetrics.swift` 的 `AppMotion` 與共享 `AnyTransition` 語意層。
+
+- 不要直接在 feature 檔案新增新的 `.spring(...)` / `.easeOut(...)`
+- 先查 `docs/ui-design.md` 的 `Motion Contract`
+- 如果找不到對應語意，再補 token，不要直接硬寫數值
+
+優先映射：
+- panel / drawer → `panelState`
+- header swap → `headerState` / `headerSwap`
+- phase state → `phaseChange`
+- success / save feedback → `feedbackPulse` / `feedbackBadge`
+- review 換卡 → `reviewCardSwapSpring`
+
 ---
 
 ## 常用調試技巧
@@ -165,4 +180,5 @@ App 的 `KGService` 透過 `Settings → Knowledge Graph → 伺服器位址` �
 ## 參考文件
 
 - **UI 設計相關** → `bb-ui-design` skill（iOS 26 Liquid Glass 完整 API）
+- `docs/ui-design.md` — Liquid Glass + motion contract + shared UI motion 語意層
 - `booksbrowser_ios/Architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
