@@ -8,7 +8,7 @@ extension VocabularyEntry {
         showsReviewProgress: Bool = false,
         now: Date = Date()
     ) -> WordRow.ViewData {
-        let isDelete = syncAction == .delete
+        let isDelete = isPendingDelete
         let status = rowStatus(showsReviewState: showsReviewState, isDelete: isDelete)
 
         return WordRow.ViewData(

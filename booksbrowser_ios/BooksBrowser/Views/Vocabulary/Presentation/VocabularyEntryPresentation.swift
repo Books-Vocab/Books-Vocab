@@ -2,12 +2,12 @@ import Foundation
 
 enum VocabularyEntryPresentation {
     static func pendingEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
-        entries.filter { !$0.isSynced }
+        entries.filter(\.shouldUploadOnNextSync)
     }
 
     static func syncedKnowledgeEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
         entries
-            .filter { $0.syncState == .synced && $0.syncAction != .delete }
+            .filter(\.shouldAppearInKnowledgeList)
             .sorted(by: compareKnowledgeEntries)
     }
 

@@ -48,7 +48,7 @@ actor BackgroundSyncActor {
                     continue
                 }
                 
-                if existingEntry.syncAction == .delete {
+                if existingEntry.isPendingDelete {
                     // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
                 } else {
                     // Update existing record
@@ -96,7 +96,7 @@ actor BackgroundSyncActor {
         if !isIncremental {
             progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
             for entry in localEntries {
-                if entry.syncState == .synced && entry.syncAction != .delete {
+                if entry.shouldAppearInKnowledgeList {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {
                         print("🧹 Cleaning up remote orphan: \(entry.word)")
                         modelContext.delete(entry)

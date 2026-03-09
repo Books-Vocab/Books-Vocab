@@ -36,7 +36,7 @@ struct AddVocabularyIntent: AppIntent {
         // 2. 檢查是否已存在
         let descriptor = FetchDescriptor<VocabularyEntry>(predicate: #Predicate { $0.word == targetWord })
         if let existing = try? modelContext.fetch(descriptor).first {
-            if existing.syncAction == .delete {
+            if existing.isPendingDelete {
                 existing.restorePendingEntry()
                 try? modelContext.save()
                 return .result(dialog: IntentDialog(stringLiteral: L10n.format("已為您恢復追蹤單字「%@」。", targetWord)))

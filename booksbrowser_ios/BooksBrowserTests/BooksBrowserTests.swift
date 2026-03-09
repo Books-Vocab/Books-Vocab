@@ -59,6 +59,73 @@ struct BooksBrowserTests {
         } == false)
     }
 
+    @Test func vocabularyEntryPendingAddLifecycleIsVisibleInReaderButNotKnowledgeList() async throws {
+        let entry = VocabularyEntry(
+            word: "evoke",
+            translation: "喚起",
+            context: "The story can evoke old memories.",
+            bookTitle: "Sample"
+        )
+
+        entry.restorePendingEntry()
+
+        #expect(entry.isPending)
+        #expect(entry.isPendingAdd)
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(entry.shouldAppearInReader)
+        #expect(entry.shouldAppearInKnowledgeList == false)
+    }
+
+    @Test func vocabularyEntryPendingDeleteLifecycleHidesFromReaderUntilServerDeleteCompletes() async throws {
+        let entry = VocabularyEntry(
+            word: "lucid",
+            translation: "清晰的",
+            context: "Her explanation was lucid.",
+            bookTitle: "Sample"
+        )
+
+        entry.markSynced()
+        entry.queueDelete()
+
+        #expect(entry.isPending)
+        #expect(entry.isPendingDelete)
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(entry.shouldAppearInReader == false)
+        #expect(entry.shouldAppearInKnowledgeList == false)
+    }
+
+    @Test func vocabularyEntryPresentationSeparatesPendingQueueFromKnowledgeLibrary() async throws {
+        let pendingAdd = VocabularyEntry(
+            word: "evoke",
+            translation: "喚起",
+            context: "The story can evoke old memories.",
+            bookTitle: "Sample"
+        )
+        pendingAdd.restorePendingEntry()
+
+        let synced = VocabularyEntry(
+            word: "lucid",
+            translation: "清晰的",
+            context: "Her explanation was lucid.",
+            bookTitle: "Sample"
+        )
+        synced.markSynced()
+
+        let pendingDelete = VocabularyEntry(
+            word: "obsolete",
+            translation: "過時",
+            context: "That term is obsolete.",
+            bookTitle: "Sample"
+        )
+        pendingDelete.markSynced()
+        pendingDelete.queueDelete()
+
+        let entries = [pendingAdd, synced, pendingDelete]
+
+        #expect(VocabularyEntryPresentation.pendingEntries(in: entries).map(\.word).sorted() == ["evoke", "obsolete"])
+        #expect(VocabularyEntryPresentation.syncedKnowledgeEntries(in: entries).map(\.word) == ["lucid"])
+    }
+
     private func makeSnapshot(
         lookedUpWords: [String],
         clearHighlightTrigger: UUID = UUID(),

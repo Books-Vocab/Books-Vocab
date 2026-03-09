@@ -71,6 +71,11 @@ final class VocabularyEntry {
 
     var isSynced: Bool { syncState == .synced }
     var isPending: Bool { syncState == .pending }
+    var isPendingAdd: Bool { syncState == .pending && syncAction == .add }
+    var isPendingDelete: Bool { syncState == .pending && syncAction == .delete }
+    var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete }
+    var shouldAppearInReader: Bool { syncAction != .delete }
+    var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete }
 
     init(
         word: String,
@@ -109,6 +114,10 @@ extension VocabularyEntry {
     func markSynced() {
         syncAction = .add
         syncState = .synced
+    }
+
+    func markSyncFailed() {
+        syncState = .failed
     }
 
     var reviewMode: VocabularyCardMode {
