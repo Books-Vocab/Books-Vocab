@@ -37,6 +37,8 @@ struct SettingsPresenter: View {
     private var sectionViews: [AnyView] {
         var sections: [AnyView] = [AnyView(authSection)]
 
+        sections.append(AnyView(preferencesSection))
+
         if let subscription = state.subscription {
             sections.append(AnyView(subscriptionSection(subscription)))
         }
@@ -79,6 +81,43 @@ struct SettingsPresenter: View {
             }
             .settingsCard()
             .animation(AppMotion.modalSwapSpring, value: state.auth.isLoggedIn)
+        }
+    }
+
+    private var preferencesSection: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "偏好設定", icon: "globe")
+
+            VStack(spacing: 0) {
+                SettingsRow(icon: "character.bubble", label: "語言") {
+                    Menu {
+                        ForEach(AppLanguage.allCases) { language in
+                            Button {
+                                actions.selectLanguage(language)
+                            } label: {
+                                if state.preferences.selectedLanguage == L10n.string(language.titleKey) {
+                                    Label(L10n.string(language.titleKey), systemImage: "checkmark")
+                                } else {
+                                    Text(L10n.string(language.titleKey))
+                                }
+                            }
+                        }
+                    } label: {
+                        HStack(spacing: 6) {
+                            Text(state.preferences.selectedLanguage)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                            Image(systemName: "chevron.up.chevron.down")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .settingsCard()
+
+            SettingsSectionFooter("切換後會立即套用到 app 介面文字。")
         }
     }
 
