@@ -13,6 +13,7 @@ private enum BookshelfMetrics {
     static let emptyStateSpacing: CGFloat = 20
     static let cardSpacing: CGFloat = 10
     static let cardMetadataSpacing: CGFloat = 3
+    static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeight: CGFloat = 210
     static let coverCornerRadius: CGFloat = 6
     static let coverStrokeWidth: CGFloat = 0.5
@@ -21,6 +22,9 @@ private enum BookshelfMetrics {
     static let coverShadowY: CGFloat = 2
     static let progressBarHeight: CGFloat = 3
     static let progressBarAccentOpacity: Double = 0.55
+    static let loadingOverlaySpacing: CGFloat = 16
+    static let loadingOverlayPadding: CGFloat = 28
+    static let loadingOverlayCornerRadius: CGFloat = 14
 }
 
 /// 書架主頁 — 簡約留白設計
@@ -152,15 +156,15 @@ struct BookshelfView: View {
             appTheme.palette.scrim
                 .ignoresSafeArea()
 
-            VStack(spacing: 16) {
+            VStack(spacing: BookshelfMetrics.loadingOverlaySpacing) {
                 ProgressView()
                     .scaleEffect(1.0)
                 Text(coordinator.loadingMessage)
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
-            .padding(28)
-            .glassEffect(.regular, in: .rect(cornerRadius: 14))
+            .padding(BookshelfMetrics.loadingOverlayPadding)
+            .glassEffect(.regular, in: .rect(cornerRadius: BookshelfMetrics.loadingOverlayCornerRadius))
         }
     }
 
@@ -223,7 +227,7 @@ struct BookCard: View {
                                 .font(AppFonts.caption2())
                                 .foregroundStyle(appTheme.palette.secondaryText)
                                 .multilineTextAlignment(.center)
-                                .padding(.horizontal, 12)
+                                .padding(.horizontal, BookshelfMetrics.placeholderTitleHorizontalPadding)
                         }
                     }
                     .overlay(

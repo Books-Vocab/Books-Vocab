@@ -84,8 +84,8 @@ struct TodayReviewPresenter: View {
             Text(state.progressText)
                 .font(vocabSkin.typography.monoLabel)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
+                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
@@ -99,8 +99,8 @@ struct TodayReviewPresenter: View {
                         .font(vocabSkin.typography.captionStrong)
                 }
                 .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
+                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
+                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
@@ -134,7 +134,7 @@ struct TodayReviewPresenter: View {
                     .transition(.paperFoldFromTop)
             }
         }
-        .animation(.spring(response: 0.42, dampingFraction: 0.88), value: state.revealStage)
+        .animation(AppMotion.relaxedSpring, value: state.revealStage)
     }
 
     private func reviewCardFront(_ card: CardPresentation) -> some View {
@@ -265,7 +265,11 @@ struct TodayReviewPresenter: View {
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
-                .shadow(color: vocabSkin.palette.shadow.opacity(1.1), radius: 6, y: -2)
+                .shadow(
+                    color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.reviewToolbarShadowOpacity),
+                    radius: vocabSkin.metrics.reviewToolbarShadowRadius,
+                    y: vocabSkin.metrics.reviewToolbarShadowY
+                )
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -337,7 +341,7 @@ struct TodayReviewPresenter: View {
     }
 
     private var answerCardHeight: CGFloat {
-        188
+        vocabSkin.metrics.reviewAnswerMinHeight
     }
 
     private func answerFoldSurface(_ card: CardPresentation) -> some View {

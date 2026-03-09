@@ -157,8 +157,8 @@ struct ReaderSettingsVocabPresenter: View {
                                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                         }
                     }
-                    .padding(.horizontal, 14)
-                    .padding(.vertical, 14)
+                    .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
+                    .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                             .fill(vocabSkin.palette.pageBackground)
@@ -259,9 +259,9 @@ struct ReaderSettingsVocabPresenter: View {
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
-            .padding(.horizontal, 4)
+            .padding(.horizontal, vocabSkin.metrics.readerSettingsHeaderMicroInset)
 
-            AppSectionCard(padding: 16, style: .settings(vocabSkin)) {
+            AppSectionCard(padding: vocabSkin.metrics.readerSettingsCardPadding, style: .settings(vocabSkin)) {
                 content()
             }
         }
@@ -299,8 +299,8 @@ struct ReaderSettingsVocabPresenter: View {
                 .font(vocabSkin.typography.captionStrong)
         }
         .foregroundStyle(vocabSkin.palette.secondaryText)
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
+        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
+        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
         .background(
             Capsule(style: .continuous)
                 .fill(vocabSkin.palette.mutedFill)
@@ -323,8 +323,8 @@ struct ReaderSettingsVocabPresenter: View {
                     .clipShape(Capsule(style: .continuous))
             }
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
+            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
@@ -366,11 +366,11 @@ struct ReaderSettingsVocabPresenter: View {
                     .frame(height: option.value == 0 ? 1 : max(2, option.value * 6))
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .clipShape(Capsule(style: .continuous))
-                    .padding(.trailing, 22)
+                    .padding(.trailing, vocabSkin.metrics.readerSettingsHighlightPreviewTrailingInset)
             }
-            .frame(maxWidth: .infinity, minHeight: 78, alignment: .topLeading)
-            .padding(.horizontal, 12)
-            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: vocabSkin.metrics.readerSettingsHighlightMinHeight, alignment: .topLeading)
+            .padding(.horizontal, vocabSkin.metrics.readerSettingsOptionHorizontalPadding)
+            .padding(.vertical, vocabSkin.metrics.readerSettingsOptionVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
@@ -401,9 +401,9 @@ struct ReaderSettingsVocabPresenter: View {
                     .multilineTextAlignment(.leading)
                     .fixedSize(horizontal: false, vertical: true)
             }
-            .frame(maxWidth: .infinity, minHeight: 112, alignment: .topLeading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, minHeight: vocabSkin.metrics.readerSettingsModeMinHeight, alignment: .topLeading)
+            .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
+            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)

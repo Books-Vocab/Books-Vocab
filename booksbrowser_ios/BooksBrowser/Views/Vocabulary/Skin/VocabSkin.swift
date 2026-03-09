@@ -91,12 +91,18 @@ struct VocabSkin {
         let sectionGap: CGFloat
         let inlineGap: CGFloat
         let rowPadding: CGFloat
+        let microGap: CGFloat
         let chipHorizontalPadding: CGFloat
         let chipVerticalPadding: CGFloat
         let prominentChipHorizontalPadding: CGFloat
         let prominentChipVerticalPadding: CGFloat
+        let compactChipHorizontalPadding: CGFloat
+        let compactChipVerticalPadding: CGFloat
         let compactRowVerticalPadding: CGFloat
         let compactRowAccessoryTopInset: CGFloat
+        let heroDescriptionHorizontalInset: CGFloat
+        let actionButtonHorizontalPadding: CGFloat
+        let actionButtonVerticalPadding: CGFloat
     }
 
     struct Metrics {
@@ -152,6 +158,23 @@ struct VocabSkin {
         let readerSettingsBottomInset: CGFloat
         let readerSettingsHeaderSpacing: CGFloat
         let readerSettingsHeaderBottomInset: CGFloat
+        let readerSettingsHeaderMicroInset: CGFloat
+        let readerSettingsCardPadding: CGFloat
+        let readerSettingsControlHorizontalPadding: CGFloat
+        let readerSettingsControlVerticalPadding: CGFloat
+        let readerSettingsOptionHorizontalPadding: CGFloat
+        let readerSettingsOptionVerticalPadding: CGFloat
+        let readerSettingsHighlightPreviewTrailingInset: CGFloat
+        let readerSettingsModeMinHeight: CGFloat
+        let readerSettingsHighlightMinHeight: CGFloat
+        let overlayCompactDividerInset: CGFloat
+        let overlayDrawerHorizontalInset: CGFloat
+        let overlayDrawerBottomInset: CGFloat
+        let emptyStateOuterInset: CGFloat
+        let listEmptyStateVerticalInset: CGFloat
+        let reviewToolbarShadowOpacity: Double
+        let reviewToolbarShadowRadius: CGFloat
+        let reviewToolbarShadowY: CGFloat
     }
 
     let palette: Palette
@@ -233,12 +256,18 @@ extension VocabSkin {
         sectionGap: 14,
         inlineGap: 8,
         rowPadding: 9,
+        microGap: 6,
         chipHorizontalPadding: 10,
         chipVerticalPadding: 6,
         prominentChipHorizontalPadding: 8,
         prominentChipVerticalPadding: 4,
+        compactChipHorizontalPadding: 6,
+        compactChipVerticalPadding: 3,
         compactRowVerticalPadding: 7,
-        compactRowAccessoryTopInset: 2
+        compactRowAccessoryTopInset: 2,
+        heroDescriptionHorizontalInset: 40,
+        actionButtonHorizontalPadding: 16,
+        actionButtonVerticalPadding: 13
     )
 
     static let baseMetrics = Metrics(
@@ -293,7 +322,24 @@ extension VocabSkin {
         readerSettingsHorizontalInset: 18,
         readerSettingsBottomInset: 20,
         readerSettingsHeaderSpacing: 14,
-        readerSettingsHeaderBottomInset: 16
+        readerSettingsHeaderBottomInset: 16,
+        readerSettingsHeaderMicroInset: 4,
+        readerSettingsCardPadding: 16,
+        readerSettingsControlHorizontalPadding: 14,
+        readerSettingsControlVerticalPadding: 14,
+        readerSettingsOptionHorizontalPadding: 12,
+        readerSettingsOptionVerticalPadding: 12,
+        readerSettingsHighlightPreviewTrailingInset: 22,
+        readerSettingsModeMinHeight: 112,
+        readerSettingsHighlightMinHeight: 78,
+        overlayCompactDividerInset: 8,
+        overlayDrawerHorizontalInset: 12,
+        overlayDrawerBottomInset: 8,
+        emptyStateOuterInset: 20,
+        listEmptyStateVerticalInset: 4,
+        reviewToolbarShadowOpacity: 1.1,
+        reviewToolbarShadowRadius: 6,
+        reviewToolbarShadowY: -2
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。

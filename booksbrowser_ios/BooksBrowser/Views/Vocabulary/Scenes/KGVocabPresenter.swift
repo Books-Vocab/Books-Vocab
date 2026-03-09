@@ -61,7 +61,7 @@ struct KGVocabPresenter: View {
                             description: state.emptyState.description
                         )
                         .padding(vocabSkin.metrics.listRowHorizontalInset)
-                        .padding(.vertical, 4)
+                        .padding(.vertical, vocabSkin.metrics.listEmptyStateVerticalInset)
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
