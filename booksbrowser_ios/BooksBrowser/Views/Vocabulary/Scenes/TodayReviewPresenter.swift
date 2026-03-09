@@ -525,55 +525,33 @@ private enum FoldSegmentPosition {
 }
 
 private enum TodayReviewPresenterPreviewData {
-    static let baseCard = CardPresentation(
-        word: "meticulous",
-        translation: "一絲不苟的；非常仔細的",
-        pronunciation: "məˈtɪkjələs",
-        partOfSpeech: "adj.",
-        difficultyTier: "advanced",
-        reviewMode: .recognition,
-        examples: ["The editor was meticulous about every line break and caption."],
-        sourceContext: "The editor was meticulous about every line break and caption.",
-        bookTitle: "Designing Interfaces",
-        chapterTitle: "Writing Tone",
-        explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
-        forms: ["meticulously", "meticulousness"],
-        syncStatus: 1,
-        dateAdded: Date(timeIntervalSince1970: 1_736_000_000),
-        linkGroups: [
-            .init(
-                id: "confusable",
-                label: "易混",
-                items: [
-                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
-                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關")
-                ]
-            )
-        ],
-        document: CardDocument(
-            blocks: [
-                .meaning(
-                    .init(
-                        title: "Meaning",
-                        paragraphs: [
-                            .init(inlines: [.text("做事"), .mark("非常仔細"), .text("，幾乎不放過任何細節。")])
-                        ]
-                    )
-                ),
-                .divider,
-                .example(
-                    .init(inlines: [.text("The editor was "), .mark("meticulous"), .text(" about every line break and caption.")])
-                ),
-                .source(
-                    .init(
-                        context: .init(inlines: [.text("The editor was meticulous about every line break and caption.")]),
-                        bookTitle: "Designing Interfaces",
-                        chapterTitle: "Writing Tone"
-                    )
-                )
-            ]
+    static let baseCard: CardPresentation = {
+        let entry = VocabularyEntry(
+            word: "meticulous",
+            translation: "一絲不苟的；非常仔細的",
+            context: "The editor was meticulous about every line break and caption.",
+            explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
+            partOfSpeech: "adj.",
+            pronunciation: "məˈtɪkjələs",
+            bookTitle: "Designing Interfaces",
+            chapterTitle: "Writing Tone"
         )
-    )
+        entry.dateAdded = Date(timeIntervalSince1970: 1_736_000_000)
+        entry.difficultyTier = "advanced"
+        entry.reviewMode = .recognition
+        entry.reviewExamples = ["The editor was meticulous about every line break and caption."]
+        entry.syncStatus = 1
+        entry.rootForm = "meticulous"
+        entry.inflections = ["meticulously", "meticulousness"]
+        entry.graphLinksByKind = [
+            "confusable": [
+                KGCardLinkSummary(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
+                KGCardLinkSummary(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關"),
+                KGCardLinkSummary(id: "link-3", cardId: "card-3", word: "scrupulous", kind: "confusable", label: "易混", confidence: 0.75, reason: "都與嚴謹相關")
+            ]
+        ]
+        return entry.cardPresentation
+    }()
 
     static let currentCard = TodayReviewPresenterState.CurrentCard(
         card: baseCard,
