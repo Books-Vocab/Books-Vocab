@@ -69,11 +69,14 @@ final class VocabularyEntry {
         set { actionType = newValue.rawValue }
     }
 
+    var isFailed: Bool { syncState == .failed }
     var isSynced: Bool { syncState == .synced }
     var isPending: Bool { syncState == .pending }
     var isPendingAdd: Bool { syncState == .pending && syncAction == .add }
     var isPendingDelete: Bool { syncState == .pending && syncAction == .delete }
-    var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete }
+    var isFailedAdd: Bool { syncState == .failed && syncAction == .add }
+    var isFailedDelete: Bool { syncState == .failed && syncAction == .delete }
+    var shouldUploadOnNextSync: Bool { isPendingAdd || isPendingDelete || isFailedAdd || isFailedDelete }
     var shouldAppearInReader: Bool { syncAction != .delete }
     var shouldAppearInKnowledgeList: Bool { isSynced && syncAction != .delete }
 
@@ -118,6 +121,12 @@ extension VocabularyEntry {
 
     func markSyncFailed() {
         syncState = .failed
+    }
+
+    func prepareForRetryAttempt() {
+        if isFailed {
+            syncState = .pending
+        }
     }
 
     var reviewMode: VocabularyCardMode {

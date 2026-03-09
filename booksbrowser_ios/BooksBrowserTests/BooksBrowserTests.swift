@@ -94,6 +94,42 @@ struct BooksBrowserTests {
         #expect(entry.shouldAppearInKnowledgeList == false)
     }
 
+    @Test func vocabularyEntryFailedDeleteRemainsRetryableAndHidden() async throws {
+        let entry = VocabularyEntry(
+            word: "obsolete",
+            translation: "過時",
+            context: "That term is obsolete.",
+            bookTitle: "Sample"
+        )
+
+        entry.markSynced()
+        entry.queueDelete()
+        entry.markSyncFailed()
+
+        #expect(entry.isFailed)
+        #expect(entry.isFailedDelete)
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(entry.shouldAppearInReader == false)
+        #expect(entry.shouldAppearInKnowledgeList == false)
+    }
+
+    @Test func vocabularyEntryFailedAddCanReturnToPendingForRetry() async throws {
+        let entry = VocabularyEntry(
+            word: "evoke",
+            translation: "喚起",
+            context: "The story can evoke old memories.",
+            bookTitle: "Sample"
+        )
+
+        entry.restorePendingEntry()
+        entry.markSyncFailed()
+        entry.prepareForRetryAttempt()
+
+        #expect(entry.isPending)
+        #expect(entry.isPendingAdd)
+        #expect(entry.shouldUploadOnNextSync)
+    }
+
     @Test func vocabularyEntryPresentationSeparatesPendingQueueFromKnowledgeLibrary() async throws {
         let pendingAdd = VocabularyEntry(
             word: "evoke",
@@ -120,9 +156,18 @@ struct BooksBrowserTests {
         pendingDelete.markSynced()
         pendingDelete.queueDelete()
 
-        let entries = [pendingAdd, synced, pendingDelete]
+        let failedAdd = VocabularyEntry(
+            word: "resilient",
+            translation: "有韌性的",
+            context: "She stayed resilient.",
+            bookTitle: "Sample"
+        )
+        failedAdd.restorePendingEntry()
+        failedAdd.markSyncFailed()
 
-        #expect(VocabularyEntryPresentation.pendingEntries(in: entries).map(\.word).sorted() == ["evoke", "obsolete"])
+        let entries = [pendingAdd, synced, pendingDelete, failedAdd]
+
+        #expect(VocabularyEntryPresentation.pendingEntries(in: entries).map(\.word).sorted() == ["evoke", "obsolete", "resilient"])
         #expect(VocabularyEntryPresentation.syncedKnowledgeEntries(in: entries).map(\.word) == ["lucid"])
     }
 
@@ -137,7 +182,8 @@ struct BooksBrowserTests {
             epubPreferences: ReaderSettings.shared.epubPreferences,
             underlineOpacity: underlineOpacity,
             showHitTestingDebug: showHitTestingDebug,
-            swiftUIColorScheme: .light
+            swiftUIColorScheme: .light,
+            translationPanelMode: .glass
         )
 
         return .init(

@@ -48,7 +48,7 @@ actor BackgroundSyncActor {
                     continue
                 }
                 
-                if existingEntry.isPendingDelete {
+                if existingEntry.syncAction == .delete {
                     // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
                 } else {
                     // Update existing record
@@ -126,7 +126,7 @@ actor BackgroundSyncActor {
     /// while preserving locally-created pending words (syncStatus == 0).
     func clearSyncedData() throws {
         let descriptor = FetchDescriptor<VocabularyEntry>(
-            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == VocabularySyncState.synced.rawValue }
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
         )
         let entries = try modelContext.fetch(descriptor)
         guard !entries.isEmpty else { return }
