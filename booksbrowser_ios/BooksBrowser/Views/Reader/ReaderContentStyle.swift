@@ -1,4 +1,4 @@
-import Foundation
+import SwiftUI
 
 struct ReaderContentStyle: Equatable {
     struct ThemeSelectionStyle: Equatable {
@@ -86,6 +86,116 @@ enum ReaderContentStyleFactory {
         case .vocab:
             return .vocab
         }
+    }
+}
+
+enum ReaderGlassTypography {
+    static let word = Font.system(size: 24, weight: .bold, design: .rounded)
+    static let pronunciation = Font.system(size: 13, design: .monospaced)
+    static let iconTiny = Font.system(size: 12)
+    static let partOfSpeech = AppFonts.caption(weight: .medium)
+    static let body = Font.subheadline
+    static let translationTitle = Font.title3.weight(.semibold)
+    static let label = AppFonts.caption()
+    static let labelSmall = AppFonts.caption2()
+    static let numericMono = Font.system(size: 10, design: .monospaced)
+    static let savedStatus = Font.system(size: 11, weight: .medium)
+    static let toolbarIcon = Font.callout
+    static let headerBackIcon = Font.system(size: 15, weight: .semibold)
+    static let headerBackLabel = Font.system(size: 15)
+    static let headerTitle = AppFonts.caption(weight: .medium)
+    static let headerAction = Font.system(size: 15)
+    static let headerCollapse = Font.system(size: 14, weight: .semibold)
+    static let progressText = Font.system(size: 11, weight: .light, design: .monospaced)
+    static let compactMenuIcon = Font.system(size: 18, weight: .medium)
+    static let settingsStepSmall = Font.system(size: 14, weight: .medium)
+    static let settingsStepLarge = Font.system(size: 22, weight: .medium)
+    static let settingsValue = Font.system(size: 13, design: .monospaced)
+    static let settingsIcon = Font.system(size: 14)
+}
+
+enum ReaderPresentationMetrics {
+    enum Panel {
+        static let handleWidth: CGFloat = 32
+        static let handleHeight: CGFloat = 4
+        static let handleTopInset: CGFloat = 8
+        static let handleBottomInset: CGFloat = 10
+        static let sectionSpacing: CGFloat = 10
+        static let horizontalInset: CGFloat = 18
+        static let bottomInset: CGFloat = 16
+        static let badgeHorizontalPadding: CGFloat = 7
+        static let badgeVerticalPadding: CGFloat = 3
+        static let messageVerticalInset: CGFloat = 12
+        static let statusInsetVertical: CGFloat = 8
+        static let statusInsetHorizontal: CGFloat = 10
+        static let statusCornerRadius: CGFloat = 10
+        static let dividerInsetVertical: CGFloat = 2
+        static let explanationInsetVertical: CGFloat = 4
+        static let toolbarTopInset: CGFloat = 2
+        static let actionButtonSize: CGFloat = 32
+        static let cornerRadius: CGFloat = 20
+        static let shadowOpacity: Double = 0.06
+        static let shadowRadius: CGFloat = 12
+        static let shadowY: CGFloat = -3
+    }
+
+    enum Settings {
+        static let controlHeight: CGFloat = 44
+        static let centeredValueWidth: CGFloat = 48
+        static let sliderSpacing: CGFloat = 14
+        static let sliderValueWidth: CGFloat = 28
+        static let optionSpacing: CGFloat = 8
+        static let optionVerticalInset: CGFloat = 12
+        static let optionCornerRadius: CGFloat = 10
+        static let underlineCornerRadius: CGFloat = 8
+        static let underlineVerticalInset: CGFloat = 10
+        static let sectionVerticalInset: CGFloat = 4
+        static let closeIconSize: CGFloat = 22
+        static let selectedFillOpacity: Double = 0.12
+        static let selectedStrokeOpacity: Double = 0.1
+    }
+
+    enum Overlay {
+        static let loadingSpacing: CGFloat = 14
+        static let loadingHorizontalInset: CGFloat = 28
+        static let loadingVerticalInset: CGFloat = 20
+        static let loadingMaxWidth: CGFloat = 320
+        static let loadingOuterInset: CGFloat = 20
+        static let progressBarWidth: CGFloat = 80
+        static let progressBarHeight: CGFloat = 3
+        static let progressTextWidth: CGFloat = 30
+        static let progressHorizontalInset: CGFloat = 16
+        static let progressVerticalInset: CGFloat = 10
+        static let topInset: CGFloat = 8
+        static let bottomInset: CGFloat = 8
+    }
+
+    enum Header {
+        static let compactSpacing: CGFloat = 8
+        static let contentHorizontalInset: CGFloat = 12
+        static let contentVerticalInset: CGFloat = 10
+        static let outerHorizontalInset: CGFloat = 20
+        static let outerTopInset: CGFloat = 8
+        static let buttonSize: CGFloat = 34
+        static let compactButtonSize: CGFloat = 44
+        static let titleMaxWidth: CGFloat = 160
+        static let trailingInset: CGFloat = 4
+        static let progressSpacing: CGFloat = 6
+        static let compactProgressInsetHorizontal: CGFloat = 10
+        static let compactProgressInsetVertical: CGFloat = 8
+        static let shadowOpacity: Double = 0.08
+        static let expandedShadowRadius: CGFloat = 16
+        static let compactShadowRadius: CGFloat = 10
+        static let shadowY: CGFloat = 4
+    }
+
+    enum Preview {
+        static let blockSpacing: CGFloat = 18
+        static let blockCornerRadius: CGFloat = 4
+        static let topInset: CGFloat = 120
+        static let horizontalInset: CGFloat = 28
+        static let bottomInset: CGFloat = 60
+        static let trailingStep: CGFloat = 28
     }
 }
 

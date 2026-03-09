@@ -29,6 +29,36 @@ enum AppMetrics {
     static let sectionInset: CGFloat = 20
 }
 
+enum AppTagMetrics {
+    static let horizontalPadding: CGFloat = 10
+    static let verticalPadding: CGFloat = 5
+}
+
+enum AppGhostButtonMetrics {
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 10
+}
+
+enum AppBannerMetrics {
+    static let spacing: CGFloat = 10
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 8
+    static let borderOpacity: Double = 0.2
+    static let backgroundOpacity: Double = 0.08
+}
+
+enum AppMotion {
+    static let quickEaseOut = Animation.easeOut(duration: 0.15)
+    static let controlEaseOut = Animation.easeOut(duration: 0.14)
+    static let chipSelectionEaseOut = Animation.easeOut(duration: 0.18)
+    static let progressLinear = Animation.linear(duration: 0.1)
+    static let standardSpring = Animation.spring(response: 0.3, dampingFraction: 0.75)
+    static let emphasizedSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
+    static let modalSwapSpring = Animation.spring(response: 0.45, dampingFraction: 0.85)
+    static let buttonSpring = Animation.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0)
+    static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
+}
+
 enum AppShadows {
     // ── iOS 26 Liquid Glass & Morandi Paper Shadows ───────────────────────────
     // 極低對比度的大範圍陰影，模擬實體紙張微微浮起的效果

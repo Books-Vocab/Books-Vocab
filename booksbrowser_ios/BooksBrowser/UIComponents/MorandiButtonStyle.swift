@@ -32,7 +32,7 @@ struct MorandiButtonStyle: ButtonStyle {
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             // iOS 26 精神的有機彈性動畫 (Fluid Motion)
-            .animation(.spring(response: 0.35, dampingFraction: 0.7, blendDuration: 0), value: configuration.isPressed)
+            .animation(AppMotion.buttonSpring, value: configuration.isPressed)
     }
 }
 

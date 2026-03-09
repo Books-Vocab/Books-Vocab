@@ -78,7 +78,7 @@ struct SettingsPresenter: View {
                 }
             }
             .settingsCard()
-            .animation(.spring(response: 0.45, dampingFraction: 0.85), value: state.auth.isLoggedIn)
+            .animation(AppMotion.modalSwapSpring, value: state.auth.isLoggedIn)
         }
     }
 
@@ -89,7 +89,7 @@ struct SettingsPresenter: View {
                     .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(.tertiary)
                     .opacity(state.auth.iconBreathing ? 0.45 : 0.75)
-                    .animation(.easeInOut(duration: 2.8).repeatForever(autoreverses: true), value: state.auth.iconBreathing)
+                    .animation(AppMotion.breathing, value: state.auth.iconBreathing)
 
                 VStack(spacing: SettingsMetrics.authCopySpacing) {
                     Text("解鎖完整功能")
@@ -280,8 +280,8 @@ struct SettingsPresenter: View {
 #endif
             }
             .settingsCard()
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kg.isConnected)
-            .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kg.serverCardCount)
+            .animation(AppMotion.emphasizedSpring, value: kg.isConnected)
+            .animation(AppMotion.emphasizedSpring, value: kg.serverCardCount)
 
             SettingsSectionFooter("KG 伺服器負責生詞 AI 增強、知識連結與可選的第三方整合。")
         }
@@ -553,7 +553,7 @@ private struct SettingsSocialBadge: View {
                 case .google:
                     Text("G")
                         .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(Color(red: 0.87, green: 0.19, blue: 0.19))
+                        .foregroundStyle(AppBrandColors.googleRed)
                 case .apple:
                     Image(systemName: "apple.logo")
                         .font(vocabSkin.typography.iconTiny)
@@ -568,7 +568,7 @@ private struct SettingsSocialBadge: View {
         case .google:
             return vocabSkin.palette.cardBackground
         case .apple:
-            return .black
+            return AppBrandColors.appleBlack
         }
     }
 

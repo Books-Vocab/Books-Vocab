@@ -38,24 +38,24 @@ struct ReaderSettingsPanelPresenter: View {
                     HStack(spacing: 0) {
                         Button(action: onDecreaseFontSize) {
                             Text("A")
-                                .font(.system(size: 14, weight: .medium))
+                                .font(ReaderGlassTypography.settingsStepSmall)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
+                                .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
                                 .contentShape(Rectangle())
                         }
                         .disabled(!state.canDecreaseFontSize)
                         .buttonStyle(.plain)
 
                         Text(state.fontSizeText)
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(ReaderGlassTypography.settingsValue)
                             .foregroundStyle(.secondary)
-                            .frame(width: 48, alignment: .center)
+                            .frame(width: ReaderPresentationMetrics.Settings.centeredValueWidth, alignment: .center)
 
                         Button(action: onIncreaseFontSize) {
                             Text("A")
-                                .font(.system(size: 22, weight: .medium))
+                                .font(ReaderGlassTypography.settingsStepLarge)
                                 .frame(maxWidth: .infinity)
-                                .frame(height: 44)
+                                .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
                                 .contentShape(Rectangle())
                         }
                         .disabled(!state.canIncreaseFontSize)
@@ -63,20 +63,20 @@ struct ReaderSettingsPanelPresenter: View {
                     }
                     .foregroundStyle(.primary)
 
-                    HStack(spacing: 14) {
+                    HStack(spacing: ReaderPresentationMetrics.Settings.sliderSpacing) {
                         Image(systemName: "text.line.spacing")
-                            .font(.system(size: 14))
+                            .font(ReaderGlassTypography.settingsIcon)
                             .foregroundStyle(.secondary)
 
                         Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
                             .tint(.primary)
 
                         Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
-                            .font(.system(size: 13, design: .monospaced))
+                            .font(ReaderGlassTypography.settingsValue)
                             .foregroundStyle(.secondary)
-                            .frame(width: 28, alignment: .trailing)
+                            .frame(width: ReaderPresentationMetrics.Settings.sliderValueWidth, alignment: .trailing)
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
                     Text("排版")
                 }
@@ -89,63 +89,89 @@ struct ReaderSettingsPanelPresenter: View {
                     }
                     .pickerStyle(.menu)
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
                         ForEach(ReaderTheme.allCases) { theme in
                             Button {
                                 onSelectTheme(theme)
                             } label: {
                                 HStack(spacing: 6) {
                                     Image(systemName: theme.icon)
-                                        .font(.system(size: 13))
+                                        .font(ReaderGlassTypography.settingsValue)
                                     Text(theme.rawValue)
-                                        .font(.subheadline)
+                                        .font(ReaderGlassTypography.body)
                                         .fontWeight(bindings.theme.wrappedValue == theme ? .medium : .regular)
                                 }
-                                .padding(.vertical, 12)
+                                .padding(.vertical, ReaderPresentationMetrics.Settings.optionVerticalInset)
                                 .frame(maxWidth: .infinity)
                                 .background(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .fill(bindings.theme.wrappedValue == theme ? Color.primary.opacity(0.12) : Color.clear)
+                                    RoundedRectangle(
+                                        cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
+                                        style: .continuous
+                                    )
+                                    .fill(
+                                        bindings.theme.wrappedValue == theme
+                                        ? Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedFillOpacity)
+                                        : Color.clear
+                                    )
                                 )
                                 .overlay(
-                                    RoundedRectangle(cornerRadius: 10, style: .continuous)
-                                        .stroke(Color.primary.opacity(0.1), lineWidth: bindings.theme.wrappedValue == theme ? 1 : 0)
+                                    RoundedRectangle(
+                                        cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
+                                        style: .continuous
+                                    )
+                                    .stroke(
+                                        Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedStrokeOpacity),
+                                        lineWidth: bindings.theme.wrappedValue == theme ? 1 : 0
+                                    )
                                 )
                                 .foregroundStyle(bindings.theme.wrappedValue == theme ? .primary : .secondary)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
                     Text("外觀")
                 }
 
                 Section {
-                    HStack(spacing: 8) {
+                    HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
                         ForEach(opacityOptions, id: \.label) { option in
                             Button {
                                 onSelectUnderlineOpacity(option.value)
                             } label: {
                                 Text(option.label.localized)
-                                    .font(.subheadline)
+                                    .font(ReaderGlassTypography.body)
                                     .fontWeight(bindings.underlineOpacity.wrappedValue == option.value ? .medium : .regular)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 10)
+                                    .padding(.vertical, ReaderPresentationMetrics.Settings.underlineVerticalInset)
                                     .background(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .fill(bindings.underlineOpacity.wrappedValue == option.value ? Color.primary.opacity(0.12) : Color.clear)
+                                        RoundedRectangle(
+                                            cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
+                                            style: .continuous
+                                        )
+                                        .fill(
+                                            bindings.underlineOpacity.wrappedValue == option.value
+                                            ? Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedFillOpacity)
+                                            : Color.clear
+                                        )
                                     )
                                     .overlay(
-                                        RoundedRectangle(cornerRadius: 8, style: .continuous)
-                                            .stroke(Color.primary.opacity(0.1), lineWidth: bindings.underlineOpacity.wrappedValue == option.value ? 1 : 0)
+                                        RoundedRectangle(
+                                            cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
+                                            style: .continuous
+                                        )
+                                        .stroke(
+                                            Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedStrokeOpacity),
+                                            lineWidth: bindings.underlineOpacity.wrappedValue == option.value ? 1 : 0
+                                        )
                                     )
                                     .foregroundStyle(bindings.underlineOpacity.wrappedValue == option.value ? .primary : .secondary)
                             }
                             .buttonStyle(.plain)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
                     Text("生字底線強度")
                 }
@@ -176,7 +202,7 @@ struct ReaderSettingsPanelPresenter: View {
                     Button(action: onDismiss) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.tertiary)
-                            .font(.system(size: 22))
+                            .font(.system(size: ReaderPresentationMetrics.Settings.closeIconSize))
                     }
                 }
             }
