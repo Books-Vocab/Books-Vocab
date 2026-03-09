@@ -289,9 +289,12 @@ struct AppTabSelectorStyle {
     let unselectedBackground: Color
     let selectedBorder: Color
     let unselectedBorder: Color
+    let selectedOuterBorder: Color
+    let unselectedOuterBorder: Color
     let containerBackground: Color
     let controlRadius: CGFloat
     let containerRadius: CGFloat
+    let outerBorderInset: CGFloat
 }
 
 struct AppTabSelector<ID: Hashable>: View {
@@ -348,6 +351,17 @@ struct AppTabSelector<ID: Hashable>: View {
                     .overlay(
                         RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
                             .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: style.controlRadius + style.outerBorderInset,
+                            style: .continuous
+                        )
+                        .stroke(
+                            selection == option.id ? style.selectedOuterBorder : style.unselectedOuterBorder,
+                            lineWidth: 0.8
+                        )
+                        .padding(-style.outerBorderInset)
                     )
                 }
                 .buttonStyle(.plain)
@@ -880,9 +894,12 @@ extension AppTabSelectorStyle {
             unselectedBackground: theme.palette.stageBackground,
             selectedBorder: theme.palette.cardBorder,
             unselectedBorder: theme.palette.divider.opacity(0.8),
+            selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
+            unselectedOuterBorder: theme.palette.divider.opacity(0.45),
             containerBackground: theme.palette.stageBackground,
             controlRadius: AppMetrics.cornerRadiusMedium - 2,
-            containerRadius: AppMetrics.cornerRadiusMedium + 2
+            containerRadius: AppMetrics.cornerRadiusMedium + 2,
+            outerBorderInset: 3
         )
     }
 
@@ -901,9 +918,12 @@ extension AppTabSelectorStyle {
             unselectedBackground: skin.palette.stageBackground,
             selectedBorder: skin.palette.cardBorder,
             unselectedBorder: skin.palette.divider.opacity(0.8),
+            selectedOuterBorder: skin.palette.cardBorder.opacity(0.4),
+            unselectedOuterBorder: skin.palette.divider.opacity(0.38),
             containerBackground: skin.palette.stageBackground,
             controlRadius: skin.radii.control,
-            containerRadius: skin.radii.control + 4
+            containerRadius: skin.radii.control + 4,
+            outerBorderInset: 3
         )
     }
 }
