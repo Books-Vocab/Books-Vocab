@@ -187,7 +187,15 @@ private struct CardInlineText: View {
         var part = AttributedString(value)
         part.font = markedFont
         part.foregroundColor = vocabSkin.palette.primaryText
-        part.backgroundColor = vocabSkin.palette.highlightMark.opacity(0.75)
+        switch style {
+        case .example, .source:
+            part.underlineStyle = Text.LineStyle(
+                pattern: .solid,
+                color: vocabSkin.palette.highlightMark.opacity(0.68)
+            )
+        case .body:
+            break
+        }
         return part
     }
 
@@ -195,7 +203,6 @@ private struct CardInlineText: View {
         var part = AttributedString(value)
         part.font = vocabSkin.typography.monoBody
         part.foregroundColor = vocabSkin.palette.secondaryText
-        part.backgroundColor = vocabSkin.palette.mutedFill.opacity(1.2)
         return part
     }
 
@@ -239,4 +246,3 @@ private struct CardInlineText: View {
         }
     }
 }
-

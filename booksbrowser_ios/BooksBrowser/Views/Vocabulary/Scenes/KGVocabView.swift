@@ -51,7 +51,7 @@ struct KGVocabView: View {
         }
         .sheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry)
-                .presentationDetents([.medium, .large])
+                .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
