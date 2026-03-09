@@ -7,6 +7,8 @@ struct VocabularyListPresenterState {
 }
 
 struct VocabularyListPresenter<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
     let state: VocabularyListPresenterState
     @Binding var selectedTab: Int
     @Binding var searchText: String
@@ -27,16 +29,16 @@ struct VocabularyListPresenter<Content: View>: View {
     var body: some View {
         VStack(spacing: 0) {
             VocabTabSelector(options: state.tabOptions, selection: $selectedTab)
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .padding(.vertical, AppMetrics.spacingSmall)
+                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                .padding(.vertical, vocabSkin.metrics.pageSectionVerticalInset)
 
             if state.showsSearchField {
                 VocabSearchField(
                     text: $searchText,
                     prompt: state.searchPrompt
                 )
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                .padding(.bottom, AppMetrics.spacingSmall)
+                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                .padding(.bottom, vocabSkin.metrics.pageSectionVerticalInset)
             }
 
             content

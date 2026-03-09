@@ -42,7 +42,7 @@ struct VocabChromePill: View {
             if let count {
                 Text("\(count)")
                     .font(vocabSkin.typography.monoLabel)
-                    .padding(.horizontal, 6)
+                    .padding(.horizontal, vocabSkin.spacing.inlineGap - 2)
                     .padding(.vertical, 2)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
@@ -51,7 +51,7 @@ struct VocabChromePill: View {
             }
         }
         .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
-        .padding(.horizontal, 12)
+        .padding(.horizontal, vocabSkin.spacing.sectionGap - 2)
         .padding(.vertical, 8)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
@@ -110,7 +110,7 @@ struct VocabChromeIconButton: View {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconMedium)
                 .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
-                .frame(width: 32, height: 32)
+                .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.cardBackground)
@@ -147,7 +147,7 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 10) {
+        HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
             leadingAccessory
 
             Label(title.localized, systemImage: systemImage)
@@ -170,8 +170,8 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
 
             VocabChromeIconButton(systemImage: "xmark", action: onClose)
         }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .padding(.horizontal, vocabSkin.metrics.overlayHeaderHorizontalInset)
+        .padding(.vertical, vocabSkin.metrics.overlayHeaderVerticalInset)
     }
 }
 
@@ -298,16 +298,22 @@ struct VocabAccessoryIconButton: View {
 }
 
 struct VocabListCard<Header: View, Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let headerPadding: EdgeInsets
     @ViewBuilder let header: Header
     @ViewBuilder let content: Content
 
     init(
-        headerPadding: EdgeInsets = EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16),
+        headerPadding: EdgeInsets? = nil,
         @ViewBuilder header: () -> Header,
         @ViewBuilder content: () -> Content
     ) {
-        self.headerPadding = headerPadding
+        self.headerPadding = headerPadding ?? EdgeInsets(
+            top: VocabSkin.baseMetrics.listCardHeaderTopInset,
+            leading: VocabSkin.baseMetrics.listRowHorizontalInset,
+            bottom: VocabSkin.baseMetrics.listCardHeaderBottomInset,
+            trailing: VocabSkin.baseMetrics.listRowHorizontalInset
+        )
         self.header = header()
         self.content = content()
     }
@@ -319,7 +325,7 @@ struct VocabListCard<Header: View, Content: View>: View {
                     .padding(headerPadding)
 
                 Divider()
-                    .padding(.horizontal, 16)
+                    .padding(.horizontal, vocabSkin.metrics.listDividerInset)
 
                 content
             }
@@ -462,7 +468,7 @@ struct VocabActionButtonStyle: ButtonStyle {
                 vocabSkin.palette.success.opacity(0.22)
             )
         case .warning:
-            let warning = vocabSkin.tierColor(for: "intermediate")
+            let warning = vocabSkin.palette.warning
             return (
                 warning,
                 warning.opacity(0.12),
