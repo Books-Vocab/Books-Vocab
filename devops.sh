@@ -331,7 +331,7 @@ cmd_users() {
   section "遠端用戶目錄"
   run_remote "ls -la $REMOTE_DIR/data/users/ 2>/dev/null || echo '(無用戶資料)'"
 
-  section "users.json（Mochi Key 設定）"
+  section "users.json（可選第三方整合設定）"
   run_remote "cat $REMOTE_DIR/data/users.json 2>/dev/null || echo '(不存在)'"
 }
 
@@ -367,7 +367,7 @@ cmd_delete_user() {
   run_remote "ls -lah $REMOTE_DIR/data/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
 
   [[ "$yes_flag" == "--yes" ]] && DEVOPS_YES=1
-  confirm "永久刪除用戶 '$uid' 的所有資料（SQLite、向量、圖譜、Mochi 映射）。此操作不可逆。"
+  confirm "永久刪除用戶 '$uid' 的所有資料（SQLite、向量、圖譜、第三方整合映射）。此操作不可逆。"
   run_remote "rm -rf $REMOTE_DIR/data/users/$uid"
   ok "用戶 $uid 的資料已刪除。"
 }

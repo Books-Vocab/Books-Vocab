@@ -82,14 +82,14 @@ struct SyncPresenter: View {
                 systemImage: "person.crop.circle.badge.exclamationmark",
                 tone: vocabSkin.palette.tertiaryText,
                 title: "尚未登入帳號",
-                description: "登入後即可將您的生詞庫同步至雲端與 Mochi。"
+                description: "登入後即可將您的生詞庫同步至雲端知識庫。"
             )
         } else if !state.hasProAccess {
             VocabStatusHero(
                 systemImage: "sparkles.rectangle.stack",
                 tone: vocabSkin.palette.accent,
                 title: "同步需 Pro",
-                description: "升級後即可將待收錄生詞同步到雲端、知識庫與 Mochi。"
+                description: "升級後即可將待收錄生詞同步到雲端與知識庫。"
             )
         } else {
             switch state.phase {
@@ -98,7 +98,7 @@ struct SyncPresenter: View {
                     systemImage: "arrow.triangle.2.circlepath",
                     tone: vocabSkin.palette.accent,
                     title: state.pendingCount == 0
-                        ? "強制同步到 Mochi"
+                        ? "強制同步到知識庫"
                         : L10n.format("%@ 個待處理動作", "\(state.pendingCount)")
                 ) {
                     HStack(spacing: vocabSkin.spacing.inlineGap) {

@@ -270,7 +270,7 @@ struct SettingsPresenter: View {
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kg.isConnected)
             .animation(.spring(response: 0.35, dampingFraction: 0.8), value: kg.serverCardCount)
 
-            SettingsSectionFooter("KG 伺服器負責生詞 AI 增強與 Mochi 同步。")
+            SettingsSectionFooter("KG 伺服器負責生詞 AI 增強、知識連結與可選的第三方整合。")
         }
     }
 
@@ -362,7 +362,7 @@ struct SettingsPresenter: View {
             }
             .settingsCard()
 
-            SettingsSectionFooter("可選。這是你的使用者層 Mochi 設定，填入後自動將生詞同步至 Mochi 單字卡。")
+            SettingsSectionFooter("可選。只有在你仍使用 Mochi 時才需要填寫，填入後會將生詞同步到 Mochi。")
         }
     }
 
@@ -740,11 +740,11 @@ struct MochiInfoSheetView: View {
                         .foregroundStyle(vocabSkin.palette.accent)
                         .padding(.bottom, 8)
 
-                    Text("關於 Mochi 同步")
+                    Text("關於 Mochi 整合")
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
-                    Text("如果你有在使用 Mochi (mochi.cards) 來複習單字，BooksBrowser 可以自動將你查過並儲存的單字建立成 Mochi 卡片。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。")
+                    Text("如果你仍在使用 Mochi (mochi.cards)，BooksBrowser 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，BooksBrowser 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。")
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(6)
@@ -820,7 +820,7 @@ struct SubscriptionPaywallSheet: View {
                     VStack(alignment: .leading, spacing: 12) {
                         paywallFeatureRow("AI 翻譯與語境解釋")
                         paywallFeatureRow("知識庫同步與跨裝置狀態")
-                        paywallFeatureRow("關聯圖與 Mochi 同步")
+                        paywallFeatureRow("關聯圖與內建複習")
                     }
                     .padding(vocabSkin.spacing.cardPadding)
                     .background(vocabSkin.palette.cardBackground)
@@ -918,7 +918,7 @@ struct SubscriptionPaywallSheet: View {
         if subscriptionManager.hasProAccess {
             return "目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。"
         }
-        return "解鎖閱讀器 AI、知識庫同步、關聯圖與 Mochi 整合。免費試用與價格會直接來自 App Store。"
+        return "解鎖閱讀器 AI、知識庫同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。"
     }
 
     private var priceLine: String {

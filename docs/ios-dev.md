@@ -113,7 +113,7 @@ var body: some View {
 
 | View | 說明 |
 |------|------|
-| `Settings/SettingsView` | 登入登出、伺服器設定、Mochi key 設定 |
+| `Settings/SettingsView` | 登入登出、伺服器設定、可選第三方整合設定 |
 | `Reader/ReaderView` | EPUB 閱讀器，查詞 → batchAdd → triggerPipeline |
 | `Vocabulary/` | 單字瀏覽、知識圖譜視覺化、手動同步 |
 
@@ -123,7 +123,7 @@ var body: some View {
 Reader 查詞
   → 暫存 VocabularyEntry（syncStatus=0, pending）
   → POST /api/vocab（batchAdd）→ 伺服器生成 embedding
-  → POST /api/pipeline（fire-and-forget）→ 伺服器背景 Enrich/Link/Mochi
+  → POST /api/pipeline（fire-and-forget）→ 伺服器背景 Enrich/Link/Difficulty/Optional External Sync
   → GET /api/vocab?since=<上次同步>（pullCardsToLocal）→ 更新 SwiftData
 ```
 
@@ -166,4 +166,3 @@ App 的 `KGService` 透過 `Settings → Knowledge Graph → 伺服器位址` �
 
 - **UI 設計相關** → `bb-ui-design` skill（iOS 26 Liquid Glass 完整 API）
 - `booksbrowser_ios/Architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
-
