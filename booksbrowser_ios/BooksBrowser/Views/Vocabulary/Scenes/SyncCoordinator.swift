@@ -180,7 +180,7 @@ final class SyncCoordinator: ObservableObject {
     ) {
         guard let idx = steps.firstIndex(where: { $0.id == id }) else { return }
 
-        withAnimation(.spring(response: 0.35, dampingFraction: 0.8)) {
+        withAnimation(AppMotion.phaseChange) {
             steps[idx].status = status
             steps[idx].current = current
             steps[idx].total = total

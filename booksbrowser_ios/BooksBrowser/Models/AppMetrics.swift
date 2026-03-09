@@ -62,6 +62,23 @@ enum AppMotion {
     static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
     static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
+
+    // Semantic motion tokens for shared interaction patterns.
+    static let panelState = standardSpring
+    static let panelSnapBack = standardSpring
+    static let headerState = relaxedSpring
+    static let phaseChange = emphasizedSpring
+    static let feedbackPulse = systemSpring
+    static let contentFade = quickEaseOut
+    static let loadingState = quickEaseOut
+}
+
+extension AnyTransition {
+    static let overlayFade = AnyTransition.opacity
+    static let readerPanelReveal = AnyTransition.move(edge: .bottom).combined(with: .opacity)
+    static let headerSwap = AnyTransition.scale(scale: 0.8, anchor: .topTrailing).combined(with: .opacity)
+    static let feedbackBadge = AnyTransition.scale(scale: 0.8).combined(with: .opacity)
+    static let linkedOverlayCard = AnyTransition.scale(scale: 0.96).combined(with: .opacity)
 }
 
 enum AppShadows {

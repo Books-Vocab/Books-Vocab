@@ -81,12 +81,12 @@ struct TranslationPanel: View {
                         if value.translation.height > 100 {
                             onDismiss()
                         }
-                        withAnimation(AppMotion.standardSpring) {
+                        withAnimation(AppMotion.panelSnapBack) {
                             dragOffset = 0
                         }
                     }
             )
-            .transition(.move(edge: .bottom).combined(with: .opacity))
+            .transition(.readerPanelReveal)
             .sensoryFeedback(.success, trigger: isSaved)
             .onReceive(ticker) { _ in
                 if isActive { elapsedTime += 0.1 }

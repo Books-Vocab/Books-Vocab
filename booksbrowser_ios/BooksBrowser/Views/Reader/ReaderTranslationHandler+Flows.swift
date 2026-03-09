@@ -11,7 +11,7 @@ extension ReaderTranslationHandler {
         wordSelection = selection
 
         if let existing = vocabularyContext.existingEntry(matching: word) {
-            withAnimation(.spring(response: 0.3)) {
+            withAnimation(AppMotion.panelState) {
                 translationResult = TranslationResult(
                     translation: existing.translation,
                     partOfSpeech: nil,
@@ -29,7 +29,7 @@ extension ReaderTranslationHandler {
         }
 
         if !authManager.isLoggedIn {
-            withAnimation(.spring(response: 0.3)) {
+            withAnimation(AppMotion.panelState) {
                 isTranslating = false
                 translationResult = nil
                 isSaved = false
@@ -48,7 +48,7 @@ extension ReaderTranslationHandler {
             return
         }
 
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             isTranslating = true
             translationResult = nil
             pronunciation = nil
@@ -81,14 +81,14 @@ extension ReaderTranslationHandler {
 
             do {
                 let result = try await translationTask.value
-                withAnimation {
+                withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
                 }
 
                 let fetchedPron = await pronTask.value
-                withAnimation {
+                withAnimation(AppMotion.feedbackPulse) {
                     pronunciation = fetchedPron
                 }
                 if let selection = wordSelection {
@@ -124,7 +124,7 @@ extension ReaderTranslationHandler {
         let selection = WordSelection(word: phrase, context: context, position: .zero)
         wordSelection = selection
 
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             isTranslating = true
             translationResult = nil
             pronunciation = nil
@@ -154,7 +154,7 @@ extension ReaderTranslationHandler {
                     pronunciation: nil,
                     explanation: nil
                 )
-                withAnimation {
+                withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
@@ -182,7 +182,7 @@ extension ReaderTranslationHandler {
         let selection = WordSelection(word: text, context: context, position: .zero)
         wordSelection = selection
 
-        withAnimation(.spring(response: 0.3)) {
+        withAnimation(AppMotion.panelState) {
             isTranslating = false
             translationResult = nil
             pronunciation = nil
@@ -207,7 +207,7 @@ extension ReaderTranslationHandler {
                         }
                     }
                 )
-                withAnimation {
+                withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
                     explanationStatus = nil

@@ -271,7 +271,7 @@ struct TranslationPanelPresenter: View {
                     .font(ReaderGlassTypography.savedStatus)
                     .foregroundStyle(AppColors.saved(colorScheme))
                     .symbolEffect(.bounce, value: state.isSaved)
-                    .transition(.scale(scale: 0.8).combined(with: .opacity))
+                    .transition(.feedbackBadge)
             }
 
             if let timerValue {

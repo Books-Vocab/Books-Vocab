@@ -17,7 +17,7 @@ final class KnowledgeGraphCoordinator: ObservableObject {
     @Published var linkThickness: Double = 1.0
 
     func toggleSettings() {
-        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+        withAnimation(AppMotion.panelState) {
             isShowingSettings.toggle()
         }
     }
