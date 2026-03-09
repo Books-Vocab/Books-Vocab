@@ -111,7 +111,9 @@ struct KGVocabView: View {
                     id: $0.id,
                     row: $0.wordRowViewData(
                         showsReviewState: false,
-                        showsSourceContext: false
+                        showsSourceContext: false,
+                        showsDifficultyTier: false,
+                        showsReviewProgress: true
                     )
                 )
             },

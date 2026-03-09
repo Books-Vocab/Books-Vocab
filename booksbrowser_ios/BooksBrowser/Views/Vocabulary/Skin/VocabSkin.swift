@@ -50,6 +50,8 @@ struct VocabSkin {
         let translationTitle: Font
         let body: Font
         let example: Font
+        let detailExampleSerif: Font
+        let detailExampleSerifStrong: Font
         let caption: Font
         let captionStrong: Font
         let monoLabel: Font
@@ -128,6 +130,8 @@ extension VocabSkin {
         translationTitle: .system(size: 21, weight: .semibold, design: .default),
         body: .system(size: 15, weight: .regular, design: .default),
         example: .system(size: 18, weight: .regular, design: .default),
+        detailExampleSerif: .custom("CormorantGaramond-Italic", size: 22),
+        detailExampleSerifStrong: .custom("CormorantGaramond-BoldItalic", size: 22),
         caption: .system(size: 12, weight: .medium, design: .default),
         captionStrong: .system(size: 12, weight: .semibold, design: .default),
         monoLabel: .system(size: 10, weight: .medium, design: .monospaced),

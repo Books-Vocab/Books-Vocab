@@ -2,6 +2,21 @@ import SwiftUI
 
 struct WordRow: View {
     struct ViewData: Identifiable, Hashable {
+        struct ReviewProgress: Hashable {
+            enum Tone: Hashable {
+                case green
+                case yellow
+                case orange
+                case red
+            }
+
+            let statusLabel: String
+            let elapsedLabel: String
+            let totalLabel: String
+            let fraction: Double
+            let tone: Tone
+        }
+
         enum Tone: Hashable {
             case primary
             case secondary
@@ -20,6 +35,7 @@ struct WordRow: View {
         let bookTitle: String?
         let chapterTitle: String?
         let difficultyTier: String?
+        let reviewProgress: ReviewProgress?
         let leadingSystemImage: String?
         let leadingTone: Tone?
         let trailingLabel: String?
@@ -71,6 +87,10 @@ struct WordRow: View {
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
 
+                if let reviewProgress = viewData.reviewProgress, !viewData.isStrikethrough {
+                    reviewProgressView(reviewProgress)
+                }
+
                 if let book = viewData.bookTitle, !book.isEmpty {
                     HStack(spacing: 4) {
                         Image(systemName: "book.closed")
@@ -95,13 +115,42 @@ struct WordRow: View {
 
             Spacer(minLength: 0)
 
-            if let tier = viewData.difficultyTier, !viewData.isStrikethrough {
+            if let tier = viewData.difficultyTier, viewData.reviewProgress == nil, !viewData.isStrikethrough {
                 VStack(alignment: .trailing, spacing: 4) {
                     VocabTierLabel(tier: tier)
                 }
             }
         }
         .padding(.vertical, 7)
+    }
+
+    private func reviewProgressView(_ progress: ViewData.ReviewProgress) -> some View {
+        VStack(alignment: .leading, spacing: 6) {
+            HStack(alignment: .center, spacing: 8) {
+                Text(progress.statusLabel.localized)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(resolveProgressTone(progress.tone))
+
+                Spacer(minLength: 8)
+
+                Text("\(progress.elapsedLabel) / \(progress.totalLabel)")
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            }
+
+            GeometryReader { proxy in
+                ZStack(alignment: .leading) {
+                    Capsule(style: .continuous)
+                        .fill(vocabSkin.palette.mutedFill.opacity(1.25))
+
+                    Capsule(style: .continuous)
+                        .fill(resolveProgressTone(progress.tone))
+                        .frame(width: max(6, proxy.size.width * progress.fraction))
+                }
+            }
+            .frame(height: 5)
+        }
+        .padding(.top, 2)
     }
 
     private func resolveTone(_ tone: ViewData.Tone) -> Color {
@@ -118,6 +167,19 @@ struct WordRow: View {
             return vocabSkin.palette.destructive
         case .reviewDue:
             return vocabSkin.tierColor(for: "intermediate")
+        }
+    }
+
+    private func resolveProgressTone(_ tone: ViewData.ReviewProgress.Tone) -> Color {
+        switch tone {
+        case .green:
+            return vocabSkin.palette.success
+        case .yellow:
+            return vocabSkin.tierColor(for: "intermediate")
+        case .orange:
+            return vocabSkin.tierColor(for: "advanced")
+        case .red:
+            return vocabSkin.palette.destructive
         }
     }
 }

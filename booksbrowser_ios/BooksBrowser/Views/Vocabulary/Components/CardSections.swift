@@ -113,7 +113,7 @@ struct CardExamplesSection: View {
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: vocabSkin.typography.example,
+                        font: vocabSkin.typography.detailExampleSerif,
                         textColor: vocabSkin.palette.primaryText,
                         highlightColor: vocabSkin.palette.highlightMark,
                         italic: true
