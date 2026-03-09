@@ -43,45 +43,41 @@ struct KGVocabPresenter: View {
                     )
                 }
 
-                VocabCard(padding: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        VStack(alignment: .leading, spacing: 10) {
-                            VocabTabSelector(options: state.reviewStateOptions, selection: $selectedReviewState)
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.top, 14)
-                        .padding(.bottom, 12)
-
-                        Divider()
-                            .padding(.horizontal, 16)
-
-                        if state.rows.isEmpty {
-                            VocabEmptyStateContent(
-                                title: state.emptyState.title,
-                                systemImage: state.emptyState.systemImage,
-                                description: state.emptyState.description
-                            )
-                            .padding(16)
-                            .padding(.vertical, 4)
-                        } else {
-                            LazyVStack(spacing: 0) {
-                                ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
-                                    WordRow(viewData: item.row)
-                                        .contentShape(Rectangle())
-                                        .onTapGesture { onRowTapped(item.id) }
-                                        .contextMenu {
-                                            Button(role: .destructive) {
-                                                onDeleteTapped(item.id)
-                                            } label: {
-                                                Label("刪除卡片", systemImage: "trash")
-                                            }
+                VocabListCard {
+                    VStack(alignment: .leading, spacing: 10) {
+                        VocabSectionHeader(
+                            title: selectedReviewState.title,
+                            trailingText: state.rows.isEmpty ? nil : "\(state.rows.count)"
+                        )
+                        VocabTabSelector(options: state.reviewStateOptions, selection: $selectedReviewState)
+                    }
+                } content: {
+                    if state.rows.isEmpty {
+                        VocabEmptyStateContent(
+                            title: state.emptyState.title,
+                            systemImage: state.emptyState.systemImage,
+                            description: state.emptyState.description
+                        )
+                        .padding(16)
+                        .padding(.vertical, 4)
+                    } else {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
+                                WordRow(viewData: item.row)
+                                    .contentShape(Rectangle())
+                                    .onTapGesture { onRowTapped(item.id) }
+                                    .contextMenu {
+                                        Button(role: .destructive) {
+                                            onDeleteTapped(item.id)
+                                        } label: {
+                                            Label("刪除卡片", systemImage: "trash")
                                         }
-                                        .padding(.horizontal, 16)
-
-                                    if index < state.rows.count - 1 {
-                                        Divider()
-                                            .padding(.leading, 16)
                                     }
+                                    .padding(.horizontal, 16)
+
+                                if index < state.rows.count - 1 {
+                                    Divider()
+                                        .padding(.leading, 16)
                                 }
                             }
                         }
