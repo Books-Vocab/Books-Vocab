@@ -42,8 +42,8 @@ struct VocabChromePill: View {
             if let count {
                 Text("\(count)")
                     .font(vocabSkin.typography.monoLabel)
-                    .padding(.horizontal, vocabSkin.spacing.inlineGap - 2)
-                    .padding(.vertical, 2)
+                    .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
+                    .padding(.vertical, vocabSkin.spacing.compactRowAccessoryTopInset)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
                             .fill((emphasized ? Color.white.opacity(0.12) : vocabSkin.palette.mutedFill))
@@ -51,8 +51,8 @@ struct VocabChromePill: View {
             }
         }
         .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
-        .padding(.horizontal, vocabSkin.spacing.sectionGap - 2)
-        .padding(.vertical, 8)
+        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding + 2)
+        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                 .fill(emphasized ? vocabSkin.palette.primaryText : vocabSkin.palette.cardBackground)
@@ -158,8 +158,8 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
                 Text(badgeText)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .padding(.horizontal, 6)
-                    .padding(.vertical, 3)
+                    .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
+                    .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
                             .fill(vocabSkin.palette.mutedFill)
@@ -196,7 +196,7 @@ struct VocabSectionHeader: View {
     var trailingText: String? = nil
 
     var body: some View {
-        HStack(spacing: 6) {
+        HStack(spacing: vocabSkin.spacing.microGap) {
             if let systemImage {
                 Image(systemName: systemImage)
                     .font(vocabSkin.typography.iconTiny)
@@ -369,7 +369,7 @@ struct VocabStatusHero<Badges: View>: View {
                     .font(vocabSkin.typography.body)
                     .multilineTextAlignment(.center)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, 40)
+                    .padding(.horizontal, vocabSkin.spacing.heroDescriptionHorizontalInset)
             }
 
             badges
@@ -440,8 +440,8 @@ struct VocabActionButtonStyle: ButtonStyle {
         configuration.label
             .font(vocabSkin.typography.captionStrong)
             .foregroundStyle(palette.foreground)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
+            .padding(.horizontal, vocabSkin.spacing.actionButtonHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.actionButtonVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(palette.background)
@@ -452,7 +452,7 @@ struct VocabActionButtonStyle: ButtonStyle {
             )
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.992 : 1)
-            .animation(.easeOut(duration: 0.14), value: configuration.isPressed)
+            .animation(AppMotion.controlEaseOut, value: configuration.isPressed)
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {

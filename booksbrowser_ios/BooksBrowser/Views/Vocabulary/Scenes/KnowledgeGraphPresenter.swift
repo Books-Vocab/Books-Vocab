@@ -91,38 +91,38 @@ struct KnowledgeGraphPresenter: View {
     }
 
     private var settingsOverlay: some View {
-                VocabCard(padding: 0) {
-                    VStack(spacing: 0) {
-                        VocabOverlayHeader(
-                            title: "關聯圖",
-                            systemImage: "point.3.connected.trianglepath.dotted",
-                            onClose: onToggleSettings
-                        ) {
-                            VocabInlineActionButton(title: "重設", action: onResetForces)
-                        }
+        VocabCard(padding: 0) {
+            VStack(spacing: 0) {
+                VocabOverlayHeader(
+                    title: "關聯圖",
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    onClose: onToggleSettings
+                ) {
+                    VocabInlineActionButton(title: "重設", action: onResetForces)
+                }
 
-                        Divider().padding(.horizontal, 8)
+                Divider().padding(.horizontal, vocabSkin.metrics.overlayCompactDividerInset)
 
-                        VStack(spacing: 0) {
-                            VocabSectionHeader(title: "力")
-                            VocabSliderRow(label: "向心力", value: bindings.centerForce, range: 0...1, format: "%.2f")
-                            VocabSliderRow(label: "排斥力", value: bindings.repelForce, range: 0...1, format: "%.2f")
-                            VocabSliderRow(label: "連結強度", value: bindings.linkForce, range: 0...1, format: "%.2f")
-                            VocabSliderRow(label: "連結距離", value: bindings.linkDistance, range: 20...300, format: "%.0f")
+                VStack(spacing: 0) {
+                    VocabSectionHeader(title: "力")
+                    VocabSliderRow(label: "向心力", value: bindings.centerForce, range: 0...1, format: "%.2f")
+                    VocabSliderRow(label: "排斥力", value: bindings.repelForce, range: 0...1, format: "%.2f")
+                    VocabSliderRow(label: "連結強度", value: bindings.linkForce, range: 0...1, format: "%.2f")
+                    VocabSliderRow(label: "連結距離", value: bindings.linkDistance, range: 20...300, format: "%.0f")
 
-                            Divider().padding(.vertical, 6)
+                    Divider().padding(.vertical, vocabSkin.spacing.microGap)
 
-                            VocabSectionHeader(title: "顯示")
-                            VocabSliderRow(label: "節點大小", value: bindings.nodeSize, range: 1...10, format: "%.1f")
-                            VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
-                        }
-                        .padding(.horizontal, 16)
-                        .padding(.bottom, 12)
-                    }
+                    VocabSectionHeader(title: "顯示")
+                    VocabSliderRow(label: "節點大小", value: bindings.nodeSize, range: 1...10, format: "%.1f")
+                    VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+                }
+                .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                .padding(.bottom, vocabSkin.metrics.overlayDrawerBottomInset + vocabSkin.spacing.compactChipVerticalPadding)
+            }
         }
         .frame(maxWidth: 420)
-        .padding(.horizontal, 12)
-        .padding(.bottom, 8)
+        .padding(.horizontal, vocabSkin.metrics.overlayDrawerHorizontalInset)
+        .padding(.bottom, vocabSkin.metrics.overlayDrawerBottomInset)
     }
 
     private func centeredStateCard(_ state: State.EmptyState) -> some View {
@@ -135,6 +135,6 @@ struct KnowledgeGraphPresenter: View {
             )
             Spacer()
         }
-        .padding(20)
+        .padding(vocabSkin.metrics.emptyStateOuterInset)
     }
 }
