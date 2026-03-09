@@ -25,7 +25,10 @@ struct KGVocabView: View {
 
     init(searchText: Binding<String>) {
         self._searchText = searchText
-        let filter = #Predicate<VocabularyEntry> { $0.syncStatus == 1 && $0.actionType != "delete" }
+        let filter = #Predicate<VocabularyEntry> {
+            $0.syncStatus == 1 &&
+            $0.actionType != "delete"
+        }
         self._syncedEntries = Query(filter: filter)
     }
 

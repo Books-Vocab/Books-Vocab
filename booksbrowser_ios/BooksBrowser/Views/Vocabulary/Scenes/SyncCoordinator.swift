@@ -63,8 +63,9 @@ final class SyncCoordinator: ObservableObject {
 
         pipelineTask = Task {
             do {
-                let deletes = pendingEntries.filter { $0.actionType == "delete" }
-                let adds = pendingEntries.filter { $0.actionType == "add" }
+                let deletes = pendingEntries.filter { $0.syncAction == .delete && $0.shouldUploadOnNextSync }
+                let adds = pendingEntries.filter { $0.syncAction == .add && $0.shouldUploadOnNextSync }
+                var encounteredFailure = false
 
                 if !deletes.isEmpty {
                     updateStep("upload_delete", status: .running, total: deletes.count)
@@ -73,12 +74,15 @@ final class SyncCoordinator: ObservableObject {
                     var failedWords: [String] = []
                     for entry in deletes {
                         if Task.isCancelled { break }
+                        entry.prepareForRetryAttempt()
                         do {
                             try await kgService.deleteCard(word: entry.word)
                             modelContext.delete(entry)
                             deleted += 1
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
+                            entry.markSyncFailed()
+                            encounteredFailure = true
                             failedWords.append(entry.word)
                         }
                     }
@@ -107,6 +111,7 @@ final class SyncCoordinator: ObservableObject {
                     updateStep("upload_add", status: .running, total: adds.count)
 
                     do {
+                        adds.forEach { $0.prepareForRetryAttempt() }
                         let response = try await kgService.batchAdd(entries: adds)
 
                         for entry in adds {
@@ -124,6 +129,9 @@ final class SyncCoordinator: ObservableObject {
                             detail: L10n.format("%@ 新增, %@ 已存在", "\(response.created)", "\(response.skipped)")
                         )
                     } catch {
+                        adds.forEach { $0.markSyncFailed() }
+                        encounteredFailure = true
+                        try? modelContext.save()
                         updateStep(
                             "upload_add",
                             status: .error,
@@ -139,6 +147,7 @@ final class SyncCoordinator: ObservableObject {
                     try await kgService.triggerPipeline()
                     updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
+                    encounteredFailure = true
                     updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
                 }
 
@@ -150,7 +159,12 @@ final class SyncCoordinator: ObservableObject {
                 }
 
                 updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
-                phase = .completed
+                if encounteredFailure {
+                    summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
+                    phase = .failed
+                } else {
+                    phase = .completed
+                }
             } catch {
                 summaryText = error.localizedDescription
                 phase = .failed

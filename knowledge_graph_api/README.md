@@ -5,6 +5,7 @@
 ## Backend Layout
 
 - `src/kg/api.py`: app composition root + legacy compatibility surface
+- `src/kg/route_registration.py`: 集中 router wiring，降低 `api.py` 組裝噪音
 - `src/kg/route_registration.py`: 集中 route registration，避免 handler 與 decorator 混在一起
 - `src/kg/*_service.py`: translate / auth / vocab / pipeline / billing 等業務邏輯
 - `tests/test_api_module_compat.py`、`tests/test_api_startup_smoke.py`、`tests/test_route_registration.py`: 重構遷移的 guardrails
@@ -76,6 +77,7 @@ data/users/
 - 呼叫後**立即回傳** `{"status": "queued"}`
 - 伺服器在背景獨立處理四步 Pipeline（Enrich → Link → Difficulty → Optional External Sync）
 - 每個用戶有專屬的 `asyncio.Lock` 確保同時只有一個 Pipeline 在執行，避免競態
+- 目前沒有對外暴露 SSE pipeline step stream；前端以本地同步步驟為主，遠端處理完成後再透過 pull 合併結果
 
 ## 資料庫架構 (SQLite 遷移)
 
