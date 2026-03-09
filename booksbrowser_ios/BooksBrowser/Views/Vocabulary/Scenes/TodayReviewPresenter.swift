@@ -19,6 +19,8 @@ struct TodayReviewPresenterState {
     let canShuffle: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
+    let rememberedFeedbackTrigger: Int
+    let forgotFeedbackTrigger: Int
 }
 
 struct TodayReviewPresenter: View {
@@ -45,6 +47,8 @@ struct TodayReviewPresenter: View {
                         ScrollView {
                             VStack(spacing: 0) {
                                 reviewCard(currentCard)
+                                    .id(currentCard.card.word + "-" + String(currentCard.card.dateAdded.timeIntervalSinceReferenceDate))
+                                    .transition(.reviewCardSwap)
                                     .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
                                     .padding(.top, vocabSkin.metrics.reviewCardTopInset)
                                     .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
@@ -76,6 +80,8 @@ struct TodayReviewPresenter: View {
             }
             .vocabCanvasBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .sensoryFeedback(.success, trigger: state.rememberedFeedbackTrigger)
+            .sensoryFeedback(.warning, trigger: state.forgotFeedbackTrigger)
         }
     }
 
@@ -262,6 +268,7 @@ struct TodayReviewPresenter: View {
         }
         .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
         .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
+        .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
@@ -575,7 +582,9 @@ private enum TodayReviewPresenterPreviewData {
             revealStage: stage,
             canShuffle: true,
             canGoPrevious: true,
-            canGoNext: true
+            canGoNext: true,
+            rememberedFeedbackTrigger: 0,
+            forgotFeedbackTrigger: 0
         )
     }
 
@@ -585,7 +594,9 @@ private enum TodayReviewPresenterPreviewData {
         revealStage: .front,
         canShuffle: false,
         canGoPrevious: false,
-        canGoNext: false
+        canGoNext: false,
+        rememberedFeedbackTrigger: 0,
+        forgotFeedbackTrigger: 0
     )
 }
 
@@ -662,6 +673,13 @@ private extension AnyTransition {
         .modifier(
             active: PaperFoldModifier(progress: 0),
             identity: PaperFoldModifier(progress: 1)
+        )
+    }
+
+    static var reviewCardSwap: AnyTransition {
+        .asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .scale(scale: 0.985).combined(with: .opacity)
         )
     }
 }
