@@ -175,6 +175,255 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
     }
 }
 
+struct VocabInlineActionButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    var tone: Color? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(title.localized, action: action)
+            .font(vocabSkin.typography.body)
+            .foregroundStyle(tone ?? vocabSkin.palette.accent)
+            .buttonStyle(.plain)
+    }
+}
+
+struct VocabSectionHeader: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    var systemImage: String? = nil
+    var trailingText: String? = nil
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if let systemImage {
+                Image(systemName: systemImage)
+                    .font(vocabSkin.typography.iconTiny)
+            }
+
+            Text(title.localized)
+                .font(vocabSkin.typography.captionStrong)
+                .tracking(0.5)
+
+            if let trailingText {
+                Text(trailingText.localized)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+
+            Spacer()
+        }
+        .foregroundStyle(vocabSkin.palette.tertiaryText)
+    }
+}
+
+struct VocabSliderRow: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let label: String
+    @Binding var value: Double
+    let range: ClosedRange<Double>
+    let format: String
+    var labelWidth: CGFloat = 52
+    var valueWidth: CGFloat = 36
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text(label.localized)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+                .frame(width: labelWidth, alignment: .leading)
+
+            Slider(value: $value, in: range)
+
+            Text(String(format: format, value))
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .frame(width: valueWidth, alignment: .trailing)
+        }
+        .frame(height: 32)
+    }
+}
+
+struct VocabMetricHeroCard: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let description: String
+    let value: String
+
+    var body: some View {
+        VocabCard {
+            HStack(alignment: .firstTextBaseline) {
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(title.localized)
+                        .font(vocabSkin.typography.sectionTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+
+                    Text(description.localized)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                Spacer()
+
+                Text(value)
+                    .font(vocabSkin.typography.numericHero)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .monospacedDigit()
+            }
+        }
+    }
+}
+
+struct VocabAccessoryIconButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let systemImage: String
+    let tone: Color
+    var background: Color? = nil
+    var action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(vocabSkin.typography.iconToolbar)
+                .foregroundStyle(tone)
+                .frame(width: 30, height: 30)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                        .fill(background ?? vocabSkin.palette.mutedFill)
+                )
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+struct VocabListCard<Header: View, Content: View>: View {
+    let headerPadding: EdgeInsets
+    @ViewBuilder let header: Header
+    @ViewBuilder let content: Content
+
+    init(
+        headerPadding: EdgeInsets = EdgeInsets(top: 14, leading: 16, bottom: 12, trailing: 16),
+        @ViewBuilder header: () -> Header,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.headerPadding = headerPadding
+        self.header = header()
+        self.content = content()
+    }
+
+    var body: some View {
+        VocabCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                header
+                    .padding(headerPadding)
+
+                Divider()
+                    .padding(.horizontal, 16)
+
+                content
+            }
+        }
+    }
+}
+
+struct VocabStatusHero<Badges: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let systemImage: String
+    var tone: Color
+    let title: String
+    var description: String? = nil
+    @ViewBuilder let badges: Badges
+
+    init(
+        systemImage: String,
+        tone: Color,
+        title: String,
+        description: String? = nil,
+        @ViewBuilder badges: () -> Badges = { EmptyView() }
+    ) {
+        self.systemImage = systemImage
+        self.tone = tone
+        self.title = title
+        self.description = description
+        self.badges = badges()
+    }
+
+    var body: some View {
+        VStack(spacing: 12) {
+            Image(systemName: systemImage)
+                .font(vocabSkin.typography.symbolHero)
+                .foregroundStyle(tone)
+
+            Text(title.localized)
+                .font(vocabSkin.typography.sectionTitle)
+
+            if let description {
+                Text(description.localized)
+                    .font(vocabSkin.typography.body)
+                    .multilineTextAlignment(.center)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .padding(.horizontal, 40)
+            }
+
+            badges
+        }
+    }
+}
+
+struct VocabTimelineRow<Trailing: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let statusSymbol: AnyView
+    let title: String
+    let titleTone: Color
+    let detail: String?
+    let detailTone: Color
+    @ViewBuilder let trailing: Trailing
+
+    init(
+        title: String,
+        titleTone: Color,
+        detail: String? = nil,
+        detailTone: Color,
+        @ViewBuilder statusSymbol: () -> some View,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.statusSymbol = AnyView(statusSymbol())
+        self.title = title
+        self.titleTone = titleTone
+        self.detail = detail
+        self.detailTone = detailTone
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: 12) {
+            statusSymbol
+                .frame(width: 20)
+
+            VStack(alignment: .leading, spacing: 2) {
+                HStack {
+                    Text(title.localized)
+                        .font(vocabSkin.typography.body.weight(.medium))
+                        .foregroundStyle(titleTone)
+
+                    Spacer()
+
+                    trailing
+                }
+
+                if let detail, !detail.isEmpty {
+                    Text(detail.localized)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(detailTone)
+                        .lineLimit(2)
+                }
+            }
+        }
+        .padding(.vertical, AppMetrics.spacingMedium)
+    }
+}
+
 struct VocabActionButtonStyle: ButtonStyle {
     @Environment(\.vocabSkin) private var vocabSkin
     let tone: VocabActionTone
