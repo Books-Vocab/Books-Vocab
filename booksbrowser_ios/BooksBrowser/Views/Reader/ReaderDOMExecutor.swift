@@ -27,6 +27,12 @@ struct ReaderDOMExecutor {
                 "document.documentElement.style.setProperty('--vocab-opacity', '\(opacity)');",
                 navigator: navigator
             )
+        case .setContentStyle(let css):
+            let cssLiteral = encodedJavaScriptString(css)
+            evaluateJavaScript(
+                "if(window.__applyReaderContentStyle) window.__applyReaderContentStyle(\(cssLiteral));",
+                navigator: navigator
+            )
         case .setDebugMode(let isEnabled):
             evaluateJavaScript(
                 "if(window.__toggleDebugBoxes) window.__toggleDebugBoxes(\(isEnabled ? "true" : "false"));",
@@ -42,5 +48,10 @@ struct ReaderDOMExecutor {
         Task { @MainActor in
             _ = await navigator?.evaluateJavaScript(script)
         }
+    }
+
+    private func encodedJavaScriptString(_ value: String) -> String {
+        let data = try? JSONEncoder().encode(value)
+        return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
 }
