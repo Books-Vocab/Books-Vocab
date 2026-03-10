@@ -15,6 +15,7 @@ private enum BookshelfMetrics {
     static let cardMetadataSpacing: CGFloat = 3
     static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeight: CGFloat = 210
+    static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 6
     static let coverStrokeWidth: CGFloat = 0.5
     static let coverShadowOpacity: Double = 0.06
@@ -30,15 +31,23 @@ private enum BookshelfMetrics {
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.modelContext) private var modelContext
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @StateObject private var coordinator = BookshelfCoordinator()
 
-    private let columns = [
-        GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
-    ]
+    private var columns: [GridItem] {
+        let item: GridItem = sizeClass == .regular
+            ? GridItem(.adaptive(minimum: 180, maximum: 240), spacing: AppShellMetrics.sectionSpacing)
+            : GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
+        return [item]
+    }
+
+    private var coverHeight: CGFloat {
+        sizeClass == .regular ? BookshelfMetrics.coverHeightRegular : BookshelfMetrics.coverHeight
+    }
 
     var body: some View {
         NavigationStack {
@@ -128,7 +137,7 @@ struct BookshelfView: View {
             LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
-                        BookCard(book: book)
+                        BookCard(book: book, coverHeight: coverHeight)
                     }
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint("點兩下開始閱讀")
@@ -182,6 +191,7 @@ struct BookshelfView: View {
 struct BookCard: View {
     @Environment(\.appTheme) private var appTheme
     let book: Book
+    var coverHeight: CGFloat = BookshelfMetrics.coverHeight
 
     var body: some View {
         VStack(spacing: BookshelfMetrics.cardSpacing) {
@@ -191,7 +201,7 @@ struct BookCard: View {
                 Image(uiImage: uiImage)
                     .resizable()
                     .aspectRatio(2/3, contentMode: .fill)
-                    .frame(height: BookshelfMetrics.coverHeight)
+                    .frame(height: coverHeight)
                     .clipShape(
                         RoundedRectangle(
                             cornerRadius: BookshelfMetrics.coverCornerRadius,
@@ -224,7 +234,7 @@ struct BookCard: View {
                     style: .continuous
                 )
                     .fill(appTheme.palette.mutedFill)
-                    .frame(height: BookshelfMetrics.coverHeight)
+                    .frame(height: coverHeight)
                     .overlay {
                         VStack(spacing: BookshelfMetrics.cardSpacing) {
                             Image(systemName: "book")
