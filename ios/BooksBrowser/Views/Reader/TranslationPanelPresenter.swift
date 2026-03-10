@@ -459,7 +459,7 @@ private enum TranslationPanelPreviewData {
 
 #Preview("Translation / Loading") {
     ZStack {
-        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        AppColors.paperSepiaDeep.ignoresSafeArea()
         VStack {
             Spacer()
             TranslationPanelPresenter(
@@ -472,7 +472,7 @@ private enum TranslationPanelPreviewData {
 
 #Preview("Translation / Guest") {
     ZStack {
-        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        AppColors.paperSepiaDeep.ignoresSafeArea()
         VStack {
             Spacer()
             TranslationPanelPresenter(
@@ -485,7 +485,7 @@ private enum TranslationPanelPreviewData {
 
 #Preview("Translation / Full Result") {
     ZStack {
-        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        AppColors.paperSepiaDeep.ignoresSafeArea()
         VStack {
             Spacer()
             TranslationPanelPresenter(
@@ -498,7 +498,7 @@ private enum TranslationPanelPreviewData {
 
 #Preview("Translation / Explanation Only Loading") {
     ZStack {
-        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        AppColors.paperSepiaDeep.ignoresSafeArea()
         VStack {
             Spacer()
             TranslationPanelPresenter(
@@ -511,7 +511,7 @@ private enum TranslationPanelPreviewData {
 
 #Preview("Translation / Empty") {
     ZStack {
-        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        AppColors.paperSepiaDeep.ignoresSafeArea()
         VStack {
             Spacer()
             TranslationPanelPresenter(
