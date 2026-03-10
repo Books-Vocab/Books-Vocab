@@ -52,7 +52,7 @@ struct LinkedCardOverlayStack: View {
             RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
-        .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: 28, y: 14)
+        .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
         .padding(.horizontal, vocabSkin.metrics.cardBlockContentGap + CGFloat(index * 10))
         .padding(.vertical, vocabSkin.metrics.overlayVerticalInset + CGFloat(index * 8))
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
