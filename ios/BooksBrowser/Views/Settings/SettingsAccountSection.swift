@@ -45,9 +45,7 @@ struct SettingsAccountSection: View {
             .padding(.vertical, AccountMetrics.authHeroVerticalPadding)
             .frame(maxWidth: .infinity)
 
-            Rectangle()
-                .fill(vocabSkin.palette.divider)
-                .frame(height: 1)
+            SettingsDivider(leadingInset: 0)
 
             VStack(spacing: AccountMetrics.authActionSpacing) {
                 Button(action: actions.loginWithGoogle) {
@@ -68,9 +66,7 @@ struct SettingsAccountSection: View {
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
-                    Rectangle()
-                        .fill(vocabSkin.palette.divider)
-                        .frame(height: 1)
+                    SettingsDivider(leadingInset: 0)
                         .padding(.vertical, 8)
 
                     HStack(spacing: 8) {
@@ -112,9 +108,7 @@ struct SettingsAccountSection: View {
             SettingsAuthSummary(state: state)
                 .padding(vocabSkin.spacing.cardPadding)
 
-            Rectangle()
-                .fill(vocabSkin.palette.divider)
-                .frame(height: 1)
+            SettingsDivider(leadingInset: 0)
 
             Button(role: .destructive, action: actions.logout) {
                 Text("登出帳號")
