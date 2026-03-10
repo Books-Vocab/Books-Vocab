@@ -44,11 +44,11 @@ struct SubscriptionPaywallSheet: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
             // Hero 確認
             VStack(spacing: vocabSkin.spacing.controlGap) {
-                Image(systemName: "checkmark.seal.fill")
+                Image(systemName: isCancelledButActive ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
                     .font(.system(size: 48))
-                    .foregroundStyle(vocabSkin.palette.success)
+                    .foregroundStyle(isCancelledButActive ? vocabSkin.palette.accent : vocabSkin.palette.success)
 
-                Text("Pro 已啟用")
+                Text(isCancelledButActive ? "Pro 即將到期" : "Pro 已啟用")
                     .font(vocabSkin.typography.displayTitle)
                     .foregroundStyle(vocabSkin.palette.primaryText)
 
@@ -273,9 +273,19 @@ struct SubscriptionPaywallSheet: View {
 
     // MARK: - Computed Properties
 
+    private var isCancelledButActive: Bool {
+        subscriptionManager.hasProAccess
+            && !subscriptionManager.entitlements.pro.will_renew
+            && subscriptionManager.entitlements.pro.source != "admin"
+    }
+
     private var activeSummaryText: String {
         if isAdminGranted {
             return L10n.string("目前帳號已由管理員授權為 Pro。")
+        }
+        if isCancelledButActive {
+            let expiry = SettingsView.formattedExpiry(subscriptionManager.entitlements.pro.expires_at)
+            return L10n.format("你已取消自動續訂。Pro 功能可使用至 %@。", expiry)
         }
         return L10n.string("感謝支持！所有進階功能已解鎖。")
     }
@@ -324,6 +334,9 @@ struct SubscriptionPaywallSheet: View {
     private var footerNote: String {
         if isAdminGranted {
             return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。")
+        }
+        if isCancelledButActive {
+            return L10n.string("到期後將回到免費方案。如需繼續使用 Pro，可重新訂閱。")
         }
         return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
     }
