@@ -166,7 +166,17 @@ struct SettingsView: View {
             await coordinator.loadData(authManager: authManager, kgService: kgService)
             if authManager.isLoggedIn {
                 await subscriptionManager.loadProducts()
-                await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
+            } else {
+                // 登出時立即清除訂閱狀態
+                await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
+            }
+        }
+        .onChange(of: showSubscriptionPaywall) { _, isPresented in
+            if !isPresented, authManager.isLoggedIn {
+                Task {
+                    await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
+                }
             }
         }
         .onChange(of: coordinator.optionalIntegrationApiKey) { _, _ in
