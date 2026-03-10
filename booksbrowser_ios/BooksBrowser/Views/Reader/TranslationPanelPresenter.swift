@@ -338,3 +338,115 @@ struct TranslationPanelPresenter: View {
         .padding(.top, ReaderPresentationMetrics.Panel.toolbarTopInset)
     }
 }
+
+// MARK: - Preview Data
+
+private enum TranslationPanelPreviewData {
+    static let loading = TranslationPanelPresenterState(
+        word: "ephemeral", pronunciation: nil, partOfSpeech: nil,
+        translation: nil, isLoading: true, isSaved: false,
+        isLoggedIn: true, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, timerText: "", isSpeaking: false
+    )
+
+    static let guest = TranslationPanelPresenterState(
+        word: "serendipity", pronunciation: "/ˌsɛr.ənˈdɪp.ɪ.ti/", partOfSpeech: "noun",
+        translation: "意外發現美好事物的能力", isLoading: false, isSaved: true,
+        isLoggedIn: false, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: "登入以同步詞彙",
+        isExplanationOnly: false, timerText: "", isSpeaking: false
+    )
+
+    static let fullTranslation = TranslationPanelPresenterState(
+        word: "ubiquitous", pronunciation: "/juːˈbɪk.wɪ.təs/", partOfSpeech: "adjective",
+        translation: "無處不在的", isLoading: false, isSaved: true,
+        isLoggedIn: true, isExpanded: true,
+        explanation: "Something that is ubiquitous seems to be everywhere at the same time. For example, smartphones have become ubiquitous in modern life.",
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, timerText: "3s", isSpeaking: false
+    )
+
+    static let explanationOnlyLoading = TranslationPanelPresenterState(
+        word: "ameliorate", pronunciation: nil, partOfSpeech: nil,
+        translation: nil, isLoading: false, isSaved: false,
+        isLoggedIn: true, isExpanded: true, explanation: nil,
+        isLoadingExplanation: true, statusMessage: nil,
+        isExplanationOnly: true, timerText: "", isSpeaking: false
+    )
+
+    static let empty = TranslationPanelPresenterState(
+        word: "quixotic", pronunciation: nil, partOfSpeech: nil,
+        translation: nil, isLoading: false, isSaved: false,
+        isLoggedIn: true, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, timerText: "", isSpeaking: false
+    )
+}
+
+// MARK: - Previews
+
+#Preview("Translation / Loading") {
+    ZStack {
+        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        VStack {
+            Spacer()
+            TranslationPanelPresenter(
+                state: TranslationPanelPreviewData.loading,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+        }
+    }
+}
+
+#Preview("Translation / Guest") {
+    ZStack {
+        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        VStack {
+            Spacer()
+            TranslationPanelPresenter(
+                state: TranslationPanelPreviewData.guest,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+        }
+    }
+}
+
+#Preview("Translation / Full Result") {
+    ZStack {
+        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        VStack {
+            Spacer()
+            TranslationPanelPresenter(
+                state: TranslationPanelPreviewData.fullTranslation,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+        }
+    }
+}
+
+#Preview("Translation / Explanation Only Loading") {
+    ZStack {
+        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        VStack {
+            Spacer()
+            TranslationPanelPresenter(
+                state: TranslationPanelPreviewData.explanationOnlyLoading,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+        }
+    }
+}
+
+#Preview("Translation / Empty") {
+    ZStack {
+        Color(red: 0.96, green: 0.93, blue: 0.87).ignoresSafeArea()
+        VStack {
+            Spacer()
+            TranslationPanelPresenter(
+                state: TranslationPanelPreviewData.empty,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+        }
+    }
+}

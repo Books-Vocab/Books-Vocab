@@ -1,0 +1,64 @@
+# UI Review Checklist
+
+Date: 2026-03-10
+Scope: `ios/BooksBrowser`
+
+文檔網絡：
+- 設計規範主文檔：`docs/ui-design.md`
+- 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
+- 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
+
+## 用途
+
+新增或修改 UI 時的最短自查清單。
+不求完整，只求讓開發時有低負擔自查入口。
+
+---
+
+## Checklist
+
+### 1. Token 與 Style
+
+- [ ] 有沒有直接寫 raw color / font / spacing？
+  → 優先用 `VocabSkin`、`AppMetrics`、`ReaderPresentationMetrics`
+- [ ] 有沒有直接寫 `.spring(...)` / `.easeOut(...)` 等 raw motion？
+  → 優先用 `AppMotion` 語意 token
+
+### 2. Component 復用
+
+- [ ] 這個 UI 場景有沒有現成 pattern？
+  → 查 `docs/references/ui_component_pattern_inventory.md`
+- [ ] 是否已有對應的 shared component？
+  → Empty State → `AppEmptyState*` / `VocabEmptyState*`
+  → State Message → `AppStateMessage*` / `VocabStateMessageCard`
+  → Hero Status → `VocabStatusHero`
+  → Panel / Overlay → `TranslationPanel` / `ReaderSettingsPanel` + motion tokens
+
+### 3. State 覆蓋
+
+- [ ] loading 狀態有覆蓋嗎？
+- [ ] empty 狀態有覆蓋嗎？
+- [ ] error 狀態有覆蓋嗎？
+- [ ] success / completed 狀態是否需要明確 feedback？
+
+### 4. Motion 一致性
+
+- [ ] motion 是否沿用 `AppMotion` 與共享 `AnyTransition`？
+  → panel 開合 → `panelState`
+  → phase 切換 → `phaseChange`
+  → feedback → `feedbackPulse` + `feedbackBadge`
+  → overlay → `overlayFade`
+- [ ] 同類互動跨 feature 是否共用同一 token？
+
+### 5. Preview 驗證
+
+- [ ] 關鍵狀態有對應的 `#Preview` 嗎？
+- [ ] preview 是否能固定高價值狀態（不依賴真實登入或後端）？
+
+---
+
+## 何時用
+
+- 新增畫面或重大 UI 修改時，快速過一遍
+- PR review 時作為 UI 面向的檢查參考
+- 不需要逐項簽核，有意識地掃過即可

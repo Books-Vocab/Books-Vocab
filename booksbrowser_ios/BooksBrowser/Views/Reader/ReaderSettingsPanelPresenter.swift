@@ -209,3 +209,26 @@ struct ReaderSettingsPanelPresenter: View {
         }
     }
 }
+
+#Preview("ReaderSettingsPanel") {
+    ReaderSettingsPanelPresenter(
+        state: .init(
+            fontSizeText: "17pt",
+            canDecreaseFontSize: true,
+            canIncreaseFontSize: true
+        ),
+        bindings: .init(
+            lineHeight: .constant(1.4),
+            font: .constant(.serif),
+            theme: .constant(.light),
+            underlineOpacity: .constant(0.35),
+            showHitTestingDebug: .constant(false),
+            translationPanelMode: .constant(.glass)
+        ),
+        onDecreaseFontSize: {},
+        onIncreaseFontSize: {},
+        onSelectTheme: { _ in },
+        onSelectUnderlineOpacity: { _ in },
+        onDismiss: {}
+    )
+}
