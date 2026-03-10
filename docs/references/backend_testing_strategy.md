@@ -42,7 +42,7 @@
 ## Runbook
 
 ```bash
-cd knowledge_graph_api
+cd backend
 pytest -q
 ```
 

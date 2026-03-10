@@ -5,7 +5,9 @@ This directory is the project workspace for KG API + iOS app development and mai
 
 ## Identity
 - project key: `kg`
-- local root: `projects/booksbrowser_workspace`
+- local root: `projects/kg`
+- backend root: `projects/kg/backend`
+- ios root: `projects/kg/ios`
 - API remote root: `~/knowledge_graph_api`
 - domain: `wordnexus.lol`
 - API container: `knowledge-graph-api`
@@ -31,7 +33,7 @@ Blocked by default:
 ## Implemented Product Surface (Inventory)
 Use this section as the "what already exists" checklist before proposing or changing anything.
 
-- iOS app surface (`booksbrowser_ios/BooksBrowser`):
+- iOS app surface (`ios/BooksBrowser`):
   - authentication and session flows (Apple, Google, manual/developer debug flow)
   - bookshelf + reader experience (Readium-based navigation, reader settings, reading UI)
   - translation + explanation interaction in reading flow
@@ -41,7 +43,7 @@ Use this section as the "what already exists" checklist before proposing or chan
   - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
   - UI review checklist (`docs/references/ui_review_checklist.md`)
 
-- KG backend surface (`knowledge_graph_api/src/kg`):
+- KG backend surface (`backend/src/kg`):
   - auth verification and user identity linking logic
   - user config and account lifecycle APIs (including delete account)
   - vocabulary lifecycle APIs and graph-link APIs
@@ -55,7 +57,7 @@ Use this section as the "what already exists" checklist before proposing or chan
   - admin test-matrix UI and APIs exist (`/admin/tests`, `/api/admin/tests/*`)
   - in-memory log capture for app + uvicorn channels exists
 
-- Test surface (`knowledge_graph_api/tests`):
+- Test surface (`backend/tests`):
   - API contract/surface tests
   - robustness tests (locking, storage, account/data integrity)
   - renderer behavior tests
@@ -65,32 +67,25 @@ Use this section as the "what already exists" checklist before proposing or chan
   - project safe wrapper (`ops/devops_kg_safe.sh`) and workspace wrapper (`devops.sh`)
   - preflight / backup / deploy / restart / status / logs / migration workflows
   - backup artifacts and incident/debug docs are part of normal operations context
-
-## Docs Router
-- backend development:
-  - `docs/backend-dev.md`
-- deploy / env / migration:
-  - `docs/deploy.md`
-- incidents / 502 / caddy / users:
-  - `docs/debug.md`
-- iOS build / xcode:
-  - `docs/ios-dev.md`
-- UI design:
-  - `docs/ui-design.md`
-- UI review checklist:
-  - `docs/references/ui_review_checklist.md`
-- multi-project context:
-  - `docs/multi_project_ops.md`
+  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
+  - UI review checklist (`docs/references/ui_review_checklist.md`)
 
 ## Common Commands
 - status: `./ops/devops_kg_safe.sh status`
 - logs: `./ops/devops_kg_safe.sh logs 120`
 - deploy: `./ops/devops_kg_safe.sh deploy`
 
-## Git Repos
-- **Backend**: `knowledge_graph_api/.git` — commit backend code changes here
-- **iOS**: `booksbrowser_ios/.git` — commit iOS changes here
-- **Workspace-level files** (`devops.sh`, `ops/`, `docs/`): NOT inside any git repo, not version-controlled
+## Git
+- Monorepo root (`.git`) covers iOS app, backend API, ops/docs
+- Commit prefix: `ios:` / `api:` / `ops:` / `docs:`
+
+## Reference Docs (read on demand)
+- backend development: `docs/backend-dev.md`
+- deploy / env / migration: `docs/deploy.md`
+- incidents / 502 / caddy / users: `docs/debug.md`
+- iOS build / xcode: `docs/ios-dev.md`
+- UI design: `docs/ui-design.md`
+- architecture / sync protocol: `docs/architecture.md`
 
 ## Cross-Project Note
-If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `AGENTS.md`.
+If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `CLAUDE.md`.
