@@ -40,6 +40,8 @@ Use this section as the "what already exists" checklist before proposing or chan
   - vocabulary capture, list/detail, sync, and knowledge-graph views
   - settings surface, including account deletion entry under danger operations
   - app-intent/background sync related integration
+  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
+  - UI review checklist (`docs/references/ui_review_checklist.md`)
 
 - KG backend surface (`backend/src/kg`):
   - auth verification and user identity linking logic
@@ -64,6 +66,9 @@ Use this section as the "what already exists" checklist before proposing or chan
 - Ops and deployment surface:
   - project safe wrapper (`ops/devops_kg_safe.sh`) and workspace wrapper (`devops.sh`)
   - preflight / backup / deploy / restart / status / logs / migration workflows
+  - backup artifacts and incident/debug docs are part of normal operations context
+  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
+  - UI review checklist (`docs/references/ui_review_checklist.md`)
 
 ## Common Commands
 - status: `./ops/devops_kg_safe.sh status`
