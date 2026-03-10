@@ -97,8 +97,6 @@ struct TodayReviewPresenter: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
-                        .offset(x: swipeOffset * 0.04)
-                        .animation(AppMotion.feedbackButtonSpring, value: swipeOffset)
                     }
 
                     bottomToolbar
@@ -168,21 +166,22 @@ struct TodayReviewPresenter: View {
 
                 if state.revealStage.showsAnswer {
                     answerFoldSurface(card)
-                        .padding(.top, -1)
+                        .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
                         .transition(.paperFoldFromTop)
                 }
 
                 if state.revealStage.showsDetails {
                     detailFoldSheet(currentCard)
-                        .padding(.top, -1)
+                        .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
                         .transition(.paperFoldFromTop)
                 }
             }
-            .scaleEffect(isPromoting ? 0.96 : 1.0)
-            .offset(y: isPromoting ? 22 : 0)
+            .scaleEffect(isPromoting ? TodayReviewMetrics.promoteScale : 1.0)
+            .offset(y: isPromoting ? TodayReviewMetrics.promoteYOffset : 0)
             .offset(x: swipeOffset)
             .rotationEffect(.degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
             .opacity(cardOpacity)
+            .animation(AppMotion.swipeTrackingSpring, value: swipeOffset)
             .simultaneousGesture(swipeDragGesture)
         }
     }
@@ -233,7 +232,7 @@ struct TodayReviewPresenter: View {
         dismissTask = Task { @MainActor in
             // 按鈕：蓄力微動（卡片往反方向退 ~8pt）
             if isFromButton {
-                withAnimation(.spring(response: 0.1, dampingFraction: 0.9)) {
+                withAnimation(AppMotion.buttonWindupSpring) {
                     swipeOffset = -direction * 8
                 }
                 try? await Task.sleep(for: .milliseconds(60))
@@ -241,7 +240,7 @@ struct TodayReviewPresenter: View {
             }
 
             // 甩出畫面
-            withAnimation(.interpolatingSpring(stiffness: 500, damping: 28)) {
+            withAnimation(flingAnimation) {
                 swipeOffset = direction * screenWidth * 1.3
             }
             try? await Task.sleep(for: .milliseconds(100))
@@ -256,12 +255,12 @@ struct TodayReviewPresenter: View {
             ]
             callback()
 
-            // 等 SwiftUI commit 新內容
-            try? await Task.sleep(for: .milliseconds(8))
+            // 等 SwiftUI commit 新內容（60Hz = 16.7ms/幀，留足一幀確保動畫不被批次合併成 no-op）
+            try? await Task.sleep(for: .milliseconds(20))
             guard !Task.isCancelled else { return }
 
-            // 新卡片從牌堆升頂，用 reviewRevealSpring 保持 Motion System 一致
-            withAnimation(AppMotion.reviewRevealSpring) {
+            // 新卡片從牌堆升頂
+            withAnimation(AppMotion.stackPromotionSpring) {
                 isPromoting = false
             }
 
@@ -292,18 +291,12 @@ struct TodayReviewPresenter: View {
         let yOffset: CGFloat = CGFloat(depth) * 5
         let rotation = stackRotations[depth - 1]
 
-        // swipe 時第一層微微放大
-        let swipeProgress = dismissPhase == .idle
-            ? min(abs(swipeOffset) / vocabSkin.metrics.reviewSwipeThreshold, 1.0)
-            : 0
-        let promoteHint: CGFloat = depth == 1 ? swipeProgress * 0.01 : 0
-
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
                 .fill(vocabSkin.palette.cardBackground)
                 .overlay(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder.opacity(0.45), lineWidth: 1)
+                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
                 )
                 .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
 
@@ -335,10 +328,10 @@ struct TodayReviewPresenter: View {
             }
         }
         .frame(height: frontCardHeight)
-        .scaleEffect(baseScale + promoteHint)
+        .scaleEffect(baseScale)
         .offset(y: yOffset)
         .rotationEffect(.degrees(rotation), anchor: .center)
-        .opacity(depth == 1 ? 0.72 : 0.35)
+        .opacity(depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35)
     }
 
     // MARK: - Swipe 與按鈕連動（方案 A）
@@ -376,30 +369,17 @@ struct TodayReviewPresenter: View {
             Text(label)
                 .font(.system(size: 34, weight: .bold, design: .default))
                 .foregroundStyle(color)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 5)
+                .padding(.horizontal, TodayReviewMetrics.tagHorizontalPadding)
+                .padding(.vertical, TodayReviewMetrics.tagVerticalPadding)
                 .overlay(
-                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                    RoundedRectangle(cornerRadius: TodayReviewMetrics.tagCornerRadius, style: .continuous)
                         .stroke(color, lineWidth: 2.5)
                 )
                 .transition(.feedbackBadge)
+                .rotationEffect(.degrees(rotation))
+                .opacity(intensity * TodayReviewMetrics.dividerFillOpacity)
                 .padding(reviewCardPadding)
-                .opacity(opacity)
-        } else if offset > 10 {
-            let opacity = min(Double(offset) / Double(threshold), 1.0)
-            Text("記得")
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.success)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
-                        .fill(vocabSkin.palette.success.opacity(0.12))
-                )
-                .transition(.feedbackBadge)
-                .padding(reviewCardPadding)
-                .opacity(opacity)
-                .frame(maxWidth: .infinity, alignment: .trailing)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
         }
     }
 
@@ -483,7 +463,7 @@ struct TodayReviewPresenter: View {
 
                 Text(title)
                     .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(0.72))
+                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
             }
             .frame(maxWidth: .infinity)
             .frame(minHeight: minHeight, alignment: .top)
@@ -551,7 +531,7 @@ struct TodayReviewPresenter: View {
     }
 
     private var feedbackButtons: some View {
-        let spring = Animation.spring(response: 0.22, dampingFraction: 0.72)
+        let spring = AppMotion.feedbackButtonSpring
         return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
                 HStack(spacing: 4) {
@@ -627,7 +607,7 @@ struct TodayReviewPresenter: View {
             Image(systemName: "paperclip")
                 .font(vocabSkin.typography.iconTiny)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
-                .padding(.top, 2)
+                .padding(.top, TodayReviewMetrics.answerHintTopPadding)
 
             VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
@@ -746,7 +726,7 @@ struct TodayReviewPresenter: View {
             Spacer(minLength: 0)
         }
         .padding(reviewCardPadding)
-        .padding(.trailing, showsExpandHint ? 40 : 0)
+        .padding(.trailing, showsExpandHint ? TodayReviewMetrics.expandHintTrailingPadding : 0)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: answerCardHeight, alignment: .topLeading)
     }
@@ -789,11 +769,11 @@ struct TodayReviewPresenter: View {
         content()
             .background(vocabSkin.palette.cardBackground.opacity(0.985))
             .clipShape(foldShape(for: position))
-            .overlay(foldShape(for: position).stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1))
+            .overlay(foldShape(for: position).stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
             .overlay(alignment: .top) {
                 if position != .top && position != .single {
                         Rectangle()
-                            .fill(vocabSkin.palette.divider.opacity(0.85))
+                            .fill(vocabSkin.palette.divider.opacity(TodayReviewMetrics.dividerFillOpacity))
                             .frame(height: 0.5)
                             .padding(.horizontal, vocabSkin.spacing.cardPadding)
                 }
@@ -816,15 +796,15 @@ struct TodayReviewPresenter: View {
 
     private func reviewFrontWordFont(for text: String) -> Font {
         let count = text.count
-        if count > 20 { return .system(size: 22, weight: .semibold, design: .monospaced) }
-        if count > 12 { return .system(size: 26, weight: .semibold, design: .monospaced) }
+        if count > 20 { return .system(size: TodayReviewMetrics.counterFontSizeCompact, weight: .semibold, design: .monospaced) }
+        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeMedium, weight: .semibold, design: .monospaced) }
         return .system(size: 30, weight: .semibold, design: .monospaced)
     }
 
     private func reviewAnswerWordFont(for text: String) -> Font {
         let count = text.count
         if count > 20 { return vocabSkin.typography.translationTitle }
-        if count > 12 { return .system(size: 28, weight: .semibold, design: .monospaced) }
+        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold, design: .monospaced) }
         return vocabSkin.typography.reviewWord
     }
 
@@ -861,7 +841,7 @@ struct TodayReviewPresenter: View {
                 )
                 .overlay(
                     Circle()
-                        .stroke(vocabSkin.palette.cardBorder.opacity(0.72), lineWidth: 1)
+                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
