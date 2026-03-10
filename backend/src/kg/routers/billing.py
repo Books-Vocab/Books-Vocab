@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 
-from ..api_models import EntitlementsResponse
+from ..api_models import AppStoreNotificationResponse, EntitlementsResponse
 
 
 def build_billing_router(
@@ -15,6 +15,6 @@ def build_billing_router(
 ) -> APIRouter:
     router = APIRouter()
     router.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)(sync_app_store_subscription)
-    router.post("/api/billing/app-store/notifications")(app_store_notifications)
+    router.post("/api/billing/app-store/notifications", response_model=AppStoreNotificationResponse)(app_store_notifications)
     router.post("/api/billing/app-store/reconcile", response_model=EntitlementsResponse)(reconcile_app_store_subscription)
     return router
