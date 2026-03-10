@@ -48,6 +48,9 @@ final class AuthManager: @unchecked Sendable, AuthManaging, AuthSessionProviding
     // Auth error to surface in UI
     var authError: String?
 
+    // True while Apple/Google sign-in + backend verify is in progress
+    var isAuthenticating: Bool = false
+
     init(
         verifier: any AuthVerifying = AuthBackendVerifier(),
         localDataCleaner: any LocalDataClearing = LocalDataCleanerService(),

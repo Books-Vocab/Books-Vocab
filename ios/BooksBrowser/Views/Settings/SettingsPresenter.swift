@@ -296,6 +296,7 @@ private enum SettingsPresenterPreviewData {
             displayName: "未登入",
             email: nil,
             authError: nil,
+            isAuthenticating: false,
             iconBreathing: false,
             debug: nil
         ),
@@ -315,6 +316,7 @@ private enum SettingsPresenterPreviewData {
             displayName: "Chen Liang",
             email: "chen@example.com",
             authError: nil,
+            isAuthenticating: false,
             iconBreathing: false,
             debug: nil
         ),
@@ -355,6 +357,7 @@ private enum SettingsPresenterPreviewData {
             displayName: "Chen Liang",
             email: "chen@example.com",
             authError: nil,
+            isAuthenticating: false,
             iconBreathing: false,
             debug: nil
         ),
@@ -395,6 +398,7 @@ private enum SettingsPresenterPreviewData {
             displayName: "Chen Liang",
             email: "chen@example.com",
             authError: nil,
+            isAuthenticating: false,
             iconBreathing: false,
             debug: nil
         ),

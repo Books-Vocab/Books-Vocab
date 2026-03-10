@@ -23,6 +23,7 @@ protocol LocalDataClearing: AnyObject {
     var userEmail: String? { get }
     var avatarURL: URL? { get }
     var authError: String? { get }
+    var isAuthenticating: Bool { get }
 
     func login(userId: String, token: String)
     func login(customToken: String)
