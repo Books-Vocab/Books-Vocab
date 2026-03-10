@@ -160,11 +160,6 @@ struct TodayReviewPresenter: View {
             swipeHintView(for: swipeOffset)
         }
         .simultaneousGesture(swipeDragGesture)
-        .onChange(of: card.dateAdded) {
-            withAnimation(AppMotion.swipeSnapBackSpring) {
-                swipeOffset = 0
-            }
-        }
     }
 
     private var swipeEnabled: Bool {
@@ -189,7 +184,8 @@ struct TodayReviewPresenter: View {
                     withAnimation(AppMotion.swipeDismissSpring) {
                         swipeOffset = -screenWidth * 1.5
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
                         swipeOffset = 0
                         onForgot()
                     }
@@ -197,7 +193,8 @@ struct TodayReviewPresenter: View {
                     withAnimation(AppMotion.swipeDismissSpring) {
                         swipeOffset = screenWidth * 1.5
                     }
-                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                    Task { @MainActor in
+                        try? await Task.sleep(for: .milliseconds(300))
                         swipeOffset = 0
                         onRemembered()
                     }
