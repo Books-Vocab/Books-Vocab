@@ -11,20 +11,13 @@ enum TodayReviewRevealStage: Int {
     case back
     case details
 
-    var showsAnswer: Bool {
-        self != .front
-    }
-
-    var showsDetails: Bool {
-        self == .details
-    }
+    var showsAnswer: Bool { self != .front }
+    var showsDetails: Bool { self == .details }
 
     mutating func advance() {
         switch self {
-        case .front:
-            self = .back
-        case .back, .details:
-            self = .details
+        case .front: self = .back
+        case .back, .details: self = .details
         }
     }
 
@@ -44,7 +37,6 @@ struct TodayReviewView: View {
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
     @State private var revealStage: TodayReviewRevealStage = .front
-    @State private var isAdvancing = false
     @State private var linkedCardStack: [VocabularyEntry] = []
     @State private var forgotCount = 0
     @State private var rememberedCount = 0
@@ -80,6 +72,8 @@ struct TodayReviewView: View {
         }
     }
 
+    // MARK: - State Projection
+
     private var presenterState: TodayReviewPresenterState {
         TodayReviewPresenterState(
             progressText: progressText,
@@ -95,8 +89,7 @@ struct TodayReviewView: View {
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
             persistenceFailureTrigger: persistenceFailureTrigger,
-            persistenceErrorMessage: persistenceErrorMessage,
-            isAdvancing: isAdvancing
+            persistenceErrorMessage: persistenceErrorMessage
         )
     }
 
@@ -109,21 +102,16 @@ struct TodayReviewView: View {
     private var currentCardState: TodayReviewPresenterState.CurrentCard? {
         guard let current = currentEntry else { return nil }
         let card = current.cardPresentation
-        let fullGroups = card.linkGroups
-        let compactGroups = fullGroups.map { fullGroup in
-            let limitedGroup = fullGroup.limited(to: 2)
+        let compactGroups = card.linkGroups.map { fullGroup in
+            let limited = fullGroup.limited(to: 2)
             return TodayReviewPresenterState.LinkGroup(
                 id: fullGroup.id,
                 label: fullGroup.label,
-                items: limitedGroup.items,
-                overflowCount: limitedGroup.overflowed(relativeToFullGroup: fullGroup)
+                items: limited.items,
+                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
             )
         }
-
-        return .init(
-            card: card,
-            linkGroups: compactGroups
-        )
+        return .init(card: card, linkGroups: compactGroups)
     }
 
     private var currentEntry: VocabularyEntry? {
@@ -135,27 +123,27 @@ struct TodayReviewView: View {
         "\(min(currentIndex + 1, queue.count)) / \(queue.count)"
     }
 
+    // MARK: - Actions
+
     private func handleLinkTap(_ link: KGCardLinkSummary) {
         guard let target = allEntries.first(where: { $0.kgCardId == link.cardId }) else { return }
         linkedCardStack.append(target)
     }
 
     private func advanceReveal() {
-        guard !isAdvancing else { return }
         withAnimation(AppMotion.reviewRevealSpring) {
             revealStage.advance()
         }
     }
 
     private func retractReveal() {
-        guard !isAdvancing else { return }
         withAnimation(AppMotion.reviewRevealSpring) {
             revealStage.retract()
         }
     }
 
     private func shuffleQueue() {
-        guard queue.count > 1, !isAdvancing else { return }
+        guard queue.count > 1 else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
             queue.shuffle()
             currentIndex = 0
@@ -180,13 +168,15 @@ struct TodayReviewView: View {
         }
     }
 
+    /// 歸類卡片：記錄回饋 → 推進 index → 延後寫入
+    /// 所有動畫由 Presenter 的 flingCard 控制，此處不包 withAnimation
     private func submit(_ feedback: ReviewFeedback) {
-        guard let current = currentEntry, !isAdvancing else { return }
-        isAdvancing = true
+        guard let current = currentEntry else { return }
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
         current.applyReviewFeedback(feedback)
+
         switch feedback {
         case .remembered:
             rememberedFeedbackTrigger += 1
@@ -196,7 +186,6 @@ struct TodayReviewView: View {
             forgotCount += 1
         }
 
-        // 不包 withAnimation — 由 presenter 的 flingCard 控制所有動畫時序
         revealStage = .front
         currentIndex += 1
 
@@ -204,8 +193,9 @@ struct TodayReviewView: View {
             ReviewSessionStore.clear()
         }
 
+        // 延後 save — 避免 @Query 重算在升頂動畫期間觸發 re-render
         pendingSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(500))
             do {
                 try modelContext.save()
             } catch {
@@ -214,7 +204,6 @@ struct TodayReviewView: View {
                 }
                 persistenceFailureTrigger += 1
             }
-            isAdvancing = false
         }
     }
 }
