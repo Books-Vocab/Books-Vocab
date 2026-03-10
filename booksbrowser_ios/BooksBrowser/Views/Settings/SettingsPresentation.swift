@@ -36,6 +36,12 @@ struct SettingsPresenterState {
         let badgeTone: SubscriptionBadgeTone
         let summary: String
         let detail: String
+        let sourceLabel: String
+        let managementNote: String
+        let pricingUnavailableMessage: String?
+        let restoreLabel: String
+        let restoreDescription: String
+        let isRestoreAvailable: Bool
         let ctaTitle: String
         let isRefreshing: Bool
     }
