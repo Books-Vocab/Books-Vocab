@@ -21,9 +21,6 @@ final class Book {
     var dateLastRead: Date?
     var progression: Double?          // 閱讀進度 (0.0 ~ 1.0)
 
-    @Relationship(deleteRule: .cascade)
-    var vocabularyEntries: [VocabularyEntry]
-
     init(
         title: String,
         author: String,
@@ -39,7 +36,6 @@ final class Book {
         self.dateAdded = Date()
         self.dateLastRead = nil
         self.progression = nil
-        self.vocabularyEntries = []
     }
 
     /// EPUB 檔案的完整 URL
@@ -47,8 +43,15 @@ final class Book {
         Self.epubsDirectory.appendingPathComponent(epubFileName)
     }
 
-    /// EPUBs 儲存目錄
+    /// EPUBs 儲存目錄（優先使用 iCloud Documents）
     static var epubsDirectory: URL {
+        if let iCloudURL = FileManager.default.url(
+            forUbiquityContainerIdentifier: nil
+        )?.appendingPathComponent("Documents/EPUBs") {
+            try? FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
+            return iCloudURL
+        }
+        // Fallback to local
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("EPUBs")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)

@@ -84,9 +84,19 @@ actor BackgroundSyncActor {
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.markSynced()
-                
+
                 modelContext.insert(newEntry)
                 localDict[lowerContent] = newEntry
+
+                // Create corresponding VocabularyReviewMeta for CloudKit sync
+                let meta = VocabularyReviewMeta(
+                    id: newEntry.id,
+                    wordKey: lowerContent,
+                    context: card.examples.first ?? "",
+                    bookTitle: "Knowledge Graph",
+                    originalDateAdded: newEntry.dateAdded
+                )
+                modelContext.insert(meta)
             }
         }
 
