@@ -22,12 +22,7 @@ struct ReaderView: View {
     private var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
 
     @State private var publication: Publication?
-    @State private var isLoading = true
-    @State private var isWebViewReady = false
-    @State private var loadingPhase = L10n.string("開啟書本…")
-    @State private var errorMessage: String?
-    @State private var underlineProgress: Double? = nil
-    @State private var hasCompletedInitialMarking = false
+    @State private var readerState = ReaderViewState()
 
     // 翻譯 handler（封裝所有翻譯狀態與詞庫邏輯）
     @State private var handler = ReaderTranslationHandler()
@@ -46,12 +41,8 @@ struct ReaderView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
 
-    // 目錄
-    @State private var showTableOfContents = false
-
     // 閱讀設定（全域單例）
     private var settings = ReaderSettings.shared
-    @State private var showSubscriptionPaywall = false
 
     private var viewConfiguration: ReaderViewConfiguration {
         settings.viewConfiguration
@@ -69,7 +60,7 @@ struct ReaderView: View {
         ReaderViewPresenter(
             state: presenterState,
             onDismiss: { dismiss() },
-            onShowTableOfContents: { showTableOfContents = true },
+            onShowTableOfContents: { readerState.showTableOfContents = true },
             onShowReaderSettings: showReaderSettingsPanel,
             onExpandHeader: expandHeader,
             onCollapseHeader: collapseHeader
@@ -85,12 +76,12 @@ struct ReaderView: View {
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: $showTableOfContents) {
+        .sheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
             if let publication = publication {
                 TOCView(
                     publication: publication,
                     onSelect: { link in
-                        showTableOfContents = false
+                        readerState.showTableOfContents = false
                         print("📖 TOC selected: \(link.title ?? "Untitled")")
                         Task { @MainActor in
                             if let locator = await publication.locate(link) {
@@ -130,7 +121,7 @@ struct ReaderView: View {
             .presentationBackground(.ultraThinMaterial)
             .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         }
-        .sheet(isPresented: $showSubscriptionPaywall) {
+        .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
             SubscriptionPaywallSheet()
         }
     }
@@ -138,9 +129,9 @@ struct ReaderView: View {
     private var presenterState: ReaderViewPresenterState {
         .init(
             paperColor: viewConfiguration.paperColor,
-            isWebViewReady: isWebViewReady,
-            loadingPhase: loadingPhase,
-            underlineProgress: underlineProgress,
+            isWebViewReady: readerState.isWebViewReady,
+            loadingPhase: readerState.loadingPhase,
+            underlineProgress: readerState.underlineProgress,
             chrome: chromeState,
             totalProgression: totalProgression,
             bookTitle: book.title,
@@ -202,7 +193,7 @@ struct ReaderView: View {
             .safeAreaInset(edge: .top) {
                 Color.clear.frame(height: 0)
             }
-        } else if let error = errorMessage {
+        } else if let error = readerState.errorMessage {
             ContentUnavailableView(
                 "無法開啟書籍",
                 systemImage: "exclamationmark.triangle",
@@ -266,13 +257,13 @@ struct ReaderView: View {
 
     private func loadPublication() async {
         do {
-            await MainActor.run { loadingPhase = L10n.string("開啟書本…") }
+            await MainActor.run { readerState.loadingPhase = L10n.string("開啟書本…") }
             let pub = try await readiumService.openPublication(at: book.epubFileURL)
 
             await MainActor.run {
-                loadingPhase = L10n.string("渲染頁面…")
+                readerState.loadingPhase = L10n.string("渲染頁面…")
                 publication = pub
-                isLoading = false
+                readerState.isLoading = false
                 handler.loadLookedUpWords(from: allVocabulary)
             }
 
@@ -285,9 +276,9 @@ struct ReaderView: View {
             }
         } catch {
             await MainActor.run {
-                errorMessage = error.localizedDescription
-                isLoading = false
-                isWebViewReady = true  // 顯示錯誤畫面
+                readerState.errorMessage = error.localizedDescription
+                readerState.isLoading = false
+                readerState.isWebViewReady = true  // 顯示錯誤畫面
             }
         }
     }
@@ -295,8 +286,8 @@ struct ReaderView: View {
     // MARK: - 位置變更
 
     private func handleLocationChange(_ locator: Locator) {
-        if !isWebViewReady {
-            withAnimation(AppMotion.loadingState) { isWebViewReady = true }
+        if !readerState.isWebViewReady {
+            withAnimation(AppMotion.loadingState) { readerState.isWebViewReady = true }
         }
         currentLocator = locator
         totalProgression = locator.locations.totalProgression ?? 0
@@ -326,16 +317,16 @@ struct ReaderView: View {
     }
 
     private func handleMarkingProgress(_ progress: Double) {
-        guard !hasCompletedInitialMarking else { return }
+        guard !readerState.hasCompletedInitialMarking else { return }
         withAnimation(AppMotion.progressLinear) {
-            underlineProgress = progress
+            readerState.underlineProgress = progress
         }
         if progress >= 1.0 {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
                 withAnimation(AppMotion.contentFade) {
-                    underlineProgress = nil
+                    readerState.underlineProgress = nil
                 }
-                hasCompletedInitialMarking = true
+                readerState.hasCompletedInitialMarking = true
             }
         }
     }
@@ -385,7 +376,7 @@ struct ReaderView: View {
         guard authManager.isLoggedIn else { return true }
         guard subscriptionManager.hasProAccess else {
             subscriptionManager.activePaywallSource = .reader
-            showSubscriptionPaywall = true
+            readerState.showSubscriptionPaywall = true
             return false
         }
         return true
