@@ -11,7 +11,7 @@
 - sync lifecycle：`docs/references/sync_lifecycle.md`
 
 保留在 backend 目錄的分析資料：
-- `knowledge_graph_api/docs/analysis/`
+- `backend/docs/analysis/`
   原因：這些 markdown 與分析腳本綁在一起，屬於研究/分析工作區，不是主開發入口。
 
 ## 這份文件是幹嘛的
@@ -41,7 +41,7 @@
 標準命令：
 
 ```bash
-cd knowledge_graph_api
+cd backend
 pytest -q
 ```
 
@@ -73,7 +73,7 @@ pytest -q
 - backend 細節規範變更：
   更新 `docs/references/*`
 - backend 分析腳本或研究輸出：
-  留在 `knowledge_graph_api/docs/analysis/`
+  留在 `backend/docs/analysis/`
 
 ## 文檔邊界
 

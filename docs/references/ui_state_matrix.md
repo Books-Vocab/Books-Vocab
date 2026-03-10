@@ -1,7 +1,7 @@
 # UI State Matrix
 
 Date: 2026-03-09
-Scope: `booksbrowser_ios/BooksBrowser`
+Scope: `ios/BooksBrowser`
 
 文檔網絡：
 - 設計規範主文檔：`docs/ui-design.md`
@@ -26,10 +26,10 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ## Reader
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderView.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
 
 ### Reader Container State
 
@@ -63,14 +63,14 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ## Vocabulary
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/VocabularyListView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/SyncView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/KnowledgeGraphView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReviewPresenter.swift`
+- `ios/BooksBrowser/Views/Vocabulary/VocabularyListView.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabView.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Scenes/KGVocabPresenter.swift`
+- `ios/BooksBrowser/Views/Vocabulary/SyncView.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift`
+- `ios/BooksBrowser/Views/Vocabulary/KnowledgeGraphView.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Scenes/KnowledgeGraphPresenter.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Scenes/TodayReviewPresenter.swift`
 
 ### Vocabulary List Routing State
 
@@ -138,9 +138,9 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ## Settings
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsView.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsCoordinator.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsView.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsCoordinator.swift`
 
 ### Auth / Account State
 
