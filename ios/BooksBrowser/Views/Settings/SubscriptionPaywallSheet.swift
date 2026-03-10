@@ -35,6 +35,7 @@ struct SubscriptionPaywallSheet: View {
                 }
             }
             .animation(AppMotion.phaseChange, value: subscriptionManager.hasProAccess)
+            .animation(AppMotion.phaseChange, value: subscriptionManager.entitlements.pro.will_renew)
         }
     }
 
@@ -274,9 +275,7 @@ struct SubscriptionPaywallSheet: View {
     // MARK: - Computed Properties
 
     private var isCancelledButActive: Bool {
-        subscriptionManager.hasProAccess
-            && !subscriptionManager.entitlements.pro.will_renew
-            && subscriptionManager.entitlements.pro.source != "admin"
+        subscriptionManager.entitlements.pro.isCancelledButActive
     }
 
     private var activeSummaryText: String {
@@ -284,8 +283,7 @@ struct SubscriptionPaywallSheet: View {
             return L10n.string("目前帳號已由管理員授權為 Pro。")
         }
         if isCancelledButActive {
-            let expiry = SettingsView.formattedExpiry(subscriptionManager.entitlements.pro.expires_at)
-            return L10n.format("你已取消自動續訂。Pro 功能可使用至 %@。", expiry)
+            return L10n.format("你已取消自動續訂。Pro 功能可使用至 %@。", subscriptionManager.entitlements.pro.formattedExpiryDate)
         }
         return L10n.string("感謝支持！所有進階功能已解鎖。")
     }
