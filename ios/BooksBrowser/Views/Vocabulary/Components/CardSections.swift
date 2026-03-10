@@ -70,12 +70,16 @@ struct CardHeroSection: View {
 
                         Button {
                             SpeechService.shared.speak(card.word)
+                            copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")
-                                .font(vocabSkin.typography.iconTiny)
+                                .font(vocabSkin.typography.iconSmall)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                                 .symbolEffect(.bounce, value: copyTrigger)
+                                .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+                                .contentShape(Rectangle())
                         }
+                        .buttonStyle(.plain)
                     }
 
                     if let pron = card.pronunciation, !pron.isEmpty {
