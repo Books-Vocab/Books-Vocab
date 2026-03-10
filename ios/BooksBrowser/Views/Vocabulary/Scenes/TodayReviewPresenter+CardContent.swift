@@ -79,43 +79,31 @@ extension TodayReviewPresenter {
         .frame(height: frontCardHeight, alignment: .topLeading)
     }
 
-    // MARK: Answer Surface
+    // MARK: Combined Answer Surface
 
-    func answerFoldSurface(_ card: CardPresentation) -> some View {
+    func answerFoldSurface(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+        let card = currentCard.card
         let answerText = card.reviewMode == .production ? card.word : card.translation
-        return ReviewFoldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
+        return ReviewFoldSurface(position: .bottom) {
             ZStack(alignment: .topTrailing) {
-                if state.revealStage == .back {
-                    Button(action: onAdvanceReveal) {
-                        answerFoldContent(card, showsExpandHint: true)
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
+                combinedAnswerContent(currentCard)
                     .accessibilityLabel("翻譯：\(answerText)")
-                    .accessibilityHint("點一下查看細節")
-                } else {
-                    answerFoldContent(card, showsExpandHint: false)
-                        .accessibilityLabel("翻譯：\(answerText)")
-                }
 
-                if !state.revealStage.showsDetails {
-                    ReviewFoldChevronButton(action: onCollapseReveal)
-                        .padding(reviewCardPadding)
-                }
+                ReviewFoldChevronButton(action: onCollapseReveal)
+                    .padding(reviewCardPadding)
             }
         }
     }
 
-    func answerFoldContent(_ card: CardPresentation, showsExpandHint: Bool) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+        let card = currentCard.card
+        return VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             HStack(spacing: 6) {
                 Spacer()
                 if let tier = card.difficultyTier {
                     VocabTierLabel(tier: tier)
                 }
             }
-
-            Spacer(minLength: vocabSkin.metrics.reviewFoldHintTopInset)
 
             Group {
                 if card.reviewMode == .production {
@@ -126,7 +114,7 @@ extension TodayReviewPresenter {
             }
             .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
             .foregroundStyle(vocabSkin.palette.primaryText)
-            .lineLimit(4)
+            .lineLimit(3)
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
 
@@ -143,16 +131,27 @@ extension TodayReviewPresenter {
                     ForEach(meaningParagraphs) { paragraph in
                         CardInlineText(paragraph: paragraph, style: .body)
                             .lineSpacing(5)
+                            .lineLimit(3)
                     }
                 }
             }
 
-            Spacer(minLength: 0)
+            let backDoc = reviewBackDocument(for: card)
+            if !backDoc.blocks.isEmpty {
+                CardSectionDivider(horizontalPadding: 0)
+                CardDocumentView(document: backDoc, truncateRadius: 5)
+                    .lineLimit(2)
+            }
+
+            if !currentCard.linkGroups.isEmpty {
+                CardSectionDivider(horizontalPadding: 0)
+                reviewLinkStrip(currentCard.linkGroups)
+            }
         }
         .padding(reviewCardPadding)
-        .padding(.trailing, showsExpandHint ? TodayReviewMetrics.expandHintTrailingPadding : 0)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: answerCardHeight, alignment: .topLeading)
+        .minimumScaleFactor(0.85)
     }
 
     func answerMeaningParagraphs(for card: CardPresentation) -> [CardDocumentParagraph] {
@@ -162,30 +161,6 @@ extension TodayReviewPresenter {
             }
         }
         return []
-    }
-
-    // MARK: Detail Sheet
-
-    func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
-        let card = currentCard.card
-        return ReviewFoldSurface(position: .bottom) {
-            VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
-                HStack {
-                    Spacer()
-                    ReviewFoldChevronButton(action: onCollapseReveal)
-                }
-
-                CardDocumentView(document: reviewBackDocument(for: card), truncateRadius: 5)
-
-                if !currentCard.linkGroups.isEmpty {
-                    CardSectionDivider(horizontalPadding: 0)
-                    reviewLinkStrip(currentCard.linkGroups)
-                }
-            }
-            .padding(.horizontal, reviewCardPadding)
-            .padding(.top, vocabSkin.metrics.reviewToolbarVerticalInset)
-            .padding(.bottom, reviewCardPadding)
-        }
     }
 
     // MARK: Link Strip
@@ -250,16 +225,26 @@ extension TodayReviewPresenter {
     func reviewBackDocument(for card: CardPresentation) -> CardDocument {
         var blocks: [CardDocumentBlock] = []
         var pendingDivider = false
+        var exampleCount = 0
+        var sourceCount = 0
         for block in card.document.blocks {
             switch block {
             case .hero, .meaning:
                 pendingDivider = false
             case .divider:
                 pendingDivider = true
-            case .example, .source:
+            case .example:
+                guard exampleCount < 1 else { continue }
                 if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
                 blocks.append(block)
                 pendingDivider = false
+                exampleCount += 1
+            case .source:
+                guard sourceCount < 1 else { continue }
+                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
+                blocks.append(block)
+                pendingDivider = false
+                sourceCount += 1
             }
         }
         return CardDocument(blocks: blocks)
