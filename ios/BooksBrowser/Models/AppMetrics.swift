@@ -153,6 +153,12 @@ enum TodayReviewMetrics {
     /// Swipe hint 標籤字體大小（忘記/記得）
     static let swipeHintFontSize: CGFloat = 34
 
+    // ── Fold Geometry ──────────────────────────────────────────────
+    /// 摺頁接合處的圓角（非首尾段的內側圓角）
+    static let foldJoinRadius: CGFloat = 4
+    /// 摺頁動畫的 Y 軸偏移量
+    static let paperFoldOffsetY: CGFloat = 12
+
     // ── Micro Adjustment ────────────────────────────────────────────
     /// 卡片疊層微調（消除 1pt 視覺縫隙）
     static let stackLayerMicroOffset: CGFloat = -1

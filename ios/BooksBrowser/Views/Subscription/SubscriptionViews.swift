@@ -33,11 +33,11 @@ struct ProAccessGateCard: View {
                     Text(actionTitle)
                         .font(vocabSkin.typography.body.weight(.medium))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, 12)
+                        .padding(.vertical, vocabSkin.spacing.rowContentSpacing)
                 }
                 .buttonStyle(.vocabAction(.primary))
             }
-            .padding(.vertical, 8)
+            .padding(.vertical, vocabSkin.spacing.inlineGap)
             .transition(.contentSwap)
         }
     }
