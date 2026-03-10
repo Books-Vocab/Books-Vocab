@@ -35,13 +35,13 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
-import collections as _collections
+import collections
 
 class _MemoryLogHandler(logging.Handler):
     """Ring-buffer log handler for the admin dashboard."""
     def __init__(self, maxlen: int = 1000):
         super().__init__()
-        self._buf: collections.deque = _collections.deque(maxlen=maxlen)
+        self._buf: collections.deque = collections.deque(maxlen=maxlen)
 
     def emit(self, record: logging.LogRecord) -> None:
         try:
@@ -368,10 +368,10 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
         return _USER_LOCKS[user_id]
 
 
-def load_users() -> dict[str, dict[str, Any]]:
+def _load_users() -> dict[str, dict[str, Any]]:
     return load_users_from(_runtime_users_file(), _normalize_users_payload)
 
-def save_users(users: dict[str, dict[str, Any]]) -> None:
+def _save_users(users: dict[str, dict[str, Any]]) -> None:
     save_users_to(_runtime_users_file(), users, _normalize_users_payload)
 
 
@@ -385,7 +385,7 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
     return resolve_current_user(
         credentials.credentials,
         settings=_runtime_settings(),
-        load_users=load_users,
+        load_users=_load_users,
         parse_datetime=_parse_datetime,
     )
 
@@ -552,8 +552,8 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
         user,
         allow_unsigned_sync=settings.app_store_allow_unsigned_sync,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         decode_signed_transaction_info=_decode_signed_transaction_info,
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
@@ -569,8 +569,8 @@ def app_store_notifications(req: AppStoreNotificationRequest):
     return app_store_notifications_response(
         req,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         decode_notification_payload=_decode_notification_payload,
         append_app_store_event=_append_app_store_event,
         resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
@@ -590,8 +590,8 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
         user,
         apple_bundle_id=settings.apple_bundle_id,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         fetch_transaction_info=fetch_transaction_info,
         decode_signed_transaction_info=_decode_signed_transaction_info,
         resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
@@ -610,8 +610,8 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
         req,
         user,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
     )
 
 
@@ -624,8 +624,8 @@ def delete_user_account(user: dict = Depends(get_current_user)):
     return delete_user_account_response(
         user,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
         data_dir=settings.data_dir,
         logger=logger,
@@ -793,8 +793,8 @@ def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | No
         provider_user_id,
         provider,
         users_lock_file=str(_runtime_users_lock_file()),
-        load_users_fn=load_users,
-        save_users_fn=save_users,
+        load_users_fn=_load_users,
+        save_users_fn=_save_users,
         email=email,
     )
 
@@ -858,7 +858,7 @@ def admin_stats(token: str | None = None):
     return admin_stats_response(
         token,
         admin_token=settings.admin_token,
-        load_users=load_users,
+        load_users=_load_users,
         get_all_stats=get_all_stats,
         build_entitlements_response=_build_entitlements_response,
         current_admin_grant_record=_current_admin_grant_record,
@@ -884,7 +884,7 @@ def admin_user_entitlement(user_id: str, token: str | None = None):
         token,
         user_id,
         admin_token=_runtime_settings().admin_token,
-        load_users=load_users,
+        load_users=_load_users,
         build_entitlements_response=_build_entitlements_response,
         current_admin_grant_record=_current_admin_grant_record,
     )
@@ -898,8 +898,8 @@ def admin_grant_pro_access(req: AdminGrantRequest, user_id: str, token: str | No
         req,
         admin_token=_runtime_settings().admin_token,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         current_admin_grant_record=_current_admin_grant_record,
         build_entitlements_response=_build_entitlements_response,
     )
@@ -912,8 +912,8 @@ def admin_revoke_pro_access(user_id: str, token: str | None = None):
         user_id,
         admin_token=_runtime_settings().admin_token,
         users_lock_file=_runtime_users_lock_file(),
-        load_users=load_users,
-        save_users=save_users,
+        load_users=_load_users,
+        save_users=_save_users,
         current_admin_grant_record=_current_admin_grant_record,
         build_entitlements_response=_build_entitlements_response,
     )
