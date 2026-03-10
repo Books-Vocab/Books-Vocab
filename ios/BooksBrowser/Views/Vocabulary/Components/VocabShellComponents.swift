@@ -32,7 +32,7 @@ struct VocabChromePill: View {
     var emphasized: Bool = false
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconSmall)
 
@@ -46,12 +46,12 @@ struct VocabChromePill: View {
                     .padding(.vertical, vocabSkin.spacing.compactRowAccessoryTopInset)
                     .background(
                         RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                            .fill((emphasized ? Color.white.opacity(0.12) : vocabSkin.palette.mutedFill))
+                            .fill((emphasized ? vocabSkin.palette.overlayFill : vocabSkin.palette.mutedFill))
                     )
             }
         }
         .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
-        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding + 2)
+        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPaddingOuter)
         .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
@@ -204,7 +204,7 @@ struct VocabSectionHeader: View {
 
             Text(title.localized)
                 .font(vocabSkin.typography.captionStrong)
-                .tracking(0.5)
+                .tracking(vocabSkin.metrics.labelTracking)
 
             if let trailingText {
                 Text(trailingText.localized)
@@ -228,7 +228,7 @@ struct VocabSliderRow: View {
     var valueWidth: CGFloat = 36
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
             Text(label.localized)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.primaryText)
@@ -241,7 +241,7 @@ struct VocabSliderRow: View {
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .frame(width: valueWidth, alignment: .trailing)
         }
-        .frame(height: 32)
+        .frame(height: vocabSkin.metrics.tabSelectorHeight)
     }
 }
 
@@ -287,7 +287,7 @@ struct VocabAccessoryIconButton: View {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconToolbar)
                 .foregroundStyle(tone)
-                .frame(width: 30, height: 30)
+                .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
                         .fill(background ?? vocabSkin.palette.mutedFill)
@@ -464,15 +464,15 @@ struct VocabActionButtonStyle: ButtonStyle {
         case .success:
             return (
                 vocabSkin.palette.success,
-                vocabSkin.palette.success.opacity(0.10),
-                vocabSkin.palette.success.opacity(0.22)
+                vocabSkin.palette.success.opacity(VocabActionButtonPalette.idleFillOpacity),
+                vocabSkin.palette.success.opacity(VocabActionButtonPalette.borderOpacity)
             )
         case .warning:
             let warning = vocabSkin.palette.warning
             return (
                 warning,
-                warning.opacity(0.12),
-                warning.opacity(0.22)
+                warning.opacity(VocabActionButtonPalette.warningIdleFillOpacity),
+                warning.opacity(VocabActionButtonPalette.borderOpacity)
             )
         case .destructive:
             return styleFromShared(.destructive)
@@ -493,16 +493,23 @@ struct VocabActionButtonStyle: ButtonStyle {
             return (
                 vocabSkin.palette.primaryText,
                 .clear,
-                vocabSkin.palette.secondaryText.opacity(0.3)
+                vocabSkin.palette.secondaryText.opacity(VocabActionButtonPalette.outlineBorderOpacity)
             )
         case .destructive:
             return (
                 vocabSkin.palette.destructive,
-                vocabSkin.palette.destructive.opacity(0.10),
-                vocabSkin.palette.destructive.opacity(0.22)
+                vocabSkin.palette.destructive.opacity(VocabActionButtonPalette.idleFillOpacity),
+                vocabSkin.palette.destructive.opacity(VocabActionButtonPalette.borderOpacity)
             )
         }
     }
+}
+
+private enum VocabActionButtonPalette {
+    static let idleFillOpacity: Double = 0.10
+    static let warningIdleFillOpacity: Double = 0.12
+    static let borderOpacity: Double = 0.22
+    static let outlineBorderOpacity: Double = 0.3
 }
 
 extension ButtonStyle where Self == VocabActionButtonStyle {
