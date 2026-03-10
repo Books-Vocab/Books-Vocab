@@ -25,31 +25,103 @@ struct BooksBrowserApp: App {
         NSUbiquitousKeyValueStore.default.synchronize()
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
         bookFileManager = LocalBookFileManager()
-        let schema = Schema([Book.self, VocabularyEntry.self])
 
-        if let container = try? ModelContainer(for: schema) {
+        let localConfig = ModelConfiguration(
+            "LocalStore",
+            schema: Schema([VocabularyEntry.self]),
+            cloudKitDatabase: .none
+        )
+
+        let cloudConfig = ModelConfiguration(
+            "CloudStore",
+            schema: Schema([Book.self, VocabularyReviewMeta.self]),
+            cloudKitDatabase: .automatic
+        )
+
+        if let container = try? ModelContainer(
+            for: Book.self, VocabularyEntry.self, VocabularyReviewMeta.self,
+            configurations: localConfig, cloudConfig
+        ) {
             modelContainer = container
             AuthManager.shared.modelContainer = container
+            Self.runMigrationIfNeeded(container: container)
             return
         }
 
-        print("⚠️ SwiftData migration failed, deleting old database...")
+        print("SwiftData migration failed, deleting old database...")
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
-        let storeFiles = ["default.store", "default.store-wal", "default.store-shm"]
+        let storeFiles = [
+            "default.store", "default.store-wal", "default.store-shm",
+            "LocalStore.store", "LocalStore.store-wal", "LocalStore.store-shm",
+            "CloudStore.store", "CloudStore.store-wal", "CloudStore.store-shm"
+        ]
         for file in storeFiles {
             let url = appSupport.appendingPathComponent(file)
             try? FileManager.default.removeItem(at: url)
-            print("🗑 Deleted: \(url.lastPathComponent)")
         }
 
         do {
-            modelContainer = try ModelContainer(for: schema)
+            modelContainer = try ModelContainer(
+                for: Book.self, VocabularyEntry.self, VocabularyReviewMeta.self,
+                configurations: localConfig, cloudConfig
+            )
             AuthManager.shared.modelContainer = modelContainer
-            print("✅ Database recreated successfully")
         } catch {
             fatalError("Cannot create ModelContainer: \(error)")
         }
+    }
+
+    private static func runMigrationIfNeeded(container: ModelContainer) {
+        let migrationKey = "iCloudDataMigrationCompleted_v1"
+        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
+
+        let context = ModelContext(container)
+
+        // Migrate existing VocabularyEntry review data → VocabularyReviewMeta
+        if let entries = try? context.fetch(FetchDescriptor<VocabularyEntry>()) {
+            for entry in entries {
+                let meta = VocabularyReviewMeta(
+                    id: entry.id,
+                    wordKey: entry.word.lowercased(),
+                    context: entry.context,
+                    bookTitle: entry.bookTitle,
+                    chapterTitle: entry.chapterTitle,
+                    originalDateAdded: entry.dateAdded,
+                    pronunciation: entry.pronunciation
+                )
+                meta.reviewIntervalHours = entry.reviewIntervalHours
+                meta.nextReviewAt = entry.nextReviewAt
+                meta.lastReviewedAt = entry.lastReviewedAt
+                meta.reviewCount = entry.reviewCount
+                meta.lapseCount = entry.lapseCount
+                meta.reviewStreak = entry.reviewStreak
+                meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
+                context.insert(meta)
+            }
+        }
+
+        // Migrate EPUBs to iCloud Documents
+        let localEpubsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EPUBs")
+        if let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+            .appendingPathComponent("Documents/EPUBs") {
+            try? FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
+            if let files = try? FileManager.default.contentsOfDirectory(
+                at: localEpubsDir,
+                includingPropertiesForKeys: nil
+            ) {
+                for file in files where file.pathExtension == "epub" {
+                    let dest = iCloudURL.appendingPathComponent(file.lastPathComponent)
+                    if !FileManager.default.fileExists(atPath: dest.path) {
+                        try? FileManager.default.copyItem(at: file, to: dest)
+                    }
+                }
+            }
+        }
+
+        try? context.save()
+        UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
     var body: some Scene {
