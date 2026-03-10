@@ -76,7 +76,7 @@ enum VocabularyEntryPresentation {
         if reviewPriority(lhs.reviewState) != reviewPriority(rhs.reviewState) {
             return reviewPriority(lhs.reviewState) < reviewPriority(rhs.reviewState)
         }
-        if lhs.reviewState != .reviewed && lhs.nextReviewAt != rhs.nextReviewAt {
+        if lhs.nextReviewAt != rhs.nextReviewAt {
             return lhs.nextReviewAt < rhs.nextReviewAt
         }
         let lhsTier = tierPriority(lhs.difficultyTier)
