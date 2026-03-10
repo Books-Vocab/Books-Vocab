@@ -8,6 +8,7 @@ from typing import Any, Callable
 from fastapi import HTTPException
 
 from .api_models import AppStoreNotificationRequest, EntitlementsResponse, SubscriptionStatusResponse
+from .user_store import parse_datetime
 
 
 def default_subscription_payload() -> dict[str, Any]:
@@ -40,14 +41,6 @@ def default_admin_grant_payload() -> dict[str, Any]:
     }
 
 
-def _parse_iso_datetime(raw: Any) -> datetime | None:
-    if not isinstance(raw, str) or not raw.strip():
-        return None
-    try:
-        return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
-    except ValueError:
-        return None
-
 
 def current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
     record = user_record if isinstance(user_record, dict) else {}
@@ -62,7 +55,7 @@ def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
     admin_grant = current_admin_grant_record(user_record)
     if not admin_grant.get("is_active"):
         return False
-    expires_at = _parse_iso_datetime(admin_grant.get("expires_at"))
+    expires_at = parse_datetime(admin_grant.get("expires_at"))
     if expires_at and expires_at <= datetime.now(tz=timezone.utc):
         return False
     return True
