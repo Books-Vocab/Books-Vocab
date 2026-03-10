@@ -49,6 +49,12 @@ struct SettingsPresenterState {
 
     struct PreferencesSection {
         let selectedLanguage: String
+        let selectedAppearance: String
+    }
+
+    struct SyncSummaryState {
+        let isConnected: Bool
+        let summaryText: String
     }
 
     struct OptionalIntegrationSection {
@@ -68,6 +74,7 @@ struct SettingsPresenterState {
     let preferences: PreferencesSection
     let kg: KGSection?
     let subscription: SubscriptionSection?
+    let syncSummary: SyncSummaryState?
     let optionalIntegration: OptionalIntegrationSection?
     let about: AboutSection
     let danger: DangerSection?
@@ -88,7 +95,11 @@ struct SettingsPresenterActions {
     let useProductionBackend: () -> Void
     let useLocalBackend: () -> Void
     let selectLanguage: (AppLanguage) -> Void
+    let selectAppearance: (AppAppearanceMode) -> Void
     let showSubscriptionPaywall: () -> Void
     let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
+    let openPrivacyPolicy: () -> Void
+    let openSupport: () -> Void
+    let requestAppRating: () -> Void
 }
