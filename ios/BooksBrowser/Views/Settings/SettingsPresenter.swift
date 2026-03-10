@@ -352,12 +352,14 @@ struct SettingsPresenter: View {
                     )
                     .transition(.statusRowReveal)
 
-                    subscriptionMetaRow(
-                        title: subscription.restoreLabel,
-                        value: subscription.restoreDescription,
-                        emphasized: subscription.isRestoreAvailable
-                    )
-                    .transition(.statusRowReveal)
+                    if subscription.isRestoreAvailable {
+                        subscriptionMetaRow(
+                            title: subscription.restoreLabel,
+                            value: subscription.restoreDescription,
+                            emphasized: true
+                        )
+                        .transition(.statusRowReveal)
+                    }
 
                     subscriptionMetaRow(
                         title: "管理方式",
@@ -878,9 +880,6 @@ struct SubscriptionPaywallSheet: View {
                         Text(L10n.format("權限來源：%@", entitlementSourceLine))
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        Text(L10n.format("打開位置：%@", sourceLine))
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
 
                     accessStateCard
@@ -938,7 +937,7 @@ struct SubscriptionPaywallSheet: View {
                             VocabStateMessageCard(
                                 title: "恢復購買不適用",
                                 systemImage: "person.badge.key",
-                                description: "目前權限來自管理員授權；若需調整，請由管理員或後端 /admin 處理。"
+                                description: "目前 Pro 來自管理員授權，不透過訂閱管理。如需調整，請聯絡管理員。"
                             )
                         }
                     }
@@ -985,7 +984,7 @@ struct SubscriptionPaywallSheet: View {
 
     private var paywallSummaryText: String {
         if isAdminGranted {
-            return L10n.string("目前帳號已由管理員授權為 Pro。功能已啟用，但這個權限不經由 App Store 管理。")
+            return L10n.string("目前帳號已啟用 Pro 功能。如需調整或查看有效期，請聯絡管理員。")
         }
         if subscriptionManager.hasProAccess {
             return L10n.string("目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。")
@@ -1055,7 +1054,7 @@ struct SubscriptionPaywallSheet: View {
 
     private var footerNote: String {
         if isAdminGranted {
-            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整權限，請在後端 /admin 處理。")
+            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。")
         }
         return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
     }
@@ -1066,7 +1065,7 @@ struct SubscriptionPaywallSheet: View {
                 VocabStateMessageCard(
                     title: "管理員授權中",
                     systemImage: "person.badge.key.fill",
-                    description: "此 Pro 狀態不走 App Store 續訂流程，這裡主要提供狀態查看與重新整理。"
+                    description: "這裡主要提供狀態查看與重新整理。如需調整，請聯絡管理員。"
                 )
             } else if subscriptionManager.entitlements.pro.is_trial {
                 VocabStateMessageCard(
@@ -1076,7 +1075,7 @@ struct SubscriptionPaywallSheet: View {
                 )
             } else if subscriptionManager.hasProAccess {
                 VocabStateMessageCard(
-                    title: "App Store 訂閱已啟用",
+                    title: "訂閱已啟用",
                     systemImage: "checkmark.circle.fill",
                     description: "若不同裝置顯示不一致，可重新同步訂閱狀態或恢復購買。"
                 )

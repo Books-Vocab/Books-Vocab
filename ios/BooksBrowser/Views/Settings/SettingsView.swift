@@ -229,7 +229,7 @@ struct SettingsView: View {
         switch status.status {
         case "active":
             return .success
-        case "trial":
+        case "trial", "grace_period":
             return .accent
         default:
             return .neutral
@@ -239,6 +239,9 @@ struct SettingsView: View {
     private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
         if status.source == "admin", status.is_active {
             return L10n.string("你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
+        }
+        if status.status == "grace_period" {
+            return L10n.string("訂閱目前在寬限期，請確認付款方式以維持存取。")
         }
         if status.is_trial {
             return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
@@ -254,7 +257,7 @@ struct SettingsView: View {
             if let expiresAt = status.expires_at, !expiresAt.isEmpty {
                 return L10n.format("來源：管理員授權 · 有效至 %@", expiresAt)
             }
-            return L10n.string("來源：管理員授權 · 此權限不經由 App Store 續訂或恢復購買")
+            return L10n.string("來源：管理員授權")
         }
         if let price = subscriptionManager.proProduct?.displayPrice, !price.isEmpty, !status.is_active {
             let days = status.trial_days ?? 7
@@ -288,10 +291,10 @@ struct SettingsView: View {
 
     private func subscriptionManagementNote(for status: KGSubscriptionStatus) -> String {
         if status.source == "admin", status.is_active {
-            return L10n.string("權限由管理員維護，不經由 App Store 續訂或恢復購買。")
+            return L10n.string("如需延長或調整，請聯絡管理員。")
         }
         if status.is_active {
-            return L10n.string("可在訂閱頁重新同步或恢復購買，確認 App Store 狀態。")
+            return L10n.string("可在訂閱頁重新同步或恢復購買，確認訂閱狀態。")
         }
         return L10n.string("價格、免費試用與續訂都以 App Store 顯示為準。")
     }
