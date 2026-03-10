@@ -5,7 +5,9 @@ This directory is the project workspace for KG API + iOS app development and mai
 
 ## Identity
 - project key: `kg`
-- local root: `projects/booksbrowser_workspace`
+- local root: `projects/kg`
+- backend root: `projects/kg/backend`
+- ios root: `projects/kg/ios`
 - API remote root: `~/knowledge_graph_api`
 - domain: `wordnexus.lol`
 - API container: `knowledge-graph-api`
@@ -31,7 +33,7 @@ Blocked by default:
 ## Implemented Product Surface (Inventory)
 Use this section as the "what already exists" checklist before proposing or changing anything.
 
-- iOS app surface (`booksbrowser_ios/BooksBrowser`):
+- iOS app surface (`ios/BooksBrowser`):
   - authentication and session flows (Apple, Google, manual/developer debug flow)
   - bookshelf + reader experience (Readium-based navigation, reader settings, reading UI)
   - translation + explanation interaction in reading flow
@@ -39,7 +41,7 @@ Use this section as the "what already exists" checklist before proposing or chan
   - settings surface, including account deletion entry under danger operations
   - app-intent/background sync related integration
 
-- KG backend surface (`knowledge_graph_api/src/kg`):
+- KG backend surface (`backend/src/kg`):
   - auth verification and user identity linking logic
   - user config and account lifecycle APIs (including delete account)
   - vocabulary lifecycle APIs and graph-link APIs
@@ -53,7 +55,7 @@ Use this section as the "what already exists" checklist before proposing or chan
   - admin test-matrix UI and APIs exist (`/admin/tests`, `/api/admin/tests/*`)
   - in-memory log capture for app + uvicorn channels exists
 
-- Test surface (`knowledge_graph_api/tests`):
+- Test surface (`backend/tests`):
   - API contract/surface tests
   - robustness tests (locking, storage, account/data integrity)
   - renderer behavior tests
@@ -84,9 +86,9 @@ Use this section as the "what already exists" checklist before proposing or chan
 - deploy: `./ops/devops_kg_safe.sh deploy`
 
 ## Git Repos
-- **Backend**: `knowledge_graph_api/.git` — commit backend code changes here
-- **iOS**: `booksbrowser_ios/.git` — commit iOS changes here
-- **Workspace-level files** (`devops.sh`, `ops/`, `docs/`): NOT inside any git repo, not version-controlled
+- **Monorepo root**: workspace root (`.git`) — covers iOS app, backend API, ops/docs
+- Use commit prefix to clarify scope: `ios:` / `api:` / `ops:` / `docs:`
+- See `docs/super_repo_submodules.md` for detailed commit strategy and typical flows
 
 ## Cross-Project Note
 If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `AGENTS.md`.
