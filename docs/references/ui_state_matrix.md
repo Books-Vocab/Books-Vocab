@@ -222,10 +222,14 @@ Scope: `ios/BooksBrowser`
 - Sync partial failure
 - KGVocab delete retry result
 
-### Priority 3
+### Priority 3（已完成）
 
-補 preview matrix，至少覆蓋：
-- Reader loading / error / guest / translation / explanation loading / explanation error
-- KG vocab signed out / loading / banner error / empty / populated
-- Sync signed out / no Pro / ready / running / partial failure / failed / completed
-- Settings logged out / logged in / subscription loading / purchase message / App Store error / delete failure
+Preview matrix 已補齊：
+- Reader chrome: loading / compact / expanded / translation
+- Translation panel: loading / guest / translation / explanation only / empty
+- Reader settings: default
+- Sync: signed out / no Pro / ready / running / failed / completed
+- Settings: logged out / logged in active / sub loading / delete in progress
+- Today Review: front / back / details / completed
+
+新增或修改 UI 時，參考 `docs/references/ui_review_checklist.md`。
