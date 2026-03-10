@@ -92,26 +92,34 @@ final class SubscriptionManager: SubscriptionManaging {
         }
     }
 
+    private static let productRetryAttempts = 3
+    private static let productRetryDelay: UInt64 = 2_000_000_000 // 2s
+
     func loadProducts() async {
         lastError = nil
-        do {
-            let products = try await Product.products(for: [Self.proProductID])
-            proProduct = products.first
-            guard proProduct != nil else {
-                throw SubscriptionPurchaseError.productNotFound(productID: Self.proProductID)
+        for attempt in 1...Self.productRetryAttempts {
+            do {
+                let products = try await Product.products(for: [Self.proProductID])
+                if let product = products.first {
+                    proProduct = product
+                    if entitlements.pro.price_display == nil {
+                        entitlements = KGEntitlements(
+                            pro: merge(entitlements.pro, priceDisplay: product.displayPrice)
+                        )
+                    }
+                    lastError = nil
+                    return
+                }
+            } catch {
+                // StoreKit request failed, will retry
             }
-            if let product = proProduct, entitlements.pro.price_display == nil {
-                entitlements = KGEntitlements(
-                    pro: merge(
-                        entitlements.pro,
-                        priceDisplay: product.displayPrice
-                    )
-                )
+            if attempt < Self.productRetryAttempts {
+                try? await Task.sleep(nanoseconds: Self.productRetryDelay)
             }
-        } catch {
-            proProduct = nil
-            lastError = error.localizedDescription
         }
+        // All retries exhausted — product still unavailable
+        proProduct = nil
+        lastError = L10n.string("尚未取得訂閱方案，請稍後再試。")
     }
 
     func purchasePro(using kgService: any KGServing, authManager: any AuthManaging) async {

@@ -307,10 +307,7 @@ struct SettingsView: View {
         let hasRemotePrice = status.price_display?.isEmpty == false
         guard !hasStorePrice, !hasRemotePrice else { return nil }
 
-        if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
-            return L10n.format("目前無法取得 App Store 價格：%@", lastError)
-        }
-        return L10n.string("目前尚未取得 App Store 價格，稍後會自動更新。")
+        return L10n.string("App Store 價格載入中，稍後會自動更新。")
     }
 
     private func restoreLabel(for status: KGSubscriptionStatus) -> String {
