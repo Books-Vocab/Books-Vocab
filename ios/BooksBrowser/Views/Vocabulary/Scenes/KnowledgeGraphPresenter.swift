@@ -40,6 +40,7 @@ struct KnowledgeGraphPresenter: View {
 
             if let emptyState = state.emptyState {
                 centeredStateCard(emptyState)
+                    .transition(.opacity)
             } else {
                 ZStack(alignment: .bottom) {
                     graphView
@@ -49,7 +50,10 @@ struct KnowledgeGraphPresenter: View {
                             .transition(.readerPanelReveal)
                     }
                 }
-                .toolbar {
+                .animation(AppMotion.standardSpring, value: state.showsSettings)
+                .transition(.opacity)
+                .animation(AppMotion.contentFade, value: state.emptyState == nil)
+            .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: onToggleSettings) {
                             VocabToolbarGlyph(
