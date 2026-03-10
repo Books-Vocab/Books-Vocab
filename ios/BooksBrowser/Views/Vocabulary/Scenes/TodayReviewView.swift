@@ -183,6 +183,8 @@ struct TodayReviewView: View {
             forgotCount += 1
         }
 
+        ReviewActivityLog.recordReview()
+
         revealStage = .front
         currentIndex += 1
 
