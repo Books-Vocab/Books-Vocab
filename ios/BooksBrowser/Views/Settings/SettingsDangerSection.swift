@@ -23,6 +23,7 @@ struct SettingsDangerSection: View {
                 }
                 .buttonStyle(.appAction(.destructive))
                 .disabled(state.isDeletingAccount)
+                .accessibilityLabel("刪除帳號與雲端資料")
             }
             .settingsCard()
 

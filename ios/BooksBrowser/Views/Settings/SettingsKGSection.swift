@@ -72,10 +72,12 @@ struct SettingsKGSection: View {
                             Button("遠端正式站", action: actions.useProductionBackend)
                                 .buttonStyle(.borderedProminent)
                                 .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
+                                .accessibilityLabel("切換至遠端正式站")
 
                             Button("本地開發站", action: actions.useLocalBackend)
                                 .buttonStyle(.borderedProminent)
                                 .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
+                                .accessibilityLabel("切換至本地開發站")
                         }
 
                         TextField("本地伺服器 URL", text: debugLocalServerURL)
