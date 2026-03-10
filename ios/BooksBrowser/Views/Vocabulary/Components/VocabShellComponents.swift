@@ -226,8 +226,8 @@ struct VocabSliderRow: View {
     @Binding var value: Double
     let range: ClosedRange<Double>
     let format: String
-    var labelWidth: CGFloat = 52
-    var valueWidth: CGFloat = 36
+    var labelWidth: CGFloat = 64
+    var valueWidth: CGFloat = 42
 
     var body: some View {
         HStack(spacing: vocabSkin.spacing.inlineGap) {
@@ -240,6 +240,7 @@ struct VocabSliderRow: View {
 
             Text(String(format: format, value))
                 .font(vocabSkin.typography.monoLabel)
+                .monospacedDigit()
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .frame(width: valueWidth, alignment: .trailing)
         }

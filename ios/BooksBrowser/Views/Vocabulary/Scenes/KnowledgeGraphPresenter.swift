@@ -108,17 +108,24 @@ struct KnowledgeGraphPresenter: View {
                 Divider().padding(.horizontal, vocabSkin.metrics.overlayCompactDividerInset)
 
                 VStack(spacing: 0) {
-                    VocabSectionHeader(title: "力")
-                    VocabSliderRow(label: "向心力", value: bindings.centerForce, range: 0...1, format: "%.2f")
-                    VocabSliderRow(label: "排斥力", value: bindings.repelForce, range: 0...1, format: "%.2f")
-                    VocabSliderRow(label: "連結強度", value: bindings.linkForce, range: 0...1, format: "%.2f")
-                    VocabSliderRow(label: "連結距離", value: bindings.linkDistance, range: 20...300, format: "%.0f")
+                    VStack(spacing: 0) {
+                        VocabSectionHeader(title: "力")
+                            .padding(.bottom, vocabSkin.spacing.microGap)
+                        VocabSliderRow(label: "向心力", value: bindings.centerForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "排斥力", value: bindings.repelForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "連結強度", value: bindings.linkForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "連結距離", value: bindings.linkDistance, range: 20...300, format: "%.0f")
+                    }
 
-                    Divider().padding(.vertical, vocabSkin.spacing.microGap)
+                    CardSectionDivider(horizontalPadding: 0)
+                        .padding(.vertical, vocabSkin.spacing.sectionGap)
 
-                    VocabSectionHeader(title: "顯示")
-                    VocabSliderRow(label: "節點大小", value: bindings.nodeSize, range: 1...10, format: "%.1f")
-                    VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+                    VStack(spacing: 0) {
+                        VocabSectionHeader(title: "顯示")
+                            .padding(.bottom, vocabSkin.spacing.microGap)
+                        VocabSliderRow(label: "節點大小", value: bindings.nodeSize, range: 1...10, format: "%.1f")
+                        VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+                    }
                 }
                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
                 .padding(.bottom, vocabSkin.metrics.graphDrawerBottomInset)
