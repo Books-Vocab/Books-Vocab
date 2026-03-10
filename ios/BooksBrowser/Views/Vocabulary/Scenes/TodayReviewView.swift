@@ -55,7 +55,8 @@ struct TodayReviewView: View {
     let onClose: () -> Void
 
     init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
-        _queue = State(initialValue: entries)
+        let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
+        _queue = State(initialValue: ordered)
         self.onClose = onClose
     }
 
@@ -147,6 +148,7 @@ struct TodayReviewView: View {
             currentIndex = 0
             revealStage = .front
         }
+        ReviewSessionStore.saveOrder(queue.map(\.id))
     }
 
     private func goPrevious() {
@@ -182,6 +184,9 @@ struct TodayReviewView: View {
         withAnimation(AppMotion.reviewCardSwapSpring) {
             revealStage = .front
             currentIndex += 1
+        }
+        if currentIndex >= queue.count {
+            ReviewSessionStore.clear()
         }
 
         pendingSaveTask = Task { @MainActor in
