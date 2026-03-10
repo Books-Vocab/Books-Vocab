@@ -276,23 +276,26 @@ struct VocabSkin {
 
 extension VocabSkin {
     static let baseTypography = Typography(
-        displayTitle: .system(size: 24, weight: .semibold, design: .default),
-        sectionTitle: .system(size: 18, weight: .semibold, design: .default),
-        detailWord: .system(size: 27, weight: .semibold, design: .monospaced),
-        reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),
-        rowWord: .system(size: 18, weight: .semibold, design: .monospaced),
-        translationTitle: .system(size: 21, weight: .semibold, design: .default),
-        body: .system(size: 15, weight: .regular, design: .default),
-        example: .system(size: 18, weight: .regular, design: .default),
-        detailExampleSerif: .custom("CormorantGaramond-Italic", size: 22),
-        detailExampleSerifStrong: .custom("CormorantGaramond-BoldItalic", size: 22),
-        caption: .system(size: 12, weight: .medium, design: .default),
-        captionStrong: .system(size: 12, weight: .semibold, design: .default),
-        monoLabel: .system(size: 10, weight: .medium, design: .monospaced),
-        monoBody: .system(size: 14, weight: .regular, design: .monospaced),
-        monoBodyStrong: .system(size: 14, weight: .semibold, design: .monospaced),
-        monoEmphasis: .system(size: 16, weight: .semibold, design: .monospaced),
-        numericHero: .system(size: 38, weight: .semibold, design: .default),
+        // Serif tokens (Athelas + STSongti-TC)
+        displayTitle: AppFonts.serif(size: 24, bold: true),
+        sectionTitle: AppFonts.serif(size: 18, bold: true),
+        detailWord: .system(size: 27, weight: .semibold, design: .monospaced),   // 單字渲染，另外管理
+        reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),    // 單字渲染，另外管理
+        rowWord: .system(size: 18, weight: .semibold, design: .monospaced),       // 單字渲染，另外管理
+        translationTitle: AppFonts.serif(size: 21, bold: true),
+        body: AppFonts.serif(size: 15),
+        example: AppFonts.serif(size: 18),
+        detailExampleSerif: .custom("CormorantGaramond-Italic", size: 22),        // 例句渲染，另外管理
+        detailExampleSerifStrong: .custom("CormorantGaramond-BoldItalic", size: 22), // 例句渲染，另外管理
+        caption: AppFonts.serif(size: 12, bold: true),
+        captionStrong: AppFonts.serif(size: 12, bold: true),
+        // Mono tokens (ElmsSans + system monospaced)
+        monoLabel: AppFonts.mono(size: 10, bold: true),
+        monoBody: AppFonts.mono(size: 14),
+        monoBodyStrong: AppFonts.mono(size: 14, bold: true),
+        monoEmphasis: AppFonts.mono(size: 16, bold: true),
+        numericHero: AppFonts.serif(size: 38, bold: true),
+        // SF Symbols — 維持 system
         iconTiny: .system(size: 10, weight: .thin, design: .default),
         iconSmall: .system(size: 12, weight: .medium, design: .default),
         iconMedium: .system(size: 14, weight: .medium, design: .default),
@@ -300,9 +303,10 @@ extension VocabSkin {
         iconNavigation: .system(size: 16, weight: .thin, design: .default),
         symbolLarge: .system(size: 30, weight: .light, design: .default),
         symbolHero: .system(size: 44, weight: .light, design: .default),
-        settingsFontSizeDisplay: .system(size: 28, weight: .semibold, design: .monospaced),
-        settingsAdjustSmall: .system(size: 15, weight: .medium, design: .default),
-        settingsAdjustLarge: .system(size: 28, weight: .medium, design: .default)
+        // Settings — mono (數值調控)
+        settingsFontSizeDisplay: AppFonts.mono(size: 28, bold: true),
+        settingsAdjustSmall: AppFonts.serif(size: 15, bold: true),
+        settingsAdjustLarge: AppFonts.serif(size: 28, bold: true)
     )
 
     static let baseRadii = Radii(
