@@ -1,6 +1,6 @@
 //
-//  BooksBrowserAppIntents.swift
-//  BooksBrowser
+//  Books & VocabAppIntents.swift
+//  Books & Vocab
 //
 //  Created by 陳亮宇 on 2026/2/26.
 //
@@ -11,8 +11,8 @@ import SwiftData
 
 /// 提供給 iOS 26 系統 (Siri / Visual Intelligence) 的意圖：加入生字庫
 struct AddVocabularyIntent: AppIntent {
-    static let title: LocalizedStringResource = "加入 BooksBrowser 生字庫"
-    static let description: IntentDescription = IntentDescription("將選取的單字或片語直接加入 BooksBrowser 進行離線學習與翻譯。")
+    static let title: LocalizedStringResource = "加入 Books & Vocab 生字庫"
+    static let description: IntentDescription = IntentDescription("將選取的單字或片語直接加入 Books & Vocab 進行離線學習與翻譯。")
 
     // 參數：Siri 會詢問或由 Visual Intelligence 框選帶入
     @Parameter(title: "單字或片語")
@@ -66,6 +66,6 @@ struct AddVocabularyIntent: AppIntent {
             }
         }
 
-        return .result(dialog: IntentDialog(stringLiteral: L10n.format("已成功將「%@」加入 BooksBrowser 生字庫。", targetWord)))
+        return .result(dialog: IntentDialog(stringLiteral: L10n.format("已成功將「%@」加入 Books & Vocab 生字庫。", targetWord)))
     }
 }

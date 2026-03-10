@@ -46,6 +46,8 @@ struct TodayReviewView: View {
     @State private var revealStage: TodayReviewRevealStage = .front
     @State private var isAdvancing = false
     @State private var linkedCardStack: [VocabularyEntry] = []
+    @State private var forgotCount = 0
+    @State private var rememberedCount = 0
     @State private var rememberedFeedbackTrigger = 0
     @State private var forgotFeedbackTrigger = 0
     @State private var persistenceFailureTrigger = 0
@@ -82,16 +84,26 @@ struct TodayReviewView: View {
         TodayReviewPresenterState(
             progressText: progressText,
             currentCard: currentCardState,
+            nextCard: nextCardState,
             revealStage: revealStage,
             canShuffle: queue.count > 1,
             canGoPrevious: currentIndex > 0,
             canGoNext: currentIndex < queue.count - 1,
+            remainingCount: max(queue.count - currentIndex - 1, 0),
+            forgotCount: forgotCount,
+            rememberedCount: rememberedCount,
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
             persistenceFailureTrigger: persistenceFailureTrigger,
             persistenceErrorMessage: persistenceErrorMessage,
             isAdvancing: isAdvancing
         )
+    }
+
+    private var nextCardState: TodayReviewPresenterState.CurrentCard? {
+        let nextIndex = currentIndex + 1
+        guard nextIndex < queue.count else { return nil }
+        return .init(card: queue[nextIndex].cardPresentation, linkGroups: [])
     }
 
     private var currentCardState: TodayReviewPresenterState.CurrentCard? {
@@ -178,20 +190,22 @@ struct TodayReviewView: View {
         switch feedback {
         case .remembered:
             rememberedFeedbackTrigger += 1
+            rememberedCount += 1
         case .forgot:
             forgotFeedbackTrigger += 1
+            forgotCount += 1
         }
 
-        withAnimation(AppMotion.reviewCardSwapSpring) {
-            revealStage = .front
-            currentIndex += 1
-        }
+        // 不包 withAnimation — 由 presenter 的 flingCard 控制所有動畫時序
+        revealStage = .front
+        currentIndex += 1
+
         if currentIndex >= queue.count {
             ReviewSessionStore.clear()
         }
 
         pendingSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(220))
+            try? await Task.sleep(for: .milliseconds(120))
             do {
                 try modelContext.save()
             } catch {

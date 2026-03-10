@@ -1,4 +1,4 @@
-# 📚 BooksBrowser
+# 📚 Books & Vocab
 
 一款整合 AI 輔助學習與知識圖譜同步的 iOS EPUB 閱讀器，專為英文學習者打造。
 

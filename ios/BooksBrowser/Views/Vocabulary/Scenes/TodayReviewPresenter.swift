@@ -183,6 +183,12 @@ struct TodayReviewPresenter: View {
             .opacity(cardOpacity)
             .animation(AppMotion.swipeTrackingSpring, value: swipeOffset)
             .simultaneousGesture(swipeDragGesture)
+            .onChange(of: isPromoting) { old, new in
+                print("[reviewCard] isPromoting \(old) → \(new)  swipeOffset=\(swipeOffset)  card=\(currentCard.card.word)")
+            }
+            .onChange(of: currentCard.card.word) { old, new in
+                print("[reviewCard] card identity \(old) → \(new)  isPromoting=\(isPromoting)  swipeOffset=\(swipeOffset)")
+            }
         }
     }
 
@@ -230,11 +236,19 @@ struct TodayReviewPresenter: View {
         let flingAnimation = AppMotion.swipeFlingSpring
 
         dismissTask = Task { @MainActor in
+            let t0 = Date()
+            func dbg(_ msg: String) {
+                let ms = Int(Date().timeIntervalSince(t0) * 1000)
+                print("[FlingCard +\(ms)ms] \(msg)")
+            }
+            dbg("START dir=\(direction) isFromButton=\(isFromButton)")
+
             // 按鈕：蓄力微動（卡片往反方向退 ~8pt）
             if isFromButton {
                 withAnimation(AppMotion.buttonWindupSpring) {
                     swipeOffset = -direction * 8
                 }
+                dbg("windup swipeOffset=\(swipeOffset)")
                 try? await Task.sleep(for: .milliseconds(60))
                 guard !Task.isCancelled else { return }
             }
@@ -243,31 +257,42 @@ struct TodayReviewPresenter: View {
             withAnimation(flingAnimation) {
                 swipeOffset = direction * screenWidth * 1.3
             }
+            dbg("fling start swipeOffset=\(swipeOffset)")
             try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
+            dbg("fling sleep done swipeOffset=\(swipeOffset)")
 
             // 重置 + 新卡片從牌堆位置出現
-            swipeOffset = 0
-            isPromoting = true
-            stackRotations = [
-                Double.random(in: -1.0...1.0),
-                Double.random(in: -1.0...1.0)
-            ]
+            var noAnim = Transaction(animation: nil)
+            noAnim.disablesAnimations = true
+            withTransaction(noAnim) {
+                swipeOffset = 0
+                isPromoting = true
+                stackRotations = [
+                    Double.random(in: -1.0...1.0),
+                    Double.random(in: -1.0...1.0)
+                ]
+            }
+            dbg("reset done swipeOffset=\(swipeOffset) isPromoting=\(isPromoting)")
             callback()
+            dbg("callback done")
 
             // 等 SwiftUI commit 新內容（60Hz = 16.7ms/幀，留足一幀確保動畫不被批次合併成 no-op）
             try? await Task.sleep(for: .milliseconds(20))
             guard !Task.isCancelled else { return }
+            dbg("pre-promote sleep done, isPromoting=\(isPromoting) → firing stackPromotionSpring")
 
             // 新卡片從牌堆升頂
             withAnimation(AppMotion.stackPromotionSpring) {
                 isPromoting = false
             }
+            dbg("promote animation fired isPromoting=\(isPromoting)")
 
             // 等升頂動畫大致完成後恢復互動
             try? await Task.sleep(for: .milliseconds(150))
             guard !Task.isCancelled else { return }
             dismissPhase = .idle
+            dbg("END dismissPhase=.idle")
         }
     }
 

@@ -27,10 +27,12 @@ struct SettingsAccountSection: View {
     private var loginView: some View {
         VStack(spacing: 0) {
             VStack(spacing: AccountMetrics.authHeroSpacing) {
-                Image(systemName: "sparkles")
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(.tertiary)
-                    .opacity(state.iconBreathing ? 0.45 : 0.75)
+                Image("AppIconImage")
+                    .resizable()
+                    .scaledToFit()
+                    .frame(width: 64, height: 64)
+                    .clipShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
+                    .opacity(state.iconBreathing ? 0.85 : 1.0)
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
                 VStack(spacing: AccountMetrics.authCopySpacing) {
