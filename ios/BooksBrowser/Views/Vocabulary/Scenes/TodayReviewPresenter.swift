@@ -172,13 +172,8 @@ struct TodayReviewPresenter: View {
 
     /// 卡片當前的 opacity，由 swipeOffset 和 dismissPhase 共同決定
     private var cardOpacity: Double {
-        switch dismissPhase {
-        case .swapping:
-            return 0  // 切換中隱藏，避免新卡片閃現在舊位置
-        case .idle, .animatingOut:
-            // swipe 拖曳時自然衰減
-            return 1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
-        }
+        if dismissPhase == .swapping { return 0 }
+        return 1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
     }
 
     private var swipeEnabled: Bool {
@@ -200,9 +195,9 @@ struct TodayReviewPresenter: View {
                 guard swipeEnabled else { return }
                 let threshold = vocabSkin.metrics.reviewSwipeThreshold
                 if value.translation.width < -threshold {
-                    dismissCardViaSwipe(direction: -1, callback: onForgot)
+                    flingCard(direction: -1, callback: onForgot)
                 } else if value.translation.width > threshold {
-                    dismissCardViaSwipe(direction: 1, callback: onRemembered)
+                    flingCard(direction: 1, callback: onRemembered)
                 } else {
                     withAnimation(AppMotion.swipeSnapBackSpring) {
                         swipeOffset = 0
@@ -211,35 +206,35 @@ struct TodayReviewPresenter: View {
             }
     }
 
-    /// Swipe 手勢觸發的卡片退場
-    private func dismissCardViaSwipe(direction: CGFloat, callback: @escaping () -> Void) {
+    /// 統一的卡片甩出動畫 — swipe 和按鈕共用
+    /// direction: -1 = 左（忘記）, +1 = 右（記得）
+    private func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
+        guard dismissPhase == .idle else { return }
         dismissTask?.cancel()
         dismissPhase = .animatingOut
 
+        let flingAnimation = Animation.interpolatingSpring(stiffness: 280, damping: 22)
+
         dismissTask = Task { @MainActor in
-            // 卡片飛出畫面
-            withAnimation(AppMotion.swipeDismissSpring) {
-                swipeOffset = direction * screenWidth * 1.5
+            // 甩出畫面
+            withAnimation(flingAnimation) {
+                swipeOffset = direction * screenWidth * 1.2
             }
-            try? await Task.sleep(for: .milliseconds(380))
+            try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled else { return }
 
-            // 隱藏 → 重置位置 → 觸發切換（全部禁動畫，一幀內完成）
+            // 隱藏 + 重置 + 切換（一幀完成）
             dismissPhase = .swapping
             swipeOffset = 0
-
-            // 下一幀讓 SwiftUI commit .swapping 狀態（opacity=0），再切換內容
-            try? await Task.sleep(for: .milliseconds(16))
-            guard !Task.isCancelled else { return }
-
             callback()
 
-            // callback 觸發 currentIndex 變化後，等一幀讓新內容就緒再淡入
-            try? await Task.sleep(for: .milliseconds(16))
+            // 等 SwiftUI commit 新內容
+            try? await Task.sleep(for: .milliseconds(8))
             guard !Task.isCancelled else { return }
 
-            withAnimation(AppMotion.contentFade) {
-                dismissPhase = .idle  // opacity 從 0 → 1
+            // 新卡片淡入
+            withAnimation(.easeOut(duration: 0.1)) {
+                dismissPhase = .idle
             }
         }
     }
@@ -432,44 +427,19 @@ struct TodayReviewPresenter: View {
 
     private var feedbackButtons: some View {
         HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-            Button { dismissCardViaButton(callback: onForgot) } label: {
+            Button { flingCard(direction: -1, callback: onForgot) } label: {
                 Label("忘記", systemImage: "xmark")
                     .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
             .disabled(dismissPhase != .idle)
 
-            Button { dismissCardViaButton(callback: onRemembered) } label: {
+            Button { flingCard(direction: 1, callback: onRemembered) } label: {
                 Label("記得", systemImage: "checkmark")
                     .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
             .disabled(dismissPhase != .idle)
-        }
-    }
-
-    /// 按鈕觸發的卡片退場（無 swipe，用 scale + opacity 淡出）
-    private func dismissCardViaButton(callback: @escaping () -> Void) {
-        guard dismissPhase == .idle else { return }
-        dismissTask?.cancel()
-
-        dismissTask = Task { @MainActor in
-            // 淡出
-            withAnimation(.easeOut(duration: 0.15)) {
-                dismissPhase = .swapping  // opacity → 0
-            }
-            try? await Task.sleep(for: .milliseconds(170))
-            guard !Task.isCancelled else { return }
-
-            swipeOffset = 0
-            callback()
-
-            try? await Task.sleep(for: .milliseconds(16))
-            guard !Task.isCancelled else { return }
-
-            withAnimation(AppMotion.contentFade) {
-                dismissPhase = .idle  // opacity → 1
-            }
         }
     }
 
