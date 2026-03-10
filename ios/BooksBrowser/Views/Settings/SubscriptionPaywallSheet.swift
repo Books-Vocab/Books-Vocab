@@ -92,6 +92,7 @@ struct SubscriptionPaywallSheet: View {
                     Button {
                         Task {
                             try? await AppStore.showManageSubscriptions(in: windowScene)
+                            await subscriptionManager.resyncAfterManagement(using: kgService, authManager: authManager)
                         }
                     } label: {
                         HStack {

@@ -35,10 +35,17 @@ protocol SubscriptionManaging: AnyObject {
     var purchaseStatusMessage: String? { get }
     var hasProAccess: Bool { get }
 
-    func refresh(using kgService: any KGServing, authManager: any AuthManaging) async
+    func refresh(using kgService: any KGServing, authManager: any AuthManaging, force: Bool) async
+    func resyncAfterManagement(using kgService: any KGServing, authManager: any AuthManaging) async
     func loadProducts() async
     func purchasePro(using kgService: any KGServing, authManager: any AuthManaging) async
     func restorePurchases(using kgService: any KGServing, authManager: any AuthManaging) async
+}
+
+extension SubscriptionManaging {
+    func refresh(using kgService: any KGServing, authManager: any AuthManaging) async {
+        await refresh(using: kgService, authManager: authManager, force: false)
+    }
 }
 
 @Observable
@@ -73,11 +80,20 @@ final class SubscriptionManager: SubscriptionManaging {
     }
 
     private var transactionListener: Task<Void, Never>?
+    private var expiryTimer: Task<Void, Never>?
+    private var lastRefreshTime: Date?
+    private static let refreshCooldown: TimeInterval = 2.0
+
+    /// refresh 需要的外部依賴，由 listenForTransactionUpdates 設定
+    private weak var _kgService: (any KGServing)?
+    private weak var _authManager: (any AuthManaging)?
 
     private init() {}
 
     /// 在 app 啟動時呼叫，持續監聽 Transaction.updates 以捕捉中斷購買、續訂等事件
     func listenForTransactionUpdates(using kgService: any KGServing, authManager: any AuthManaging) {
+        _kgService = kgService
+        _authManager = authManager
         transactionListener?.cancel()
         transactionListener = Task(priority: .background) { [weak self] in
             for await result in Transaction.updates {
@@ -96,12 +112,23 @@ final class SubscriptionManager: SubscriptionManaging {
         }
     }
 
-    func refresh(using kgService: any KGServing, authManager: any AuthManaging) async {
+    func refresh(using kgService: any KGServing, authManager: any AuthManaging, force: Bool = false) async {
         guard authManager.isLoggedIn else {
             entitlements = Self.defaultEntitlements
             lastError = nil
+            expiryTimer?.cancel()
+            expiryTimer = nil
             return
         }
+
+        // Cooldown：防止短時間重複 refresh，force 可跳過
+        if !force {
+            let now = Date()
+            if let last = lastRefreshTime, now.timeIntervalSince(last) < Self.refreshCooldown {
+                return
+            }
+        }
+        lastRefreshTime = Date()
 
         isLoading = true
         defer { isLoading = false }
@@ -117,7 +144,7 @@ final class SubscriptionManager: SubscriptionManaging {
                     )
                 }
                 // 已過期 + 不續訂 → 本地直接降級，不等後端通知
-                if !remote.pro.will_renew, Self.isExpired(remote.pro.expires_at) {
+                if !remote.pro.will_renew, remote.pro.isExpired {
                     print("🔍 [Subscription] locally deactivating: expires_at=\(remote.pro.expires_at ?? "nil") already passed, will_renew=false")
                     remote = KGEntitlements(
                         pro: merge(remote.pro, status: "expired", isActive: false)
@@ -126,8 +153,42 @@ final class SubscriptionManager: SubscriptionManaging {
             }
             entitlements = remote
             lastError = nil
+            scheduleExpiryRefresh(for: remote.pro)
         } catch {
             lastError = error.localizedDescription
+        }
+    }
+
+    /// 從 Apple 訂閱管理頁返回後執行完整重新同步
+    func resyncAfterManagement(using kgService: any KGServing, authManager: any AuthManaging) async {
+        guard authManager.isLoggedIn else { return }
+        isLoading = true
+        defer { isLoading = false }
+
+        await syncCurrentEntitlements(using: kgService)
+        await refresh(using: kgService, authManager: authManager, force: true)
+    }
+
+    /// 排程到期自動刷新：當訂閱即將到期（cancelled but active），在 expires_at 到達時自動 refresh
+    private func scheduleExpiryRefresh(for pro: KGSubscriptionStatus) {
+        expiryTimer?.cancel()
+        expiryTimer = nil
+
+        guard pro.isCancelledButActive,
+              let expiresAt = pro.expires_at, !expiresAt.isEmpty,
+              let expiryDate = KGSubscriptionStatus.parseExpiryDate(expiresAt)
+        else { return }
+
+        let delay = expiryDate.timeIntervalSinceNow
+        guard delay > 0 else { return }
+
+        print("🔍 [Subscription] scheduling expiry refresh in \(Int(delay))s")
+        expiryTimer = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(delay + 1))
+            guard !Task.isCancelled, let self else { return }
+            guard let kgService = self._kgService, let authManager = self._authManager else { return }
+            print("🔍 [Subscription] expiry timer fired, refreshing...")
+            await self.refresh(using: kgService, authManager: authManager, force: true)
         }
     }
 
@@ -322,17 +383,6 @@ final class SubscriptionManager: SubscriptionManaging {
         entitlements = try await kgService.syncAppStoreSubscription(snapshot)
     }
 
-    /// 檢查 ISO8601 到期時間是否已過
-    private static func isExpired(_ isoString: String?) -> Bool {
-        guard let isoString, !isoString.isEmpty else { return false }
-        let f1 = ISO8601DateFormatter()
-        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let f2 = ISO8601DateFormatter()
-        f2.formatOptions = [.withInternetDateTime]
-        guard let date = f1.date(from: isoString) ?? f2.date(from: isoString) else { return false }
-        return date < Date()
-    }
-
     /// 從 StoreKit 2 的 Product.SubscriptionInfo 查詢真實的自動續訂狀態
     private func queryWillAutoRenew() async -> Bool {
         guard let product = proProduct, let subscription = product.subscription else {
@@ -350,7 +400,7 @@ final class SubscriptionManager: SubscriptionManaging {
                 }
             }
             // 沒有 active 狀態，從 expired/revoked 取（sandbox 快速過期常見）
-            for status in statuses {
+            for status in statuses where status.state != .subscribed && status.state != .inGracePeriod {
                 if let renewalInfo = try? checkVerified(status.renewalInfo) {
                     print("🔍 [Subscription] fallback state=\(status.state), willAutoRenew=\(renewalInfo.willAutoRenew)")
                     return renewalInfo.willAutoRenew
