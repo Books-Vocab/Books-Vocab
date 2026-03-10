@@ -1,8 +1,11 @@
 from __future__ import annotations
 
+import logging
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any, Callable
+
+logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
 from fastapi.responses import HTMLResponse
@@ -55,7 +58,7 @@ def admin_stats_response(
             store = card_store_factory(user_dir)
             vocab_count = sum(1 for card in store.all() if not card.is_deleted)
         except Exception:
-            pass
+            logger.warning("Failed to load card store for user %s", uid, exc_info=True)
 
         utoken = token_stats.get(uid, {})
         total_input = sum(d["input_tokens"] for d in utoken.values())
