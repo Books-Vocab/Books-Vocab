@@ -46,5 +46,9 @@ struct VocabularyListPresenter<Content: View>: View {
                 .animation(.none, value: selectedTab)
         }
         .vocabCanvasBackground()
+        .scrollDismissesKeyboard(.interactively)
+        .onTapGesture {
+            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+        }
     }
 }
