@@ -50,7 +50,7 @@ struct VocabChromePill: View {
                     )
             }
         }
-        .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
+        .foregroundStyle(emphasized ? vocabSkin.palette.pageBackground : vocabSkin.palette.secondaryText)
         .padding(.horizontal, vocabSkin.spacing.chipHorizontalPaddingOuter)
         .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
         .background(
@@ -519,7 +519,7 @@ struct VocabActionButtonStyle: ButtonStyle {
     private func styleFromShared(_ tone: AppActionTone) -> (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            return (.white, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
+            return (vocabSkin.palette.pageBackground, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
         case .neutral:
             return (
                 vocabSkin.palette.primaryText,

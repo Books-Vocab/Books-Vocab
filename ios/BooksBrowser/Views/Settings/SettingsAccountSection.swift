@@ -284,7 +284,7 @@ private struct SettingsSocialBadge: View {
                 case .apple:
                     Image(systemName: "apple.logo")
                         .font(vocabSkin.typography.iconTiny)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(vocabSkin.palette.pageBackground)
                 }
             }
         }
