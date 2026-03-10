@@ -48,6 +48,13 @@ struct VocabSkin {
         let readerThemeLightSwatch: Color
         let readerThemeSepiaSwatch: Color
         let readerThemeDarkSwatch: Color
+        let overlayFill: Color
+        let highlightMarkSubtle: Color
+        let primaryTextMuted: Color
+        let quaternaryTextFaint: Color
+        let progressBarBackground: Color
+        let buttonIdleFill: Color
+        let buttonPressedFill: Color
     }
 
     struct Typography {
@@ -117,6 +124,8 @@ struct VocabSkin {
         let timelineDetailGap: CGFloat
         let heroBaselineGap: CGFloat
         let sourceMetadataGap: CGFloat
+        let blockGap: CGFloat
+        let chipHorizontalPaddingOuter: CGFloat
     }
 
     struct Metrics {
@@ -198,6 +207,15 @@ struct VocabSkin {
         let linkDetailGap: CGFloat
         let metadataFooterGap: CGFloat
         let metadataFooterItemGap: CGFloat
+        let tabSelectorHeight: CGFloat
+        let progressBarWidth: CGFloat
+        let progressBarHeight: CGFloat
+        let paragraphLineSpacing: CGFloat
+        let detailLineSpacing: CGFloat
+        let exampleTruncateRadius: Int
+        let reviewFrontHeightRatio: CGFloat
+        let reviewCompletionHeightRatio: CGFloat
+        let labelTracking: CGFloat
     }
 
     let palette: Palette
@@ -304,7 +322,9 @@ extension VocabSkin {
         timelineRowGap: 12,
         timelineDetailGap: 2,
         heroBaselineGap: 8,
-        sourceMetadataGap: 6
+        sourceMetadataGap: 6,
+        blockGap: 12,
+        chipHorizontalPaddingOuter: 12
     )
 
     static let baseMetrics = Metrics(
@@ -385,7 +405,16 @@ extension VocabSkin {
         linkRowHorizontalGap: 8,
         linkDetailGap: 3,
         metadataFooterGap: 24,
-        metadataFooterItemGap: 4
+        metadataFooterItemGap: 4,
+        tabSelectorHeight: 32,
+        progressBarWidth: 104,
+        progressBarHeight: 5,
+        paragraphLineSpacing: 4,
+        detailLineSpacing: 5,
+        exampleTruncateRadius: 5,
+        reviewFrontHeightRatio: 0.28,
+        reviewCompletionHeightRatio: 0.22,
+        labelTracking: 0.5
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
@@ -428,7 +457,24 @@ extension VocabSkin {
                 overlayScrim: theme.palette.scrim,
                 readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
                 readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
-                readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38)
+                readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38),
+                overlayFill: theme.colorScheme == .dark
+                    ? Color.white.opacity(0.15)
+                    : Color.white.opacity(0.12),
+                highlightMarkSubtle: theme.colorScheme == .dark
+                    ? Color(red: 0.73, green: 0.66, blue: 0.33).opacity(0.68)
+                    : Color(red: 0.90, green: 0.84, blue: 0.57).opacity(0.68),
+                primaryTextMuted: theme.palette.primaryText.opacity(0.84),
+                quaternaryTextFaint: theme.palette.quaternaryText.opacity(0.14),
+                progressBarBackground: theme.colorScheme == .dark
+                    ? Color.white.opacity(0.10)
+                    : Color.black.opacity(0.07),
+                buttonIdleFill: theme.colorScheme == .dark
+                    ? Color.white.opacity(0.12)
+                    : Color.black.opacity(0.07),
+                buttonPressedFill: theme.colorScheme == .dark
+                    ? Color.white.opacity(0.18)
+                    : Color.black.opacity(0.12)
             ),
             typography: baseTypography,
             radii: baseRadii,
@@ -466,7 +512,14 @@ extension VocabSkin {
             overlayScrim: Color.black.opacity(0.20),
             readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
             readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
-            readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38)
+            readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38),
+            overlayFill: Color.white.opacity(0.12),
+            highlightMarkSubtle: Color(red: 0.90, green: 0.84, blue: 0.57).opacity(0.68),
+            primaryTextMuted: Color(red: 0.19, green: 0.19, blue: 0.18).opacity(0.84),
+            quaternaryTextFaint: Color(red: 0.72, green: 0.72, blue: 0.70).opacity(0.14),
+            progressBarBackground: Color.black.opacity(0.07),
+            buttonIdleFill: Color.black.opacity(0.07),
+            buttonPressedFill: Color.black.opacity(0.12)
         ),
         typography: baseTypography,
         radii: baseRadii,
