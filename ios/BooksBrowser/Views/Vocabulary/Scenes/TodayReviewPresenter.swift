@@ -23,6 +23,7 @@ struct TodayReviewPresenterState {
     let forgotFeedbackTrigger: Int
     let persistenceFailureTrigger: Int
     let persistenceErrorMessage: String?
+    let isAdvancing: Bool
 }
 
 struct TodayReviewPresenter: View {
@@ -32,6 +33,8 @@ struct TodayReviewPresenter: View {
     private var usesCompactLayout: Bool {
         dynamicTypeSize < .accessibility1
     }
+
+    @State private var swipeOffset: CGFloat = 0
 
     let state: TodayReviewPresenterState
     let onClose: () -> Void
@@ -133,11 +136,12 @@ struct TodayReviewPresenter: View {
     }
 
     private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
-        VStack(spacing: 0) {
-            frontFoldSurface(currentCard.card)
+        let card = currentCard.card
+        return VStack(spacing: 0) {
+            frontFoldSurface(card)
 
             if state.revealStage.showsAnswer {
-                answerFoldSurface(currentCard.card)
+                answerFoldSurface(card)
                     .padding(.top, -1)
                     .transition(.paperFoldFromTop)
             }
@@ -149,6 +153,93 @@ struct TodayReviewPresenter: View {
             }
         }
         .animation(AppMotion.reviewRevealSpring, value: state.revealStage)
+        .offset(x: swipeOffset)
+        .rotationEffect(.degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
+        .opacity(1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor))
+        .overlay(alignment: .topLeading) {
+            swipeHintView(for: swipeOffset)
+        }
+        .simultaneousGesture(swipeDragGesture)
+        .onChange(of: card.dateAdded) {
+            withAnimation(AppMotion.swipeSnapBackSpring) {
+                swipeOffset = 0
+            }
+        }
+    }
+
+    private var swipeEnabled: Bool {
+        state.revealStage.showsAnswer && !state.isAdvancing
+    }
+
+    private var screenWidth: CGFloat {
+        UIScreen.main.bounds.width
+    }
+
+    private var swipeDragGesture: some Gesture {
+        DragGesture(minimumDistance: 15, coordinateSpace: .local)
+            .onChanged { value in
+                guard swipeEnabled else { return }
+                guard abs(value.translation.width) > abs(value.translation.height) else { return }
+                swipeOffset = value.translation.width
+            }
+            .onEnded { value in
+                guard swipeEnabled else { return }
+                let threshold = vocabSkin.metrics.reviewSwipeThreshold
+                if value.translation.width < -threshold {
+                    withAnimation(AppMotion.swipeDismissSpring) {
+                        swipeOffset = -screenWidth * 1.5
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        swipeOffset = 0
+                        onForgot()
+                    }
+                } else if value.translation.width > threshold {
+                    withAnimation(AppMotion.swipeDismissSpring) {
+                        swipeOffset = screenWidth * 1.5
+                    }
+                    DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
+                        swipeOffset = 0
+                        onRemembered()
+                    }
+                } else {
+                    withAnimation(AppMotion.swipeSnapBackSpring) {
+                        swipeOffset = 0
+                    }
+                }
+            }
+    }
+
+    @ViewBuilder
+    private func swipeHintView(for offset: CGFloat) -> some View {
+        let threshold = vocabSkin.metrics.reviewSwipeThreshold
+        if offset < -10 {
+            let opacity = min(Double(abs(offset)) / Double(threshold), 1.0)
+            Text("忘記")
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.destructive)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
+                        .fill(vocabSkin.palette.destructive.opacity(0.12))
+                )
+                .padding(reviewCardPadding)
+                .opacity(opacity)
+        } else if offset > 10 {
+            let opacity = min(Double(offset) / Double(threshold), 1.0)
+            Text("記得")
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.success)
+                .padding(.horizontal, 14)
+                .padding(.vertical, 7)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
+                        .fill(vocabSkin.palette.success.opacity(0.12))
+                )
+                .padding(reviewCardPadding)
+                .opacity(opacity)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+        }
     }
 
     private func reviewCardFront(_ card: CardPresentation) -> some View {
@@ -445,12 +536,32 @@ struct TodayReviewPresenter: View {
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
 
+            let meaningParagraphs = answerMeaningParagraphs(for: card)
+            if !meaningParagraphs.isEmpty {
+                CardSectionDivider(horizontalPadding: 0)
+                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+                    ForEach(meaningParagraphs) { paragraph in
+                        CardInlineText(paragraph: paragraph, style: .body)
+                            .lineSpacing(5)
+                    }
+                }
+            }
+
             Spacer(minLength: 0)
         }
         .padding(reviewCardPadding)
         .padding(.trailing, showsExpandHint ? 40 : 0)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(height: answerCardHeight, alignment: .topLeading)
+        .frame(minHeight: answerCardHeight, alignment: .topLeading)
+    }
+
+    private func answerMeaningParagraphs(for card: CardPresentation) -> [CardDocumentParagraph] {
+        for block in card.document.blocks {
+            if case .meaning(let meaning) = block {
+                return meaning.paragraphs
+            }
+        }
+        return []
     }
 
     private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
@@ -462,7 +573,7 @@ struct TodayReviewPresenter: View {
                     foldChevronButton(action: onCollapseReveal)
                 }
 
-                CardDocumentView(document: reviewBackDocument(for: card))
+                CardDocumentView(document: reviewBackDocument(for: card), truncateRadius: 5)
 
                 if !currentCard.linkGroups.isEmpty {
                     CardSectionDivider(horizontalPadding: 0)
@@ -522,15 +633,23 @@ struct TodayReviewPresenter: View {
     }
 
     private func reviewBackDocument(for card: CardPresentation) -> CardDocument {
-        let blocks = card.document.blocks.compactMap { block -> CardDocumentBlock? in
+        // 僅保留例句和來源，排除 meaning 及其前方 divider
+        var blocks: [CardDocumentBlock] = []
+        var pendingDivider = false
+        for block in card.document.blocks {
             switch block {
-            case .hero, .source:
-                return nil
-            case .example, .divider, .meaning:
-                return block
+            case .hero, .meaning:
+                pendingDivider = false
+            case .divider:
+                pendingDivider = true
+            case .example, .source:
+                if pendingDivider && !blocks.isEmpty {
+                    blocks.append(.divider)
+                }
+                blocks.append(block)
+                pendingDivider = false
             }
         }
-
         return CardDocument(blocks: blocks)
     }
 
@@ -629,7 +748,8 @@ private enum TodayReviewPresenterPreviewData {
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
             persistenceFailureTrigger: 0,
-            persistenceErrorMessage: nil
+            persistenceErrorMessage: nil,
+            isAdvancing: false
         )
     }
 
@@ -643,7 +763,8 @@ private enum TodayReviewPresenterPreviewData {
         rememberedFeedbackTrigger: 0,
         forgotFeedbackTrigger: 0,
         persistenceFailureTrigger: 0,
-        persistenceErrorMessage: nil
+        persistenceErrorMessage: nil,
+        isAdvancing: false
     )
 }
 
