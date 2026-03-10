@@ -85,11 +85,11 @@ def test_startup_smoke_serves_admin_and_core_routes(startup_env):
 
     admin_tests_ui = client.get("/admin/tests", params={"token": "adm-secret"})
     assert admin_tests_ui.status_code == 200, admin_tests_ui.text
-    assert "KG Test Matrix" in admin_tests_ui.text
+    assert "WordNexus Admin" in admin_tests_ui.text
 
     admin_test_alias = client.get("/admin/test", params={"token": "adm-secret"})
     assert admin_test_alias.status_code == 200, admin_test_alias.text
-    assert "KG Test Matrix" in admin_test_alias.text
+    assert "WordNexus Admin" in admin_test_alias.text
 
     entitlements = client.get("/api/user/entitlements", headers=startup_env.headers)
     assert entitlements.status_code == 200, entitlements.text
