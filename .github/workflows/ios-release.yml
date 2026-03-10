@@ -1,0 +1,111 @@
+name: iOS Release
+
+on:
+  push:
+    tags:
+      - 'ios/*'
+
+jobs:
+  build-and-upload:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract version from tag
+        id: version
+        run: echo "version=${GITHUB_REF_NAME#ios/}" >> "$GITHUB_OUTPUT"
+
+      - name: Install Apple certificate
+        run: |
+          # 建立臨時 keychain
+          KEYCHAIN_PATH=$RUNNER_TEMP/app-signing.keychain-db
+          KEYCHAIN_PASSWORD=$(openssl rand -hex 16)
+
+          security create-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+          security set-keychain-settings -lut 21600 "$KEYCHAIN_PATH"
+          security unlock-keychain -p "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+          # 匯入 certificate
+          CERT_PATH=$RUNNER_TEMP/certificate.p12
+          echo "${{ secrets.CERT_P12_BASE64 }}" | base64 --decode > "$CERT_PATH"
+          security import "$CERT_PATH" \
+            -P "${{ secrets.CERT_P12_PASSWORD }}" \
+            -A -t cert -f pkcs12 \
+            -k "$KEYCHAIN_PATH"
+
+          # 設為預設 keychain
+          security list-keychains -d user -s "$KEYCHAIN_PATH" login.keychain-db
+          security default-keychain -s "$KEYCHAIN_PATH"
+          security set-key-partition-list -S apple-tool:,apple: -s -k "$KEYCHAIN_PASSWORD" "$KEYCHAIN_PATH"
+
+      - name: Setup App Store Connect API key
+        run: |
+          mkdir -p ~/private_keys
+          echo "${{ secrets.ASC_KEY_P8 }}" > ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8
+
+      - name: Build archive
+        run: |
+          xcodebuild archive \
+            -project ios/BooksBrowser.xcodeproj \
+            -scheme BooksBrowser \
+            -destination 'generic/platform=iOS' \
+            -archivePath $RUNNER_TEMP/BooksBrowser.xcarchive \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }} \
+            DEVELOPMENT_TEAM=${{ secrets.APPLE_TEAM_ID }} \
+            -quiet \
+            CODE_SIGN_STYLE=Automatic
+
+      - name: Export IPA
+        run: |
+          cat > $RUNNER_TEMP/ExportOptions.plist << 'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0">
+          <dict>
+            <key>method</key>
+            <string>app-store</string>
+            <key>destination</key>
+            <string>upload</string>
+            <key>signingStyle</key>
+            <string>automatic</string>
+            <key>teamID</key>
+            <string>${{ secrets.APPLE_TEAM_ID }}</string>
+          </dict>
+          </plist>
+          PLIST
+
+          xcodebuild -exportArchive \
+            -archivePath $RUNNER_TEMP/BooksBrowser.xcarchive \
+            -exportPath $RUNNER_TEMP/export \
+            -exportOptionsPlist $RUNNER_TEMP/ExportOptions.plist \
+            -allowProvisioningUpdates \
+            -authenticationKeyPath ~/private_keys/AuthKey_${{ secrets.ASC_KEY_ID }}.p8 \
+            -authenticationKeyID ${{ secrets.ASC_KEY_ID }} \
+            -authenticationKeyIssuerID ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Upload to TestFlight
+        run: |
+          xcrun altool --upload-app \
+            -f $RUNNER_TEMP/export/BooksBrowser.ipa \
+            -t ios \
+            --apiKey ${{ secrets.ASC_KEY_ID }} \
+            --apiIssuer ${{ secrets.ASC_ISSUER_ID }}
+
+      - name: Generate changelog
+        id: changelog
+        run: |
+          chmod +x scripts/generate-changelog.sh
+          CHANGELOG=$(scripts/generate-changelog.sh ios)
+          echo "changelog<<EOF" >> "$GITHUB_OUTPUT"
+          echo "$CHANGELOG" >> "$GITHUB_OUTPUT"
+          echo "EOF" >> "$GITHUB_OUTPUT"
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "iOS ${{ steps.version.outputs.version }}"
+          body: ${{ steps.changelog.outputs.changelog }}
+          tag_name: ${{ github.ref_name }}
