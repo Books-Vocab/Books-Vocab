@@ -67,6 +67,14 @@ enum AppMotion {
     static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
     static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
 
+    // MARK: - Micro-interaction Springs
+    /// 按鈕蓄力微動（極短回饋，10pt 以內位移）
+    static let buttonWindupSpring = Animation.spring(response: 0.10, dampingFraction: 0.90)
+    /// 卡片甩出畫面（高剛性快速飛離）
+    static let swipeFlingSpring = Animation.interpolatingSpring(stiffness: 500, damping: 28)
+    /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
+    static let feedbackButtonSpring = Animation.spring(response: 0.22, dampingFraction: 0.72)
+
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
     static let panelSnapBack = standardSpring
@@ -75,6 +83,8 @@ enum AppMotion {
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
     static let loadingState = quickEaseOut
+    static let listReorder = standardSpring
+    static let chipSelect = chipSelectionEaseOut
 }
 
 extension AnyTransition {
@@ -88,6 +98,14 @@ extension AnyTransition {
         removal: .opacity
     )
     static let statusRowReveal = AnyTransition.move(edge: .top).combined(with: .opacity)
+    /// 內容替換（適用於 list item、card 內容切換）
+    static let contentSwap: AnyTransition = .opacity.combined(with: .scale(scale: 0.97))
+    /// Banner / toast 從頂部滑入
+    static let bannerReveal: AnyTransition = .move(edge: .top).combined(with: .opacity)
+    /// 書架卡片進出（微縮放 + 淡出）
+    static let bookshelfCard: AnyTransition = .opacity.combined(with: .scale(scale: 0.96))
+    /// 列表項目簡潔過渡
+    static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
 }
 
 enum AppShadows {
