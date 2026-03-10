@@ -2,11 +2,43 @@ import SwiftUI
 
 /// 全域 Environment 注入點
 /// App root 注入具體實例，View 與 Handler 依賴 protocol 類型
+
+// MainActor-isolated services 需要手動 EnvironmentKey（@Entry default value 在 nonisolated context evaluate）
+private struct SubscriptionManagerEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any SubscriptionManaging = MainActor.assumeIsolated {
+        SubscriptionManager.shared
+    }
+}
+
+private struct ReadiumServiceEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any ReadiumServing = MainActor.assumeIsolated {
+        ReadiumService.shared
+    }
+}
+
+private struct BookshelfImportServiceEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any BookshelfImporting = MainActor.assumeIsolated {
+        BookshelfImportService(readiumService: ReadiumService.shared)
+    }
+}
+
 extension EnvironmentValues {
     @Entry var authManager: any AuthManaging = AuthManager.shared
     @Entry var kgService: any KGServing = KGService()
-    @Entry var subscriptionManager: any SubscriptionManaging = SubscriptionManager.shared
-    @Entry var readiumService: any ReadiumServing = ReadiumService.shared
-    @Entry var bookshelfImportService: any BookshelfImporting = BookshelfImportService(readiumService: ReadiumService.shared)
     @Entry var bookFileManager: any BookFileManaging = LocalBookFileManager()
+
+    var subscriptionManager: any SubscriptionManaging {
+        get { self[SubscriptionManagerEnvironmentKey.self] }
+        set { self[SubscriptionManagerEnvironmentKey.self] = newValue }
+    }
+
+    var readiumService: any ReadiumServing {
+        get { self[ReadiumServiceEnvironmentKey.self] }
+        set { self[ReadiumServiceEnvironmentKey.self] = newValue }
+    }
+
+    var bookshelfImportService: any BookshelfImporting {
+        get { self[BookshelfImportServiceEnvironmentKey.self] }
+        set { self[BookshelfImportServiceEnvironmentKey.self] = newValue }
+    }
 }
