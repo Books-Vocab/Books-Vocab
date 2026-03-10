@@ -34,6 +34,8 @@ extension AuthManager {
 
             Task { @MainActor [weak self] in
                 guard let self else { return }
+                self.isAuthenticating = true
+                defer { self.isAuthenticating = false }
                 do {
                     let verification = try await self.verify(provider: "google", token: idToken, email: email)
                     await self.applyAuthenticatedUser(

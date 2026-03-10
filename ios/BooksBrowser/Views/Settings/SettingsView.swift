@@ -42,6 +42,7 @@ struct SettingsView: View {
                 displayName: authManager.displayName ?? authManager.userEmail ?? L10n.string("已登入"),
                 email: authManager.displayName != nil ? authManager.userEmail : nil,
                 authError: authManager.authError,
+                isAuthenticating: authManager.isAuthenticating,
                 iconBreathing: coordinator.iconBreathing,
                 debug: authDebugState
             ),
