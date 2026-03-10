@@ -149,18 +149,30 @@ struct SettingsAccountSection: View {
                 SettingsDivider(leadingInset: 0)
 
                 Button {
-                    onShowSubscriptionDetail?()
+                    if subscription.isActive {
+                        onShowSubscriptionDetail?()
+                    } else {
+                        actions.showSubscriptionPaywall()
+                    }
                 } label: {
                     HStack(spacing: vocabSkin.spacing.controlGap) {
-                        Image(systemName: "sparkles.rectangle.stack")
+                        Image(systemName: subscription.isActive
+                              ? "checkmark.seal.fill"
+                              : "sparkles.rectangle.stack")
                             .font(vocabSkin.typography.iconMedium)
-                            .foregroundStyle(vocabSkin.palette.accent)
+                            .foregroundStyle(subscription.isActive
+                                             ? vocabSkin.palette.success
+                                             : vocabSkin.palette.accent)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(subscription.planName)
+                            Text(subscription.isActive
+                                 ? "Pro 已啟用"
+                                 : subscription.planName)
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.primaryText)
-                            Text(subscription.summary)
+                            Text(subscription.isActive
+                                 ? subscription.detail
+                                 : "升級解鎖完整功能")
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                                 .lineLimit(1)
@@ -168,7 +180,17 @@ struct SettingsAccountSection: View {
 
                         Spacer()
 
-                        subscriptionBadge(subscription)
+                        if subscription.isActive {
+                            subscriptionBadge(subscription)
+                        } else {
+                            Text("升級")
+                                .font(vocabSkin.typography.captionStrong)
+                                .foregroundStyle(vocabSkin.palette.accent)
+                                .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
+                                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+                                .background(vocabSkin.palette.accent.opacity(0.12))
+                                .clipShape(Capsule())
+                        }
 
                         Image(systemName: "chevron.right")
                             .font(vocabSkin.typography.iconTiny)

@@ -10,118 +10,11 @@ struct SubscriptionPaywallSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
-                    Image(systemName: "sparkles.rectangle.stack.fill")
-                        .font(vocabSkin.typography.symbolHero)
-                        .foregroundStyle(vocabSkin.palette.accent)
-
-                    Text("BooksBrowser Pro")
-                        .font(vocabSkin.typography.displayTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-
-                    Text(paywallSummaryText)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineSpacing(6)
-
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                        Text(priceLine)
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-                        Text(L10n.format("權限來源：%@", entitlementSourceLine))
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-
-                    accessStateCard
-
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                        paywallFeatureRow("AI 翻譯與語境解釋")
-                        paywallFeatureRow("知識庫同步與跨裝置狀態")
-                        paywallFeatureRow("關聯圖與內建複習")
-                    }
-                    .padding(vocabSkin.spacing.cardPadding)
-                    .background(vocabSkin.palette.cardBackground)
-                    .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
-                    .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                    )
-
-                    VStack(spacing: vocabSkin.spacing.controlGap) {
-                        Button {
-                            Task {
-                                if isAdminGranted {
-                                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
-                                } else if subscriptionManager.hasProAccess {
-                                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
-                                } else {
-                                    await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
-                                }
-                            }
-                        } label: {
-                            HStack {
-                                if subscriptionManager.isLoading {
-                                    ProgressView()
-                                        .controlSize(.small)
-                                }
-                                Text(primaryActionTitle)
-                                Spacer()
-                            }
-                            .frame(maxWidth: .infinity)
-                        }
-                        .buttonStyle(.vocabAction(.primary))
-                        .disabled(subscriptionManager.isLoading)
-
-                        if !isAdminGranted {
-                            Button {
-                                Task {
-                                    await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
-                                }
-                            } label: {
-                                Text("恢復購買")
-                                    .frame(maxWidth: .infinity)
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .disabled(subscriptionManager.isLoading)
-                        } else {
-                            VocabStateMessageCard(
-                                title: "恢復購買不適用",
-                                systemImage: "person.badge.key",
-                                description: "目前 Pro 來自管理員授權，不透過訂閱管理。如需調整，請聯絡管理員。"
-                            )
-                        }
-                    }
-
-                    if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
-                        VocabStateMessageCard(
-                            title: purchaseStatusMessage,
-                            systemImage: "checkmark.circle"
-                        )
-                    }
-
-                    if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
-                        VocabStateMessageCard(
-                            title: "訂閱方案載入中",
-                            systemImage: "arrow.clockwise.circle",
-                            description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。"
-                        ) {
-                            Button {
-                                Task { await subscriptionManager.loadProducts() }
-                            } label: {
-                                Text("重新載入")
-                                    .font(vocabSkin.typography.caption)
-                            }
-                            .buttonStyle(.vocabAction(.neutral))
-                            .disabled(subscriptionManager.isLoading)
-                        }
-                    }
-
-                    Text(footerNote)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                if subscriptionManager.hasProAccess {
+                    activeLayout
+                } else {
+                    inactiveLayout
                 }
-                .padding(vocabSkin.spacing.sheetPaddingCompact)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("訂閱")
@@ -134,16 +27,233 @@ struct SubscriptionPaywallSheet: View {
                     Button("完成") { dismiss() }
                 }
             }
+            .animation(AppMotion.phaseChange, value: subscriptionManager.hasProAccess)
         }
     }
 
-    private var paywallSummaryText: String {
+    // MARK: - 已啟用 Layout（確認式）
+
+    private var activeLayout: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
+            // Hero 確認
+            VStack(spacing: vocabSkin.spacing.controlGap) {
+                Image(systemName: "checkmark.seal.fill")
+                    .font(.system(size: 48))
+                    .foregroundStyle(vocabSkin.palette.success)
+
+                Text("Pro 已啟用")
+                    .font(vocabSkin.typography.displayTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+
+                Text(activeSummaryText)
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .multilineTextAlignment(.center)
+                    .lineSpacing(4)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.top, vocabSkin.spacing.inlineGap)
+
+            // 功能已解鎖列表
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                unlockedFeatureRow("AI 翻譯與語境解釋")
+                unlockedFeatureRow("知識庫同步與跨裝置狀態")
+                unlockedFeatureRow("關聯圖與內建複習")
+            }
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.success.opacity(0.2), lineWidth: 1)
+            )
+
+            // 來源資訊
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                Text(priceLine)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                Text(L10n.format("權限來源：%@", entitlementSourceLine))
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+
+            // 管理按鈕（弱化）
+            Button {
+                Task {
+                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                }
+            } label: {
+                HStack {
+                    if subscriptionManager.isLoading {
+                        ProgressView().controlSize(.small)
+                    }
+                    Text(primaryActionTitle)
+                    Spacer()
+                }
+                .frame(maxWidth: .infinity)
+            }
+            .buttonStyle(.vocabAction(.neutral))
+            .disabled(subscriptionManager.isLoading)
+
+            if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
+                VocabStateMessageCard(
+                    title: purchaseStatusMessage,
+                    systemImage: "checkmark.circle"
+                )
+            }
+
+            Text(footerNote)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+        .padding(vocabSkin.spacing.sheetPaddingCompact)
+    }
+
+    // MARK: - 未啟用 Layout（行銷式）
+
+    private var inactiveLayout: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
+            Image(systemName: "sparkles.rectangle.stack.fill")
+                .font(vocabSkin.typography.symbolHero)
+                .foregroundStyle(vocabSkin.palette.accent)
+
+            Text("BooksBrowser Pro")
+                .font(vocabSkin.typography.displayTitle)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+
+            Text(paywallSummaryText)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .lineSpacing(6)
+
+            // 價格區塊（突出）
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                Text(priceLine)
+                    .font(vocabSkin.typography.sectionTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                Text(L10n.format("權限來源：%@", entitlementSourceLine))
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+
+            // 功能列（行銷式 — 強調你「缺少」什麼）
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                lockedFeatureRow("AI 翻譯與語境解釋", description: "閱讀時即時查詢翻譯與語境")
+                lockedFeatureRow("知識庫同步與跨裝置狀態", description: "生詞與閱讀進度跨裝置同步")
+                lockedFeatureRow("關聯圖與內建複習", description: "視覺化詞彙關聯與間隔複習")
+            }
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
+
+            // CTA 按鈕（強烈）
+            VStack(spacing: vocabSkin.spacing.controlGap) {
+                Button {
+                    Task {
+                        await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
+                    }
+                } label: {
+                    HStack {
+                        if subscriptionManager.isLoading {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text("開始免費試用")
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.vocabAction(.primary))
+                .disabled(subscriptionManager.isLoading)
+
+                Button {
+                    Task {
+                        await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
+                    }
+                } label: {
+                    Text("恢復購買")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.vocabAction(.neutral))
+                .disabled(subscriptionManager.isLoading)
+            }
+
+            if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
+                VocabStateMessageCard(
+                    title: purchaseStatusMessage,
+                    systemImage: "checkmark.circle"
+                )
+            }
+
+            if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
+                VocabStateMessageCard(
+                    title: "訂閱方案載入中",
+                    systemImage: "arrow.clockwise.circle",
+                    description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。"
+                ) {
+                    Button {
+                        Task { await subscriptionManager.loadProducts() }
+                    } label: {
+                        Text("重新載入")
+                            .font(vocabSkin.typography.caption)
+                    }
+                    .buttonStyle(.vocabAction(.neutral))
+                    .disabled(subscriptionManager.isLoading)
+                }
+            }
+
+            Text(footerNote)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+        .padding(vocabSkin.spacing.sheetPaddingCompact)
+    }
+
+    // MARK: - Feature Rows
+
+    private func unlockedFeatureRow(_ text: String) -> some View {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
+            Image(systemName: "checkmark.circle.fill")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.success)
+            Text(text)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+            Spacer()
+        }
+    }
+
+    private func lockedFeatureRow(_ title: String, description: String) -> some View {
+        HStack(alignment: .top, spacing: vocabSkin.spacing.controlGap) {
+            Image(systemName: "sparkles")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.accent)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(vocabSkin.typography.body.weight(.medium))
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                Text(description)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+            Spacer()
+        }
+    }
+
+    // MARK: - Computed Properties
+
+    private var activeSummaryText: String {
         if isAdminGranted {
-            return L10n.string("目前帳號已啟用 Pro 功能。如需調整或查看有效期，請聯絡管理員。")
+            return L10n.string("目前帳號已由管理員授權為 Pro。")
         }
-        if subscriptionManager.hasProAccess {
-            return L10n.string("目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。")
-        }
+        return L10n.string("感謝支持！所有進階功能已解鎖。")
+    }
+
+    private var paywallSummaryText: String {
         return L10n.string("解鎖閱讀器 AI、知識庫同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
     }
 
@@ -181,10 +291,7 @@ struct SubscriptionPaywallSheet: View {
         if isAdminGranted {
             return L10n.string("重新整理權限狀態")
         }
-        if subscriptionManager.hasProAccess {
-            return L10n.string("重新同步訂閱狀態")
-        }
-        return L10n.string("開始免費試用")
+        return L10n.string("重新同步訂閱狀態")
     }
 
     private var footerNote: String {
@@ -192,47 +299,5 @@ struct SubscriptionPaywallSheet: View {
             return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。")
         }
         return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
-    }
-
-    private var accessStateCard: some View {
-        Group {
-            if isAdminGranted {
-                VocabStateMessageCard(
-                    title: "管理員授權中",
-                    systemImage: "person.badge.key.fill",
-                    description: "這裡主要提供狀態查看與重新整理。如需調整，請聯絡管理員。"
-                )
-            } else if subscriptionManager.entitlements.pro.is_trial {
-                VocabStateMessageCard(
-                    title: "免費試用中",
-                    systemImage: "timer",
-                    description: "試用到期前可完整使用 Reader AI、同步、關聯圖與複習功能。"
-                )
-            } else if subscriptionManager.hasProAccess {
-                VocabStateMessageCard(
-                    title: "訂閱已啟用",
-                    systemImage: "checkmark.circle.fill",
-                    description: "若不同裝置顯示不一致，可重新同步訂閱狀態或恢復購買。"
-                )
-            } else {
-                VocabStateMessageCard(
-                    title: "尚未啟用 Pro",
-                    systemImage: "sparkles.rectangle.stack",
-                    description: "價格、免費試用與續訂規則都會以 App Store 實際顯示為準。"
-                )
-            }
-        }
-    }
-
-    private func paywallFeatureRow(_ text: String) -> some View {
-        HStack(spacing: vocabSkin.spacing.controlGap) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(vocabSkin.palette.success)
-            Text(text)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-            Spacer()
-        }
     }
 }
