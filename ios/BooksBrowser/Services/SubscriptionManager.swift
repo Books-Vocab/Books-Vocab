@@ -72,6 +72,9 @@ final class SubscriptionManager: SubscriptionManaging {
         entitlements.pro.is_active
     }
 
+    private var lastRefreshTime: Date?
+    private static let refreshCooldown: TimeInterval = 2.0
+
     private var transactionListener: Task<Void, Never>?
 
     private init() {}
@@ -102,6 +105,12 @@ final class SubscriptionManager: SubscriptionManaging {
             lastError = nil
             return
         }
+
+        let now = Date()
+        if let last = lastRefreshTime, now.timeIntervalSince(last) < Self.refreshCooldown {
+            return
+        }
+        lastRefreshTime = now
 
         isLoading = true
         defer { isLoading = false }
