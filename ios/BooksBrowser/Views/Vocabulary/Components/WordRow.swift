@@ -47,9 +47,9 @@ struct WordRow: View {
     let viewData: ViewData
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            VStack(alignment: .leading, spacing: 4) {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
+        HStack(alignment: .top, spacing: vocabSkin.spacing.wordRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.wordRowVerticalGap) {
+                HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.wordRowBaselineGap) {
                     if let systemImage = viewData.leadingSystemImage {
                         Image(systemName: systemImage)
                             .font(vocabSkin.typography.iconSmall)
@@ -91,7 +91,7 @@ struct WordRow: View {
                 }
 
                 if let book = viewData.bookTitle, !book.isEmpty {
-                    HStack(spacing: 4) {
+                    HStack(spacing: vocabSkin.spacing.metadataGap) {
                         Image(systemName: "book.closed")
                             .font(vocabSkin.typography.iconTiny)
                         Text(book)
@@ -115,7 +115,7 @@ struct WordRow: View {
             Spacer(minLength: 0)
 
             if let tier = viewData.difficultyTier, viewData.reviewProgress == nil, !viewData.isStrikethrough {
-                VStack(alignment: .trailing, spacing: 4) {
+                VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
                     VocabTierLabel(tier: tier)
                 }
             }
@@ -124,7 +124,7 @@ struct WordRow: View {
     }
 
     private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: vocabSkin.spacing.reviewProgressGap) {
             Text(progress.statusLabel.localized)
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(resolveProgressTone(progress.tone))
@@ -139,7 +139,7 @@ struct WordRow: View {
     @ViewBuilder
     private func reviewProgressAccessory(_ progress: ViewData.ReviewProgress) -> some View {
         if let fraction = progress.fraction {
-            VStack(alignment: .trailing, spacing: 5) {
+            VStack(alignment: .trailing, spacing: vocabSkin.spacing.reviewProgressBarGap) {
                 if let detailLabel = progress.detailLabel {
                     Text(detailLabel)
                         .font(vocabSkin.typography.monoLabel)

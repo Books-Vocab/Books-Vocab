@@ -106,6 +106,17 @@ struct VocabSkin {
         let heroDescriptionHorizontalInset: CGFloat
         let actionButtonHorizontalPadding: CGFloat
         let actionButtonVerticalPadding: CGFloat
+        let wordRowHorizontalGap: CGFloat
+        let wordRowVerticalGap: CGFloat
+        let wordRowBaselineGap: CGFloat
+        let metadataGap: CGFloat
+        let reviewProgressGap: CGFloat
+        let reviewProgressBarGap: CGFloat
+        let statusHeroGap: CGFloat
+        let timelineRowGap: CGFloat
+        let timelineDetailGap: CGFloat
+        let heroBaselineGap: CGFloat
+        let sourceMetadataGap: CGFloat
     }
 
     struct Metrics {
@@ -273,7 +284,18 @@ extension VocabSkin {
         compactRowAccessoryTopInset: 2,
         heroDescriptionHorizontalInset: 40,
         actionButtonHorizontalPadding: 16,
-        actionButtonVerticalPadding: 13
+        actionButtonVerticalPadding: 13,
+        wordRowHorizontalGap: 10,
+        wordRowVerticalGap: 4,
+        wordRowBaselineGap: 6,
+        metadataGap: 4,
+        reviewProgressGap: 12,
+        reviewProgressBarGap: 5,
+        statusHeroGap: 12,
+        timelineRowGap: 12,
+        timelineDetailGap: 2,
+        heroBaselineGap: 8,
+        sourceMetadataGap: 6
     )
 
     static let baseMetrics = Metrics(
