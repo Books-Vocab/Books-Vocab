@@ -13,6 +13,8 @@ struct TranslationPanelPresenterState {
     let isLoadingExplanation: Bool
     let statusMessage: String?
     let isExplanationOnly: Bool
+    let translationErrorMessage: String?
+    let explanationErrorMessage: String?
     let timerText: String
     let isSpeaking: Bool
 }
@@ -22,6 +24,7 @@ enum TranslationPanelContentMode: Equatable {
     case guest
     case explanationOnly
     case translation(String)
+    case translationError(String)
     case empty
 }
 
@@ -35,6 +38,9 @@ extension TranslationPanelPresenterState {
         }
         if isExplanationOnly {
             return .explanationOnly
+        }
+        if let translationErrorMessage {
+            return .translationError(translationErrorMessage)
         }
         if let translation {
             return .translation(translation)
@@ -160,8 +166,10 @@ struct TranslationPanelPresenter: View {
             explanationOnlyBody
         case .translation(let translation):
             translationBody(translation)
+        case .translationError(let message):
+            translationErrorBody(message)
         case .empty:
-            EmptyView()
+            emptyStateBody
         }
     }
 
@@ -209,11 +217,20 @@ struct TranslationPanelPresenter: View {
                     }
                 }
                 .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
+            } else if let errorMessage = state.explanationErrorMessage {
+                errorStateContent(
+                    title: "語境解釋暫時無法載入",
+                    description: errorMessage
+                )
+                .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
             } else if let explanation = state.explanation {
                 Text(explanation)
                     .font(ReaderGlassTypography.body)
                     .foregroundStyle(.secondary)
                     .lineSpacing(3)
+            } else {
+                emptyExplainStateContent
+                    .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
             }
 
             panelToolbar(showChevron: false, timerValue: state.statusTimerText)
@@ -247,16 +264,65 @@ struct TranslationPanelPresenter: View {
                         }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
+                } else if let errorMessage = state.explanationErrorMessage {
+                    errorStateContent(
+                        title: "語境解釋暫時無法載入",
+                        description: errorMessage
+                    )
+                    .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
                 } else if let explanation = state.explanation {
                     Text(explanation)
                         .font(ReaderGlassTypography.body)
                         .foregroundStyle(.secondary)
                         .lineSpacing(3)
+                } else {
+                    emptyExplainStateContent
+                        .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
                 }
             }
 
             panelToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
         }
+    }
+
+    private func translationErrorBody(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            errorStateContent(
+                title: "翻譯暫時失敗",
+                description: message
+            )
+
+            panelToolbar(showChevron: false, timerValue: state.statusTimerText)
+        }
+    }
+
+    private var emptyStateBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            stateMessageContent(
+                title: "尚未取得翻譯",
+                systemImage: "text.viewfinder",
+                description: "請重新選取文字，或稍後再試一次。"
+            )
+            .padding(.vertical, ReaderPresentationMetrics.Panel.messageVerticalInset)
+
+            panelToolbar(showChevron: false, timerValue: state.statusTimerText)
+        }
+    }
+
+    private var emptyExplainStateContent: some View {
+        stateMessageContent(
+            title: "還沒有語境解釋",
+            systemImage: "text.bubble",
+            description: "展開後會在這裡顯示上下文說明。"
+        )
+    }
+
+    private func errorStateContent(title: String, description: String) -> some View {
+        stateMessageContent(
+            title: title,
+            systemImage: "exclamationmark.triangle.fill",
+            description: description
+        )
     }
 
     private func stateMessageContent<Accessory: View>(

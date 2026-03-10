@@ -239,6 +239,8 @@ struct ReaderView: View {
                 isLoadingExplanation: handler.isLoadingExplanation,
                 statusMessage: handler.statusMessage,
                 isExplanationOnly: handler.isExplanationOnly,
+                translationErrorMessage: handler.translationErrorMessage,
+                explanationErrorMessage: handler.explanationErrorMessage,
                 onExpand: { handler.handleExpand() },
                 onDelete: {
                     handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
