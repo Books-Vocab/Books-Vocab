@@ -55,6 +55,7 @@ final class SyncCoordinator {
         }
 
         list.append(PipelineStep(id: "trigger", label: "觸發背景 AI 處理"))
+        list.append(PipelineStep(id: "push_review", label: "上傳複習進度"))
         list.append(PipelineStep(id: "pull", label: "下載知識庫至本地"))
 
         steps = list
@@ -85,7 +86,6 @@ final class SyncCoordinator {
                         entry.prepareForRetryAttempt()
                         do {
                             try await kgService.deleteCard(word: entry.word)
-                            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
                             modelContext.delete(entry)
                             deleted += 1
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
@@ -158,6 +158,16 @@ final class SyncCoordinator {
                 } catch {
                     encounteredFailure = true
                     updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
+                }
+
+                // Push review state before pull so server has latest review data
+                updateStep("push_review", status: .running)
+                do {
+                    let result = try await kgService.pushReviewStates(container: modelContext.container)
+                    updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
+                } catch {
+                    encounteredFailure = true
+                    updateStep("push_review", status: .error, detail: error.localizedDescription)
                 }
 
                 updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))

@@ -11,6 +11,7 @@
 		AA000002READIUM02 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000005READIUM05 /* ReadiumStreamer */; };
 		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
 		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
+		E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E9677BD92F6056C80095D2E1 /* StoreKit.framework */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -33,6 +34,7 @@
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
+		E9677BD92F6056C80095D2E1 /* StoreKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = StoreKit.framework; path = System/Library/Frameworks/StoreKit.framework; sourceTree = SDKROOT; };
 		E9EC4E142F4DD27100C3FFB6 /* BooksBrowser.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = BooksBrowser.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9EC4E212F4DD27200C3FFB6 /* BooksBrowserTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BooksBrowserTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		E9EC4E2B2F4DD27200C3FFB6 /* BooksBrowserUITests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = BooksBrowserUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -62,6 +64,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				AA000001READIUM01 /* ReadiumShared in Frameworks */,
+				E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */,
 				AA000002READIUM02 /* ReadiumStreamer in Frameworks */,
 				E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */,
 				AA000003READIUM03 /* ReadiumNavigator in Frameworks */,
@@ -90,6 +93,7 @@
 		E920780B2F5211840059F231 /* Frameworks */ = {
 			isa = PBXGroup;
 			children = (
+				E9677BD92F6056C80095D2E1 /* StoreKit.framework */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";

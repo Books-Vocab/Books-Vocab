@@ -460,6 +460,40 @@ final class KGService: KGServing, LocalDataClearing {
         }
     }
 
+    // MARK: - Push Review State
+
+    func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int) {
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let payload = try await actor.buildReviewStatePushPayload()
+        guard !payload.isEmpty else { return (0, 0) }
+
+        let url = baseURL.appendingPathComponent("api/vocab/review")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try applyAuth(to: &request)
+
+        request.httpBody = try JSONSerialization.data(withJSONObject: ["entries": payload])
+
+        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response")
+        }
+        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.serverError("Failed to push review state (HTTP \(httpResponse.statusCode))")
+        }
+
+        struct PushResponse: Decodable {
+            let updated: Int
+            let skipped: Int
+        }
+        let result = try JSONDecoder().decode(PushResponse.self, from: data)
+        print("✅ pushReviewStates: updated=\(result.updated), skipped=\(result.skipped)")
+        return (result.updated, result.skipped)
+    }
+
     // MARK: - Offline KG Sync logic
 
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
