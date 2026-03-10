@@ -74,7 +74,7 @@ struct WordRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: vocabSkin.spacing.wordRowHorizontalGap) {
+        HStack(alignment: .center, spacing: vocabSkin.spacing.wordRowHorizontalGap) {
             VStack(alignment: .leading, spacing: vocabSkin.spacing.wordRowVerticalGap) {
                 HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.wordRowBaselineGap) {
                     if let systemImage = viewData.leadingSystemImage {
@@ -113,10 +113,6 @@ struct WordRow: View {
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
 
-                if let reviewProgress = viewData.reviewProgress, !viewData.isStrikethrough {
-                    reviewProgressRow(reviewProgress)
-                }
-
                 if let book = viewData.bookTitle, !book.isEmpty {
                     HStack(spacing: vocabSkin.spacing.metadataGap) {
                         Image(systemName: "book.closed")
@@ -141,12 +137,13 @@ struct WordRow: View {
 
             Spacer(minLength: 0)
 
-            if usesCompactLayout,
-               let tier = viewData.difficultyTier,
-               viewData.reviewProgress == nil,
-               !viewData.isStrikethrough {
-                VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
-                    VocabTierLabel(tier: tier)
+            if usesCompactLayout, !viewData.isStrikethrough {
+                if let reviewProgress = viewData.reviewProgress {
+                    reviewProgressAccessory(reviewProgress)
+                } else if let tier = viewData.difficultyTier {
+                    VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
+                        VocabTierLabel(tier: tier)
+                    }
                 }
             }
         }
@@ -155,11 +152,6 @@ struct WordRow: View {
         .accessibilityLabel(accessibilityRowLabel)
         .accessibilityValue(accessibilityProgressDescription)
         .accessibilityHint("點兩下查看詳細資訊")
-    }
-
-    private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
-        reviewProgressAccessory(progress)
-            .padding(.top, vocabSkin.spacing.compactRowAccessoryTopInset)
     }
 
     @ViewBuilder
