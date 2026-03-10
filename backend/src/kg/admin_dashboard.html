@@ -304,6 +304,165 @@ tbody tr:hover td { background: #f6f4ef; }
   font-size: 11px;
   letter-spacing: .05em;
 }
+/* Filter bar */
+.filter-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+.filter-input {
+  flex: 1;
+  min-width: 200px;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--ink);
+  outline: none;
+  background: var(--surface);
+}
+.filter-input:focus { border-color: var(--ink); }
+.filter-group { display: flex; gap: 4px; }
+.filter-chip {
+  height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  background: transparent;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--ink-light);
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.filter-chip.active { background: var(--ink); color: #fff; border-color: var(--ink); }
+.filter-count {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  letter-spacing: .06em;
+  white-space: nowrap;
+}
+/* Expandable detail row */
+.detail-row td {
+  padding: 0 !important;
+  border-bottom: 1px solid var(--border-l);
+}
+.detail-inner {
+  padding: 16px 24px;
+  background: #f6f4ef;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+}
+.detail-section {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 12px 14px;
+}
+.detail-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  margin-bottom: 8px;
+}
+.detail-kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-l);
+}
+.detail-kv:last-child { border-bottom: none; }
+.detail-k {
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.detail-v {
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-align: right;
+  word-break: break-all;
+  max-width: 60%;
+}
+tr.expandable { cursor: pointer; }
+tr.expandable:hover td { background: #f0ece4; }
+tr.expanded td { background: #f0ece4; border-bottom-color: transparent; }
+/* Grant modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(42,37,32,.45);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90vw;
+}
+.modal-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.modal-field {
+  margin-bottom: 12px;
+}
+.modal-label {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 4px;
+}
+.modal-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--ink);
+  outline: none;
+  background: var(--bg);
+}
+.modal-input:focus { border-color: var(--ink); }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+.badge-pro-active {
+  background: #e8f5e9;
+  border-color: #81c784;
+  color: #2e7d32;
+}
+.badge-pro-inactive {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--sub);
+}
 /* Log panel */
 .log-toolbar {
   display: flex;
@@ -442,12 +601,27 @@ tbody tr:hover td { background: #f6f4ef; }
     <div class="section-title">總覽</div>
     <div class="stats" id="summary"></div>
     <div class="section-title">用戶明細</div>
+    <div class="filter-bar">
+      <input class="filter-input" id="user-search" type="text" placeholder="搜尋 email / user ID…" oninput="applyFilters()">
+      <div class="filter-group">
+        <button class="filter-chip active" data-filter="all" onclick="setProviderFilter(this,'all')">全部</button>
+        <button class="filter-chip" data-filter="google" onclick="setProviderFilter(this,'google')">Google</button>
+        <button class="filter-chip" data-filter="apple" onclick="setProviderFilter(this,'apple')">Apple</button>
+      </div>
+      <div class="filter-group">
+        <button class="filter-chip active" data-pro="all" onclick="setProFilter(this,'all')">全部狀態</button>
+        <button class="filter-chip" data-pro="pro" onclick="setProFilter(this,'pro')">Pro</button>
+        <button class="filter-chip" data-pro="free" onclick="setProFilter(this,'free')">Free</button>
+        <button class="filter-chip" data-pro="admin" onclick="setProFilter(this,'admin')">Admin Grant</button>
+      </div>
+      <span class="filter-count" id="filter-count"></span>
+    </div>
     <div class="table-wrap">
       <table>
         <thead><tr>
           <th>用戶</th><th>Provider</th><th>最後登入</th>
-          <th>單字數</th><th>Mochi Opt-In</th>
-          <th>Pro</th><th>操作</th><th>Token 用量</th><th>預估費用</th><th>各功能明細</th>
+          <th>單字數</th><th>Mochi</th>
+          <th>Pro 狀態</th><th>操作</th><th>Token 用量</th><th>預估費用</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -474,6 +648,33 @@ tbody tr:hover td { background: #f6f4ef; }
 
 </div>
 
+<!-- Grant Pro Modal -->
+<div class="modal-overlay" id="grant-modal">
+  <div class="modal">
+    <div class="modal-title">授予 Pro 權限</div>
+    <div class="modal-field">
+      <label class="modal-label">用戶 ID</label>
+      <input class="modal-input" id="grant-uid" readonly>
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">授權原因</label>
+      <input class="modal-input" id="grant-reason" placeholder="例：測試用途、合作夥伴…">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">到期日（留空 = 永久）</label>
+      <input class="modal-input" id="grant-expires" type="date">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">授權者</label>
+      <input class="modal-input" id="grant-by" value="admin">
+    </div>
+    <div class="modal-actions">
+      <button class="btn" onclick="closeGrantModal()">取消</button>
+      <button class="btn btn-cta" onclick="submitGrant()">確認授予</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const TOKEN = new URLSearchParams(location.search).get('token') || '';
 document.getElementById('admin-tests-link').href = '/admin/tests?token=' + encodeURIComponent(TOKEN);
@@ -481,6 +682,10 @@ let _tab = 'users';
 let _logLevel = '';
 let _logs = [];
 let _autoTimer = null;
+let _usersData = [];
+let _providerFilter = 'all';
+let _proFilter = 'all';
+let _expandedUid = null;
 
 /* ── Tabs ── */
 function switchTab(tab) {
@@ -495,7 +700,7 @@ function refreshCurrent() {
   else loadLogs();
 }
 
-/* Stats */
+/* Helpers */
 function fmt(n) {
   n = n || 0;
   if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
@@ -506,7 +711,10 @@ function fmtDate(iso) {
   if (!iso) return '<span class="mochi-no">—</span>';
   return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
-
+function fmtDateFull(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
 function escapeHtml(text) {
   return String(text ?? '')
     .replace(/&/g, '&amp;')
@@ -516,14 +724,63 @@ function escapeHtml(text) {
     .replace(/'/g, '&#39;');
 }
 
-async function grantPro(userId) {
-  const reason = window.prompt('授權原因（可留空）', 'manual admin grant');
-  if (reason === null) return;
+/* ── Filters ── */
+function setProviderFilter(btn, val) {
+  _providerFilter = val;
+  btn.closest('.filter-group').querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+function setProFilter(btn, val) {
+  _proFilter = val;
+  btn.closest('.filter-group').querySelectorAll('.filter-chip').forEach(b => b.classList.remove('active'));
+  btn.classList.add('active');
+  applyFilters();
+}
+function applyFilters() {
+  const q = (document.getElementById('user-search').value || '').toLowerCase();
+  const filtered = _usersData.filter(u => {
+    if (q) {
+      const hay = ((u.user_id || '') + ' ' + (u.email || '')).toLowerCase();
+      if (!hay.includes(q)) return false;
+    }
+    if (_providerFilter !== 'all' && (u.provider || 'manual') !== _providerFilter) return false;
+    if (_proFilter !== 'all') {
+      const pro = u.pro || { is_active: false };
+      const ag = u.admin_grant || { is_active: false };
+      if (_proFilter === 'pro' && !pro.is_active) return false;
+      if (_proFilter === 'free' && pro.is_active) return false;
+      if (_proFilter === 'admin' && !ag.is_active) return false;
+    }
+    return true;
+  });
+  document.getElementById('filter-count').textContent = filtered.length + ' / ' + _usersData.length + ' 用戶';
+  renderUserRows(filtered);
+}
+
+/* ── Grant Modal ── */
+function openGrantModal(userId) {
+  document.getElementById('grant-uid').value = userId;
+  document.getElementById('grant-reason').value = '';
+  document.getElementById('grant-expires').value = '';
+  document.getElementById('grant-by').value = 'admin';
+  document.getElementById('grant-modal').classList.add('open');
+}
+function closeGrantModal() {
+  document.getElementById('grant-modal').classList.remove('open');
+}
+async function submitGrant() {
+  const userId = document.getElementById('grant-uid').value;
+  const reason = document.getElementById('grant-reason').value.trim() || null;
+  const expiresVal = document.getElementById('grant-expires').value;
+  const expiresAt = expiresVal ? new Date(expiresVal + 'T23:59:59Z').toISOString() : null;
+  const grantedBy = document.getElementById('grant-by').value.trim() || 'admin';
   const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
-    body: JSON.stringify({ reason: reason || null, granted_by: 'admin' }),
+    body: JSON.stringify({ reason, expires_at: expiresAt, granted_by: grantedBy }),
   });
+  closeGrantModal();
   if (!r.ok) {
     window.alert('Grant 失敗: ' + await r.text());
     return;
@@ -532,7 +789,7 @@ async function grantPro(userId) {
 }
 
 async function revokePro(userId) {
-  if (!window.confirm('確定撤銷這個帳號的管理員 Pro 權限？')) return;
+  if (!window.confirm('確定撤銷 ' + userId + ' 的管理員 Pro 權限？')) return;
   const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
     method: 'DELETE',
   });
@@ -543,13 +800,70 @@ async function revokePro(userId) {
   await loadStats();
 }
 
+/* ── Expand detail ── */
+function toggleDetail(uid) {
+  if (_expandedUid === uid) {
+    _expandedUid = null;
+  } else {
+    _expandedUid = uid;
+  }
+  applyFilters();
+}
+
+function buildDetailRow(u, colSpan) {
+  const pro = u.pro || {};
+  const ag = u.admin_grant || {};
+  const sub = pro;
+  return `<tr class="detail-row"><td colspan="${colSpan}"><div class="detail-inner">
+    <div class="detail-section">
+      <div class="detail-section-title">帳戶資訊</div>
+      <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
+      <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
+      <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
+      <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
+      <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">訂閱狀態</div>
+      <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${sub.is_active ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(sub.status || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(sub.source || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(sub.plan_name || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(sub.price_display || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(sub.expires_at)}</span></div>
+      <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${sub.is_trial ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${sub.will_renew ? '是' : '否'}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Admin Grant</div>
+      <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(ag.status || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
+      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Token 消耗明細</div>
+      ${Object.entries(u.tokens || {}).map(([t, d]) =>
+        `<div class="detail-kv"><span class="detail-k">${escapeHtml(t)}</span><span class="detail-v">${fmt(d.input_tokens)}↑ ${fmt(d.output_tokens)}↓ ×${d.calls}</span></div>`
+      ).join('') || '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無紀錄</span></div>'}
+      <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
+    </div>
+  </div></td></tr>`;
+}
+
+/* ── Load & Render ── */
 async function loadStats() {
   document.getElementById('loading').style.display = '';
   document.getElementById('app').style.display = 'none';
   try {
     const r = await fetch('/api/admin/stats?token=' + TOKEN);
     if (!r.ok) { document.getElementById('loading').textContent='Error '+r.status+': '+await r.text(); return; }
-    renderStats(await r.json());
+    const data = await r.json();
+    _usersData = data.users;
+    renderStats(data);
     stamp();
   } catch(e) { document.getElementById('loading').textContent='Error: '+e; }
 }
@@ -561,30 +875,32 @@ function renderStats(data) {
   const to=data.users.reduce((s,u)=>s+u.total_output,0);
   const tc=data.users.reduce((s,u)=>s+u.est_cost_usd,0);
   const tv=data.users.reduce((s,u)=>s+u.vocab_count,0);
+  const proCount=data.users.filter(u=>(u.pro||{}).is_active).length;
   document.getElementById('summary').innerHTML=`
     <div class="stat"><div class="v">${data.users.length}</div><div class="l">用戶數</div></div>
+    <div class="stat"><div class="v">${proCount}</div><div class="l">Pro 用戶</div></div>
     <div class="stat"><div class="v">${tv.toLocaleString()}</div><div class="l">總單字數</div></div>
     <div class="stat"><div class="v">${fmt(ti+to)}</div><div class="l">總 Token 用量</div></div>
     <div class="stat"><div class="v">${fmt(ti)}</div><div class="l">輸入 tokens</div></div>
     <div class="stat"><div class="v">${fmt(to)}</div><div class="l">輸出 tokens</div></div>
     <div class="stat"><div class="v">$${tc.toFixed(4)}</div><div class="l">預估費用 USD</div></div>`;
-  const maxTok=Math.max(...data.users.map(u=>u.total_input+u.total_output),1);
-  document.getElementById('rows').innerHTML=data.users.map(u=>{
+  applyFilters();
+}
+
+function renderUserRows(users) {
+  const maxTok=Math.max(...users.map(u=>u.total_input+u.total_output),1);
+  const colSpan = 9;
+  document.getElementById('rows').innerHTML=users.map(u=>{
     const pc=u.provider||'manual';
     const total=u.total_input+u.total_output;
     const pct=Math.round((total/maxTok)*100);
     const pro=u.pro||{is_active:false,status:'inactive',source:'app_store'};
     const adminGrant=u.admin_grant||{is_active:false};
-    const proBadgeClass=pro.is_active?'b-google':'b-manual';
-    const proLabel=pro.is_active?`${pro.source||'unknown'}:${pro.status||'active'}`:'inactive';
-    const statusNote=pro.source==='admin'
-      ? `管理員授權${adminGrant.expires_at ? ` · 到期 ${fmtDate(adminGrant.expires_at)}` : ''}`
-      : (pro.price_display || 'App Store');
-    const chips=Object.entries(u.tokens||{}).map(([t,d])=>{
-      return `<span class="chip"><span class="chip-dot"></span><span class="chip-name">${t.replace('translate_','tr.')}</span><span class="chip-val">${fmt(d.input_tokens)}↑${fmt(d.output_tokens)}↓</span><span class="chip-calls">×${d.calls}</span></span>`;
-    }).join('');
-    return `<tr>
-      <td><div class="uid">${u.user_id}</div>${u.email?`<div class="email">${u.email}</div>`:''}</td>
+    const proBadgeClass=pro.is_active?'badge-pro-active':'badge-pro-inactive';
+    const proLabel=pro.is_active?(pro.source==='admin'?'Admin Grant':pro.status||'active'):'inactive';
+    const isExpanded = _expandedUid === u.user_id;
+    return `<tr class="expandable${isExpanded?' expanded':''}" onclick="toggleDetail('${escapeHtml(u.user_id)}')">
+      <td><div class="uid">${escapeHtml(u.user_id)}</div>${u.email?`<div class="email">${escapeHtml(u.email)}</div>`:''}</td>
       <td><span class="badge b-${pc}">${pc}</span></td>
       <td style="color:var(--ink-light);font-size:12px">${fmtDate(u.last_login)}</td>
       <td style="font-variant-numeric:tabular-nums">${u.vocab_count.toLocaleString()}</td>
@@ -592,23 +908,22 @@ function renderStats(data) {
       <td>
         <div class="status-stack">
           <span class="badge ${proBadgeClass}">${escapeHtml(proLabel)}</span>
-          <span class="status-note">${statusNote}</span>
+          ${pro.source==='admin'&&adminGrant.expires_at?`<span class="status-note">到期 ${fmtDate(adminGrant.expires_at)}</span>`:''}
+          ${pro.source!=='admin'&&pro.price_display?`<span class="status-note">${escapeHtml(pro.price_display)}</span>`:''}
         </div>
       </td>
       <td>
-        <div class="row-actions">
+        <div class="row-actions" onclick="event.stopPropagation()">
           ${adminGrant.is_active
             ? `<button class="btn btn-mini btn-danger" onclick="revokePro('${escapeHtml(u.user_id)}')">Revoke</button>`
-            : `<button class="btn btn-mini" onclick="grantPro('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
+            : `<button class="btn btn-mini" onclick="openGrantModal('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
         </div>
       </td>
-      <td style="min-width:160px">
+      <td style="min-width:140px">
         <div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-label">${fmt(total)}</span></div>
-        <div style="font-size:11px;color:var(--sub);margin-top:3px">${fmt(u.total_input)}↑ / ${fmt(u.total_output)}↓</div>
       </td>
       <td class="cost">$${u.est_cost_usd.toFixed(4)}</td>
-      <td><div class="chips">${chips||'<span class="no-data">無紀錄</span>'}</div></td>
-    </tr>`;
+    </tr>${isExpanded ? buildDetailRow(u, colSpan) : ''}`;
   }).join('');
 }
 
@@ -655,6 +970,11 @@ function renderLogs() {
 function stamp() {
   document.getElementById('ts').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-TW', { hour12: false });
 }
+
+/* Modal: click outside to close */
+document.getElementById('grant-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeGrantModal();
+});
 
 loadStats();
 </script>
