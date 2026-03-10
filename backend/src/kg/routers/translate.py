@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 
-from ..api_models import ExplainResponse, QuickTranslateResponse
+from ..api_models import ExplainResponse, PhraseTranslateResponse, QuickTranslateResponse
 
 
 def build_translate_router(
@@ -15,6 +15,6 @@ def build_translate_router(
 ) -> APIRouter:
     router = APIRouter()
     router.post("/api/translate/quick", response_model=QuickTranslateResponse)(translate_quick)
-    router.post("/api/translate/phrase", response_model=dict)(translate_phrase)
+    router.post("/api/translate/phrase", response_model=PhraseTranslateResponse)(translate_phrase)
     router.post("/api/translate/explain", response_model=ExplainResponse)(translate_explain)
     return router
