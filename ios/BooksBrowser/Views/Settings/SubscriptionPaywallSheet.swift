@@ -46,7 +46,7 @@ struct SubscriptionPaywallSheet: View {
             // Hero 確認
             VStack(spacing: vocabSkin.spacing.controlGap) {
                 Image(systemName: isCancelledButActive ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-                    .font(.system(size: 48))
+                    .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(isCancelledButActive ? vocabSkin.palette.accent : vocabSkin.palette.success)
 
                 Text(isCancelledButActive ? "Pro 即將到期" : "Pro 已啟用")

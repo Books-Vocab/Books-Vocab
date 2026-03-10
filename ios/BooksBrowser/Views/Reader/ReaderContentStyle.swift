@@ -90,33 +90,31 @@ enum ReaderContentStyleFactory {
 }
 
 enum ReaderGlassTypography {
-    // Reader-only：rounded 24pt bold，無 AppFonts 對應語義
+    // Reader-only：rounded 24pt bold，維持 rounded 與正文區隔
     static let word = Font.system(size: 24, weight: .bold, design: .rounded)
+    // Mono (ElmsSans)
     static let pronunciation = AppFonts.monoNumbers(size: 13)
-    static let iconTiny = AppFonts.caption()
+    static let numericMono = AppFonts.monoNumbers(size: 10)
+    static let progressText = AppFonts.monoProgress()
+    static let settingsValue = AppFonts.mono(size: 13)
+    static let settingsStepSmall = AppFonts.mono(size: 14, bold: true)
+    static let settingsStepLarge = AppFonts.mono(size: 22, bold: true)
+    // Serif (Athelas + STSongti-TC)
     static let partOfSpeech = AppFonts.caption(weight: .medium)
-    static let body = Font.subheadline
-    static let translationTitle = Font.title3.weight(.semibold)
+    static let body = AppFonts.subhead()
+    static let translationTitle = AppFonts.serif(size: 20, bold: true)
     static let label = AppFonts.caption()
     static let labelSmall = AppFonts.caption2()
-    static let numericMono = AppFonts.monoNumbers(size: 10)
-    // Reader-only：11pt medium，caption2(≈10pt) 語義不完全對應
-    static let savedStatus = Font.system(size: 11, weight: .medium)
-    static let toolbarIcon = Font.callout
-    // Reader-only：15pt semibold/regular，header 導覽專用尺寸
-    static let headerBackIcon = Font.system(size: 15, weight: .semibold)
-    static let headerBackLabel = Font.system(size: 15)
+    static let savedStatus = AppFonts.serif(size: 11, bold: true)
+    static let headerBackLabel = AppFonts.serif(size: 15)
     static let headerTitle = AppFonts.caption(weight: .medium)
-    static let headerAction = Font.system(size: 15)
-    // Reader-only：14pt semibold，折疊按鈕專用
+    static let headerAction = AppFonts.serif(size: 15)
+    // SF Symbols / 圖示 — 維持 system
+    static let iconTiny = Font.system(.caption)
+    static let toolbarIcon = Font.callout
+    static let headerBackIcon = Font.system(size: 15, weight: .semibold)
     static let headerCollapse = Font.system(size: 14, weight: .semibold)
-    static let progressText = AppFonts.monoProgress()
-    // Reader-only：18pt medium，緊湊模式選單圖示
     static let compactMenuIcon = Font.system(size: 18, weight: .medium)
-    // Reader Settings-only：設定面板專用字型
-    static let settingsStepSmall = Font.system(size: 14, weight: .medium)
-    static let settingsStepLarge = Font.system(size: 22, weight: .medium)
-    static let settingsValue = Font.system(size: 13, design: .monospaced)
     static let settingsIcon = Font.system(size: 14)
     static let settingsCloseIcon = Font.system(size: ReaderPresentationMetrics.Settings.closeIconSize)
 }
