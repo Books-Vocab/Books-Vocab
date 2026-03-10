@@ -101,6 +101,13 @@ final class SubscriptionManager: SubscriptionManaging {
                 guard let self, !Task.isCancelled else { return }
                 guard let transaction = try? self.checkVerified(result) else { continue }
                 await transaction.finish()
+
+                // 只有在使用者已登入時才同步至後端，避免用錯誤帳號的 auth 送出交易
+                guard authManager.isLoggedIn else {
+                    print("⚠️ [Subscription] transaction update received but no user logged in, skipping sync")
+                    continue
+                }
+
                 let product = self.proProduct
                 try? await self.syncTransaction(
                     transaction,
@@ -131,15 +138,25 @@ final class SubscriptionManager: SubscriptionManaging {
         }
         lastRefreshTime = Date()
 
+        // 記住發起 refresh 時的 userId，用於 async 返回後的一致性檢查
+        let requestUserId = authManager.userId
+
         isLoading = true
         defer { isLoading = false }
 
         do {
             var remote = try await kgService.fetchEntitlements()
+
+            // async 返回後帳號可能已切換，丟棄過期回應
+            guard authManager.userId == requestUserId else {
+                print("⚠️ [Subscription] discarding stale refresh: requested for \(requestUserId ?? "nil"), current is \(authManager.userId ?? "nil")")
+                return
+            }
+
             // 後端可能不知道用戶已在裝置端取消自動續訂，用 StoreKit 本地狀態覆寫
             if remote.pro.is_active, remote.pro.source != "admin" {
-                let willAutoRenew = await queryWillAutoRenew()
-                if remote.pro.will_renew != willAutoRenew {
+                if let willAutoRenew = await queryWillAutoRenew(),
+                   remote.pro.will_renew != willAutoRenew {
                     remote = KGEntitlements(
                         pro: merge(remote.pro, willRenew: willAutoRenew)
                     )
@@ -258,7 +275,7 @@ final class SubscriptionManager: SubscriptionManaging {
                 } catch {
                     print("⚠️ [Subscription] sync failed: \(error)")
                 }
-                await refresh(using: kgService, authManager: authManager)
+                await refresh(using: kgService, authManager: authManager, force: true)
                 if hasProAccess {
                     purchaseStatusMessage = L10n.string("訂閱已啟用，感謝支持！")
                     scheduleClearPurchaseMessage()
@@ -285,7 +302,7 @@ final class SubscriptionManager: SubscriptionManaging {
         do {
             try await AppStore.sync()
             await syncCurrentEntitlements(using: kgService)
-            await refresh(using: kgService, authManager: authManager)
+            await refresh(using: kgService, authManager: authManager, force: true)
             if hasProAccess {
                 purchaseStatusMessage = L10n.string("購買已恢復，Pro 已啟用。")
             } else {
@@ -368,7 +385,7 @@ final class SubscriptionManager: SubscriptionManaging {
         using kgService: any KGServing
     ) async throws {
         let environment = appStoreEnvironment(for: transaction)
-        let willAutoRenew = await queryWillAutoRenew()
+        let willAutoRenew = await queryWillAutoRenew() ?? entitlements.pro.will_renew
         let snapshot = KGAppStoreSubscriptionSyncRequest(
             product_id: transaction.productID,
             transaction_id: String(transaction.id),
@@ -385,10 +402,11 @@ final class SubscriptionManager: SubscriptionManaging {
     }
 
     /// 從 StoreKit 2 的 Product.SubscriptionInfo 查詢真實的自動續訂狀態
-    private func queryWillAutoRenew() async -> Bool {
+    /// 回傳 nil 表示無法確定（product 未載入或 StoreKit 查詢失敗），呼叫端應信任後端值
+    private func queryWillAutoRenew() async -> Bool? {
         guard let product = proProduct, let subscription = product.subscription else {
             print("⚠️ [Subscription] queryWillAutoRenew: no product/subscription info")
-            return true
+            return nil
         }
         do {
             let statuses = try await subscription.status
@@ -411,7 +429,7 @@ final class SubscriptionManager: SubscriptionManaging {
         } catch {
             print("⚠️ [Subscription] queryWillAutoRenew failed: \(error)")
         }
-        return true
+        return nil
     }
 
     private func appStoreEnvironment(for transaction: Transaction) -> String {
