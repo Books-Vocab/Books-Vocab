@@ -427,3 +427,25 @@
 "請重新選取文字，或稍後再試一次。" = "Please re-select the text or try again later.";
 "還沒有語境解釋" = "No context explanation yet";
 "展開後會在這裡顯示上下文說明。" = "Context explanation will appear here after expanding.";
+
+// ── Subscription: settings state builders (SettingsView.swift) ──
+"可在訂閱頁重新同步或恢復購買，確認訂閱狀態。" = "Re-sync or restore purchases on the subscription page to verify status.";
+"如需延長或調整，請聯絡管理員。" = "Contact the administrator to extend or adjust access.";
+"價格、免費試用與續訂都以 App Store 顯示為準。" = "Pricing, free trial, and renewal follow the App Store listing.";
+"可恢復購買" = "Restore Available";
+"恢復購買不可用" = "Restore Not Available";
+"若裝置間狀態不同，可在訂閱頁使用恢復購買重新對齊 App Store。" = "If status differs across devices, use Restore Purchases on the subscription page to re-sync with the App Store.";
+"若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。" = "If you previously subscribed but status shows inactive, use Restore Purchases on the subscription page.";
+"這個帳號的 Pro 來自管理員授權；若需延長或撤銷，請由管理員處理。" = "This account's Pro access is from an admin grant. Contact the administrator to extend or revoke it.";
+"訂閱已取消，將於 %@ 到期。到期前仍可使用所有 Pro 功能。" = "Subscription cancelled. Expires on %@. All Pro features remain available until then.";
+"訂閱目前在寬限期，請確認付款方式以維持存取。" = "Subscription is in a grace period. Update your payment method to maintain access.";
+"來源：管理員授權" = "Source: Admin Grant";
+"App Store 價格載入中，稍後會自動更新。" = "Loading App Store pricing. It will update automatically.";
+
+// ── Subscription: paywall sheet (SubscriptionPaywallSheet.swift) ──
+"目前帳號已由管理員授權為 Pro。" = "This account has been granted Pro by an administrator.";
+"你已取消自動續訂。Pro 功能可使用至 %@。" = "You cancelled auto-renewal. Pro features are available until %@.";
+"感謝支持！所有進階功能已解鎖。" = "Thanks for your support! All premium features are unlocked.";
+"管理員授權 · 有效至 %@" = "Admin Grant · valid until %@";
+"此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。" = "This account has Pro through an admin grant. Contact the administrator to extend, revoke, or adjust access.";
+"到期後將回到免費方案。如需繼續使用 Pro，可重新訂閱。" = "Access reverts to the free plan after expiration. Re-subscribe to continue using Pro.";
