@@ -27,6 +27,11 @@ struct TodayReviewPresenterState {
 
 struct TodayReviewPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var usesCompactLayout: Bool {
+        dynamicTypeSize < .accessibility1
+    }
 
     let state: TodayReviewPresenterState
     let onClose: () -> Void
@@ -208,6 +213,8 @@ struct TodayReviewPresenter: View {
             .frame(height: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer)
+            .accessibilityLabel("複習卡片正面：\(card.word)")
+            .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片")
         }
     }
 
@@ -244,39 +251,23 @@ struct TodayReviewPresenter: View {
                 .transition(.overlayFade)
             }
 
-            HStack(spacing: 0) {
-                HStack(spacing: vocabSkin.spacing.inlineGap) {
-                    Button(action: onPrevious) {
-                        Image(systemName: "chevron.left")
-                            .font(vocabSkin.typography.iconNavigation)
+            if usesCompactLayout {
+                HStack(spacing: 0) {
+                    navButtons
+                    Spacer()
+                    if state.revealStage.showsAnswer {
+                        feedbackButtons
+                            .transition(.overlayFade)
                     }
-                    .disabled(!state.canGoPrevious)
-
-                    Button(action: onNext) {
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconNavigation)
-                    }
-                    .disabled(!state.canGoNext)
                 }
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-
-                Spacer()
-
-                if state.revealStage.showsAnswer {
-                    HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-                        Button(action: onForgot) {
-                            Label("忘記", systemImage: "xmark")
-                                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-                        }
-                        .buttonStyle(.vocabAction(.destructive))
-
-                        Button(action: onRemembered) {
-                            Label("記得", systemImage: "checkmark")
-                                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-                        }
-                        .buttonStyle(.vocabAction(.success))
+            } else {
+                VStack(spacing: vocabSkin.spacing.inlineGap) {
+                    if state.revealStage.showsAnswer {
+                        feedbackButtons
+                            .frame(maxWidth: .infinity)
+                            .transition(.overlayFade)
                     }
-                    .transition(.overlayFade)
+                    navButtons
                 }
             }
         }
@@ -294,6 +285,39 @@ struct TodayReviewPresenter: View {
                 )
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    private var navButtons: some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            Button(action: onPrevious) {
+                Image(systemName: "chevron.left")
+                    .font(vocabSkin.typography.iconNavigation)
+            }
+            .disabled(!state.canGoPrevious)
+
+            Button(action: onNext) {
+                Image(systemName: "chevron.right")
+                    .font(vocabSkin.typography.iconNavigation)
+            }
+            .disabled(!state.canGoNext)
+        }
+        .foregroundStyle(vocabSkin.palette.secondaryText)
+    }
+
+    private var feedbackButtons: some View {
+        HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
+            Button(action: onForgot) {
+                Label("忘記", systemImage: "xmark")
+                    .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+            }
+            .buttonStyle(.vocabAction(.destructive))
+
+            Button(action: onRemembered) {
+                Label("記得", systemImage: "checkmark")
+                    .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+            }
+            .buttonStyle(.vocabAction(.success))
+        }
     }
 
     private var completionState: some View {
@@ -367,7 +391,8 @@ struct TodayReviewPresenter: View {
     }
 
     private func answerFoldSurface(_ card: CardPresentation) -> some View {
-        foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
+        let answerText = card.reviewMode == .production ? card.word : card.translation
+        return foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
             ZStack(alignment: .topTrailing) {
                 if state.revealStage == .back {
                     Button(action: onAdvanceReveal) {
@@ -375,8 +400,11 @@ struct TodayReviewPresenter: View {
                     }
                     .buttonStyle(.plain)
                     .contentShape(Rectangle())
+                    .accessibilityLabel("翻譯：\(answerText)")
+                    .accessibilityHint("點一下查看細節")
                 } else {
                     answerFoldContent(card, showsExpandHint: false)
+                        .accessibilityLabel("翻譯：\(answerText)")
                 }
 
                 if !state.revealStage.showsDetails {
