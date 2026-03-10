@@ -590,6 +590,58 @@ struct AppKeyValueRow<Content: View>: View {
     }
 }
 
+struct AppSettingsDivider: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let leadingInset: CGFloat
+
+    init(leadingInset: CGFloat = 50) {
+        self.leadingInset = leadingInset
+    }
+
+    var body: some View {
+        Rectangle()
+            .fill(vocabSkin.palette.divider)
+            .frame(height: 1)
+            .padding(.leading, leadingInset)
+    }
+}
+
+struct AppSectionBlock<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let eyebrow: String
+    @ViewBuilder let content: Content
+
+    init(
+        title: String,
+        eyebrow: String,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.title = title
+        self.eyebrow = eyebrow
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VStack(alignment: .leading, spacing: 2) {
+                Text(eyebrow)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .tracking(1.0)
+                Text(title.localized)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+            .padding(.horizontal, vocabSkin.metrics.readerSettingsHeaderMicroInset)
+
+            AppSectionCard(padding: vocabSkin.metrics.readerSettingsCardPadding, style: .settings(vocabSkin)) {
+                content
+            }
+        }
+    }
+}
+
 struct AppActionButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var appTheme
     let tone: AppActionTone
