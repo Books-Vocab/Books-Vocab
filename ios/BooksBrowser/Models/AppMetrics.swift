@@ -63,6 +63,10 @@ enum AppMotion {
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
     static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
 
+    // Swipe gesture
+    static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
+    static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
+
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
     static let panelSnapBack = standardSpring
