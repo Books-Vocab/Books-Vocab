@@ -37,6 +37,7 @@ struct ReaderViewPresenterState {
 
 struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     let state: ReaderViewPresenterState
     let onDismiss: () -> Void
@@ -210,11 +211,15 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
 
             if state.chrome.overlay == .translation {
                 translationPanel
+                    .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
                     .transition(.readerPanelReveal)
             } else if state.chrome.overlay == .settings && state.panelMode == .vocab {
                 settingsPanel
+                    .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
+                    .frame(maxWidth: .infinity)
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
                     .transition(.readerPanelReveal)
@@ -262,7 +267,9 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     .font(ReaderGlassTypography.headerTitle)
                     .foregroundStyle(.secondary)
                     .lineLimit(1)
-                    .frame(maxWidth: ReaderPresentationMetrics.Header.titleMaxWidth)
+                    .frame(maxWidth: sizeClass == .regular
+                        ? ReaderPresentationMetrics.Header.titleMaxWidthRegular
+                        : ReaderPresentationMetrics.Header.titleMaxWidth)
 
                 Spacer()
 
@@ -373,7 +380,9 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                     .lineLimit(1)
-                    .frame(maxWidth: ReaderPresentationMetrics.Header.titleMaxWidth)
+                    .frame(maxWidth: sizeClass == .regular
+                        ? ReaderPresentationMetrics.Header.titleMaxWidthRegular
+                        : ReaderPresentationMetrics.Header.titleMaxWidth)
 
                 Spacer()
 
