@@ -1,7 +1,7 @@
 # UI Strategy 3: Verification & Governance
 
 Date: 2026-03-10
-Scope: `booksbrowser_ios/BooksBrowser`
+Scope: `ios/BooksBrowser`
 
 文檔網絡：
 - 主設計規範：`docs/ui-design.md`
