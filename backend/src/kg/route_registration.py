@@ -34,7 +34,7 @@ def register_routes(
     delete_word: Callable[..., Any],
     get_graph_links: Callable[..., Any],
     add_vocab: Callable[..., Any],
-    push_review: Callable[..., Any] | None = None,
+    push_review: Callable[..., Any],
     run_pipeline: Callable[..., Any],
     translate_quick: Callable[..., Any],
     translate_phrase: Callable[..., Any],
