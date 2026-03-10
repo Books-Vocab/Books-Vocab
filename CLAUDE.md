@@ -64,31 +64,23 @@ Use this section as the "what already exists" checklist before proposing or chan
 - Ops and deployment surface:
   - project safe wrapper (`ops/devops_kg_safe.sh`) and workspace wrapper (`devops.sh`)
   - preflight / backup / deploy / restart / status / logs / migration workflows
-  - backup artifacts and incident/debug docs are part of normal operations context
-
-## Docs Router
-- backend development:
-  - `docs/backend-dev.md`
-- deploy / env / migration:
-  - `docs/deploy.md`
-- incidents / 502 / caddy / users:
-  - `docs/debug.md`
-- iOS build / xcode:
-  - `docs/ios-dev.md`
-- UI design:
-  - `docs/ui-design.md`
-- multi-project context:
-  - `docs/multi_project_ops.md`
 
 ## Common Commands
 - status: `./ops/devops_kg_safe.sh status`
 - logs: `./ops/devops_kg_safe.sh logs 120`
 - deploy: `./ops/devops_kg_safe.sh deploy`
 
-## Git Repos
-- **Monorepo root**: workspace root (`.git`) — covers iOS app, backend API, ops/docs
-- Use commit prefix to clarify scope: `ios:` / `api:` / `ops:` / `docs:`
-- See `docs/super_repo_submodules.md` for detailed commit strategy and typical flows
+## Git
+- Monorepo root (`.git`) covers iOS app, backend API, ops/docs
+- Commit prefix: `ios:` / `api:` / `ops:` / `docs:`
+
+## Reference Docs (read on demand)
+- backend development: `docs/backend-dev.md`
+- deploy / env / migration: `docs/deploy.md`
+- incidents / 502 / caddy / users: `docs/debug.md`
+- iOS build / xcode: `docs/ios-dev.md`
+- UI design: `docs/ui-design.md`
+- architecture / sync protocol: `docs/architecture.md`
 
 ## Cross-Project Note
-If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `AGENTS.md`.
+If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `CLAUDE.md`.
