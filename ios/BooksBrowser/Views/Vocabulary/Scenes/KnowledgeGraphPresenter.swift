@@ -138,7 +138,6 @@ struct KnowledgeGraphPresenter: View {
 
     private func centeredStateCard(_ state: State.EmptyState) -> some View {
         VStack {
-            Spacer()
             VocabEmptyStateCard(
                 title: state.title,
                 systemImage: state.systemImage,
