@@ -220,11 +220,11 @@ struct OptionalIntegrationInfoSheetView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
                     Image(systemName: "arrow.triangle.2.circlepath")
                         .font(vocabSkin.typography.symbolHero)
                         .foregroundStyle(vocabSkin.palette.accent)
-                        .padding(.bottom, 8)
+                        .padding(.bottom, vocabSkin.spacing.inlineGap)
 
                     Text("關於 Mochi 整合（Legacy）")
                         .font(vocabSkin.typography.displayTitle)
@@ -243,7 +243,7 @@ struct OptionalIntegrationInfoSheetView: View {
                         .font(vocabSkin.typography.sectionTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
                         Label("1. 登入網頁版的 app.mochi.cards", systemImage: "1.circle.fill")
                         Label("2. 點擊右上角設定 (Settings)", systemImage: "2.circle.fill")
                         Label("3. 選擇 API 分頁", systemImage: "3.circle.fill")
@@ -255,9 +255,9 @@ struct OptionalIntegrationInfoSheetView: View {
                     Text("這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        .padding(.top, 16)
+                        .padding(.top, vocabSkin.spacing.actionButtonHorizontalPadding)
                 }
-                .padding(24)
+                .padding(vocabSkin.spacing.sheetPadding)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationBarTitleDisplayMode(.inline)
@@ -280,7 +280,7 @@ struct SubscriptionPaywallSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 20) {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
                     Image(systemName: "sparkles.rectangle.stack.fill")
                         .font(vocabSkin.typography.symbolHero)
                         .foregroundStyle(vocabSkin.palette.accent)
@@ -294,7 +294,7 @@ struct SubscriptionPaywallSheet: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(6)
 
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
                         Text(priceLine)
                             .font(vocabSkin.typography.sectionTitle)
                             .foregroundStyle(vocabSkin.palette.primaryText)
@@ -305,7 +305,7 @@ struct SubscriptionPaywallSheet: View {
 
                     accessStateCard
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
                         paywallFeatureRow("AI 翻譯與語境解釋")
                         paywallFeatureRow("知識庫同步與跨裝置狀態")
                         paywallFeatureRow("關聯圖與內建複習")
@@ -318,7 +318,7 @@ struct SubscriptionPaywallSheet: View {
                             .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
                     )
 
-                    VStack(spacing: 10) {
+                    VStack(spacing: vocabSkin.spacing.controlGap) {
                         Button {
                             Task {
                                 if isAdminGranted {
@@ -387,7 +387,7 @@ struct SubscriptionPaywallSheet: View {
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
-                .padding(20)
+                .padding(vocabSkin.spacing.sheetPaddingCompact)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("訂閱")
@@ -494,7 +494,7 @@ struct SubscriptionPaywallSheet: View {
     }
 
     private func paywallFeatureRow(_ text: String) -> some View {
-        HStack(spacing: 10) {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
             Image(systemName: "checkmark.circle.fill")
                 .font(vocabSkin.typography.iconMedium)
                 .foregroundStyle(vocabSkin.palette.success)
