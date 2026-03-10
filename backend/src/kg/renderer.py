@@ -283,7 +283,6 @@ class CardRenderer:
         front = "\n".join(front_lines)
         back = "\n".join(back_lines)
         return f"{front}\n---\n{back}"
-        return f"{front}\n---\n{back}"
 
     def render_fields(self, card: Card, intent: RenderIntent, thresholds: list[float] | None = None) -> dict:
         """Render card fields for KG Vocab v3 template."""
