@@ -44,61 +44,6 @@ xcodebuild \
 
 修復後立刻重跑 Step 1。反覆「編譯 → 讀上下文 → 修改」直到 Exit Code 歸零。
 
----
-
-## 常見 Swift/SwiftUI 錯誤模式
-
-### 錯誤 1：`Type () cannot conform to View`
-**原因**：`@ViewBuilder` 中 if/else 分支之一沒有回傳 View，或 `forEach`/`map` 被誤用為 `ForEach`
-```swift
-// ❌ 錯誤：ForEach 用了 Array.map
-children.map { item in SomeView(item) }
-
-// ✅ 正確
-ForEach(children) { item in SomeView(item) }
-```
-
-### 錯誤 2：`Value of optional type 'X?' must be unwrapped`
-```swift
-// ❌
-Text(user.name)  // user 是 Optional
-
-// ✅ 用 if let 或 ?? 預設值
-if let name = user?.name { Text(name) }
-Text(user?.name ?? "Unknown")
-```
-
-### 錯誤 3：`Cannot convert value of type 'X' to expected argument type 'Binding<X>'`
-```swift
-// ❌ 傳了 var 而不是 $binding
-TextField("Name", text: user.name)
-
-// ✅
-TextField("Name", text: $user.name)
-```
-
-### 錯誤 4：`actor-isolated property cannot be referenced from main actor`
-```swift
-// ✅ 加 @MainActor 或用 await MainActor.run { }
-await MainActor.run { self.someUIState = newValue }
-```
-
-### 錯誤 5：`Missing return in closure expected to return 'some View'`
-```swift
-// ❌ ViewBuilder 中 if 沒有 else
-var body: some View {
-    if condition { Text("A") }
-    // 少了 else 分支
-}
-
-// ✅
-var body: some View {
-    if condition { Text("A") } else { EmptyView() }
-}
-```
-
----
-
 ## App 架構速查
 
 ### 主要 Services
@@ -137,45 +82,7 @@ Apple/Google SSO
   → HTTP 401 → iOS 自動登出 + 清空 SwiftData
 ```
 
----
 
-## UI 設計
-
-任何 Liquid Glass / SwiftUI UI 設計需求 → 使用 **`bb-ui-design`** skill（已獨立為 UI 設計技能）。
-
-### Motion Design System
-
-BooksBrowser 的動畫系統已收斂到 `BooksBrowser/Models/AppMetrics.swift` 的 `AppMotion` 與共享 `AnyTransition` 語意層。
-
-- 不要直接在 feature 檔案新增新的 `.spring(...)` / `.easeOut(...)`
-- 先查 `docs/ui-design.md` 的 `Motion Contract`
-- 如果找不到對應語意，再補 token，不要直接硬寫數值
-
-優先映射：
-- panel / drawer → `panelState`
-- header swap → `headerState` / `headerSwap`
-- phase state → `phaseChange`
-- success / save feedback → `feedbackPulse` / `feedbackBadge`
-- review 換卡 → `reviewCardSwapSpring`
-
----
-
-## 常用調試技巧
-
-### 確認 API 連線（模擬器中）
-App 的 `KGService` 透過 `Settings → Knowledge Graph → 伺服器位址` 設定。
-確認設定的是 `https://wordnexus.lol`，Info.plist 的 `NSExceptionDomains` 包含該域名。
-
-### 確認 SwiftData 狀態
-在 `BackgroundSyncActor` 加 print，觀察 `kg_last_incremental_sync` 時間戳與 `syncStatus` 狀態。
-
-### 模擬器快取問題
-```bash
-# 刪除模擬器 App（清除本地 SwiftData）
-# 在 Simulator → 長按 App → Delete App，然後重新 build
-```
-
----
 
 ## 參考文件
 

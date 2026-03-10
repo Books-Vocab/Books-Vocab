@@ -70,6 +70,23 @@ Use this section as the "what already exists" checklist before proposing or chan
   - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
   - UI review checklist (`docs/references/ui_review_checklist.md`)
 
+## iOS 編譯 SOP（強制）
+
+**唯一合法的 xcodebuild 指令**（從 `projects/kg/` 執行）：
+
+```bash
+xcodebuild \
+  -project ios/BooksBrowser.xcodeproj \
+  -scheme BooksBrowser \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
+  -quiet build
+```
+
+規則：
+- Exit 0 → 成功，停止
+- Exit 非 0 → 讀錯誤上下文 ±20 行，修正後重跑
+- **禁止**：改機型、拿掉 `-quiet`、加 `2>&1 | grep`、加 `cd ios &&`
+
 ## Common Commands
 - status: `./ops/devops_kg_safe.sh status`
 - logs: `./ops/devops_kg_safe.sh logs 120`
