@@ -55,7 +55,7 @@ extension VocabularyEntry {
         showsReviewProgress: Bool,
         isDelete: Bool,
         now: Date
-    ) -> WordRow.ViewData.ReviewProgress? {
+    ) -> VocabReviewProgress? {
         guard showsReviewProgress, !isDelete else { return nil }
 
         switch reviewState {
@@ -91,7 +91,7 @@ extension VocabularyEntry {
         }
     }
 
-    private func reviewProgressTone(for fraction: Double) -> WordRow.ViewData.ReviewProgress.Tone {
+    private func reviewProgressTone(for fraction: Double) -> VocabReviewProgress.Tone {
         if fraction >= 1 {
             return .red
         }
