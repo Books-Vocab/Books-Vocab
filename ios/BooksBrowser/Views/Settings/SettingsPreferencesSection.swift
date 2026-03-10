@@ -34,6 +34,7 @@ struct SettingsPreferencesSection: View {
                         }
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel("選擇語言：\(state.selectedLanguage)")
                 }
             }
             .settingsCard()
