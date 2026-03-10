@@ -2,7 +2,10 @@ from __future__ import annotations
 
 import base64
 import json
+import logging
 import os
+
+logger = logging.getLogger(__name__)
 from dataclasses import dataclass
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -120,6 +123,7 @@ def _verify_certificate_chain(certificates: list[x509.Certificate], trusted_root
             _verify_certificate_signature(chain_root, trusted_root)
             return
         except Exception:
+            logger.debug("Trusted root candidate did not match chain root", exc_info=True)
             continue
 
     raise AppStoreVerificationError("App Store JWS chain does not terminate at a trusted root.")
