@@ -21,7 +21,7 @@ COPY pyproject.toml /app/
 
 # 利用 pip 安裝 pyproject.toml 中的 dependencies
 RUN pip install --no-cache-dir "uvicorn[standard]"
-RUN pip install --no-cache-dir pytest
+RUN pip install --no-cache-dir pytest pytest-asyncio
 RUN pip install --no-cache-dir .
 
 # 複製原始碼與靜態頁面
