@@ -75,7 +75,7 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var typographySection: some View {
         settingsSection(
-            title: "排版",
+            title: "排版".localized,
             eyebrow: "Typography"
         ) {
             VStack(alignment: .leading, spacing: 16) {
@@ -140,7 +140,7 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var appearanceSection: some View {
         settingsSection(
-            title: "外觀",
+            title: "外觀".localized,
             eyebrow: "Atmosphere"
         ) {
             VStack(alignment: .leading, spacing: 16) {
@@ -197,7 +197,7 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var highlightSection: some View {
         settingsSection(
-            title: "生字標記",
+            title: "生字標記".localized,
             eyebrow: "Highlights"
         ) {
             HStack(spacing: 8) {
@@ -228,7 +228,7 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var modeSection: some View {
         settingsSection(
-            title: "閱讀介面",
+            title: "閱讀介面".localized,
             eyebrow: "Render Mode"
         ) {
             HStack(spacing: 10) {
@@ -264,7 +264,7 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var debugSection: some View {
         settingsSection(
-            title: "開發者與除錯",
+            title: "開發者與除錯".localized,
             eyebrow: "Debug"
         ) {
             HStack(spacing: 12) {

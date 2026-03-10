@@ -37,10 +37,10 @@ struct SettingsView: View {
     }
 
     private var syncSummaryText: String {
-        if !kgService.isConnected { return "離線" }
-        var parts: [String] = ["已連線"]
+        if !kgService.isConnected { return "離線".localized }
+        var parts: [String] = ["已連線".localized]
         if kgService.serverCardCount > 0 {
-            parts.append("\(kgService.serverCardCount) 張")
+            parts.append(L10n.format("%@ 張", "\(kgService.serverCardCount)"))
         }
         if let lastSync = kgService.lastSyncDate?.formatted(.relative(presentation: .named)) {
             parts.append(lastSync)
@@ -204,9 +204,9 @@ struct SettingsView: View {
         .sheet(isPresented: $showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
         }
-        .alert("刪除帳號與雲端資料？", isPresented: $coordinator.showDeleteAccountConfirm) {
-            Button("取消", role: .cancel) {}
-            Button("確認刪除", role: .destructive) {
+        .alert("刪除帳號與雲端資料？".localized, isPresented: $coordinator.showDeleteAccountConfirm) {
+            Button("取消".localized, role: .cancel) {}
+            Button("確認刪除".localized, role: .destructive) {
                 Task {
                     await coordinator.deleteAccount(
                         authManager: authManager,
@@ -216,13 +216,13 @@ struct SettingsView: View {
                 }
             }
         } message: {
-            Text("此操作會永久刪除帳號、雲端生詞資料與同步設定，且無法復原。")
+            Text("此操作會永久刪除帳號、雲端生詞資料與同步設定，且無法復原。".localized)
         }
-        .alert("刪除失敗", isPresented: Binding(
+        .alert("刪除失敗".localized, isPresented: Binding(
             get: { coordinator.deleteAccountError != nil },
             set: { if !$0 { coordinator.clearDeleteAccountError() } }
         )) {
-            Button("好", action: coordinator.clearDeleteAccountError)
+            Button("好".localized, action: coordinator.clearDeleteAccountError)
         } message: {
             Text((coordinator.deleteAccountError ?? "請稍後再試").localized)
         }

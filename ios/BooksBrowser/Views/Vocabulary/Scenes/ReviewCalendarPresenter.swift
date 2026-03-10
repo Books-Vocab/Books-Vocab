@@ -62,11 +62,11 @@ struct ReviewCalendarPresenter: View {
                 .padding(.bottom, vocabSkin.metrics.pageBottomInset)
             }
             .vocabCanvasBackground()
-            .navigationTitle("學習日曆")
+            .navigationTitle("學習日曆".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("完成".localized) { dismiss() }
                         .font(vocabSkin.typography.captionStrong)
                 }
             }
@@ -130,12 +130,12 @@ struct ReviewCalendarPresenter: View {
                     .foregroundStyle(vocabSkin.palette.primaryText)
 
                 if selectedDayRecords.isEmpty {
-                    Text("這天沒有複習紀錄")
+                    Text("這天沒有複習紀錄".localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                 } else {
                     let s = selectedDaySummary
-                    Text("已複習 \(s.total) 張 ・ 記得 \(s.remembered) ・ 忘記 \(s.forgot)")
+                    Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
@@ -180,7 +180,7 @@ struct ReviewCalendarPresenter: View {
 
             Spacer()
 
-            Text(record.feedback == 1 ? "記得" : "忘記")
+            Text(record.feedback == 1 ? "記得".localized : "忘記".localized)
                 .font(vocabSkin.typography.monoLabel)
                 .foregroundStyle(record.feedback == 1 ? vocabSkin.palette.success : vocabSkin.palette.destructive)
 
@@ -196,7 +196,7 @@ struct ReviewCalendarPresenter: View {
     private var dayDisplayTitle: String {
         guard let day = selectedDay else { return "" }
         let todayKey = ReviewRecord.makeDayKey(from: Date())
-        if day == todayKey { return "\(day)（今天）" }
+        if day == todayKey { return "\(day)" + "（今天）".localized }
         return day
     }
 

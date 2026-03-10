@@ -98,33 +98,33 @@ struct KnowledgeGraphPresenter: View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 VocabOverlayHeader(
-                    title: "關聯圖",
+                    title: "關聯圖".localized,
                     systemImage: "point.3.connected.trianglepath.dotted",
                     onClose: onToggleSettings
                 ) {
-                    VocabInlineActionButton(title: "重設", action: onResetForces)
+                    VocabInlineActionButton(title: "重設".localized, action: onResetForces)
                 }
 
                 Divider().padding(.horizontal, vocabSkin.metrics.overlayCompactDividerInset)
 
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
-                        VocabSectionHeader(title: "力")
+                        VocabSectionHeader(title: "力".localized)
                             .padding(.bottom, vocabSkin.spacing.microGap)
-                        VocabSliderRow(label: "向心力", value: bindings.centerForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "排斥力", value: bindings.repelForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "連結強度", value: bindings.linkForce, range: 0...1, format: "%.2f")
-                        VocabSliderRow(label: "連結距離", value: bindings.linkDistance, range: 20...300, format: "%.0f")
+                        VocabSliderRow(label: "向心力".localized, value: bindings.centerForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "排斥力".localized, value: bindings.repelForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "連結強度".localized, value: bindings.linkForce, range: 0...1, format: "%.2f")
+                        VocabSliderRow(label: "連結距離".localized, value: bindings.linkDistance, range: 20...300, format: "%.0f")
                     }
 
                     CardSectionDivider(horizontalPadding: 0)
                         .padding(.vertical, vocabSkin.spacing.sectionGap)
 
                     VStack(spacing: 0) {
-                        VocabSectionHeader(title: "顯示")
+                        VocabSectionHeader(title: "顯示".localized)
                             .padding(.bottom, vocabSkin.spacing.microGap)
-                        VocabSliderRow(label: "節點大小", value: bindings.nodeSize, range: 1...10, format: "%.1f")
-                        VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+                        VocabSliderRow(label: "節點大小".localized, value: bindings.nodeSize, range: 1...10, format: "%.1f")
+                        VocabSliderRow(label: "連結粗細".localized, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
                     }
                 }
                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)

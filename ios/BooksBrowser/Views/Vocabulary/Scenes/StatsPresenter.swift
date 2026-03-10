@@ -39,7 +39,7 @@ struct StatsPresenter: View {
                 VStack {
                     Spacer(minLength: 120)
                     VocabStateMessageCard(
-                        title: "計算統計資料...",
+                        title: "計算統計資料...".localized,
                         systemImage: "chart.bar"
                     ) {
                         ProgressView()
@@ -77,15 +77,15 @@ struct StatsPresenter: View {
     private func streakSection(_ summary: StatsPresentation.Summary) -> some View {
         HStack(spacing: vocabSkin.spacing.sectionGap) {
             statCard(
-                title: "連續學習",
+                title: "連續學習".localized,
                 value: "\(summary.currentStreak)",
-                unit: "天",
+                unit: "天".localized,
                 systemImage: "flame"
             )
             statCard(
-                title: "最長紀錄",
+                title: "最長紀錄".localized,
                 value: "\(summary.longestStreak)",
-                unit: "天",
+                unit: "天".localized,
                 systemImage: "trophy"
             )
         }
@@ -131,7 +131,7 @@ struct StatsPresenter: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
             Button { showCalendar = true } label: {
                 HStack(spacing: vocabSkin.spacing.microGap) {
-                    sectionHeader(title: "學習日曆", systemImage: "calendar")
+                    sectionHeader(title: "學習日曆".localized, systemImage: "calendar")
                     Spacer()
                     Image(systemName: "chevron.right")
                         .font(vocabSkin.typography.iconSmall)
@@ -158,7 +158,7 @@ struct StatsPresenter: View {
 
     private func forecastSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
-            sectionHeader(title: "複習預測", systemImage: "chart.bar")
+            sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
 
             VocabForecastChart(buckets: summary.forecast)
                 .frame(height: 160)
@@ -176,9 +176,9 @@ struct StatsPresenter: View {
 
     private func totalsSection(_ summary: StatsPresentation.Summary) -> some View {
         HStack(spacing: vocabSkin.spacing.sectionGap) {
-            miniStat(label: "總卡片數", value: "\(summary.totalCards)")
-            miniStat(label: "今天到期", value: "\(summary.dueToday)")
-            miniStat(label: "今天已複習", value: "\(summary.reviewedToday)")
+            miniStat(label: "總卡片數".localized, value: "\(summary.totalCards)")
+            miniStat(label: "今天到期".localized, value: "\(summary.dueToday)")
+            miniStat(label: "今天已複習".localized, value: "\(summary.reviewedToday)")
         }
         .padding(vocabSkin.spacing.cardPadding)
         .background(

@@ -32,7 +32,7 @@ struct VocabularyListView: View {
             ) {
                 routedContent
             }
-            .navigationTitle("生詞庫")
+            .navigationTitle("生詞庫".localized)
             .navigationBarTitleDisplayMode(.large)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
@@ -44,7 +44,7 @@ struct VocabularyListView: View {
                             badge: pendingCount > 0 ? "\(pendingCount)" : nil
                         )
                     }
-                    .accessibilityLabel("同步詞彙")
+                    .accessibilityLabel("同步詞彙".localized)
                 }
 
                 // Force refresh (知識庫 tab only)
@@ -88,19 +88,19 @@ struct VocabularyListView: View {
                             Button {
                                 coordinator.exportCSV(entries: pendingEntries)
                             } label: {
-                                Label("匯出 CSV", systemImage: "tablecells")
+                                Label("匯出 CSV".localized, systemImage: "tablecells")
                             }
 
                             Button {
                                 coordinator.exportJSON(entries: pendingEntries)
                             } label: {
-                                Label("匯出 JSON", systemImage: "doc.text")
+                                Label("匯出 JSON".localized, systemImage: "doc.text")
                             }
 
                             Button {
                                 coordinator.exportAnki(entries: pendingEntries)
                             } label: {
-                                Label("匯出 Anki TSV", systemImage: "rectangle.stack")
+                                Label("匯出 Anki TSV".localized, systemImage: "rectangle.stack")
                             }
                         } label: {
                             VocabToolbarGlyph(systemImage: "square.and.arrow.up")
@@ -160,7 +160,7 @@ struct VocabularyListView: View {
         .init(
             tabOptions: tabOptions,
             showsSearchField: showsSearchField,
-            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字" : "搜尋知識庫"
+            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字".localized : "搜尋知識庫".localized
         )
     }
 
@@ -177,10 +177,10 @@ struct VocabularyListView: View {
         } else if !subscriptionManager.hasProAccess {
             proGateState(
                 source: selectedTab == 1 ? .knowledge : .graph,
-                title: selectedTab == 1 ? "知識庫需 Pro" : "關聯圖需 Pro",
+                title: selectedTab == 1 ? "知識庫需 Pro".localized : "關聯圖需 Pro".localized,
                 description: selectedTab == 1
-                    ? "升級後即可同步雲端字庫、啟動知識庫複習與跨裝置狀態。"
-                    : "升級後即可查看單字之間的關聯圖、節點結構與連結脈絡。"
+                    ? "升級後即可同步雲端字庫、啟動知識庫複習與跨裝置狀態。".localized
+                    : "升級後即可查看單字之間的關聯圖、節點結構與連結脈絡。".localized
             )
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
@@ -235,15 +235,15 @@ struct VocabularyListView: View {
 
     private var tabOptions: [VocabTabOption<Int>] {
         [
-            .init(id: 0, title: "待收錄", count: pendingCount, systemImage: "tray"),
+            .init(id: 0, title: "待收錄".localized, count: pendingCount, systemImage: "tray"),
             .init(
                 id: 1,
-                title: "知識庫",
+                title: "知識庫".localized,
                 count: authManager.isLoggedIn ? kgService.serverCardCount : 0,
                 systemImage: "books.vertical"
             ),
-            .init(id: 2, title: "關聯圖", systemImage: "point.3.connected.trianglepath.dotted"),
-            .init(id: 3, title: "統計", systemImage: "chart.bar")
+            .init(id: 2, title: "關聯圖".localized, systemImage: "point.3.connected.trianglepath.dotted"),
+            .init(id: 3, title: "統計".localized, systemImage: "chart.bar")
         ]
     }
 
@@ -260,7 +260,7 @@ struct VocabularyListView: View {
             ProAccessGateCard(
                 title: title,
                 description: description,
-                actionTitle: "開始免費試用",
+                actionTitle: "開始免費試用".localized,
                 systemImage: "sparkles.rectangle.stack"
             ) {
                 subscriptionManager.activePaywallSource = source
@@ -288,12 +288,12 @@ struct VocabularyListView: View {
         ScrollView {
             VStack(spacing: AppShellMetrics.sectionSpacing) {
                 AppEmptyStateCard(
-                    title: "需登入帳號",
+                    title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。"
+                    description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。".localized
                 )
 
-                Button("前往設定登入") {
+                Button("前往設定登入".localized) {
                     coordinator.presentSettings()
                 }
                 .buttonStyle(.appAction(.primary))

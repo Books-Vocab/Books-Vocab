@@ -109,7 +109,7 @@ struct CardHeroSection: View {
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = card.word
                 copyTrigger.toggle()
             }
@@ -129,7 +129,7 @@ struct CardExamplesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            CardSectionLabel(title: "例句", systemImage: "text.quote")
+            CardSectionLabel(title: "例句".localized, systemImage: "text.quote")
 
             ForEach(Array(examples.enumerated()), id: \.offset) { _, example in
                 CardRichTextRenderer.text(
@@ -146,7 +146,7 @@ struct CardExamplesSection: View {
             }
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = examples.joined(separator: "\n")
                 copyTrigger.toggle()
             }
@@ -175,7 +175,7 @@ struct CardSourceSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "來源", systemImage: "quote.opening")
+            CardSectionLabel(title: "來源".localized, systemImage: "quote.opening")
 
             CardRichTextRenderer.text(
                 sourceContext,
@@ -200,7 +200,7 @@ struct CardSourceSection: View {
             .foregroundStyle(vocabSkin.palette.quaternaryText)
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
             }
@@ -220,7 +220,7 @@ struct CardExplanationSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "教學筆記", systemImage: "text.book.closed")
+            CardSectionLabel(title: "教學筆記".localized, systemImage: "text.book.closed")
 
             CardRichTextRenderer.text(
                 explanation,
@@ -234,7 +234,7 @@ struct CardExplanationSection: View {
             .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = explanation
                 copyTrigger.toggle()
             }
@@ -255,7 +255,7 @@ struct CardFormsSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "變化形", systemImage: "text.badge.plus")
+            CardSectionLabel(title: "變化形".localized, systemImage: "text.badge.plus")
 
             ScrollView(.horizontal, showsIndicators: false) {
                 HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
@@ -269,7 +269,7 @@ struct CardFormsSection: View {
             }
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = forms.joined(separator: ", ")
                 copyTrigger.toggle()
             }

@@ -42,11 +42,11 @@ struct SettingsPresenter: View {
                 .padding(.bottom, AppShellMetrics.pageBottomPadding)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("設定")
+            .navigationTitle("設定".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成", action: actions.dismiss)
+                    Button("完成".localized, action: actions.dismiss)
                         .fontWeight(.semibold)
                 }
             }
@@ -78,7 +78,7 @@ struct SettingsPresenter: View {
                         .padding(.bottom, AppShellMetrics.pageBottomPadding)
                     }
                     .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
-                    .navigationTitle("訂閱")
+                    .navigationTitle("訂閱".localized)
                     .navigationBarTitleDisplayMode(.inline)
                 }
             }
@@ -111,7 +111,7 @@ struct SettingsPresenter: View {
 
     private var otherSection: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "其他", icon: "ellipsis.circle")
+            SettingsSectionHeader(title: "其他".localized, icon: "ellipsis.circle")
 
             VStack(spacing: 0) {
                 // 同步狀態 (only when logged in)
@@ -128,7 +128,7 @@ struct SettingsPresenter: View {
 
                 // 隱私政策
                 Button(action: actions.openPrivacyPolicy) {
-                    SettingsRow(icon: "hand.raised", label: "隱私政策") {
+                    SettingsRow(icon: "hand.raised", label: "隱私政策".localized) {
                         Image(systemName: "chevron.right")
                             .font(vocabSkin.typography.iconTiny)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -140,7 +140,7 @@ struct SettingsPresenter: View {
 
                 // 支援
                 Button(action: actions.openSupport) {
-                    SettingsRow(icon: "questionmark.circle", label: "支援") {
+                    SettingsRow(icon: "questionmark.circle", label: "支援".localized) {
                         Image(systemName: "chevron.right")
                             .font(vocabSkin.typography.iconTiny)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -152,7 +152,7 @@ struct SettingsPresenter: View {
 
                 // 為 App 評分
                 Button(action: actions.requestAppRating) {
-                    SettingsRow(icon: "star", label: "為 App 評分") {
+                    SettingsRow(icon: "star", label: "為 App 評分".localized) {
                         Image(systemName: "chevron.right")
                             .font(vocabSkin.typography.iconTiny)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -163,7 +163,7 @@ struct SettingsPresenter: View {
             .settingsCard()
 
             // Version footer
-            Text("版本 \(state.about.version)")
+            Text("\("版本".localized) \(state.about.version)")
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .frame(maxWidth: .infinity)
@@ -174,7 +174,7 @@ struct SettingsPresenter: View {
     // MARK: - Sync Summary Row
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
-        SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態") {
+        SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized) {
             HStack(spacing: 6) {
                 Circle()
                     .fill(summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning)
@@ -192,7 +192,7 @@ struct SettingsPresenter: View {
     private func mochiRow(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
         SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
             HStack(spacing: 6) {
-                SecureField("可選", text: optionalIntegrationApiKey)
+                SecureField("可選".localized, text: optionalIntegrationApiKey)
                     .font(vocabSkin.typography.monoLabel)
                     .multilineTextAlignment(.trailing)
                     .autocorrectionDisabled()
@@ -214,30 +214,30 @@ struct SettingsPresenter: View {
     #if DEBUG
     private func debugBackendSection(kg: SettingsPresenterState.KGSection, debugLocalServerURL: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "DEBUG 後端", icon: "hammer")
+            SettingsSectionHeader(title: "DEBUG 後端".localized, icon: "hammer")
 
             VStack(spacing: 0) {
                 if let debug = kg.debug {
                     VStack(alignment: .leading, spacing: 12) {
                         HStack(spacing: 8) {
-                            Button("遠端正式站", action: actions.useProductionBackend)
+                            Button("遠端正式站".localized, action: actions.useProductionBackend)
                                 .buttonStyle(.borderedProminent)
                                 .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
-                                .accessibilityLabel("切換至遠端正式站")
+                                .accessibilityLabel("切換至遠端正式站".localized)
 
-                            Button("本地開發站", action: actions.useLocalBackend)
+                            Button("本地開發站".localized, action: actions.useLocalBackend)
                                 .buttonStyle(.borderedProminent)
                                 .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
-                                .accessibilityLabel("切換至本地開發站")
+                                .accessibilityLabel("切換至本地開發站".localized)
                         }
 
-                        TextField("本地伺服器 URL", text: debugLocalServerURL)
+                        TextField("本地伺服器 URL".localized, text: debugLocalServerURL)
                             .font(vocabSkin.typography.monoLabel)
                             .textInputAutocapitalization(.never)
                             .autocorrectionDisabled()
                             .submitLabel(.done)
 
-                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。" : "目前使用遠端正式站。")
+                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。".localized : "目前使用遠端正式站。".localized)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
@@ -344,11 +344,11 @@ struct OptionalIntegrationInfoSheetView: View {
                         .foregroundStyle(vocabSkin.palette.accent)
                         .padding(.bottom, vocabSkin.spacing.inlineGap)
 
-                    Text("關於 Mochi 整合（Legacy）")
+                    Text("關於 Mochi 整合（Legacy）".localized)
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
-                    Text("如果你仍在使用 Mochi (mochi.cards)，BooksBrowser 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，BooksBrowser 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。")
+                    Text("如果你仍在使用 Mochi (mochi.cards)，BooksBrowser 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，BooksBrowser 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。".localized)
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(6)
@@ -357,20 +357,20 @@ struct OptionalIntegrationInfoSheetView: View {
                         .fill(vocabSkin.palette.divider)
                         .frame(height: 1)
 
-                    Text("如何取得 API Key？")
+                    Text("如何取得 API Key？".localized)
                         .font(vocabSkin.typography.sectionTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
 
                     VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                        Label("1. 登入網頁版的 app.mochi.cards", systemImage: "1.circle.fill")
-                        Label("2. 點擊右上角設定 (Settings)", systemImage: "2.circle.fill")
-                        Label("3. 選擇 API 分頁", systemImage: "3.circle.fill")
-                        Label("4. 點擊 Generate API key 並複製貼上到前面設定中", systemImage: "4.circle.fill")
+                        Label("1. 登入網頁版的 app.mochi.cards".localized, systemImage: "1.circle.fill")
+                        Label("2. 點擊右上角設定 (Settings)".localized, systemImage: "2.circle.fill")
+                        Label("3. 選擇 API 分頁".localized, systemImage: "3.circle.fill")
+                        Label("4. 點擊 Generate API key 並複製貼上到前面設定中".localized, systemImage: "4.circle.fill")
                     }
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
 
-                    Text("這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。")
+                    Text("這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。".localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                         .padding(.top, vocabSkin.spacing.actionButtonHorizontalPadding)
@@ -381,7 +381,7 @@ struct OptionalIntegrationInfoSheetView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("完成".localized) { dismiss() }
                 }
             }
         }
