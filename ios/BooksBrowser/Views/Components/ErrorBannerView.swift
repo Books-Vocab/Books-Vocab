@@ -51,5 +51,6 @@ struct ErrorBannerView: View {
                 .foregroundStyle(appTheme.palette.warning.opacity(AppBannerMetrics.borderOpacity)),
             alignment: .bottom
         )
+        .transition(.bannerReveal)
     }
 }
