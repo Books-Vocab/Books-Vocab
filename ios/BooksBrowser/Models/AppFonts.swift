@@ -3,61 +3,101 @@
 //  BooksBrowser
 //
 //  統一的字體排印 (Design System Tokens)
+//  Serif: Athelas (EN) + STSongti-TC (CJK cascade)
+//  Mono:  ElmsSans (EN) + system monospaced (CJK fallback)
 //
 
 import SwiftUI
+import UIKit
 
-/// 建立 iOS 26 "Poetic Style" 所需的文字層級與字距設定
 enum AppFonts {
-    // ── 標題層級 (Headers) ──────────────────────────────────────────────────
-    // 使用預設的系統字型或自訂 Serif 字型，微調 Tracking 營造張力
-    
-    /// 大型英雄標題
-    static func hero(weight: Font.Weight = .semibold) -> Font {
-        .system(size: 40, weight: weight, design: .serif)
-    }
-    
-    /// 頁面主標題
-    static func h1(weight: Font.Weight = .medium) -> Font {
-        .system(size: 28, weight: weight, design: .serif)
-    }
-    
-    /// 區塊標題
-    static func h2(weight: Font.Weight = .medium) -> Font {
-        .system(size: 22, weight: weight, design: .default)
-    }
-    
-    // ── 內文層級 (Body) ────────────────────────────────────────────────────
-    
-    /// 預設清晰內文 (等同於標準 Body，但可以統一管理)
-    static func body(weight: Font.Weight = .regular) -> Font {
-        .system(.body, design: .default).weight(weight)
-    }
-    
-    /// 次要說明文字 (Subheadline)
-    static func subhead(weight: Font.Weight = .regular) -> Font {
-        .system(.subheadline, design: .default).weight(weight)
-    }
-    
-    // ── 細節層級 (Caption & Mono) ─────────────────────────────────────────
-    
-    /// 提示小字
-    static func caption(weight: Font.Weight = .regular) -> Font {
-        .system(.caption, design: .default).weight(weight)
-    }
-    
-    /// 極小的提示字
-    static func caption2(weight: Font.Weight = .regular) -> Font {
-        .system(.caption2, design: .default).weight(weight)
-    }
-    
-    /// 用於資料展示、進度條的等寬數字 (Poetic style 強調數字的俐落)
-    static func monoNumbers(size: CGFloat = 14) -> Font {
-        .system(size: size, weight: .regular, design: .monospaced)
+
+    // MARK: - Font Builders
+
+    private static let cascadeListKey = UIFontDescriptor.AttributeName(
+        rawValue: "NSCTFontCascadeListAttribute"
+    )
+
+    /// Serif: Athelas + STSongti-TC cascade
+    static func serif(size: CGFloat, bold: Bool = false) -> Font {
+        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
+        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
     }
 
-    /// 用於 Reader 進度條的等寬細字（11pt light monospaced）
+    /// Mono: ElmsSans + system monospaced cascade
+    static func mono(size: CGFloat, bold: Bool = false) -> Font {
+        let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
+        let sysMono = UIFont.monospacedSystemFont(
+            ofSize: size, weight: bold ? .bold : .regular
+        ).fontDescriptor
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let descriptor = base.addingAttributes([cascadeListKey: [sysMono]])
+        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
+    }
+
+    // MARK: - 標題層級 (Headers)
+
+    /// 大型英雄標題 — 40pt serif
+    static func hero(weight: Font.Weight = .semibold) -> Font {
+        serif(size: 40, bold: weight.isBold)
+    }
+
+    /// 頁面主標題 — 28pt serif
+    static func h1(weight: Font.Weight = .medium) -> Font {
+        serif(size: 28, bold: weight.isBold)
+    }
+
+    /// 區塊標題 — 22pt serif
+    static func h2(weight: Font.Weight = .medium) -> Font {
+        serif(size: 22, bold: weight.isBold)
+    }
+
+    // MARK: - 內文層級 (Body)
+
+    /// 預設內文 — 17pt serif
+    static func body(weight: Font.Weight = .regular) -> Font {
+        serif(size: 17, bold: weight.isBold)
+    }
+
+    /// 次要說明 — 15pt serif
+    static func subhead(weight: Font.Weight = .regular) -> Font {
+        serif(size: 15, bold: weight.isBold)
+    }
+
+    // MARK: - 細節層級 (Caption & Mono)
+
+    /// 提示小字 — 12pt serif
+    static func caption(weight: Font.Weight = .regular) -> Font {
+        serif(size: 12, bold: weight.isBold)
+    }
+
+    /// 極小提示 — 11pt serif
+    static func caption2(weight: Font.Weight = .regular) -> Font {
+        serif(size: 11, bold: weight.isBold)
+    }
+
+    /// 等寬數字 — ElmsSans mono
+    static func monoNumbers(size: CGFloat = 14) -> Font {
+        mono(size: size)
+    }
+
+    /// Reader 進度條等寬細字 — 11pt ElmsSans mono
     static func monoProgress() -> Font {
-        .system(size: 11, weight: .light, design: .monospaced)
+        mono(size: 11)
+    }
+}
+
+private extension Font.Weight {
+    var isBold: Bool {
+        switch self {
+        case .medium, .semibold, .bold, .heavy, .black:
+            return true
+        default:
+            return false
+        }
     }
 }
