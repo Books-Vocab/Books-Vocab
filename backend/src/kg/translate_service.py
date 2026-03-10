@@ -39,7 +39,7 @@ def explain_translate_prompt(req: TranslateRequest) -> str:
 請以純 JSON 格式回答，包含一個 key: "e" 為解釋內容。不要包含任何 Markdown 標記，直接輸出 {{ "e": "..." }}'''
 
 
-def parse_json_payload(raw: str | None) -> dict[str, Any]:
+def _parse_json_payload(raw: str | None) -> dict[str, Any]:
     data = json.loads(raw or "{}")
     if isinstance(data, list):
         data = data[0] if data else {}
@@ -73,7 +73,7 @@ def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: 
         raise HTTPException(500, "Gemini returned empty response")
 
     track_usage(user["id"], "translate_quick", response)
-    data = parse_json_payload(response.choices[0].message.content)
+    data = _parse_json_payload(response.choices[0].message.content)
     return QuickTranslateResponse(
         t=data.get("t", ""),
         p=data.get("p"),
@@ -89,7 +89,7 @@ def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client:
         response_format={"type": "json_object"},
     )
     track_usage(user["id"], "translate_phrase", response)
-    data = parse_json_payload(response.choices[0].message.content)
+    data = _parse_json_payload(response.choices[0].message.content)
     return {"t": data.get("t", "")}
 
 
@@ -101,5 +101,5 @@ def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client
         response_format={"type": "json_object"},
     )
     track_usage(user["id"], "translate_explain", response)
-    data = parse_json_payload(response.choices[0].message.content)
+    data = _parse_json_payload(response.choices[0].message.content)
     return ExplainResponse(e=data.get("e", ""))
