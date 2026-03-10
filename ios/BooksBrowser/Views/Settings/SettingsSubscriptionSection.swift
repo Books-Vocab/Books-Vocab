@@ -10,9 +10,9 @@ struct SettingsSubscriptionSection: View {
             SettingsSectionHeader(title: "訂閱", icon: "sparkles.rectangle.stack")
 
             VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                    HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
+                        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
                             Text(state.planName)
                                 .font(vocabSkin.typography.sectionTitle)
                                 .foregroundStyle(vocabSkin.palette.primaryText)
@@ -63,7 +63,7 @@ struct SettingsSubscriptionSection: View {
                     .transition(.statusRowReveal)
 
                     Button(action: actions.showSubscriptionPaywall) {
-                        HStack(spacing: 10) {
+                        HStack(spacing: vocabSkin.spacing.controlGap) {
                             if state.isRefreshing {
                                 ProgressView()
                                     .controlSize(.small)
@@ -78,8 +78,8 @@ struct SettingsSubscriptionSection: View {
                             Spacer()
                         }
                         .foregroundStyle(vocabSkin.palette.primaryText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
+                        .padding(.horizontal, vocabSkin.spacing.controlHorizontalPadding)
+                        .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
                         .background(vocabSkin.palette.pageBackground)
                         .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
                         .overlay(
@@ -115,8 +115,8 @@ struct SettingsSubscriptionSection: View {
         return Text(state.badgeText)
             .font(vocabSkin.typography.monoLabel)
             .foregroundStyle(tone)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
+            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
     }
@@ -126,7 +126,7 @@ struct SettingsSubscriptionSection: View {
         value: String,
         emphasized: Bool = false
     ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.tinyGap) {
             Text(title)
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(emphasized ? vocabSkin.palette.accent : vocabSkin.palette.tertiaryText)
