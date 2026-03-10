@@ -1017,3 +1017,203 @@ struct SubscriptionPaywallSheet: View {
         }
     }
 }
+
+// MARK: - Preview Data
+
+private enum SettingsPresenterPreviewData {
+
+    static let noopActions = SettingsPresenterActions(
+        dismiss: {},
+        loginWithGoogle: {},
+        loginWithApple: {},
+        logout: {},
+        manualLogin: {},
+        useProductionBackend: {},
+        useLocalBackend: {},
+        selectLanguage: { _ in },
+        showSubscriptionPaywall: {},
+        showOptionalIntegrationInfo: {},
+        requestDeleteAccount: {}
+    )
+
+    // 1. Logged out — default settings screen
+    static let loggedOut = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: false,
+            userInitials: nil,
+            avatarURL: nil,
+            displayName: "未登入",
+            email: nil,
+            authError: nil,
+            iconBreathing: false,
+            debug: nil
+        ),
+        preferences: .init(selectedLanguage: "繁體中文"),
+        kg: nil,
+        subscription: nil,
+        optionalIntegration: nil,
+        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        danger: nil
+    )
+
+    // 2. Logged in with subscription active
+    static let subscribedActive = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: true,
+            userInitials: "CL",
+            avatarURL: nil,
+            displayName: "Chen Liang",
+            email: "chen@example.com",
+            authError: nil,
+            iconBreathing: false,
+            debug: nil
+        ),
+        preferences: .init(selectedLanguage: "繁體中文"),
+        kg: .init(
+            serverURL: "https://wordnexus.lol",
+            isConnected: true,
+            connectionPulse: false,
+            serverCardCount: 128,
+            lastSyncDescription: "3 分鐘前",
+            debug: nil
+        ),
+        subscription: .init(
+            planName: "Pro",
+            badgeText: "啟用中",
+            badgeTone: .success,
+            summary: "年度方案，到期日 2027-03-10",
+            detail: "感謝支持！所有進階功能已解鎖。",
+            ctaTitle: "管理訂閱",
+            isRefreshing: false
+        ),
+        optionalIntegration: .init(isEnabled: true),
+        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        danger: .init(isDeletingAccount: false)
+    )
+
+    // 3. Logged in with subscription loading/error
+    static let subscriptionLoading = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: true,
+            userInitials: "CL",
+            avatarURL: nil,
+            displayName: "Chen Liang",
+            email: "chen@example.com",
+            authError: nil,
+            iconBreathing: false,
+            debug: nil
+        ),
+        preferences: .init(selectedLanguage: "繁體中文"),
+        kg: .init(
+            serverURL: "https://wordnexus.lol",
+            isConnected: false,
+            connectionPulse: true,
+            serverCardCount: 0,
+            lastSyncDescription: nil,
+            debug: nil
+        ),
+        subscription: .init(
+            planName: "—",
+            badgeText: "載入中",
+            badgeTone: .neutral,
+            summary: "正在確認訂閱狀態…",
+            detail: "請稍候，系統正在與 App Store 通訊。",
+            ctaTitle: "重新整理",
+            isRefreshing: true
+        ),
+        optionalIntegration: nil,
+        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        danger: .init(isDeletingAccount: false)
+    )
+
+    // 4. Delete account in progress
+    static let deletingAccount = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: true,
+            userInitials: "CL",
+            avatarURL: nil,
+            displayName: "Chen Liang",
+            email: "chen@example.com",
+            authError: nil,
+            iconBreathing: false,
+            debug: nil
+        ),
+        preferences: .init(selectedLanguage: "繁體中文"),
+        kg: .init(
+            serverURL: "https://wordnexus.lol",
+            isConnected: true,
+            connectionPulse: false,
+            serverCardCount: 128,
+            lastSyncDescription: "剛剛",
+            debug: nil
+        ),
+        subscription: .init(
+            planName: "Pro",
+            badgeText: "啟用中",
+            badgeTone: .success,
+            summary: "年度方案",
+            detail: "",
+            ctaTitle: "管理訂閱",
+            isRefreshing: false
+        ),
+        optionalIntegration: nil,
+        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        danger: .init(isDeletingAccount: true)
+    )
+}
+
+#Preview("Settings / Logged Out") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.loggedOut,
+                optionalIntegrationApiKey: .constant(""),
+                manualLoginUserId: nil,
+                debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}
+
+#Preview("Settings / Subscribed Active") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.subscribedActive,
+                optionalIntegrationApiKey: .constant("sk-test-key"),
+                manualLoginUserId: nil,
+                debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}
+
+#Preview("Settings / Subscription Loading") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.subscriptionLoading,
+                optionalIntegrationApiKey: .constant(""),
+                manualLoginUserId: nil,
+                debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}
+
+#Preview("Settings / Deleting Account") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.deletingAccount,
+                optionalIntegrationApiKey: .constant(""),
+                manualLoginUserId: nil,
+                debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}

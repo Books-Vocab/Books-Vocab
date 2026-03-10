@@ -355,6 +355,42 @@ private enum SyncPresenterPreviewData {
         ],
         summaryText: "同步在上傳階段失敗，請檢查伺服器狀態後重試。"
     )
+
+    static let signedOut = SyncPresenterState(
+        isLoggedIn: false,
+        hasProAccess: false,
+        isConnected: true,
+        phase: .ready,
+        pendingCount: 0,
+        addCount: 0,
+        deleteCount: 0,
+        steps: [],
+        summaryText: ""
+    )
+
+    static let noPro = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: false,
+        isConnected: true,
+        phase: .ready,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: [],
+        summaryText: ""
+    )
+
+    static let completed = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: true,
+        isConnected: true,
+        phase: .completed,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: baseSteps,
+        summaryText: "同步完成，所有變更已成功上傳。"
+    )
 }
 
 #Preview("Sync / Ready") {
@@ -390,6 +426,48 @@ private enum SyncPresenterPreviewData {
         NavigationStack {
             SyncPresenter(
                 state: SyncPresenterPreviewData.failed,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / Signed Out") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.signedOut,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / No Pro") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.noPro,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / Completed") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.completed,
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},

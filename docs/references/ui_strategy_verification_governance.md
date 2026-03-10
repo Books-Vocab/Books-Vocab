@@ -88,9 +88,9 @@ Scope: `booksbrowser_ios/BooksBrowser`
 
 ## 執行順序
 
-1. 補最有價值的 preview
-2. 寫最短 checklist
-3. 把主文檔與附錄的責任切乾淨
+1. ✅ 補最有價值的 preview — 已完成，覆蓋 6 個核心畫面
+2. ✅ 寫最短 checklist — `docs/references/ui_review_checklist.md`
+3. ✅ 把主文檔與附錄的責任切乾淨 — 主文檔已更新文檔網絡連結
 
 ## 可並行原因
 

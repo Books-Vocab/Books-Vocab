@@ -9,6 +9,7 @@
 > - 並行優化策略 1：`docs/references/ui_strategy_foundation_convergence.md`
 > - 並行優化策略 2：`docs/references/ui_strategy_state_motion_experience.md`
 > - 並行優化策略 3：`docs/references/ui_strategy_verification_governance.md`
+> - UI Review Checklist：`docs/references/ui_review_checklist.md`
 
 > 適用：iOS 26.0+、Xcode 26.0+
 

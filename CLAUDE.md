@@ -38,6 +38,8 @@ Use this section as the "what already exists" checklist before proposing or chan
   - vocabulary capture, list/detail, sync, and knowledge-graph views
   - settings surface, including account deletion entry under danger operations
   - app-intent/background sync related integration
+  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
+  - UI review checklist (`docs/references/ui_review_checklist.md`)
 
 - KG backend surface (`knowledge_graph_api/src/kg`):
   - auth verification and user identity linking logic
@@ -75,6 +77,8 @@ Use this section as the "what already exists" checklist before proposing or chan
   - `docs/ios-dev.md`
 - UI design:
   - `docs/ui-design.md`
+- UI review checklist:
+  - `docs/references/ui_review_checklist.md`
 - multi-project context:
   - `docs/multi_project_ops.md`
 
