@@ -79,30 +79,45 @@ struct ReaderSettingsVocabPresenter: View {
             eyebrow: "Typography"
         ) {
             VStack(alignment: .leading, spacing: 16) {
-                HStack(alignment: .center, spacing: 14) {
-                    typographyAdjustButton(
-                        title: "A",
-                        font: vocabSkin.typography.settingsAdjustSmall,
-                        enabled: state.canDecreaseFontSize,
-                        action: onDecreaseFontSize
-                    )
-
-                    VStack(spacing: 4) {
-                        Text(state.fontSizeText)
-                            .font(vocabSkin.typography.settingsFontSizeDisplay)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-                        Text("字級倍率")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                HStack(alignment: .center, spacing: 0) {
+                    Button(action: onDecreaseFontSize) {
+                        Text("A")
+                            .font(vocabSkin.typography.settingsAdjustSmall)
+                            .foregroundStyle(state.canDecreaseFontSize ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                            .frame(width: 52, height: 52)
+                            .background(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .fill(vocabSkin.palette.pageBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                            )
                     }
-                    .frame(maxWidth: .infinity)
+                    .buttonStyle(.plain)
+                    .disabled(!state.canDecreaseFontSize)
 
-                    typographyAdjustButton(
-                        title: "A",
-                        font: vocabSkin.typography.settingsAdjustLarge,
-                        enabled: state.canIncreaseFontSize,
-                        action: onIncreaseFontSize
-                    )
+                    Text(state.fontSizeText)
+                        .font(vocabSkin.typography.settingsFontSizeDisplay)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .frame(maxWidth: .infinity)
+
+                    Button(action: onIncreaseFontSize) {
+                        Text("A")
+                            .font(vocabSkin.typography.settingsAdjustLarge)
+                            .foregroundStyle(state.canIncreaseFontSize ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                            .frame(width: 52, height: 52)
+                            .background(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .fill(vocabSkin.palette.pageBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                            )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!state.canIncreaseFontSize)
                 }
 
                 Divider()
@@ -185,23 +200,27 @@ struct ReaderSettingsVocabPresenter: View {
             title: "生字標記",
             eyebrow: "Highlights"
         ) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack {
-                    Text("底線強度")
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                    Spacer()
-
-                    Text(highlightIntensityLabel)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-
-                HStack(spacing: 8) {
-                    ForEach(opacityOptions, id: \.label) { option in
-                        highlightOptionTile(option)
+            HStack(spacing: 8) {
+                ForEach(opacityOptions, id: \.label) { option in
+                    let isSelected = bindings.underlineOpacity.wrappedValue == option.value
+                    Button {
+                        onSelectUnderlineOpacity(option.value)
+                    } label: {
+                        Text(option.label.localized)
+                            .font(vocabSkin.typography.captionStrong)
+                            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 10)
+                            .background(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
+                            )
+                            .overlay(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
+                            )
                     }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -214,7 +233,30 @@ struct ReaderSettingsVocabPresenter: View {
         ) {
             HStack(spacing: 10) {
                 ForEach(TranslationPanelMode.allCases) { mode in
-                    modeTile(mode)
+                    let isSelected = bindings.translationPanelMode.wrappedValue == mode
+                    let icon = mode == .glass ? "sparkles.rectangle.stack" : "character.book.closed"
+                    Button {
+                        bindings.translationPanelMode.wrappedValue = mode
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: icon)
+                                .font(vocabSkin.typography.iconToolbar)
+                            Text(mode.label)
+                                .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                        }
+                        .frame(maxWidth: .infinity)
+                        .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+                        .background(
+                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
+                        )
+                        .overlay(
+                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                                .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
+                        )
+                        .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+                    }
+                    .buttonStyle(.plain)
                 }
             }
         }
@@ -252,30 +294,6 @@ struct ReaderSettingsVocabPresenter: View {
         AppSectionBlock(title: title, eyebrow: eyebrow) {
             content()
         }
-    }
-
-    private func typographyAdjustButton(title: String, font: Font, enabled: Bool, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            VStack(spacing: 6) {
-                Text(title)
-                    .font(font)
-                Text((enabled ? "調整" : "上限").localized)
-                    .font(vocabSkin.typography.monoLabel)
-                    .opacity(enabled ? 0.72 : 0.5)
-            }
-            .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-            .frame(width: 86, height: 82)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .fill(vocabSkin.palette.pageBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-            )
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
     }
 
     private func labelChip(title: String, systemImage: String) -> some View {
@@ -332,78 +350,6 @@ struct ReaderSettingsVocabPresenter: View {
         .buttonStyle(.plain)
     }
 
-    private func highlightOptionTile(_ option: (label: String, value: Double)) -> some View {
-        let isSelected = bindings.underlineOpacity.wrappedValue == option.value
-        return Button {
-            onSelectUnderlineOpacity(option.value)
-        } label: {
-            VStack(alignment: .leading, spacing: 10) {
-                HStack {
-                    Text(option.label.localized)
-                        .font(vocabSkin.typography.captionStrong)
-                    Spacer()
-                    if isSelected {
-                        Image(systemName: "checkmark")
-                            .font(vocabSkin.typography.iconTiny.weight(.bold))
-                    }
-                }
-
-                Rectangle()
-                    .fill(highlightPreviewColor(for: option.value))
-                    .frame(height: option.value == 0 ? 1 : max(2, option.value * 6))
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .clipShape(Capsule(style: .continuous))
-                    .padding(.trailing, vocabSkin.metrics.readerSettingsHighlightPreviewTrailingInset)
-            }
-            .frame(maxWidth: .infinity, minHeight: vocabSkin.metrics.readerSettingsHighlightMinHeight, alignment: .topLeading)
-            .padding(.horizontal, vocabSkin.metrics.readerSettingsOptionHorizontalPadding)
-            .padding(.vertical, vocabSkin.metrics.readerSettingsOptionVerticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
-            )
-            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-        }
-        .buttonStyle(.plain)
-    }
-
-    private func modeTile(_ mode: TranslationPanelMode) -> some View {
-        let isSelected = bindings.translationPanelMode.wrappedValue == mode
-        let icon = mode == .glass ? "sparkles.rectangle.stack" : "character.book.closed"
-        return Button {
-            bindings.translationPanelMode.wrappedValue = mode
-        } label: {
-            VStack(alignment: .leading, spacing: 8) {
-                Image(systemName: icon)
-                    .font(vocabSkin.typography.iconToolbar)
-                Text(mode.label)
-                    .font(vocabSkin.typography.translationTitle)
-                Text(modeDescription(mode))
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(isSelected ? vocabSkin.palette.secondaryText : vocabSkin.palette.tertiaryText)
-                    .multilineTextAlignment(.leading)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-            .frame(maxWidth: .infinity, minHeight: vocabSkin.metrics.readerSettingsModeMinHeight, alignment: .topLeading)
-            .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
-            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
-            )
-            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-        }
-        .buttonStyle(.plain)
-    }
-
     private var fontToneLabel: String {
         switch bindings.font.wrappedValue {
         case .serif:
@@ -417,37 +363,8 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private var highlightIntensityLabel: String {
-        let value = bindings.underlineOpacity.wrappedValue
-        switch value {
-        case 0:
-            return "hidden"
-        case ..<0.2:
-            return "soft"
-        case ..<0.5:
-            return "balanced"
-        default:
-            return "strong"
-        }
-    }
-
     private func themeSwatchColor(_ theme: ReaderTheme) -> Color {
         vocabSkin.readerThemeSwatchColor(theme)
     }
 
-    private func highlightPreviewColor(for value: Double) -> Color {
-        if value == 0 {
-            return vocabSkin.palette.divider
-        }
-        return vocabSkin.palette.accent.opacity(0.35 + value * 0.65)
-    }
-
-    private func modeDescription(_ mode: TranslationPanelMode) -> String {
-        switch mode {
-        case .glass:
-            return L10n.string("保留中性、透明、較輕的 reader chrome。")
-        case .vocab:
-            return L10n.string("使用詞庫語言，讓 panel 與內文標記更一致。")
-        }
-    }
 }
