@@ -58,7 +58,6 @@ final class KGVocabCoordinator: ObservableObject {
         for entry in pendingDeletes {
             do {
                 try await kgService.deleteCard(word: entry.word)
-                VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
                 modelContext.delete(entry)
             } catch {
             }

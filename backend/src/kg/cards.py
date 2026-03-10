@@ -35,6 +35,15 @@ class Card(SQLModel, table=True):
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
     is_deleted: bool = SQLField(default=False)
 
+    # Spaced-review state (synced from client)
+    review_interval_hours: float = SQLField(default=12.0)
+    next_review_at: Optional[datetime] = SQLField(default=None)
+    last_reviewed_at: Optional[datetime] = SQLField(default=None)
+    review_count: int = SQLField(default=0)
+    lapse_count: int = SQLField(default=0)
+    review_streak: int = SQLField(default=0)
+    last_review_feedback: int = SQLField(default=-1)  # -1=none, 0=forgot, 1=remembered
+
     def embed_text(self) -> str:
         """Text used for embedding."""
         return f"{self.content}: {self.meaning}"
@@ -53,6 +62,26 @@ class CardStore:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
         SQLModel.metadata.create_all(self.engine, checkfirst=True)
+        self._migrate_review_columns()
+
+    def _migrate_review_columns(self) -> None:
+        """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
+        review_columns = {
+            "review_interval_hours": "REAL DEFAULT 12.0",
+            "next_review_at": "TIMESTAMP",
+            "last_reviewed_at": "TIMESTAMP",
+            "review_count": "INTEGER DEFAULT 0",
+            "lapse_count": "INTEGER DEFAULT 0",
+            "review_streak": "INTEGER DEFAULT 0",
+            "last_review_feedback": "INTEGER DEFAULT -1",
+        }
+        with self.engine.connect() as conn:
+            result = conn.exec_driver_sql("PRAGMA table_info(card)")
+            existing = {row[1] for row in result}
+            for col_name, col_type in review_columns.items():
+                if col_name not in existing:
+                    conn.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {col_name} {col_type}")
+            conn.commit()
 
     def add(
         self,

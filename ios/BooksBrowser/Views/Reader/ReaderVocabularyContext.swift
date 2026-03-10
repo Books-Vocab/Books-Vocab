@@ -26,7 +26,6 @@ struct ReaderVocabularyContext {
             entry.queueDelete()
             print("🗑️ Queued KG delete action for: \(word)")
         } else {
-            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
             modelContext.delete(entry)
             print("🗑️ Deleted local entry: \(word)")
         }
@@ -56,7 +55,6 @@ struct ReaderVocabularyContext {
         entry.rootForm = rootForm
         entry.bookId = book.id
         modelContext.insert(entry)
-        VocabularyReviewMetaHelper.createReviewMeta(for: entry, in: modelContext)
         try? modelContext.save()
         return true
     }

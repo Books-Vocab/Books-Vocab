@@ -44,11 +44,10 @@ actor BackgroundSyncActor {
                 // Delete if marked as soft-deleted
                 if card.isDeleted == true {
                     print("🧹 Remote soft-delete received: \(existingEntry.word)")
-                    VocabularyReviewMetaHelper.deleteReviewMeta(for: existingEntry, in: modelContext)
                     modelContext.delete(existingEntry)
                     continue
                 }
-                
+
                 if existingEntry.syncAction == .delete {
                     // 本地標記為待刪除，不更新任何欄位，保留 syncStatus=0 讓 SyncView 可以 push
                 } else {
@@ -63,11 +62,14 @@ actor BackgroundSyncActor {
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.markSynced()
+
+                    // Merge review state from server (server newer wins)
+                    Self.mergeReviewState(from: card, into: existingEntry)
                 }
             } else {
                 // If it's softly deleted but we don't have it locally, ignore it
                 if card.isDeleted == true { continue }
-                
+
                 // Create new record
                 let newEntry = VocabularyEntry(
                     word: card.content,
@@ -86,18 +88,11 @@ actor BackgroundSyncActor {
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.markSynced()
 
+                // Apply server review state to new entry
+                Self.mergeReviewState(from: card, into: newEntry)
+
                 modelContext.insert(newEntry)
                 localDict[lowerContent] = newEntry
-
-                // Create corresponding VocabularyReviewMeta for CloudKit sync
-                let meta = VocabularyReviewMeta(
-                    id: newEntry.id,
-                    wordKey: lowerContent,
-                    context: card.examples.first ?? "",
-                    bookTitle: "Knowledge Graph",
-                    originalDateAdded: newEntry.dateAdded
-                )
-                modelContext.insert(meta)
             }
         }
 
@@ -110,7 +105,6 @@ actor BackgroundSyncActor {
                 if entry.shouldAppearInKnowledgeList {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {
                         print("🧹 Cleaning up remote orphan: \(entry.word)")
-                        VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
                         modelContext.delete(entry)
                     }
                 }
@@ -125,53 +119,12 @@ actor BackgroundSyncActor {
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
         print("🧹 Clearing all local vocabulary entries... reason=\(reason)")
-        VocabularyReviewMetaHelper.deleteAllReviewMeta(in: modelContext)
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
         }
         try modelContext.save()
         print("✅ Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
-    }
-
-    /// Syncs review state between VocabularyReviewMeta (CloudKit) and VocabularyEntry (local).
-    /// Whichever side has a newer lastReviewedAt wins; uses merge strategy for conflicts.
-    func syncReviewMetaToEntries() throws {
-        let allMeta = try modelContext.fetch(FetchDescriptor<VocabularyReviewMeta>())
-        let allEntries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
-
-        var entryById = [UUID: VocabularyEntry]()
-        for entry in allEntries {
-            entryById[entry.id] = entry
-        }
-
-        for meta in allMeta {
-            guard let entry = entryById[meta.id] else { continue }
-
-            let metaLastReviewed = meta.lastReviewedAt ?? .distantPast
-            let entryLastReviewed = entry.lastReviewedAt ?? .distantPast
-
-            if metaLastReviewed > entryLastReviewed {
-                entry.reviewIntervalHours = meta.reviewIntervalHours
-                entry.nextReviewAt = meta.nextReviewAt
-                entry.lastReviewedAt = meta.lastReviewedAt
-                entry.reviewCount = max(entry.reviewCount, meta.reviewCount)
-                entry.lapseCount = max(entry.lapseCount, meta.lapseCount)
-                entry.reviewStreak = meta.reviewStreak
-                entry.lastReviewFeedbackRaw = meta.lastReviewFeedbackRaw
-            } else if entryLastReviewed > metaLastReviewed {
-                meta.reviewIntervalHours = entry.reviewIntervalHours
-                meta.nextReviewAt = entry.nextReviewAt
-                meta.lastReviewedAt = entry.lastReviewedAt
-                meta.reviewCount = max(meta.reviewCount, entry.reviewCount)
-                meta.lapseCount = max(meta.lapseCount, entry.lapseCount)
-                meta.reviewStreak = entry.reviewStreak
-                meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
-            }
-        }
-
-        try modelContext.save()
-        print("✅ syncReviewMetaToEntries completed. Synced \(allMeta.count) meta records.")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).
@@ -183,11 +136,62 @@ actor BackgroundSyncActor {
         )
         let entries = try modelContext.fetch(descriptor)
         guard !entries.isEmpty else { return }
-        for entry in entries {
-            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
-        }
         entries.forEach { modelContext.delete($0) }
         try modelContext.save()
         print("🧹 Cleared \(entries.count) stale synced entries on startup.")
+    }
+
+    /// Build the payload for pushing review states to the backend.
+    func buildReviewStatePushPayload() throws -> [[String: Any]] {
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
+        )
+        let entries = try modelContext.fetch(descriptor)
+
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+
+        var payload: [[String: Any]] = []
+        for entry in entries {
+            guard let lastReviewed = entry.lastReviewedAt else { continue }
+            payload.append([
+                "word": entry.word,
+                "review_interval_hours": entry.reviewIntervalHours,
+                "next_review_at": formatter.string(from: entry.nextReviewAt),
+                "last_reviewed_at": formatter.string(from: lastReviewed),
+                "review_count": entry.reviewCount,
+                "lapse_count": entry.lapseCount,
+                "review_streak": entry.reviewStreak,
+                "last_review_feedback": entry.lastReviewFeedbackRaw,
+            ])
+        }
+        return payload
+    }
+
+    // MARK: - Review State Merge Helper
+
+    private static func mergeReviewState(from card: KGCard, into entry: VocabularyEntry) {
+        guard let serverLastStr = card.lastReviewedAt else { return }
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        // Also try without fractional seconds
+        guard let serverLast = formatter.date(from: serverLastStr) ?? {
+            let f = ISO8601DateFormatter()
+            f.formatOptions = [.withInternetDateTime]
+            return f.date(from: serverLastStr)
+        }() else { return }
+
+        let localLast = entry.lastReviewedAt ?? .distantPast
+        if serverLast > localLast {
+            entry.reviewIntervalHours = card.reviewIntervalHours ?? entry.reviewIntervalHours
+            if let nextStr = card.nextReviewAt, let nextDate = formatter.date(from: nextStr) {
+                entry.nextReviewAt = nextDate
+            }
+            entry.lastReviewedAt = serverLast
+            entry.reviewCount = max(entry.reviewCount, card.reviewCount ?? 0)
+            entry.lapseCount = max(entry.lapseCount, card.lapseCount ?? 0)
+            entry.reviewStreak = card.reviewStreak ?? entry.reviewStreak
+            entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
+        }
     }
 }

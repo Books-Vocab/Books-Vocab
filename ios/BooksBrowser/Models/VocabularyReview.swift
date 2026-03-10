@@ -107,7 +107,7 @@ extension VocabularyEntry {
         return isReviewDue ? .due : .reviewed
     }
 
-    func applyReviewFeedback(_ feedback: ReviewFeedback, now: Date = Date(), meta: VocabularyReviewMeta? = nil) {
+    func applyReviewFeedback(_ feedback: ReviewFeedback, now: Date = Date()) {
         let updatedInterval = VocabularyReviewPolicy.nextIntervalHours(
             currentIntervalHours: reviewIntervalHours,
             feedback: feedback
@@ -127,52 +127,6 @@ extension VocabularyEntry {
             reviewStreak = 0
         }
 
-        meta?.applyReviewFeedback(feedback, now: now)
-    }
-}
-
-enum VocabularyReviewMetaHelper {
-    @MainActor
-    static func reviewMeta(for entry: VocabularyEntry, in context: ModelContext) -> VocabularyReviewMeta? {
-        let entryId = entry.id
-        let allMeta = (try? context.fetch(FetchDescriptor<VocabularyReviewMeta>())) ?? []
-        return allMeta.first { $0.id == entryId }
-    }
-
-    @MainActor
-    static func createReviewMeta(for entry: VocabularyEntry, in context: ModelContext) {
-        let meta = VocabularyReviewMeta(
-            id: entry.id,
-            wordKey: entry.word.lowercased(),
-            context: entry.context,
-            bookTitle: entry.bookTitle,
-            chapterTitle: entry.chapterTitle,
-            originalDateAdded: entry.dateAdded,
-            pronunciation: entry.pronunciation
-        )
-        meta.reviewIntervalHours = entry.reviewIntervalHours
-        meta.nextReviewAt = entry.nextReviewAt
-        meta.lastReviewedAt = entry.lastReviewedAt
-        meta.reviewCount = entry.reviewCount
-        meta.lapseCount = entry.lapseCount
-        meta.reviewStreak = entry.reviewStreak
-        meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
-        context.insert(meta)
-    }
-
-    static func deleteReviewMeta(for entry: VocabularyEntry, in context: ModelContext) {
-        let entryId = entry.id
-        let allMeta = (try? context.fetch(FetchDescriptor<VocabularyReviewMeta>())) ?? []
-        if let meta = allMeta.first(where: { $0.id == entryId }) {
-            context.delete(meta)
-        }
-    }
-
-    static func deleteAllReviewMeta(in context: ModelContext) {
-        let allMeta = (try? context.fetch(FetchDescriptor<VocabularyReviewMeta>())) ?? []
-        for meta in allMeta {
-            context.delete(meta)
-        }
     }
 }
 

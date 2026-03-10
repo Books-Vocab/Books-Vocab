@@ -34,12 +34,12 @@ struct BooksBrowserApp: App {
 
         let cloudConfig = ModelConfiguration(
             "CloudStore",
-            schema: Schema([Book.self, VocabularyReviewMeta.self]),
+            schema: Schema([Book.self]),
             cloudKitDatabase: .automatic
         )
 
         if let container = try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, VocabularyReviewMeta.self,
+            for: Book.self, VocabularyEntry.self,
             configurations: localConfig, cloudConfig
         ) {
             modelContainer = container
@@ -63,7 +63,7 @@ struct BooksBrowserApp: App {
 
         do {
             modelContainer = try ModelContainer(
-                for: Book.self, VocabularyEntry.self, VocabularyReviewMeta.self,
+                for: Book.self, VocabularyEntry.self,
                 configurations: localConfig, cloudConfig
             )
             AuthManager.shared.modelContainer = modelContainer
@@ -75,31 +75,6 @@ struct BooksBrowserApp: App {
     private static func runMigrationIfNeeded(container: ModelContainer) {
         let migrationKey = "iCloudDataMigrationCompleted_v1"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
-
-        let context = ModelContext(container)
-
-        // Migrate existing VocabularyEntry review data → VocabularyReviewMeta
-        if let entries = try? context.fetch(FetchDescriptor<VocabularyEntry>()) {
-            for entry in entries {
-                let meta = VocabularyReviewMeta(
-                    id: entry.id,
-                    wordKey: entry.word.lowercased(),
-                    context: entry.context,
-                    bookTitle: entry.bookTitle,
-                    chapterTitle: entry.chapterTitle,
-                    originalDateAdded: entry.dateAdded,
-                    pronunciation: entry.pronunciation
-                )
-                meta.reviewIntervalHours = entry.reviewIntervalHours
-                meta.nextReviewAt = entry.nextReviewAt
-                meta.lastReviewedAt = entry.lastReviewedAt
-                meta.reviewCount = entry.reviewCount
-                meta.lapseCount = entry.lapseCount
-                meta.reviewStreak = entry.reviewStreak
-                meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
-                context.insert(meta)
-            }
-        }
 
         // Migrate EPUBs to iCloud Documents
         let localEpubsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
@@ -120,7 +95,6 @@ struct BooksBrowserApp: App {
             }
         }
 
-        try? context.save()
         UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
@@ -143,22 +117,12 @@ struct BooksBrowserApp: App {
                         GIDSignIn.sharedInstance.handle(url)
                     }
                     .task {
-                        let actor = BackgroundSyncActor(modelContainer: modelContainer)
                         if !authManager.isLoggedIn {
+                            let actor = BackgroundSyncActor(modelContainer: modelContainer)
                             try? await actor.clearSyncedData()
-                        } else {
-                            try? await actor.syncReviewMetaToEntries()
                         }
                         await subscriptionManager.loadProducts()
                         await subscriptionManager.refresh(using: kgService, authManager: authManager)
-                    }
-                    .onChange(of: scenePhase) { _, newPhase in
-                        if newPhase == .active && authManager.isLoggedIn {
-                            Task {
-                                let actor = BackgroundSyncActor(modelContainer: modelContainer)
-                                try? await actor.syncReviewMetaToEntries()
-                            }
-                        }
                     }
             }
         }
