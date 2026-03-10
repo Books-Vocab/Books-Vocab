@@ -9,7 +9,7 @@ import Foundation
 
 enum StatsPresentation {
     struct ForecastBucket: Identifiable {
-        let id: String   // 日期 key 或 label
+        let id: String
         let label: String
         let count: Int
     }
@@ -20,7 +20,7 @@ enum StatsPresentation {
         let dueToday: Int
         let currentStreak: Int
         let longestStreak: Int
-        let activity: [String: Int]       // "yyyy-MM-dd" -> count
+        let activity: [String: Int]
         let forecast: [ForecastBucket]
     }
 
@@ -34,16 +34,18 @@ enum StatsPresentation {
         return f
     }()
 
-    static func buildSummary(from entries: [VocabularyEntry]) -> Summary {
+    static func buildSummary(
+        from entries: [VocabularyEntry],
+        reviewRecords: [ReviewRecord]
+    ) -> Summary {
         let synced = entries.filter { $0.isSynced && $0.syncAction != .delete }
         let now = Date()
 
-        // Forecast: group nextReviewAt into daily buckets for next 14 days
+        // Forecast
         var forecastMap: [String: Int] = [:]
         let todayKey = dayFormatter.string(from: now)
         for entry in synced {
-            let reviewDate = entry.nextReviewAt
-            let key = dayFormatter.string(from: reviewDate)
+            let key = dayFormatter.string(from: entry.nextReviewAt)
             if key <= todayKey {
                 forecastMap[todayKey, default: 0] += 1
             } else {
@@ -65,22 +67,17 @@ enum StatsPresentation {
                 f.dateFormat = "M/d"
                 label = f.string(from: date)
             }
-            forecast.append(ForecastBucket(
-                id: key,
-                label: label,
-                count: forecastMap[key] ?? 0
-            ))
+            forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
-        let dueToday = forecastMap[todayKey] ?? 0
-        let activity = ReviewActivityLog.activity(for: 180)
+        let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords)
 
         return Summary(
             totalCards: synced.count,
-            reviewedToday: ReviewActivityLog.reviewedToday(),
-            dueToday: dueToday,
-            currentStreak: ReviewActivityLog.currentStreak(),
-            longestStreak: ReviewActivityLog.longestStreak(),
+            reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords),
+            dueToday: forecastMap[todayKey] ?? 0,
+            currentStreak: ReviewActivityLog.currentStreak(records: reviewRecords),
+            longestStreak: ReviewActivityLog.longestStreak(records: reviewRecords),
             activity: activity,
             forecast: forecast
         )
