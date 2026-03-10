@@ -1,4 +1,5 @@
 import SwiftUI
+import StoreKit
 
 struct SubscriptionPaywallSheet: View {
     @Environment(\.vocabSkin) private var vocabSkin
@@ -6,6 +7,12 @@ struct SubscriptionPaywallSheet: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.authManager) private var authManager
     @Environment(\.kgService) private var kgService
+
+    private var windowScene: UIWindowScene {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first!
+    }
 
     var body: some View {
         NavigationStack {
@@ -78,23 +85,43 @@ struct SubscriptionPaywallSheet: View {
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
 
-            // 管理按鈕（弱化）
-            Button {
-                Task {
-                    await subscriptionManager.refresh(using: kgService, authManager: authManager)
-                }
-            } label: {
-                HStack {
-                    if subscriptionManager.isLoading {
-                        ProgressView().controlSize(.small)
+            // 管理按鈕
+            VStack(spacing: vocabSkin.spacing.controlGap) {
+                if !isAdminGranted {
+                    Button {
+                        Task {
+                            try? await AppStore.showManageSubscriptions(in: windowScene)
+                        }
+                    } label: {
+                        HStack {
+                            Text("管理訂閱")
+                            Spacer()
+                            Image(systemName: "arrow.up.forward")
+                                .font(vocabSkin.typography.iconSmall)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        }
+                        .frame(maxWidth: .infinity)
                     }
-                    Text(primaryActionTitle)
-                    Spacer()
+                    .buttonStyle(.vocabAction(.primary))
                 }
-                .frame(maxWidth: .infinity)
+
+                Button {
+                    Task {
+                        await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                    }
+                } label: {
+                    HStack {
+                        if subscriptionManager.isLoading {
+                            ProgressView().controlSize(.small)
+                        }
+                        Text(primaryActionTitle)
+                        Spacer()
+                    }
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.vocabAction(.neutral))
+                .disabled(subscriptionManager.isLoading)
             }
-            .buttonStyle(.vocabAction(.neutral))
-            .disabled(subscriptionManager.isLoading)
 
             if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
                 VocabStateMessageCard(
