@@ -17,8 +17,8 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
-    @Query(sort: \ReviewRecord.reviewedAt, order: .descending)
-    private var reviewRecords: [ReviewRecord]
+    @Query(sort: \ReviewRecord.reviewedAt, order: .reverse)
+    var reviewRecords: [ReviewRecord]
 
     @State private var summary: StatsPresentation.Summary?
     @State private var showCalendar = false
