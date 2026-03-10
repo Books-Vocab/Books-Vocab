@@ -159,6 +159,21 @@ enum VocabularyReviewMetaHelper {
         meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
         context.insert(meta)
     }
+
+    static func deleteReviewMeta(for entry: VocabularyEntry, in context: ModelContext) {
+        let entryId = entry.id
+        let allMeta = (try? context.fetch(FetchDescriptor<VocabularyReviewMeta>())) ?? []
+        if let meta = allMeta.first(where: { $0.id == entryId }) {
+            context.delete(meta)
+        }
+    }
+
+    static func deleteAllReviewMeta(in context: ModelContext) {
+        let allMeta = (try? context.fetch(FetchDescriptor<VocabularyReviewMeta>())) ?? []
+        for meta in allMeta {
+            context.delete(meta)
+        }
+    }
 }
 
 extension Date {
