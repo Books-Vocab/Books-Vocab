@@ -174,7 +174,8 @@ enum CardRichTextRenderer {
                 range: NSRange(location: 0, length: nsRaw.length)
             )
         else {
-            return raw
+            // 無標記詞：顯示前 (2*radius+1) 個詞
+            return truncateLeadingWords(raw, count: 2 * radiusWords + 1)
         }
 
         let beforeText = nsRaw.substring(to: match.range.location)
@@ -221,6 +222,17 @@ enum CardRichTextRenderer {
         }
 
         return prefix + trimmedBefore + target + trimmedAfter + suffix
+    }
+
+    private static func truncateLeadingWords(_ text: String, count: Int) -> String {
+        let nsText = text as NSString
+        let tokens = tokenPattern.matches(in: text, range: NSRange(location: 0, length: nsText.length))
+        let validIndices = tokens.indices.filter { tokenContainsWordCharacters(tokens[$0], in: text) }
+        guard validIndices.count > count else { return text }
+        let lastTokenIndex = validIndices[count - 1]
+        let lastToken = tokens[lastTokenIndex]
+        let cutEnd = lastToken.range.location + lastToken.range.length
+        return nsText.substring(to: cutEnd) + "..."
     }
 
     private static func tokenContainsWordCharacters(
