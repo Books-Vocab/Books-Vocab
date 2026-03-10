@@ -106,7 +106,9 @@ cmd_env_drift() {
   local remote_real_dir
   remote_real_dir=$(run_remote "cd $REMOTE_DIR >/dev/null 2>&1 && pwd")
 
-  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$remote_real_dir" <<'PY'
+  local container_app_root="/app"
+
+  python3 - "$LOCAL_DIR/.env" "$remote_real_dir/.env" "$LOCAL_DIR" "$container_app_root" <<'PY'
 import os
 import subprocess
 import sys
@@ -115,11 +117,11 @@ from pathlib import Path
 local_env_path = Path(sys.argv[1])
 remote_env_path = sys.argv[2]
 local_dir = Path(sys.argv[3]).resolve()
-remote_dir = sys.argv[4].strip()
+container_root = sys.argv[4].strip()
 
 host_specific = {
-    "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{remote_dir}/certs"),
-    "APP_STORE_CONNECT_PRIVATE_KEY_PATH": (local_dir / "certs", f"{remote_dir}/certs"),
+    "APP_STORE_ROOT_CA_PATH": (local_dir / "certs", f"{container_root}/certs"),
+    "APP_STORE_CONNECT_PRIVATE_KEY_PATH": (local_dir / "certs", f"{container_root}/certs"),
 }
 
 def parse_env_text(text: str):
