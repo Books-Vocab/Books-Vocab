@@ -11,22 +11,22 @@ struct CardDocumentView: View {
                 switch block {
                 case .hero(let hero):
                     CardDocumentHeroBlock(hero: hero)
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .example(let paragraph):
                     CardDocumentExampleBlock(paragraph: paragraph)
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .divider:
                     CardSectionDivider()
 
                 case .meaning(let meaning):
                     CardDocumentMeaningBlock(meaning: meaning)
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .source(let source):
                     CardDocumentSourceBlock(source: source)
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
                 }
             }
         }
@@ -38,9 +38,9 @@ private struct CardDocumentHeroBlock: View {
     let hero: CardDocumentHero
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-            HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
-                VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+            HStack(alignment: .top, spacing: vocabSkin.metrics.cardBlockContentGap) {
+                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
                     HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.heroBaselineGap) {
                         Text(hero.word)
                             .font(vocabSkin.typography.detailWord)
@@ -89,13 +89,13 @@ private struct CardDocumentMeaningBlock: View {
     let meaning: CardDocumentMeaning
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
             Text(meaning.title)
                 .font(vocabSkin.typography.translationTitle)
                 .foregroundStyle(vocabSkin.palette.primaryText)
                 .fixedSize(horizontal: false, vertical: true)
 
-            VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+            VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
                 ForEach(meaning.paragraphs) { paragraph in
                     CardInlineText(
                         paragraph: paragraph,
@@ -113,7 +113,7 @@ private struct CardDocumentSourceBlock: View {
     let source: CardDocumentSource
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源", systemImage: "quote.opening")
 
             CardInlineText(
