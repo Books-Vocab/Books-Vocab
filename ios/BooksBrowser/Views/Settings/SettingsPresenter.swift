@@ -442,6 +442,7 @@ private enum SettingsPresenterPreviewData {
             debug: nil
         ),
         subscription: .init(
+            isActive: true,
             planName: "Pro",
             badgeText: "啟用中",
             badgeTone: .success,
@@ -484,6 +485,7 @@ private enum SettingsPresenterPreviewData {
             debug: nil
         ),
         subscription: .init(
+            isActive: false,
             planName: "—",
             badgeText: "載入中",
             badgeTone: .neutral,
@@ -526,6 +528,7 @@ private enum SettingsPresenterPreviewData {
             debug: nil
         ),
         subscription: .init(
+            isActive: true,
             planName: "Pro",
             badgeText: "啟用中",
             badgeTone: .success,

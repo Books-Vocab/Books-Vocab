@@ -78,6 +78,7 @@ struct SettingsView: View {
                 : nil,
             subscription: authManager.isLoggedIn
                 ? .init(
+                    isActive: pro.is_active,
                     planName: pro.plan_name ?? "BooksBrowser Pro",
                     badgeText: subscriptionBadgeText(for: pro),
                     badgeTone: subscriptionBadgeTone(for: pro),
