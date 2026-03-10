@@ -101,4 +101,19 @@ enum AppShadows {
     static let paperPressedOpacity: Double = 0.02
     static let paperPressedRadius: CGFloat = 4
     static let paperPressedY: CGFloat = 2
+
+    // MARK: - 封面/卡片微陰影（書架封面、小卡片）
+    static let coverOpacity: Double = 0.06
+    static let coverRadius: CGFloat = 4
+    static let coverY: CGFloat = 2
+
+    // MARK: - 控制元件微陰影（Badge、小按鈕）
+    static let controlOpacity: Double = 0.18
+    static let controlRadius: CGFloat = 2
+    static let controlY: CGFloat = 1
+
+    // MARK: - 面板陰影（Reader overlay、大面板）
+    static let panelOpacity: Double = 0.70
+    static let panelRadius: CGFloat = 28
+    static let panelY: CGFloat = 14
 }
