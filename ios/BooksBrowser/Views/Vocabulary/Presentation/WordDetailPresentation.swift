@@ -20,7 +20,7 @@ enum WordDetailPresentation {
                         entry.linkedEntry(for: link, in: allEntries) == nil ? nil : link.cardId
                     }
             ),
-            reviewInfo: entry.shouldAppearInKnowledgeList ? reviewInfo(for: entry) : nil
+            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil
         )
     }
 
@@ -40,54 +40,44 @@ enum WordDetailPresentation {
         ]
     }
 
-    private static func reviewInfo(
-        for entry: VocabularyEntry
-    ) -> WordDetailPresenter.State.ReviewInfo {
+    private static func reviewProgress(
+        for entry: VocabularyEntry,
+        now: Date = Date()
+    ) -> VocabReviewProgress {
         let state = entry.reviewState
-        let snapshot = entry.reviewSnapshot
 
-        let stateTone: VocabActionTone
         switch state {
         case .unlearned:
-            stateTone = .neutral
-        case .due:
-            stateTone = .warning
-        case .reviewed:
-            stateTone = .success
+            return VocabReviewProgress(
+                statusLabel: L10n.string("未學習"),
+                detailLabel: L10n.format("首輪 %@", entry.reviewIntervalHours.detailCompactHourLabel),
+                fraction: nil,
+                tone: .yellow
+            )
+        case .due, .reviewed:
+            let startDate = entry.lastReviewedAt ?? entry.dateAdded
+            let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
+            let elapsed = max(0, now.timeIntervalSince(startDate))
+            let fraction = min(max(elapsed / interval, 0), 1)
+
+            let detailLabel = "\(elapsed.detailCompactLabel) / \(interval.detailCompactLabel)"
+
+            let tone: VocabReviewProgress.Tone
+            if fraction >= 1 { tone = .red }
+            else if fraction >= 0.72 { tone = .orange }
+            else if fraction >= 0.4 { tone = .yellow }
+            else { tone = .green }
+
+            return VocabReviewProgress(
+                statusLabel: state == .due ? L10n.string("待複習") : L10n.string("已複習"),
+                detailLabel: detailLabel,
+                fraction: fraction,
+                tone: tone
+            )
         }
-
-        let nextReviewLabel: String?
-        if state == .unlearned {
-            nextReviewLabel = nil
-        } else {
-            nextReviewLabel = L10n.format("下次 %@", snapshot.nextReviewAt.reviewRelativeDescription())
-        }
-
-        let intervalLabel: String?
-        if snapshot.intervalHours < 24 {
-            intervalLabel = L10n.format("間隔 %@h", String(format: "%.0f", snapshot.intervalHours))
-        } else {
-            let days = snapshot.intervalHours / 24
-            intervalLabel = L10n.format("間隔 %@天", String(format: "%.1f", days))
-        }
-
-        let reviewCountLabel: String? = snapshot.reviewCount > 0
-            ? L10n.format("已複習 %@ 次", "\(snapshot.reviewCount)")
-            : nil
-
-        let streakLabel: String? = snapshot.streak > 1
-            ? L10n.format("連續 %@ 次", "\(snapshot.streak)")
-            : nil
-
-        return WordDetailPresenter.State.ReviewInfo(
-            stateLabel: state.title,
-            stateTone: stateTone,
-            nextReviewLabel: nextReviewLabel,
-            intervalLabel: intervalLabel,
-            reviewCountLabel: reviewCountLabel,
-            streakLabel: streakLabel
-        )
     }
+
+    // MARK: - Sync metadata
 
     private static func syncMetadataItem(
         for syncStatus: Int
@@ -100,5 +90,41 @@ enum WordDetailPresentation {
         case .pending:
             return .init(icon: "clock", text: L10n.string("待同步"))
         }
+    }
+}
+
+// MARK: - Compact time formatting (mirrors WordRowPresentation helpers)
+
+private extension TimeInterval {
+    var detailCompactLabel: String {
+        let seconds = max(0, self)
+        let minute: TimeInterval = 60
+        let hour: TimeInterval = 3600
+        let day: TimeInterval = 86_400
+
+        if seconds < hour {
+            let minutes = max(1, Int((seconds / minute).rounded()))
+            return "\(minutes)m"
+        }
+        if seconds < day {
+            let hours = seconds / hour
+            return hours < 10 ? hours.detailSingleDecimal + "h" : "\(Int(hours.rounded()))h"
+        }
+        let days = seconds / day
+        return days < 10 ? days.detailSingleDecimal + "d" : "\(Int(days.rounded()))d"
+    }
+}
+
+private extension Double {
+    var detailCompactHourLabel: String {
+        (self * 3600).detailCompactLabel
+    }
+
+    var detailSingleDecimal: String {
+        let rounded = (self * 10).rounded() / 10
+        if rounded == rounded.rounded() {
+            return String(Int(rounded))
+        }
+        return String(format: "%.1f", rounded)
     }
 }
