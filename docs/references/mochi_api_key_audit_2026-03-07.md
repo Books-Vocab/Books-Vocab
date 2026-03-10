@@ -55,8 +55,8 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 關鍵檔案：
 
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsView.swift`
-- `booksbrowser_ios/BooksBrowser/Services/KGService.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsView.swift`
+- `ios/BooksBrowser/Services/KGService.swift`
 
 ## 2. backend runtime API 也是走 per-user config
 
@@ -70,7 +70,7 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 關鍵檔案：
 
-- `knowledge_graph_api/src/kg/api.py`
+- `backend/src/kg/api.py`
 
 這代表從 app 設定頁進來的正常使用流程，**主要依賴的是 per-user config，而不是系統層 `.env`**。
 
@@ -80,7 +80,7 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 ## 1. `.env` 與 `.env.example` 仍保留 `MOCHI_API_KEY`
 
-`knowledge_graph_api/.env.example` 仍列出：
+`backend/.env.example` 仍列出：
 
 - `MOCHI_API_KEY=...`
 
@@ -90,8 +90,8 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 以下腳本仍直接從環境變數讀取：
 
-- `knowledge_graph_api/scripts/reset_system.py`
-- `knowledge_graph_api/scripts/migrate_to_apple.py`
+- `backend/scripts/reset_system.py`
+- `backend/scripts/migrate_to_apple.py`
 
 這表示「系統層 `MOCHI_API_KEY` 已不再是主 runtime 路徑」，但**尚未從所有維護腳本中完全清除**。
 
@@ -105,7 +105,7 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 ## API runtime 期望的格式
 
-在 `knowledge_graph_api/src/kg/api.py` 中，`get_current_user()` 回傳：
+在 `backend/src/kg/api.py` 中，`get_current_user()` 回傳：
 
 - `record`
 - `config: record.get("config", {})`
@@ -130,13 +130,13 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 ## CLI 與部分本地資料仍在讀頂層欄位
 
-但 `knowledge_graph_api/src/kg/cli.py` 仍在讀：
+但 `backend/src/kg/cli.py` 仍在讀：
 
 - `users.get(user_id, {}).get("mochi_api_key")`
 
 也就是頂層欄位，而不是 `config.mochi_api_key`。
 
-同時，本地 `knowledge_graph_api/data/users.json` 目前也出現了頂層 `mochi_api_key` 形式。
+同時，本地 `backend/data/users.json` 目前也出現了頂層 `mochi_api_key` 形式。
 
 因此，現在的實際狀態不是單純「從系統 env 改成 per-user DB」而已，而是：
 
@@ -155,7 +155,7 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 ## repo 內存在已儲存的使用者 Mochi key
 
-`knowledge_graph_api/data/users.json` 內存在 `mochi_api_key` 欄位。報告撰寫時未揭露其值，但從安全角度看，**這代表敏感憑證目前已進入 repo workspace 的一般檔案**。
+`backend/data/users.json` 內存在 `mochi_api_key` 欄位。報告撰寫時未揭露其值，但從安全角度看，**這代表敏感憑證目前已進入 repo workspace 的一般檔案**。
 
 即使這是本地開發資料，也有以下風險：
 
@@ -191,7 +191,7 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 
 ## B. 修正 CLI 與 runtime 對齊
 
-將 `knowledge_graph_api/src/kg/cli.py` 改為讀：
+將 `backend/src/kg/cli.py` 改為讀：
 
 - `users.get(user_id, {}).get("config", {}).get("mochi_api_key")`
 
@@ -221,16 +221,16 @@ iOS 端在登入後會先讀取使用者設定，將 `config.mochi_api_key` 取�
 建議優先執行：
 
 1. 旋轉 Mochi key
-2. 清理 `knowledge_graph_api/data/users.json`
+2. 清理 `backend/data/users.json`
 3. 檢查是否有其他備份、副本、匯出檔保留舊 key
 
 # 附錄：本次核對的主要檔案
 
-- `knowledge_graph_api/src/kg/api.py`
-- `knowledge_graph_api/src/kg/cli.py`
-- `knowledge_graph_api/scripts/reset_system.py`
-- `knowledge_graph_api/scripts/migrate_to_apple.py`
-- `knowledge_graph_api/.env.example`
-- `knowledge_graph_api/data/users.json`
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsView.swift`
-- `booksbrowser_ios/BooksBrowser/Services/KGService.swift`
+- `backend/src/kg/api.py`
+- `backend/src/kg/cli.py`
+- `backend/scripts/reset_system.py`
+- `backend/scripts/migrate_to_apple.py`
+- `backend/.env.example`
+- `backend/data/users.json`
+- `ios/BooksBrowser/Views/Settings/SettingsView.swift`
+- `ios/BooksBrowser/Services/KGService.swift`

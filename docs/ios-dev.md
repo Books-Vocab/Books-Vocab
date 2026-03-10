@@ -2,9 +2,9 @@
 
 ## 核心資訊
 
-- **專案路徑**: `booksbrowser_ios/BooksBrowser.xcodeproj`
+- **專案路徑**: `ios/BooksBrowser.xcodeproj`
 - **Scheme**: `BooksBrowser`
-- **工作目錄**: `/Users/chenliangyu/.codex/worktrees/17eb/booksbrowser_workspace/`
+- **工作目錄**: `projects/kg/`
 - **最低支援**: iOS（參考 Info.plist，當前目標為現代 iOS）
 
 ---
@@ -21,7 +21,7 @@
 
 ```bash
 xcodebuild \
-  -project booksbrowser_ios/BooksBrowser.xcodeproj \
+  -project ios/BooksBrowser.xcodeproj \
   -scheme BooksBrowser \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
   -quiet build

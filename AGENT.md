@@ -5,8 +5,8 @@ This workspace is a **single monorepo**.
 ## Scope (rough)
 - Root git tracks everything under this workspace.
 - Main code areas:
-  - `booksbrowser_ios/` (iOS app)
-  - `knowledge_graph_api/` (backend)
+  - `ios/` (iOS app)
+  - `backend/` (backend)
 - Ops/docs live at root: `docs/`, `ops/`, `devops.sh`, `support.html`, `privacy.html`.
 
 ## Agent Rules (rough)
