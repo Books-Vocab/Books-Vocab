@@ -124,16 +124,8 @@ struct WordRow: View {
     }
 
     private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
-        HStack(alignment: .center, spacing: vocabSkin.spacing.reviewProgressGap) {
-            Text(progress.statusLabel.localized)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(resolveProgressTone(progress.tone))
-
-            Spacer(minLength: vocabSkin.spacing.inlineGap)
-
-            reviewProgressAccessory(progress)
-        }
-        .padding(.top, vocabSkin.spacing.compactRowAccessoryTopInset)
+        reviewProgressAccessory(progress)
+            .padding(.top, vocabSkin.spacing.compactRowAccessoryTopInset)
     }
 
     @ViewBuilder
