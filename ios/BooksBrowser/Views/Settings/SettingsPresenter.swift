@@ -35,16 +35,32 @@ struct SettingsPresenter: View {
     }
 
     private var sectionViews: [AnyView] {
-        var sections: [AnyView] = [AnyView(authSection)]
+        var sections: [AnyView] = [
+            AnyView(SettingsAccountSection(
+                state: state.auth,
+                manualLoginUserId: manualLoginUserId,
+                actions: actions
+            ))
+        ]
 
-        sections.append(AnyView(preferencesSection))
+        sections.append(AnyView(SettingsPreferencesSection(
+            state: state.preferences,
+            actions: actions
+        )))
 
         if let subscription = state.subscription {
-            sections.append(AnyView(subscriptionSection(subscription)))
+            sections.append(AnyView(SettingsSubscriptionSection(
+                state: subscription,
+                actions: actions
+            )))
         }
 
         if let kg = state.kg {
-            sections.append(AnyView(kgSection(kg)))
+            sections.append(AnyView(SettingsKGSection(
+                state: kg,
+                debugLocalServerURL: debugLocalServerURL,
+                actions: actions
+            )))
         }
 
         if let optionalIntegration = state.optionalIntegration {
@@ -54,372 +70,13 @@ struct SettingsPresenter: View {
         sections.append(AnyView(aboutSection))
 
         if let danger = state.danger {
-            sections.append(AnyView(dangerSection(danger)))
+            sections.append(AnyView(SettingsDangerSection(
+                state: danger,
+                actions: actions
+            )))
         }
 
         return sections
-    }
-
-    private var authSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "帳號", icon: "person.crop.circle")
-
-            VStack(spacing: 0) {
-                if state.auth.isLoggedIn {
-                    loggedInView
-                        .transition(.modalSwap)
-                } else {
-                    loginView
-                        .transition(.modalSwap)
-                }
-            }
-            .settingsCard()
-            .animation(AppMotion.modalSwapSpring, value: state.auth.isLoggedIn)
-        }
-    }
-
-    private var preferencesSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "偏好設定", icon: "globe")
-
-            VStack(spacing: 0) {
-                SettingsRow(icon: "character.bubble", label: "語言") {
-                    Menu {
-                        ForEach(AppLanguage.allCases) { language in
-                            Button {
-                                actions.selectLanguage(language)
-                            } label: {
-                                if state.preferences.selectedLanguage == L10n.string(language.titleKey) {
-                                    Label(L10n.string(language.titleKey), systemImage: "checkmark")
-                                } else {
-                                    Text(L10n.string(language.titleKey))
-                                }
-                            }
-                        }
-                    } label: {
-                        HStack(spacing: 6) {
-                            Text(state.preferences.selectedLanguage)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-            .settingsCard()
-
-            SettingsSectionFooter("切換後會立即套用到 app 介面文字。")
-        }
-    }
-
-    private var loginView: some View {
-        VStack(spacing: 0) {
-            VStack(spacing: SettingsMetrics.authHeroSpacing) {
-                Image(systemName: "sparkles")
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(.tertiary)
-                    .opacity(state.auth.iconBreathing ? 0.45 : 0.75)
-                    .animation(AppMotion.breathing, value: state.auth.iconBreathing)
-
-                VStack(spacing: SettingsMetrics.authCopySpacing) {
-                    Text("解鎖完整功能")
-                        .font(vocabSkin.typography.displayTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                    Text("AI 翻譯・知識圖譜・雲端同步")
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-            }
-            .padding(.vertical, SettingsMetrics.authHeroVerticalPadding)
-            .frame(maxWidth: .infinity)
-
-            Rectangle()
-                .fill(vocabSkin.palette.divider)
-                .frame(height: 1)
-
-            VStack(spacing: SettingsMetrics.authActionSpacing) {
-                Button(action: actions.loginWithGoogle) {
-                    SettingsAuthButton(title: "以 Google 繼續") {
-                        SettingsSocialBadge(kind: .google)
-                    }
-                }
-                .buttonStyle(.plain)
-                .appSettingsButtonChrome()
-
-                Button(action: actions.loginWithApple) {
-                    SettingsAuthButton(title: "以 Apple 繼續") {
-                        SettingsSocialBadge(kind: .apple)
-                    }
-                }
-                .buttonStyle(.plain)
-                .appSettingsButtonChrome()
-
-#if DEBUG
-                if let manualLoginUserId, let debug = state.auth.debug {
-                    Rectangle()
-                        .fill(vocabSkin.palette.divider)
-                        .frame(height: 1)
-                        .padding(.vertical, 8)
-
-                    HStack(spacing: 8) {
-                        TextField("帳號 ID（手動）", text: manualLoginUserId)
-                            .font(vocabSkin.typography.monoLabel)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-
-                        Button("登入", action: actions.manualLogin)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
-                    }
-
-                    if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
-                        Text(manualLoginHint)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                    }
-                }
-#endif
-
-                if let error = state.auth.authError {
-                    Text(error)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.destructive)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8)
-                        .padding(.bottom, 4)
-                }
-            }
-            .padding(.horizontal, SettingsMetrics.authBlockPadding)
-            .padding(.vertical, SettingsMetrics.authBlockPadding)
-        }
-    }
-
-    private var loggedInView: some View {
-        VStack(spacing: 0) {
-            SettingsAuthSummary(state: state.auth)
-            .padding(vocabSkin.spacing.cardPadding)
-
-            Rectangle()
-                .fill(vocabSkin.palette.divider)
-                .frame(height: 1)
-
-            Button(role: .destructive, action: actions.logout) {
-                Text("登出帳號")
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.destructive)
-            }
-            .buttonStyle(.appAction(.destructive))
-            .padding(vocabSkin.spacing.cardPadding)
-        }
-    }
-
-    private func kgSection(_ kg: SettingsPresenterState.KGSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "Knowledge Graph", icon: "brain.head.profile")
-
-            VStack(spacing: 0) {
-                SettingsRow(icon: "server.rack", label: "伺服器") {
-                    Text(kg.serverURL)
-                        .font(vocabSkin.typography.monoLabel)
-                        .multilineTextAlignment(.trailing)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-
-                SettingsDivider()
-
-                SettingsRow(icon: "antenna.radiowaves.left.and.right", label: "連線狀態") {
-                    HStack(spacing: 8) {
-                        let statusTone = kg.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
-                        Circle()
-                            .fill(statusTone)
-                            .frame(width: 8, height: 8)
-                            .shadow(
-                                color: statusTone.opacity(0.6),
-                                radius: kg.connectionPulse ? 5 : 2
-                            )
-                        Text((kg.isConnected ? "已連線" : "離線").localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                    }
-                }
-
-                if kg.isConnected {
-                    SettingsDivider()
-
-                    SettingsRow(icon: "text.book.closed", label: "字庫卡片") {
-                        Text(L10n.format("%@ 張", "\(kg.serverCardCount)"))
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                    }
-                    .transition(.statusRowReveal)
-
-                    if let lastSyncDescription = kg.lastSyncDescription {
-                        SettingsDivider()
-
-                        SettingsRow(icon: "arrow.clockwise", label: "最後同步") {
-                            Text(lastSyncDescription)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                        }
-                        .transition(.statusRowReveal)
-                    }
-                }
-
-#if DEBUG
-                if let debug = kg.debug, let debugLocalServerURL {
-                    SettingsDivider()
-
-                    VStack(alignment: .leading, spacing: 12) {
-                        Text("DEBUG 後端")
-                            .font(vocabSkin.typography.captionStrong)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-
-                        HStack(spacing: 8) {
-                            Button("遠端正式站", action: actions.useProductionBackend)
-                                .buttonStyle(.borderedProminent)
-                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
-
-                            Button("本地開發站", action: actions.useLocalBackend)
-                                .buttonStyle(.borderedProminent)
-                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
-                        }
-
-                        TextField("本地伺服器 URL", text: debugLocalServerURL)
-                            .font(vocabSkin.typography.monoLabel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
-
-                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。" : "目前使用遠端正式站。")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-                    .padding(vocabSkin.spacing.cardPadding)
-                }
-#endif
-            }
-            .settingsCard()
-            .animation(AppMotion.emphasizedSpring, value: kg.isConnected)
-            .animation(AppMotion.emphasizedSpring, value: kg.serverCardCount)
-
-            SettingsSectionFooter("KG 伺服器負責生詞 AI 增強、知識連結與可選的第三方整合。")
-        }
-    }
-
-    private func subscriptionSection(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "訂閱", icon: "sparkles.rectangle.stack")
-
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: 14) {
-                    HStack(alignment: .top, spacing: 12) {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(subscription.planName)
-                                .font(vocabSkin.typography.sectionTitle)
-                                .foregroundStyle(vocabSkin.palette.primaryText)
-
-                            Text(subscription.summary)
-                                .font(vocabSkin.typography.body)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .lineSpacing(4)
-                        }
-
-                        Spacer()
-
-                        subscriptionBadge(subscription)
-                    }
-
-                    Text(subscription.detail)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                    if let pricingUnavailableMessage = subscription.pricingUnavailableMessage {
-                        VocabStateMessageCard(
-                            title: "App Store 價格暫時不可用",
-                            systemImage: "exclamationmark.triangle.fill",
-                            description: pricingUnavailableMessage
-                        )
-                        .transition(.statusRowReveal)
-                    }
-
-                    subscriptionMetaRow(
-                        title: "權限來源",
-                        value: subscription.sourceLabel
-                    )
-                    .transition(.statusRowReveal)
-
-                    if subscription.isRestoreAvailable {
-                        subscriptionMetaRow(
-                            title: subscription.restoreLabel,
-                            value: subscription.restoreDescription,
-                            emphasized: true
-                        )
-                        .transition(.statusRowReveal)
-                    }
-
-                    subscriptionMetaRow(
-                        title: "管理方式",
-                        value: subscription.managementNote
-                    )
-                    .transition(.statusRowReveal)
-
-                    Button(action: actions.showSubscriptionPaywall) {
-                        HStack(spacing: 10) {
-                            if subscription.isRefreshing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(vocabSkin.typography.iconMedium)
-                            }
-
-                            Text(subscription.ctaTitle)
-                                .font(vocabSkin.typography.body.weight(.medium))
-
-                            Spacer()
-                        }
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 12)
-                        .background(vocabSkin.palette.pageBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(subscription.isRefreshing)
-                }
-                .padding(vocabSkin.spacing.cardPadding)
-            }
-            .settingsCard()
-            .animation(AppMotion.phaseChange, value: subscription.badgeText)
-            .animation(AppMotion.phaseChange, value: subscription.pricingUnavailableMessage)
-
-            SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。")
-        }
-    }
-
-    private func subscriptionMetaRow(
-        title: String,
-        value: String,
-        emphasized: Bool = false
-    ) -> some View {
-        VStack(alignment: .leading, spacing: 4) {
-            Text(title)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(emphasized ? vocabSkin.palette.accent : vocabSkin.palette.tertiaryText)
-
-            Text(value)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 
     private func optionalIntegrationSection(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
@@ -469,61 +126,15 @@ struct SettingsPresenter: View {
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
-
             }
             .settingsCard()
         }
     }
-
-    private func dangerSection(_ danger: SettingsPresenterState.DangerSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "危險操作", icon: "exclamationmark.triangle")
-
-            VStack(spacing: 0) {
-                Button(role: .destructive, action: actions.requestDeleteAccount) {
-                    HStack {
-                        Text((danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料").localized)
-                            .font(vocabSkin.typography.body)
-                            .foregroundStyle(vocabSkin.palette.destructive)
-                        Spacer()
-                        Image(systemName: "trash")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.destructive)
-                    }
-                }
-                .buttonStyle(.appAction(.destructive))
-                .disabled(danger.isDeletingAccount)
-            }
-            .settingsCard()
-
-            SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。")
-        }
-    }
 }
 
-private extension SettingsPresenter {
-    func subscriptionBadge(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
-        let tone: Color
-        switch subscription.badgeTone {
-        case .neutral:
-            tone = vocabSkin.palette.secondaryText
-        case .accent:
-            tone = vocabSkin.palette.accent
-        case .success:
-            tone = vocabSkin.palette.success
-        }
+// MARK: - Shared Section Helpers (internal，供各 Section 檔案使用)
 
-        return Text(subscription.badgeText)
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(tone)
-            .padding(.horizontal, 9)
-            .padding(.vertical, 6)
-            .background(tone.opacity(0.12))
-            .clipShape(Capsule())
-    }
-}
-
-private struct SettingsSectionHeader: View {
+struct SettingsSectionHeader: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let icon: String
@@ -540,7 +151,7 @@ private struct SettingsSectionHeader: View {
     }
 }
 
-private struct SettingsSectionFooter: View {
+struct SettingsSectionFooter: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let text: String
 
@@ -559,171 +170,9 @@ private struct SettingsSectionFooter: View {
     }
 }
 
-private typealias SettingsDivider = AppSettingsDivider
+typealias SettingsDivider = AppSettingsDivider
 
-private enum SettingsSocialKind {
-    case google
-    case apple
-}
-
-private enum SettingsMetrics {
-    static let authHeroSpacing: CGFloat = 10
-    static let authCopySpacing: CGFloat = 4
-    static let authActionSpacing: CGFloat = 10
-    static let authHeroVerticalPadding: CGFloat = 24
-    static let authBlockPadding: CGFloat = 16
-    static let authButtonSpacing: CGFloat = 12
-    static let authRowSpacing: CGFloat = 14
-    static let authStatusSpacing: CGFloat = 6
-    static let authAvatarSize: CGFloat = 46
-    static let authSocialBadgeSize: CGFloat = 22
-    static let authSocialShadowRadius: CGFloat = 2
-    static let authSocialShadowY: CGFloat = 1
-}
-
-private struct SettingsSocialBadge: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let kind: SettingsSocialKind
-
-    var body: some View {
-        ZStack {
-            Circle()
-                .fill(backgroundColor)
-                .frame(
-                    width: SettingsMetrics.authSocialBadgeSize,
-                    height: SettingsMetrics.authSocialBadgeSize
-                )
-                .shadow(
-                    color: shadowColor,
-                    radius: SettingsMetrics.authSocialShadowRadius,
-                    y: SettingsMetrics.authSocialShadowY
-                )
-
-            Group {
-                switch kind {
-                case .google:
-                    Text("G")
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(AppBrandColors.googleRed)
-                case .apple:
-                    Image(systemName: "apple.logo")
-                        .font(vocabSkin.typography.iconTiny)
-                        .foregroundStyle(.white)
-                }
-            }
-        }
-    }
-
-    private var backgroundColor: Color {
-        switch kind {
-        case .google:
-            return vocabSkin.palette.cardBackground
-        case .apple:
-            return AppBrandColors.appleBlack
-        }
-    }
-
-    private var shadowColor: Color {
-        switch kind {
-        case .google:
-            return vocabSkin.palette.shadow.opacity(0.9)
-        case .apple:
-            return .clear
-        }
-    }
-}
-
-private struct SettingsAuthButton<Leading: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let title: String
-    @ViewBuilder let leading: Leading
-
-    var body: some View {
-        HStack(spacing: SettingsMetrics.authButtonSpacing) {
-            leading
-
-            Text(title.localized)
-                .font(vocabSkin.typography.body.weight(.medium))
-
-            Spacer()
-
-            Image(systemName: "chevron.right")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-        }
-    }
-}
-
-private struct SettingsAuthSummary: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let state: SettingsPresenterState.AuthSection
-
-    var body: some View {
-        HStack(spacing: SettingsMetrics.authRowSpacing) {
-            avatar
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(state.displayName)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(1)
-
-                if let email = state.email {
-                    Text(email)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineLimit(1)
-                }
-            }
-
-            Spacer()
-
-            VStack(alignment: .trailing, spacing: SettingsMetrics.authStatusSpacing) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(vocabSkin.typography.symbolLarge)
-                    .foregroundStyle(vocabSkin.palette.success)
-                    .symbolEffect(.bounce, value: state.isLoggedIn)
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var avatar: some View {
-        ZStack {
-            Circle()
-                .fill(vocabSkin.palette.mutedFill)
-                .frame(
-                    width: SettingsMetrics.authAvatarSize,
-                    height: SettingsMetrics.authAvatarSize
-                )
-
-            if let avatarURL = state.avatarURL {
-                AsyncImage(url: avatarURL) { image in
-                    image.resizable().scaledToFill()
-                } placeholder: {
-                    Image(systemName: "person.fill")
-                        .font(vocabSkin.typography.symbolLarge)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-                .frame(
-                    width: SettingsMetrics.authAvatarSize,
-                    height: SettingsMetrics.authAvatarSize
-                )
-                .clipShape(Circle())
-            } else if let initials = state.userInitials {
-                Text(initials)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-            } else {
-                Image(systemName: "person.fill")
-                    .font(vocabSkin.typography.symbolLarge)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-            }
-        }
-    }
-}
-
-private struct SettingsRow<Content: View>: View {
+struct SettingsRow<Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let icon: String
     let label: String
@@ -746,13 +195,7 @@ private struct SettingsRow<Content: View>: View {
     }
 }
 
-private extension View {
-    func settingsCard() -> some View {
-        modifier(SettingsCardModifier())
-    }
-}
-
-private struct SettingsCardModifier: ViewModifier {
+struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
     func body(content: Content) -> some View {
@@ -762,26 +205,13 @@ private struct SettingsCardModifier: ViewModifier {
     }
 }
 
-private struct SettingsButtonChromeModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
-
-    func body(content: Content) -> some View {
-        content
-            .padding(SettingsMetrics.authBlockPadding)
-            .background(vocabSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-            )
+extension View {
+    func settingsCard() -> some View {
+        modifier(SettingsCardModifier())
     }
 }
 
-private extension View {
-    func appSettingsButtonChrome() -> some View {
-        modifier(SettingsButtonChromeModifier())
-    }
-}
+// MARK: - Sheet Views
 
 struct OptionalIntegrationInfoSheetView: View {
     @Environment(\.vocabSkin) private var vocabSkin
@@ -1012,23 +442,6 @@ struct SubscriptionPaywallSheet: View {
         }
     }
 
-    private var sourceLine: String {
-        switch subscriptionManager.activePaywallSource {
-        case .settings:
-            return "設定"
-        case .sync:
-            return "同步"
-        case .graph:
-            return "關聯圖"
-        case .reader:
-            return "閱讀器 AI"
-        case .knowledge:
-            return "知識庫"
-        case nil:
-            return "訂閱"
-        }
-    }
-
     private var isAdminGranted: Bool {
         subscriptionManager.entitlements.pro.is_active && subscriptionManager.entitlements.pro.source == "admin"
     }
@@ -1093,7 +506,7 @@ struct SubscriptionPaywallSheet: View {
     }
 }
 
-// MARK: - Preview Data
+// MARK: - Preview
 
 private enum SettingsPresenterPreviewData {
 
@@ -1111,7 +524,6 @@ private enum SettingsPresenterPreviewData {
         requestDeleteAccount: {}
     )
 
-    // 1. Logged out — default settings screen
     static let loggedOut = SettingsPresenterState(
         auth: .init(
             isLoggedIn: false,
@@ -1131,7 +543,6 @@ private enum SettingsPresenterPreviewData {
         danger: nil
     )
 
-    // 2. Logged in with subscription active
     static let subscribedActive = SettingsPresenterState(
         auth: .init(
             isLoggedIn: true,
@@ -1172,7 +583,6 @@ private enum SettingsPresenterPreviewData {
         danger: .init(isDeletingAccount: false)
     )
 
-    // 3. Logged in with subscription loading/error
     static let subscriptionLoading = SettingsPresenterState(
         auth: .init(
             isLoggedIn: true,
@@ -1213,7 +623,6 @@ private enum SettingsPresenterPreviewData {
         danger: .init(isDeletingAccount: false)
     )
 
-    // 4. Delete account in progress
     static let deletingAccount = SettingsPresenterState(
         auth: .init(
             isLoggedIn: true,
