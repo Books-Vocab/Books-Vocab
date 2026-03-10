@@ -19,7 +19,8 @@ enum WordDetailPresentation {
                     .compactMap { link in
                         entry.linkedEntry(for: link, in: allEntries) == nil ? nil : link.cardId
                     }
-            )
+            ),
+            reviewInfo: entry.shouldAppearInKnowledgeList ? reviewInfo(for: entry) : nil
         )
     }
 
@@ -37,6 +38,55 @@ enum WordDetailPresentation {
             ),
             syncMetadataItem(for: card.syncStatus)
         ]
+    }
+
+    private static func reviewInfo(
+        for entry: VocabularyEntry
+    ) -> WordDetailPresenter.State.ReviewInfo {
+        let state = entry.reviewState
+        let snapshot = entry.reviewSnapshot
+
+        let stateTone: VocabActionTone
+        switch state {
+        case .unlearned:
+            stateTone = .neutral
+        case .due:
+            stateTone = .warning
+        case .reviewed:
+            stateTone = .success
+        }
+
+        let nextReviewLabel: String?
+        if state == .unlearned {
+            nextReviewLabel = nil
+        } else {
+            nextReviewLabel = L10n.format("下次 %@", snapshot.nextReviewAt.reviewRelativeDescription())
+        }
+
+        let intervalLabel: String?
+        if snapshot.intervalHours < 24 {
+            intervalLabel = L10n.format("間隔 %@h", String(format: "%.0f", snapshot.intervalHours))
+        } else {
+            let days = snapshot.intervalHours / 24
+            intervalLabel = L10n.format("間隔 %@天", String(format: "%.1f", days))
+        }
+
+        let reviewCountLabel: String? = snapshot.reviewCount > 0
+            ? L10n.format("已複習 %@ 次", "\(snapshot.reviewCount)")
+            : nil
+
+        let streakLabel: String? = snapshot.streak > 1
+            ? L10n.format("連續 %@ 次", "\(snapshot.streak)")
+            : nil
+
+        return WordDetailPresenter.State.ReviewInfo(
+            stateLabel: state.title,
+            stateTone: stateTone,
+            nextReviewLabel: nextReviewLabel,
+            intervalLabel: intervalLabel,
+            reviewCountLabel: reviewCountLabel,
+            streakLabel: streakLabel
+        )
     }
 
     private static func syncMetadataItem(
