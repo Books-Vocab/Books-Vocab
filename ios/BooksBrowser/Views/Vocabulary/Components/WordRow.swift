@@ -180,6 +180,7 @@ struct WordRow: View {
                         Capsule(style: .continuous)
                             .fill(resolveProgressTone(progress.tone))
                             .frame(width: max(6, proxy.size.width * fraction))
+                            .animation(AppMotion.controlEaseOut, value: fraction)
                     }
                     .accessibilityLabel("複習進度")
                     .accessibilityValue("\(Int(fraction * 100))%")
