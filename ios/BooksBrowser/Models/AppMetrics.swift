@@ -149,6 +149,10 @@ enum TodayReviewMetrics {
     /// 字數 ≤ 12 時的字體大小（最大）
     static let counterFontSizeLarge: CGFloat = 28
 
+    // ── Swipe Hint ──────────────────────────────────────────────────
+    /// Swipe hint 標籤字體大小（忘記/記得）
+    static let swipeHintFontSize: CGFloat = 34
+
     // ── Micro Adjustment ────────────────────────────────────────────
     /// 卡片疊層微調（消除 1pt 視覺縫隙）
     static let stackLayerMicroOffset: CGFloat = -1
