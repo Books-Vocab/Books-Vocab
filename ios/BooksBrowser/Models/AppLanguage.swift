@@ -66,15 +66,36 @@ final class AppLanguageStore: ObservableObject {
     @Published private(set) var selection: AppLanguage
 
     private let defaults: UserDefaults
+    private let cloud = CloudPreferencesSync.shared
 
     private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
-        if let raw = defaults.string(forKey: Keys.selectedLanguage),
-           let selection = AppLanguage(rawValue: raw) {
+        let raw = cloud.string(forKey: Keys.selectedLanguage) ?? defaults.string(forKey: Keys.selectedLanguage)
+        if let raw, let selection = AppLanguage(rawValue: raw) {
             self.selection = selection
         } else {
             self.selection = .system
         }
+        NotificationCenter.default.addObserver(
+            self,
+            selector: #selector(handleCloudChange(_:)),
+            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default
+        )
+    }
+
+    deinit {
+        NotificationCenter.default.removeObserver(self)
+    }
+
+    @objc private func handleCloudChange(_ notification: Notification) {
+        guard let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
+              keys.contains(Keys.selectedLanguage),
+              let raw = cloud.string(forKey: Keys.selectedLanguage),
+              let value = AppLanguage(rawValue: raw),
+              value != selection
+        else { return }
+        DispatchQueue.main.async { self.selection = value }
     }
 
     var locale: Locale {
@@ -93,6 +114,7 @@ final class AppLanguageStore: ObservableObject {
         guard selection != language else { return }
         selection = language
         defaults.set(language.rawValue, forKey: Keys.selectedLanguage)
+        cloud.set(language.rawValue, forKey: Keys.selectedLanguage)
     }
 
     private var effectiveLanguage: AppLanguage {

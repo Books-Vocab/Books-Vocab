@@ -22,6 +22,7 @@ struct BooksBrowserApp: App {
     let bookFileManager: any BookFileManaging
 
     init() {
+        NSUbiquitousKeyValueStore.default.synchronize()
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
         bookFileManager = LocalBookFileManager()
         let schema = Schema([Book.self, VocabularyEntry.self])
