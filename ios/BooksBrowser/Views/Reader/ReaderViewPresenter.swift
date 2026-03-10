@@ -212,10 +212,12 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 translationPanel
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
+                    .transition(.readerPanelReveal)
             } else if state.chrome.overlay == .settings && state.panelMode == .vocab {
                 settingsPanel
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
+                    .transition(.readerPanelReveal)
             }
         }
         .animation(AppMotion.panelState, value: state.chrome.overlay)
