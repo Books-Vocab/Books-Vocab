@@ -48,6 +48,7 @@ struct CardSectionLabel: View {
 /// 詳情頁頂部英雄區塊：單字 + 音標 + POS + Tier + 模式 + 翻譯
 struct CardHeroSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let card: CardPresentation
     let colorScheme: ColorScheme
 
@@ -65,6 +66,15 @@ struct CardHeroSection: View {
                             Text(pos)
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
+                        }
+
+                        Button {
+                            SpeechService.shared.speak(card.word)
+                        } label: {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .symbolEffect(.bounce, value: copyTrigger)
                         }
                     }
 
@@ -94,6 +104,13 @@ struct CardHeroSection: View {
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = card.word
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
@@ -102,6 +119,7 @@ struct CardHeroSection: View {
 /// 例句渲染區塊
 struct CardExamplesSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let examples: [String]
     let colorScheme: ColorScheme
 
@@ -123,6 +141,13 @@ struct CardExamplesSection: View {
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             }
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = examples.joined(separator: "\n")
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
@@ -131,9 +156,18 @@ struct CardExamplesSection: View {
 /// 來源上下文 + 書名 + 章節
 struct CardSourceSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let sourceContext: String
     let bookTitle: String
     let chapterTitle: String?
+
+    private var copyText: String {
+        var parts = [bookTitle]
+        if let chapter = chapterTitle {
+            parts.append(chapter)
+        }
+        return parts.joined(separator: " · ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
@@ -161,6 +195,13 @@ struct CardSourceSection: View {
             .font(vocabSkin.typography.caption)
             .foregroundStyle(vocabSkin.palette.quaternaryText)
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = copyText
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
@@ -169,6 +210,7 @@ struct CardSourceSection: View {
 /// 教學筆記（Rich Text）
 struct CardExplanationSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let explanation: String
     let colorScheme: ColorScheme
 
@@ -187,6 +229,13 @@ struct CardExplanationSection: View {
             )
             .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = explanation
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
@@ -195,6 +244,7 @@ struct CardExplanationSection: View {
 /// 單字變化形列表
 struct CardFormsSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let forms: [String]
     let rootForm: String?
     let colorScheme: ColorScheme
@@ -214,5 +264,12 @@ struct CardFormsSection: View {
                 }
             }
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = forms.joined(separator: ", ")
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
