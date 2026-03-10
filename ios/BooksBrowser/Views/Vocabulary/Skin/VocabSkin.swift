@@ -375,7 +375,9 @@ extension VocabSkin {
                 tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
                 tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
                 warning: theme.palette.warning,
-                retry: theme.palette.warning,
+                retry: theme.colorScheme == .dark
+                    ? Color(hue: 0.08, saturation: 0.45, brightness: 0.78)
+                    : Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
                 info: link,
                 destructive: theme.palette.destructive,
                 highlightMark: theme.colorScheme == .dark
@@ -414,8 +416,8 @@ extension VocabSkin {
             success: Color(red: 0.50, green: 0.64, blue: 0.50),
             tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
             tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
-            warning: Color(red: 0.72, green: 0.63, blue: 0.36),
-            retry: Color(red: 0.72, green: 0.63, blue: 0.36),
+            warning: Color(hue: 0.1, saturation: 0.8, brightness: 0.8),
+            retry: Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
             info: Color(red: 0.47, green: 0.56, blue: 0.67),
             destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
             highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
