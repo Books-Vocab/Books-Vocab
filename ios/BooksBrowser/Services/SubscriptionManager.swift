@@ -108,7 +108,7 @@ final class SubscriptionManager: SubscriptionManaging {
                     product: product,
                     using: kgService
                 )
-                await self.refresh(using: kgService, authManager: authManager)
+                await self.refresh(using: kgService, authManager: authManager, force: true)
             }
         }
     }

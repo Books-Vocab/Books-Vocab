@@ -109,7 +109,7 @@ struct SubscriptionPaywallSheet: View {
 
                 Button {
                     Task {
-                        await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                        await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
                     }
                 } label: {
                     HStack {
