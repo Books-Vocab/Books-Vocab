@@ -27,11 +27,33 @@ enum VocabularyEntryPresentation {
     static func filteredKnowledgeEntries(
         in entries: [VocabularyEntry],
         reviewState: VocabularyReviewState,
-        searchText: String
+        searchText: String,
+        sortOption: KGVocabSortOption = .default
     ) -> [VocabularyEntry] {
-        let stateFiltered = syncedKnowledgeEntries(in: entries).filter { $0.reviewState == reviewState }
-        guard !searchText.isEmpty else { return stateFiltered }
-        return stateFiltered.filter {
+        let baseFiltered = entries
+            .filter { $0.shouldAppearInKnowledgeList && $0.reviewState == reviewState }
+
+        let sorted: [VocabularyEntry]
+        switch sortOption {
+        case .default:
+            sorted = baseFiltered.sorted(by: compareKnowledgeEntries)
+        case .alphabetical:
+            sorted = baseFiltered.sorted {
+                $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
+            }
+        case .dateAdded:
+            sorted = baseFiltered.sorted { $0.dateAdded > $1.dateAdded }
+        case .difficulty:
+            sorted = baseFiltered.sorted { lhs, rhs in
+                let lhsTier = tierPriority(lhs.difficultyTier)
+                let rhsTier = tierPriority(rhs.difficultyTier)
+                if lhsTier != rhsTier { return lhsTier < rhsTier }
+                return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+            }
+        }
+
+        guard !searchText.isEmpty else { return sorted }
+        return sorted.filter {
             $0.word.localizedCaseInsensitiveContains(searchText) ||
             $0.translation.localizedCaseInsensitiveContains(searchText)
         }
