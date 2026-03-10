@@ -121,7 +121,7 @@ struct KnowledgeGraphPresenter: View {
                     VocabSliderRow(label: "連結粗細", value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
                 }
                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.overlayDrawerBottomInset + vocabSkin.spacing.compactChipVerticalPadding)
+                .padding(.bottom, vocabSkin.metrics.graphDrawerBottomInset)
             }
         }
         .frame(maxWidth: 420)

@@ -124,7 +124,7 @@ struct TodayReviewPresenter: View {
                 .font(vocabSkin.typography.monoLabel)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
                 .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
+                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
@@ -139,7 +139,7 @@ struct TodayReviewPresenter: View {
                 }
                 .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
                 .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
+                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)

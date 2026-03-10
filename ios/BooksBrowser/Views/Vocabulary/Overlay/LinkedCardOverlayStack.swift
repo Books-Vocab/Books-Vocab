@@ -7,6 +7,10 @@ private enum LinkedCardStackMetrics {
     static let layerOffsetY: CGFloat = 10
     /// 每層堆疊的尺寸縮減步長
     static let layerShrinkStep: CGFloat = 18
+    /// 第 0 層的水平 padding 基底（= cardBlockContentGap）
+    static let baseHorizontalPadding: CGFloat = 16
+    /// 第 0 層的垂直 padding 基底（= overlayVerticalInset）
+    static let baseVerticalPadding: CGFloat = 20
 }
 
 struct LinkedCardOverlayStack: View {
@@ -63,8 +67,8 @@ struct LinkedCardOverlayStack: View {
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
-        .padding(.horizontal, vocabSkin.metrics.cardBlockContentGap + CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
-        .padding(.vertical, vocabSkin.metrics.overlayVerticalInset + CGFloat(index) * LinkedCardStackMetrics.layerOffsetX)
+        .padding(.horizontal, LinkedCardStackMetrics.baseHorizontalPadding + CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
+        .padding(.vertical, LinkedCardStackMetrics.baseVerticalPadding + CGFloat(index) * LinkedCardStackMetrics.layerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
         .offset(x: CGFloat(index) * LinkedCardStackMetrics.layerOffsetX, y: CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
         .transition(.linkedOverlayCard)

@@ -52,7 +52,7 @@ struct VocabChromePill: View {
         }
         .foregroundStyle(emphasized ? Color.white : vocabSkin.palette.secondaryText)
         .padding(.horizontal, vocabSkin.spacing.chipHorizontalPaddingOuter)
-        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
+        .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                 .fill(emphasized ? vocabSkin.palette.primaryText : vocabSkin.palette.cardBackground)
