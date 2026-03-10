@@ -37,6 +37,7 @@ struct TodayReviewPresenter: View {
     @State private var swipeOffset: CGFloat = 0
     @State private var dismissPhase: DismissPhase = .idle
     @State private var dismissTask: Task<Void, Never>?
+    @State private var containerWidth: CGFloat = 390
 
     /// 卡片退場階段
     private enum DismissPhase {
@@ -96,11 +97,18 @@ struct TodayReviewPresenter: View {
                     completionState
                 }
             }
+            .frame(maxWidth: 600)
+            .frame(maxWidth: .infinity)
             .vocabCanvasBackground()
             .toolbar(.hidden, for: .navigationBar)
             .sensoryFeedback(.success, trigger: state.rememberedFeedbackTrigger)
             .sensoryFeedback(.warning, trigger: state.forgotFeedbackTrigger)
             .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: {
+                containerWidth = $0
+            }
         }
     }
 
@@ -162,7 +170,7 @@ struct TodayReviewPresenter: View {
         }
         .animation(AppMotion.reviewRevealSpring, value: state.revealStage)
         .offset(x: swipeOffset)
-        .rotationEffect(.degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
+        .rotationEffect(.degrees(Double(swipeOffset) / containerWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
         .opacity(cardOpacity)
         .overlay(alignment: .topLeading) {
             swipeHintView(for: swipeOffset)
@@ -173,16 +181,13 @@ struct TodayReviewPresenter: View {
     /// 卡片當前的 opacity，由 swipeOffset 和 dismissPhase 共同決定
     private var cardOpacity: Double {
         if dismissPhase == .swapping { return 0 }
-        return 1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
+        return 1.0 - Double(abs(swipeOffset)) / containerWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
     }
 
     private var swipeEnabled: Bool {
         state.revealStage.showsAnswer && !state.isAdvancing && dismissPhase == .idle
     }
 
-    private var screenWidth: CGFloat {
-        UIScreen.main.bounds.width
-    }
 
     private var swipeDragGesture: some Gesture {
         DragGesture(minimumDistance: 15, coordinateSpace: .local)
@@ -218,7 +223,7 @@ struct TodayReviewPresenter: View {
         dismissTask = Task { @MainActor in
             // 甩出畫面
             withAnimation(flingAnimation) {
-                swipeOffset = direction * screenWidth * 1.2
+                swipeOffset = direction * containerWidth * 1.2
             }
             try? await Task.sleep(for: .milliseconds(220))
             guard !Task.isCancelled else { return }
