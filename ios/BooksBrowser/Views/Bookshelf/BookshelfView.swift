@@ -25,7 +25,7 @@ private enum BookshelfMetrics {
     static let progressBarAccentOpacity: Double = 0.55
     static let loadingOverlaySpacing: CGFloat = 16
     static let loadingOverlayPadding: CGFloat = 28
-    static let loadingOverlayCornerRadius: CGFloat = 14
+    static let loadingOverlayCornerRadius: CGFloat = AppMetrics.cornerRadiusMedium
 }
 
 /// 書架主頁 — 簡約留白設計
