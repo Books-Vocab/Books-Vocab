@@ -21,6 +21,7 @@ def register_routes(
     *,
     get_privacy_policy: Callable[..., Any],
     get_support: Callable[..., Any],
+    get_terms: Callable[..., Any],
     get_user_config: Callable[..., Any],
     get_user_entitlements: Callable[..., Any],
     update_user_config: Callable[..., Any],
@@ -55,6 +56,7 @@ def register_routes(
         build_static_pages_router(
             get_privacy_policy=get_privacy_policy,
             get_support=get_support,
+            get_terms=get_terms,
         )
     )
     app.include_router(
