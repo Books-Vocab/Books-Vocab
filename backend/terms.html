@@ -1,0 +1,336 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Terms of Service — BooksBrowser</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg:       #f8f7f4;
+      --surface:  #fcfbfa;
+      --border:   #dbd6cd;
+      --border-l: #e8e4db;
+      --ink:      #2a2520;
+      --sub:      #7a756c;
+      --ink-light:#5a5550;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      background: var(--bg);
+      color: var(--ink);
+      font-family: 'Noto Sans TC', sans-serif;
+      font-weight: 300;
+      line-height: 1.8;
+      min-height: 100vh;
+    }
+
+    /* ── Nav ── */
+    nav {
+      height: 52px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 0 32px;
+      position: sticky;
+      top: 0;
+      z-index: 10;
+    }
+
+    .nav-brand {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 13px;
+      font-weight: 500;
+      letter-spacing: .08em;
+      text-transform: uppercase;
+      color: var(--ink);
+      text-decoration: none;
+    }
+
+    .nav-links {
+      display: flex;
+      gap: 28px;
+      list-style: none;
+    }
+
+    .nav-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      letter-spacing: .04em;
+      text-transform: uppercase;
+      color: var(--sub);
+      text-decoration: none;
+      transition: color .15s;
+    }
+
+    .nav-links a:hover { color: var(--ink); }
+    .nav-links a.active { color: var(--ink); }
+
+    /* ── Page ── */
+    .page {
+      max-width: 680px;
+      margin: 0 auto;
+      padding: 72px 24px 96px;
+    }
+
+    /* ── Header ── */
+    .page-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 16px;
+    }
+
+    h1 {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 24px;
+      font-weight: 500;
+      letter-spacing: .02em;
+      color: var(--ink);
+      margin-bottom: 12px;
+    }
+
+    .lead {
+      font-size: 14px;
+      color: var(--sub);
+      margin-bottom: 56px;
+      font-family: 'JetBrains Mono', monospace;
+      letter-spacing: .02em;
+    }
+
+    /* ── Section ── */
+    .section {
+      margin-bottom: 48px;
+    }
+
+    .section-label {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 10px;
+      font-weight: 500;
+      letter-spacing: .16em;
+      text-transform: uppercase;
+      color: var(--sub);
+      margin-bottom: 20px;
+      padding-bottom: 10px;
+      border-bottom: 1px solid var(--border-l);
+    }
+
+    p {
+      font-size: 14px;
+      color: var(--ink-light);
+      line-height: 1.9;
+      margin-bottom: 14px;
+    }
+
+    p:last-child { margin-bottom: 0; }
+
+    /* ── Plain list ── */
+    .plain-list {
+      list-style: none;
+      padding: 0;
+    }
+
+    .plain-list li {
+      font-size: 14px;
+      color: var(--ink-light);
+      line-height: 1.9;
+      padding: 4px 0;
+      padding-left: 16px;
+      position: relative;
+    }
+
+    .plain-list li::before {
+      content: '—';
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      position: absolute;
+      left: 0;
+      top: 6px;
+    }
+
+    a {
+      color: var(--ink);
+      text-decoration: none;
+      border-bottom: 1px solid var(--border);
+      padding-bottom: 1px;
+      transition: border-color .15s;
+    }
+
+    a:hover { border-color: var(--ink); }
+
+    /* ── Footer ── */
+    footer {
+      border-top: 1px solid var(--border-l);
+      padding: 28px 32px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+    }
+
+    .footer-copy {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      letter-spacing: .04em;
+    }
+
+    .footer-links {
+      display: flex;
+      gap: 20px;
+      list-style: none;
+    }
+
+    .footer-links a {
+      font-family: 'JetBrains Mono', monospace;
+      font-size: 11px;
+      color: var(--sub);
+      text-decoration: none;
+      border: none;
+      letter-spacing: .04em;
+      transition: color .15s;
+    }
+
+    .footer-links a:hover { color: var(--ink); }
+  </style>
+</head>
+<body>
+
+  <nav>
+    <a class="nav-brand" href="/">BooksBrowser</a>
+    <ul class="nav-links">
+      <li><a href="/support.html">Support</a></li>
+      <li><a href="/privacy.html">Privacy</a></li>
+      <li><a href="/terms.html" class="active">Terms</a></li>
+    </ul>
+  </nav>
+
+  <main class="page">
+
+    <p class="page-label">Terms of Service</p>
+    <h1>服務條款</h1>
+    <p class="lead">最後更新：2026 年 3 月</p>
+
+    <!-- 服務說明 -->
+    <section class="section">
+      <p class="section-label">服務說明</p>
+      <p>BooksBrowser 是一款電子書閱讀與詞彙管理應用程式，透過 BooksBrowser Pro 訂閱提供 AI 翻譯與語境解釋、知識庫同步、關聯圖與間隔複習等進階功能。</p>
+      <p>使用本服務即表示您同意本條款。若您不接受本條款，請停止使用本服務。</p>
+    </section>
+
+    <!-- 帳號條款 -->
+    <section class="section">
+      <p class="section-label">帳號條款</p>
+      <p>使用 BooksBrowser 進階功能需以 Apple Sign-In 或 Google 帳號登入。您須對帳號下的所有活動負責。</p>
+      <ul class="plain-list">
+        <li>您的帳號僅限本人使用，不得轉讓或共享</li>
+        <li>請妥善保管您的登入憑證</li>
+        <li>發現帳號異常存取請立即聯絡我們</li>
+        <li>我們保留在違反條款時終止帳號的權利</li>
+      </ul>
+    </section>
+
+    <!-- 訂閱與付款 -->
+    <section class="section">
+      <p class="section-label">訂閱與付款</p>
+      <p>BooksBrowser Pro 訂閱透過 Apple App Store 處理，所有付款由 Apple 代為收取與管理。</p>
+      <ul class="plain-list">
+        <li>訂閱費用以您所在地區的 App Store 標示價格為準</li>
+        <li>訂閱期間到期前 24 小時，Apple 將自動向您的帳號收取續訂費用</li>
+        <li>您可以在 Apple ID 設定的訂閱管理頁面隨時關閉自動續訂</li>
+        <li>關閉自動續訂後，當前訂閱期仍可繼續使用至到期日</li>
+        <li>退款申請須向 Apple 提出，依 Apple 退款政策處理</li>
+      </ul>
+    </section>
+
+    <!-- 免費試用 -->
+    <section class="section">
+      <p class="section-label">免費試用</p>
+      <p>新使用者可享有 BooksBrowser Pro 免費試用。試用期間可使用全部進階功能。</p>
+      <ul class="plain-list">
+        <li>免費試用期長度由 App Store 決定，以實際顯示為準</li>
+        <li>試用期結束後，若未取消，將自動轉為付費訂閱</li>
+        <li>每位 Apple ID 限享一次免費試用資格</li>
+        <li>如需避免被收費，請在試用期結束前至少 24 小時取消</li>
+      </ul>
+    </section>
+
+    <!-- 智慧財產權 -->
+    <section class="section">
+      <p class="section-label">智慧財產權</p>
+      <p>BooksBrowser 應用程式（包含介面設計、程式碼、功能邏輯）之智慧財產權歸開發者所有。</p>
+      <ul class="plain-list">
+        <li>您的詞彙資料、閱讀記錄及個人內容歸您所有</li>
+        <li>您匯入的電子書版權由原著作權人持有，請確認您具備合法使用權</li>
+        <li>未經許可不得複製、修改或散佈本應用程式</li>
+      </ul>
+    </section>
+
+    <!-- 使用限制 -->
+    <section class="section">
+      <p class="section-label">使用限制</p>
+      <p>使用本服務時，您不得從事以下行為：</p>
+      <ul class="plain-list">
+        <li>反向工程、反組譯或嘗試取得應用程式原始碼</li>
+        <li>以自動化方式大量存取 API 或伺服器資源</li>
+        <li>上傳或分享侵犯著作權的電子書內容</li>
+        <li>嘗試繞過訂閱驗證或存取控制機制</li>
+        <li>利用本服務從事任何違反當地法律的活動</li>
+      </ul>
+    </section>
+
+    <!-- 免責聲明 -->
+    <section class="section">
+      <p class="section-label">免責聲明</p>
+      <p>本服務以「現狀」提供，不作任何明示或默示的保證。AI 翻譯與解釋功能的輸出僅供參考，不保證完全準確。</p>
+      <p>在法律允許的最大範圍內，我們不對因使用或無法使用本服務所造成的任何直接或間接損失負責。</p>
+    </section>
+
+    <!-- 終止條款 -->
+    <section class="section">
+      <p class="section-label">終止條款</p>
+      <p>您可以隨時刪除帳號以終止使用本服務。帳號刪除後，伺服器上的個人資料將立即移除。</p>
+      <p>若您違反本條款，我們保留暫停或終止您的帳號存取權的權利，並無需事先通知。訂閱費用恕不退還。</p>
+    </section>
+
+    <!-- 修改條款 -->
+    <section class="section">
+      <p class="section-label">修改條款</p>
+      <p>我們保留隨時修改本條款的權利。重大變更將透過應用程式通知或電子郵件告知。繼續使用本服務即視為接受修改後的條款。</p>
+    </section>
+
+    <!-- 適用法律 -->
+    <section class="section">
+      <p class="section-label">適用法律</p>
+      <p>本條款受中華民國法律管轄。因本條款或本服務產生的任何爭議，雙方同意以協商方式解決；協商不成時，以台灣台北地方法院為第一審管轄法院。</p>
+    </section>
+
+    <!-- 聯絡 -->
+    <section class="section">
+      <p class="section-label">聯絡我們</p>
+      <p>如有任何服務條款相關問題，請寄信至 <a href="mailto:max970228@gmail.com">max970228@gmail.com</a>，或前往 <a href="/support.html">支援頁面</a>。</p>
+    </section>
+
+  </main>
+
+  <footer>
+    <span class="footer-copy">© 2026 BooksBrowser</span>
+    <ul class="footer-links">
+      <li><a href="/support.html">Support</a></li>
+      <li><a href="/privacy.html">Privacy</a></li>
+    </ul>
+  </footer>
+
+</body>
+</html>

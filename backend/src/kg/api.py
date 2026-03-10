@@ -223,6 +223,13 @@ def get_support():
         return HTMLResponse("<h1>Support Page Not Found</h1>", status_code=404)
     return FileResponse(support_path)
 
+def get_terms():
+    """Serve the terms of service HTML."""
+    terms_path = Path(__file__).resolve().parent.parent.parent / "terms.html"
+    if not terms_path.exists():
+        return HTMLResponse("<h1>Terms of Service Not Found</h1>", status_code=404)
+    return FileResponse(terms_path)
+
 # ---------------------------------------------------------------------------
 # Data directory & Multi-User
 # ---------------------------------------------------------------------------
@@ -320,6 +327,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         app,
         get_privacy_policy=get_privacy_policy,
         get_support=get_support,
+        get_terms=get_terms,
         get_user_config=get_user_config,
         get_user_entitlements=get_user_entitlements,
         update_user_config=update_user_config,
