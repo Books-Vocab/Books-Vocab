@@ -181,6 +181,7 @@ enum ReaderPresentationMetrics {
     enum Header {
         static let compactSpacing: CGFloat = 8
         static let contentHorizontalInset: CGFloat = 12
+        static let contentHorizontalInsetExpanded: CGFloat = 14
         static let contentVerticalInset: CGFloat = 10
         static let outerHorizontalInset: CGFloat = 20
         static let outerTopInset: CGFloat = 8
@@ -205,6 +206,11 @@ enum ReaderPresentationMetrics {
         static let horizontalInset: CGFloat = 28
         static let bottomInset: CGFloat = 60
         static let trailingStep: CGFloat = 28
+        static let paperOpacityTop: Double = 0.96
+        static let paperOpacityMid: Double = 0.88
+        static let paperOpacityFloor: Double = 0.08
+        static let textBlockEmphasisOpacity: Double = 0.22
+        static let textBlockBaseOpacity: Double = 0.12
     }
 }
 
