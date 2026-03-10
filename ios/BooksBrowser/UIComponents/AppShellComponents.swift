@@ -13,13 +13,6 @@ enum AppShellMetrics {
     static let toolbarBadgeVerticalPadding: CGFloat = 2
 }
 
-enum AppActionTone {
-    case primary
-    case neutral
-    case outline
-    case destructive
-}
-
 struct AppSectionCardStyle {
     let background: Color
     let border: Color
@@ -30,45 +23,9 @@ struct AppSectionCardStyle {
     let shadowY: CGFloat
 }
 
-struct AppToolbarGlyphStyle {
-    let iconFont: Font
-    let iconColor: Color
-    let badgeFont: Font
-    let badgeForeground: Color
-    let badgeBackground: Color
-    let spacing: CGFloat
-}
-
 struct AppSectionTextStyle {
     let font: Font
     let color: Color
-}
-
-struct AppEmptyStateStyle {
-    let iconFont: Font
-    let iconColor: Color
-    let titleFont: Font
-    let titleColor: Color
-    let descriptionFont: Font
-    let descriptionColor: Color
-    let spacing: CGFloat
-    let verticalPadding: CGFloat
-}
-
-struct AppStateMessageStyle {
-    let iconFont: Font
-    let iconColor: Color
-    let titleFont: Font
-    let titleColor: Color
-    let descriptionFont: Font
-    let descriptionColor: Color
-    let accentColor: Color
-    let background: Color
-    let border: Color
-    let spacing: CGFloat
-    let verticalPadding: CGFloat
-    let horizontalPadding: CGFloat
-    let cornerRadius: CGFloat
 }
 
 struct AppSectionCard<Content: View>: View {
@@ -118,52 +75,6 @@ struct AppSectionCard<Content: View>: View {
     }
 }
 
-struct AppToolbarGlyph: View {
-    @Environment(\.appTheme) private var appTheme
-    let systemImage: String
-    let badge: String?
-    let customStyle: AppToolbarGlyphStyle?
-    let tone: Color?
-
-    init(systemImage: String, badge: String? = nil, tone: Color? = nil) {
-        self.systemImage = systemImage
-        self.badge = badge
-        self.customStyle = nil
-        self.tone = tone
-    }
-
-    init(systemImage: String, badge: String? = nil, style: AppToolbarGlyphStyle) {
-        self.systemImage = systemImage
-        self.badge = badge
-        self.customStyle = style
-        self.tone = nil
-    }
-
-    var body: some View {
-        let style = customStyle ?? .themed(appTheme, tone: tone)
-        HStack(spacing: style.spacing) {
-            Image(systemName: systemImage)
-                .font(style.iconFont)
-                .foregroundStyle(style.iconColor)
-
-            if let badge {
-                Text(badge)
-                    .font(style.badgeFont)
-                    .foregroundStyle(style.badgeForeground)
-                    .padding(.horizontal, AppShellMetrics.toolbarBadgeHorizontalPadding)
-                    .padding(.vertical, AppShellMetrics.toolbarBadgeVerticalPadding)
-                    .background(
-                        RoundedRectangle(
-                            cornerRadius: AppMetrics.cornerRadiusSmall - 1,
-                            style: .continuous
-                        )
-                        .fill(style.badgeBackground)
-                    )
-            }
-        }
-    }
-}
-
 struct AppSectionHeader: View {
     @Environment(\.appTheme) private var appTheme
     let title: String
@@ -202,289 +113,6 @@ struct AppSectionFooter: View {
             .foregroundStyle(style.color)
             .lineSpacing(3)
             .padding(.horizontal, AppMetrics.spacingExtraSmall)
-    }
-}
-
-struct AppEmptyStateContent: View {
-    @Environment(\.appTheme) private var appTheme
-    let title: String
-    let systemImage: String
-    let description: String
-    let customStyle: AppEmptyStateStyle?
-
-    init(title: String, systemImage: String, description: String, style: AppEmptyStateStyle? = nil) {
-        self.title = title
-        self.systemImage = systemImage
-        self.description = description
-        self.customStyle = style
-    }
-
-    var body: some View {
-        let style = customStyle ?? .themed(appTheme)
-        VStack(spacing: style.spacing) {
-            Image(systemName: systemImage)
-                .font(style.iconFont)
-                .foregroundStyle(style.iconColor)
-
-            Text(title.localized)
-                .font(style.titleFont)
-                .foregroundStyle(style.titleColor)
-
-            Text(description.localized)
-                .font(style.descriptionFont)
-                .foregroundStyle(style.descriptionColor)
-                .multilineTextAlignment(.center)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-struct AppEmptyStateCard: View {
-    @Environment(\.appTheme) private var appTheme
-    let title: String
-    let systemImage: String
-    let description: String
-    let customCardStyle: AppSectionCardStyle?
-    let customContentStyle: AppEmptyStateStyle?
-
-    init(
-        title: String,
-        systemImage: String,
-        description: String,
-        cardStyle: AppSectionCardStyle? = nil,
-        contentStyle: AppEmptyStateStyle? = nil
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.description = description
-        self.customCardStyle = cardStyle
-        self.customContentStyle = contentStyle
-    }
-
-    var body: some View {
-        let cardStyle = customCardStyle ?? .themed(appTheme)
-        let contentStyle = customContentStyle ?? .themed(appTheme)
-
-        AppSectionCard(style: cardStyle) {
-            AppEmptyStateContent(
-                title: title,
-                systemImage: systemImage,
-                description: description,
-                style: contentStyle
-            )
-            .padding(.vertical, contentStyle.verticalPadding)
-        }
-    }
-}
-
-struct AppStateMessageContent<Accessory: View>: View {
-    @Environment(\.appTheme) private var appTheme
-    let title: String
-    let systemImage: String
-    let description: String?
-    let customStyle: AppStateMessageStyle?
-    @ViewBuilder let accessory: Accessory
-
-    init(
-        title: String,
-        systemImage: String,
-        description: String? = nil,
-        style: AppStateMessageStyle? = nil,
-        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.description = description
-        self.customStyle = style
-        self.accessory = accessory()
-    }
-
-    var body: some View {
-        let style = customStyle ?? .themed(appTheme)
-        VStack(alignment: .leading, spacing: style.spacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(style.iconFont)
-                    .foregroundStyle(style.iconColor)
-
-                Text(title.localized)
-                    .font(style.titleFont)
-                    .foregroundStyle(style.titleColor)
-
-                Spacer()
-            }
-
-            if let description, !description.isEmpty {
-                Text(description.localized)
-                    .font(style.descriptionFont)
-                    .foregroundStyle(style.descriptionColor)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-
-            accessory
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-}
-
-struct AppStateMessageCard<Accessory: View>: View {
-    @Environment(\.appTheme) private var appTheme
-    let title: String
-    let systemImage: String
-    let description: String?
-    let customStyle: AppStateMessageStyle?
-    @ViewBuilder let accessory: Accessory
-
-    init(
-        title: String,
-        systemImage: String,
-        description: String? = nil,
-        style: AppStateMessageStyle? = nil,
-        @ViewBuilder accessory: () -> Accessory = { EmptyView() }
-    ) {
-        self.title = title
-        self.systemImage = systemImage
-        self.description = description
-        self.customStyle = style
-        self.accessory = accessory()
-    }
-
-    var body: some View {
-        let style = customStyle ?? .themed(appTheme)
-        AppSectionCard(padding: 0) {
-            AppStateMessageContent(
-                title: title,
-                systemImage: systemImage,
-                description: description,
-                style: style
-            ) {
-                accessory
-            }
-            .padding(.horizontal, style.horizontalPadding)
-            .padding(.vertical, style.verticalPadding)
-        }
-        .background(style.background)
-        .clipShape(RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
-                .stroke(style.border, lineWidth: 1)
-        )
-    }
-}
-
-struct AppTabOption<ID: Hashable>: Identifiable, Hashable {
-    let id: ID
-    let title: String
-    let count: Int?
-    let systemImage: String?
-
-    init(id: ID, title: String, count: Int? = nil, systemImage: String? = nil) {
-        self.id = id
-        self.title = title
-        self.count = count
-        self.systemImage = systemImage
-    }
-}
-
-struct AppTabSelectorStyle {
-    let iconFont: Font
-    let titleFont: Font
-    let countFont: Font
-    let iconSelectedColor: Color
-    let iconUnselectedColor: Color
-    let textSelectedColor: Color
-    let textUnselectedColor: Color
-    let countSelectedFill: Color
-    let countUnselectedFill: Color
-    let selectedBackground: Color
-    let unselectedBackground: Color
-    let selectedBorder: Color
-    let unselectedBorder: Color
-    let selectedOuterBorder: Color
-    let unselectedOuterBorder: Color
-    let containerBackground: Color
-    let controlRadius: CGFloat
-    let containerRadius: CGFloat
-    let outerBorderInset: CGFloat
-}
-
-struct AppTabSelector<ID: Hashable>: View {
-    let options: [AppTabOption<ID>]
-    @Binding var selection: ID
-    let style: AppTabSelectorStyle
-
-    var body: some View {
-        HStack(spacing: 8) {
-            ForEach(options) { option in
-                Button {
-                    withAnimation(AppMotion.chipSelectionEaseOut) {
-                        selection = option.id
-                    }
-                } label: {
-                    HStack(spacing: 6) {
-                        if let systemImage = option.systemImage {
-                            Image(systemName: systemImage)
-                                .font(style.iconFont)
-                                .foregroundStyle(selection == option.id ? style.iconSelectedColor : style.iconUnselectedColor)
-                                .fixedSize()
-                        }
-
-                        Text(option.title.localized)
-                            .font(style.titleFont)
-                            .foregroundStyle(selection == option.id ? style.textSelectedColor : style.textUnselectedColor)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.72)
-                            .layoutPriority(1)
-
-                        if let count = option.count {
-                            Text("\(count)")
-                                .font(style.countFont)
-                                .minimumScaleFactor(0.7)
-                                .monospacedDigit()
-                                .lineLimit(1)
-                                .fixedSize(horizontal: true, vertical: false)
-                                .frame(minWidth: 26)
-                                .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
-                                .background(
-                                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall - 1, style: .continuous)
-                                        .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
-                                )
-                        }
-                    }
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
-                    .background(
-                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
-                            .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
-                            .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
-                    )
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: style.controlRadius + style.outerBorderInset,
-                            style: .continuous
-                        )
-                        .stroke(
-                            selection == option.id ? style.selectedOuterBorder : style.unselectedOuterBorder,
-                            lineWidth: 0.8
-                        )
-                        .padding(-style.outerBorderInset)
-                    )
-                }
-                .buttonStyle(.plain)
-                .accessibilityLabel(option.count.map { "\(option.title), \($0) 個項目" } ?? option.title)
-                .accessibilityAddTraits(selection == option.id ? .isSelected : [])
-            }
-        }
-        .padding(3)
-        .background(
-            RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
-                .fill(style.containerBackground)
-        )
     }
 }
 
@@ -644,70 +272,6 @@ struct AppSectionBlock<Content: View>: View {
     }
 }
 
-struct AppActionButtonStyle: ButtonStyle {
-    @Environment(\.appTheme) private var appTheme
-    let tone: AppActionTone
-
-    func makeBody(configuration: Configuration) -> some View {
-        let palette = stylePalette
-
-        configuration.label
-            .font(AppFonts.subhead(weight: .semibold))
-            .foregroundStyle(palette.foreground)
-            .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
-            .padding(.vertical, 13)
-            .background(
-                RoundedRectangle(
-                    cornerRadius: AppMetrics.cornerRadiusMedium,
-                    style: .continuous
-                )
-                .fill(palette.background)
-            )
-            .overlay(
-                RoundedRectangle(
-                    cornerRadius: AppMetrics.cornerRadiusMedium,
-                    style: .continuous
-                )
-                .stroke(palette.border, lineWidth: 1)
-            )
-            .opacity(configuration.isPressed ? 0.82 : 1)
-            .scaleEffect(configuration.isPressed ? 0.992 : 1)
-            .animation(AppMotion.controlEaseOut, value: configuration.isPressed)
-    }
-
-    private var stylePalette: (foreground: Color, background: Color, border: Color) {
-        switch tone {
-        case .primary:
-            return (.white, appTheme.palette.primaryText, appTheme.palette.primaryText)
-        case .neutral:
-            return (
-                appTheme.palette.primaryText,
-                appTheme.palette.cardBackground,
-                appTheme.palette.cardBorder
-            )
-        case .outline:
-            return (
-                appTheme.palette.primaryText,
-                .clear,
-                appTheme.palette.secondaryText.opacity(0.3)
-            )
-        case .destructive:
-            return (
-                appTheme.palette.destructive,
-                appTheme.palette.destructive.opacity(0.10),
-                appTheme.palette.destructive.opacity(0.22)
-            )
-        }
-    }
-}
-
-extension ButtonStyle where Self == AppActionButtonStyle {
-    static func appAction(_ tone: AppActionTone = .primary) -> AppActionButtonStyle {
-        AppActionButtonStyle(tone: tone)
-    }
-}
-
 extension AppSectionCardStyle {
     static func themed(_ theme: AppTheme) -> AppSectionCardStyle {
         .init(
@@ -746,30 +310,6 @@ extension AppSectionCardStyle {
     }
 }
 
-extension AppToolbarGlyphStyle {
-    static func themed(_ theme: AppTheme, tone: Color? = nil) -> AppToolbarGlyphStyle {
-        .init(
-            iconFont: AppFonts.caption(weight: .medium),
-            iconColor: tone ?? theme.palette.secondaryText,
-            badgeFont: AppFonts.monoNumbers(size: 10),
-            badgeForeground: .white,
-            badgeBackground: tone ?? theme.palette.destructive,
-            spacing: AppMetrics.spacingExtraSmall
-        )
-    }
-
-    static func vocab(_ skin: VocabSkin, tone: Color? = nil) -> AppToolbarGlyphStyle {
-        .init(
-            iconFont: skin.typography.iconToolbar,
-            iconColor: tone ?? skin.palette.secondaryText,
-            badgeFont: skin.typography.monoLabel,
-            badgeForeground: .white,
-            badgeBackground: tone ?? skin.palette.destructive,
-            spacing: 4
-        )
-    }
-}
-
 extension AppSectionTextStyle {
     static func header(_ theme: AppTheme) -> AppSectionTextStyle {
         .init(font: AppFonts.caption(weight: .semibold), color: theme.palette.secondaryText)
@@ -780,81 +320,76 @@ extension AppSectionTextStyle {
     }
 }
 
-extension AppEmptyStateStyle {
-    static func themed(_ theme: AppTheme) -> AppEmptyStateStyle {
+extension AppSearchFieldStyle {
+    static func themed(_ theme: AppTheme) -> AppSearchFieldStyle {
         .init(
-            iconFont: AppFonts.hero(weight: .light),
+            iconFont: AppFonts.caption(weight: .medium),
             iconColor: theme.palette.tertiaryText,
-            titleFont: AppFonts.h2(weight: .semibold),
-            titleColor: theme.palette.primaryText,
-            descriptionFont: AppFonts.body(),
-            descriptionColor: theme.palette.secondaryText,
-            spacing: 14,
-            verticalPadding: 12
+            textFont: AppFonts.body(),
+            textColor: theme.palette.primaryText,
+            clearButtonFont: AppFonts.caption(weight: .medium),
+            clearButtonColor: theme.palette.quaternaryText,
+            background: theme.palette.cardBackground,
+            border: theme.palette.cardBorder,
+            cornerRadius: AppMetrics.cornerRadiusMedium - 2
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppEmptyStateStyle {
+    static func vocab(_ skin: VocabSkin) -> AppSearchFieldStyle {
         .init(
-            iconFont: skin.typography.symbolLarge,
+            iconFont: skin.typography.iconSmall,
             iconColor: skin.palette.tertiaryText,
-            titleFont: skin.typography.sectionTitle,
-            titleColor: skin.palette.primaryText,
-            descriptionFont: skin.typography.body,
-            descriptionColor: skin.palette.secondaryText,
-            spacing: 14,
-            verticalPadding: 12
-        )
-    }
-
-    static func bookshelf(_ theme: AppTheme) -> AppEmptyStateStyle {
-        .init(
-            iconFont: .system(size: 48, weight: .ultraLight),
-            iconColor: theme.palette.quaternaryText,
-            titleFont: AppFonts.subhead(weight: .medium),
-            titleColor: theme.palette.secondaryText,
-            descriptionFont: AppFonts.caption(),
-            descriptionColor: theme.palette.tertiaryText,
-            spacing: 6,
-            verticalPadding: 0
+            textFont: skin.typography.body,
+            textColor: skin.palette.primaryText,
+            clearButtonFont: skin.typography.iconMedium,
+            clearButtonColor: skin.palette.quaternaryText,
+            background: skin.palette.cardBackground,
+            border: skin.palette.cardBorder,
+            cornerRadius: skin.radii.control
         )
     }
 }
 
-extension AppStateMessageStyle {
-    static func themed(_ theme: AppTheme) -> AppStateMessageStyle {
+extension AppKeyValueRowStyle {
+    static func themed(_ theme: AppTheme) -> AppKeyValueRowStyle {
         .init(
-            iconFont: AppFonts.body(weight: .semibold),
-            iconColor: theme.palette.accent,
-            titleFont: AppFonts.body(weight: .semibold),
-            titleColor: theme.palette.primaryText,
-            descriptionFont: AppFonts.caption(),
-            descriptionColor: theme.palette.secondaryText,
-            accentColor: theme.palette.accent,
-            background: theme.palette.cardBackground,
-            border: theme.palette.cardBorder.opacity(0.9),
-            spacing: 8,
-            verticalPadding: 12,
-            horizontalPadding: 14,
-            cornerRadius: AppMetrics.cornerRadiusMedium
+            iconFont: AppFonts.caption(weight: .medium),
+            iconColor: theme.palette.secondaryText,
+            labelFont: AppFonts.body(),
+            labelColor: theme.palette.primaryText,
+            horizontalPadding: AppShellMetrics.cardPadding,
+            verticalPadding: 13,
+            minHeight: 50,
+            iconWidth: 22,
+            spacing: 12
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppStateMessageStyle {
+    static func vocab(_ skin: VocabSkin) -> AppKeyValueRowStyle {
         .init(
             iconFont: skin.typography.iconSmall,
-            iconColor: skin.palette.accent,
-            titleFont: skin.typography.body.weight(.semibold),
-            titleColor: skin.palette.primaryText,
-            descriptionFont: skin.typography.caption,
-            descriptionColor: skin.palette.secondaryText,
-            accentColor: skin.palette.accent,
-            background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
-            spacing: 8,
-            verticalPadding: 12,
-            horizontalPadding: 14,
-            cornerRadius: skin.radii.control
+            iconColor: skin.palette.secondaryText,
+            labelFont: skin.typography.body,
+            labelColor: skin.palette.primaryText,
+            horizontalPadding: skin.spacing.cardPadding,
+            verticalPadding: 13,
+            minHeight: 50,
+            iconWidth: 22,
+            spacing: 12
+        )
+    }
+
+    static func settings(_ skin: VocabSkin) -> AppKeyValueRowStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            iconColor: skin.palette.secondaryText,
+            labelFont: skin.typography.body,
+            labelColor: skin.palette.primaryText,
+            horizontalPadding: skin.spacing.cardPadding,
+            verticalPadding: 13,
+            minHeight: 50,
+            iconWidth: 22,
+            spacing: 12
         )
     }
 }
@@ -1078,129 +613,5 @@ private struct AppShellPreview: View {
                 )
             )
         }
-    }
-}
-
-extension AppTabSelectorStyle {
-    static func themed(_ theme: AppTheme) -> AppTabSelectorStyle {
-        .init(
-            iconFont: AppFonts.caption(weight: .medium),
-            titleFont: AppFonts.caption(weight: .semibold),
-            countFont: AppFonts.monoNumbers(size: 10),
-            iconSelectedColor: theme.palette.primaryText,
-            iconUnselectedColor: theme.palette.secondaryText,
-            textSelectedColor: theme.palette.primaryText,
-            textUnselectedColor: theme.palette.secondaryText,
-            countSelectedFill: theme.palette.primaryText.opacity(0.08),
-            countUnselectedFill: theme.palette.mutedFill,
-            selectedBackground: theme.palette.cardBackground,
-            unselectedBackground: theme.palette.stageBackground,
-            selectedBorder: theme.palette.cardBorder,
-            unselectedBorder: theme.palette.divider.opacity(0.8),
-            selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
-            unselectedOuterBorder: theme.palette.divider.opacity(0.45),
-            containerBackground: theme.palette.stageBackground,
-            controlRadius: AppMetrics.cornerRadiusMedium - 2,
-            containerRadius: AppMetrics.cornerRadiusMedium + 2,
-            outerBorderInset: 3
-        )
-    }
-
-    static func vocab(_ skin: VocabSkin) -> AppTabSelectorStyle {
-        .init(
-            iconFont: skin.typography.iconSmall,
-            titleFont: skin.typography.captionStrong,
-            countFont: skin.typography.monoLabel,
-            iconSelectedColor: skin.palette.primaryText,
-            iconUnselectedColor: skin.palette.secondaryText,
-            textSelectedColor: skin.palette.primaryText,
-            textUnselectedColor: skin.palette.secondaryText,
-            countSelectedFill: skin.palette.primaryText.opacity(0.08),
-            countUnselectedFill: skin.palette.mutedFill,
-            selectedBackground: skin.palette.cardBackground,
-            unselectedBackground: skin.palette.stageBackground,
-            selectedBorder: skin.palette.cardBorder,
-            unselectedBorder: skin.palette.divider.opacity(0.8),
-            selectedOuterBorder: skin.palette.cardBorder.opacity(0.4),
-            unselectedOuterBorder: skin.palette.divider.opacity(0.38),
-            containerBackground: skin.palette.stageBackground,
-            controlRadius: skin.radii.control,
-            containerRadius: skin.radii.control + 4,
-            outerBorderInset: 3
-        )
-    }
-}
-
-extension AppSearchFieldStyle {
-    static func themed(_ theme: AppTheme) -> AppSearchFieldStyle {
-        .init(
-            iconFont: AppFonts.caption(weight: .medium),
-            iconColor: theme.palette.tertiaryText,
-            textFont: AppFonts.body(),
-            textColor: theme.palette.primaryText,
-            clearButtonFont: AppFonts.caption(weight: .medium),
-            clearButtonColor: theme.palette.quaternaryText,
-            background: theme.palette.cardBackground,
-            border: theme.palette.cardBorder,
-            cornerRadius: AppMetrics.cornerRadiusMedium - 2
-        )
-    }
-
-    static func vocab(_ skin: VocabSkin) -> AppSearchFieldStyle {
-        .init(
-            iconFont: skin.typography.iconSmall,
-            iconColor: skin.palette.tertiaryText,
-            textFont: skin.typography.body,
-            textColor: skin.palette.primaryText,
-            clearButtonFont: skin.typography.iconMedium,
-            clearButtonColor: skin.palette.quaternaryText,
-            background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
-            cornerRadius: skin.radii.control
-        )
-    }
-}
-
-extension AppKeyValueRowStyle {
-    static func themed(_ theme: AppTheme) -> AppKeyValueRowStyle {
-        .init(
-            iconFont: AppFonts.caption(weight: .medium),
-            iconColor: theme.palette.secondaryText,
-            labelFont: AppFonts.body(),
-            labelColor: theme.palette.primaryText,
-            horizontalPadding: AppShellMetrics.cardPadding,
-            verticalPadding: 13,
-            minHeight: 50,
-            iconWidth: 22,
-            spacing: 12
-        )
-    }
-
-    static func vocab(_ skin: VocabSkin) -> AppKeyValueRowStyle {
-        .init(
-            iconFont: skin.typography.iconSmall,
-            iconColor: skin.palette.secondaryText,
-            labelFont: skin.typography.body,
-            labelColor: skin.palette.primaryText,
-            horizontalPadding: skin.spacing.cardPadding,
-            verticalPadding: 13,
-            minHeight: 50,
-            iconWidth: 22,
-            spacing: 12
-        )
-    }
-
-    static func settings(_ skin: VocabSkin) -> AppKeyValueRowStyle {
-        .init(
-            iconFont: skin.typography.iconSmall,
-            iconColor: skin.palette.secondaryText,
-            labelFont: skin.typography.body,
-            labelColor: skin.palette.primaryText,
-            horizontalPadding: skin.spacing.cardPadding,
-            verticalPadding: 13,
-            minHeight: 50,
-            iconWidth: 22,
-            spacing: 12
-        )
     }
 }

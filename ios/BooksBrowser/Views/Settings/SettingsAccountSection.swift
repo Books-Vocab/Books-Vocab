@@ -1,0 +1,313 @@
+import SwiftUI
+
+struct SettingsAccountSection: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let state: SettingsPresenterState.AuthSection
+    let manualLoginUserId: Binding<String>?
+    let actions: SettingsPresenterActions
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "帳號", icon: "person.crop.circle")
+
+            VStack(spacing: 0) {
+                if state.isLoggedIn {
+                    loggedInView
+                        .transition(.modalSwap)
+                } else {
+                    loginView
+                        .transition(.modalSwap)
+                }
+            }
+            .settingsCard()
+            .animation(AppMotion.modalSwapSpring, value: state.isLoggedIn)
+        }
+    }
+
+    private var loginView: some View {
+        VStack(spacing: 0) {
+            VStack(spacing: AccountMetrics.authHeroSpacing) {
+                Image(systemName: "sparkles")
+                    .font(vocabSkin.typography.symbolHero)
+                    .foregroundStyle(.tertiary)
+                    .opacity(state.iconBreathing ? 0.45 : 0.75)
+                    .animation(AppMotion.breathing, value: state.iconBreathing)
+
+                VStack(spacing: AccountMetrics.authCopySpacing) {
+                    Text("解鎖完整功能")
+                        .font(vocabSkin.typography.displayTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                    Text("AI 翻譯・知識圖譜・雲端同步")
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+            }
+            .padding(.vertical, AccountMetrics.authHeroVerticalPadding)
+            .frame(maxWidth: .infinity)
+
+            Rectangle()
+                .fill(vocabSkin.palette.divider)
+                .frame(height: 1)
+
+            VStack(spacing: AccountMetrics.authActionSpacing) {
+                Button(action: actions.loginWithGoogle) {
+                    SettingsAuthButton(title: "以 Google 繼續") {
+                        SettingsSocialBadge(kind: .google)
+                    }
+                }
+                .buttonStyle(.plain)
+                .appSettingsButtonChrome()
+
+                Button(action: actions.loginWithApple) {
+                    SettingsAuthButton(title: "以 Apple 繼續") {
+                        SettingsSocialBadge(kind: .apple)
+                    }
+                }
+                .buttonStyle(.plain)
+                .appSettingsButtonChrome()
+
+#if DEBUG
+                if let manualLoginUserId, let debug = state.debug {
+                    Rectangle()
+                        .fill(vocabSkin.palette.divider)
+                        .frame(height: 1)
+                        .padding(.vertical, 8)
+
+                    HStack(spacing: 8) {
+                        TextField("帳號 ID（手動）", text: manualLoginUserId)
+                            .font(vocabSkin.typography.monoLabel)
+                            .autocorrectionDisabled()
+                            .textInputAutocapitalization(.never)
+
+                        Button("登入", action: actions.manualLogin)
+                            .buttonStyle(.bordered)
+                            .controlSize(.small)
+                    }
+
+                    if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
+                        Text(manualLoginHint)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
+                }
+#endif
+
+                if let error = state.authError {
+                    Text(error)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.destructive)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, 8)
+                        .padding(.bottom, 4)
+                }
+            }
+            .padding(.horizontal, AccountMetrics.authBlockPadding)
+            .padding(.vertical, AccountMetrics.authBlockPadding)
+        }
+    }
+
+    private var loggedInView: some View {
+        VStack(spacing: 0) {
+            SettingsAuthSummary(state: state)
+                .padding(vocabSkin.spacing.cardPadding)
+
+            Rectangle()
+                .fill(vocabSkin.palette.divider)
+                .frame(height: 1)
+
+            Button(role: .destructive, action: actions.logout) {
+                Text("登出帳號")
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(vocabSkin.palette.destructive)
+            }
+            .buttonStyle(.appAction(.destructive))
+            .padding(vocabSkin.spacing.cardPadding)
+        }
+    }
+}
+
+// MARK: - Private Helpers
+
+private enum AccountMetrics {
+    static let authHeroSpacing: CGFloat = 10
+    static let authCopySpacing: CGFloat = 4
+    static let authActionSpacing: CGFloat = 10
+    static let authHeroVerticalPadding: CGFloat = 24
+    static let authBlockPadding: CGFloat = 16
+    static let authButtonSpacing: CGFloat = 12
+    static let authRowSpacing: CGFloat = 14
+    static let authStatusSpacing: CGFloat = 6
+    static let authAvatarSize: CGFloat = 46
+    static let authSocialBadgeSize: CGFloat = 22
+    static let authSocialShadowRadius: CGFloat = 2
+    static let authSocialShadowY: CGFloat = 1
+}
+
+private enum SettingsSocialKind {
+    case google
+    case apple
+}
+
+private struct SettingsSocialBadge: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let kind: SettingsSocialKind
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .fill(backgroundColor)
+                .frame(
+                    width: AccountMetrics.authSocialBadgeSize,
+                    height: AccountMetrics.authSocialBadgeSize
+                )
+                .shadow(
+                    color: shadowColor,
+                    radius: AccountMetrics.authSocialShadowRadius,
+                    y: AccountMetrics.authSocialShadowY
+                )
+
+            Group {
+                switch kind {
+                case .google:
+                    Text("G")
+                        .font(vocabSkin.typography.captionStrong)
+                        .foregroundStyle(AppBrandColors.googleRed)
+                case .apple:
+                    Image(systemName: "apple.logo")
+                        .font(vocabSkin.typography.iconTiny)
+                        .foregroundStyle(.white)
+                }
+            }
+        }
+    }
+
+    private var backgroundColor: Color {
+        switch kind {
+        case .google:
+            return vocabSkin.palette.cardBackground
+        case .apple:
+            return AppBrandColors.appleBlack
+        }
+    }
+
+    private var shadowColor: Color {
+        switch kind {
+        case .google:
+            return vocabSkin.palette.shadow.opacity(0.9)
+        case .apple:
+            return .clear
+        }
+    }
+}
+
+private struct SettingsAuthButton<Leading: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    @ViewBuilder let leading: Leading
+
+    var body: some View {
+        HStack(spacing: AccountMetrics.authButtonSpacing) {
+            leading
+
+            Text(title.localized)
+                .font(vocabSkin.typography.body.weight(.medium))
+
+            Spacer()
+
+            Image(systemName: "chevron.right")
+                .font(vocabSkin.typography.iconTiny)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+    }
+}
+
+private struct SettingsAuthSummary: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let state: SettingsPresenterState.AuthSection
+
+    var body: some View {
+        HStack(spacing: AccountMetrics.authRowSpacing) {
+            avatar
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(state.displayName)
+                    .font(vocabSkin.typography.sectionTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .lineLimit(1)
+
+                if let email = state.email {
+                    Text(email)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+
+            Spacer()
+
+            VStack(alignment: .trailing, spacing: AccountMetrics.authStatusSpacing) {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(vocabSkin.typography.symbolLarge)
+                    .foregroundStyle(vocabSkin.palette.success)
+                    .symbolEffect(.bounce, value: state.isLoggedIn)
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var avatar: some View {
+        ZStack {
+            Circle()
+                .fill(vocabSkin.palette.mutedFill)
+                .frame(
+                    width: AccountMetrics.authAvatarSize,
+                    height: AccountMetrics.authAvatarSize
+                )
+
+            if let avatarURL = state.avatarURL {
+                AsyncImage(url: avatarURL) { image in
+                    image.resizable().scaledToFill()
+                } placeholder: {
+                    Image(systemName: "person.fill")
+                        .font(vocabSkin.typography.symbolLarge)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+                .frame(
+                    width: AccountMetrics.authAvatarSize,
+                    height: AccountMetrics.authAvatarSize
+                )
+                .clipShape(Circle())
+            } else if let initials = state.userInitials {
+                Text(initials)
+                    .font(vocabSkin.typography.sectionTitle)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            } else {
+                Image(systemName: "person.fill")
+                    .font(vocabSkin.typography.symbolLarge)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            }
+        }
+    }
+}
+
+private struct SettingsButtonChromeModifier: ViewModifier {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    func body(content: Content) -> some View {
+        content
+            .padding(AccountMetrics.authBlockPadding)
+            .background(vocabSkin.palette.pageBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
+    }
+}
+
+private extension View {
+    func appSettingsButtonChrome() -> some View {
+        modifier(SettingsButtonChromeModifier())
+    }
+}
