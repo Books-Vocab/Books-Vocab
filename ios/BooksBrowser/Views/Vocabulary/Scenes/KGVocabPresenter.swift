@@ -44,7 +44,9 @@ struct KGVocabPresenter: View {
                         onDismiss: banner.canDismiss ? onDismissBanner : nil,
                         onRetry: banner.canRetry ? onRetryBanner : nil
                     )
+                    .transition(.move(edge: .top).combined(with: .opacity))
                 }
+
 
                 VocabListCard {
                     VStack(alignment: .leading, spacing: 6) {
@@ -84,6 +86,7 @@ struct KGVocabPresenter: View {
                                 }
                             }
                         }
+                        .animation(AppMotion.standardSpring, value: selectedReviewState)
                     }
                 }
             }
@@ -92,6 +95,7 @@ struct KGVocabPresenter: View {
             .padding(.bottom, vocabSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
+        .animation(AppMotion.standardSpring, value: state.banner == nil)
     }
 }
 

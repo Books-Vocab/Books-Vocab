@@ -15,6 +15,7 @@ struct ProAccessGateCard: View {
                 Image(systemName: systemImage)
                     .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(vocabSkin.palette.accent)
+                    .transition(.opacity)
 
                 VStack(spacing: 6) {
                     Text(title)
@@ -37,6 +38,7 @@ struct ProAccessGateCard: View {
                 .buttonStyle(.vocabAction(.primary))
             }
             .padding(.vertical, 8)
+            .transition(.opacity)
         }
     }
 }

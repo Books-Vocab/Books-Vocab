@@ -48,8 +48,10 @@ struct BookshelfView: View {
 
                 if books.isEmpty {
                     emptyState
+                        .transition(.opacity)
                 } else {
                     bookGrid
+                        .transition(.opacity)
                 }
 
                 if coordinator.isLoading {
@@ -58,6 +60,7 @@ struct BookshelfView: View {
             }
             .navigationTitle("書庫")
             .navigationBarTitleDisplayMode(.large)
+            .animation(AppMotion.phaseChange, value: books.isEmpty)
             .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
@@ -129,6 +132,7 @@ struct BookshelfView: View {
                     }
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint("點兩下開始閱讀")
+                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
                     .contextMenu {
                         Button(role: .destructive) {
                             coordinator.deleteBook(
@@ -142,6 +146,7 @@ struct BookshelfView: View {
                     }
                 }
             }
+            .animation(AppMotion.contentFade, value: books.count)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .padding(.top, AppMetrics.spacingSmall)
             .padding(.bottom, AppMetrics.spacingExtraLarge)
