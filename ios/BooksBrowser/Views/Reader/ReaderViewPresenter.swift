@@ -396,7 +396,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列", action: onCollapseHeader)
                 }
             }
-            .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInset + 2)
+            .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInsetExpanded)
             .padding(.vertical, ReaderPresentationMetrics.Header.contentVerticalInset)
         }
         .padding(.horizontal, ReaderPresentationMetrics.Header.outerHorizontalInset)
@@ -451,9 +451,9 @@ private struct ReaderChromePreviewScene: View {
             ZStack {
                 LinearGradient(
                     colors: [
-                        state.paperColor.opacity(0.96),
-                        state.paperColor.opacity(0.88),
-                        Color.brown.opacity(0.08)
+                        state.paperColor.opacity(ReaderPresentationMetrics.Preview.paperOpacityTop),
+                        state.paperColor.opacity(ReaderPresentationMetrics.Preview.paperOpacityMid),
+                        AppColors.warmNeutral.opacity(ReaderPresentationMetrics.Preview.paperOpacityFloor)
                     ],
                     startPoint: .top,
                     endPoint: .bottom
@@ -462,7 +462,7 @@ private struct ReaderChromePreviewScene: View {
                 VStack(alignment: .leading, spacing: ReaderPresentationMetrics.Preview.blockSpacing) {
                     ForEach(0..<8, id: \.self) { index in
                         RoundedRectangle(cornerRadius: ReaderPresentationMetrics.Preview.blockCornerRadius, style: .continuous)
-                            .fill(Color.primary.opacity(index == 2 ? 0.22 : 0.12))
+                            .fill(Color.primary.opacity(index == 2 ? ReaderPresentationMetrics.Preview.textBlockEmphasisOpacity : ReaderPresentationMetrics.Preview.textBlockBaseOpacity))
                             .frame(height: index.isMultiple(of: 3) ? 12 : 10)
                             .padding(.trailing, CGFloat(index % 3) * ReaderPresentationMetrics.Preview.trailingStep)
                     }

@@ -287,7 +287,7 @@ struct ReaderSettingsVocabPresenter: View {
         }
         .foregroundStyle(vocabSkin.palette.secondaryText)
         .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding + 2)
+        .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
         .background(
             Capsule(style: .continuous)
                 .fill(vocabSkin.palette.mutedFill)
@@ -319,7 +319,7 @@ struct ReaderSettingsVocabPresenter: View {
             .overlay(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .stroke(
-                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(0.6),
+                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity),
                         lineWidth: 1
                     )
             )
@@ -364,7 +364,7 @@ struct ReaderSettingsVocabPresenter: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(0.6), lineWidth: 1)
+                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
             )
             .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
         }
@@ -397,7 +397,7 @@ struct ReaderSettingsVocabPresenter: View {
             )
             .overlay(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(0.6), lineWidth: 1)
+                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
             )
             .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
         }

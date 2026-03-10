@@ -26,7 +26,7 @@ struct SyncPresenter: View {
     var body: some View {
         VStack(spacing: 0) {
             headerView
-                .padding(.top, vocabSkin.metrics.overlayHorizontalInset + 12)
+                .padding(.top, vocabSkin.metrics.syncOverlayInset)
                 .padding(.bottom, vocabSkin.metrics.reviewFoldPadding)
                 .animation(AppMotion.phaseChange, value: state.phase)
 
@@ -38,7 +38,7 @@ struct SyncPresenter: View {
 
                             if index < state.steps.count - 1 {
                                 Divider()
-                                    .padding(.leading, vocabSkin.metrics.overlayHorizontalInset + 12)
+                                    .padding(.leading, vocabSkin.metrics.syncOverlayInset)
                             }
                         }
                     }

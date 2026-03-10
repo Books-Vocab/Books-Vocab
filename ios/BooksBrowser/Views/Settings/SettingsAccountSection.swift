@@ -99,7 +99,7 @@ struct SettingsAccountSection: View {
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.destructive)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, AppMetrics.spacingSmall)
+                        .padding(.horizontal, vocabSkin.spacing.inlineGap)
                         .padding(.bottom, vocabSkin.spacing.tinyGap)
                 }
             }
