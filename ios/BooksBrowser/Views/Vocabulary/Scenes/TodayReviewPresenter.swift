@@ -1,5 +1,7 @@
 import SwiftUI
 
+// MARK: - State
+
 struct TodayReviewPresenterState {
     struct LinkGroup: Identifiable {
         let id: String
@@ -27,30 +29,26 @@ struct TodayReviewPresenterState {
     let forgotFeedbackTrigger: Int
     let persistenceFailureTrigger: Int
     let persistenceErrorMessage: String?
-    let isAdvancing: Bool
 }
 
+// MARK: - Presenter
+
 struct TodayReviewPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    // internal — extension files 需要存取
+    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.dynamicTypeSize) var dynamicTypeSize
 
-    private var usesCompactLayout: Bool {
-        dynamicTypeSize < .accessibility1
-    }
-
+    // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State private var swipeOffset: CGFloat = 0
     @State private var dismissPhase: DismissPhase = .idle
-    @State private var dismissTask: Task<Void, Never>?
-    @State private var isPromoting = false
     @State private var stackRotations: [Double] = [
-        Double.random(in: -1.0...1.0),
-        Double.random(in: -1.0...1.0)
+        .random(in: -1.0...1.0),
+        .random(in: -1.0...1.0)
     ]
 
-    /// 卡片退場階段
     private enum DismissPhase {
         case idle
-        case animatingOut   // swipe 或按鈕觸發，卡片正在離開畫面
+        case animatingOut
     }
 
     let state: TodayReviewPresenterState
@@ -64,6 +62,11 @@ struct TodayReviewPresenter: View {
     let onRemembered: () -> Void
     let onLinkTap: (KGCardLinkSummary) -> Void
 
+    /// 給 extension 判斷能否互動
+    var isCardInteractive: Bool {
+        dismissPhase == .idle
+    }
+
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
@@ -74,7 +77,6 @@ struct TodayReviewPresenter: View {
                         ScrollView {
                             VStack(spacing: 0) {
                                 reviewCard(currentCard)
-                                    .id(currentCard.card.word + "-" + String(currentCard.card.dateAdded.timeIntervalSinceReferenceDate))
                                     .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
                                     .padding(.top, vocabSkin.metrics.reviewCardTopInset)
                                     .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
@@ -114,6 +116,8 @@ struct TodayReviewPresenter: View {
         }
     }
 
+    // MARK: - Top Bar
+
     private var topBar: some View {
         HStack(alignment: .center, spacing: 12) {
             Text(state.progressText)
@@ -142,7 +146,7 @@ struct TodayReviewPresenter: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(!state.canShuffle)
+            .disabled(!state.canShuffle || !isCardInteractive)
 
             Spacer()
 
@@ -153,14 +157,18 @@ struct TodayReviewPresenter: View {
         .padding(.bottom, vocabSkin.metrics.reviewTopBarBottomInset)
     }
 
+    // MARK: - Card + Deck
+
     private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         let card = currentCard.card
+        let cardIdentity = card.word + "-" + String(card.dateAdded.timeIntervalSinceReferenceDate)
+
         return ZStack(alignment: .top) {
-            // 牌堆層（微視差跟隨 swipe，在卡片後方）
+            // 牌堆 — 不隨 .id() 銷毀重建
             cardStackLayers()
                 .frame(height: frontCardHeight)
 
-            // 互動卡片（飛出、升頂）
+            // 互動卡片
             VStack(spacing: 0) {
                 frontFoldSurface(card)
 
@@ -176,39 +184,95 @@ struct TodayReviewPresenter: View {
                         .transition(.paperFoldFromTop)
                 }
             }
-            .scaleEffect(isPromoting ? TodayReviewMetrics.promoteScale : 1.0)
-            .offset(y: isPromoting ? TodayReviewMetrics.promoteYOffset : 0)
+            .id(cardIdentity)
+            // 舊卡瞬間消失（已在畫面外）；新卡從牌堆位置升頂
+            .transition(.asymmetric(
+                insertion: .scale(scale: TodayReviewMetrics.promoteScale)
+                    .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
+                removal: .identity
+            ))
             .offset(x: swipeOffset)
-            .rotationEffect(.degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
+            .rotationEffect(
+                .degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation),
+                anchor: .bottom
+            )
             .opacity(cardOpacity)
-            .animation(AppMotion.swipeTrackingSpring, value: swipeOffset)
+            // 不用 .animation() modifier — 所有動畫由 withAnimation 顯式控制
             .simultaneousGesture(swipeDragGesture)
-            .onChange(of: isPromoting) { old, new in
-                print("[reviewCard] isPromoting \(old) → \(new)  swipeOffset=\(swipeOffset)  card=\(currentCard.card.word)")
-            }
-            .onChange(of: currentCard.card.word) { old, new in
-                print("[reviewCard] card identity \(old) → \(new)  isPromoting=\(isPromoting)  swipeOffset=\(swipeOffset)")
-            }
         }
     }
 
-    /// 卡片當前的 opacity，由 swipeOffset 決定
+    private func cardStackLayers() -> some View {
+        ZStack(alignment: .top) {
+            if state.remainingCount >= 2 { stackCard(depth: 2) }
+            if state.remainingCount >= 1 { stackCard(depth: 1) }
+        }
+    }
+
+    private func stackCard(depth: Int) -> some View {
+        let scale: CGFloat = 1.0 - CGFloat(depth) * 0.025
+        let yOff: CGFloat = CGFloat(depth) * 5
+        let rotation = stackRotations[depth - 1]
+
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
+                )
+                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
+
+            if depth == 1, let nextCard = state.nextCard {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                    HStack(spacing: 6) {
+                        if let pos = nextCard.card.partOfSpeech {
+                            Text(pos)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        }
+                        Spacer()
+                    }
+                    Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
+                    Text(nextCard.card.word)
+                        .font(reviewFrontWordFont(for: nextCard.card.word))
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+                    Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
+                }
+                .padding(reviewCardPadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .allowsHitTesting(false)
+            }
+        }
+        .frame(height: frontCardHeight)
+        .scaleEffect(scale)
+        .offset(y: yOff)
+        .rotationEffect(.degrees(rotation), anchor: .center)
+        .opacity(depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35)
+    }
+
+    // MARK: - Swipe Gesture + Fling Animation
+
+    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
+
     private var cardOpacity: Double {
         1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
     }
 
     private var swipeEnabled: Bool {
-        state.revealStage.showsAnswer && !state.isAdvancing && dismissPhase == .idle && !isPromoting
+        state.revealStage.showsAnswer && dismissPhase == .idle
     }
-
-    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
 
     private var swipeDragGesture: some Gesture {
         DragGesture(minimumDistance: 15, coordinateSpace: .local)
             .onChanged { value in
                 guard swipeEnabled else { return }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                swipeOffset = value.translation.width
+                withAnimation(AppMotion.swipeTrackingSpring) {
+                    swipeOffset = value.translation.width
+                }
             }
             .onEnded { value in
                 guard swipeEnabled else { return }
@@ -225,289 +289,87 @@ struct TodayReviewPresenter: View {
             }
     }
 
-    /// 統一的卡片甩出動畫 — swipe 和按鈕共用
-    /// direction: -1 = 左（忘記）, +1 = 右（記得）
-    /// isFromButton: 按鈕觸發時加入蓄力微動
+    /// 統一的甩出動畫 — swipe 和按鈕共用
+    ///
+    /// 動畫三階段（全部顯式 withAnimation，零 .animation() modifier）：
+    /// 1. fling: swipeFlingSpring 甩出畫面
+    /// 2. noAnim: 瞬間重置 swipeOffset
+    /// 3. stackPromotionSpring: callback 觸發 .id() 變更 → .transition() 升頂
+    ///    不需要 isPromoting 或 frame gap — transition 在同一幀處理 active→identity
     private func flingCard(direction: CGFloat, isFromButton: Bool = false, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
-        dismissTask?.cancel()
         dismissPhase = .animatingOut
 
-        let flingAnimation = AppMotion.swipeFlingSpring
-
-        dismissTask = Task { @MainActor in
-            let t0 = Date()
-            func dbg(_ msg: String) {
-                let ms = Int(Date().timeIntervalSince(t0) * 1000)
-                print("[FlingCard +\(ms)ms] \(msg)")
-            }
-            dbg("START dir=\(direction) isFromButton=\(isFromButton)")
-
-            // 按鈕：蓄力微動（卡片往反方向退 ~8pt）
+        Task { @MainActor in
+            // 按鈕蓄力微動
             if isFromButton {
                 withAnimation(AppMotion.buttonWindupSpring) {
                     swipeOffset = -direction * 8
                 }
-                dbg("windup swipeOffset=\(swipeOffset)")
                 try? await Task.sleep(for: .milliseconds(60))
-                guard !Task.isCancelled else { return }
             }
 
             // 甩出畫面
-            withAnimation(flingAnimation) {
+            withAnimation(AppMotion.swipeFlingSpring) {
                 swipeOffset = direction * screenWidth * 1.3
             }
-            dbg("fling start swipeOffset=\(swipeOffset)")
-            try? await Task.sleep(for: .milliseconds(100))
-            guard !Task.isCancelled else { return }
-            dbg("fling sleep done swipeOffset=\(swipeOffset)")
+            try? await Task.sleep(for: .milliseconds(120))
 
-            // 重置 + 新卡片從牌堆位置出現
+            // 瞬間重置 swipeOffset（卡片已在畫面外，跳回不可見）
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
             withTransaction(noAnim) {
                 swipeOffset = 0
-                isPromoting = true
-                stackRotations = [
-                    Double.random(in: -1.0...1.0),
-                    Double.random(in: -1.0...1.0)
-                ]
-                callback()  // 必須在同一 transaction 內，避免舊卡單獨收到 isPromoting=true
             }
-            dbg("reset+callback done swipeOffset=\(swipeOffset) isPromoting=\(isPromoting)")
 
-            // 等 SwiftUI commit 新內容（60Hz = 16.7ms/幀，留足一幀確保動畫不被批次合併成 no-op）
-            try? await Task.sleep(for: .milliseconds(20))
-            guard !Task.isCancelled else { return }
-            dbg("pre-promote sleep done, isPromoting=\(isPromoting) → firing stackPromotionSpring")
-
-            // 新卡片從牌堆升頂
-            withAnimation(AppMotion.stackPromotionSpring) {
-                isPromoting = false
-            }
-            dbg("promote animation fired isPromoting=\(isPromoting)")
-
-            // 等升頂動畫大致完成後恢復互動
-            try? await Task.sleep(for: .milliseconds(150))
-            guard !Task.isCancelled else { return }
-            dismissPhase = .idle
-            dbg("END dismissPhase=.idle")
-        }
-    }
-
-    // MARK: - 牌堆視覺
-
-    private func cardStackLayers() -> some View {
-        ZStack(alignment: .top) {
-            // 最底層（第 3 張牌）
-            if state.remainingCount >= 2 {
-                stackCard(depth: 2)
-            }
-            // 中間層（第 2 張牌）
-            if state.remainingCount >= 1 {
-                stackCard(depth: 1)
-            }
-        }
-    }
-
-    private func stackCard(depth: Int) -> some View {
-        let baseScale: CGFloat = 1.0 - CGFloat(depth) * 0.025
-        let yOffset: CGFloat = CGFloat(depth) * 5
-        let rotation = stackRotations[depth - 1]
-
-        return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
-                )
-                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
-
-            // depth 1：渲染下一張卡片的正面文字（佈局與 reviewCardFront 一致，避免升頂跳動）
-            if depth == 1, let nextCard = state.nextCard {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-                    HStack(spacing: 6) {
-                        if let pos = nextCard.card.partOfSpeech {
-                            Text(pos)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                        Spacer()
-                    }
-
-                    Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
-
-                    Text(nextCard.card.word)
-                        .font(reviewFrontWordFont(for: nextCard.card.word))
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.7)
-
-                    Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
+            // 換卡 + 升頂 — .transition() 在 .id() 變更時自動處理：
+            //   removal(.identity): 舊卡瞬間消失
+            //   insertion(.scale+.offset): 新卡從牌堆位置彈出
+            // 用 completion 確保動畫真正結束才恢復互動
+            await withCheckedContinuation { continuation in
+                withAnimation(AppMotion.stackPromotionSpring) {
+                    stackRotations = [.random(in: -1...1), .random(in: -1...1)]
+                    callback()
+                } completion: {
+                    continuation.resume()
                 }
-                .padding(reviewCardPadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .allowsHitTesting(false)
             }
+
+            dismissPhase = .idle
         }
-        .frame(height: frontCardHeight)
-        .scaleEffect(baseScale)
-        .offset(y: yOffset)
-        .rotationEffect(.degrees(rotation), anchor: .center)
-        .opacity(depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35)
     }
 
-    // MARK: - Swipe 與按鈕連動（方案 A）
+    // MARK: - Swipe ↔ 按鈕連動
 
-    /// swipe 強度 -1（全左）~ 0（靜止）~ +1（全右）
     private var swipeIntensity: Double {
         guard swipeEnabled else { return 0 }
         return max(-1, min(1, Double(swipeOffset / vocabSkin.metrics.reviewSwipeThreshold)))
     }
 
-    /// 忘記按鈕：往左滑時放大+上浮，往右滑時縮小+褪色
     private var forgotButtonScale: CGFloat   { 1.0 + CGFloat(max(-swipeIntensity, 0)) * 0.12 }
     private var forgotButtonOffset: CGFloat  { CGFloat(max(-swipeIntensity, 0)) * -4 }
     private var forgotButtonOpacity: Double  { 1.0 - max(swipeIntensity, 0) * 0.45 }
     private var forgotButtonGlow: Double     { max(-swipeIntensity, 0) }
 
-    /// 記得按鈕：往右滑時放大+上浮，往左滑時縮小+褪色
     private var rememberedButtonScale: CGFloat   { 1.0 + CGFloat(max(swipeIntensity, 0)) * 0.12 }
     private var rememberedButtonOffset: CGFloat  { CGFloat(max(swipeIntensity, 0)) * -4 }
     private var rememberedButtonOpacity: Double  { 1.0 - max(-swipeIntensity, 0) * 0.45 }
     private var rememberedButtonGlow: Double     { max(swipeIntensity, 0) }
 
-    @ViewBuilder
-    private func swipeHintView(for offset: CGFloat) -> some View {
-        let threshold = vocabSkin.metrics.reviewSwipeThreshold
-        let absOffset = abs(offset)
-        if absOffset > 20 {
-            let intensity = Double(min(absOffset / threshold, 1.0))
-            let isForgot = offset < 0
-            let color: Color = isForgot ? vocabSkin.palette.destructive : vocabSkin.palette.success
-            let label = isForgot ? "忘記" : "記得"
-            let rotation: Double = isForgot ? -14 : 14
-            let alignment: Alignment = isForgot ? .topLeading : .topTrailing
-
-            Text(label)
-                .font(.system(size: TodayReviewMetrics.swipeHintFontSize, weight: .bold))
-                .foregroundStyle(color)
-                .padding(.horizontal, TodayReviewMetrics.tagHorizontalPadding)
-                .padding(.vertical, TodayReviewMetrics.tagVerticalPadding)
-                .overlay(
-                    RoundedRectangle(cornerRadius: TodayReviewMetrics.tagCornerRadius, style: .continuous)
-                        .stroke(color, lineWidth: 2.5)
-                )
-                .transition(.feedbackBadge)
-                .rotationEffect(.degrees(rotation))
-                .opacity(intensity * TodayReviewMetrics.dividerFillOpacity)
-                .padding(reviewCardPadding)
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: alignment)
-        }
-    }
-
-    private func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            HStack(spacing: 6) {
-                if let pos = card.partOfSpeech {
-                    Text(pos)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
-                Spacer()
-            }
-
-            Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
-
-            switch card.reviewMode {
-            case .recognition:
-                Text(card.word)
-                    .font(reviewFrontWordFont(for: card.word))
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.7)
-                    .fixedSize(horizontal: false, vertical: true)
-            case .production:
-                Text(card.translation)
-                    .font(vocabSkin.typography.body.weight(.semibold))
-                    .foregroundStyle(vocabSkin.palette.primaryTextMuted)
-                    .minimumScaleFactor(0.75)
-            }
-
-            if card.reviewMode == .production, let example = card.examples.first {
-                CardRichTextRenderer.text(
-                    example,
-                    style: CardRichTextStyle(
-                        font: vocabSkin.typography.example,
-                        textColor: vocabSkin.palette.secondaryText,
-                        highlightColor: vocabSkin.palette.highlightMark,
-                        italic: true
-                    ),
-                    mode: .cloze,
-                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
-                )
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
-            }
-
-            Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
-        }
-        .padding(reviewCardPadding)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(height: frontCardHeight, alignment: .topLeading)
-    }
-
-    private func frontFoldSurface(_ card: CardPresentation) -> some View {
-        foldSurface(position: state.revealStage.showsAnswer ? .top : .single) {
-            Button(action: onAdvanceReveal) {
-                reviewCardFront(card)
-                    .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .frame(height: frontCardHeight, alignment: .topLeading)
-            }
-            .buttonStyle(.plain)
-            .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: frontCardHeight, alignment: .topLeading)
-            .contentShape(Rectangle())
-            .disabled(state.revealStage.showsAnswer)
-            .accessibilityLabel("複習卡片正面：\(card.word)")
-            .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片")
-        }
-    }
-
-    private func revealExpandZone(
-        title: String,
-        minHeight: CGFloat,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VStack(spacing: 10) {
-                Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryTextFaint)
-                    .frame(width: 56, height: 3)
-
-                Text(title)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
-            }
-            .frame(maxWidth: .infinity)
-            .frame(minHeight: minHeight, alignment: .top)
-            .contentShape(Rectangle())
-        }
-        .buttonStyle(.plain)
-    }
+    // MARK: - Bottom Toolbar
 
     private var bottomToolbar: some View {
         VStack(spacing: 10) {
-            if let persistenceErrorMessage = state.persistenceErrorMessage {
+            if let msg = state.persistenceErrorMessage {
                 VocabStateMessageCard(
                     title: "本機儲存失敗",
                     systemImage: "externaldrive.badge.exclamationmark",
-                    description: persistenceErrorMessage
+                    description: msg
                 )
                 .transition(.overlayFade)
             }
 
-            if usesCompactLayout {
+            if dynamicTypeSize < .accessibility1 {
                 HStack(spacing: 0) {
                     navButtons
                     Spacer()
@@ -515,8 +377,7 @@ struct TodayReviewPresenter: View {
                 }
             } else {
                 VStack(spacing: vocabSkin.spacing.inlineGap) {
-                    feedbackButtons
-                        .frame(maxWidth: .infinity)
+                    feedbackButtons.frame(maxWidth: .infinity)
                     navButtons
                 }
             }
@@ -540,37 +401,35 @@ struct TodayReviewPresenter: View {
     private var navButtons: some View {
         HStack(spacing: vocabSkin.spacing.inlineGap) {
             Button(action: onPrevious) {
-                Image(systemName: "chevron.left")
-                    .font(vocabSkin.typography.iconNavigation)
+                Image(systemName: "chevron.left").font(vocabSkin.typography.iconNavigation)
             }
-            .disabled(!state.canGoPrevious)
+            .disabled(!state.canGoPrevious || !isCardInteractive)
 
             Button(action: onNext) {
-                Image(systemName: "chevron.right")
-                    .font(vocabSkin.typography.iconNavigation)
+                Image(systemName: "chevron.right").font(vocabSkin.typography.iconNavigation)
             }
-            .disabled(!state.canGoNext)
+            .disabled(!state.canGoNext || !isCardInteractive)
         }
         .foregroundStyle(vocabSkin.palette.secondaryText)
     }
 
     private var feedbackButtons: some View {
         let spring = AppMotion.feedbackButtonSpring
+        let buttonsDisabled = dismissPhase != .idle || !state.revealStage.showsAnswer
+
         return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "xmark")
                     Text("忘記")
                     if state.forgotCount > 0 {
-                        Text("·\(state.forgotCount)")
-                            .font(vocabSkin.typography.monoLabel)
+                        Text("·\(state.forgotCount)").font(vocabSkin.typography.monoLabel)
                     }
                 }
                 .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
-            .disabled(dismissPhase != .idle || !state.revealStage.showsAnswer)
-            // 目標方向：放大 + 上浮 + 加深背景
+            .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if forgotButtonGlow > 0 {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
@@ -588,15 +447,13 @@ struct TodayReviewPresenter: View {
                     Image(systemName: "checkmark")
                     Text("記得")
                     if state.rememberedCount > 0 {
-                        Text("·\(state.rememberedCount)")
-                            .font(vocabSkin.typography.monoLabel)
+                        Text("·\(state.rememberedCount)").font(vocabSkin.typography.monoLabel)
                     }
                 }
                 .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
-            .disabled(dismissPhase != .idle || !state.revealStage.showsAnswer)
-            // 目標方向：放大 + 上浮 + 加深背景
+            .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if rememberedButtonGlow > 0 {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
@@ -610,6 +467,8 @@ struct TodayReviewPresenter: View {
             .animation(spring, value: swipeIntensity)
         }
     }
+
+    // MARK: - Completion / Expand Zone
 
     private var completionState: some View {
         VStack(spacing: vocabSkin.metrics.cardBlockPadding) {
@@ -626,465 +485,24 @@ struct TodayReviewPresenter: View {
         .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
     }
 
-    private func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {
-        HStack(alignment: .top, spacing: vocabSkin.spacing.inlineGap) {
-            Image(systemName: "paperclip")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                .padding(.top, TodayReviewMetrics.answerHintTopPadding)
-
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
-                ForEach(groups) { group in
-                    HStack(spacing: 4) {
-                        Text(group.label.localized + "：")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                        ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                            Button {
-                                onLinkTap(item)
-                            } label: {
-                                Text(item.word)
-                                    .font(vocabSkin.typography.monoEmphasis)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
-                            }
-                            .buttonStyle(.plain)
-
-                            if index < group.items.count - 1 {
-                                Text("|")
-                                    .font(vocabSkin.typography.caption)
-                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                            }
-                        }
-
-                        if group.overflowCount > 0 {
-                            Text("+\(group.overflowCount)")
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                    }
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-    }
-
-    private var reviewCardPadding: CGFloat {
-        vocabSkin.metrics.reviewFoldPadding
-    }
-
-    private var frontCardHeight: CGFloat {
-        vocabSkin.metrics.reviewFrontMinHeight
-    }
-
-    private var answerCardHeight: CGFloat {
-        vocabSkin.metrics.reviewAnswerMinHeight
-    }
-
-    private func answerFoldSurface(_ card: CardPresentation) -> some View {
-        let answerText = card.reviewMode == .production ? card.word : card.translation
-        return foldSurface(position: state.revealStage.showsDetails ? .middle : .bottom) {
-            ZStack(alignment: .topTrailing) {
-                if state.revealStage == .back {
-                    Button(action: onAdvanceReveal) {
-                        answerFoldContent(card, showsExpandHint: true)
-                    }
-                    .buttonStyle(.plain)
-                    .contentShape(Rectangle())
-                    .accessibilityLabel("翻譯：\(answerText)")
-                    .accessibilityHint("點一下查看細節")
-                } else {
-                    answerFoldContent(card, showsExpandHint: false)
-                        .accessibilityLabel("翻譯：\(answerText)")
-                }
-
-                if !state.revealStage.showsDetails {
-                    foldChevronButton(action: onCollapseReveal)
-                        .padding(reviewCardPadding)
-                }
-            }
-        }
-    }
-
-    private func answerFoldContent(_ card: CardPresentation, showsExpandHint: Bool) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            HStack(spacing: 6) {
-                Spacer()
-                if let tier = card.difficultyTier {
-                    VocabTierLabel(tier: tier)
-                }
-            }
-
-            Spacer(minLength: vocabSkin.metrics.reviewFoldHintTopInset)
-
-            Group {
-                if card.reviewMode == .production {
-                    Text(card.word)
-                } else {
-                    Text(card.translation)
-                }
-            }
-            .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-            .foregroundStyle(vocabSkin.palette.primaryText)
-            .lineLimit(4)
-            .minimumScaleFactor(0.65)
-            .fixedSize(horizontal: false, vertical: true)
-
-            if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
-                Text("/\(pronunciation)/")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-            }
-
-            let meaningParagraphs = answerMeaningParagraphs(for: card)
-            if !meaningParagraphs.isEmpty {
-                CardSectionDivider(horizontalPadding: 0)
-                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-                    ForEach(meaningParagraphs) { paragraph in
-                        CardInlineText(paragraph: paragraph, style: .body)
-                            .lineSpacing(5)
-                    }
-                }
-            }
-
-            Spacer(minLength: 0)
-        }
-        .padding(reviewCardPadding)
-        .padding(.trailing, showsExpandHint ? TodayReviewMetrics.expandHintTrailingPadding : 0)
-        .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(minHeight: answerCardHeight, alignment: .topLeading)
-    }
-
-    private func answerMeaningParagraphs(for card: CardPresentation) -> [CardDocumentParagraph] {
-        for block in card.document.blocks {
-            if case .meaning(let meaning) = block {
-                return meaning.paragraphs
-            }
-        }
-        return []
-    }
-
-    private func detailFoldSheet(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
-        let card = currentCard.card
-        return foldSurface(position: .bottom) {
-            VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
-                HStack {
-                    Spacer()
-                    foldChevronButton(action: onCollapseReveal)
-                }
-
-                CardDocumentView(document: reviewBackDocument(for: card), truncateRadius: 5)
-
-                if !currentCard.linkGroups.isEmpty {
-                    CardSectionDivider(horizontalPadding: 0)
-                    reviewLinkStrip(currentCard.linkGroups)
-                }
-            }
-            .padding(.horizontal, reviewCardPadding)
-            .padding(.top, vocabSkin.metrics.reviewToolbarVerticalInset)
-            .padding(.bottom, reviewCardPadding)
-        }
-    }
-
-    private func foldSurface<Content: View>(
-        position: FoldSegmentPosition,
-        @ViewBuilder content: () -> Content
+    private func revealExpandZone(
+        title: String,
+        minHeight: CGFloat,
+        action: @escaping () -> Void
     ) -> some View {
-        content()
-            .background(vocabSkin.palette.cardBackground.opacity(0.985))
-            .clipShape(foldShape(for: position))
-            .overlay(foldShape(for: position).stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
-            .overlay(alignment: .top) {
-                if position != .top && position != .single {
-                        Rectangle()
-                            .fill(vocabSkin.palette.divider.opacity(TodayReviewMetrics.dividerFillOpacity))
-                            .frame(height: 0.5)
-                            .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                }
-            }
-            .shadow(color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : AppShadows.panelOpacity), radius: 6, y: AppShadows.coverY)
-    }
-
-    private func foldShape(for position: FoldSegmentPosition) -> UnevenRoundedRectangle {
-        let topRadius = position == .single || position == .top ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
-        let bottomRadius = position == .single || position == .bottom ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
-
-        return UnevenRoundedRectangle(
-            topLeadingRadius: topRadius,
-            bottomLeadingRadius: bottomRadius,
-            bottomTrailingRadius: bottomRadius,
-            topTrailingRadius: topRadius,
-            style: .continuous
-        )
-    }
-
-    private func reviewFrontWordFont(for text: String) -> Font {
-        let count = text.count
-        if count > 20 { return .system(size: TodayReviewMetrics.counterFontSizeCompact, weight: .semibold, design: .monospaced) }
-        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeMedium, weight: .semibold, design: .monospaced) }
-        return .system(size: 30, weight: .semibold, design: .monospaced)
-    }
-
-    private func reviewAnswerWordFont(for text: String) -> Font {
-        let count = text.count
-        if count > 20 { return vocabSkin.typography.translationTitle }
-        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold, design: .monospaced) }
-        return vocabSkin.typography.reviewWord
-    }
-
-    private func reviewBackDocument(for card: CardPresentation) -> CardDocument {
-        // 僅保留例句和來源，排除 meaning 及其前方 divider
-        var blocks: [CardDocumentBlock] = []
-        var pendingDivider = false
-        for block in card.document.blocks {
-            switch block {
-            case .hero, .meaning:
-                pendingDivider = false
-            case .divider:
-                pendingDivider = true
-            case .example, .source:
-                if pendingDivider && !blocks.isEmpty {
-                    blocks.append(.divider)
-                }
-                blocks.append(block)
-                pendingDivider = false
-            }
-        }
-        return CardDocument(blocks: blocks)
-    }
-
-    private func foldChevronButton(action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: "chevron.up")
-                .font(vocabSkin.typography.iconTiny.weight(.bold))
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .frame(width: vocabSkin.metrics.reviewChevronButtonSize, height: vocabSkin.metrics.reviewChevronButtonSize)
-                .background(
-                    Circle()
-                        .fill(vocabSkin.palette.mutedFill.opacity(0.96))
-                )
-                .overlay(
-                    Circle()
-                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1)
-                )
+            VStack(spacing: 10) {
+                Capsule(style: .continuous)
+                    .fill(vocabSkin.palette.quaternaryTextFaint)
+                    .frame(width: 56, height: 3)
+                Text(title)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
+            }
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: minHeight, alignment: .top)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
-        .contentShape(Circle())
-    }
-
-    private func foldExpandHint(title: String) -> some View {
-        VStack(spacing: 8) {
-            Capsule(style: .continuous)
-                .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
-                .frame(width: vocabSkin.metrics.reviewHintCapsuleWidth, height: 4)
-
-            Text(title)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-        }
-        .frame(maxWidth: .infinity)
-    }
-}
-
-private enum FoldSegmentPosition {
-    case single
-    case top
-    case middle
-    case bottom
-}
-
-private enum TodayReviewPresenterPreviewData {
-    static let baseCard: CardPresentation = {
-        let entry = VocabularyEntry(
-            word: "meticulous",
-            translation: "一絲不苟的；非常仔細的",
-            context: "The editor was meticulous about every line break and caption.",
-            explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
-            partOfSpeech: "adj.",
-            pronunciation: "məˈtɪkjələs",
-            bookTitle: "Designing Interfaces",
-            chapterTitle: "Writing Tone"
-        )
-        entry.dateAdded = Date(timeIntervalSince1970: 1_736_000_000)
-        entry.difficultyTier = "advanced"
-        entry.reviewMode = .recognition
-        entry.reviewExamples = ["The editor was meticulous about every line break and caption."]
-        entry.syncState = .synced
-        entry.rootForm = "meticulous"
-        entry.inflections = ["meticulously", "meticulousness"]
-        entry.graphLinksByKind = [
-            "confusable": [
-                KGCardLinkSummary(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
-                KGCardLinkSummary(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關"),
-                KGCardLinkSummary(id: "link-3", cardId: "card-3", word: "scrupulous", kind: "confusable", label: "易混", confidence: 0.75, reason: "都與嚴謹相關")
-            ]
-        ]
-        return entry.cardPresentation
-    }()
-
-    static let currentCard = TodayReviewPresenterState.CurrentCard(
-        card: baseCard,
-        linkGroups: [
-            .init(
-                id: "confusable",
-                label: "易混",
-                items: [
-                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
-                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關")
-                ],
-                overflowCount: 1
-            )
-        ]
-    )
-
-    static let nextCard = TodayReviewPresenterState.CurrentCard(
-        card: {
-            let entry = VocabularyEntry(
-                word: "ephemeral",
-                translation: "短暫的；轉瞬即逝的",
-                context: "Social media posts are ephemeral by nature.",
-                explanation: "形容事物存在時間極短。",
-                partOfSpeech: "adj.",
-                pronunciation: "ɪˈfemərəl",
-                bookTitle: "Designing Interfaces",
-                chapterTitle: "Writing Tone"
-            )
-            entry.dateAdded = Date(timeIntervalSince1970: 1_736_001_000)
-            entry.reviewMode = .recognition
-            return entry.cardPresentation
-        }(),
-        linkGroups: []
-    )
-
-    static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
-        .init(
-            progressText: "3 / 12",
-            currentCard: currentCard,
-            nextCard: nextCard,
-            revealStage: stage,
-            canShuffle: true,
-            canGoPrevious: true,
-            canGoNext: true,
-            remainingCount: 9,
-            forgotCount: 1,
-            rememberedCount: 2,
-            rememberedFeedbackTrigger: 0,
-            forgotFeedbackTrigger: 0,
-            persistenceFailureTrigger: 0,
-            persistenceErrorMessage: nil,
-            isAdvancing: false
-        )
-    }
-
-    static let completedState = TodayReviewPresenterState(
-        progressText: "12 / 12",
-        currentCard: nil,
-        nextCard: nil,
-        revealStage: .front,
-        canShuffle: false,
-        canGoPrevious: false,
-        canGoNext: false,
-        remainingCount: 0,
-        forgotCount: 4,
-        rememberedCount: 8,
-        rememberedFeedbackTrigger: 0,
-        forgotFeedbackTrigger: 0,
-        persistenceFailureTrigger: 0,
-        persistenceErrorMessage: nil,
-        isAdvancing: false
-    )
-}
-
-#Preview("Today Review / Front") {
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .front),
-            onClose: {},
-            onAdvanceReveal: {},
-            onCollapseReveal: {},
-            onShuffle: {},
-            onPrevious: {},
-            onNext: {},
-            onForgot: {},
-            onRemembered: {},
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-#Preview("Today Review / Details") {
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .details),
-            onClose: {},
-            onAdvanceReveal: {},
-            onCollapseReveal: {},
-            onShuffle: {},
-            onPrevious: {},
-            onNext: {},
-            onForgot: {},
-            onRemembered: {},
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-#Preview("Today Review / Completed") {
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.completedState,
-            onClose: {},
-            onAdvanceReveal: {},
-            onCollapseReveal: {},
-            onShuffle: {},
-            onPrevious: {},
-            onNext: {},
-            onForgot: {},
-            onRemembered: {},
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-#Preview("Today Review / Back") {
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .back),
-            onClose: {},
-            onAdvanceReveal: {},
-            onCollapseReveal: {},
-            onShuffle: {},
-            onPrevious: {},
-            onNext: {},
-            onForgot: {},
-            onRemembered: {},
-            onLinkTap: { _ in }
-        )
-    }
-}
-
-private struct PaperFoldModifier: ViewModifier {
-    let progress: CGFloat
-
-    func body(content: Content) -> some View {
-        content
-            .scaleEffect(y: max(progress, 0.02), anchor: .top)
-            .rotation3DEffect(
-                .degrees(Double((1 - progress) * -88)),
-                axis: (x: 1, y: 0, z: 0),
-                anchor: .top,
-                perspective: 0.86
-            )
-            .opacity(progress)
-            .offset(y: (1 - progress) * -TodayReviewMetrics.paperFoldOffsetY)
-    }
-}
-
-private extension AnyTransition {
-    static var paperFoldFromTop: AnyTransition {
-        .modifier(
-            active: PaperFoldModifier(progress: 0),
-            identity: PaperFoldModifier(progress: 1)
-        )
     }
 }
