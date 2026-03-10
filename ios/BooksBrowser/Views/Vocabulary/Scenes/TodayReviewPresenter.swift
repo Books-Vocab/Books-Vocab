@@ -392,7 +392,7 @@ struct TodayReviewPresenter: View {
             let alignment: Alignment = isForgot ? .topLeading : .topTrailing
 
             Text(label)
-                .font(.system(size: 34, weight: .bold, design: .default))
+                .font(.system(size: TodayReviewMetrics.swipeHintFontSize, weight: .bold))
                 .foregroundStyle(color)
                 .padding(.horizontal, TodayReviewMetrics.tagHorizontalPadding)
                 .padding(.vertical, TodayReviewMetrics.tagVerticalPadding)
