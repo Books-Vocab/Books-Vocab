@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+from datetime import datetime
 from typing import Any, Callable
 
 from fastapi import HTTPException
@@ -10,15 +11,13 @@ from .api_models import CardLinkSummaryResponse, CardResponse, GraphLinkResponse
 from .user_store import parse_datetime
 
 
-def _dt_to_iso(dt) -> str | None:
+def _dt_to_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
-    if hasattr(dt, "isoformat"):
-        s = dt.isoformat()
-        if not s.endswith("Z") and "+" not in s:
-            s += "Z"
-        return s
-    return str(dt)
+    s = dt.isoformat()
+    if not s.endswith("Z") and "+" not in s:
+        s += "Z"
+    return s
 
 
 def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any], link_kinds: list[Any], link_labels: dict[Any, str]) -> dict[str, list[CardLinkSummaryResponse]]:
