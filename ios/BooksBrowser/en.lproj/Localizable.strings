@@ -161,7 +161,7 @@
 "這一輪 session 的卡片都處理完了。" = "You finished all cards in this session.";
 "這次會把待新增與待刪除的變更同步到雲端知識庫。" = "This sync will upload pending additions and deletions to the cloud knowledge base.";
 "請保持網路連線，系統會自動更新本地知識庫。" = "Keep the network connected while the app updates the local knowledge base automatically.";
-"這是一個可選功能，就算不填寫 API Key，BooksBrowser 也能完美獨立運作！" = "This is optional. BooksBrowser works great even without an API key.";
+"這是一個可選功能，就算不填寫 API Key，Books & Vocab 也能完美獨立運作！" = "This is optional. Books & Vocab works great even without an API key.";
 "返回生詞庫" = "Back to Vocabulary";
 "重試" = "Retry";
 "重設" = "Reset";
@@ -214,7 +214,7 @@
 "取消" = "Cancel";
 "可選整合" = "Optional Integrations";
 "危險操作" = "Danger Zone";
-"Legacy optional。只有在你仍使用 Mochi 時才需要填寫；BooksBrowser 的雲端同步與複習不依賴它。" = "Legacy optional. Only fill this in if you still use Mochi; BooksBrowser cloud sync and review do not depend on it.";
+"Legacy optional。只有在你仍使用 Mochi 時才需要填寫；Books & Vocab 的雲端同步與複習不依賴它。" = "Legacy optional. Only fill this in if you still use Mochi; Books & Vocab cloud sync and review do not depend on it.";
 "目前使用本地開發站。" = "Currently using the local development server.";
 "目前使用遠端正式站。" = "Currently using the production server.";
 "目前先以狀態卡與 paywall 骨架接上，購買與 restore 流程下一步接 StoreKit 2。" = "This currently ships with a status card and paywall shell; purchase and restore flows will be connected to StoreKit 2 next.";
@@ -247,8 +247,8 @@
 "App Store 載入失敗" = "App Store Load Failed";
 "AI 翻譯與語境解釋" = "AI Translation and Context Explanation";
 "DEBUG 後端" = "DEBUG Backend";
-"如果你仍在使用 Mochi (mochi.cards)，BooksBrowser 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，BooksBrowser 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), BooksBrowser can sync saved looked-up words there. This is an optional third-party integration, and BooksBrowser cloud sync and review do not depend on it. The API key is stored in your account settings, not as a global server setting.";
-"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。" = "This optional integration is kept for existing users. Leaving the API key empty does not affect BooksBrowser's core features.";
+"如果你仍在使用 Mochi (mochi.cards)，Books & Vocab 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，Books & Vocab 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), Books & Vocab can sync saved looked-up words there. This is an optional third-party integration, and Books & Vocab cloud sync and review do not depend on it. The API key is stored in your account settings, not as a global server setting.";
+"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 Books & Vocab 的主要功能。" = "This optional integration is kept for existing users. Leaving the API key empty does not affect Books & Vocab's core features.";
 "知識庫同步與跨裝置狀態" = "Knowledge Base Sync and Cross-Device State";
 "關聯圖與內建複習" = "Graph View and Built-in Review";
 "重新同步訂閱狀態" = "Re-sync Subscription Status";
@@ -275,8 +275,8 @@
 "English" = "English";
 "書庫" = "Library";
 "生詞庫" = "Vocabulary";
-"加入 BooksBrowser 生字庫" = "Add to BooksBrowser Vocabulary";
-"將選取的單字或片語直接加入 BooksBrowser 進行離線學習與翻譯。" = "Add the selected word or phrase to BooksBrowser for offline learning and translation.";
+"加入 Books & Vocab 生字庫" = "Add to Books & Vocab Vocabulary";
+"將選取的單字或片語直接加入 Books & Vocab 進行離線學習與翻譯。" = "Add the selected word or phrase to Books & Vocab for offline learning and translation.";
 "單字或片語" = "Word or Phrase";
 "上下文 (選填)" = "Context (Optional)";
 "請提供要加入的單字。" = "Please provide a word to add.";
@@ -284,7 +284,7 @@
 "已為您恢復追蹤單字「%@」。" = "Restored tracking for \"%@\".";
 "單字「%@」已經在您的生字庫中了。" = "\"%@\" is already in your vocabulary list.";
 "加入自系統外" = "Added Outside the System";
-"已成功將「%@」加入 BooksBrowser 生字庫。" = "Added \"%@\" to BooksBrowser vocabulary.";
+"已成功將「%@」加入 Books & Vocab 生字庫。" = "Added \"%@\" to Books & Vocab vocabulary.";
 "生字標記" = "Vocabulary Markers";
 "排版" = "Typography";
 "外觀" = "Appearance";
@@ -302,8 +302,8 @@
 "登出帳號" = "Sign Out";
 "已連線" = "Connected";
 "訂閱" = "Subscription";
-"如果你仍在使用 Mochi (mochi.cards)，BooksBrowser 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，BooksBrowser 本身的雲端同步與複習功能不依賴它。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), BooksBrowser can sync the words you looked up and saved there. This is an optional third-party integration, and BooksBrowser cloud sync and review do not depend on it. This API key is stored in your account settings, not as a server-wide setting.";
-"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 BooksBrowser 的主要功能。" = "This optional integration remains for existing users. Leaving the API key empty does not affect BooksBrowser's core features.";
+"如果你仍在使用 Mochi (mochi.cards)，Books & Vocab 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，Books & Vocab 本身的雲端同步與複習功能不依賴它。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), Books & Vocab can sync the words you looked up and saved there. This is an optional third-party integration, and Books & Vocab cloud sync and review do not depend on it. This API key is stored in your account settings, not as a server-wide setting.";
+"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 Books & Vocab 的主要功能。" = "This optional integration remains for existing users. Leaving the API key empty does not affect Books & Vocab's core features.";
 "2 個單字刪除待同步" = "2 pending deletions to sync";
 "已刪除 %@ 個單字" = "Deleted %@ words";
 "觸發背景 AI 處理" = "Trigger Background AI Processing";
