@@ -44,6 +44,7 @@ struct VocabularyListView: View {
                             badge: pendingCount > 0 ? "\(pendingCount)" : nil
                         )
                     }
+                    .accessibilityLabel("同步詞彙")
                 }
 
                 // Force refresh (知識庫 tab only)
