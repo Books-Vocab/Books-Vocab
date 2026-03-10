@@ -6,6 +6,9 @@
 > - Vocabulary 設計系統稽核：`docs/references/vocab_design_system_audit.md`
 > - 元件 / pattern 現況清單：`docs/references/ui_component_pattern_inventory.md`
 > - 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
+> - 並行優化策略 1：`docs/references/ui_strategy_foundation_convergence.md`
+> - 並行優化策略 2：`docs/references/ui_strategy_state_motion_experience.md`
+> - 並行優化策略 3：`docs/references/ui_strategy_verification_governance.md`
 
 > 適用：iOS 26.0+、Xcode 26.0+
 
