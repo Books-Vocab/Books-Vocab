@@ -4,7 +4,7 @@ from typing import Any, Callable
 
 from fastapi import APIRouter
 
-from ..api_models import GraphLinkResponse, VocabAddResponse
+from ..api_models import CardResponse, DeleteWordResponse, GraphLinkResponse, VocabAddResponse
 
 
 def build_vocab_router(
@@ -16,9 +16,9 @@ def build_vocab_router(
     add_vocab: Callable[..., Any],
 ) -> APIRouter:
     router = APIRouter()
-    router.get("/api/vocab")(list_vocab)
-    router.get("/api/vocab/{word}")(lookup_word)
-    router.delete("/api/vocab/{word}")(delete_word)
+    router.get("/api/vocab", response_model=list[CardResponse])(list_vocab)
+    router.get("/api/vocab/{word}", response_model=CardResponse)(lookup_word)
+    router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)(delete_word)
     router.get("/api/graph/links", response_model=list[GraphLinkResponse])(get_graph_links)
     router.post("/api/vocab", response_model=VocabAddResponse)(add_vocab)
     return router
