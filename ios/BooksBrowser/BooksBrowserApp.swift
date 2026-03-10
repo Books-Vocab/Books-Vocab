@@ -136,13 +136,6 @@ struct BooksBrowserApp: App {
                     .onChange(of: scenePhase) { _, newPhase in
                         if newPhase == .active {
                             Task {
-                                await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
-                            }
-                        }
-                    }
-                    .onChange(of: scenePhase) { _, newPhase in
-                        if newPhase == .active, authManager.isLoggedIn {
-                            Task {
                                 await subscriptionManager.refresh(using: kgService, authManager: authManager)
                             }
                         }
