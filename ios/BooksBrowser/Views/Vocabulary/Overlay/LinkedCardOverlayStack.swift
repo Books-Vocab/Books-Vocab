@@ -1,5 +1,14 @@
 import SwiftUI
 
+private enum LinkedCardStackMetrics {
+    /// 每層堆疊的水平位移步長
+    static let layerOffsetX: CGFloat = 8
+    /// 每層堆疊的垂直位移步長
+    static let layerOffsetY: CGFloat = 10
+    /// 每層堆疊的尺寸縮減步長
+    static let layerShrinkStep: CGFloat = 18
+}
+
 struct LinkedCardOverlayStack: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var stack: [VocabularyEntry]
@@ -44,8 +53,8 @@ struct LinkedCardOverlayStack: View {
             )
         }
         .frame(
-            maxWidth: max(420, 680 - CGFloat(index * 18)),
-            maxHeight: max(420, 620 - CGFloat(index * 18))
+            maxWidth: max(420, 680 - CGFloat(index) * LinkedCardStackMetrics.layerShrinkStep),
+            maxHeight: max(420, 620 - CGFloat(index) * LinkedCardStackMetrics.layerShrinkStep)
         )
         .background(vocabSkin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous))
@@ -54,10 +63,10 @@ struct LinkedCardOverlayStack: View {
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
-        .padding(.horizontal, vocabSkin.metrics.cardBlockContentGap + CGFloat(index * 10))
-        .padding(.vertical, vocabSkin.metrics.overlayVerticalInset + CGFloat(index * 8))
+        .padding(.horizontal, vocabSkin.metrics.cardBlockContentGap + CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
+        .padding(.vertical, vocabSkin.metrics.overlayVerticalInset + CGFloat(index) * LinkedCardStackMetrics.layerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
-        .offset(x: CGFloat(index * 8), y: CGFloat(index * 10))
+        .offset(x: CGFloat(index) * LinkedCardStackMetrics.layerOffsetX, y: CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
         .transition(.linkedOverlayCard)
     }
 

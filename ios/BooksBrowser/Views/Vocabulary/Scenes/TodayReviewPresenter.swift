@@ -272,10 +272,9 @@ struct TodayReviewPresenter: View {
                     Double.random(in: -1.0...1.0),
                     Double.random(in: -1.0...1.0)
                 ]
+                callback()  // 必須在同一 transaction 內，避免舊卡單獨收到 isPromoting=true
             }
-            dbg("reset done swipeOffset=\(swipeOffset) isPromoting=\(isPromoting)")
-            callback()
-            dbg("callback done")
+            dbg("reset+callback done swipeOffset=\(swipeOffset) isPromoting=\(isPromoting)")
 
             // 等 SwiftUI commit 新內容（60Hz = 16.7ms/幀，留足一幀確保動畫不被批次合併成 no-op）
             try? await Task.sleep(for: .milliseconds(20))
@@ -807,8 +806,8 @@ struct TodayReviewPresenter: View {
     }
 
     private func foldShape(for position: FoldSegmentPosition) -> UnevenRoundedRectangle {
-        let topRadius = position == .single || position == .top ? vocabSkin.radii.card : 4
-        let bottomRadius = position == .single || position == .bottom ? vocabSkin.radii.card : 4
+        let topRadius = position == .single || position == .top ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
+        let bottomRadius = position == .single || position == .bottom ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
 
         return UnevenRoundedRectangle(
             topLeadingRadius: topRadius,
@@ -1077,7 +1076,7 @@ private struct PaperFoldModifier: ViewModifier {
                 perspective: 0.86
             )
             .opacity(progress)
-            .offset(y: (1 - progress) * -12)
+            .offset(y: (1 - progress) * -TodayReviewMetrics.paperFoldOffsetY)
     }
 }
 
