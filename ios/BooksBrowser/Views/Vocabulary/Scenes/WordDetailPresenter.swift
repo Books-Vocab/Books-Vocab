@@ -74,6 +74,7 @@ struct WordDetailPresenter: View {
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
+        .animation(AppMotion.contentFade, value: state.title)
     }
 
     private var linksSection: some View {
