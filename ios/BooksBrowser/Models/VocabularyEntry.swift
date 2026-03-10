@@ -56,7 +56,7 @@ final class VocabularyEntry {
     var reviewStreak: Int = 0
     var lastReviewFeedbackRaw: Int = -1
 
-    var book: Book?
+    var bookId: UUID?
 
     /// Sync status convenience
     var syncState: VocabularySyncState {
