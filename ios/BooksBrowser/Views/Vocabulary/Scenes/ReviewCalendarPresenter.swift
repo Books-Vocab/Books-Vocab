@@ -12,8 +12,8 @@ struct ReviewCalendarPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
 
-    @Query(sort: \ReviewRecord.reviewedAt, order: .descending)
-    private var allRecords: [ReviewRecord]
+    @Query(sort: \ReviewRecord.reviewedAt, order: .reverse)
+    var allRecords: [ReviewRecord]
 
     @State private var displayedMonth: Date = Date()
     @State private var selectedDay: String? = ReviewRecord.makeDayKey(from: Date())
