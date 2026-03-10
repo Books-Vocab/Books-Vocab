@@ -475,6 +475,8 @@ private struct ReaderChromePreviewScene: View {
                 isLoadingExplanation: false,
                 statusMessage: nil,
                 isExplanationOnly: false,
+                translationErrorMessage: nil,
+                explanationErrorMessage: nil,
                 onExpand: {},
                 onDelete: {},
                 onDismiss: {}
