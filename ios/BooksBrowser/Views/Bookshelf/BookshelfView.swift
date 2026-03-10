@@ -57,10 +57,10 @@ struct BookshelfView: View {
 
                 if books.isEmpty {
                     emptyState
-                        .transition(.opacity)
+                        .transition(.contentSwap)
                 } else {
                     bookGrid
-                        .transition(.opacity)
+                        .transition(.contentSwap)
                 }
 
                 if coordinator.isLoading {
@@ -141,7 +141,7 @@ struct BookshelfView: View {
                     }
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint("點兩下開始閱讀")
-                    .transition(.opacity.combined(with: .scale(scale: 0.96)))
+                    .transition(.bookshelfCard)
                     .contextMenu {
                         Button(role: .destructive) {
                             coordinator.deleteBook(
