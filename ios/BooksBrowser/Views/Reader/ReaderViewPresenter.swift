@@ -284,6 +284,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("目錄")
 
                     Button(action: onShowReaderSettings) {
                         Image(systemName: "textformat.size")
@@ -295,6 +296,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("閱讀設定")
 
                     Button(action: onCollapseHeader) {
                         Image(systemName: "chevron.up")
@@ -306,6 +308,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
+                    .accessibilityLabel("收起標題列")
                 }
                 .padding(.trailing, ReaderPresentationMetrics.Header.trailingInset)
             }
@@ -354,6 +357,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     y: ReaderPresentationMetrics.Header.shadowY
                 )
             }
+            .accessibilityLabel("展開標題列")
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .transition(.headerSwap)
@@ -387,9 +391,9 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 Spacer()
 
                 HStack(spacing: 6) {
-                    VocabChromeIconButton(systemImage: "list.bullet", action: onShowTableOfContents)
-                    VocabChromeIconButton(systemImage: "textformat.size", action: onShowReaderSettings)
-                    VocabChromeIconButton(systemImage: "chevron.up", action: onCollapseHeader)
+                    VocabChromeIconButton(systemImage: "list.bullet", label: "目錄", action: onShowTableOfContents)
+                    VocabChromeIconButton(systemImage: "textformat.size", label: "閱讀設定", action: onShowReaderSettings)
+                    VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列", action: onCollapseHeader)
                 }
             }
             .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInset + 2)
@@ -424,7 +428,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 )
             }
 
-            VocabChromeIconButton(systemImage: "ellipsis", action: onExpandHeader)
+            VocabChromeIconButton(systemImage: "ellipsis", label: "展開標題列", action: onExpandHeader)
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)
