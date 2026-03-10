@@ -1,12 +1,12 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime
 from typing import Any, Callable
 
 from fastapi import HTTPException
 
 from .api_models import CardLinkSummaryResponse, CardResponse, GraphLinkResponse, VocabAddResponse, VocabEntry
+from .user_store import parse_datetime
 
 
 def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any], link_kinds: list[Any], link_labels: dict[Any, str]) -> dict[str, list[CardLinkSummaryResponse]]:
@@ -70,11 +70,10 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
 
 def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> list[CardResponse]:
     if since:
-        try:
-            parsed_since = datetime.fromisoformat(since.replace("Z", "+00:00"))
-            cards = cards_store.get_modified_since(parsed_since)
-        except ValueError as exc:
-            raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.") from exc
+        parsed_since = parse_datetime(since)
+        if parsed_since is None:
+            raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
+        cards = cards_store.get_modified_since(parsed_since)
     else:
         cards = list(cards_store.all())
 
