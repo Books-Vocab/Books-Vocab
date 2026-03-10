@@ -44,7 +44,7 @@ struct KGVocabPresenter: View {
                         onDismiss: banner.canDismiss ? onDismissBanner : nil,
                         onRetry: banner.canRetry ? onRetryBanner : nil
                     )
-                    .transition(.move(edge: .top).combined(with: .opacity))
+                    .transition(.bannerReveal)
                 }
 
 
