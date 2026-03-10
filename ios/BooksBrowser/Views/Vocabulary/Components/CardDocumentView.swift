@@ -4,6 +4,7 @@ struct CardDocumentView: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     let document: CardDocument
+    var truncateRadius: Int? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -14,7 +15,7 @@ struct CardDocumentView: View {
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .example(let paragraph):
-                    CardDocumentExampleBlock(paragraph: paragraph)
+                    CardDocumentExampleBlock(paragraph: paragraph, truncateRadius: truncateRadius)
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .divider:
@@ -75,13 +76,28 @@ private struct CardDocumentHeroBlock: View {
 private struct CardDocumentExampleBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let paragraph: CardDocumentParagraph
+    var truncateRadius: Int? = nil
 
     var body: some View {
-        CardInlineText(
-            paragraph: paragraph,
-            style: .example
-        )
-        .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+        if let radius = truncateRadius {
+            CardRichTextRenderer.text(
+                paragraph.rawMarkdown,
+                style: CardRichTextStyle(
+                    font: vocabSkin.typography.detailExampleSerif,
+                    textColor: vocabSkin.palette.primaryText,
+                    highlightColor: vocabSkin.palette.highlightMark,
+                    italic: false
+                ),
+                truncateAroundMarkedWordRadius: radius
+            )
+            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+        } else {
+            CardInlineText(
+                paragraph: paragraph,
+                style: .example
+            )
+            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+        }
     }
 }
 
@@ -137,7 +153,7 @@ private struct CardDocumentSourceBlock: View {
     }
 }
 
-private struct CardInlineText: View {
+struct CardInlineText: View {
     enum Style {
         case example
         case body
