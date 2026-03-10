@@ -97,6 +97,13 @@ extension KGSubscriptionStatus {
         Self.formattedExpiry(expires_at)
     }
 
+    var isExpired: Bool {
+        guard let expires_at, !expires_at.isEmpty else { return false }
+        guard let date = Self.expiryISO8601Formatter.date(from: expires_at)
+            ?? Self.expiryISO8601FallbackFormatter.date(from: expires_at) else { return false }
+        return date < Date()
+    }
+
     // MARK: - Date Formatting
 
     private static let expiryISO8601Formatter: ISO8601DateFormatter = {
