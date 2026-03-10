@@ -3,8 +3,11 @@ import SwiftUI
 struct SettingsAccountSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.AuthSection
+    let subscription: SettingsPresenterState.SubscriptionSection?
     let manualLoginUserId: Binding<String>?
     let actions: SettingsPresenterActions
+    var onShowAccountDetail: (() -> Void)?
+    var onShowSubscriptionDetail: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
@@ -127,11 +130,59 @@ struct SettingsAccountSection: View {
 
     private var loggedInView: some View {
         VStack(spacing: 0) {
-            SettingsAuthSummary(state: state)
+            // Account info — tappable to show account detail
+            Button {
+                onShowAccountDetail?()
+            } label: {
+                HStack {
+                    SettingsAuthSummary(state: state)
+                    Image(systemName: "chevron.right")
+                        .font(vocabSkin.typography.iconTiny)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
                 .padding(vocabSkin.spacing.cardPadding)
+            }
+            .buttonStyle(.plain)
+
+            // Subscription summary row
+            if let subscription {
+                SettingsDivider(leadingInset: 0)
+
+                Button {
+                    onShowSubscriptionDetail?()
+                } label: {
+                    HStack(spacing: vocabSkin.spacing.controlGap) {
+                        Image(systemName: "sparkles.rectangle.stack")
+                            .font(vocabSkin.typography.iconMedium)
+                            .foregroundStyle(vocabSkin.palette.accent)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(subscription.planName)
+                                .font(vocabSkin.typography.body.weight(.medium))
+                                .foregroundStyle(vocabSkin.palette.primaryText)
+                            Text(subscription.summary)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .lineLimit(1)
+                        }
+
+                        Spacer()
+
+                        subscriptionBadge(subscription)
+
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                    .padding(.vertical, 13)
+                }
+                .buttonStyle(.plain)
+            }
 
             SettingsDivider(leadingInset: 0)
 
+            // Logout button
             Button(role: .destructive, action: actions.logout) {
                 Text("登出帳號")
                     .font(vocabSkin.typography.body)
@@ -141,6 +192,24 @@ struct SettingsAccountSection: View {
             .padding(vocabSkin.spacing.cardPadding)
             .accessibilityLabel("登出帳號")
         }
+    }
+
+    private func subscriptionBadge(_ sub: SettingsPresenterState.SubscriptionSection) -> some View {
+        let tone: Color = {
+            switch sub.badgeTone {
+            case .neutral: return vocabSkin.palette.secondaryText
+            case .accent: return vocabSkin.palette.accent
+            case .success: return vocabSkin.palette.success
+            }
+        }()
+
+        return Text(sub.badgeText)
+            .font(vocabSkin.typography.monoLabel)
+            .foregroundStyle(tone)
+            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+            .background(tone.opacity(0.12))
+            .clipShape(Capsule())
     }
 }
 
@@ -239,7 +308,7 @@ private struct SettingsAuthButton<Leading: View>: View {
     }
 }
 
-private struct SettingsAuthSummary: View {
+struct SettingsAuthSummary: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.AuthSection
 

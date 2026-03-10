@@ -13,6 +13,7 @@ import GoogleSignIn
 @main
 struct BooksBrowserApp: App {
     @StateObject private var appLanguage = AppLanguageStore.shared
+    @StateObject private var appearanceStore = AppAppearanceStore.shared
     let modelContainer: ModelContainer
     let authManager = AuthManager.shared
     let kgService = KGService()
@@ -105,6 +106,8 @@ struct BooksBrowserApp: App {
             AppThemeContainer {
                 ContentView()
                     .environmentObject(appLanguage)
+                    .environmentObject(appearanceStore)
+                    .preferredColorScheme(appearanceStore.resolvedColorScheme)
                     .environment(\.authManager, authManager)
                     .environment(\.kgService, kgService)
                     .environment(\.subscriptionManager, subscriptionManager)
