@@ -100,6 +100,8 @@ final class SubscriptionManager: SubscriptionManaging {
         for attempt in 1...Self.productRetryAttempts {
             do {
                 let products = try await Product.products(for: [Self.proProductID])
+                print("🔍 [StoreKit] attempt \(attempt): returned \(products.count) product(s) for '\(Self.proProductID)'")
+                for p in products { print("🔍 [StoreKit] product: \(p.id) — \(p.displayPrice)") }
                 if let product = products.first {
                     proProduct = product
                     if entitlements.pro.price_display == nil {
@@ -111,7 +113,7 @@ final class SubscriptionManager: SubscriptionManaging {
                     return
                 }
             } catch {
-                // StoreKit request failed, will retry
+                print("🔍 [StoreKit] attempt \(attempt) error: \(error)")
             }
             if attempt < Self.productRetryAttempts {
                 try? await Task.sleep(nanoseconds: Self.productRetryDelay)
