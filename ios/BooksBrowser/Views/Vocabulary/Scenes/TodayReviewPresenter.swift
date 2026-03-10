@@ -639,7 +639,7 @@ struct TodayReviewPresenter: View {
                             .padding(.horizontal, vocabSkin.spacing.cardPadding)
                 }
             }
-            .shadow(color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : 0.7), radius: 6, y: 2)
+            .shadow(color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : AppShadows.panelOpacity), radius: 6, y: AppShadows.coverY)
     }
 
     private func foldShape(for position: FoldSegmentPosition) -> UnevenRoundedRectangle {
