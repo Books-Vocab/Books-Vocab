@@ -15,10 +15,14 @@ struct TodayReviewPresenterState {
 
     let progressText: String
     let currentCard: CurrentCard?
+    let nextCard: CurrentCard?
     let revealStage: TodayReviewRevealStage
     let canShuffle: Bool
     let canGoPrevious: Bool
     let canGoNext: Bool
+    let remainingCount: Int
+    let forgotCount: Int
+    let rememberedCount: Int
     let rememberedFeedbackTrigger: Int
     let forgotFeedbackTrigger: Int
     let persistenceFailureTrigger: Int
@@ -37,13 +41,16 @@ struct TodayReviewPresenter: View {
     @State private var swipeOffset: CGFloat = 0
     @State private var dismissPhase: DismissPhase = .idle
     @State private var dismissTask: Task<Void, Never>?
-    @State private var containerWidth: CGFloat = 390
+    @State private var isPromoting = false
+    @State private var stackRotations: [Double] = [
+        Double.random(in: -1.0...1.0),
+        Double.random(in: -1.0...1.0)
+    ]
 
     /// 卡片退場階段
     private enum DismissPhase {
         case idle
         case animatingOut   // swipe 或按鈕觸發，卡片正在離開畫面
-        case swapping       // 卡片已離開，正在切換內容
     }
 
     let state: TodayReviewPresenterState
@@ -106,11 +113,6 @@ struct TodayReviewPresenter: View {
             .sensoryFeedback(.success, trigger: state.rememberedFeedbackTrigger)
             .sensoryFeedback(.warning, trigger: state.forgotFeedbackTrigger)
             .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
-            .onGeometryChange(for: CGFloat.self) { proxy in
-                proxy.size.width
-            } action: {
-                containerWidth = $0
-            }
         }
     }
 
@@ -155,41 +157,46 @@ struct TodayReviewPresenter: View {
 
     private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         let card = currentCard.card
-        return VStack(spacing: 0) {
-            frontFoldSurface(card)
+        return ZStack(alignment: .top) {
+            // 牌堆層（微視差跟隨 swipe，在卡片後方）
+            cardStackLayers()
+                .frame(height: frontCardHeight)
 
-            if state.revealStage.showsAnswer {
-                answerFoldSurface(card)
-                    .padding(.top, -1)
-                    .transition(.paperFoldFromTop)
-            }
+            // 互動卡片（飛出、升頂）
+            VStack(spacing: 0) {
+                frontFoldSurface(card)
 
-            if state.revealStage.showsDetails {
-                detailFoldSheet(currentCard)
-                    .padding(.top, -1)
-                    .transition(.paperFoldFromTop)
+                if state.revealStage.showsAnswer {
+                    answerFoldSurface(card)
+                        .padding(.top, -1)
+                        .transition(.paperFoldFromTop)
+                }
+
+                if state.revealStage.showsDetails {
+                    detailFoldSheet(currentCard)
+                        .padding(.top, -1)
+                        .transition(.paperFoldFromTop)
+                }
             }
+            .scaleEffect(isPromoting ? 0.96 : 1.0)
+            .offset(y: isPromoting ? 22 : 0)
+            .offset(x: swipeOffset)
+            .rotationEffect(.degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
+            .opacity(cardOpacity)
+            .simultaneousGesture(swipeDragGesture)
         }
-        .animation(AppMotion.reviewRevealSpring, value: state.revealStage)
-        .offset(x: swipeOffset)
-        .rotationEffect(.degrees(Double(swipeOffset) / containerWidth * vocabSkin.metrics.reviewSwipeMaxRotation), anchor: .bottom)
-        .opacity(cardOpacity)
-        .overlay(alignment: .topLeading) {
-            swipeHintView(for: swipeOffset)
-        }
-        .simultaneousGesture(swipeDragGesture)
     }
 
-    /// 卡片當前的 opacity，由 swipeOffset 和 dismissPhase 共同決定
+    /// 卡片當前的 opacity，由 swipeOffset 決定
     private var cardOpacity: Double {
-        if dismissPhase == .swapping { return 0 }
-        return 1.0 - Double(abs(swipeOffset)) / containerWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
+        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
     }
 
     private var swipeEnabled: Bool {
-        state.revealStage.showsAnswer && !state.isAdvancing && dismissPhase == .idle
+        state.revealStage.showsAnswer && !state.isAdvancing && dismissPhase == .idle && !isPromoting
     }
 
+    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
 
     private var swipeDragGesture: some Gesture {
         DragGesture(minimumDistance: 15, coordinateSpace: .local)
@@ -215,7 +222,8 @@ struct TodayReviewPresenter: View {
 
     /// 統一的卡片甩出動畫 — swipe 和按鈕共用
     /// direction: -1 = 左（忘記）, +1 = 右（記得）
-    private func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
+    /// isFromButton: 按鈕觸發時加入蓄力微動
+    private func flingCard(direction: CGFloat, isFromButton: Bool = false, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissTask?.cancel()
         dismissPhase = .animatingOut
@@ -223,42 +231,156 @@ struct TodayReviewPresenter: View {
         let flingAnimation = AppMotion.swipeFlingSpring
 
         dismissTask = Task { @MainActor in
-            // 甩出畫面
-            withAnimation(flingAnimation) {
-                swipeOffset = direction * containerWidth * 1.2
+            // 按鈕：蓄力微動（卡片往反方向退 ~8pt）
+            if isFromButton {
+                withAnimation(.spring(response: 0.1, dampingFraction: 0.9)) {
+                    swipeOffset = -direction * 8
+                }
+                try? await Task.sleep(for: .milliseconds(60))
+                guard !Task.isCancelled else { return }
             }
-            try? await Task.sleep(for: .milliseconds(220))
+
+            // 甩出畫面
+            withAnimation(.interpolatingSpring(stiffness: 500, damping: 28)) {
+                swipeOffset = direction * screenWidth * 1.3
+            }
+            try? await Task.sleep(for: .milliseconds(100))
             guard !Task.isCancelled else { return }
 
-            // 隱藏 + 重置 + 切換（一幀完成）
-            dismissPhase = .swapping
+            // 重置 + 新卡片從牌堆位置出現
             swipeOffset = 0
+            isPromoting = true
+            stackRotations = [
+                Double.random(in: -1.0...1.0),
+                Double.random(in: -1.0...1.0)
+            ]
             callback()
 
             // 等 SwiftUI commit 新內容
             try? await Task.sleep(for: .milliseconds(8))
             guard !Task.isCancelled else { return }
 
-            // 新卡片淡入
-            withAnimation(.easeOut(duration: 0.1)) {
-                dismissPhase = .idle
+            // 新卡片從牌堆升頂，用 reviewRevealSpring 保持 Motion System 一致
+            withAnimation(AppMotion.reviewRevealSpring) {
+                isPromoting = false
+            }
+
+            // 等升頂動畫大致完成後恢復互動
+            try? await Task.sleep(for: .milliseconds(150))
+            guard !Task.isCancelled else { return }
+            dismissPhase = .idle
+        }
+    }
+
+    // MARK: - 牌堆視覺
+
+    private func cardStackLayers() -> some View {
+        ZStack(alignment: .top) {
+            // 最底層（第 3 張牌）
+            if state.remainingCount >= 2 {
+                stackCard(depth: 2)
+            }
+            // 中間層（第 2 張牌）
+            if state.remainingCount >= 1 {
+                stackCard(depth: 1)
             }
         }
     }
 
+    private func stackCard(depth: Int) -> some View {
+        let baseScale: CGFloat = 1.0 - CGFloat(depth) * 0.025
+        let yOffset: CGFloat = CGFloat(depth) * 5
+        let rotation = stackRotations[depth - 1]
+
+        // swipe 時第一層微微放大
+        let swipeProgress = dismissPhase == .idle
+            ? min(abs(swipeOffset) / vocabSkin.metrics.reviewSwipeThreshold, 1.0)
+            : 0
+        let promoteHint: CGFloat = depth == 1 ? swipeProgress * 0.01 : 0
+
+        return ZStack(alignment: .topLeading) {
+            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder.opacity(0.45), lineWidth: 1)
+                )
+                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
+
+            // depth 1：渲染下一張卡片的正面文字（佈局與 reviewCardFront 一致，避免升頂跳動）
+            if depth == 1, let nextCard = state.nextCard {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                    HStack(spacing: 6) {
+                        if let pos = nextCard.card.partOfSpeech {
+                            Text(pos)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        }
+                        Spacer()
+                    }
+
+                    Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
+
+                    Text(nextCard.card.word)
+                        .font(reviewFrontWordFont(for: nextCard.card.word))
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.7)
+
+                    Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
+                }
+                .padding(reviewCardPadding)
+                .frame(maxWidth: .infinity, alignment: .topLeading)
+                .allowsHitTesting(false)
+            }
+        }
+        .frame(height: frontCardHeight)
+        .scaleEffect(baseScale + promoteHint)
+        .offset(y: yOffset)
+        .rotationEffect(.degrees(rotation), anchor: .center)
+        .opacity(depth == 1 ? 0.72 : 0.35)
+    }
+
+    // MARK: - Swipe 與按鈕連動（方案 A）
+
+    /// swipe 強度 -1（全左）~ 0（靜止）~ +1（全右）
+    private var swipeIntensity: Double {
+        guard swipeEnabled else { return 0 }
+        return max(-1, min(1, Double(swipeOffset / vocabSkin.metrics.reviewSwipeThreshold)))
+    }
+
+    /// 忘記按鈕：往左滑時放大+上浮，往右滑時縮小+褪色
+    private var forgotButtonScale: CGFloat   { 1.0 + CGFloat(max(-swipeIntensity, 0)) * 0.12 }
+    private var forgotButtonOffset: CGFloat  { CGFloat(max(-swipeIntensity, 0)) * -4 }
+    private var forgotButtonOpacity: Double  { 1.0 - max(swipeIntensity, 0) * 0.45 }
+    private var forgotButtonGlow: Double     { max(-swipeIntensity, 0) }
+
+    /// 記得按鈕：往右滑時放大+上浮，往左滑時縮小+褪色
+    private var rememberedButtonScale: CGFloat   { 1.0 + CGFloat(max(swipeIntensity, 0)) * 0.12 }
+    private var rememberedButtonOffset: CGFloat  { CGFloat(max(swipeIntensity, 0)) * -4 }
+    private var rememberedButtonOpacity: Double  { 1.0 - max(-swipeIntensity, 0) * 0.45 }
+    private var rememberedButtonGlow: Double     { max(swipeIntensity, 0) }
+
     @ViewBuilder
     private func swipeHintView(for offset: CGFloat) -> some View {
         let threshold = vocabSkin.metrics.reviewSwipeThreshold
-        if offset < -10 {
-            let opacity = min(Double(abs(offset)) / Double(threshold), 1.0)
-            Text("忘記")
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.destructive)
-                .padding(.horizontal, 14)
-                .padding(.vertical, 7)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
-                        .fill(vocabSkin.palette.destructive.opacity(0.12))
+        let absOffset = abs(offset)
+        if absOffset > 20 {
+            let intensity = Double(min(absOffset / threshold, 1.0))
+            let isForgot = offset < 0
+            let color: Color = isForgot ? vocabSkin.palette.destructive : vocabSkin.palette.success
+            let label = isForgot ? "忘記" : "記得"
+            let rotation: Double = isForgot ? -14 : 14
+            let alignment: Alignment = isForgot ? .topLeading : .topTrailing
+
+            Text(label)
+                .font(.system(size: 34, weight: .bold, design: .default))
+                .foregroundStyle(color)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .overlay(
+                    RoundedRectangle(cornerRadius: 6, style: .continuous)
+                        .stroke(color, lineWidth: 2.5)
                 )
                 .transition(.feedbackBadge)
                 .padding(reviewCardPadding)
@@ -385,18 +507,12 @@ struct TodayReviewPresenter: View {
                 HStack(spacing: 0) {
                     navButtons
                     Spacer()
-                    if state.revealStage.showsAnswer {
-                        feedbackButtons
-                            .transition(.overlayFade)
-                    }
+                    feedbackButtons
                 }
             } else {
                 VStack(spacing: vocabSkin.spacing.inlineGap) {
-                    if state.revealStage.showsAnswer {
-                        feedbackButtons
-                            .frame(maxWidth: .infinity)
-                            .transition(.overlayFade)
-                    }
+                    feedbackButtons
+                        .frame(maxWidth: .infinity)
                     navButtons
                 }
             }
@@ -435,20 +551,59 @@ struct TodayReviewPresenter: View {
     }
 
     private var feedbackButtons: some View {
-        HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-            Button { flingCard(direction: -1, callback: onForgot) } label: {
-                Label("忘記", systemImage: "xmark")
-                    .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+        let spring = Animation.spring(response: 0.22, dampingFraction: 0.72)
+        return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
+            Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "xmark")
+                    Text("忘記")
+                    if state.forgotCount > 0 {
+                        Text("·\(state.forgotCount)")
+                            .font(vocabSkin.typography.monoLabel)
+                    }
+                }
+                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
-            .disabled(dismissPhase != .idle)
+            .disabled(dismissPhase != .idle || !state.revealStage.showsAnswer)
+            // 目標方向：放大 + 上浮 + 加深背景
+            .overlay(alignment: .center) {
+                if forgotButtonGlow > 0 {
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.destructive.opacity(forgotButtonGlow * 0.10))
+                        .allowsHitTesting(false)
+                }
+            }
+            .scaleEffect(forgotButtonScale)
+            .offset(y: forgotButtonOffset)
+            .opacity(forgotButtonOpacity)
+            .animation(spring, value: swipeIntensity)
 
-            Button { flingCard(direction: 1, callback: onRemembered) } label: {
-                Label("記得", systemImage: "checkmark")
-                    .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+            Button { flingCard(direction: 1, isFromButton: true, callback: onRemembered) } label: {
+                HStack(spacing: 4) {
+                    Image(systemName: "checkmark")
+                    Text("記得")
+                    if state.rememberedCount > 0 {
+                        Text("·\(state.rememberedCount)")
+                            .font(vocabSkin.typography.monoLabel)
+                    }
+                }
+                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
-            .disabled(dismissPhase != .idle)
+            .disabled(dismissPhase != .idle || !state.revealStage.showsAnswer)
+            // 目標方向：放大 + 上浮 + 加深背景
+            .overlay(alignment: .center) {
+                if rememberedButtonGlow > 0 {
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.success.opacity(rememberedButtonGlow * 0.10))
+                        .allowsHitTesting(false)
+                }
+            }
+            .scaleEffect(rememberedButtonScale)
+            .offset(y: rememberedButtonOffset)
+            .opacity(rememberedButtonOpacity)
+            .animation(spring, value: swipeIntensity)
         }
     }
 
@@ -778,14 +933,37 @@ private enum TodayReviewPresenterPreviewData {
         ]
     )
 
+    static let nextCard = TodayReviewPresenterState.CurrentCard(
+        card: {
+            let entry = VocabularyEntry(
+                word: "ephemeral",
+                translation: "短暫的；轉瞬即逝的",
+                context: "Social media posts are ephemeral by nature.",
+                explanation: "形容事物存在時間極短。",
+                partOfSpeech: "adj.",
+                pronunciation: "ɪˈfemərəl",
+                bookTitle: "Designing Interfaces",
+                chapterTitle: "Writing Tone"
+            )
+            entry.dateAdded = Date(timeIntervalSince1970: 1_736_001_000)
+            entry.reviewMode = .recognition
+            return entry.cardPresentation
+        }(),
+        linkGroups: []
+    )
+
     static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
         .init(
             progressText: "3 / 12",
             currentCard: currentCard,
+            nextCard: nextCard,
             revealStage: stage,
             canShuffle: true,
             canGoPrevious: true,
             canGoNext: true,
+            remainingCount: 9,
+            forgotCount: 1,
+            rememberedCount: 2,
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
             persistenceFailureTrigger: 0,
@@ -797,10 +975,14 @@ private enum TodayReviewPresenterPreviewData {
     static let completedState = TodayReviewPresenterState(
         progressText: "12 / 12",
         currentCard: nil,
+        nextCard: nil,
         revealStage: .front,
         canShuffle: false,
         canGoPrevious: false,
         canGoNext: false,
+        remainingCount: 0,
+        forgotCount: 4,
+        rememberedCount: 8,
         rememberedFeedbackTrigger: 0,
         forgotFeedbackTrigger: 0,
         persistenceFailureTrigger: 0,
