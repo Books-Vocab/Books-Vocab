@@ -10,13 +10,28 @@ struct SettingsPresenter: View {
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
 
+    @State private var showAccountDetail = false
+    @State private var showSubscriptionDetail = false
+
     var body: some View {
         NavigationStack {
             ScrollView {
                 VStack(spacing: AppShellMetrics.sectionSpacing) {
-                    ForEach(Array(sectionViews.enumerated()), id: \.offset) { _, section in
-                        section
+                    // Section 1: 帳號
+                    accountSection
+
+                    // Section 2: 偏好
+                    preferencesSection
+
+                    // Section 3: 其他
+                    otherSection
+
+                    // DEBUG 後端切換
+                    #if DEBUG
+                    if let kg = state.kg, let debugLocalServerURL {
+                        debugBackendSection(kg: kg, debugLocalServerURL: debugLocalServerURL)
                     }
+                    #endif
                 }
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                 .padding(.top, AppShellMetrics.pageTopPadding)
@@ -31,105 +46,197 @@ struct SettingsPresenter: View {
                         .fontWeight(.semibold)
                 }
             }
-        }
-    }
-
-    private var sectionViews: [AnyView] {
-        var sections: [AnyView] = [
-            AnyView(SettingsAccountSection(
-                state: state.auth,
-                manualLoginUserId: manualLoginUserId,
-                actions: actions
-            ))
-        ]
-
-        sections.append(AnyView(SettingsPreferencesSection(
-            state: state.preferences,
-            actions: actions
-        )))
-
-        if let subscription = state.subscription {
-            sections.append(AnyView(SettingsSubscriptionSection(
-                state: subscription,
-                actions: actions
-            )))
-        }
-
-        if let kg = state.kg {
-            sections.append(AnyView(SettingsKGSection(
-                state: kg,
-                debugLocalServerURL: debugLocalServerURL,
-                actions: actions
-            )))
-        }
-
-        if let optionalIntegration = state.optionalIntegration {
-            sections.append(AnyView(optionalIntegrationSection(optionalIntegration)))
-        }
-
-        sections.append(AnyView(aboutSection))
-
-        if let danger = state.danger {
-            sections.append(AnyView(SettingsDangerSection(
-                state: danger,
-                actions: actions
-            )))
-        }
-
-        return sections
-    }
-
-    private func optionalIntegrationSection(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "可選整合", icon: "puzzlepiece.extension")
-
-            VStack(spacing: 0) {
-                SettingsRow(icon: "m.square.fill", label: "Mochi API Key (Legacy)") {
-                    HStack(spacing: 6) {
-                        SecureField("可選", text: optionalIntegrationApiKey)
-                            .font(vocabSkin.typography.monoLabel)
-                            .multilineTextAlignment(.trailing)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
-                            .disabled(!optionalIntegration.isEnabled)
-
-                        Button(action: actions.showOptionalIntegrationInfo) {
-                            Image(systemName: "info.circle")
-                                .font(vocabSkin.typography.iconMedium)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+            .navigationDestination(isPresented: $showAccountDetail) {
+                SettingsAccountDetailView(
+                    authState: state.auth,
+                    dangerState: state.danger,
+                    actions: actions
+                )
+            }
+            .navigationDestination(isPresented: $showSubscriptionDetail) {
+                if let subscription = state.subscription {
+                    ScrollView {
+                        VStack(spacing: AppShellMetrics.sectionSpacing) {
+                            SettingsSubscriptionSection(
+                                state: subscription,
+                                actions: actions
+                            )
                         }
-                        .buttonStyle(.plain)
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        .padding(.top, AppShellMetrics.pageTopPadding)
+                        .padding(.bottom, AppShellMetrics.pageBottomPadding)
                     }
+                    .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+                    .navigationTitle("訂閱")
+                    .navigationBarTitleDisplayMode(.inline)
                 }
             }
-            .settingsCard()
-
-            SettingsSectionFooter("Legacy optional。只有在你仍使用 Mochi 時才需要填寫；BooksBrowser 的雲端同步與複習不依賴它。")
         }
     }
 
-    private var aboutSection: some View {
+    // MARK: - Section 1: 帳號
+
+    private var accountSection: some View {
+        SettingsAccountSection(
+            state: state.auth,
+            subscription: state.subscription,
+            manualLoginUserId: manualLoginUserId,
+            actions: actions,
+            onShowAccountDetail: { showAccountDetail = true },
+            onShowSubscriptionDetail: { showSubscriptionDetail = true }
+        )
+    }
+
+    // MARK: - Section 2: 偏好
+
+    private var preferencesSection: some View {
+        SettingsPreferencesSection(
+            state: state.preferences,
+            actions: actions
+        )
+    }
+
+    // MARK: - Section 3: 其他
+
+    private var otherSection: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "關於", icon: "info.circle")
+            SettingsSectionHeader(title: "其他", icon: "ellipsis.circle")
 
             VStack(spacing: 0) {
-                SettingsRow(icon: "tag", label: "版本") {
-                    Text(state.about.version)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                // 同步狀態 (only when logged in)
+                if let syncSummary = state.syncSummary {
+                    syncSummaryRow(syncSummary)
+                    SettingsDivider()
                 }
+
+                // Mochi 整合 (only when logged in)
+                if let optionalIntegration = state.optionalIntegration {
+                    mochiRow(optionalIntegration)
+                    SettingsDivider()
+                }
+
+                // 隱私政策
+                Button(action: actions.openPrivacyPolicy) {
+                    SettingsRow(icon: "hand.raised", label: "隱私政策") {
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                }
+                .buttonStyle(.plain)
 
                 SettingsDivider()
 
-                SettingsRow(icon: "person.circle", label: "開發者") {
-                    Text(state.about.developerName)
-                        .font(vocabSkin.typography.body)
+                // 支援
+                Button(action: actions.openSupport) {
+                    SettingsRow(icon: "questionmark.circle", label: "支援") {
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                SettingsDivider()
+
+                // 為 App 評分
+                Button(action: actions.requestAppRating) {
+                    SettingsRow(icon: "star", label: "為 App 評分") {
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+            .settingsCard()
+
+            // Version footer
+            Text("版本 \(state.about.version)")
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.top, vocabSkin.spacing.tinyGap)
+        }
+    }
+
+    // MARK: - Sync Summary Row
+
+    private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
+        SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態") {
+            HStack(spacing: 6) {
+                Circle()
+                    .fill(summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning)
+                    .frame(width: 8, height: 8)
+                Text(summary.summaryText)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .lineLimit(1)
+            }
+        }
+    }
+
+    // MARK: - Mochi Row
+
+    private func mochiRow(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
+        SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
+            HStack(spacing: 6) {
+                SecureField("可選", text: optionalIntegrationApiKey)
+                    .font(vocabSkin.typography.monoLabel)
+                    .multilineTextAlignment(.trailing)
+                    .autocorrectionDisabled()
+                    .textInputAutocapitalization(.never)
+                    .disabled(!optionalIntegration.isEnabled)
+
+                Button(action: actions.showOptionalIntegrationInfo) {
+                    Image(systemName: "info.circle")
+                        .font(vocabSkin.typography.iconMedium)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+                .buttonStyle(.plain)
+            }
+        }
+    }
+
+    // MARK: - DEBUG Backend Section
+
+    #if DEBUG
+    private func debugBackendSection(kg: SettingsPresenterState.KGSection, debugLocalServerURL: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "DEBUG 後端", icon: "hammer")
+
+            VStack(spacing: 0) {
+                if let debug = kg.debug {
+                    VStack(alignment: .leading, spacing: 12) {
+                        HStack(spacing: 8) {
+                            Button("遠端正式站", action: actions.useProductionBackend)
+                                .buttonStyle(.borderedProminent)
+                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
+                                .accessibilityLabel("切換至遠端正式站")
+
+                            Button("本地開發站", action: actions.useLocalBackend)
+                                .buttonStyle(.borderedProminent)
+                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
+                                .accessibilityLabel("切換至本地開發站")
+                        }
+
+                        TextField("本地伺服器 URL", text: debugLocalServerURL)
+                            .font(vocabSkin.typography.monoLabel)
+                            .textInputAutocapitalization(.never)
+                            .autocorrectionDisabled()
+                            .submitLabel(.done)
+
+                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。" : "目前使用遠端正式站。")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                    .padding(vocabSkin.spacing.cardPadding)
                 }
             }
             .settingsCard()
         }
     }
+    #endif
 }
 
 // MARK: - Shared Section Helpers (internal，供各 Section 檔案使用)
@@ -283,9 +390,13 @@ private enum SettingsPresenterPreviewData {
         useProductionBackend: {},
         useLocalBackend: {},
         selectLanguage: { _ in },
+        selectAppearance: { _ in },
         showSubscriptionPaywall: {},
         showOptionalIntegrationInfo: {},
-        requestDeleteAccount: {}
+        requestDeleteAccount: {},
+        openPrivacyPolicy: {},
+        openSupport: {},
+        requestAppRating: {}
     )
 
     static let loggedOut = SettingsPresenterState(
@@ -300,11 +411,12 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統"),
         kg: nil,
         subscription: nil,
+        syncSummary: nil,
         optionalIntegration: nil,
-        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: nil
     )
 
@@ -320,7 +432,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -344,8 +456,9 @@ private enum SettingsPresenterPreviewData {
             ctaTitle: "管理訂閱",
             isRefreshing: false
         ),
+        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 3 分鐘前"),
         optionalIntegration: .init(isEnabled: true),
-        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
 
@@ -361,7 +474,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: false,
@@ -385,8 +498,9 @@ private enum SettingsPresenterPreviewData {
             ctaTitle: "重新整理",
             isRefreshing: true
         ),
+        syncSummary: .init(isConnected: false, summaryText: "離線"),
         optionalIntegration: nil,
-        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
 
@@ -402,7 +516,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -426,8 +540,9 @@ private enum SettingsPresenterPreviewData {
             ctaTitle: "管理訂閱",
             isRefreshing: false
         ),
+        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 剛剛"),
         optionalIntegration: nil,
-        about: .init(version: "1.0.0 (42)", developerName: "MPSO"),
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: true)
     )
 }
