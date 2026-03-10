@@ -40,7 +40,7 @@ struct KnowledgeGraphPresenter: View {
 
             if let emptyState = state.emptyState {
                 centeredStateCard(emptyState)
-                    .transition(.opacity)
+                    .transition(.contentSwap)
             } else {
                 ZStack(alignment: .bottom) {
                     graphView
