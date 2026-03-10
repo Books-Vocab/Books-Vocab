@@ -2,20 +2,6 @@ import SwiftUI
 
 struct WordRow: View {
     struct ViewData: Identifiable, Hashable {
-        struct ReviewProgress: Hashable {
-            enum Tone: Hashable {
-                case green
-                case yellow
-                case orange
-                case red
-            }
-
-            let statusLabel: String
-            let detailLabel: String?
-            let fraction: Double?
-            let tone: Tone
-        }
-
         enum Tone: Hashable {
             case primary
             case secondary
@@ -34,7 +20,7 @@ struct WordRow: View {
         let bookTitle: String?
         let chapterTitle: String?
         let difficultyTier: String?
-        let reviewProgress: ReviewProgress?
+        let reviewProgress: VocabReviewProgress?
         let leadingSystemImage: String?
         let leadingTone: Tone?
         let trailingLabel: String?
@@ -45,7 +31,6 @@ struct WordRow: View {
 
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .body) private var scaledProgressBarHeight: CGFloat = 5
     let viewData: ViewData
 
     private var usesCompactLayout: Bool {
@@ -139,7 +124,7 @@ struct WordRow: View {
 
             if usesCompactLayout, !viewData.isStrikethrough {
                 if let reviewProgress = viewData.reviewProgress {
-                    reviewProgressAccessory(reviewProgress)
+                    VocabReviewProgressBar(progress: reviewProgress)
                 } else if let tier = viewData.difficultyTier {
                     VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
                         VocabTierLabel(tier: tier)
@@ -152,38 +137,6 @@ struct WordRow: View {
         .accessibilityLabel(accessibilityRowLabel)
         .accessibilityValue(accessibilityProgressDescription)
         .accessibilityHint("點兩下查看詳細資訊")
-    }
-
-    @ViewBuilder
-    private func reviewProgressAccessory(_ progress: ViewData.ReviewProgress) -> some View {
-        if let fraction = progress.fraction {
-            VStack(alignment: .trailing, spacing: vocabSkin.spacing.reviewProgressBarGap) {
-                if let detailLabel = progress.detailLabel {
-                    Text(detailLabel)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-
-                GeometryReader { proxy in
-                    ZStack(alignment: .leading) {
-                        Capsule(style: .continuous)
-                            .fill(vocabSkin.palette.progressBarBackground)
-
-                        Capsule(style: .continuous)
-                            .fill(resolveProgressTone(progress.tone))
-                            .frame(width: max(6, proxy.size.width * fraction))
-                            .animation(AppMotion.controlEaseOut, value: fraction)
-                    }
-                    .accessibilityLabel("複習進度")
-                    .accessibilityValue("\(Int(fraction * 100))%")
-                }
-                .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledProgressBarHeight)
-            }
-        } else if let detailLabel = progress.detailLabel {
-            Text(detailLabel)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-        }
     }
 
     private func resolveTone(_ tone: ViewData.Tone) -> Color {
@@ -203,16 +156,4 @@ struct WordRow: View {
         }
     }
 
-    private func resolveProgressTone(_ tone: ViewData.ReviewProgress.Tone) -> Color {
-        switch tone {
-        case .green:
-            return vocabSkin.palette.success
-        case .yellow:
-            return vocabSkin.palette.tierIntermediate
-        case .orange:
-            return vocabSkin.palette.tierAdvanced
-        case .red:
-            return vocabSkin.palette.destructive
-        }
-    }
 }

@@ -129,6 +129,73 @@ struct VocabStateMessageCard<Accessory: View>: View {
     }
 }
 
+// MARK: - Shared Review Progress
+
+struct VocabReviewProgress: Hashable {
+    enum Tone: Hashable {
+        case green
+        case yellow
+        case orange
+        case red
+    }
+
+    let statusLabel: String
+    let detailLabel: String?
+    let fraction: Double?
+    let tone: Tone
+}
+
+struct VocabReviewProgressBar: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @ScaledMetric(relativeTo: .body) private var scaledBarHeight: CGFloat = 5
+
+    let progress: VocabReviewProgress
+
+    var body: some View {
+        if let fraction = progress.fraction {
+            VStack(alignment: .trailing, spacing: vocabSkin.spacing.reviewProgressBarGap) {
+                if let detailLabel = progress.detailLabel {
+                    Text(detailLabel)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                GeometryReader { proxy in
+                    ZStack(alignment: .leading) {
+                        Capsule(style: .continuous)
+                            .fill(vocabSkin.palette.progressBarBackground)
+
+                        Capsule(style: .continuous)
+                            .fill(resolveTone(progress.tone))
+                            .frame(width: max(6, proxy.size.width * fraction))
+                            .animation(AppMotion.controlEaseOut, value: fraction)
+                    }
+                    .accessibilityLabel("複習進度")
+                    .accessibilityValue("\(Int(fraction * 100))%")
+                }
+                .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledBarHeight)
+            }
+        } else if let detailLabel = progress.detailLabel {
+            Text(detailLabel)
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+        }
+    }
+
+    private func resolveTone(_ tone: VocabReviewProgress.Tone) -> Color {
+        switch tone {
+        case .green:
+            return vocabSkin.palette.success
+        case .yellow:
+            return vocabSkin.palette.tierIntermediate
+        case .orange:
+            return vocabSkin.palette.tierAdvanced
+        case .red:
+            return vocabSkin.palette.destructive
+        }
+    }
+}
+
 private struct VocabCanvasBackgroundModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
