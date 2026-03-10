@@ -8,6 +8,7 @@ struct SettingsPresenterState {
         let displayName: String
         let email: String?
         let authError: String?
+        let isAuthenticating: Bool
         let iconBreathing: Bool
         let debug: DebugAuthSection?
     }
