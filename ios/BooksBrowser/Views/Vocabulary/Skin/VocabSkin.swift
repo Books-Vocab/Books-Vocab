@@ -495,8 +495,8 @@ extension VocabSkin {
             shadow: Color.black.opacity(0.028),
             primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
             secondaryText: Color(red: 0.43, green: 0.43, blue: 0.42),
-            tertiaryText: Color(red: 0.60, green: 0.60, blue: 0.58),
-            quaternaryText: Color(red: 0.72, green: 0.72, blue: 0.70),
+            tertiaryText: Color(red: 0.44, green: 0.44, blue: 0.42),   // was 0.60 — improved to ~4.5:1 on pageBackground
+            quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast
             translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
             accent: Color(red: 0.49, green: 0.56, blue: 0.64),
             success: Color(red: 0.50, green: 0.64, blue: 0.50),
