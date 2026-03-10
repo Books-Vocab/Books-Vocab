@@ -89,12 +89,6 @@ struct TodayReviewPresenter: View {
                                         minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
                                         action: onAdvanceReveal
                                     )
-                                } else if state.revealStage == .back {
-                                    revealExpandZone(
-                                        title: "點一下查看細節",
-                                        minHeight: max(geo.size.height * vocabSkin.metrics.reviewCompletionHeightRatio, 140),
-                                        action: onAdvanceReveal
-                                    )
                                 } else if state.revealStage.showsAnswer {
                                     Spacer(minLength: 0)
                                 }
@@ -177,13 +171,7 @@ struct TodayReviewPresenter: View {
                 frontFoldSurface(card)
 
                 if state.revealStage.showsAnswer {
-                    answerFoldSurface(card)
-                        .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
-                        .transition(.paperFoldFromTop)
-                }
-
-                if state.revealStage.showsDetails {
-                    detailFoldSheet(currentCard)
+                    answerFoldSurface(currentCard)
                         .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
                         .transition(.paperFoldFromTop)
                 }
