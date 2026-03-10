@@ -183,8 +183,8 @@ struct ReaderView: View {
                 onPhraseSelected: handlePhraseSelected,
                 onExplainSelected: { text, context in
                     guard canUseProReaderFeature() else { return }
-                    withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
                     handler.handleExplainSelected(text: text, context: context)
+                    withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
                 },
                 onWordDeselected: handleWordDeselected,
                 onMarkingProgress: handleMarkingProgress
@@ -298,22 +298,24 @@ struct ReaderView: View {
 
     private func handleWordSelected(_ word: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
-        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
+        // handler 先同步設定 wordSelection，確保 translationPanelContent 有內容
         handler.handleWordSelected(
             word: word,
             context: context,
             vocabularyContext: vocabularyContext
         )
+        // overlay 動畫事務觸發時 panel 已就緒，.transition() 才會生效
+        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
     }
 
     private func handlePhraseSelected(_ phrase: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
-        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
         handler.handlePhraseSelected(
             phrase: phrase,
             context: context,
             vocabularyContext: vocabularyContext
         )
+        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
     }
 
     private func handleMarkingProgress(_ progress: Double) {
