@@ -10,8 +10,8 @@ import SwiftData
 
 @Model
 final class VocabularyReviewMeta {
-    var id: UUID
-    var wordKey: String
+    var id: UUID = UUID()
+    var wordKey: String = ""
 
     // 來源資訊（後端不存）
     var context: String = ""
@@ -49,6 +49,26 @@ final class VocabularyReviewMeta {
 }
 
 extension VocabularyReviewMeta {
+    func mergeWith(_ other: VocabularyReviewMeta) {
+        reviewCount = max(reviewCount, other.reviewCount)
+        lapseCount = max(lapseCount, other.lapseCount)
+
+        let selfLastReviewed = lastReviewedAt ?? .distantPast
+        let otherLastReviewed = other.lastReviewedAt ?? .distantPast
+        if otherLastReviewed > selfLastReviewed {
+            reviewStreak = other.reviewStreak
+            lastReviewedAt = other.lastReviewedAt
+            lastReviewFeedbackRaw = other.lastReviewFeedbackRaw
+        }
+
+        let selfNext = nextReviewAt
+        let otherNext = other.nextReviewAt
+        if otherNext > selfNext {
+            nextReviewAt = otherNext
+            reviewIntervalHours = other.reviewIntervalHours
+        }
+    }
+
     func applyReviewFeedback(_ feedback: ReviewFeedback, now: Date = Date()) {
         let updatedInterval = VocabularyReviewPolicy.nextIntervalHours(
             currentIntervalHours: reviewIntervalHours,

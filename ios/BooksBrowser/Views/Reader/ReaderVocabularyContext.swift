@@ -26,6 +26,7 @@ struct ReaderVocabularyContext {
             entry.queueDelete()
             print("🗑️ Queued KG delete action for: \(word)")
         } else {
+            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
             modelContext.delete(entry)
             print("🗑️ Deleted local entry: \(word)")
         }
