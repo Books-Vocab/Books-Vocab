@@ -42,6 +42,14 @@ class CardResponse(BaseModel):
     isDeleted: bool
     inflections: list[str] = []
     linksByKind: dict[str, list["CardLinkSummaryResponse"]] = Field(default_factory=dict)
+    # Review state
+    reviewIntervalHours: float = 12.0
+    nextReviewAt: str | None = None
+    lastReviewedAt: str | None = None
+    reviewCount: int = 0
+    lapseCount: int = 0
+    reviewStreak: int = 0
+    lastReviewFeedback: int = -1
 
 
 class CardLinkSummaryResponse(BaseModel):
@@ -212,3 +220,23 @@ class AppStoreNotificationResponse(BaseModel):
     reason: str | None = None
     user_id: str | None = None
     entitlements: dict[str, Any] | None = None
+
+
+class ReviewStateEntry(BaseModel):
+    word: str
+    review_interval_hours: float
+    next_review_at: str  # ISO8601
+    last_reviewed_at: str  # ISO8601
+    review_count: int
+    lapse_count: int
+    review_streak: int
+    last_review_feedback: int
+
+
+class ReviewStatePushRequest(BaseModel):
+    entries: list[ReviewStateEntry]
+
+
+class ReviewStatePushResponse(BaseModel):
+    updated: int
+    skipped: int

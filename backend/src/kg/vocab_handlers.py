@@ -4,8 +4,8 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Callable
 
-from .api_models import CardResponse, GraphLinkResponse, VocabAddResponse, VocabEntry
-from .vocab_service import add_vocab_entries, delete_vocab_word, graph_links_payload, list_vocab_cards, lookup_vocab_word
+from .api_models import CardResponse, GraphLinkResponse, ReviewStatePushRequest, ReviewStatePushResponse, VocabAddResponse, VocabEntry
+from .vocab_service import add_vocab_entries, delete_vocab_word, graph_links_payload, list_vocab_cards, lookup_vocab_word, push_review_states
 
 
 def list_vocab_response(
@@ -91,3 +91,17 @@ def add_vocab_response(
         graph=graph_store_factory(user["dir"]),
         logger=logger,
     )
+
+
+def push_review_response(
+    req: ReviewStatePushRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    logger: Logger,
+) -> ReviewStatePushResponse:
+    require_pro_access(user, "knowledge_sync")
+    cards = card_store_factory(user["dir"])
+    result = push_review_states(req.entries, cards_store=cards, logger=logger)
+    return ReviewStatePushResponse(**result)

@@ -6,8 +6,19 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
-from .api_models import CardLinkSummaryResponse, CardResponse, GraphLinkResponse, VocabAddResponse, VocabEntry
+from .api_models import CardLinkSummaryResponse, CardResponse, GraphLinkResponse, ReviewStateEntry, VocabAddResponse, VocabEntry
 from .user_store import parse_datetime
+
+
+def _dt_to_iso(dt) -> str | None:
+    if dt is None:
+        return None
+    if hasattr(dt, "isoformat"):
+        s = dt.isoformat()
+        if not s.endswith("Z") and "+" not in s:
+            s += "Z"
+        return s
+    return str(dt)
 
 
 def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any], link_kinds: list[Any], link_labels: dict[Any, str]) -> dict[str, list[CardLinkSummaryResponse]]:
@@ -66,6 +77,13 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         isDeleted=card.is_deleted,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
+        reviewIntervalHours=card.review_interval_hours,
+        nextReviewAt=_dt_to_iso(card.next_review_at),
+        lastReviewedAt=_dt_to_iso(card.last_reviewed_at),
+        reviewCount=card.review_count,
+        lapseCount=card.lapse_count,
+        reviewStreak=card.review_streak,
+        lastReviewFeedback=card.last_review_feedback,
     )
 
 
@@ -80,6 +98,64 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
 
     cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
+
+
+def push_review_states(
+    entries: list[ReviewStateEntry],
+    *,
+    cards_store: Any,
+    logger: logging.Logger,
+) -> dict[str, int]:
+    """Merge client review states into server cards. Returns {updated, skipped}."""
+    card_by_word: dict[str, Any] = {}
+    for card in cards_store.all():
+        card_by_word[card.content.lower()] = card
+
+    updated = 0
+    skipped = 0
+    for entry in entries:
+        card = card_by_word.get(entry.word.lower())
+        if not card:
+            skipped += 1
+            continue
+
+        client_last = parse_datetime(entry.last_reviewed_at)
+        if client_last is None:
+            skipped += 1
+            continue
+
+        server_last = card.last_reviewed_at
+        if server_last and server_last >= client_last:
+            # Server is newer or equal — only take max counts
+            changed = False
+            if entry.review_count > card.review_count:
+                card.review_count = entry.review_count
+                changed = True
+            if entry.lapse_count > card.lapse_count:
+                card.lapse_count = entry.lapse_count
+                changed = True
+            if changed:
+                cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
+                updated += 1
+            else:
+                skipped += 1
+            continue
+
+        # Client is newer — accept all fields
+        client_next = parse_datetime(entry.next_review_at)
+        cards_store.update(
+            card.id,
+            review_interval_hours=entry.review_interval_hours,
+            next_review_at=client_next,
+            last_reviewed_at=client_last,
+            review_count=max(entry.review_count, card.review_count),
+            lapse_count=max(entry.lapse_count, card.lapse_count),
+            review_streak=entry.review_streak,
+            last_review_feedback=entry.last_review_feedback,
+        )
+        updated += 1
+
+    return {"updated": updated, "skipped": skipped}
 
 
 def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> CardResponse:

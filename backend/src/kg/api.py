@@ -101,6 +101,7 @@ from .api_models import (
     GraphLinkResponse,
     HealthResponse,
     QuickTranslateResponse,
+    ReviewStatePushRequest,
     SubscriptionStatusResponse,
     TranslateRequest,
     UserConfigRequest,
@@ -203,6 +204,7 @@ from .vocab_handlers import (
     get_graph_links_response,
     list_vocab_response,
     lookup_word_response,
+    push_review_response,
 )
 
 load_dotenv()
@@ -331,6 +333,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         delete_word=delete_word,
         get_graph_links=get_graph_links,
         add_vocab=add_vocab,
+        push_review=push_review,
         run_pipeline=run_pipeline,
         translate_quick=translate_quick,
         translate_phrase=translate_phrase,
@@ -712,6 +715,20 @@ def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user))
         card_store_factory=_card_store,
         embedding_store_factory=_embedding_store,
         graph_store_factory=_graph_store,
+        logger=logger,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/vocab/review  — Push review state from client
+# ---------------------------------------------------------------------------
+def push_review(req: ReviewStatePushRequest, user: dict = Depends(get_current_user)):
+    """Merge client-side spaced repetition state into server cards."""
+    return push_review_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
         logger=logger,
     )
 

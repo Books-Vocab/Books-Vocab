@@ -34,6 +34,7 @@ def register_routes(
     delete_word: Callable[..., Any],
     get_graph_links: Callable[..., Any],
     add_vocab: Callable[..., Any],
+    push_review: Callable[..., Any] | None = None,
     run_pipeline: Callable[..., Any],
     translate_quick: Callable[..., Any],
     translate_phrase: Callable[..., Any],
@@ -79,6 +80,7 @@ def register_routes(
             delete_word=delete_word,
             get_graph_links=get_graph_links,
             add_vocab=add_vocab,
+            push_review=push_review,
         )
     )
     app.include_router(build_pipeline_router(run_pipeline=run_pipeline))
