@@ -60,6 +60,14 @@ struct CardDocumentParagraph: Identifiable {
             }
         }.joined()
     }
+
+    var plainText: String {
+        inlines.map { inline in
+            switch inline {
+            case .text(let v), .mark(let v), .code(let v), .emphasis(let v): return v
+            }
+        }.joined()
+    }
 }
 
 enum CardDocumentInline: Identifiable {
