@@ -129,7 +129,7 @@ struct WordRow: View {
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(resolveProgressTone(progress.tone))
 
-            Spacer(minLength: 8)
+            Spacer(minLength: vocabSkin.spacing.inlineGap)
 
             reviewProgressAccessory(progress)
         }
@@ -149,14 +149,14 @@ struct WordRow: View {
                 GeometryReader { proxy in
                     ZStack(alignment: .leading) {
                         Capsule(style: .continuous)
-                            .fill(vocabSkin.palette.mutedFill.opacity(1.25))
+                            .fill(vocabSkin.palette.progressBarBackground)
 
                         Capsule(style: .continuous)
                             .fill(resolveProgressTone(progress.tone))
                             .frame(width: max(6, proxy.size.width * fraction))
                     }
                 }
-                .frame(width: 104, height: 5)
+                .frame(width: vocabSkin.metrics.progressBarWidth, height: vocabSkin.metrics.progressBarHeight)
             }
         } else if let detailLabel = progress.detailLabel {
             Text(detailLabel)

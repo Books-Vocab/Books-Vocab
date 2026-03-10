@@ -75,7 +75,7 @@ struct CardHeroSection: View {
                     }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: vocabSkin.spacing.blockGap)
 
                 if let tier = card.difficultyTier {
                     VocabTierLabel(tier: tier)
@@ -92,7 +92,7 @@ struct CardHeroSection: View {
                 .font(vocabSkin.typography.translationTitle)
                 .foregroundStyle(vocabSkin.palette.translationText)
                 .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(4)
+                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
     }
 }
@@ -118,9 +118,9 @@ struct CardExamplesSection: View {
                         highlightColor: vocabSkin.palette.highlightMark,
                         italic: true
                     ),
-                    truncateAroundMarkedWordRadius: 5
+                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
                 )
-                .lineSpacing(4)
+                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             }
         }
     }
@@ -148,7 +148,7 @@ struct CardSourceSection: View {
                     italic: true
                 )
             )
-            .lineSpacing(4)
+            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
 
             HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
                 Image(systemName: "book.closed")
@@ -185,7 +185,7 @@ struct CardExplanationSection: View {
                     italic: false
                 )
             )
-            .lineSpacing(4)
+            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
         }
     }
 }
