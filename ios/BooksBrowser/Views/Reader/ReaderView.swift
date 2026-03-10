@@ -183,7 +183,7 @@ struct ReaderView: View {
                 onPhraseSelected: handlePhraseSelected,
                 onExplainSelected: { text, context in
                     guard canUseProReaderFeature() else { return }
-                    chromeState.overlay = .translation
+                    withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
                     handler.handleExplainSelected(text: text, context: context)
                 },
                 onWordDeselected: handleWordDeselected,
@@ -298,7 +298,7 @@ struct ReaderView: View {
 
     private func handleWordSelected(_ word: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
-        chromeState.overlay = .translation
+        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
         handler.handleWordSelected(
             word: word,
             context: context,
@@ -308,7 +308,7 @@ struct ReaderView: View {
 
     private func handlePhraseSelected(_ phrase: String, _ context: String) {
         guard canUseProReaderFeature() else { return }
-        chromeState.overlay = .translation
+        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
         handler.handlePhraseSelected(
             phrase: phrase,
             context: context,
@@ -359,8 +359,10 @@ struct ReaderView: View {
 
     private func handleWordDeselected() {
         if chromeState.overlay == .translation {
-            handler.dismiss()
-            closeOverlay(.translation)
+            withAnimation(AppMotion.panelState) {
+                handler.dismiss()
+                closeOverlay(.translation)
+            }
         } else if chromeState.overlay == .settings {
             withAnimation(AppMotion.panelState) {
                 closeOverlay(.settings)
