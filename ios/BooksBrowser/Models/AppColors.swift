@@ -27,9 +27,10 @@ import SwiftUI
 enum AppColors {
 
     // ── 紙張背景色 ────────────────────────────────────────────────────
-    static let paperLight = Color(red: 0.975, green: 0.978, blue: 0.982)
-    static let paperSepia = Color(red: 0.98, green: 0.965, blue: 0.94)
-    static let paperDark  = Color(red: 0.11, green: 0.106, blue: 0.098)
+    static let paperLight     = Color(red: 0.975, green: 0.978, blue: 0.982)
+    static let paperSepia     = Color(red: 0.98, green: 0.965, blue: 0.94)
+    static let paperSepiaDeep = Color(red: 0.96, green: 0.93, blue: 0.87)
+    static let paperDark      = Color(red: 0.11, green: 0.106, blue: 0.098)
 
     // ── 主題強調色（莫蘭迪灰藍 · 明亮）────────────────────────────────
     // 如同淡水彩暈染的藍灰
@@ -50,6 +51,10 @@ enum AppColors {
     // 如同褪色的玫瑰花瓣
     static let destructiveLight = Color(hue: 355/360, saturation: 0.26, brightness: 0.66)
     static let destructiveDark  = Color(hue: 355/360, saturation: 0.25, brightness: 0.68)
+
+    // ── 警告色（淡琥珀）────────────────────────────────────────────────
+    static let warningLight = Color(hue: 0.1, saturation: 0.8, brightness: 0.8)
+    static let warningDark  = Color(hue: 0.1, saturation: 0.6, brightness: 0.9)
 
     // ── 難度 Tier（Legacy — 新代碼請改用 vocabSkin.tierColor(for:)）──────
     // 這些 token 已由 VocabSkin.tierColor() 內建處理，
@@ -99,11 +104,11 @@ extension AppColors {
     }
 
     static func destructive(_ scheme: ColorScheme) -> Color {
-        return scheme == .dark ? Color(hue: 0.05, saturation: 0.4, brightness: 0.8) : Color(hue: 0.05, saturation: 0.6, brightness: 0.7)
+        scheme == .dark ? destructiveDark : destructiveLight
     }
 
     static func warning(_ scheme: ColorScheme) -> Color {
-        return scheme == .dark ? Color(hue: 0.1, saturation: 0.6, brightness: 0.9) : Color(hue: 0.1, saturation: 0.8, brightness: 0.8)
+        scheme == .dark ? warningDark : warningLight
     }
 
     static func tier(_ tier: String, scheme: ColorScheme) -> (color: Color, label: String) {
