@@ -66,6 +66,7 @@ final class VocabularyListCoordinator: ObservableObject {
         if entry.syncAction == .delete {
             entry.markSynced()
         } else {
+            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
             modelContext.delete(entry)
         }
         try? modelContext.save()
