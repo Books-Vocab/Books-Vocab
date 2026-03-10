@@ -297,6 +297,30 @@ struct VocabAccessoryIconButton: View {
     }
 }
 
+struct VocabSortPill: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @Binding var sortOption: KGVocabSortOption
+
+    var body: some View {
+        Menu {
+            ForEach(KGVocabSortOption.allCases) { option in
+                Button {
+                    sortOption = option
+                } label: {
+                    Label(option.label, systemImage: option.systemImage)
+                }
+            }
+        } label: {
+            HStack(spacing: 4) {
+                Image(systemName: "arrow.up.arrow.down")
+                Text(sortOption.label)
+            }
+            .font(vocabSkin.typography.caption)
+            .foregroundStyle(vocabSkin.palette.secondaryText)
+        }
+    }
+}
+
 struct VocabListCard<Header: View, Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let headerPadding: EdgeInsets
