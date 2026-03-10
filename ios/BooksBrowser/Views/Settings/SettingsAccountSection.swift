@@ -100,7 +100,7 @@ struct SettingsAccountSection: View {
                         .foregroundStyle(vocabSkin.palette.destructive)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, AppMetrics.spacingSmall)
-                        .padding(.bottom, 4)
+                        .padding(.bottom, vocabSkin.spacing.tinyGap)
                 }
             }
             .padding(.horizontal, AccountMetrics.authBlockPadding)

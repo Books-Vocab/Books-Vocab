@@ -22,7 +22,7 @@ struct TranslationVocabPresenter: View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
+                    .fill(vocabSkin.palette.quaternaryText.opacity(vocabSkin.metrics.panelHandleOpacity))
                     .frame(
                         width: vocabSkin.metrics.readerPanelHandleWidth,
                         height: vocabSkin.metrics.readerPanelHandleHeight
@@ -146,14 +146,14 @@ struct TranslationVocabPresenter: View {
                         }
                     }
                 }
-                .padding(.vertical, 4)
+                .padding(.vertical, vocabSkin.spacing.tinyGap)
             } else if let errorMessage = state.explanationErrorMessage {
                 VocabStateMessageCard(
                     title: "語境解釋暫時無法載入",
                     systemImage: "exclamationmark.triangle.fill",
                     description: errorMessage
                 )
-                .padding(.vertical, 4)
+                .padding(.vertical, vocabSkin.spacing.tinyGap)
             } else if let explanation = state.explanation {
                 Text(explanation)
                     .font(vocabSkin.typography.body)
@@ -162,7 +162,7 @@ struct TranslationVocabPresenter: View {
                     .lineSpacing(3)
             } else {
                 emptyExplainStateCard
-                    .padding(.vertical, 4)
+                    .padding(.vertical, vocabSkin.spacing.tinyGap)
             }
 
             footerToolbar(showChevron: false, timerValue: state.statusTimerText)
@@ -198,14 +198,14 @@ struct TranslationVocabPresenter: View {
                             }
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, vocabSkin.spacing.tinyGap)
                 } else if let errorMessage = state.explanationErrorMessage {
                     VocabStateMessageCard(
                         title: "語境解釋暫時無法載入",
                         systemImage: "exclamationmark.triangle.fill",
                         description: errorMessage
                     )
-                    .padding(.vertical, 4)
+                    .padding(.vertical, vocabSkin.spacing.tinyGap)
                 } else if let explanation = state.explanation {
                     Text(explanation)
                         .font(vocabSkin.typography.body)
@@ -214,7 +214,7 @@ struct TranslationVocabPresenter: View {
                         .lineSpacing(3)
                 } else {
                     emptyExplainStateCard
-                        .padding(.vertical, 4)
+                        .padding(.vertical, vocabSkin.spacing.tinyGap)
                 }
             }
 
@@ -269,7 +269,7 @@ struct TranslationVocabPresenter: View {
                 Text(timerValue)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .padding(.leading, state.showsSavedStatus ? 8 : 0)
+                    .padding(.leading, state.showsSavedStatus ? vocabSkin.spacing.inlineGap : 0)
             }
 
             Spacer()
@@ -291,6 +291,6 @@ struct TranslationVocabPresenter: View {
 
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
-        .padding(.top, 4)
+        .padding(.top, vocabSkin.spacing.tinyGap)
     }
 }

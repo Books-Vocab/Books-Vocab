@@ -506,7 +506,7 @@ private struct ReaderChromePreviewScene: View {
 #Preview("Reader Chrome / Loading") {
     ReaderChromePreviewScene(
         state: .init(
-            paperColor: Color(red: 0.96, green: 0.93, blue: 0.87),
+            paperColor: AppColors.paperSepiaDeep,
             isWebViewReady: false,
             loadingPhase: "渲染頁面…",
             underlineProgress: 0.42,
@@ -521,7 +521,7 @@ private struct ReaderChromePreviewScene: View {
 #Preview("Reader Chrome / Compact") {
     ReaderChromePreviewScene(
         state: .init(
-            paperColor: Color(red: 0.97, green: 0.95, blue: 0.9),
+            paperColor: AppColors.paperSepia,
             isWebViewReady: true,
             loadingPhase: "開啟書本…",
             underlineProgress: nil,
@@ -536,7 +536,7 @@ private struct ReaderChromePreviewScene: View {
 #Preview("Reader Chrome / Expanded") {
     ReaderChromePreviewScene(
         state: .init(
-            paperColor: Color(red: 0.97, green: 0.95, blue: 0.9),
+            paperColor: AppColors.paperSepia,
             isWebViewReady: true,
             loadingPhase: "開啟書本…",
             underlineProgress: nil,
@@ -551,7 +551,7 @@ private struct ReaderChromePreviewScene: View {
 #Preview("Reader Chrome / Translation") {
     ReaderChromePreviewScene(
         state: .init(
-            paperColor: Color(red: 0.95, green: 0.92, blue: 0.86),
+            paperColor: AppColors.paperSepiaDeep,
             isWebViewReady: true,
             loadingPhase: "開啟書本…",
             underlineProgress: nil,
