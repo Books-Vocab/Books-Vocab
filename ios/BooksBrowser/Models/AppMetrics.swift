@@ -32,6 +32,7 @@ enum AppMetrics {
 enum AppTagMetrics {
     static let horizontalPadding: CGFloat = 10
     static let verticalPadding: CGFloat = 5
+    static let cornerRadius: CGFloat = 6
 }
 
 enum AppGhostButtonMetrics {
@@ -62,6 +63,7 @@ enum AppMotion {
     static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
     static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
+    static let stackPromotionSpring = Animation.spring(response: 0.25, dampingFraction: 0.78)
 
     // Swipe gesture
     static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
@@ -74,6 +76,8 @@ enum AppMotion {
     static let swipeFlingSpring = Animation.interpolatingSpring(stiffness: 500, damping: 28)
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
     static let feedbackButtonSpring = Animation.spring(response: 0.22, dampingFraction: 0.72)
+    /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
+    static let swipeTrackingSpring = Animation.interactiveSpring(response: 0.14, dampingFraction: 0.86)
 
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
@@ -106,6 +110,50 @@ extension AnyTransition {
     static let bookshelfCard: AnyTransition = .opacity.combined(with: .scale(scale: 0.96))
     /// 列表項目簡潔過渡
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
+}
+
+enum TodayReviewMetrics {
+    // ── Stack 動畫 ──────────────────────────────────────────────────
+    /// 卡片升起時的 Y 偏移（promote 動畫）
+    static let promoteYOffset: CGFloat = 22
+    /// 卡片升起時的縮放比例
+    static let promoteScale: CGFloat = 0.96
+
+    // ── 展開提示 ───────────────────────────────────────────────────
+    /// 展開提示出現時，卡片右側的內縮量（為提示圖示騰出空間）
+    static let expandHintTrailingPadding: CGFloat = 40
+
+    // ── Tag / Chip ──────────────────────────────────────────────────
+    /// 字數徽章水平 padding（對齊 AppTagMetrics）
+    static let tagHorizontalPadding: CGFloat = AppTagMetrics.horizontalPadding
+    /// 字數徽章垂直 padding（對齊 AppTagMetrics）
+    static let tagVerticalPadding: CGFloat = AppTagMetrics.verticalPadding
+    /// 字數徽章圓角
+    static let tagCornerRadius: CGFloat = 6
+
+    // ── Opacity ─────────────────────────────────────────────────────
+    /// 卡片邊框線條透明度（idle 狀態）
+    static let cardBorderOpacity: Double = 0.45
+    /// 卡片邊框線條透明度（fold 狀態 / active）
+    static let cardBorderActiveOpacity: Double = 0.72
+    /// 淡化文字透明度（quaternaryText 用）
+    static let dimTextOpacity: Double = 0.72
+    /// 填充色透明度（divider 用）
+    static let dividerFillOpacity: Double = 0.85
+
+    // ── Font Size ───────────────────────────────────────────────────
+    /// 字數 > 20 時的字體大小
+    static let counterFontSizeCompact: CGFloat = 22
+    /// 字數 > 12 時的字體大小
+    static let counterFontSizeMedium: CGFloat = 26
+    /// 字數 ≤ 12 時的字體大小（最大）
+    static let counterFontSizeLarge: CGFloat = 28
+
+    // ── Micro Adjustment ────────────────────────────────────────────
+    /// 卡片疊層微調（消除 1pt 視覺縫隙）
+    static let stackLayerMicroOffset: CGFloat = -1
+    /// 答案展開提示區塊的頂部微調
+    static let answerHintTopPadding: CGFloat = 2
 }
 
 enum AppShadows {
