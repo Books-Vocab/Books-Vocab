@@ -123,7 +123,7 @@ def push_review_states(
             skipped += 1
             continue
 
-        server_last = card.last_reviewed_at
+        server_last = parse_datetime(card.last_reviewed_at)
         if server_last and server_last >= client_last:
             # Server is newer or equal — only take max counts
             changed = False
