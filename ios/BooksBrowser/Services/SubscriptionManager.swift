@@ -72,7 +72,29 @@ final class SubscriptionManager: SubscriptionManaging {
         entitlements.pro.is_active
     }
 
+    private var transactionListener: Task<Void, Never>?
+
     private init() {}
+
+    /// 在 app 啟動時呼叫，持續監聽 Transaction.updates 以捕捉中斷購買、續訂等事件
+    func listenForTransactionUpdates(using kgService: any KGServing, authManager: any AuthManaging) {
+        transactionListener?.cancel()
+        transactionListener = Task(priority: .background) { [weak self] in
+            for await result in Transaction.updates {
+                guard let self, !Task.isCancelled else { return }
+                guard let transaction = try? self.checkVerified(result) else { continue }
+                await transaction.finish()
+                let product = self.proProduct
+                try? await self.syncTransaction(
+                    transaction,
+                    signedTransactionInfo: result.jwsRepresentation,
+                    product: product,
+                    using: kgService
+                )
+                await self.refresh(using: kgService, authManager: authManager)
+            }
+        }
+    }
 
     func refresh(using kgService: any KGServing, authManager: any AuthManaging) async {
         guard authManager.isLoggedIn else {
@@ -144,15 +166,26 @@ final class SubscriptionManager: SubscriptionManaging {
             case .success(let verification):
                 let transaction = try checkVerified(verification)
                 await transaction.finish()
-                purchaseStatusMessage = L10n.string("購買成功，正在同步訂閱狀態。")
+                purchaseStatusMessage = L10n.string("購買成功，正在同步訂閱狀態⋯")
                 entitlements = optimisticEntitlements(from: product, status: inferredStatus(for: product))
-                try? await syncTransaction(
-                    transaction,
-                    signedTransactionInfo: verification.jwsRepresentation,
-                    product: product,
-                    using: kgService
-                )
+                do {
+                    try await syncTransaction(
+                        transaction,
+                        signedTransactionInfo: verification.jwsRepresentation,
+                        product: product,
+                        using: kgService
+                    )
+                    print("✅ [Subscription] sync succeeded")
+                } catch {
+                    print("⚠️ [Subscription] sync failed: \(error)")
+                }
                 await refresh(using: kgService, authManager: authManager)
+                if hasProAccess {
+                    purchaseStatusMessage = L10n.string("訂閱已啟用，感謝支持！")
+                    scheduleClearPurchaseMessage()
+                } else {
+                    purchaseStatusMessage = L10n.string("Apple 購買成功，但後端同步尚未完成。請稍後點「重新同步」。")
+                }
             case .userCancelled:
                 purchaseStatusMessage = L10n.string("已取消購買。")
             case .pending:
@@ -173,8 +206,13 @@ final class SubscriptionManager: SubscriptionManaging {
         do {
             try await AppStore.sync()
             await syncCurrentEntitlements(using: kgService)
-            purchaseStatusMessage = L10n.string("已向 App Store 要求恢復購買。")
             await refresh(using: kgService, authManager: authManager)
+            if hasProAccess {
+                purchaseStatusMessage = L10n.string("購買已恢復，Pro 已啟用。")
+            } else {
+                purchaseStatusMessage = L10n.string("已向 App Store 恢復購買，但後端尚未同步成功。請稍後再試。")
+            }
+            scheduleClearPurchaseMessage()
         } catch {
             purchaseStatusMessage = L10n.format("恢復失敗：%@", error.localizedDescription)
             lastError = error.localizedDescription
@@ -199,6 +237,13 @@ final class SubscriptionManager: SubscriptionManaging {
         )
     }
 
+    private func scheduleClearPurchaseMessage() {
+        Task {
+            try? await Task.sleep(for: .seconds(4))
+            purchaseStatusMessage = nil
+        }
+    }
+
     private func optimisticEntitlements(from product: Product, status: String) -> KGEntitlements {
         KGEntitlements(
             pro: merge(
@@ -221,14 +266,20 @@ final class SubscriptionManager: SubscriptionManaging {
             else { continue }
 
             let product = proProduct
-            try? await syncTransaction(
-                transaction,
-                signedTransactionInfo: result.jwsRepresentation,
-                product: product,
-                using: kgService
-            )
+            do {
+                try await syncTransaction(
+                    transaction,
+                    signedTransactionInfo: result.jwsRepresentation,
+                    product: product,
+                    using: kgService
+                )
+                print("✅ [Subscription] currentEntitlements sync succeeded")
+            } catch {
+                print("⚠️ [Subscription] currentEntitlements sync failed: \(error)")
+            }
             return
         }
+        print("⚠️ [Subscription] no current entitlement found for \(Self.proProductID)")
     }
 
     private func syncTransaction(
