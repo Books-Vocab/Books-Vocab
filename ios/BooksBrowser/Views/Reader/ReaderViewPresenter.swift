@@ -116,11 +116,11 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     .overlay {
                         VStack(spacing: ReaderPresentationMetrics.Overlay.loadingSpacing) {
                             ProgressView()
-                                .tint(.primary)
+                                .tint(vocabSkin.palette.primaryText)
                             Text(state.loadingPhase)
                                 .font(ReaderGlassTypography.body)
                                 .fontWeight(.medium)
-                                .foregroundStyle(.primary)
+                                .foregroundStyle(vocabSkin.palette.primaryText)
                                 .contentTransition(.numericText())
                                 .animation(AppMotion.loadingState, value: state.loadingPhase)
                         }
@@ -171,7 +171,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     HStack(spacing: 10) {
                         ZStack(alignment: .leading) {
                             Capsule()
-                                .fill(.quaternary)
+                                .fill(vocabSkin.palette.divider)
                                 .frame(
                                     width: ReaderPresentationMetrics.Overlay.progressBarWidth,
                                     height: ReaderPresentationMetrics.Overlay.progressBarHeight
@@ -189,7 +189,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                         }
                         Text("\(Int(progress * 100))%")
                             .font(ReaderGlassTypography.progressText)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
                             .frame(width: ReaderPresentationMetrics.Overlay.progressTextWidth, alignment: .trailing)
                     }
                     .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
@@ -257,7 +257,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                         Text("書庫")
                             .font(ReaderGlassTypography.headerBackLabel)
                     }
-                    .foregroundStyle(.primary)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
                     .padding(.leading, ReaderPresentationMetrics.Header.trailingInset)
                 }
 
@@ -265,7 +265,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
 
                 Text(state.bookTitle)
                     .font(ReaderGlassTypography.headerTitle)
-                    .foregroundStyle(.secondary)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
                     .lineLimit(1)
                     .frame(maxWidth: sizeClass == .regular
                         ? ReaderPresentationMetrics.Header.titleMaxWidthRegular
@@ -277,7 +277,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     Button(action: onShowTableOfContents) {
                         Image(systemName: "list.bullet")
                             .font(ReaderGlassTypography.headerAction)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                             .frame(
                                 width: ReaderPresentationMetrics.Header.buttonSize,
                                 height: ReaderPresentationMetrics.Header.buttonSize
@@ -289,7 +289,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     Button(action: onShowReaderSettings) {
                         Image(systemName: "textformat.size")
                             .font(ReaderGlassTypography.headerAction)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                             .frame(
                                 width: ReaderPresentationMetrics.Header.buttonSize,
                                 height: ReaderPresentationMetrics.Header.buttonSize
@@ -301,7 +301,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     Button(action: onCollapseHeader) {
                         Image(systemName: "chevron.up")
                             .font(ReaderGlassTypography.headerCollapse)
-                            .foregroundStyle(.primary)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
                             .frame(
                                 width: ReaderPresentationMetrics.Header.buttonSize,
                                 height: ReaderPresentationMetrics.Header.buttonSize
@@ -342,7 +342,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 GlassEffectContainer {
                     Image(systemName: "ellipsis")
                         .font(ReaderGlassTypography.compactMenuIcon)
-                        .foregroundStyle(.secondary)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
                         .frame(
                             width: ReaderPresentationMetrics.Header.compactButtonSize,
                             height: ReaderPresentationMetrics.Header.compactButtonSize
