@@ -90,6 +90,8 @@ struct TodayReviewPresenter: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
+                        .offset(x: swipeOffset * 0.04)
+                        .animation(AppMotion.feedbackButtonSpring, value: swipeOffset)
                     }
 
                     bottomToolbar
@@ -218,7 +220,7 @@ struct TodayReviewPresenter: View {
         dismissTask?.cancel()
         dismissPhase = .animatingOut
 
-        let flingAnimation = Animation.interpolatingSpring(stiffness: 280, damping: 22)
+        let flingAnimation = AppMotion.swipeFlingSpring
 
         dismissTask = Task { @MainActor in
             // 甩出畫面
@@ -258,6 +260,7 @@ struct TodayReviewPresenter: View {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
                         .fill(vocabSkin.palette.destructive.opacity(0.12))
                 )
+                .transition(.feedbackBadge)
                 .padding(reviewCardPadding)
                 .opacity(opacity)
         } else if offset > 10 {
@@ -271,6 +274,7 @@ struct TodayReviewPresenter: View {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
                         .fill(vocabSkin.palette.success.opacity(0.12))
                 )
+                .transition(.feedbackBadge)
                 .padding(reviewCardPadding)
                 .opacity(opacity)
                 .frame(maxWidth: .infinity, alignment: .trailing)
