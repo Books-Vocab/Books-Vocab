@@ -476,6 +476,8 @@ struct AppTabSelector<ID: Hashable>: View {
                     )
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(option.count.map { "\(option.title), \($0) 個項目" } ?? option.title)
+                .accessibilityAddTraits(selection == option.id ? .isSelected : [])
             }
         }
         .padding(3)
