@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 import re
 from typing import Any, Callable
 
@@ -125,7 +126,7 @@ def _build_example(word: str, context: str) -> str:
     return context
 
 
-def _derive_inflections(word: str, root_form: str | None, *, logger: Any) -> tuple[str | None, list[str]]:
+def _derive_inflections(word: str, root_form: str | None, *, logger: logging.Logger) -> tuple[str | None, list[str]]:
     inflections: list[str] = []
     root = None
     if " " in word:
@@ -163,7 +164,7 @@ def add_vocab_entries(
     cards: Any,
     embeddings: Any,
     graph: Any,
-    logger: Any,
+    logger: logging.Logger,
 ) -> VocabAddResponse:
     existing = {card.content.lower() for card in cards.all()}
 
