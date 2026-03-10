@@ -136,18 +136,6 @@ enum TodayReviewPresenterPreviewData {
     }
 }
 
-#Preview("Today Review / Details") {
-    let cb = TodayReviewPresenterPreviewData.noopCallbacks
-    AppThemeContainer {
-        TodayReviewPresenter(
-            state: TodayReviewPresenterPreviewData.state(stage: .details),
-            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
-            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap
-        )
-    }
-}
-
 #Preview("Today Review / Completed") {
     let cb = TodayReviewPresenterPreviewData.noopCallbacks
     AppThemeContainer {
