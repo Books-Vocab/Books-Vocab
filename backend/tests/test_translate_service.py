@@ -4,7 +4,7 @@ from types import SimpleNamespace
 
 from kg.api_models import TranslateRequest
 from kg.translate_service import (
-    parse_json_payload,
+    _parse_json_payload as parse_json_payload,
     run_explain_translate,
     run_phrase_translate,
     run_quick_translate,

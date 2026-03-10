@@ -41,6 +41,8 @@ struct TodayReviewPresenter: View {
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State private var swipeOffset: CGFloat = 0
     @State private var dismissPhase: DismissPhase = .idle
+    @State private var suppressTransition = false
+    @State private var flingHapticTrigger = 0
     @State private var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -110,8 +112,7 @@ struct TodayReviewPresenter: View {
             .frame(maxWidth: .infinity)
             .vocabCanvasBackground()
             .toolbar(.hidden, for: .navigationBar)
-            .sensoryFeedback(.success, trigger: state.rememberedFeedbackTrigger)
-            .sensoryFeedback(.warning, trigger: state.forgotFeedbackTrigger)
+            .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
         }
     }
@@ -130,7 +131,10 @@ struct TodayReviewPresenter: View {
                         .fill(vocabSkin.palette.mutedFill)
                 )
 
-            Button(action: onShuffle) {
+            Button {
+                guard isCardInteractive else { return }
+                onShuffle()
+            } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "shuffle")
                         .font(vocabSkin.typography.iconTiny)
@@ -146,7 +150,7 @@ struct TodayReviewPresenter: View {
                 )
             }
             .buttonStyle(.plain)
-            .disabled(!state.canShuffle || !isCardInteractive)
+            .disabled(!state.canShuffle)
 
             Spacer()
 
@@ -185,8 +189,9 @@ struct TodayReviewPresenter: View {
                 }
             }
             .id(cardIdentity)
-            // 舊卡瞬間消失（已在畫面外）；新卡從牌堆位置升頂
-            .transition(.asymmetric(
+            // fling 時牌堆已同步升頂完畢，用 .identity 跳過 transition；
+            // prev/next 導航仍走 scale+offset 升頂動畫
+            .transition(suppressTransition ? .identity : .asymmetric(
                 insertion: .scale(scale: TodayReviewMetrics.promoteScale)
                     .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
                 removal: .identity
@@ -229,26 +234,8 @@ struct TodayReviewPresenter: View {
                 .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
 
             if depth == 1, let nextCard = state.nextCard {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-                    HStack(spacing: 6) {
-                        if let pos = nextCard.card.partOfSpeech {
-                            Text(pos)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                        Spacer()
-                    }
-                    Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
-                    Text(nextCard.card.word)
-                        .font(reviewFrontWordFont(for: nextCard.card.word))
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.7)
-                    Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
-                }
-                .padding(reviewCardPadding)
-                .frame(maxWidth: .infinity, alignment: .topLeading)
-                .allowsHitTesting(false)
+                reviewCardFront(nextCard.card)
+                    .allowsHitTesting(false)
             }
         }
         .frame(height: frontCardHeight)
@@ -301,36 +288,45 @@ struct TodayReviewPresenter: View {
 
     /// 統一的甩出動畫 — swipe 和按鈕共用
     ///
-    /// 牌堆升頂不再是獨立階段 — 透過 dismissProgress 與甩出同步進行：
-    /// 1. fling: swipeFlingSpring 甩出畫面（牌堆同步跟隨升頂）
-    /// 2. noAnim: 卡片已離開、牌堆已就位，瞬間換卡重置
+    /// 牌堆升頂不再是獨立階段 — 透過 dismissProgress 與甩出同步進行。
+    /// 滑動觸發時甩出動畫同步啟動（不經 Task 調度），消除一幀凍結。
     private func flingCard(direction: CGFloat, isFromButton: Bool = false, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
+        flingHapticTrigger += 1
+
+        // 滑動觸發：同步啟動甩出，與 dismissPhase 同幀渲染
+        if !isFromButton {
+            withAnimation(AppMotion.swipeFlingSpring) {
+                swipeOffset = direction * screenWidth * 1.3
+            }
+        }
 
         Task { @MainActor in
-            // 按鈕蓄力微動
+            // 按鈕蓄力微動 → 甩出（按鈕路徑才需 Task 內的延遲）
             if isFromButton {
                 withAnimation(AppMotion.buttonWindupSpring) {
                     swipeOffset = -direction * 8
                 }
                 try? await Task.sleep(for: .milliseconds(60))
+                withAnimation(AppMotion.swipeFlingSpring) {
+                    swipeOffset = direction * screenWidth * 1.3
+                }
             }
 
-            // 甩出畫面 — 牌堆透過 dismissProgress 同步升頂
-            withAnimation(AppMotion.swipeFlingSpring) {
-                swipeOffset = direction * screenWidth * 1.3
-            }
-            try? await Task.sleep(for: .milliseconds(180))
+            // stiffness=500: ~50ms 卡片已飛出螢幕、牌堆已升頂
+            try? await Task.sleep(for: .milliseconds(60))
 
-            // 瞬間換卡 — 牌堆已視覺升頂完畢，跳轉不可見
+            // 瞬間換卡
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
             withTransaction(noAnim) {
+                suppressTransition = true
                 swipeOffset = 0
                 stackRotations = [.random(in: -1...1), .random(in: -1...1)]
                 callback()
             }
+            suppressTransition = false
 
             dismissPhase = .idle
         }
@@ -397,22 +393,22 @@ struct TodayReviewPresenter: View {
 
     private var navButtons: some View {
         HStack(spacing: vocabSkin.spacing.inlineGap) {
-            Button(action: onPrevious) {
+            Button { guard isCardInteractive else { return }; onPrevious() } label: {
                 Image(systemName: "chevron.left").font(vocabSkin.typography.iconNavigation)
             }
-            .disabled(!state.canGoPrevious || !isCardInteractive)
+            .disabled(!state.canGoPrevious)
 
-            Button(action: onNext) {
+            Button { guard isCardInteractive else { return }; onNext() } label: {
                 Image(systemName: "chevron.right").font(vocabSkin.typography.iconNavigation)
             }
-            .disabled(!state.canGoNext || !isCardInteractive)
+            .disabled(!state.canGoNext)
         }
         .foregroundStyle(vocabSkin.palette.secondaryText)
     }
 
     private var feedbackButtons: some View {
         let spring = AppMotion.feedbackButtonSpring
-        let buttonsDisabled = dismissPhase != .idle || !state.revealStage.showsAnswer
+        let buttonsDisabled = !state.revealStage.showsAnswer
 
         return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
