@@ -320,6 +320,12 @@ struct VocabSortPill: View {
             }
             .font(vocabSkin.typography.caption)
             .foregroundStyle(vocabSkin.palette.secondaryText)
+            .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                    .fill(vocabSkin.palette.mutedFill)
+            )
         }
         .accessibilityLabel("排序方式：\(sortOption.label)")
         .accessibilityHint("點兩下切換排序")
@@ -353,7 +359,9 @@ struct VocabListCard<Header: View, Content: View>: View {
                 header
                     .padding(headerPadding)
 
-                Divider()
+                Rectangle()
+                    .fill(vocabSkin.palette.divider)
+                    .frame(height: 0.5)
                     .padding(.horizontal, vocabSkin.metrics.listDividerInset)
 
                 content

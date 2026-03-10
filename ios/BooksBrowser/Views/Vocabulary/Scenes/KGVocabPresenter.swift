@@ -49,7 +49,7 @@ struct KGVocabPresenter: View {
 
 
                 VocabListCard {
-                    VStack(alignment: .leading, spacing: 6) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                         VocabTabSelector(options: state.reviewStateOptions, selection: $selectedReviewState)
                         HStack {
                             Spacer()
@@ -57,6 +57,7 @@ struct KGVocabPresenter: View {
                         }
                     }
                 } content: {
+                    Group {
                     if state.rows.isEmpty {
                         VocabEmptyStateContent(
                             title: state.emptyState.title,
@@ -81,13 +82,18 @@ struct KGVocabPresenter: View {
                                     .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
 
                                 if index < state.rows.count - 1 {
-                                    Divider()
+                                    Rectangle()
+                                        .fill(vocabSkin.palette.divider)
+                                        .frame(height: 0.5)
                                         .padding(.leading, vocabSkin.metrics.listDividerInset)
                                 }
                             }
                         }
                         .animation(AppMotion.standardSpring, value: selectedReviewState)
                     }
+                    }
+                    .id(selectedReviewState)
+                    .transition(.contentSwap)
                 }
             }
             .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
