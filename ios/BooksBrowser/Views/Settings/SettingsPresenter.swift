@@ -337,6 +337,36 @@ struct SettingsPresenter: View {
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
 
+                    if let pricingUnavailableMessage = subscription.pricingUnavailableMessage {
+                        VocabStateMessageCard(
+                            title: "App Store 價格暫時不可用",
+                            systemImage: "exclamationmark.triangle.fill",
+                            description: pricingUnavailableMessage
+                        )
+                        .transition(.statusRowReveal)
+                    }
+
+                    subscriptionMetaRow(
+                        title: "權限來源",
+                        value: subscription.sourceLabel
+                    )
+                    .transition(.statusRowReveal)
+
+                    if subscription.isRestoreAvailable {
+                        subscriptionMetaRow(
+                            title: subscription.restoreLabel,
+                            value: subscription.restoreDescription,
+                            emphasized: true
+                        )
+                        .transition(.statusRowReveal)
+                    }
+
+                    subscriptionMetaRow(
+                        title: "管理方式",
+                        value: subscription.managementNote
+                    )
+                    .transition(.statusRowReveal)
+
                     Button(action: actions.showSubscriptionPaywall) {
                         HStack(spacing: 10) {
                             if subscription.isRefreshing {
@@ -368,8 +398,27 @@ struct SettingsPresenter: View {
                 .padding(vocabSkin.spacing.cardPadding)
             }
             .settingsCard()
+            .animation(AppMotion.phaseChange, value: subscription.badgeText)
+            .animation(AppMotion.phaseChange, value: subscription.pricingUnavailableMessage)
 
             SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。")
+        }
+    }
+
+    private func subscriptionMetaRow(
+        title: String,
+        value: String,
+        emphasized: Bool = false
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text(title)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(emphasized ? vocabSkin.palette.accent : vocabSkin.palette.tertiaryText)
+
+            Text(value)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -831,10 +880,9 @@ struct SubscriptionPaywallSheet: View {
                         Text(L10n.format("權限來源：%@", entitlementSourceLine))
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        Text(L10n.format("打開位置：%@", sourceLine))
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
                     }
+
+                    accessStateCard
 
                     VStack(alignment: .leading, spacing: 12) {
                         paywallFeatureRow("AI 翻譯與語境解釋")
@@ -885,6 +933,12 @@ struct SubscriptionPaywallSheet: View {
                             }
                             .buttonStyle(.vocabAction(.neutral))
                             .disabled(subscriptionManager.isLoading)
+                        } else {
+                            VocabStateMessageCard(
+                                title: "恢復購買不適用",
+                                systemImage: "person.badge.key",
+                                description: "目前 Pro 來自管理員授權，不透過訂閱管理。如需調整，請聯絡管理員。"
+                            )
                         }
                     }
 
@@ -930,7 +984,7 @@ struct SubscriptionPaywallSheet: View {
 
     private var paywallSummaryText: String {
         if isAdminGranted {
-            return L10n.string("目前帳號已由管理員授權為 Pro。功能已啟用，但這個權限不經由 App Store 管理。")
+            return L10n.string("目前帳號已啟用 Pro 功能。如需調整或查看有效期，請聯絡管理員。")
         }
         if subscriptionManager.hasProAccess {
             return L10n.string("目前帳號已具備 Pro 權限。若狀態顯示不一致，可重新同步或恢復購買。")
@@ -1000,9 +1054,39 @@ struct SubscriptionPaywallSheet: View {
 
     private var footerNote: String {
         if isAdminGranted {
-            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整權限，請在後端 /admin 處理。")
+            return L10n.string("此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。")
         }
         return L10n.string("價格與免費試用長度會以 App Store 與你的地區顯示為準。")
+    }
+
+    private var accessStateCard: some View {
+        Group {
+            if isAdminGranted {
+                VocabStateMessageCard(
+                    title: "管理員授權中",
+                    systemImage: "person.badge.key.fill",
+                    description: "這裡主要提供狀態查看與重新整理。如需調整，請聯絡管理員。"
+                )
+            } else if subscriptionManager.entitlements.pro.is_trial {
+                VocabStateMessageCard(
+                    title: "免費試用中",
+                    systemImage: "timer",
+                    description: "試用到期前可完整使用 Reader AI、同步、關聯圖與複習功能。"
+                )
+            } else if subscriptionManager.hasProAccess {
+                VocabStateMessageCard(
+                    title: "訂閱已啟用",
+                    systemImage: "checkmark.circle.fill",
+                    description: "若不同裝置顯示不一致，可重新同步訂閱狀態或恢復購買。"
+                )
+            } else {
+                VocabStateMessageCard(
+                    title: "尚未啟用 Pro",
+                    systemImage: "sparkles.rectangle.stack",
+                    description: "價格、免費試用與續訂規則都會以 App Store 實際顯示為準。"
+                )
+            }
+        }
     }
 
     private func paywallFeatureRow(_ text: String) -> some View {
