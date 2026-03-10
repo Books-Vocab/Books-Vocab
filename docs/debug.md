@@ -12,7 +12,7 @@
 ## 30 秒快速診斷
 
 ```bash
-cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace
+cd ~/MPSO/projects/kg
 ./ops/devops_kg_safe.sh status   # HTTP code 判斷根因
 ./ops/devops_kg_safe.sh logs 50
 ```
@@ -189,7 +189,7 @@ Step 4 Optional External Sync → Mochi API key 無效或未設定
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'SELECT COUNT(*) FROM cards;'"
 ./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db 'PRAGMA table_info(cards);'"
-./devops.sh run "cat ~/knowledge_graph_api/data/users.json"
+./devops.sh run "cat ~/backend/data/users.json"
 ```
 
 ---
@@ -218,7 +218,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 # 3. 推回好的備份
 scp -i ~/.ssh/lightsail_default.pem -r \
-  /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/backups/data_<日期> \
+  ~/MPSO/projects/kg/backups/data_<日期> \
   ubuntu@54.95.189.179:~/knowledge_graph_api/data
 
 # 4. 重啟
@@ -234,7 +234,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 |------|------|
 | Caddy 設定 | `/etc/caddy/Caddyfile` |
 | API 代碼 | `/home/ubuntu/knowledge_graph_api/` |
-| API .env | `/home/ubuntu/knowledge_graph_api/.env` |
+| API .env | `/home/ubuntu/backend/.env` |
 | 資料庫 | `/home/ubuntu/knowledge_graph_api/data/` |
 | SSL 憑證 | `/var/lib/caddy/.local/share/caddy/certificates/` |
 | Docker Compose | `/home/ubuntu/knowledge_graph_api/docker-compose.yml` |
