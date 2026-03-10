@@ -54,7 +54,7 @@ struct SyncPresenter: View {
                 summaryCard
                     .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
                     .padding(.bottom, vocabSkin.metrics.reviewToolbarVerticalInset)
-                    .transition(.overlayFade)
+                    .transition(.feedbackBadge)
             }
 
             actionArea
