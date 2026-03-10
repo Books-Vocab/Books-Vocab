@@ -140,8 +140,8 @@ private enum AccountMetrics {
     static let authStatusSpacing: CGFloat = 6
     static let authAvatarSize: CGFloat = 46
     static let authSocialBadgeSize: CGFloat = 22
-    static let authSocialShadowRadius: CGFloat = 2
-    static let authSocialShadowY: CGFloat = 1
+    static let authSocialShadowRadius: CGFloat = AppShadows.controlRadius
+    static let authSocialShadowY: CGFloat = AppShadows.controlY
 }
 
 private enum SettingsSocialKind {
