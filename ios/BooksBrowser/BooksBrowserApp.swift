@@ -124,6 +124,8 @@ struct BooksBrowserApp: App {
         UserDefaults.standard.set(true, forKey: migrationKey)
     }
 
+    @Environment(\.scenePhase) private var scenePhase
+
     var body: some Scene {
         WindowGroup {
             AppThemeContainer {
@@ -141,12 +143,22 @@ struct BooksBrowserApp: App {
                         GIDSignIn.sharedInstance.handle(url)
                     }
                     .task {
+                        let actor = BackgroundSyncActor(modelContainer: modelContainer)
                         if !authManager.isLoggedIn {
-                            let actor = BackgroundSyncActor(modelContainer: modelContainer)
                             try? await actor.clearSyncedData()
+                        } else {
+                            try? await actor.syncReviewMetaToEntries()
                         }
                         await subscriptionManager.loadProducts()
                         await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                    }
+                    .onChange(of: scenePhase) { _, newPhase in
+                        if newPhase == .active && authManager.isLoggedIn {
+                            Task {
+                                let actor = BackgroundSyncActor(modelContainer: modelContainer)
+                                try? await actor.syncReviewMetaToEntries()
+                            }
+                        }
                     }
             }
         }
