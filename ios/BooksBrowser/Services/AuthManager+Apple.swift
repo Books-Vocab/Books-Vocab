@@ -51,6 +51,8 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
 
         Task { @MainActor [weak self] in
             guard let self, let authManager else { return }
+            authManager.isAuthenticating = true
+            defer { authManager.isAuthenticating = false }
             do {
                 guard
                     let identityTokenData = appleIDCredential.identityToken,

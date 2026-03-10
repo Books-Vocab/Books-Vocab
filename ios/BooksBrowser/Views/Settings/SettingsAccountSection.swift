@@ -20,6 +20,23 @@ struct SettingsAccountSection: View {
                 }
             }
             .settingsCard()
+            .overlay {
+                if state.isAuthenticating {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                            .fill(vocabSkin.palette.pageBackground.opacity(0.85))
+                        VStack(spacing: vocabSkin.spacing.controlGap) {
+                            ProgressView()
+                                .controlSize(.regular)
+                            Text("正在驗證帳號…")
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                        }
+                    }
+                    .transition(.opacity)
+                }
+            }
+            .animation(AppMotion.phaseChange, value: state.isAuthenticating)
             .animation(AppMotion.modalSwapSpring, value: state.isLoggedIn)
         }
     }
