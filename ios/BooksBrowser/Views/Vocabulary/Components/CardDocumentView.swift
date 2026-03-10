@@ -36,6 +36,7 @@ struct CardDocumentView: View {
 
 private struct CardDocumentHeroBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let hero: CardDocumentHero
 
     var body: some View {
@@ -53,6 +54,15 @@ private struct CardDocumentHeroBlock: View {
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
+
+                        Button {
+                            SpeechService.shared.speak(hero.word)
+                        } label: {
+                            Image(systemName: "speaker.wave.2.fill")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .symbolEffect(.bounce, value: copyTrigger)
+                        }
                     }
 
                     if let pronunciation = hero.pronunciation, !pronunciation.isEmpty {
@@ -68,42 +78,64 @@ private struct CardDocumentHeroBlock: View {
                     VocabTierLabel(tier: tier)
                 }
             }
-
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = hero.word
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
 private struct CardDocumentExampleBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
 
     var body: some View {
-        if let radius = truncateRadius {
-            CardRichTextRenderer.text(
-                paragraph.rawMarkdown,
-                style: CardRichTextStyle(
-                    font: vocabSkin.typography.detailExampleSerif,
-                    textColor: vocabSkin.palette.primaryText,
-                    highlightColor: vocabSkin.palette.highlightMark,
-                    italic: false
-                ),
-                truncateAroundMarkedWordRadius: radius
-            )
-            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
-        } else {
-            CardInlineText(
-                paragraph: paragraph,
-                style: .example
-            )
-            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+        Group {
+            if let radius = truncateRadius {
+                CardRichTextRenderer.text(
+                    paragraph.rawMarkdown,
+                    style: CardRichTextStyle(
+                        font: vocabSkin.typography.detailExampleSerif,
+                        textColor: vocabSkin.palette.primaryText,
+                        highlightColor: vocabSkin.palette.highlightMark,
+                        italic: false
+                    ),
+                    truncateAroundMarkedWordRadius: radius
+                )
+                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+            } else {
+                CardInlineText(
+                    paragraph: paragraph,
+                    style: .example
+                )
+                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+            }
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = paragraph.plainText
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
 private struct CardDocumentMeaningBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let meaning: CardDocumentMeaning
+
+    private var copyText: String {
+        let parts = [meaning.title] + meaning.paragraphs.map(\.plainText)
+        return parts.joined(separator: "\n")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
@@ -122,12 +154,28 @@ private struct CardDocumentMeaningBlock: View {
                 }
             }
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = copyText
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
 private struct CardDocumentSourceBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
     let source: CardDocumentSource
+
+    private var copyText: String {
+        var parts = [source.bookTitle]
+        if let chapter = source.chapterTitle {
+            parts.append(chapter)
+        }
+        return parts.joined(separator: " · ")
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
@@ -150,6 +198,13 @@ private struct CardDocumentSourceBlock: View {
             .font(vocabSkin.typography.caption)
             .foregroundStyle(vocabSkin.palette.quaternaryText)
         }
+        .contextMenu {
+            Button("複製", systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = copyText
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
     }
 }
 
