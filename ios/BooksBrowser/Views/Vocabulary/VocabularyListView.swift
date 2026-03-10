@@ -184,8 +184,10 @@ struct VocabularyListView: View {
             )
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
-        } else {
+        } else if selectedTab == 2 {
             KnowledgeGraphView()
+        } else {
+            StatsPresenter()
         }
     }
 
@@ -216,6 +218,7 @@ struct VocabularyListView: View {
 
     private var showsSearchField: Bool {
         selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
+        // Tab 2 (關聯圖) and 3 (統計) don't need search
     }
 
     private var syncedKnowledgeEntries: [VocabularyEntry] {
@@ -239,7 +242,8 @@ struct VocabularyListView: View {
                 count: authManager.isLoggedIn ? kgService.serverCardCount : 0,
                 systemImage: "books.vertical"
             ),
-            .init(id: 2, title: "關聯圖", systemImage: "point.3.connected.trianglepath.dotted")
+            .init(id: 2, title: "關聯圖", systemImage: "point.3.connected.trianglepath.dotted"),
+            .init(id: 3, title: "統計", systemImage: "chart.bar")
         ]
     }
 
