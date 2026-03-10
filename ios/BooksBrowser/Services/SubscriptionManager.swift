@@ -84,8 +84,6 @@ final class SubscriptionManager: SubscriptionManaging {
 
     private var transactionListener: Task<Void, Never>?
     private var expiryTimer: Task<Void, Never>?
-    private var lastRefreshTime: Date?
-    private static let refreshCooldown: TimeInterval = 2.0
 
     /// refresh 需要的外部依賴，由 listenForTransactionUpdates 設定
     private weak var _kgService: (any KGServing)?
