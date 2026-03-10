@@ -189,6 +189,15 @@ struct VocabSkin {
         let reviewToolbarShadowOpacity: Double
         let reviewToolbarShadowRadius: CGFloat
         let reviewToolbarShadowY: CGFloat
+        let cardBlockPadding: CGFloat
+        let cardBlockContentGap: CGFloat
+        let cardBlockInnerGap: CGFloat
+        let cardDividerHorizontalPadding: CGFloat
+        let linkRowVerticalPadding: CGFloat
+        let linkRowHorizontalGap: CGFloat
+        let linkDetailGap: CGFloat
+        let metadataFooterGap: CGFloat
+        let metadataFooterItemGap: CGFloat
     }
 
     let palette: Palette
@@ -367,7 +376,16 @@ extension VocabSkin {
         listEmptyStateVerticalInset: 4,
         reviewToolbarShadowOpacity: 1.1,
         reviewToolbarShadowRadius: 6,
-        reviewToolbarShadowY: -2
+        reviewToolbarShadowY: -2,
+        cardBlockPadding: 24,
+        cardBlockContentGap: 16,
+        cardBlockInnerGap: 8,
+        cardDividerHorizontalPadding: 24,
+        linkRowVerticalPadding: 8,
+        linkRowHorizontalGap: 8,
+        linkDetailGap: 3,
+        metadataFooterGap: 24,
+        metadataFooterItemGap: 4
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
