@@ -124,6 +124,7 @@ struct BooksBrowserApp: App {
                             let actor = BackgroundSyncActor(modelContainer: modelContainer)
                             try? await actor.clearSyncedData()
                         }
+                        subscriptionManager.listenForTransactionUpdates(using: kgService, authManager: authManager)
                         await subscriptionManager.loadProducts()
                         await subscriptionManager.refresh(using: kgService, authManager: authManager)
                     }
