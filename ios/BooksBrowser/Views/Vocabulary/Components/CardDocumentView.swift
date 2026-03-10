@@ -61,7 +61,7 @@ private struct CardDocumentHeroBlock: View {
                     }
                 }
 
-                Spacer(minLength: 12)
+                Spacer(minLength: vocabSkin.spacing.blockGap)
 
                 if let tier = hero.difficultyTier {
                     VocabTierLabel(tier: tier)
@@ -73,6 +73,7 @@ private struct CardDocumentHeroBlock: View {
 }
 
 private struct CardDocumentExampleBlock: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let paragraph: CardDocumentParagraph
 
     var body: some View {
@@ -80,7 +81,7 @@ private struct CardDocumentExampleBlock: View {
             paragraph: paragraph,
             style: .example
         )
-        .lineSpacing(4)
+        .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
     }
 }
 
@@ -101,7 +102,7 @@ private struct CardDocumentMeaningBlock: View {
                         paragraph: paragraph,
                         style: .body
                     )
-                    .lineSpacing(5)
+                    .lineSpacing(vocabSkin.metrics.detailLineSpacing)
                 }
             }
         }
@@ -120,7 +121,7 @@ private struct CardDocumentSourceBlock: View {
                 paragraph: source.context,
                 style: .source
             )
-            .lineSpacing(4)
+            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
 
             HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
                 Image(systemName: "book.closed")
@@ -188,7 +189,7 @@ private struct CardInlineText: View {
         case .example, .source:
             part.underlineStyle = Text.LineStyle(
                 pattern: .solid,
-                color: vocabSkin.palette.highlightMark.opacity(0.68)
+                color: vocabSkin.palette.highlightMarkSubtle
             )
         case .body:
             break

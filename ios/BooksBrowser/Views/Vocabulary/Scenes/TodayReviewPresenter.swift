@@ -58,13 +58,13 @@ struct TodayReviewPresenter: View {
                                 if state.revealStage == .front {
                                     revealExpandZone(
                                         title: "點一下展開",
-                                        minHeight: max(geo.size.height * 0.28, 180),
+                                        minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
                                         action: onAdvanceReveal
                                     )
                                 } else if state.revealStage == .back {
                                     revealExpandZone(
                                         title: "點一下查看細節",
-                                        minHeight: max(geo.size.height * 0.22, 140),
+                                        minHeight: max(geo.size.height * vocabSkin.metrics.reviewCompletionHeightRatio, 140),
                                         action: onAdvanceReveal
                                     )
                                 } else if state.revealStage.showsAnswer {
@@ -170,7 +170,7 @@ struct TodayReviewPresenter: View {
             case .production:
                 Text(card.translation)
                     .font(vocabSkin.typography.body.weight(.semibold))
-                    .foregroundStyle(vocabSkin.palette.primaryText.opacity(0.84))
+                    .foregroundStyle(vocabSkin.palette.primaryTextMuted)
                     .minimumScaleFactor(0.75)
             }
 
@@ -184,9 +184,9 @@ struct TodayReviewPresenter: View {
                         italic: true
                     ),
                     mode: .cloze,
-                    truncateAroundMarkedWordRadius: 5
+                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
                 )
-                .lineSpacing(4)
+                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             }
 
             Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
@@ -219,7 +219,7 @@ struct TodayReviewPresenter: View {
         Button(action: action) {
             VStack(spacing: 10) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(0.14))
+                    .fill(vocabSkin.palette.quaternaryTextFaint)
                     .frame(width: 56, height: 3)
 
                 Text(title)
