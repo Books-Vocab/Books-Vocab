@@ -89,7 +89,8 @@ struct TodayReviewView: View {
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
             persistenceFailureTrigger: persistenceFailureTrigger,
-            persistenceErrorMessage: persistenceErrorMessage
+            persistenceErrorMessage: persistenceErrorMessage,
+            isAdvancing: isAdvancing
         )
     }
 

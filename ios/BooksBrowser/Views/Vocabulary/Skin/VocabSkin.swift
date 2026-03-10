@@ -216,6 +216,9 @@ struct VocabSkin {
         let reviewFrontHeightRatio: CGFloat
         let reviewCompletionHeightRatio: CGFloat
         let labelTracking: CGFloat
+        let reviewSwipeThreshold: CGFloat
+        let reviewSwipeMaxRotation: Double
+        let reviewSwipeOpacityFloor: Double
     }
 
     let palette: Palette
@@ -414,7 +417,10 @@ extension VocabSkin {
         exampleTruncateRadius: 5,
         reviewFrontHeightRatio: 0.28,
         reviewCompletionHeightRatio: 0.22,
-        labelTracking: 0.5
+        labelTracking: 0.5,
+        reviewSwipeThreshold: 100,
+        reviewSwipeMaxRotation: 12,
+        reviewSwipeOpacityFloor: 0.3
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
