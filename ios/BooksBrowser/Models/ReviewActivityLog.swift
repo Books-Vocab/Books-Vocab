@@ -2,14 +2,16 @@
 //  ReviewActivityLog.swift
 //  BooksBrowser
 //
-//  輕量每日複習活動記錄，用 UserDefaults 持久化。
-//  記錄每天的複習次數，用於 heatmap 和 streak 計算。
+//  複習活動查詢工具。資料來源為 SwiftData ReviewRecord。
+//  保留舊 UserDefaults 資料的一次性遷移邏輯。
 //
 
 import Foundation
+import SwiftData
 
 enum ReviewActivityLog {
-    private static let storageKey = "review_activity_log"
+    private static let legacyStorageKey = "review_activity_log"
+    private static let migrationDoneKey = "review_activity_migrated_to_swiftdata"
     private static let calendar = Calendar.current
 
     private static let dayFormatter: DateFormatter = {
@@ -20,40 +22,45 @@ enum ReviewActivityLog {
         return f
     }()
 
-    // MARK: - Public API
+    // MARK: - Record
 
-    static func recordReview(count: Int = 1, on date: Date = Date()) {
-        var log = loadLog()
-        let key = dayFormatter.string(from: date)
-        log[key] = (log[key] ?? 0) + count
-        saveLog(log)
+    @MainActor
+    static func recordReview(
+        word: String,
+        entryID: UUID?,
+        feedback: ReviewFeedback,
+        context: ModelContext
+    ) {
+        let record = ReviewRecord(
+            word: word,
+            entryID: entryID,
+            feedback: feedback == .remembered ? 1 : 0
+        )
+        context.insert(record)
     }
 
-    static func activity(for days: Int = 180) -> [String: Int] {
-        let log = loadLog()
-        let today = Date()
+    // MARK: - Queries (from SwiftData)
+
+    static func activity(for days: Int = 180, records: [ReviewRecord]) -> [String: Int] {
+        let cutoff = calendar.date(byAdding: .day, value: -days, to: Date()) ?? Date()
+        let cutoffKey = dayFormatter.string(from: cutoff)
         var result: [String: Int] = [:]
-        for offset in 0..<days {
-            guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { continue }
-            let key = dayFormatter.string(from: date)
-            if let count = log[key] {
-                result[key] = count
-            }
+        for record in records where record.dayKey >= cutoffKey {
+            result[record.dayKey, default: 0] += 1
         }
         return result
     }
 
-    static func currentStreak() -> Int {
-        let log = loadLog()
+    static func currentStreak(records: [ReviewRecord]) -> Int {
+        let grouped = groupByDay(records)
         let today = Date()
         var streak = 0
         for offset in 0... {
             guard let date = calendar.date(byAdding: .day, value: -offset, to: today) else { break }
             let key = dayFormatter.string(from: date)
-            if let count = log[key], count > 0 {
+            if let count = grouped[key], count > 0 {
                 streak += 1
             } else {
-                // 今天還沒複習不算斷連
                 if offset == 0 { continue }
                 break
             }
@@ -61,11 +68,11 @@ enum ReviewActivityLog {
         return streak
     }
 
-    static func longestStreak() -> Int {
-        let log = loadLog()
-        guard !log.isEmpty else { return 0 }
+    static func longestStreak(records: [ReviewRecord]) -> Int {
+        let grouped = groupByDay(records)
+        guard !grouped.isEmpty else { return 0 }
 
-        let sortedDays = log.keys.sorted()
+        let sortedDays = grouped.keys.sorted()
         guard let firstDay = sortedDays.first,
               let firstDate = dayFormatter.date(from: firstDay),
               let lastDay = sortedDays.last,
@@ -77,7 +84,7 @@ enum ReviewActivityLog {
         for offset in 0...totalDays {
             guard let date = calendar.date(byAdding: .day, value: offset, to: firstDate) else { continue }
             let key = dayFormatter.string(from: date)
-            if let count = log[key], count > 0 {
+            if let count = grouped[key], count > 0 {
                 current += 1
                 longest = max(longest, current)
             } else {
@@ -87,22 +94,53 @@ enum ReviewActivityLog {
         return longest
     }
 
-    static func reviewedToday() -> Int {
-        let key = dayFormatter.string(from: Date())
-        return loadLog()[key] ?? 0
+    static func reviewedToday(records: [ReviewRecord]) -> Int {
+        let todayKey = dayFormatter.string(from: Date())
+        return records.filter { $0.dayKey == todayKey }.count
     }
 
-    // MARK: - Storage
-
-    private static func loadLog() -> [String: Int] {
-        UserDefaults.standard.dictionary(forKey: storageKey) as? [String: Int] ?? [:]
+    static func recordsForDay(_ dayKey: String, from records: [ReviewRecord]) -> [ReviewRecord] {
+        records.filter { $0.dayKey == dayKey }
+            .sorted { $0.reviewedAt > $1.reviewedAt }
     }
 
-    private static func saveLog(_ log: [String: Int]) {
-        // 只保留最近 365 天
-        let cutoff = calendar.date(byAdding: .day, value: -365, to: Date()) ?? Date()
-        let cutoffKey = dayFormatter.string(from: cutoff)
-        let trimmed = log.filter { $0.key >= cutoffKey }
-        UserDefaults.standard.set(trimmed, forKey: storageKey)
+    // MARK: - Migration
+
+    @MainActor
+    static func migrateFromUserDefaultsIfNeeded(context: ModelContext) {
+        guard !UserDefaults.standard.bool(forKey: migrationDoneKey) else { return }
+        guard let legacy = UserDefaults.standard.dictionary(forKey: legacyStorageKey) as? [String: Int],
+              !legacy.isEmpty else {
+            UserDefaults.standard.set(true, forKey: migrationDoneKey)
+            return
+        }
+
+        for (dayKey, count) in legacy {
+            guard let date = dayFormatter.date(from: dayKey) else { continue }
+            // 建立 placeholder records（無法還原具體單字）
+            for _ in 0..<count {
+                let record = ReviewRecord(
+                    word: "（遷移資料）",
+                    entryID: nil,
+                    feedback: 1,
+                    reviewedAt: date
+                )
+                context.insert(record)
+            }
+        }
+
+        try? context.save()
+        UserDefaults.standard.removeObject(forKey: legacyStorageKey)
+        UserDefaults.standard.set(true, forKey: migrationDoneKey)
+    }
+
+    // MARK: - Helpers
+
+    private static func groupByDay(_ records: [ReviewRecord]) -> [String: Int] {
+        var result: [String: Int] = [:]
+        for record in records {
+            result[record.dayKey, default: 0] += 1
+        }
+        return result
     }
 }
