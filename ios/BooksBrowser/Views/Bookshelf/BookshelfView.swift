@@ -18,9 +18,9 @@ private enum BookshelfMetrics {
     static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 6
     static let coverStrokeWidth: CGFloat = 0.5
-    static let coverShadowOpacity: Double = 0.06
-    static let coverShadowRadius: CGFloat = 4
-    static let coverShadowY: CGFloat = 2
+    static let coverShadowOpacity = AppShadows.coverOpacity
+    static let coverShadowRadius = AppShadows.coverRadius
+    static let coverShadowY = AppShadows.coverY
     static let progressBarHeight: CGFloat = 3
     static let progressBarAccentOpacity: Double = 0.55
     static let loadingOverlaySpacing: CGFloat = 16
