@@ -18,7 +18,7 @@ struct ContentView: View {
                 VocabularyListView()
             }
         }
-        .tabViewStyle(.sidebarAdaptable)
+        .tabViewStyle(.tabBarOnly)
     }
 }
 
