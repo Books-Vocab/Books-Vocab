@@ -85,6 +85,7 @@ final class SyncCoordinator {
                         entry.prepareForRetryAttempt()
                         do {
                             try await kgService.deleteCard(word: entry.word)
+                            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
                             modelContext.delete(entry)
                             deleted += 1
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
