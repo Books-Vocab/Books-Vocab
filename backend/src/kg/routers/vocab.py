@@ -14,7 +14,7 @@ def build_vocab_router(
     delete_word: Callable[..., Any],
     get_graph_links: Callable[..., Any],
     add_vocab: Callable[..., Any],
-    push_review: Callable[..., Any] | None = None,
+    push_review: Callable[..., Any],
 ) -> APIRouter:
     router = APIRouter()
     router.get("/api/vocab", response_model=list[CardResponse])(list_vocab)
@@ -22,6 +22,5 @@ def build_vocab_router(
     router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)(delete_word)
     router.get("/api/graph/links", response_model=list[GraphLinkResponse])(get_graph_links)
     router.post("/api/vocab", response_model=VocabAddResponse)(add_vocab)
-    if push_review is not None:
-        router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)(push_review)
+    router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)(push_review)
     return router
