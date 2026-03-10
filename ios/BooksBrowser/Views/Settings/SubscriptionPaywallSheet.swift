@@ -286,7 +286,7 @@ struct SubscriptionPaywallSheet: View {
 
     private var legalLinksFooter: some View {
         HStack(spacing: vocabSkin.spacing.controlGap) {
-            Link(L10n.string("隱私政策"), destination: URL(string: "https://wordnexus.lol/privacy")!)
+            Link(L10n.string("隱私政策"), destination: URL(string: "https://wordnexus.lol/privacy.html")!)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             Text("·")
