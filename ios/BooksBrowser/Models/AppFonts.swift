@@ -55,4 +55,9 @@ enum AppFonts {
     static func monoNumbers(size: CGFloat = 14) -> Font {
         .system(size: size, weight: .regular, design: .monospaced)
     }
+
+    /// 用於 Reader 進度條的等寬細字（11pt light monospaced）
+    static func monoProgress() -> Font {
+        .system(size: 11, weight: .light, design: .monospaced)
+    }
 }
