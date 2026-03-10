@@ -55,33 +55,33 @@ struct WordDetailPresenter: View {
                             rootForm: state.rootForm,
                             colorScheme: colorScheme
                         )
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
                     }
 
                     if !state.card.linkGroups.isEmpty {
                         CardSectionDivider()
                         linksSection
-                            .padding(AppMetrics.spacingLarge)
+                            .padding(vocabSkin.metrics.cardBlockPadding)
                     }
 
                     CardSectionDivider()
                     metadataFooter
-                        .padding(AppMetrics.spacingLarge)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
                 }
             }
-            .padding(AppMetrics.spacingLarge)
-            .padding(.bottom, AppMetrics.spacingLarge * 2)
+            .padding(vocabSkin.metrics.cardBlockPadding)
+            .padding(.bottom, vocabSkin.metrics.cardBlockPadding * 2)
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
     }
 
     private var linksSection: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
             CardSectionLabel(title: "知識連結", systemImage: "link")
 
             ForEach(state.card.linkGroups) { group in
-                VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
                     Text(group.label.localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -100,7 +100,7 @@ struct WordDetailPresenter: View {
     }
 
     private var metadataFooter: some View {
-        HStack(spacing: AppMetrics.spacingLarge) {
+        HStack(spacing: vocabSkin.metrics.cardBlockPadding) {
             ForEach(Array(state.metadataItems.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: 4) {
                     Image(systemName: item.icon)
