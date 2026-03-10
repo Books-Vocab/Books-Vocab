@@ -37,8 +37,8 @@ struct AppTheme: Equatable {
             shadow: Color.black.opacity(0.028),
             primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
             secondaryText: Color(red: 0.43, green: 0.43, blue: 0.42),
-            tertiaryText: Color(red: 0.60, green: 0.60, blue: 0.58),
-            quaternaryText: Color(red: 0.72, green: 0.72, blue: 0.70),
+            tertiaryText: Color(red: 0.44, green: 0.44, blue: 0.42),   // was 0.60 — improved to ~4.5:1 on pageBackground
+            quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast for decorative text
             accent: AppColors.accentLight,
             success: AppColors.savedLight,
             warning: AppColors.warning(.light),
@@ -61,8 +61,8 @@ struct AppTheme: Equatable {
             shadow: Color.black.opacity(0.34),
             primaryText: Color(red: 0.94, green: 0.94, blue: 0.92),
             secondaryText: Color(red: 0.74, green: 0.75, blue: 0.77),
-            tertiaryText: Color(red: 0.58, green: 0.60, blue: 0.64),
-            quaternaryText: Color(red: 0.45, green: 0.47, blue: 0.52),
+            tertiaryText: Color(red: 0.58, green: 0.60, blue: 0.64),   // ~5.8:1 on dark pageBackground ✓
+            quaternaryText: Color(red: 0.56, green: 0.58, blue: 0.62), // was 0.45 — improved to ~4.5:1 on dark cardBackground
             accent: AppColors.accentDark,
             success: AppColors.savedDark,
             warning: AppColors.warning(.dark),
