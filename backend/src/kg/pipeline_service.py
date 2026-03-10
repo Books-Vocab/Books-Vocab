@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import Any, Callable
 
 from .user_store import resolve_mochi_api_key_from_config
@@ -12,7 +13,7 @@ async def _step_enrich(
     *,
     card_store_factory: Callable[[Any], Any],
     gemini_client_factory: Callable[[], Any],
-    logger: Any,
+    logger: logging.Logger,
 ) -> None:
     logger.info("[%s] Step 1: Enrich", uid)
     cards = card_store_factory(user["dir"])
@@ -60,7 +61,7 @@ async def _step_embed(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[[Any], Any],
     embedding_store_factory: Callable[..., Any],
-    logger: Any,
+    logger: logging.Logger,
 ) -> None:
     cards = card_store_factory(user["dir"])
     embeddings = embedding_store_factory(user["dir"], user_id=uid)
@@ -92,7 +93,7 @@ async def _step_link(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[[Any], Any],
     gemini_client_factory: Callable[[], Any],
-    logger: Any,
+    logger: logging.Logger,
     link_kind_enum: Any,
 ) -> None:
     logger.info("[%s] Step 2: Link", uid)
@@ -147,7 +148,7 @@ async def _step_difficulty(
     user: dict[str, Any],
     *,
     card_store_factory: Callable[[Any], Any],
-    logger: Any,
+    logger: logging.Logger,
 ) -> None:
     logger.info("[%s] Step 3: Difficulty", uid)
     from .difficulty import get_zipf
@@ -168,7 +169,7 @@ async def _step_external_sync(
     *,
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[[Any], Any],
-    logger: Any,
+    logger: logging.Logger,
 ) -> None:
     logger.info("[%s] Step 4: Optional External Sync", uid)
     mochi_key = resolve_mochi_api_key_from_config(user["config"])
@@ -205,7 +206,7 @@ async def run_pipeline_background(
     graph_store_factory: Callable[[Any], Any],
     embedding_store_factory: Callable[..., Any],
     gemini_client_factory: Callable[[], Any],
-    logger: Any,
+    logger: logging.Logger,
     link_kind_enum: Any,
 ) -> None:
     uid = user["id"]

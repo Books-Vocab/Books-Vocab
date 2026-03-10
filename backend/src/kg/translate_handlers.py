@@ -5,7 +5,7 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
-from .api_models import TranslateRequest
+from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .translate_service import run_explain_translate, run_phrase_translate, run_quick_translate
 
 
@@ -16,7 +16,7 @@ def translate_quick_response(
     require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
     logger: Logger,
-) -> Any:
+) -> QuickTranslateResponse:
     require_pro_access(user, "reader_ai")
     client = gemini_client_factory()
     try:
@@ -34,7 +34,7 @@ def translate_phrase_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
-) -> Any:
+) -> dict[str, str]:
     require_pro_access(user, "reader_ai")
     client = gemini_client_factory()
     try:
@@ -49,7 +49,7 @@ def translate_explain_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
-) -> Any:
+) -> ExplainResponse:
     require_pro_access(user, "reader_ai")
     client = gemini_client_factory()
     try:
