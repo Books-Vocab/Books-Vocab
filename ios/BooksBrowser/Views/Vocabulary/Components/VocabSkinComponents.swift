@@ -38,6 +38,7 @@ struct VocabToneChip: View {
             .clipShape(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
             )
+            .accessibilityLabel("語氣標記")
     }
 }
 
@@ -60,6 +61,7 @@ struct VocabTierLabel: View {
                     }
                 }
             )
+            .accessibilityLabel("難度等級：\(tier)")
     }
 }
 

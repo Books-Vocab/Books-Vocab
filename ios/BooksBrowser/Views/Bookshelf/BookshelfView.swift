@@ -127,6 +127,8 @@ struct BookshelfView: View {
                     NavigationLink(value: book) {
                         BookCard(book: book)
                     }
+                    .accessibilityLabel("\(book.title), \(book.author)")
+                    .accessibilityHint("點兩下開始閱讀")
                     .contextMenu {
                         Button(role: .destructive) {
                             coordinator.deleteBook(

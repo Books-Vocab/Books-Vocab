@@ -44,7 +44,34 @@ struct WordRow: View {
     }
 
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .body) private var scaledProgressBarHeight: CGFloat = 5
     let viewData: ViewData
+
+    private var usesCompactLayout: Bool {
+        dynamicTypeSize < .accessibility1
+    }
+
+    private var accessibilityRowLabel: String {
+        var parts: [String] = [viewData.word]
+        if let pos = viewData.partOfSpeech { parts.append(pos) }
+        if let translation = viewData.translation, !translation.isEmpty {
+            parts.append(translation)
+        }
+        return parts.joined(separator: ", ")
+    }
+
+    private var accessibilityProgressDescription: String {
+        guard let progress = viewData.reviewProgress else { return "" }
+        var parts = [progress.statusLabel]
+        if let fraction = progress.fraction {
+            parts.append("進度 \(Int(fraction * 100))%")
+        }
+        if let detail = progress.detailLabel {
+            parts.append(detail)
+        }
+        return parts.joined(separator: ", ")
+    }
 
     var body: some View {
         HStack(alignment: .top, spacing: vocabSkin.spacing.wordRowHorizontalGap) {
@@ -114,13 +141,20 @@ struct WordRow: View {
 
             Spacer(minLength: 0)
 
-            if let tier = viewData.difficultyTier, viewData.reviewProgress == nil, !viewData.isStrikethrough {
+            if usesCompactLayout,
+               let tier = viewData.difficultyTier,
+               viewData.reviewProgress == nil,
+               !viewData.isStrikethrough {
                 VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
                     VocabTierLabel(tier: tier)
                 }
             }
         }
         .padding(.vertical, vocabSkin.spacing.compactRowVerticalPadding)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityRowLabel)
+        .accessibilityValue(accessibilityProgressDescription)
+        .accessibilityHint("點兩下查看詳細資訊")
     }
 
     private func reviewProgressRow(_ progress: ViewData.ReviewProgress) -> some View {
@@ -155,8 +189,10 @@ struct WordRow: View {
                             .fill(resolveProgressTone(progress.tone))
                             .frame(width: max(6, proxy.size.width * fraction))
                     }
+                    .accessibilityLabel("複習進度")
+                    .accessibilityValue("\(Int(fraction * 100))%")
                 }
-                .frame(width: vocabSkin.metrics.progressBarWidth, height: vocabSkin.metrics.progressBarHeight)
+                .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledProgressBarHeight)
             }
         } else if let detailLabel = progress.detailLabel {
             Text(detailLabel)
