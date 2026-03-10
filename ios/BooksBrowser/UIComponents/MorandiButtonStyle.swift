@@ -11,14 +11,21 @@ struct MorandiButtonStyle: ButtonStyle {
     let colorScheme: ColorScheme
     var isProminent: Bool = true
     var tintColor: Color? = nil
-    
+
+    private enum Opacity {
+        static let idleFill: Double = 0.12
+        static let pressedFill: Double = 0.2
+        static let border: Double = 0.1
+        static let nonProminentPressed: Double = 0.6
+    }
+
     func makeBody(configuration: Configuration) -> some View {
         let baseColor = tintColor ?? (isProminent ? AppColors.accent(colorScheme) : .secondary)
-        let bgColor = isProminent ? baseColor.opacity(configuration.isPressed ? 0.2 : 0.12) : Color.clear
-        
+        let bgColor = isProminent ? baseColor.opacity(configuration.isPressed ? Opacity.pressedFill : Opacity.idleFill) : Color.clear
+
         configuration.label
             .font(AppFonts.h2()) // 採用稍微粗一點的小標題字型，增加質感
-            .foregroundStyle(isProminent ? baseColor : baseColor.opacity(configuration.isPressed ? 0.6 : 1.0))
+            .foregroundStyle(isProminent ? baseColor : baseColor.opacity(configuration.isPressed ? Opacity.nonProminentPressed : 1.0))
             .padding(.vertical, AppMetrics.spacingMedium)
             .padding(.horizontal, AppMetrics.spacingLarge)
             .background(
@@ -28,7 +35,7 @@ struct MorandiButtonStyle: ButtonStyle {
             // 將邊框做到極細且低對比度的「紙緣」感
             .overlay(
                 RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
-                    .stroke(baseColor.opacity(0.1), lineWidth: 0.5)
+                    .stroke(baseColor.opacity(Opacity.border), lineWidth: 0.5)
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)
             // iOS 26 精神的有機彈性動畫 (Fluid Motion)
