@@ -92,9 +92,7 @@ struct SubscriptionPaywallSheet: View {
                     Button {
                         Task {
                             try? await AppStore.showManageSubscriptions(in: windowScene)
-                            if authManager.isLoggedIn {
-                                await subscriptionManager.refresh(using: kgService, authManager: authManager)
-                            }
+                            await subscriptionManager.resyncAfterManagement(using: kgService, authManager: authManager)
                         }
                     } label: {
                         HStack {
@@ -137,6 +135,8 @@ struct SubscriptionPaywallSheet: View {
             Text(footerNote)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            legalLinksFooter
         }
         .padding(vocabSkin.spacing.sheetPaddingCompact)
     }
@@ -240,6 +240,13 @@ struct SubscriptionPaywallSheet: View {
             Text(footerNote)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            Text(L10n.string("訂閱將透過 Apple ID 自動續訂。可隨時在 App Store 設定中取消，取消後當期仍可使用至到期日。"))
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .multilineTextAlignment(.leading)
+
+            legalLinksFooter
         }
         .padding(vocabSkin.spacing.sheetPaddingCompact)
     }
@@ -271,6 +278,23 @@ struct SubscriptionPaywallSheet: View {
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
+            Spacer()
+        }
+    }
+
+    // MARK: - Legal Links Footer
+
+    private var legalLinksFooter: some View {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
+            Link(L10n.string("隱私政策"), destination: URL(string: "https://wordnexus.lol/privacy")!)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+            Text("·")
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+            Link(L10n.string("服務條款"), destination: URL(string: "https://wordnexus.lol/terms.html")!)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
             Spacer()
         }
     }
