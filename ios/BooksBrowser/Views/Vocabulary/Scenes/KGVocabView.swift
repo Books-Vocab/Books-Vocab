@@ -20,6 +20,7 @@ struct KGVocabView: View {
 
     @StateObject private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
+    @State private var sortOption: KGVocabSortOption = .default
 
     @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
     private var pendingDeletes: [VocabularyEntry]
@@ -87,6 +88,7 @@ struct KGVocabView: View {
         KGVocabPresenter(
             state: presenterState,
             selectedReviewState: $selectedReviewState,
+            sortOption: $sortOption,
             onDismissBanner: coordinator.errorMessage == nil ? nil : { coordinator.dismissBanner() },
             onRetryBanner: pendingDeletes.isEmpty ? nil : {
                 Task {
@@ -187,7 +189,8 @@ struct KGVocabView: View {
         VocabularyEntryPresentation.filteredKnowledgeEntries(
             in: syncedEntries,
             reviewState: selectedReviewState,
-            searchText: searchText
+            searchText: searchText,
+            sortOption: sortOption
         )
     }
 
