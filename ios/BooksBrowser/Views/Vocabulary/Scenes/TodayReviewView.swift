@@ -48,6 +48,8 @@ struct TodayReviewView: View {
     @State private var linkedCardStack: [VocabularyEntry] = []
     @State private var rememberedFeedbackTrigger = 0
     @State private var forgotFeedbackTrigger = 0
+    @State private var persistenceFailureTrigger = 0
+    @State private var persistenceErrorMessage: String?
     @State private var pendingSaveTask: Task<Void, Never>?
 
     let onClose: () -> Void
@@ -84,7 +86,9 @@ struct TodayReviewView: View {
             canGoPrevious: currentIndex > 0,
             canGoNext: currentIndex < queue.count - 1,
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
-            forgotFeedbackTrigger: forgotFeedbackTrigger
+            forgotFeedbackTrigger: forgotFeedbackTrigger,
+            persistenceFailureTrigger: persistenceFailureTrigger,
+            persistenceErrorMessage: persistenceErrorMessage
         )
     }
 
@@ -165,6 +169,7 @@ struct TodayReviewView: View {
         guard let current = currentEntry, !isAdvancing else { return }
         isAdvancing = true
         pendingSaveTask?.cancel()
+        persistenceErrorMessage = nil
 
         current.applyReviewFeedback(feedback)
         switch feedback {
@@ -181,7 +186,14 @@ struct TodayReviewView: View {
 
         pendingSaveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(220))
-            try? modelContext.save()
+            do {
+                try modelContext.save()
+            } catch {
+                withAnimation(AppMotion.phaseChange) {
+                    persistenceErrorMessage = L10n.format("複習結果尚未寫入本機：%@", error.localizedDescription)
+                }
+                persistenceFailureTrigger += 1
+            }
             isAdvancing = false
         }
     }

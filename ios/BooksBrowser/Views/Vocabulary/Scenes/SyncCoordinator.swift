@@ -29,11 +29,18 @@ enum SyncPhase {
     case failed
 }
 
+enum SyncFailureKind {
+    case partial
+    case full
+    case cancelled
+}
+
 @MainActor
 final class SyncCoordinator: ObservableObject {
     @Published var steps: [PipelineStep] = []
     @Published var phase: SyncPhase = .ready
     @Published var summaryText: String = ""
+    @Published var failureKind: SyncFailureKind?
 
     private var pipelineTask: Task<Void, Never>?
 
@@ -60,6 +67,7 @@ final class SyncCoordinator: ObservableObject {
     ) {
         phase = .running
         summaryText = ""
+        failureKind = nil
 
         pipelineTask = Task {
             do {
@@ -161,12 +169,14 @@ final class SyncCoordinator: ObservableObject {
                 updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
                 if encounteredFailure {
                     summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
+                    failureKind = .partial
                     phase = .failed
                 } else {
                     phase = .completed
                 }
             } catch {
                 summaryText = error.localizedDescription
+                failureKind = .full
                 phase = .failed
             }
         }
@@ -176,6 +186,7 @@ final class SyncCoordinator: ObservableObject {
         pipelineTask?.cancel()
         pipelineTask = nil
         phase = .failed
+        failureKind = .cancelled
         summaryText = L10n.string("同步已取消")
     }
 
@@ -183,6 +194,7 @@ final class SyncCoordinator: ObservableObject {
         buildSteps(deleteCount: deleteCount, addCount: addCount)
         phase = .ready
         summaryText = ""
+        failureKind = nil
     }
 
     private func updateStep(
