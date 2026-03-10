@@ -70,6 +70,26 @@ struct ReviewFoldChevronButton: View {
     }
 }
 
+// MARK: - Fold Chevron Pill (centered collapse handle)
+
+struct ReviewFoldChevronPill: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "chevron.up")
+                .font(vocabSkin.typography.iconTiny.weight(.bold))
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .frame(width: 48, height: vocabSkin.metrics.reviewChevronButtonSize)
+                .background(Capsule(style: .continuous).fill(vocabSkin.palette.mutedFill.opacity(0.96)))
+                .overlay(Capsule(style: .continuous).stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .contentShape(Capsule())
+    }
+}
+
 // MARK: - Paper Fold Transition
 
 private struct PaperFoldModifier: ViewModifier {

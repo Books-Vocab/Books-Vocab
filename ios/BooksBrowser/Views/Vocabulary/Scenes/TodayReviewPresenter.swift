@@ -481,7 +481,7 @@ struct TodayReviewPresenter: View {
                     .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
             }
             .frame(maxWidth: .infinity)
-            .frame(minHeight: minHeight, alignment: .top)
+            .frame(minHeight: minHeight, maxHeight: .infinity, alignment: .top)
             .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
