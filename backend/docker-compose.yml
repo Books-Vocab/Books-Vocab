@@ -10,5 +10,7 @@ services:
     volumes:
       # 將本機的 data 資料夾掛載到容器內，確保資料持久化 (單字庫、設定檔不會因為容器刪除而消失)
       - ./data:/app/data
+      # App Store 憑證（JWS 驗證 + Server API 認證）
+      - ./certs:/app/certs:ro
     env_file:
       - .env
