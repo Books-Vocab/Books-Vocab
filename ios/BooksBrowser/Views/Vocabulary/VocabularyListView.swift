@@ -18,6 +18,7 @@ struct VocabularyListView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State private var showPaywall = false
     @StateObject private var coordinator = VocabularyListCoordinator()
@@ -124,11 +125,24 @@ struct VocabularyListView: View {
                     .presentationDragIndicator(.visible)
                     .presentationContentInteraction(.scrolls)
             }
-            .fullScreenCover(item: $coordinator.activeReviewSession) { session in
+            .fullScreenCover(item: Binding(
+                get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
+                set: { coordinator.activeReviewSession = $0 }
+            )) { session in
                 TodayReviewView(
                     entries: session.entries,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
+            }
+            .sheet(item: Binding(
+                get: { sizeClass == .regular ? coordinator.activeReviewSession : nil },
+                set: { coordinator.activeReviewSession = $0 }
+            )) { session in
+                TodayReviewView(
+                    entries: session.entries,
+                    onClose: { coordinator.activeReviewSession = nil }
+                )
+                .presentationDetents([.large])
             }
             .task {
                 await kgService.healthCheck()
