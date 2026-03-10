@@ -30,7 +30,7 @@ struct PendingVocabPresenter: View {
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
                 .padding(.top, vocabSkin.metrics.pageTopInset)
             }
-            .transition(.opacity)
+            .transition(.listItemFade)
         } else {
             ScrollView {
                 VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
@@ -57,7 +57,7 @@ struct PendingVocabPresenter: View {
                                     .padding(.top, vocabSkin.metrics.accessoryTopOffset)
                                 }
                                 .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                                .transition(.opacity)
+                                .transition(.listItemFade)
 
                                 if index < state.rows.count - 1 {
                                     Divider()
