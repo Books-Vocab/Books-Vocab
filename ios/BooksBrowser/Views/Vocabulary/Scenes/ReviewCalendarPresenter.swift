@@ -1,0 +1,219 @@
+//
+//  ReviewCalendarPresenter.swift
+//  BooksBrowser
+//
+//  完整日曆詳情頁：月曆 + 選中日期的複習紀錄列表。
+//
+
+import SwiftUI
+import SwiftData
+
+struct ReviewCalendarPresenter: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.dismiss) private var dismiss
+
+    @Query(sort: \ReviewRecord.reviewedAt, order: .descending)
+    private var allRecords: [ReviewRecord]
+
+    @State private var displayedMonth: Date = Date()
+    @State private var selectedDay: String? = ReviewRecord.makeDayKey(from: Date())
+
+    private static let calendar = Calendar.current
+
+    private static let monthFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy 年 M 月"
+        f.locale = Locale(identifier: "zh_TW")
+        return f
+    }()
+
+    private static let timeFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm"
+        return f
+    }()
+
+    private var activityMap: [String: Int] {
+        ReviewActivityLog.activity(for: 365, records: allRecords)
+    }
+
+    private var selectedDayRecords: [ReviewRecord] {
+        guard let day = selectedDay else { return [] }
+        return ReviewActivityLog.recordsForDay(day, from: allRecords)
+    }
+
+    private var selectedDaySummary: (total: Int, remembered: Int, forgot: Int) {
+        let records = selectedDayRecords
+        let remembered = records.filter { $0.feedback == 1 }.count
+        return (records.count, remembered, records.count - remembered)
+    }
+
+    var body: some View {
+        NavigationStack {
+            ScrollView {
+                VStack(spacing: vocabSkin.spacing.sectionGap) {
+                    calendarSection
+                    if let _ = selectedDay {
+                        dayDetailSection
+                    }
+                }
+                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                .padding(.top, vocabSkin.metrics.pageTopInset)
+                .padding(.bottom, vocabSkin.metrics.pageBottomInset)
+            }
+            .vocabCanvasBackground()
+            .navigationTitle("學習日曆")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button("完成") { dismiss() }
+                        .font(vocabSkin.typography.captionStrong)
+                }
+            }
+        }
+    }
+
+    // MARK: - Calendar
+
+    private var calendarSection: some View {
+        VStack(spacing: vocabSkin.spacing.inlineGap) {
+            // Month navigation
+            HStack {
+                Button { changeMonth(by: -1) } label: {
+                    Image(systemName: "chevron.left")
+                        .font(vocabSkin.typography.iconMedium)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                Spacer()
+
+                Text(Self.monthFormatter.string(from: displayedMonth))
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+
+                Spacer()
+
+                Button { changeMonth(by: 1) } label: {
+                    Image(systemName: "chevron.right")
+                        .font(vocabSkin.typography.iconMedium)
+                        .foregroundStyle(canGoForward ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
+                }
+                .disabled(!canGoForward)
+            }
+            .padding(.horizontal, vocabSkin.spacing.microGap)
+
+            VocabCalendarGrid(
+                displayedMonth: displayedMonth,
+                activityMap: activityMap,
+                selectedDay: $selectedDay
+            )
+        }
+        .padding(vocabSkin.spacing.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+        )
+    }
+
+    // MARK: - Day Detail
+
+    private var dayDetailSection: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+            // Header
+            VStack(alignment: .leading, spacing: 2) {
+                Text(dayDisplayTitle)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+
+                if selectedDayRecords.isEmpty {
+                    Text("這天沒有複習紀錄")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                } else {
+                    let s = selectedDaySummary
+                    Text("已複習 \(s.total) 張 ・ 記得 \(s.remembered) ・ 忘記 \(s.forgot)")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
+            }
+
+            if !selectedDayRecords.isEmpty {
+                VStack(spacing: 0) {
+                    ForEach(Array(selectedDayRecords.enumerated()), id: \.element.id) { index, record in
+                        if index > 0 {
+                            Divider()
+                                .foregroundStyle(vocabSkin.palette.divider)
+                                .padding(.leading, 28)
+                        }
+                        recordRow(record)
+                    }
+                }
+            }
+        }
+        .padding(vocabSkin.spacing.cardPadding)
+        .background(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground)
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+        )
+        .animation(AppMotion.contentFade, value: selectedDay)
+    }
+
+    private func recordRow(_ record: ReviewRecord) -> some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            Image(systemName: record.feedback == 1 ? "checkmark" : "xmark")
+                .font(vocabSkin.typography.iconSmall)
+                .foregroundStyle(record.feedback == 1 ? vocabSkin.palette.success : vocabSkin.palette.destructive)
+                .frame(width: 20)
+
+            Text(record.word)
+                .font(vocabSkin.typography.monoBody)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+                .lineLimit(1)
+
+            Spacer()
+
+            Text(record.feedback == 1 ? "記得" : "忘記")
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(record.feedback == 1 ? vocabSkin.palette.success : vocabSkin.palette.destructive)
+
+            Text(Self.timeFormatter.string(from: record.reviewedAt))
+                .font(vocabSkin.typography.monoLabel)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+        }
+        .padding(.vertical, vocabSkin.spacing.microGap)
+    }
+
+    // MARK: - Helpers
+
+    private var dayDisplayTitle: String {
+        guard let day = selectedDay else { return "" }
+        let todayKey = ReviewRecord.makeDayKey(from: Date())
+        if day == todayKey { return "\(day)（今天）" }
+        return day
+    }
+
+    private var canGoForward: Bool {
+        let cal = Self.calendar
+        let nextMonth = cal.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
+        let nowComps = cal.dateComponents([.year, .month], from: Date())
+        let nextComps = cal.dateComponents([.year, .month], from: nextMonth)
+        return (nextComps.year!, nextComps.month!) <= (nowComps.year!, nowComps.month!)
+    }
+
+    private func changeMonth(by offset: Int) {
+        withAnimation(AppMotion.phaseChange) {
+            displayedMonth = Self.calendar.date(
+                byAdding: .month, value: offset, to: displayedMonth
+            ) ?? displayedMonth
+            selectedDay = nil
+        }
+    }
+}
