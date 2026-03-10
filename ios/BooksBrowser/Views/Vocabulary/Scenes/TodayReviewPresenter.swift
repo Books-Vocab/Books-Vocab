@@ -21,6 +21,8 @@ struct TodayReviewPresenterState {
     let canGoNext: Bool
     let rememberedFeedbackTrigger: Int
     let forgotFeedbackTrigger: Int
+    let persistenceFailureTrigger: Int
+    let persistenceErrorMessage: String?
 }
 
 struct TodayReviewPresenter: View {
@@ -82,6 +84,7 @@ struct TodayReviewPresenter: View {
             .toolbar(.hidden, for: .navigationBar)
             .sensoryFeedback(.success, trigger: state.rememberedFeedbackTrigger)
             .sensoryFeedback(.warning, trigger: state.forgotFeedbackTrigger)
+            .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
         }
     }
 
@@ -231,44 +234,56 @@ struct TodayReviewPresenter: View {
     }
 
     private var bottomToolbar: some View {
-        HStack(spacing: 0) {
-            HStack(spacing: vocabSkin.spacing.inlineGap) {
-                Button(action: onPrevious) {
-                    Image(systemName: "chevron.left")
-                        .font(vocabSkin.typography.iconNavigation)
-                }
-                .disabled(!state.canGoPrevious)
-
-                Button(action: onNext) {
-                    Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconNavigation)
-                }
-                .disabled(!state.canGoNext)
-            }
-            .foregroundStyle(vocabSkin.palette.secondaryText)
-
-            Spacer()
-
-            if state.revealStage.showsAnswer {
-                HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-                    Button(action: onForgot) {
-                        Label("忘記", systemImage: "xmark")
-                            .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-                    }
-                    .buttonStyle(.vocabAction(.destructive))
-
-                    Button(action: onRemembered) {
-                        Label("記得", systemImage: "checkmark")
-                            .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-                    }
-                    .buttonStyle(.vocabAction(.success))
-                }
+        VStack(spacing: 10) {
+            if let persistenceErrorMessage = state.persistenceErrorMessage {
+                VocabStateMessageCard(
+                    title: "本機儲存失敗",
+                    systemImage: "externaldrive.badge.exclamationmark",
+                    description: persistenceErrorMessage
+                )
                 .transition(.overlayFade)
+            }
+
+            HStack(spacing: 0) {
+                HStack(spacing: vocabSkin.spacing.inlineGap) {
+                    Button(action: onPrevious) {
+                        Image(systemName: "chevron.left")
+                            .font(vocabSkin.typography.iconNavigation)
+                    }
+                    .disabled(!state.canGoPrevious)
+
+                    Button(action: onNext) {
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconNavigation)
+                    }
+                    .disabled(!state.canGoNext)
+                }
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+
+                Spacer()
+
+                if state.revealStage.showsAnswer {
+                    HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
+                        Button(action: onForgot) {
+                            Label("忘記", systemImage: "xmark")
+                                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+                        }
+                        .buttonStyle(.vocabAction(.destructive))
+
+                        Button(action: onRemembered) {
+                            Label("記得", systemImage: "checkmark")
+                                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+                        }
+                        .buttonStyle(.vocabAction(.success))
+                    }
+                    .transition(.overlayFade)
+                }
             }
         }
         .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
         .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
         .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
+        .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
@@ -584,7 +599,9 @@ private enum TodayReviewPresenterPreviewData {
             canGoPrevious: true,
             canGoNext: true,
             rememberedFeedbackTrigger: 0,
-            forgotFeedbackTrigger: 0
+            forgotFeedbackTrigger: 0,
+            persistenceFailureTrigger: 0,
+            persistenceErrorMessage: nil
         )
     }
 
@@ -596,7 +613,9 @@ private enum TodayReviewPresenterPreviewData {
         canGoPrevious: false,
         canGoNext: false,
         rememberedFeedbackTrigger: 0,
-        forgotFeedbackTrigger: 0
+        forgotFeedbackTrigger: 0,
+        persistenceFailureTrigger: 0,
+        persistenceErrorMessage: nil
     )
 }
 

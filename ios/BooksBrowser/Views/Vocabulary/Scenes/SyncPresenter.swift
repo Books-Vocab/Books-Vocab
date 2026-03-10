@@ -5,6 +5,7 @@ struct SyncPresenterState {
     let hasProAccess: Bool
     let isConnected: Bool
     let phase: SyncPhase
+    let failureKind: SyncFailureKind?
     let pendingCount: Int
     let addCount: Int
     let deleteCount: Int
@@ -50,12 +51,10 @@ struct SyncPresenter: View {
             Spacer()
 
             if !state.summaryText.isEmpty {
-                Text(state.summaryText)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(state.phase == .failed ? vocabSkin.palette.destructive : vocabSkin.palette.secondaryText)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, vocabSkin.metrics.summaryHorizontalInset)
+                summaryCard
+                    .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
                     .padding(.bottom, vocabSkin.metrics.reviewToolbarVerticalInset)
+                    .transition(.overlayFade)
             }
 
             actionArea
@@ -66,6 +65,9 @@ struct SyncPresenter: View {
         .navigationTitle("同步")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .sensoryFeedback(.success, trigger: state.phase == .completed)
+        .sensoryFeedback(.warning, trigger: state.failureKind == .partial)
+        .sensoryFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if state.phase == .ready || state.phase == .completed || state.phase == .failed {
@@ -135,13 +137,36 @@ struct SyncPresenter: View {
                 )
                 .transition(.blurReplace)
             case .failed:
-                VocabStatusHero(
-                    systemImage: "exclamationmark.triangle.fill",
-                    tone: vocabSkin.palette.destructive,
-                    title: "同步失敗"
-                )
+                failedHero
                 .transition(.blurReplace)
             }
+        }
+    }
+
+    @ViewBuilder
+    private var failedHero: some View {
+        switch state.failureKind {
+        case .partial:
+            VocabStatusHero(
+                systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90",
+                tone: vocabSkin.palette.warning,
+                title: "部分同步完成",
+                description: "已完成的步驟會保留，失敗項目可直接重試。"
+            )
+        case .cancelled:
+            VocabStatusHero(
+                systemImage: "pause.circle.fill",
+                tone: vocabSkin.palette.warning,
+                title: "同步已取消",
+                description: "目前進度已停止，可在準備好後重新開始。"
+            )
+        default:
+            VocabStatusHero(
+                systemImage: "exclamationmark.triangle.fill",
+                tone: vocabSkin.palette.destructive,
+                title: "同步失敗",
+                description: "請檢查網路、登入狀態或伺服器健康後再試。"
+            )
         }
     }
 
@@ -204,11 +229,45 @@ struct SyncPresenter: View {
                     .buttonStyle(.vocabAction(.primary))
             case .failed:
                 Button(action: onPrimaryAction) {
-                    Label("重試", systemImage: "arrow.clockwise")
+                    Label(state.failureKind == .partial ? "重試失敗項目" : "重試", systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.vocabAction(.warning))
+                .buttonStyle(.vocabAction(state.failureKind == .full ? .warning : .neutral))
             }
+        }
+    }
+
+    private var summaryCard: some View {
+        VocabStateMessageCard(
+            title: summaryTitle,
+            systemImage: summaryIcon,
+            description: state.summaryText
+        )
+    }
+
+    private var summaryTitle: String {
+        switch state.failureKind {
+        case .partial:
+            return "有些項目需要再試一次"
+        case .cancelled:
+            return "同步在中途停止"
+        case .full:
+            return "同步沒有完成"
+        case nil:
+            return state.phase == .completed ? "同步完成" : "同步摘要"
+        }
+    }
+
+    private var summaryIcon: String {
+        switch state.failureKind {
+        case .partial:
+            return "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90"
+        case .cancelled:
+            return "pause.circle"
+        case .full:
+            return "exclamationmark.triangle.fill"
+        case nil:
+            return state.phase == .completed ? "checkmark.circle.fill" : "text.alignleft"
         }
     }
 
@@ -314,6 +373,7 @@ private enum SyncPresenterPreviewData {
         hasProAccess: true,
         isConnected: true,
         phase: .ready,
+        failureKind: nil,
         pendingCount: 14,
         addCount: 12,
         deleteCount: 2,
@@ -326,6 +386,7 @@ private enum SyncPresenterPreviewData {
         hasProAccess: true,
         isConnected: true,
         phase: .running,
+        failureKind: nil,
         pendingCount: 14,
         addCount: 12,
         deleteCount: 2,
@@ -338,6 +399,7 @@ private enum SyncPresenterPreviewData {
         hasProAccess: true,
         isConnected: false,
         phase: .failed,
+        failureKind: .full,
         pendingCount: 14,
         addCount: 12,
         deleteCount: 2,
@@ -354,6 +416,60 @@ private enum SyncPresenterPreviewData {
             )
         ],
         summaryText: "同步在上傳階段失敗，請檢查伺服器狀態後重試。"
+    )
+
+    static let partialFailed = SyncPresenterState(
+        isLoggedIn: true,
+        hasProAccess: true,
+        isConnected: true,
+        phase: .failed,
+        failureKind: .partial,
+        pendingCount: 14,
+        addCount: 12,
+        deleteCount: 2,
+        steps: [
+            .init(
+                id: "upload_delete",
+                label: "刪除 KG 單字",
+                status: .error,
+                current: 1,
+                total: 2,
+                detail: "部分失敗: obscure",
+                startTime: Date().addingTimeInterval(-14),
+                endTime: Date().addingTimeInterval(-12)
+            ),
+            .init(
+                id: "upload_add",
+                label: "上傳新單字",
+                status: .done,
+                current: 12,
+                total: 12,
+                detail: "10 新增, 2 已存在",
+                startTime: Date().addingTimeInterval(-12),
+                endTime: Date().addingTimeInterval(-8)
+            ),
+            .init(
+                id: "trigger",
+                label: "觸發背景 AI 處理",
+                status: .done,
+                current: 1,
+                total: 1,
+                detail: "已交由伺服器背景處理",
+                startTime: Date().addingTimeInterval(-8),
+                endTime: Date().addingTimeInterval(-6)
+            ),
+            .init(
+                id: "pull",
+                label: "下載知識庫至本地",
+                status: .done,
+                current: 1,
+                total: 1,
+                detail: "本地知識庫已建立完成",
+                startTime: Date().addingTimeInterval(-6),
+                endTime: Date().addingTimeInterval(-3)
+            )
+        ],
+        summaryText: "部分項目未成功同步，可直接再次重試。"
     )
 }
 
@@ -390,6 +506,20 @@ private enum SyncPresenterPreviewData {
         NavigationStack {
             SyncPresenter(
                 state: SyncPresenterPreviewData.failed,
+                onPrimaryAction: {},
+                onCancel: {},
+                onShowSettings: {},
+                onShowPaywall: {}
+            )
+        }
+    }
+}
+
+#Preview("Sync / Partial Failure") {
+    AppThemeContainer {
+        NavigationStack {
+            SyncPresenter(
+                state: SyncPresenterPreviewData.partialFailed,
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},

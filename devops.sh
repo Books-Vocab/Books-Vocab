@@ -14,7 +14,7 @@ set -euo pipefail
 SSH_KEY="$HOME/.ssh/lightsail_default.pem"
 SERVER="ubuntu@54.95.189.179"
 REMOTE_DIR="~/knowledge_graph_api"
-LOCAL_DIR="$(cd "$(dirname "$0")/knowledge_graph_api" && pwd)"
+LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
 SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes )
@@ -426,7 +426,7 @@ case "${1:-help}" in
     echo ""
     echo "指令:"
     echo "  setup [env_file]        push-env + deploy 一條龍（初始化或 secret 變動時）
-  push-env [file]         推送本地 .env 到遠端（預設: knowledge_graph_api/.env）
+  push-env [file]         推送本地 .env 到遠端（預設: backend/.env）
   deploy                  env-check + rsync + build + migrate + health-check
   restart                 重啟容器（不重新 build）
   migrate                 對所有用戶 DB 執行 idempotent schema migration"
