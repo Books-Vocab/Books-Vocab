@@ -69,7 +69,7 @@ struct SettingsAccountSection: View {
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
                     SettingsDivider(leadingInset: 0)
-                        .padding(.vertical, 8)
+                        .padding(.vertical, AppMetrics.spacingSmall)
 
                     HStack(spacing: 8) {
                         TextField("帳號 ID（手動）", text: manualLoginUserId)
@@ -97,7 +97,7 @@ struct SettingsAccountSection: View {
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.destructive)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, 8)
+                        .padding(.horizontal, AppMetrics.spacingSmall)
                         .padding(.bottom, 4)
                 }
             }
