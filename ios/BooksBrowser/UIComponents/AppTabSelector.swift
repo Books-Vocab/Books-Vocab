@@ -134,7 +134,7 @@ extension AppTabSelectorStyle {
             unselectedBorder: theme.palette.divider.opacity(0.8),
             selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
             unselectedOuterBorder: theme.palette.divider.opacity(0.45),
-            containerBackground: theme.palette.stageBackground,
+            containerBackground: theme.palette.pageBackground,
             controlRadius: AppMetrics.cornerRadiusMedium - 2,
             containerRadius: AppMetrics.cornerRadiusMedium + 2,
             outerBorderInset: 3
@@ -158,7 +158,7 @@ extension AppTabSelectorStyle {
             unselectedBorder: skin.palette.divider.opacity(0.8),
             selectedOuterBorder: skin.palette.cardBorder.opacity(0.4),
             unselectedOuterBorder: skin.palette.divider.opacity(0.38),
-            containerBackground: skin.palette.stageBackground,
+            containerBackground: skin.palette.pageBackground,
             controlRadius: skin.radii.control,
             containerRadius: skin.radii.control + 4,
             outerBorderInset: 3
