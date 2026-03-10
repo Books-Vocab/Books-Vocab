@@ -7,7 +7,7 @@ struct SettingsSubscriptionSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "訂閱", icon: "sparkles.rectangle.stack")
+            SettingsSectionHeader(title: "訂閱".localized, icon: "sparkles.rectangle.stack")
 
             VStack(spacing: 0) {
                 // ── 方案標題 + Badge ──
@@ -32,7 +32,7 @@ struct SettingsSubscriptionSection: View {
                 SettingsDivider()
 
                 // ── 結構化 meta rows ──
-                SettingsRow(icon: "key", label: "權限來源") {
+                SettingsRow(icon: "key", label: "權限來源".localized) {
                     Text(state.sourceLabel)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -40,7 +40,7 @@ struct SettingsSubscriptionSection: View {
 
                 SettingsDivider()
 
-                SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式") {
+                SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式".localized) {
                     Text(state.managementNote)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -63,7 +63,7 @@ struct SettingsSubscriptionSection: View {
                     SettingsDivider()
 
                     VocabStateMessageCard(
-                        title: "價格載入中",
+                        title: "價格載入中".localized,
                         systemImage: "arrow.clockwise.circle",
                         description: pricingUnavailableMessage
                     )
@@ -106,7 +106,7 @@ struct SettingsSubscriptionSection: View {
             .animation(AppMotion.phaseChange, value: state.badgeText)
             .animation(AppMotion.phaseChange, value: state.pricingUnavailableMessage)
 
-            SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。")
+            SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。".localized)
         }
     }
 

@@ -11,7 +11,7 @@ struct SettingsAccountSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "帳號", icon: "person.crop.circle")
+            SettingsSectionHeader(title: "帳號".localized, icon: "person.crop.circle")
 
             VStack(spacing: 0) {
                 if state.isLoggedIn {
@@ -31,7 +31,7 @@ struct SettingsAccountSection: View {
                         VStack(spacing: vocabSkin.spacing.controlGap) {
                             ProgressView()
                                 .controlSize(.regular)
-                            Text("正在驗證帳號…")
+                            Text("正在驗證帳號…".localized)
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
@@ -56,10 +56,10 @@ struct SettingsAccountSection: View {
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
                 VStack(spacing: AccountMetrics.authCopySpacing) {
-                    Text("解鎖完整功能")
+                    Text("解鎖完整功能".localized)
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
-                    Text("AI 翻譯・知識圖譜・雲端同步")
+                    Text("AI 翻譯・知識圖譜・雲端同步".localized)
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
@@ -77,7 +77,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.plain)
                 .appSettingsButtonChrome()
-                .accessibilityLabel("使用 Google 帳號登入")
+                .accessibilityLabel("使用 Google 帳號登入".localized)
 
                 Button(action: actions.loginWithApple) {
                     SettingsAuthButton(title: "以 Apple 繼續") {
@@ -86,7 +86,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.plain)
                 .appSettingsButtonChrome()
-                .accessibilityLabel("使用 Apple 帳號登入")
+                .accessibilityLabel("使用 Apple 帳號登入".localized)
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
@@ -94,15 +94,15 @@ struct SettingsAccountSection: View {
                         .padding(.vertical, AppMetrics.spacingSmall)
 
                     HStack(spacing: 8) {
-                        TextField("帳號 ID（手動）", text: manualLoginUserId)
+                        TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
                             .font(vocabSkin.typography.monoLabel)
                             .autocorrectionDisabled()
                             .textInputAutocapitalization(.never)
 
-                        Button("登入", action: actions.manualLogin)
+                        Button("登入".localized, action: actions.manualLogin)
                             .buttonStyle(.bordered)
                             .controlSize(.small)
-                            .accessibilityLabel("開發者登入")
+                            .accessibilityLabel("開發者登入".localized)
                     }
 
                     if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
@@ -166,13 +166,13 @@ struct SettingsAccountSection: View {
 
                         VStack(alignment: .leading, spacing: 2) {
                             Text(subscription.isActive
-                                 ? "Pro 已啟用"
+                                 ? "Pro 已啟用".localized
                                  : subscription.planName)
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.primaryText)
                             Text(subscription.isActive
                                  ? subscription.detail
-                                 : "升級解鎖完整功能")
+                                 : "升級解鎖完整功能".localized)
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                                 .lineLimit(1)
@@ -183,7 +183,7 @@ struct SettingsAccountSection: View {
                         if subscription.isActive {
                             subscriptionBadge(subscription)
                         } else {
-                            Text("升級")
+                            Text("升級".localized)
                                 .font(vocabSkin.typography.captionStrong)
                                 .foregroundStyle(vocabSkin.palette.accent)
                                 .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
@@ -206,13 +206,13 @@ struct SettingsAccountSection: View {
 
             // Logout button
             Button(role: .destructive, action: actions.logout) {
-                Text("登出帳號")
+                Text("登出帳號".localized)
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.destructive)
             }
             .buttonStyle(.appAction(.destructive))
             .padding(vocabSkin.spacing.cardPadding)
-            .accessibilityLabel("登出帳號")
+            .accessibilityLabel("登出帳號".localized)
         }
     }
 

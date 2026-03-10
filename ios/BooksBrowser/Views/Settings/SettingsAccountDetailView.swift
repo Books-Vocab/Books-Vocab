@@ -20,16 +20,16 @@ struct SettingsAccountDetailView: View {
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
         .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
-        .navigationTitle("帳號詳情")
+        .navigationTitle("帳號詳情".localized)
         .navigationBarTitleDisplayMode(.inline)
     }
 
     private var accountInfoCard: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "帳號資訊", icon: "person.crop.circle")
+            SettingsSectionHeader(title: "帳號資訊".localized, icon: "person.crop.circle")
 
             VStack(spacing: 0) {
-                SettingsRow(icon: "person", label: "名稱") {
+                SettingsRow(icon: "person", label: "名稱".localized) {
                     Text(authState.displayName)
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -38,7 +38,7 @@ struct SettingsAccountDetailView: View {
                 if let email = authState.email {
                     SettingsDivider()
 
-                    SettingsRow(icon: "envelope", label: "信箱") {
+                    SettingsRow(icon: "envelope", label: "信箱".localized) {
                         Text(email)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
@@ -51,7 +51,7 @@ struct SettingsAccountDetailView: View {
 
     private func dangerCard(_ danger: SettingsPresenterState.DangerSection) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "危險操作", icon: "exclamationmark.triangle")
+            SettingsSectionHeader(title: "危險操作".localized, icon: "exclamationmark.triangle")
 
             VStack(spacing: 0) {
                 Button(role: .destructive, action: actions.requestDeleteAccount) {
@@ -67,11 +67,11 @@ struct SettingsAccountDetailView: View {
                 }
                 .buttonStyle(.appAction(.destructive))
                 .disabled(danger.isDeletingAccount)
-                .accessibilityLabel("刪除帳號與雲端資料")
+                .accessibilityLabel("刪除帳號與雲端資料".localized)
             }
             .settingsCard()
 
-            SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。")
+            SettingsSectionFooter("此操作不可逆，會刪除帳號與所有雲端資料。".localized)
         }
     }
 }

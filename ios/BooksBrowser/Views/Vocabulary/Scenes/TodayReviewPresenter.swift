@@ -86,7 +86,7 @@ struct TodayReviewPresenter: View {
 
                                 if state.revealStage == .front {
                                     revealExpandZone(
-                                        title: "點一下展開",
+                                        title: "點一下展開".localized,
                                         minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
                                         action: onAdvanceReveal
                                     )
@@ -138,7 +138,7 @@ struct TodayReviewPresenter: View {
                 HStack(spacing: 6) {
                     Image(systemName: "shuffle")
                         .font(vocabSkin.typography.iconTiny)
-                    Text("洗牌")
+                    Text("洗牌".localized)
                         .font(vocabSkin.typography.captionStrong)
                 }
                 .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
@@ -349,7 +349,7 @@ struct TodayReviewPresenter: View {
         VStack(spacing: 10) {
             if let msg = state.persistenceErrorMessage {
                 VocabStateMessageCard(
-                    title: "本機儲存失敗",
+                    title: "本機儲存失敗".localized,
                     systemImage: "externaldrive.badge.exclamationmark",
                     description: msg
                 )
@@ -408,7 +408,7 @@ struct TodayReviewPresenter: View {
             Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "xmark")
-                    Text("忘記")
+                    Text("忘記".localized)
                     if state.forgotCount > 0 {
                         Text("·\(state.forgotCount)").font(vocabSkin.typography.monoLabel)
                     }
@@ -432,7 +432,7 @@ struct TodayReviewPresenter: View {
             Button { flingCard(direction: 1, isFromButton: true, callback: onRemembered) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
-                    Text("記得")
+                    Text("記得".localized)
                     if state.rememberedCount > 0 {
                         Text("·\(state.rememberedCount)").font(vocabSkin.typography.monoLabel)
                     }
@@ -461,11 +461,11 @@ struct TodayReviewPresenter: View {
         VStack(spacing: vocabSkin.metrics.cardBlockPadding) {
             Spacer()
             VocabEmptyStateContent(
-                title: "今天複習完成",
+                title: "今天複習完成".localized,
                 systemImage: "checkmark.circle",
-                description: "這一輪 session 的卡片都處理完了。"
+                description: "這一輪 session 的卡片都處理完了。".localized
             )
-            Button("返回生詞庫", action: onClose)
+            Button("返回生詞庫".localized, action: onClose)
                 .buttonStyle(.ghost(vocabSkin.palette.primaryText))
             Spacer()
         }

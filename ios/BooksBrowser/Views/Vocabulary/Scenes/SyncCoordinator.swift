@@ -48,15 +48,15 @@ final class SyncCoordinator {
         var list: [PipelineStep] = []
 
         if deleteCount > 0 {
-            list.append(PipelineStep(id: "upload_delete", label: "刪除 KG 單字"))
+            list.append(PipelineStep(id: "upload_delete", label: "刪除 KG 單字".localized))
         }
         if addCount > 0 {
-            list.append(PipelineStep(id: "upload_add", label: "上傳新單字"))
+            list.append(PipelineStep(id: "upload_add", label: "上傳新單字".localized))
         }
 
-        list.append(PipelineStep(id: "trigger", label: "觸發背景 AI 處理"))
-        list.append(PipelineStep(id: "push_review", label: "上傳複習進度"))
-        list.append(PipelineStep(id: "pull", label: "下載知識庫至本地"))
+        list.append(PipelineStep(id: "trigger", label: "觸發背景 AI 處理".localized))
+        list.append(PipelineStep(id: "push_review", label: "上傳複習進度".localized))
+        list.append(PipelineStep(id: "pull", label: "下載知識庫至本地".localized))
 
         steps = list
     }

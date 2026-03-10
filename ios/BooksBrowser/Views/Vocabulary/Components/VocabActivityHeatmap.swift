@@ -97,7 +97,7 @@ struct VocabActivityHeatmap: View {
 
             // Legend
             HStack(spacing: vocabSkin.spacing.microGap) {
-                Text("少")
+                Text("少".localized)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
                 ForEach(0..<5, id: \.self) { level in
@@ -105,7 +105,7 @@ struct VocabActivityHeatmap: View {
                         .fill(levelColor(level))
                         .frame(width: cellSize, height: cellSize)
                 }
-                Text("多")
+                Text("多".localized)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }

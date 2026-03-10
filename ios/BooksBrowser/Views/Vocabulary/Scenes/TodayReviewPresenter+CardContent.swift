@@ -24,8 +24,8 @@ extension TodayReviewPresenter {
             .frame(height: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer || !isCardInteractive)
-            .accessibilityLabel("複習卡片正面：\(card.word)")
-            .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片")
+            .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
+            .accessibilityHint(state.revealStage.showsAnswer ? "" : "點一下翻轉卡片".localized)
         }
     }
 
@@ -86,7 +86,7 @@ extension TodayReviewPresenter {
         let answerText = card.reviewMode == .production ? card.word : card.translation
         return ReviewFoldSurface(position: .bottom) {
             combinedAnswerContent(currentCard)
-                .accessibilityLabel("翻譯：\(answerText)")
+                .accessibilityLabel(L10n.format("翻譯：%@", answerText))
         }
         .overlay(alignment: .top) {
             ReviewFoldChevronPill(action: onCollapseReveal)
