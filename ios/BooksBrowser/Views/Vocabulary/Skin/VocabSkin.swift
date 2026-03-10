@@ -104,6 +104,7 @@ struct VocabSkin {
         let microGap: CGFloat
         let chipHorizontalPadding: CGFloat
         let chipVerticalPadding: CGFloat
+        let chipVerticalPaddingLoose: CGFloat
         let prominentChipHorizontalPadding: CGFloat
         let prominentChipVerticalPadding: CGFloat
         let compactChipHorizontalPadding: CGFloat
@@ -150,6 +151,7 @@ struct VocabSkin {
         let heroSectionSpacing: CGFloat
         let accessoryTopOffset: CGFloat
         let overlayHorizontalInset: CGFloat
+        let syncOverlayInset: CGFloat
         let overlayVerticalInset: CGFloat
         let summaryHorizontalInset: CGFloat
         let reviewCardHorizontalInset: CGFloat
@@ -231,6 +233,8 @@ struct VocabSkin {
         let reviewSwipeMaxRotation: Double
         let reviewSwipeOpacityFloor: Double
         let panelHandleOpacity: Double
+        let readerSettingsDividerOpacity: Double
+        let graphDrawerBottomInset: CGFloat
     }
 
     let palette: Palette
@@ -318,6 +322,7 @@ extension VocabSkin {
         microGap: 6,
         chipHorizontalPadding: 10,
         chipVerticalPadding: 6,
+        chipVerticalPaddingLoose: 8,
         prominentChipHorizontalPadding: 8,
         prominentChipVerticalPadding: 4,
         compactChipHorizontalPadding: 6,
@@ -363,6 +368,7 @@ extension VocabSkin {
         heroSectionSpacing: 16,
         accessoryTopOffset: 10,
         overlayHorizontalInset: 20,
+        syncOverlayInset: 32,
         overlayVerticalInset: 20,
         summaryHorizontalInset: 24,
         reviewCardHorizontalInset: AppMetrics.spacingLarge,
@@ -443,7 +449,9 @@ extension VocabSkin {
         reviewSwipeThreshold: 100,
         reviewSwipeMaxRotation: 12,
         reviewSwipeOpacityFloor: 0.3,
-        panelHandleOpacity: 0.24
+        panelHandleOpacity: 0.24,
+        readerSettingsDividerOpacity: 0.6,
+        graphDrawerBottomInset: 11
     )
 
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
