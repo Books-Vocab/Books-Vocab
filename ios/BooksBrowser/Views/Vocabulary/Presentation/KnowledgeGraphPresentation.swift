@@ -92,30 +92,30 @@ enum KnowledgeGraphPresentation {
     ) -> KnowledgeGraphPresenter.State.EmptyState? {
         if !isLoggedIn {
             return .init(
-                title: "需登入帳號",
+                title: "需登入帳號".localized,
                 systemImage: "person.crop.circle.badge.exclamationmark",
-                description: "請至設定中登入以查閱您的知識關聯。"
+                description: "請至設定中登入以查閱您的知識關聯。".localized
             )
         }
         if isLoading {
             return .init(
-                title: "正在載入關聯圖...",
+                title: "正在載入關聯圖...".localized,
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: "正在向伺服器拉取知識連結與節點資訊。"
+                description: "正在向伺服器拉取知識連結與節點資訊。".localized
             )
         }
         if let errorMessage {
             return .init(
-                title: "載入失敗",
+                title: "載入失敗".localized,
                 systemImage: "exclamationmark.triangle",
                 description: errorMessage
             )
         }
         if nodes.isEmpty {
             return .init(
-                title: "知識圖譜為空",
+                title: "知識圖譜為空".localized,
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: "知識庫中尚無單字，或尚未與伺服器同步。"
+                description: "知識庫中尚無單字，或尚未與伺服器同步。".localized
             )
         }
         return nil

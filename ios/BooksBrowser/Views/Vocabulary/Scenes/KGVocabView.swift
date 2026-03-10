@@ -40,9 +40,9 @@ struct KGVocabView: View {
                 VStack {
                     Spacer()
                     VocabEmptyStateCard(
-                        title: "尚未登入",
+                        title: "尚未登入".localized,
                         systemImage: "person.crop.circle.badge.exclamationmark",
-                        description: "登入後，您在閱讀時標記的生詞將會自動整理於此。"
+                        description: "登入後，您在閱讀時標記的生詞將會自動整理於此。".localized
                     )
                     Spacer()
                 }
@@ -52,7 +52,7 @@ struct KGVocabView: View {
                 VStack {
                     Spacer()
                     VocabStateMessageCard(
-                        title: "載入知識庫...",
+                        title: "載入知識庫...".localized,
                         systemImage: "arrow.clockwise"
                     ) {
                         ProgressView()
@@ -195,18 +195,18 @@ struct KGVocabView: View {
     }
 
     private var emptyStateTitle: String {
-        if syncedEntries.isEmpty { return "知識庫目前是空的" }
-        if !searchText.isEmpty { return "沒有符合的單字" }
+        if syncedEntries.isEmpty { return "知識庫目前是空的".localized }
+        if !searchText.isEmpty { return "沒有符合的單字".localized }
         return selectedReviewState.title
     }
 
     private var emptyStateDescription: String {
-        if syncedEntries.isEmpty { return "同步完成後，這裡會顯示你的雲端單字。" }
-        if !searchText.isEmpty { return "試試其他關鍵字，或切換到別的狀態。" }
+        if syncedEntries.isEmpty { return "同步完成後，這裡會顯示你的雲端單字。".localized }
+        if !searchText.isEmpty { return "試試其他關鍵字，或切換到別的狀態。".localized }
         switch selectedReviewState {
-        case .unlearned: return "目前沒有尚未進入複習流程的卡片。"
-        case .due: return "今天沒有到期卡片。"
-        case .reviewed: return "目前沒有已複習中的卡片。"
+        case .unlearned: return "目前沒有尚未進入複習流程的卡片。".localized
+        case .due: return "今天沒有到期卡片。".localized
+        case .reviewed: return "目前沒有已複習中的卡片。".localized
         }
     }
 

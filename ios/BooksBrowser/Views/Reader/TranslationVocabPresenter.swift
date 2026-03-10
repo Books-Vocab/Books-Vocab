@@ -149,7 +149,7 @@ struct TranslationVocabPresenter: View {
                 .padding(.vertical, vocabSkin.spacing.tinyGap)
             } else if let errorMessage = state.explanationErrorMessage {
                 VocabStateMessageCard(
-                    title: "語境解釋暫時無法載入",
+                    title: "語境解釋暫時無法載入".localized,
                     systemImage: "exclamationmark.triangle.fill",
                     description: errorMessage
                 )
@@ -225,7 +225,7 @@ struct TranslationVocabPresenter: View {
     private func translationErrorBody(_ message: String) -> some View {
         VStack(alignment: .leading, spacing: 10) {
             VocabStateMessageCard(
-                title: "翻譯暫時失敗",
+                title: "翻譯暫時失敗".localized,
                 systemImage: "exclamationmark.triangle.fill",
                 description: message
             )
@@ -237,9 +237,9 @@ struct TranslationVocabPresenter: View {
     private var emptyStateBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             VocabStateMessageCard(
-                title: "尚未取得翻譯",
+                title: "尚未取得翻譯".localized,
                 systemImage: "text.viewfinder",
-                description: "請重新選取文字，或稍後再試一次。"
+                description: "請重新選取文字，或稍後再試一次。".localized
             )
 
             footerToolbar(showChevron: false, timerValue: state.statusTimerText)
@@ -248,9 +248,9 @@ struct TranslationVocabPresenter: View {
 
     private var emptyExplainStateCard: some View {
         VocabStateMessageCard(
-            title: "還沒有語境解釋",
+            title: "還沒有語境解釋".localized,
             systemImage: "text.bubble",
-            description: "展開後會在這裡顯示上下文說明。"
+            description: "展開後會在這裡顯示上下文說明。".localized
         )
     }
 

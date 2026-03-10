@@ -24,14 +24,14 @@ struct SubscriptionPaywallSheet: View {
                 }
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("訂閱")
+            .navigationTitle("訂閱".localized)
             .navigationBarTitleDisplayMode(.inline)
             .task {
                 await subscriptionManager.loadProducts()
             }
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("完成".localized) { dismiss() }
                 }
             }
             .animation(AppMotion.phaseChange, value: subscriptionManager.hasProAccess)
@@ -49,7 +49,7 @@ struct SubscriptionPaywallSheet: View {
                     .font(vocabSkin.typography.symbolHero)
                     .foregroundStyle(isCancelledButActive ? vocabSkin.palette.accent : vocabSkin.palette.success)
 
-                Text(isCancelledButActive ? "Pro 即將到期" : "Pro 已啟用")
+                Text(isCancelledButActive ? "Pro 即將到期".localized : "Pro 已啟用".localized)
                     .font(vocabSkin.typography.displayTitle)
                     .foregroundStyle(vocabSkin.palette.primaryText)
 
@@ -64,9 +64,9 @@ struct SubscriptionPaywallSheet: View {
 
             // 功能已解鎖列表
             VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                unlockedFeatureRow("AI 翻譯與語境解釋")
-                unlockedFeatureRow("知識庫同步與跨裝置狀態")
-                unlockedFeatureRow("關聯圖與內建複習")
+                unlockedFeatureRow("AI 翻譯與語境解釋".localized)
+                unlockedFeatureRow("知識庫同步與跨裝置狀態".localized)
+                unlockedFeatureRow("關聯圖與內建複習".localized)
             }
             .padding(vocabSkin.spacing.cardPadding)
             .background(vocabSkin.palette.cardBackground)
@@ -96,7 +96,7 @@ struct SubscriptionPaywallSheet: View {
                         }
                     } label: {
                         HStack {
-                            Text("管理訂閱")
+                            Text("管理訂閱".localized)
                             Spacer()
                             Image(systemName: "arrow.up.forward")
                                 .font(vocabSkin.typography.iconSmall)
@@ -170,9 +170,9 @@ struct SubscriptionPaywallSheet: View {
 
             // 功能列（行銷式 — 強調你「缺少」什麼）
             VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                lockedFeatureRow("AI 翻譯與語境解釋", description: "閱讀時即時查詢翻譯與語境")
-                lockedFeatureRow("知識庫同步與跨裝置狀態", description: "生詞與閱讀進度跨裝置同步")
-                lockedFeatureRow("關聯圖與內建複習", description: "視覺化詞彙關聯與間隔複習")
+                lockedFeatureRow("AI 翻譯與語境解釋".localized, description: "閱讀時即時查詢翻譯與語境".localized)
+                lockedFeatureRow("知識庫同步與跨裝置狀態".localized, description: "生詞與閱讀進度跨裝置同步".localized)
+                lockedFeatureRow("關聯圖與內建複習".localized, description: "視覺化詞彙關聯與間隔複習".localized)
             }
             .padding(vocabSkin.spacing.cardPadding)
             .background(vocabSkin.palette.cardBackground)
@@ -193,7 +193,7 @@ struct SubscriptionPaywallSheet: View {
                         if subscriptionManager.isLoading {
                             ProgressView().controlSize(.small)
                         }
-                        Text("開始免費試用")
+                        Text("開始免費試用".localized)
                         Spacer()
                     }
                     .frame(maxWidth: .infinity)
@@ -206,7 +206,7 @@ struct SubscriptionPaywallSheet: View {
                         await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
                     }
                 } label: {
-                    Text("恢復購買")
+                    Text("恢復購買".localized)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.vocabAction(.neutral))
@@ -222,14 +222,14 @@ struct SubscriptionPaywallSheet: View {
 
             if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
                 VocabStateMessageCard(
-                    title: "訂閱方案載入中",
+                    title: "訂閱方案載入中".localized,
                     systemImage: "arrow.clockwise.circle",
-                    description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。"
+                    description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。".localized
                 ) {
                     Button {
                         Task { await subscriptionManager.loadProducts() }
                     } label: {
-                        Text("重新載入")
+                        Text("重新載入".localized)
                             .font(vocabSkin.typography.caption)
                     }
                     .buttonStyle(.vocabAction(.neutral))

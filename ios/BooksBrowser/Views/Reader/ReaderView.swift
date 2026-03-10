@@ -195,7 +195,7 @@ struct ReaderView: View {
             }
         } else if let error = readerState.errorMessage {
             ContentUnavailableView(
-                "無法開啟書籍",
+                "無法開啟書籍".localized,
                 systemImage: "exclamationmark.triangle",
                 description: Text(error)
             )
@@ -409,11 +409,11 @@ struct TOCView: View {
                     }
                 }
             }
-            .navigationTitle("目錄")
+            .navigationTitle("目錄".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button("完成") { dismiss() }
+                    Button("完成".localized) { dismiss() }
                 }
             }
             .task {

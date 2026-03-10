@@ -67,11 +67,11 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         let navigator: EPUBNavigatorViewController
         do {
             let aiSearchAction = EditingAction(
-                title: "翻譯",
+                title: "翻譯".localized,
                 action: #selector(NavigatorHostViewController.aiSearch)
             )
                 let aiExplainAction = EditingAction(
-                    title: "解釋",
+                    title: "解釋".localized,
                     action: #selector(NavigatorHostViewController.aiExplain)
                 )
 

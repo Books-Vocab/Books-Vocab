@@ -23,9 +23,9 @@ struct PendingVocabPresenter: View {
         if state.rows.isEmpty {
             ScrollView {
                 VocabEmptyStateCard(
-                    title: "沒有待收錄的生詞",
+                    title: "沒有待收錄的生詞".localized,
                     systemImage: "character.book.closed",
-                    description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。"
+                    description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。".localized
                 )
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
                 .padding(.top, vocabSkin.metrics.pageTopInset)
@@ -35,8 +35,8 @@ struct PendingVocabPresenter: View {
             ScrollView {
                 VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
                     VocabMetricHeroCard(
-                        title: "待收錄",
-                        description: "同步前的本地收件匣，會保留新增與待刪除動作。",
+                        title: "待收錄".localized,
+                        description: "同步前的本地收件匣，會保留新增與待刪除動作。".localized,
                         value: "\(state.pendingCount)"
                     )
 

@@ -86,7 +86,7 @@ struct WordDetailPresenter: View {
 
     private var linksSection: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            CardSectionLabel(title: "知識連結", systemImage: "link")
+            CardSectionLabel(title: "知識連結".localized, systemImage: "link")
 
             ForEach(state.card.linkGroups) { group in
                 VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {

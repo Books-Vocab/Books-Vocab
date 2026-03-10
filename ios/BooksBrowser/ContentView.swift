@@ -11,10 +11,10 @@ import SwiftUI
 struct ContentView: View {
     var body: some View {
         TabView {
-            Tab("書庫", systemImage: "books.vertical") {
+            Tab("書庫".localized, systemImage: "books.vertical") {
                 BookshelfView()
             }
-            Tab("生詞庫", systemImage: "character.book.closed") {
+            Tab("生詞庫".localized, systemImage: "character.book.closed") {
                 VocabularyListView()
             }
         }

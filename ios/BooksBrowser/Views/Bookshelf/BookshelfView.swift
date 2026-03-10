@@ -69,7 +69,7 @@ struct BookshelfView: View {
                     loadingOverlay
                 }
             }
-            .navigationTitle("書庫")
+            .navigationTitle("書庫".localized)
             .navigationBarTitleDisplayMode(.large)
             .animation(AppMotion.phaseChange, value: books.isEmpty)
             .toolbarBackground(.hidden, for: .navigationBar)
@@ -97,8 +97,8 @@ struct BookshelfView: View {
                     importService: bookshelfImportService
                 )
             }
-            .alert("匯入錯誤", isPresented: $coordinator.showError) {
-                Button("確定", role: .cancel, action: coordinator.dismissError)
+            .alert("匯入錯誤".localized, isPresented: $coordinator.showError) {
+                Button("確定".localized, role: .cancel, action: coordinator.dismissError)
             } message: {
                 Text((coordinator.errorMessage ?? "未知錯誤").localized)
             }
@@ -115,13 +115,13 @@ struct BookshelfView: View {
             Spacer()
 
             AppEmptyStateContent(
-                title: "尚無書籍",
+                title: "尚無書籍".localized,
                 systemImage: "book",
-                description: "匯入 EPUB 電子書開始閱讀",
+                description: "匯入 EPUB 電子書開始閱讀".localized,
                 style: .bookshelf(appTheme)
             )
 
-            Button("匯入") {
+            Button("匯入".localized) {
                 coordinator.presentImporter()
             }
             .buttonStyle(.appAction(.outline))
@@ -142,7 +142,7 @@ struct BookshelfView: View {
                         BookCard(book: book, coverHeight: coverHeight)
                     }
                     .accessibilityLabel("\(book.title), \(book.author)")
-                    .accessibilityHint("點兩下開始閱讀")
+                    .accessibilityHint("點兩下開始閱讀".localized)
                     .transition(.bookshelfCard)
                     .contextMenu {
                         Button(role: .destructive) {
@@ -152,7 +152,7 @@ struct BookshelfView: View {
                                 fileManager: bookFileManager
                             )
                         } label: {
-                            Label("刪除", systemImage: "trash")
+                            Label("刪除".localized, systemImage: "trash")
                         }
                     }
                 }

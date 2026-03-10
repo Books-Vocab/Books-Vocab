@@ -179,7 +179,7 @@ private struct CardDocumentSourceBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "來源", systemImage: "quote.opening")
+            CardSectionLabel(title: "來源".localized, systemImage: "quote.opening")
 
             CardInlineText(
                 paragraph: source.context,

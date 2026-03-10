@@ -199,7 +199,7 @@ struct TranslationPanelPresenter: View {
             Divider()
                 .padding(.vertical, ReaderPresentationMetrics.Panel.dividerInsetVertical)
 
-            Label("語境解釋", systemImage: "text.bubble")
+            Label("語境解釋".localized, systemImage: "text.bubble")
                 .font(ReaderGlassTypography.labelSmall)
                 .foregroundStyle(.tertiary)
 
@@ -219,7 +219,7 @@ struct TranslationPanelPresenter: View {
                 .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
             } else if let errorMessage = state.explanationErrorMessage {
                 errorStateContent(
-                    title: "語境解釋暫時無法載入",
+                    title: "語境解釋暫時無法載入".localized,
                     description: errorMessage
                 )
                 .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
@@ -246,7 +246,7 @@ struct TranslationPanelPresenter: View {
                 Divider()
                     .padding(.vertical, ReaderPresentationMetrics.Panel.dividerInsetVertical)
 
-                Label("語境解釋", systemImage: "text.bubble")
+                Label("語境解釋".localized, systemImage: "text.bubble")
                     .font(ReaderGlassTypography.labelSmall)
                     .foregroundStyle(.tertiary)
 
@@ -299,9 +299,9 @@ struct TranslationPanelPresenter: View {
     private var emptyStateBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             stateMessageContent(
-                title: "尚未取得翻譯",
+                title: "尚未取得翻譯".localized,
                 systemImage: "text.viewfinder",
-                description: "請重新選取文字，或稍後再試一次。"
+                description: "請重新選取文字，或稍後再試一次。".localized
             )
             .padding(.vertical, ReaderPresentationMetrics.Panel.messageVerticalInset)
 
@@ -311,9 +311,9 @@ struct TranslationPanelPresenter: View {
 
     private var emptyExplainStateContent: some View {
         stateMessageContent(
-            title: "還沒有語境解釋",
+            title: "還沒有語境解釋".localized,
             systemImage: "text.bubble",
-            description: "展開後會在這裡顯示上下文說明。"
+            description: "展開後會在這裡顯示上下文說明。".localized
         )
     }
 
@@ -344,7 +344,7 @@ struct TranslationPanelPresenter: View {
     private func panelToolbar(showChevron: Bool, timerValue: String?) -> some View {
         HStack(spacing: 4) {
             if state.showsSavedStatus {
-                Label("已加入", systemImage: "checkmark.circle.fill")
+                Label("已加入".localized, systemImage: "checkmark.circle.fill")
                     .font(ReaderGlassTypography.savedStatus)
                     .foregroundStyle(AppColors.saved(colorScheme))
                     .symbolEffect(.bounce, value: state.isSaved)

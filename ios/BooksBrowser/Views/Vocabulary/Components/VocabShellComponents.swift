@@ -327,8 +327,8 @@ struct VocabSortPill: View {
                     .fill(vocabSkin.palette.mutedFill)
             )
         }
-        .accessibilityLabel("排序方式：\(sortOption.label)")
-        .accessibilityHint("點兩下切換排序")
+        .accessibilityLabel(L10n.format("排序方式：%@", sortOption.label))
+        .accessibilityHint("點兩下切換排序".localized)
     }
 }
 
