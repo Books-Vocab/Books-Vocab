@@ -249,7 +249,7 @@ struct SettingsView: View {
         if status.source == "admin", status.is_active {
             return "ADMIN"
         }
-        if status.is_active, !status.will_renew, status.source != "admin" {
+        if status.isCancelledButActive {
             return "EXPIRING"
         }
         switch status.status {
@@ -268,7 +268,7 @@ struct SettingsView: View {
         if status.source == "admin", status.is_active {
             return .success
         }
-        if status.is_active, !status.will_renew, status.source != "admin" {
+        if status.isCancelledButActive {
             return .accent
         }
         switch status.status {
@@ -285,9 +285,8 @@ struct SettingsView: View {
         if status.source == "admin", status.is_active {
             return L10n.string("你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
         }
-        if status.is_active, !status.will_renew, status.source != "admin" {
-            let expiry = Self.formattedExpiry(status.expires_at)
-            return L10n.format("訂閱已取消，將於 %@ 到期。到期前仍可使用所有 Pro 功能。", expiry)
+        if status.isCancelledButActive {
+            return L10n.format("訂閱已取消，將於 %@ 到期。到期前仍可使用所有 Pro 功能。", status.formattedExpiryDate)
         }
         if status.status == "grace_period" {
             return L10n.string("訂閱目前在寬限期，請確認付款方式以維持存取。")
@@ -380,37 +379,6 @@ struct SettingsView: View {
         !(status.source == "admin" && status.is_active)
     }
 
-    // MARK: - Date Formatting
-
-    private static let expiryISO8601Formatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let expiryISO8601FallbackFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    private static let expiryDisplayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy/MM/dd HH:mm"
-        f.locale = Locale(identifier: "zh_TW")
-        return f
-    }()
-
-    static func formattedExpiry(_ isoString: String?) -> String {
-        guard let isoString, !isoString.isEmpty else {
-            return L10n.string("未知時間")
-        }
-        if let date = expiryISO8601Formatter.date(from: isoString)
-            ?? expiryISO8601FallbackFormatter.date(from: isoString) {
-            return expiryDisplayFormatter.string(from: date)
-        }
-        return isoString
-    }
 }
 
 #Preview {
