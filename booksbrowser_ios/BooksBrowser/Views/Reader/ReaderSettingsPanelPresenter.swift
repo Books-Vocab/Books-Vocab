@@ -202,7 +202,7 @@ struct ReaderSettingsPanelPresenter: View {
                     Button(action: onDismiss) {
                         Image(systemName: "xmark.circle.fill")
                             .foregroundStyle(.tertiary)
-                            .font(.system(size: ReaderPresentationMetrics.Settings.closeIconSize))
+                            .font(ReaderGlassTypography.settingsCloseIcon)
                     }
                 }
             }

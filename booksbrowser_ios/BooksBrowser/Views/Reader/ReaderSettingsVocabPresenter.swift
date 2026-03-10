@@ -82,14 +82,14 @@ struct ReaderSettingsVocabPresenter: View {
                 HStack(alignment: .center, spacing: 14) {
                     typographyAdjustButton(
                         title: "A",
-                        size: 15,
+                        font: vocabSkin.typography.settingsAdjustSmall,
                         enabled: state.canDecreaseFontSize,
                         action: onDecreaseFontSize
                     )
 
                     VStack(spacing: 4) {
                         Text(state.fontSizeText)
-                            .font(.system(size: 28, weight: .semibold, design: .monospaced))
+                            .font(vocabSkin.typography.settingsFontSizeDisplay)
                             .foregroundStyle(vocabSkin.palette.primaryText)
                         Text("字級倍率")
                             .font(vocabSkin.typography.caption)
@@ -99,7 +99,7 @@ struct ReaderSettingsVocabPresenter: View {
 
                     typographyAdjustButton(
                         title: "A",
-                        size: 28,
+                        font: vocabSkin.typography.settingsAdjustLarge,
                         enabled: state.canIncreaseFontSize,
                         action: onIncreaseFontSize
                     )
@@ -249,29 +249,16 @@ struct ReaderSettingsVocabPresenter: View {
         eyebrow: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
-                Text(eyebrow)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .tracking(1.0)
-                Text(title.localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-            }
-            .padding(.horizontal, vocabSkin.metrics.readerSettingsHeaderMicroInset)
-
-            AppSectionCard(padding: vocabSkin.metrics.readerSettingsCardPadding, style: .settings(vocabSkin)) {
-                content()
-            }
+        AppSectionBlock(title: title, eyebrow: eyebrow) {
+            content()
         }
     }
 
-    private func typographyAdjustButton(title: String, size: CGFloat, enabled: Bool, action: @escaping () -> Void) -> some View {
+    private func typographyAdjustButton(title: String, font: Font, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             VStack(spacing: 6) {
                 Text(title)
-                    .font(.system(size: size, weight: .medium))
+                    .font(font)
                 Text((enabled ? "調整" : "上限").localized)
                     .font(vocabSkin.typography.monoLabel)
                     .opacity(enabled ? 0.72 : 0.5)

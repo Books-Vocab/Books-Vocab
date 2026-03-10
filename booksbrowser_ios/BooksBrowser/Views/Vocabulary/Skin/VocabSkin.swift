@@ -75,6 +75,9 @@ struct VocabSkin {
         let iconNavigation: Font
         let symbolLarge: Font
         let symbolHero: Font
+        let settingsFontSizeDisplay: Font
+        let settingsAdjustSmall: Font
+        let settingsAdjustLarge: Font
     }
 
     struct Radii {
@@ -239,7 +242,10 @@ extension VocabSkin {
         iconToolbar: .system(size: 15, weight: .medium, design: .default),
         iconNavigation: .system(size: 16, weight: .thin, design: .default),
         symbolLarge: .system(size: 30, weight: .light, design: .default),
-        symbolHero: .system(size: 44, weight: .light, design: .default)
+        symbolHero: .system(size: 44, weight: .light, design: .default),
+        settingsFontSizeDisplay: .system(size: 28, weight: .semibold, design: .monospaced),
+        settingsAdjustSmall: .system(size: 15, weight: .medium, design: .default),
+        settingsAdjustLarge: .system(size: 28, weight: .medium, design: .default)
     )
 
     static let baseRadii = Radii(
