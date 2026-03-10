@@ -1,0 +1,194 @@
+import SwiftUI
+
+struct AppTabOption<ID: Hashable>: Identifiable, Hashable {
+    let id: ID
+    let title: String
+    let count: Int?
+    let systemImage: String?
+
+    init(id: ID, title: String, count: Int? = nil, systemImage: String? = nil) {
+        self.id = id
+        self.title = title
+        self.count = count
+        self.systemImage = systemImage
+    }
+}
+
+struct AppTabSelectorStyle {
+    let iconFont: Font
+    let titleFont: Font
+    let countFont: Font
+    let iconSelectedColor: Color
+    let iconUnselectedColor: Color
+    let textSelectedColor: Color
+    let textUnselectedColor: Color
+    let countSelectedFill: Color
+    let countUnselectedFill: Color
+    let selectedBackground: Color
+    let unselectedBackground: Color
+    let selectedBorder: Color
+    let unselectedBorder: Color
+    let selectedOuterBorder: Color
+    let unselectedOuterBorder: Color
+    let containerBackground: Color
+    let controlRadius: CGFloat
+    let containerRadius: CGFloat
+    let outerBorderInset: CGFloat
+}
+
+struct AppTabSelector<ID: Hashable>: View {
+    let options: [AppTabOption<ID>]
+    @Binding var selection: ID
+    let style: AppTabSelectorStyle
+
+    var body: some View {
+        HStack(spacing: 8) {
+            ForEach(options) { option in
+                Button {
+                    withAnimation(AppMotion.chipSelectionEaseOut) {
+                        selection = option.id
+                    }
+                } label: {
+                    HStack(spacing: 6) {
+                        if let systemImage = option.systemImage {
+                            Image(systemName: systemImage)
+                                .font(style.iconFont)
+                                .foregroundStyle(selection == option.id ? style.iconSelectedColor : style.iconUnselectedColor)
+                                .fixedSize()
+                        }
+
+                        Text(option.title.localized)
+                            .font(style.titleFont)
+                            .foregroundStyle(selection == option.id ? style.textSelectedColor : style.textUnselectedColor)
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.72)
+                            .layoutPriority(1)
+
+                        if let count = option.count {
+                            Text("\(count)")
+                                .font(style.countFont)
+                                .minimumScaleFactor(0.7)
+                                .monospacedDigit()
+                                .lineLimit(1)
+                                .fixedSize(horizontal: true, vertical: false)
+                                .frame(minWidth: 26)
+                                .padding(.horizontal, 6)
+                                .padding(.vertical, 2)
+                                .background(
+                                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall - 1, style: .continuous)
+                                        .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
+                                )
+                        }
+                    }
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 8)
+                    .padding(.vertical, 8)
+                    .background(
+                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                            .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
+                    )
+                    .overlay(
+                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                            .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
+                    )
+                    .overlay(
+                        RoundedRectangle(
+                            cornerRadius: style.controlRadius + style.outerBorderInset,
+                            style: .continuous
+                        )
+                        .stroke(
+                            selection == option.id ? style.selectedOuterBorder : style.unselectedOuterBorder,
+                            lineWidth: 0.8
+                        )
+                        .padding(-style.outerBorderInset)
+                    )
+                }
+                .buttonStyle(.plain)
+                .accessibilityLabel(option.count.map { "\(option.title), \($0) 個項目" } ?? option.title)
+                .accessibilityAddTraits(selection == option.id ? .isSelected : [])
+            }
+        }
+        .padding(3)
+        .background(
+            RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
+                .fill(style.containerBackground)
+        )
+    }
+}
+
+extension AppTabSelectorStyle {
+    static func themed(_ theme: AppTheme) -> AppTabSelectorStyle {
+        .init(
+            iconFont: AppFonts.caption(weight: .medium),
+            titleFont: AppFonts.caption(weight: .semibold),
+            countFont: AppFonts.monoNumbers(size: 10),
+            iconSelectedColor: theme.palette.primaryText,
+            iconUnselectedColor: theme.palette.secondaryText,
+            textSelectedColor: theme.palette.primaryText,
+            textUnselectedColor: theme.palette.secondaryText,
+            countSelectedFill: theme.palette.primaryText.opacity(0.08),
+            countUnselectedFill: theme.palette.mutedFill,
+            selectedBackground: theme.palette.cardBackground,
+            unselectedBackground: theme.palette.stageBackground,
+            selectedBorder: theme.palette.cardBorder,
+            unselectedBorder: theme.palette.divider.opacity(0.8),
+            selectedOuterBorder: theme.palette.cardBorder.opacity(0.45),
+            unselectedOuterBorder: theme.palette.divider.opacity(0.45),
+            containerBackground: theme.palette.stageBackground,
+            controlRadius: AppMetrics.cornerRadiusMedium - 2,
+            containerRadius: AppMetrics.cornerRadiusMedium + 2,
+            outerBorderInset: 3
+        )
+    }
+
+    static func vocab(_ skin: VocabSkin) -> AppTabSelectorStyle {
+        .init(
+            iconFont: skin.typography.iconSmall,
+            titleFont: skin.typography.captionStrong,
+            countFont: skin.typography.monoLabel,
+            iconSelectedColor: skin.palette.primaryText,
+            iconUnselectedColor: skin.palette.secondaryText,
+            textSelectedColor: skin.palette.primaryText,
+            textUnselectedColor: skin.palette.secondaryText,
+            countSelectedFill: skin.palette.primaryText.opacity(0.08),
+            countUnselectedFill: skin.palette.mutedFill,
+            selectedBackground: skin.palette.cardBackground,
+            unselectedBackground: skin.palette.stageBackground,
+            selectedBorder: skin.palette.cardBorder,
+            unselectedBorder: skin.palette.divider.opacity(0.8),
+            selectedOuterBorder: skin.palette.cardBorder.opacity(0.4),
+            unselectedOuterBorder: skin.palette.divider.opacity(0.38),
+            containerBackground: skin.palette.stageBackground,
+            controlRadius: skin.radii.control,
+            containerRadius: skin.radii.control + 4,
+            outerBorderInset: 3
+        )
+    }
+}
+
+#Preview("AppTabSelector") {
+    AppThemeContainer {
+        AppTabSelectorPreview()
+    }
+}
+
+private struct AppTabSelectorPreview: View {
+    @Environment(\.appTheme) private var appTheme
+    @State private var selected = 0
+
+    var body: some View {
+        VStack(spacing: 20) {
+            AppTabSelector(
+                options: [
+                    .init(id: 0, title: "書庫", count: 12, systemImage: "books.vertical"),
+                    .init(id: 1, title: "生詞庫", count: 248, systemImage: "character.book.closed"),
+                    .init(id: 2, title: "設定", systemImage: "gearshape")
+                ],
+                selection: $selected,
+                style: .themed(appTheme)
+            )
+        }
+        .padding()
+        .background(appTheme.palette.pageBackground.ignoresSafeArea())
+    }
+}
