@@ -100,16 +100,20 @@ struct SubscriptionPaywallSheet: View {
                         )
                     }
 
-                    if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
+                    if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
                         VocabStateMessageCard(
-                            title: "App Store 載入失敗",
-                            systemImage: "exclamationmark.triangle.fill",
-                            description: lastError
+                            title: "訂閱方案載入中",
+                            systemImage: "arrow.clockwise.circle",
+                            description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。"
                         ) {
-                            Text(L10n.format("目前商品 ID：%@", subscriptionManager.proProductIdentifier))
-                                .font(vocabSkin.typography.monoLabel)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                                .textSelection(.enabled)
+                            Button {
+                                Task { await subscriptionManager.loadProducts() }
+                            } label: {
+                                Text("重新載入")
+                                    .font(vocabSkin.typography.caption)
+                            }
+                            .buttonStyle(.vocabAction(.neutral))
+                            .disabled(subscriptionManager.isLoading)
                         }
                     }
 
@@ -156,9 +160,6 @@ struct SubscriptionPaywallSheet: View {
         }
         if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
             return remotePrice
-        }
-        if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
-            return L10n.string("無法載入 App Store 價格")
         }
         return L10n.string("載入 App Store 價格中…")
     }

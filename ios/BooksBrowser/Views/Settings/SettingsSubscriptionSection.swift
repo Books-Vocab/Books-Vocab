@@ -34,8 +34,8 @@ struct SettingsSubscriptionSection: View {
 
                     if let pricingUnavailableMessage = state.pricingUnavailableMessage {
                         VocabStateMessageCard(
-                            title: "App Store 價格暫時不可用",
-                            systemImage: "exclamationmark.triangle.fill",
+                            title: "價格載入中",
+                            systemImage: "arrow.clockwise.circle",
                             description: pricingUnavailableMessage
                         )
                         .transition(.statusRowReveal)
