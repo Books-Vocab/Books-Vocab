@@ -126,7 +126,14 @@ struct BooksBrowserApp: App {
                         }
                         subscriptionManager.listenForTransactionUpdates(using: kgService, authManager: authManager)
                         await subscriptionManager.loadProducts()
-                        await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                        await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
+                    }
+                    .onChange(of: scenePhase) { _, newPhase in
+                        if newPhase == .active {
+                            Task {
+                                await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
+                            }
+                        }
                     }
                     .onChange(of: scenePhase) { _, newPhase in
                         if newPhase == .active, authManager.isLoggedIn {
