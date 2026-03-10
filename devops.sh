@@ -203,6 +203,15 @@ cmd_deploy() {
   cmd_backup
   cmd_env_check
 
+  # 檢查 working tree 是否與 HEAD 一致（防止 rsync 推送未 commit 的差異）
+  local dirty
+  dirty=$(cd "$LOCAL_DIR" && git diff --name-only HEAD -- . 2>/dev/null || true)
+  if [[ -n "$dirty" ]]; then
+    echo "⚠️  Working tree 有未 commit 的變更，rsync 會把它們推上去："
+    echo "$dirty" | head -10
+    confirm "繼續部署？"
+  fi
+
   section "Step 1/3: 同步代碼"
   rsync -az --stats \
     -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes" \
