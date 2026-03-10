@@ -218,6 +218,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
             }
         }
+        .animation(AppMotion.panelState, value: state.chrome.overlay)
     }
 
     private var topOverlay: some View {

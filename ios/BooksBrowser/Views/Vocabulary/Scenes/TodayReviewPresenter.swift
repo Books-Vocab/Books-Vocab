@@ -35,6 +35,7 @@ struct TodayReviewPresenter: View {
     }
 
     @State private var swipeOffset: CGFloat = 0
+    @State private var swipeTask: Task<Void, Never>?
 
     let state: TodayReviewPresenterState
     let onClose: () -> Void
@@ -181,29 +182,38 @@ struct TodayReviewPresenter: View {
                 guard swipeEnabled else { return }
                 let threshold = vocabSkin.metrics.reviewSwipeThreshold
                 if value.translation.width < -threshold {
-                    withAnimation(AppMotion.swipeDismissSpring) {
-                        swipeOffset = -screenWidth * 1.5
-                    }
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(300))
-                        swipeOffset = 0
-                        onForgot()
-                    }
+                    dismissCard(direction: -1, callback: onForgot)
                 } else if value.translation.width > threshold {
-                    withAnimation(AppMotion.swipeDismissSpring) {
-                        swipeOffset = screenWidth * 1.5
-                    }
-                    Task { @MainActor in
-                        try? await Task.sleep(for: .milliseconds(300))
-                        swipeOffset = 0
-                        onRemembered()
-                    }
+                    dismissCard(direction: 1, callback: onRemembered)
                 } else {
                     withAnimation(AppMotion.swipeSnapBackSpring) {
                         swipeOffset = 0
                     }
                 }
             }
+    }
+
+    private func dismissCard(direction: CGFloat, callback: @escaping () -> Void) {
+        swipeTask?.cancel()
+        swipeTask = Task { @MainActor in
+            // 階段 1：卡片飛出畫面
+            withAnimation(AppMotion.swipeDismissSpring) {
+                swipeOffset = direction * screenWidth * 1.5
+            }
+            try? await Task.sleep(for: .milliseconds(350))
+            guard !Task.isCancelled else { return }
+
+            // 階段 2：先取消所有進行中的動畫再重置 offset
+            // 用 .identity 動畫（duration 0）確保 offset 立刻歸零，不會產生過渡動畫
+            var t = Transaction()
+            t.disablesAnimations = true
+            withTransaction(t) {
+                swipeOffset = 0
+            }
+
+            // 階段 3：觸發 callback（改 currentIndex → .id() 變化 → 新卡片以 transition 進入）
+            callback()
+        }
     }
 
     @ViewBuilder
