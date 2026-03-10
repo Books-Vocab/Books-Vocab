@@ -49,6 +49,17 @@ struct CardDocumentSource {
 struct CardDocumentParagraph: Identifiable {
     let id = UUID()
     let inlines: [CardDocumentInline]
+
+    var rawMarkdown: String {
+        inlines.map { inline in
+            switch inline {
+            case .text(let v): return v
+            case .mark(let v): return "**\(v)**"
+            case .code(let v): return "`\(v)`"
+            case .emphasis(let v): return v
+            }
+        }.joined()
+    }
 }
 
 enum CardDocumentInline: Identifiable {
