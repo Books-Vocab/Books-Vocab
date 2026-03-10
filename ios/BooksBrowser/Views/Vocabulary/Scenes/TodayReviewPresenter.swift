@@ -210,9 +210,14 @@ struct TodayReviewPresenter: View {
     }
 
     private func stackCard(depth: Int) -> some View {
-        let scale: CGFloat = 1.0 - CGFloat(depth) * 0.025
-        let yOff: CGFloat = CGFloat(depth) * 5
-        let rotation = stackRotations[depth - 1]
+        let progress = dismissProgress
+        let effectiveDepth = CGFloat(depth) * (1.0 - progress)
+        let scale: CGFloat = 1.0 - effectiveDepth * 0.025
+        let yOff: CGFloat = effectiveDepth * 5
+        let rotation = stackRotations[depth - 1] * Double(1.0 - progress)
+        let baseOpacity = depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35
+        let targetOpacity: Double = depth == 1 ? 1.0 : TodayReviewMetrics.cardBorderActiveOpacity
+        let opacity = baseOpacity + (targetOpacity - baseOpacity) * Double(progress)
 
         return ZStack(alignment: .topLeading) {
             RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
@@ -250,7 +255,7 @@ struct TodayReviewPresenter: View {
         .scaleEffect(scale)
         .offset(y: yOff)
         .rotationEffect(.degrees(rotation), anchor: .center)
-        .opacity(depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35)
+        .opacity(opacity)
     }
 
     // MARK: - Swipe Gesture + Fling Animation
@@ -259,6 +264,11 @@ struct TodayReviewPresenter: View {
 
     private var cardOpacity: Double {
         1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
+    }
+
+    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
+    private var dismissProgress: CGFloat {
+        min(abs(swipeOffset) / 200, 1.0)
     }
 
     private var swipeEnabled: Bool {
@@ -291,11 +301,9 @@ struct TodayReviewPresenter: View {
 
     /// 統一的甩出動畫 — swipe 和按鈕共用
     ///
-    /// 動畫三階段（全部顯式 withAnimation，零 .animation() modifier）：
-    /// 1. fling: swipeFlingSpring 甩出畫面
-    /// 2. noAnim: 瞬間重置 swipeOffset
-    /// 3. stackPromotionSpring: callback 觸發 .id() 變更 → .transition() 升頂
-    ///    不需要 isPromoting 或 frame gap — transition 在同一幀處理 active→identity
+    /// 牌堆升頂不再是獨立階段 — 透過 dismissProgress 與甩出同步進行：
+    /// 1. fling: swipeFlingSpring 甩出畫面（牌堆同步跟隨升頂）
+    /// 2. noAnim: 卡片已離開、牌堆已就位，瞬間換卡重置
     private func flingCard(direction: CGFloat, isFromButton: Bool = false, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
@@ -309,30 +317,19 @@ struct TodayReviewPresenter: View {
                 try? await Task.sleep(for: .milliseconds(60))
             }
 
-            // 甩出畫面
+            // 甩出畫面 — 牌堆透過 dismissProgress 同步升頂
             withAnimation(AppMotion.swipeFlingSpring) {
                 swipeOffset = direction * screenWidth * 1.3
             }
-            try? await Task.sleep(for: .milliseconds(120))
+            try? await Task.sleep(for: .milliseconds(180))
 
-            // 瞬間重置 swipeOffset（卡片已在畫面外，跳回不可見）
+            // 瞬間換卡 — 牌堆已視覺升頂完畢，跳轉不可見
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
             withTransaction(noAnim) {
                 swipeOffset = 0
-            }
-
-            // 換卡 + 升頂 — .transition() 在 .id() 變更時自動處理：
-            //   removal(.identity): 舊卡瞬間消失
-            //   insertion(.scale+.offset): 新卡從牌堆位置彈出
-            // 用 completion 確保動畫真正結束才恢復互動
-            await withCheckedContinuation { continuation in
-                withAnimation(AppMotion.stackPromotionSpring) {
-                    stackRotations = [.random(in: -1...1), .random(in: -1...1)]
-                    callback()
-                } completion: {
-                    continuation.resume()
-                }
+                stackRotations = [.random(in: -1...1), .random(in: -1...1)]
+                callback()
             }
 
             dismissPhase = .idle
