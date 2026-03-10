@@ -11,6 +11,24 @@ import SwiftData
 @ModelActor
 actor BackgroundSyncActor {
 
+    // MARK: - Cached Date Formatters
+
+    private static let isoFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let isoFormatterNoFractional: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static func parseISO8601(_ string: String) -> Date? {
+        isoFormatter.date(from: string) ?? isoFormatterNoFractional.date(from: string)
+    }
+
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
     /// This makes all KG words available offline (for underlining and browsing).
     func pullCardsToLocal(
@@ -148,17 +166,14 @@ actor BackgroundSyncActor {
         )
         let entries = try modelContext.fetch(descriptor)
 
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-
         var payload: [[String: Any]] = []
         for entry in entries {
             guard let lastReviewed = entry.lastReviewedAt else { continue }
             payload.append([
                 "word": entry.word,
                 "review_interval_hours": entry.reviewIntervalHours,
-                "next_review_at": formatter.string(from: entry.nextReviewAt),
-                "last_reviewed_at": formatter.string(from: lastReviewed),
+                "next_review_at": Self.isoFormatter.string(from: entry.nextReviewAt),
+                "last_reviewed_at": Self.isoFormatter.string(from: lastReviewed),
                 "review_count": entry.reviewCount,
                 "lapse_count": entry.lapseCount,
                 "review_streak": entry.reviewStreak,
@@ -171,20 +186,13 @@ actor BackgroundSyncActor {
     // MARK: - Review State Merge Helper
 
     private static func mergeReviewState(from card: KGCard, into entry: VocabularyEntry) {
-        guard let serverLastStr = card.lastReviewedAt else { return }
-        let formatter = ISO8601DateFormatter()
-        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        // Also try without fractional seconds
-        guard let serverLast = formatter.date(from: serverLastStr) ?? {
-            let f = ISO8601DateFormatter()
-            f.formatOptions = [.withInternetDateTime]
-            return f.date(from: serverLastStr)
-        }() else { return }
+        guard let serverLastStr = card.lastReviewedAt,
+              let serverLast = parseISO8601(serverLastStr) else { return }
 
         let localLast = entry.lastReviewedAt ?? .distantPast
         if serverLast > localLast {
             entry.reviewIntervalHours = card.reviewIntervalHours ?? entry.reviewIntervalHours
-            if let nextStr = card.nextReviewAt, let nextDate = formatter.date(from: nextStr) {
+            if let nextStr = card.nextReviewAt, let nextDate = parseISO8601(nextStr) {
                 entry.nextReviewAt = nextDate
             }
             entry.lastReviewedAt = serverLast
