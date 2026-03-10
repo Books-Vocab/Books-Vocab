@@ -16,7 +16,7 @@ struct SyncView: View {
     @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     private var pendingEntries: [VocabularyEntry]
 
-    @StateObject private var coordinator = SyncCoordinator()
+    @State private var coordinator = SyncCoordinator()
     @State private var showSettings = false
     @State private var showPaywall = false
 

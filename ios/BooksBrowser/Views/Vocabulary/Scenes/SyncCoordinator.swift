@@ -35,14 +35,14 @@ enum SyncFailureKind {
     case cancelled
 }
 
-@MainActor
-final class SyncCoordinator: ObservableObject {
-    @Published var steps: [PipelineStep] = []
-    @Published var phase: SyncPhase = .ready
-    @Published var summaryText: String = ""
-    @Published var failureKind: SyncFailureKind?
+@Observable @MainActor
+final class SyncCoordinator {
+    var steps: [PipelineStep] = []
+    var phase: SyncPhase = .ready
+    var summaryText: String = ""
+    var failureKind: SyncFailureKind?
 
-    private var pipelineTask: Task<Void, Never>?
+    @ObservationIgnored private var pipelineTask: Task<Void, Never>?
 
     func buildSteps(deleteCount: Int, addCount: Int) {
         var list: [PipelineStep] = []
