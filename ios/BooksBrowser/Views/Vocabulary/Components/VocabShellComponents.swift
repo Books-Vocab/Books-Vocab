@@ -356,7 +356,7 @@ struct VocabStatusHero<Badges: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: vocabSkin.spacing.statusHeroGap) {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.symbolHero)
                 .foregroundStyle(tone)
@@ -403,11 +403,11 @@ struct VocabTimelineRow<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: vocabSkin.spacing.timelineRowGap) {
             statusSymbol
                 .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.timelineDetailGap) {
                 HStack {
                     Text(title.localized)
                         .font(vocabSkin.typography.body.weight(.medium))
@@ -426,7 +426,7 @@ struct VocabTimelineRow<Trailing: View>: View {
                 }
             }
         }
-        .padding(.vertical, AppMetrics.spacingMedium)
+        .padding(.vertical, vocabSkin.spacing.sectionGap)
     }
 }
 

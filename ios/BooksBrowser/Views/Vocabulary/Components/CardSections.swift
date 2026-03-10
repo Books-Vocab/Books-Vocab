@@ -55,7 +55,7 @@ struct CardHeroSection: View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
             HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
                 VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
-                    HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.heroBaselineGap) {
                         Text(card.word)
                             .font(vocabSkin.typography.detailWord)
                             .foregroundStyle(vocabSkin.palette.primaryText)
@@ -150,7 +150,7 @@ struct CardSourceSection: View {
             )
             .lineSpacing(4)
 
-            HStack(spacing: 6) {
+            HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
                 Image(systemName: "book.closed")
                     .font(vocabSkin.typography.iconTiny)
                 Text(bookTitle)
