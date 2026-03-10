@@ -670,6 +670,23 @@ private enum TodayReviewPresenterPreviewData {
     }
 }
 
+#Preview("Today Review / Back") {
+    AppThemeContainer {
+        TodayReviewPresenter(
+            state: TodayReviewPresenterPreviewData.state(stage: .back),
+            onClose: {},
+            onAdvanceReveal: {},
+            onCollapseReveal: {},
+            onShuffle: {},
+            onPrevious: {},
+            onNext: {},
+            onForgot: {},
+            onRemembered: {},
+            onLinkTap: { _ in }
+        )
+    }
+}
+
 private struct PaperFoldModifier: ViewModifier {
     let progress: CGFloat
 

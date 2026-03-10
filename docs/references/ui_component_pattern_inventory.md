@@ -350,10 +350,5 @@ Scope: `ios/BooksBrowser`
 
 ## Next Recommended Step
 
-最值得接著做的是：
-
-1. 補 state matrix
-2. 補 preview matrix
-
-因為 component / pattern inventory 解決的是「該用什麼」。
-下一步 state / preview matrix 解決的是「有哪些狀態不能漏」。
+State matrix 與 preview matrix 已建立（見 `ui_state_matrix.md`）。
+新增或修改 UI 前，先跑一遍 `ui_review_checklist.md`。
