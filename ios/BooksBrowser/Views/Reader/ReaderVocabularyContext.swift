@@ -53,8 +53,9 @@ struct ReaderVocabularyContext {
             chapterTitle: currentLocator?.title
         )
         entry.rootForm = rootForm
-        entry.book = book
+        entry.bookId = book.id
         modelContext.insert(entry)
+        VocabularyReviewMetaHelper.createReviewMeta(for: entry, in: modelContext)
         try? modelContext.save()
         return true
     }
