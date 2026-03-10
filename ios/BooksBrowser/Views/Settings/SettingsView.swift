@@ -142,12 +142,12 @@ struct SettingsView: View {
             requestDeleteAccount: coordinator.requestDeleteAccount,
             showTranslationLanguageSettings: {},
             openPrivacyPolicy: {
-                if let url = URL(string: "https://wordnexus.lol/privacy") {
+                if let url = URL(string: "https://wordnexus.lol/privacy.html") {
                     openURL(url)
                 }
             },
             openSupport: {
-                if let url = URL(string: "https://wordnexus.lol/support") {
+                if let url = URL(string: "https://wordnexus.lol/support.html") {
                     openURL(url)
                 }
             },
