@@ -28,6 +28,7 @@ struct KnowledgeGraphView: View {
             WordDetailSheet(entry: entry)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
         }
     }
 
