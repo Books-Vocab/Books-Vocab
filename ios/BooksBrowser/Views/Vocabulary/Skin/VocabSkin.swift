@@ -126,6 +126,17 @@ struct VocabSkin {
         let sourceMetadataGap: CGFloat
         let blockGap: CGFloat
         let chipHorizontalPaddingOuter: CGFloat
+        // Settings sheet
+        let sheetSectionSpacing: CGFloat
+        let sheetPadding: CGFloat
+        let sheetPaddingCompact: CGFloat
+        let controlGap: CGFloat
+        let rowContentSpacing: CGFloat
+        let controlVerticalPadding: CGFloat
+        let controlHorizontalPadding: CGFloat
+        let badgeHorizontalPadding: CGFloat
+        let tinyGap: CGFloat
+        let lineSpacingRelaxed: CGFloat
     }
 
     struct Metrics {
@@ -327,7 +338,17 @@ extension VocabSkin {
         heroBaselineGap: 8,
         sourceMetadataGap: 6,
         blockGap: 12,
-        chipHorizontalPaddingOuter: 12
+        chipHorizontalPaddingOuter: 12,
+        sheetSectionSpacing: 20,
+        sheetPadding: 24,
+        sheetPaddingCompact: 20,
+        controlGap: 10,
+        rowContentSpacing: 12,
+        controlVerticalPadding: 12,
+        controlHorizontalPadding: 14,
+        badgeHorizontalPadding: 9,
+        tinyGap: 4,
+        lineSpacingRelaxed: 6
     )
 
     static let baseMetrics = Metrics(
