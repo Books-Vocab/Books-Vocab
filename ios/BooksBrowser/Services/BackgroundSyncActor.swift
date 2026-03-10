@@ -44,6 +44,7 @@ actor BackgroundSyncActor {
                 // Delete if marked as soft-deleted
                 if card.isDeleted == true {
                     print("🧹 Remote soft-delete received: \(existingEntry.word)")
+                    VocabularyReviewMetaHelper.deleteReviewMeta(for: existingEntry, in: modelContext)
                     modelContext.delete(existingEntry)
                     continue
                 }
@@ -109,6 +110,7 @@ actor BackgroundSyncActor {
                 if entry.shouldAppearInKnowledgeList {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {
                         print("🧹 Cleaning up remote orphan: \(entry.word)")
+                        VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
                         modelContext.delete(entry)
                     }
                 }
@@ -123,12 +125,53 @@ actor BackgroundSyncActor {
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
         print("🧹 Clearing all local vocabulary entries... reason=\(reason)")
+        VocabularyReviewMetaHelper.deleteAllReviewMeta(in: modelContext)
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
         }
         try modelContext.save()
         print("✅ Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
+    }
+
+    /// Syncs review state between VocabularyReviewMeta (CloudKit) and VocabularyEntry (local).
+    /// Whichever side has a newer lastReviewedAt wins; uses merge strategy for conflicts.
+    func syncReviewMetaToEntries() throws {
+        let allMeta = try modelContext.fetch(FetchDescriptor<VocabularyReviewMeta>())
+        let allEntries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
+
+        var entryById = [UUID: VocabularyEntry]()
+        for entry in allEntries {
+            entryById[entry.id] = entry
+        }
+
+        for meta in allMeta {
+            guard let entry = entryById[meta.id] else { continue }
+
+            let metaLastReviewed = meta.lastReviewedAt ?? .distantPast
+            let entryLastReviewed = entry.lastReviewedAt ?? .distantPast
+
+            if metaLastReviewed > entryLastReviewed {
+                entry.reviewIntervalHours = meta.reviewIntervalHours
+                entry.nextReviewAt = meta.nextReviewAt
+                entry.lastReviewedAt = meta.lastReviewedAt
+                entry.reviewCount = max(entry.reviewCount, meta.reviewCount)
+                entry.lapseCount = max(entry.lapseCount, meta.lapseCount)
+                entry.reviewStreak = meta.reviewStreak
+                entry.lastReviewFeedbackRaw = meta.lastReviewFeedbackRaw
+            } else if entryLastReviewed > metaLastReviewed {
+                meta.reviewIntervalHours = entry.reviewIntervalHours
+                meta.nextReviewAt = entry.nextReviewAt
+                meta.lastReviewedAt = entry.lastReviewedAt
+                meta.reviewCount = max(meta.reviewCount, entry.reviewCount)
+                meta.lapseCount = max(meta.lapseCount, entry.lapseCount)
+                meta.reviewStreak = entry.reviewStreak
+                meta.lastReviewFeedbackRaw = entry.lastReviewFeedbackRaw
+            }
+        }
+
+        try modelContext.save()
+        print("✅ syncReviewMetaToEntries completed. Synced \(allMeta.count) meta records.")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).
@@ -140,6 +183,9 @@ actor BackgroundSyncActor {
         )
         let entries = try modelContext.fetch(descriptor)
         guard !entries.isEmpty else { return }
+        for entry in entries {
+            VocabularyReviewMetaHelper.deleteReviewMeta(for: entry, in: modelContext)
+        }
         entries.forEach { modelContext.delete($0) }
         try modelContext.save()
         print("🧹 Cleared \(entries.count) stale synced entries on startup.")
