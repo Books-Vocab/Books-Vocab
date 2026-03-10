@@ -7,22 +7,13 @@ struct WordDetailPresenter: View {
             let text: String
         }
 
-        struct ReviewInfo {
-            let stateLabel: String
-            let stateTone: VocabActionTone
-            let nextReviewLabel: String?
-            let intervalLabel: String?
-            let reviewCountLabel: String?
-            let streakLabel: String?
-        }
-
         let title: String
         let systemImage: String
         let card: CardPresentation
         let rootForm: String?
         let metadataItems: [MetadataItem]
         let navigableLinkCardIDs: Set<String>
-        let reviewInfo: ReviewInfo?
+        let reviewProgress: VocabReviewProgress?
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -74,9 +65,9 @@ struct WordDetailPresenter: View {
                             .padding(vocabSkin.metrics.cardBlockPadding)
                     }
 
-                    if let reviewInfo = state.reviewInfo {
+                    if let reviewProgress = state.reviewProgress {
                         CardSectionDivider()
-                        reviewInfoSection(reviewInfo)
+                        reviewProgressSection(reviewProgress)
                             .padding(vocabSkin.metrics.cardBlockPadding)
                     }
 
@@ -116,57 +107,15 @@ struct WordDetailPresenter: View {
         }
     }
 
-    @ViewBuilder
-    private func reviewInfoSection(_ info: State.ReviewInfo) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            HStack {
-                Text(info.stateLabel.localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(reviewToneColor(info.stateTone))
-                    .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
-                    .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
-                    .background(reviewToneColor(info.stateTone).opacity(0.12))
-                    .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous))
+    private func reviewProgressSection(_ progress: VocabReviewProgress) -> some View {
+        HStack {
+            Text(progress.statusLabel.localized)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
 
-                Spacer()
+            Spacer()
 
-                if let nextReviewLabel = info.nextReviewLabel {
-                    Text(nextReviewLabel.localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
-            }
-
-            let chips: [String] = [info.intervalLabel, info.reviewCountLabel, info.streakLabel]
-                .compactMap { $0 }
-            if !chips.isEmpty {
-                HStack(spacing: vocabSkin.spacing.microGap) {
-                    ForEach(Array(chips.enumerated()), id: \.offset) { _, chip in
-                        Text(chip.localized)
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
-                            .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
-                            .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
-                            .background(vocabSkin.palette.mutedFill)
-                            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous))
-                    }
-                }
-            }
-        }
-    }
-
-    private func reviewToneColor(_ tone: VocabActionTone) -> Color {
-        switch tone {
-        case .primary:
-            return vocabSkin.palette.accent
-        case .neutral:
-            return vocabSkin.palette.tertiaryText
-        case .success:
-            return vocabSkin.palette.success
-        case .warning:
-            return vocabSkin.palette.warning
-        case .destructive:
-            return vocabSkin.palette.destructive
+            VocabReviewProgressBar(progress: progress)
         }
     }
 
