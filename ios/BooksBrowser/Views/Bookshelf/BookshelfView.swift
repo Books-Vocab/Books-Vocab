@@ -11,18 +11,20 @@ import UniformTypeIdentifiers
 
 private enum BookshelfMetrics {
     static let emptyStateSpacing: CGFloat = 20
-    static let cardSpacing: CGFloat = 10
+    static let cardSpacing: CGFloat = 8
     static let cardMetadataSpacing: CGFloat = 3
     static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeight: CGFloat = 210
     static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 6
     static let coverStrokeWidth: CGFloat = 0.5
-    static let coverShadowOpacity = AppShadows.coverOpacity
-    static let coverShadowRadius = AppShadows.coverRadius
-    static let coverShadowY = AppShadows.coverY
-    static let progressBarHeight: CGFloat = 3
+    static let coverShadowOpacity: Double = 0.10
+    static let coverShadowRadius: CGFloat = 6
+    static let coverShadowY: CGFloat = 3
+    static let progressBarHeight: CGFloat = 4
+    static let progressBarCornerRadius: CGFloat = 2
     static let progressBarAccentOpacity: Double = 0.55
+    static let progressBarSpacing: CGFloat = 6
     static let loadingOverlaySpacing: CGFloat = 16
     static let loadingOverlayPadding: CGFloat = 28
     static let loadingOverlayCornerRadius: CGFloat = AppMetrics.cornerRadiusMedium
@@ -194,98 +196,114 @@ struct BookCard: View {
     var coverHeight: CGFloat = BookshelfMetrics.coverHeight
 
     var body: some View {
-        VStack(spacing: BookshelfMetrics.cardSpacing) {
+        VStack(alignment: .leading, spacing: BookshelfMetrics.cardSpacing) {
             // 封面
-            if let coverData = book.coverImageData,
-               let uiImage = UIImage(data: coverData) {
-                Image(uiImage: uiImage)
-                    .resizable()
-                    .aspectRatio(2/3, contentMode: .fill)
-                    .frame(height: coverHeight)
-                    .clipShape(
-                        RoundedRectangle(
-                            cornerRadius: BookshelfMetrics.coverCornerRadius,
-                            style: .continuous
-                        )
+            coverView
+                .overlay(
+                    RoundedRectangle(
+                        cornerRadius: BookshelfMetrics.coverCornerRadius,
+                        style: .continuous
                     )
-                    .shadow(
-                        color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
-                        radius: BookshelfMetrics.coverShadowRadius,
-                        y: BookshelfMetrics.coverShadowY
+                    .strokeBorder(
+                        appTheme.palette.cardBorder,
+                        lineWidth: BookshelfMetrics.coverStrokeWidth
                     )
-                    .overlay(alignment: .bottom) {
-                        if let progress = book.progression, progress > 0 {
-                            GeometryReader { geo in
-                                Rectangle()
-                                    .fill(appTheme.palette.pageBackground.opacity(0.82))
-                                    .frame(
-                                        width: geo.size.width * progress,
-                                        height: BookshelfMetrics.progressBarHeight
-                                    )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(height: BookshelfMetrics.progressBarHeight)
-                        }
-                    }
-            } else {
-                // 無封面佔位 — 極簡風格
-                RoundedRectangle(
-                    cornerRadius: BookshelfMetrics.coverCornerRadius,
-                    style: .continuous
                 )
-                    .fill(appTheme.palette.mutedFill)
-                    .frame(height: coverHeight)
-                    .overlay {
-                        VStack(spacing: BookshelfMetrics.cardSpacing) {
-                            Image(systemName: "book")
-                                .font(AppFonts.h1(weight: .regular))
-                                .foregroundStyle(appTheme.palette.tertiaryText)
-                            Text(book.title)
-                                .font(AppFonts.caption2())
-                                .foregroundStyle(appTheme.palette.secondaryText)
-                                .multilineTextAlignment(.center)
-                                .padding(.horizontal, BookshelfMetrics.placeholderTitleHorizontalPadding)
-                        }
-                    }
-                    .overlay(
-                        RoundedRectangle(
-                            cornerRadius: BookshelfMetrics.coverCornerRadius,
-                            style: .continuous
-                        )
-                        .strokeBorder(
-                            appTheme.palette.cardBorder,
-                            lineWidth: BookshelfMetrics.coverStrokeWidth
-                        )
-                    )
-                    .overlay(alignment: .bottom) {
-                        if let progress = book.progression, progress > 0 {
-                            GeometryReader { geo in
-                                Rectangle()
-                                    .fill(appTheme.palette.accent.opacity(BookshelfMetrics.progressBarAccentOpacity))
-                                    .frame(
-                                        width: geo.size.width * progress,
-                                        height: BookshelfMetrics.progressBarHeight
-                                    )
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                            }
-                            .frame(height: BookshelfMetrics.progressBarHeight)
-                        }
-                    }
+                .shadow(
+                    color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
+                    radius: BookshelfMetrics.coverShadowRadius,
+                    y: BookshelfMetrics.coverShadowY
+                )
+
+            // 進度條（封面外獨立元素）
+            if let progress = book.progression, progress > 0 {
+                progressBar(progress)
             }
 
-            VStack(spacing: BookshelfMetrics.cardMetadataSpacing) {
+            // 元資料
+            VStack(alignment: .leading, spacing: BookshelfMetrics.cardMetadataSpacing) {
                 Text(book.title)
-                    .font(AppFonts.caption())
+                    .font(AppFonts.caption(weight: .medium))
                     .lineLimit(2)
-                    .multilineTextAlignment(.center)
+                    .multilineTextAlignment(.leading)
                     .foregroundStyle(appTheme.palette.primaryText)
 
                 Text(book.author)
                     .font(AppFonts.caption2())
                     .foregroundStyle(appTheme.palette.tertiaryText)
                     .lineLimit(1)
+
+                if let dateLastRead = book.dateLastRead {
+                    Text(dateLastRead.relativeShort)
+                        .font(AppFonts.caption2())
+                        .foregroundStyle(appTheme.palette.quaternaryText)
+                }
             }
         }
+    }
+
+    @ViewBuilder
+    private var coverView: some View {
+        if let coverData = book.coverImageData,
+           let uiImage = UIImage(data: coverData) {
+            Image(uiImage: uiImage)
+                .resizable()
+                .aspectRatio(2/3, contentMode: .fill)
+                .frame(height: coverHeight)
+                .clipShape(
+                    RoundedRectangle(
+                        cornerRadius: BookshelfMetrics.coverCornerRadius,
+                        style: .continuous
+                    )
+                )
+        } else {
+            RoundedRectangle(
+                cornerRadius: BookshelfMetrics.coverCornerRadius,
+                style: .continuous
+            )
+            .fill(appTheme.palette.mutedFill)
+            .frame(height: coverHeight)
+            .overlay {
+                VStack(spacing: BookshelfMetrics.cardSpacing) {
+                    Image(systemName: "book")
+                        .font(AppFonts.h1(weight: .regular))
+                        .foregroundStyle(appTheme.palette.tertiaryText)
+                    Text(book.title)
+                        .font(AppFonts.caption2())
+                        .foregroundStyle(appTheme.palette.secondaryText)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, BookshelfMetrics.placeholderTitleHorizontalPadding)
+                }
+            }
+        }
+    }
+
+    private func progressBar(_ progress: Double) -> some View {
+        HStack(spacing: BookshelfMetrics.progressBarSpacing) {
+            GeometryReader { geo in
+                Capsule()
+                    .fill(appTheme.palette.mutedFill)
+                    .overlay(alignment: .leading) {
+                        Capsule()
+                            .fill(appTheme.palette.accent.opacity(BookshelfMetrics.progressBarAccentOpacity))
+                            .frame(width: geo.size.width * progress)
+                    }
+            }
+            .frame(height: BookshelfMetrics.progressBarHeight)
+            .clipShape(Capsule())
+
+            Text("\(Int(progress * 100))%")
+                .font(AppFonts.monoNumbers(size: 10))
+                .foregroundStyle(appTheme.palette.tertiaryText)
+        }
+    }
+}
+
+private extension Date {
+    var relativeShort: String {
+        let formatter = RelativeDateTimeFormatter()
+        formatter.unitsStyle = .short
+        return formatter.localizedString(for: self, relativeTo: Date())
     }
 }
 
@@ -297,6 +315,7 @@ private enum BookshelfPreviewData {
             epubFileName: "architecture-of-words.epub"
         )
         book.progression = 0.64
+        book.dateLastRead = Calendar.current.date(byAdding: .day, value: -3, to: Date())
         return book
     }()
 
@@ -307,6 +326,7 @@ private enum BookshelfPreviewData {
             epubFileName: "placeholder.epub"
         )
         book.progression = 0.18
+        book.dateLastRead = Calendar.current.date(byAdding: .hour, value: -5, to: Date())
         return book
     }()
 }
