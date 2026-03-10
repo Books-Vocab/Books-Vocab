@@ -32,6 +32,7 @@ struct SettingsPresenterState {
     }
 
     struct SubscriptionSection {
+        let isActive: Bool
         let planName: String
         let badgeText: String
         let badgeTone: SubscriptionBadgeTone
