@@ -188,7 +188,7 @@ struct SettingsView: View {
         .onChange(of: showSubscriptionPaywall) { _, isPresented in
             if !isPresented, authManager.isLoggedIn {
                 Task {
-                    await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
+                    await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
                 }
             }
         }
