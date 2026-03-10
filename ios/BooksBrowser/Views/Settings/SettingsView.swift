@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import StoreKit
 
 struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
@@ -11,7 +12,10 @@ struct SettingsView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.openURL) private var openURL
+    @Environment(\.requestReview) private var requestReview
     @EnvironmentObject private var appLanguage: AppLanguageStore
+    @EnvironmentObject private var appearanceStore: AppAppearanceStore
     @State private var showSubscriptionPaywall = false
     @StateObject private var coordinator = SettingsCoordinator()
 
@@ -32,6 +36,18 @@ struct SettingsView: View {
 #endif
     }
 
+    private var syncSummaryText: String {
+        if !kgService.isConnected { return "離線" }
+        var parts: [String] = ["已連線"]
+        if kgService.serverCardCount > 0 {
+            parts.append("\(kgService.serverCardCount) 張")
+        }
+        if let lastSync = kgService.lastSyncDate?.formatted(.relative(presentation: .named)) {
+            parts.append(lastSync)
+        }
+        return parts.joined(separator: " · ")
+    }
+
     private var presenterState: SettingsPresenterState {
         let pro = subscriptionManager.entitlements.pro
         return SettingsPresenterState(
@@ -47,7 +63,8 @@ struct SettingsView: View {
                 debug: authDebugState
             ),
             preferences: .init(
-                selectedLanguage: L10n.string(appLanguage.selection.titleKey)
+                selectedLanguage: L10n.string(appLanguage.selection.titleKey),
+                selectedAppearance: appearanceStore.selection.titleKey
             ),
             kg: authManager.isLoggedIn
                 ? .init(
@@ -74,6 +91,12 @@ struct SettingsView: View {
                     isRestoreAvailable: restoreAvailable(for: pro),
                     ctaTitle: subscriptionCTA(for: pro),
                     isRefreshing: subscriptionManager.isLoading
+                )
+                : nil,
+            syncSummary: authManager.isLoggedIn
+                ? .init(
+                    isConnected: kgService.isConnected,
+                    summaryText: syncSummaryText
                 )
                 : nil,
             optionalIntegration: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
@@ -107,12 +130,26 @@ struct SettingsView: View {
                 #endif
             },
             selectLanguage: { appLanguage.setLanguage($0) },
+            selectAppearance: { appearanceStore.setAppearance($0) },
             showSubscriptionPaywall: {
                 subscriptionManager.activePaywallSource = .settings
                 showSubscriptionPaywall = true
             },
             showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
-            requestDeleteAccount: coordinator.requestDeleteAccount
+            requestDeleteAccount: coordinator.requestDeleteAccount,
+            openPrivacyPolicy: {
+                if let url = URL(string: "https://wordnexus.lol/privacy") {
+                    openURL(url)
+                }
+            },
+            openSupport: {
+                if let url = URL(string: "https://wordnexus.lol/support") {
+                    openURL(url)
+                }
+            },
+            requestAppRating: {
+                requestReview()
+            }
         )
     }
 
