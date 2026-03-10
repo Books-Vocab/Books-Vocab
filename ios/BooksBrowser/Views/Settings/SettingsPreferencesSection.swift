@@ -7,26 +7,26 @@ struct SettingsPreferencesSection: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            SettingsSectionHeader(title: "偏好", icon: "slider.horizontal.3")
+            SettingsSectionHeader(title: "偏好".localized, icon: "slider.horizontal.3")
 
             VStack(spacing: 0) {
                 // 外觀
-                SettingsRow(icon: "circle.lefthalf.filled", label: "外觀") {
+                SettingsRow(icon: "circle.lefthalf.filled", label: "外觀".localized) {
                     Menu {
                         ForEach(AppAppearanceMode.allCases) { mode in
                             Button {
                                 actions.selectAppearance(mode)
                             } label: {
                                 if state.selectedAppearance == mode.titleKey {
-                                    Label(mode.titleKey, systemImage: "checkmark")
+                                    Label(mode.titleKey.localized, systemImage: "checkmark")
                                 } else {
-                                    Text(mode.titleKey)
+                                    Text(mode.titleKey.localized)
                                 }
                             }
                         }
                     } label: {
                         HStack(spacing: 6) {
-                            Text(state.selectedAppearance)
+                            Text(state.selectedAppearance.localized)
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                             Image(systemName: "chevron.up.chevron.down")
@@ -35,7 +35,7 @@ struct SettingsPreferencesSection: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("選擇外觀：\(state.selectedAppearance)")
+                    .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
                 }
 
                 SettingsDivider()
@@ -58,7 +58,7 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 語言
-                SettingsRow(icon: "character.bubble", label: "語言") {
+                SettingsRow(icon: "character.bubble", label: "語言".localized) {
                     Menu {
                         ForEach(AppLanguage.allCases) { language in
                             Button {
@@ -82,12 +82,12 @@ struct SettingsPreferencesSection: View {
                         }
                     }
                     .buttonStyle(.plain)
-                    .accessibilityLabel("選擇語言：\(state.selectedLanguage)")
+                    .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
                 }
             }
             .settingsCard()
 
-            SettingsSectionFooter("切換後會立即套用到 app 介面。")
+            SettingsSectionFooter("切換後會立即套用到 app 介面。".localized)
         }
     }
 }

@@ -254,7 +254,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     HStack(spacing: 4) {
                         Image(systemName: "chevron.left")
                             .font(ReaderGlassTypography.headerBackIcon)
-                        Text("書庫")
+                        Text("書庫".localized)
                             .font(ReaderGlassTypography.headerBackLabel)
                     }
                     .foregroundStyle(vocabSkin.palette.primaryText)
@@ -284,7 +284,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("目錄")
+                    .accessibilityLabel("目錄".localized)
 
                     Button(action: onShowReaderSettings) {
                         Image(systemName: "textformat.size")
@@ -296,7 +296,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("閱讀設定")
+                    .accessibilityLabel("閱讀設定".localized)
 
                     Button(action: onCollapseHeader) {
                         Image(systemName: "chevron.up")
@@ -308,7 +308,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                             )
                             .contentShape(Rectangle())
                     }
-                    .accessibilityLabel("收起標題列")
+                    .accessibilityLabel("收起標題列".localized)
                 }
                 .padding(.trailing, ReaderPresentationMetrics.Header.trailingInset)
             }
@@ -357,7 +357,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     y: ReaderPresentationMetrics.Header.shadowY
                 )
             }
-            .accessibilityLabel("展開標題列")
+            .accessibilityLabel("展開標題列".localized)
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .transition(.headerSwap)
@@ -370,7 +370,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
                             .font(vocabSkin.typography.iconToolbar)
-                        Text("書庫")
+                        Text("書庫".localized)
                             .font(vocabSkin.typography.body.weight(.semibold))
                     }
                     .foregroundStyle(vocabSkin.palette.primaryText)
@@ -391,9 +391,9 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 Spacer()
 
                 HStack(spacing: 6) {
-                    VocabChromeIconButton(systemImage: "list.bullet", label: "目錄", action: onShowTableOfContents)
-                    VocabChromeIconButton(systemImage: "textformat.size", label: "閱讀設定", action: onShowReaderSettings)
-                    VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列", action: onCollapseHeader)
+                    VocabChromeIconButton(systemImage: "list.bullet", label: "目錄".localized, action: onShowTableOfContents)
+                    VocabChromeIconButton(systemImage: "textformat.size", label: "閱讀設定".localized, action: onShowReaderSettings)
+                    VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列".localized, action: onCollapseHeader)
                 }
             }
             .padding(.horizontal, ReaderPresentationMetrics.Header.contentHorizontalInsetExpanded)
@@ -428,7 +428,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
                 )
             }
 
-            VocabChromeIconButton(systemImage: "ellipsis", label: "展開標題列", action: onExpandHeader)
+            VocabChromeIconButton(systemImage: "ellipsis", label: "展開標題列".localized, action: onExpandHeader)
         }
         .padding(.trailing, ReaderPresentationMetrics.Header.outerHorizontalInset)
         .padding(.top, ReaderPresentationMetrics.Header.outerTopInset)

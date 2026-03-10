@@ -76,7 +76,7 @@ struct KGVocabPresenter: View {
                                         Button(role: .destructive) {
                                             onDeleteTapped(item.id)
                                         } label: {
-                                            Label("刪除卡片", systemImage: "trash")
+                                            Label("刪除卡片".localized, systemImage: "trash")
                                         }
                                     }
                                     .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
@@ -170,9 +170,9 @@ private enum KGVocabPresenterPreviewData {
         reviewStateOptions: options,
         rows: rows,
         emptyState: .init(
-            title: "今天沒有到期卡片",
+            title: "今天沒有到期卡片".localized,
             systemImage: "checkmark.seal",
-            description: "目前沒有需要處理的生字。"
+            description: "目前沒有需要處理的生字。".localized
         )
     )
 
@@ -181,9 +181,9 @@ private enum KGVocabPresenterPreviewData {
         reviewStateOptions: options,
         rows: [],
         emptyState: .init(
-            title: "沒有符合的單字",
+            title: "沒有符合的單字".localized,
             systemImage: "magnifyingglass",
-            description: "試試其他關鍵字，或切換到別的狀態。"
+            description: "試試其他關鍵字，或切換到別的狀態。".localized
         )
     )
 

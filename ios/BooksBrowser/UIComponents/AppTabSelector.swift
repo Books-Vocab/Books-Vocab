@@ -104,7 +104,7 @@ struct AppTabSelector<ID: Hashable>: View {
                     )
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(option.count.map { "\(option.title), \($0) 個項目" } ?? option.title)
+                .accessibilityLabel(option.count.map { "\(option.title.localized), \($0) \("個項目".localized)" } ?? option.title.localized)
                 .accessibilityAddTraits(selection == option.id ? .isSelected : [])
             }
         }

@@ -62,7 +62,7 @@ struct SyncPresenter: View {
                 .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
         }
         .vocabCanvasBackground()
-        .navigationTitle("同步")
+        .navigationTitle("同步".localized)
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .sensoryFeedback(.success, trigger: state.phase == .completed)
@@ -71,7 +71,7 @@ struct SyncPresenter: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 if state.phase == .ready || state.phase == .completed || state.phase == .failed {
-                    Button("關閉") { dismiss() }
+                    Button("關閉".localized) { dismiss() }
                 }
             }
         }
@@ -83,15 +83,15 @@ struct SyncPresenter: View {
             VocabStatusHero(
                 systemImage: "person.crop.circle.badge.exclamationmark",
                 tone: vocabSkin.palette.tertiaryText,
-                title: "尚未登入帳號",
-                description: "登入後即可將您的生詞庫同步至雲端知識庫。"
+                title: "尚未登入帳號".localized,
+                description: "登入後即可將您的生詞庫同步至雲端知識庫。".localized
             )
         } else if !state.hasProAccess {
             VocabStatusHero(
                 systemImage: "sparkles.rectangle.stack",
                 tone: vocabSkin.palette.accent,
-                title: "同步需 Pro",
-                description: "升級後即可將待收錄生詞同步到雲端與知識庫。"
+                title: "同步需 Pro".localized,
+                description: "升級後即可將待收錄生詞同步到雲端與知識庫。".localized
             )
         } else {
             switch state.phase {
@@ -100,7 +100,7 @@ struct SyncPresenter: View {
                     systemImage: "arrow.triangle.2.circlepath",
                     tone: vocabSkin.palette.accent,
                     title: state.pendingCount == 0
-                        ? "強制同步到知識庫"
+                        ? "強制同步到知識庫".localized
                         : L10n.format("%@ 個待處理動作", "\(state.pendingCount)")
                 ) {
                     HStack(spacing: vocabSkin.spacing.inlineGap) {
@@ -123,7 +123,7 @@ struct SyncPresenter: View {
                 VocabStatusHero(
                     systemImage: "arrow.triangle.2.circlepath",
                     tone: vocabSkin.palette.accent,
-                    title: "同步中…"
+                    title: "同步中…".localized
                 ) {
                     ProgressView()
                         .controlSize(.large)
@@ -133,7 +133,7 @@ struct SyncPresenter: View {
                 VocabStatusHero(
                     systemImage: "checkmark.circle.fill",
                     tone: vocabSkin.palette.success,
-                    title: "同步完成"
+                    title: "同步完成".localized
                 )
                 .transition(.blurReplace)
             case .failed:
@@ -150,22 +150,22 @@ struct SyncPresenter: View {
             VocabStatusHero(
                 systemImage: "exclamationmark.arrow.trianglehead.2.clockwise.rotate.90",
                 tone: vocabSkin.palette.warning,
-                title: "部分同步完成",
-                description: "已完成的步驟會保留，失敗項目可直接重試。"
+                title: "部分同步完成".localized,
+                description: "已完成的步驟會保留，失敗項目可直接重試。".localized
             )
         case .cancelled:
             VocabStatusHero(
                 systemImage: "pause.circle.fill",
                 tone: vocabSkin.palette.warning,
-                title: "同步已取消",
-                description: "目前進度已停止，可在準備好後重新開始。"
+                title: "同步已取消".localized,
+                description: "目前進度已停止，可在準備好後重新開始。".localized
             )
         default:
             VocabStatusHero(
                 systemImage: "exclamationmark.triangle.fill",
                 tone: vocabSkin.palette.destructive,
-                title: "同步失敗",
-                description: "請檢查網路、登入狀態或伺服器健康後再試。"
+                title: "同步失敗".localized,
+                description: "請檢查網路、登入狀態或伺服器健康後再試。".localized
             )
         }
     }
@@ -199,37 +199,37 @@ struct SyncPresenter: View {
             case .ready:
                 if state.isLoggedIn && state.hasProAccess {
                     Button(action: onPrimaryAction) {
-                        Label("開始同步", systemImage: "arrow.triangle.2.circlepath")
+                        Label("開始同步".localized, systemImage: "arrow.triangle.2.circlepath")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.vocabAction(.primary))
                     .disabled(!state.isConnected)
 
                     if !state.isConnected {
-                        Text("KG 伺服器未連線")
+                        Text("KG 伺服器未連線".localized)
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.destructive)
                     }
                 } else {
                     Button(action: state.isLoggedIn ? onShowPaywall : onShowSettings) {
-                        Text(state.isLoggedIn ? "升級為 Pro" : "前往設定登入")
+                        Text(state.isLoggedIn ? "升級為 Pro".localized : "前往設定登入".localized)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.vocabAction(.neutral))
                 }
             case .running:
                 Button(role: .cancel, action: onCancel) {
-                    Text("取消")
+                    Text("取消".localized)
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.vocabAction(.neutral))
             case .completed:
-                Button("完成") { dismiss() }
+                Button("完成".localized) { dismiss() }
                     .frame(maxWidth: .infinity)
                     .buttonStyle(.vocabAction(.primary))
             case .failed:
                 Button(action: onPrimaryAction) {
-                    Label(state.failureKind == .partial ? "重試失敗項目" : "重試", systemImage: "arrow.clockwise")
+                    Label(state.failureKind == .partial ? "重試失敗項目".localized : "重試".localized, systemImage: "arrow.clockwise")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.vocabAction(state.failureKind == .full ? .warning : .neutral))
@@ -248,13 +248,13 @@ struct SyncPresenter: View {
     private var summaryTitle: String {
         switch state.failureKind {
         case .partial:
-            return "有些項目需要再試一次"
+            return "有些項目需要再試一次".localized
         case .cancelled:
-            return "同步在中途停止"
+            return "同步在中途停止".localized
         case .full:
-            return "同步沒有完成"
+            return "同步沒有完成".localized
         case nil:
-            return state.phase == .completed ? "同步完成" : "同步摘要"
+            return state.phase == .completed ? "同步完成".localized : "同步摘要".localized
         }
     }
 

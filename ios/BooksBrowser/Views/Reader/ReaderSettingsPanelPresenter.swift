@@ -78,11 +78,11 @@ struct ReaderSettingsPanelPresenter: View {
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
-                    Text("排版")
+                    Text("排版".localized)
                 }
 
                 Section {
-                    Picker("字體", selection: bindings.font) {
+                    Picker("字體".localized, selection: bindings.font) {
                         ForEach(ReaderFont.allCases) { font in
                             Text(font.rawValue).tag(font)
                         }
@@ -131,7 +131,7 @@ struct ReaderSettingsPanelPresenter: View {
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
-                    Text("外觀")
+                    Text("外觀".localized)
                 }
 
                 Section {
@@ -173,29 +173,29 @@ struct ReaderSettingsPanelPresenter: View {
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
                 } header: {
-                    Text("生字底線強度")
+                    Text("生字底線強度".localized)
                 }
 
                 Section {
-                    Toggle("顯示點擊熱區", isOn: bindings.showHitTestingDebug)
+                    Toggle("顯示點擊熱區".localized, isOn: bindings.showHitTestingDebug)
                         .tint(.primary)
                 } header: {
-                    Text("開發者與除錯")
+                    Text("開發者與除錯".localized)
                 }
 
                 Section {
-                    Picker("閱讀介面風格", selection: bindings.translationPanelMode) {
+                    Picker("閱讀介面風格".localized, selection: bindings.translationPanelMode) {
                         ForEach(TranslationPanelMode.allCases) { mode in
                             Label(mode.label, systemImage: mode.icon).tag(mode)
                         }
                     }
                     .pickerStyle(.segmented)
                 } header: {
-                    Text("閱讀介面風格")
+                    Text("閱讀介面風格".localized)
                 }
             }
             .formStyle(.grouped)
-            .navigationTitle("閱讀設定")
+            .navigationTitle("閱讀設定".localized)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
