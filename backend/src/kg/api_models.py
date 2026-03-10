@@ -190,3 +190,25 @@ class DeleteAccountResponse(BaseModel):
 
 class AdminTestRunRequest(BaseModel):
     itemIds: list[str] = []
+
+
+class DeleteWordResponse(BaseModel):
+    deleted: str
+    id: str
+
+
+class PhraseTranslateResponse(BaseModel):
+    t: str
+
+
+class PipelineQueueResponse(BaseModel):
+    status: str
+    message: str
+
+
+class AppStoreNotificationResponse(BaseModel):
+    status: str
+    updated: bool
+    reason: str | None = None
+    user_id: str | None = None
+    entitlements: dict[str, Any] | None = None
