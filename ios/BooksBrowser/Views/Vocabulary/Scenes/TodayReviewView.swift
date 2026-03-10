@@ -172,7 +172,11 @@ struct TodayReviewView: View {
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
-        let meta = VocabularyReviewMetaHelper.reviewMeta(for: current, in: modelContext)
+        var meta = VocabularyReviewMetaHelper.reviewMeta(for: current, in: modelContext)
+        if meta == nil {
+            VocabularyReviewMetaHelper.createReviewMeta(for: current, in: modelContext)
+            meta = VocabularyReviewMetaHelper.reviewMeta(for: current, in: modelContext)
+        }
         current.applyReviewFeedback(feedback, meta: meta)
 
         switch feedback {
