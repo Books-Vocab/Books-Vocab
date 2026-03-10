@@ -29,6 +29,7 @@ struct KGVocabPresenter: View {
 
     let state: State
     @Binding var selectedReviewState: VocabularyReviewState
+    @Binding var sortOption: KGVocabSortOption
     let onDismissBanner: (() -> Void)?
     let onRetryBanner: (() -> Void)?
     let onRowTapped: (UUID) -> Void
@@ -46,12 +47,12 @@ struct KGVocabPresenter: View {
                 }
 
                 VocabListCard {
-                    VStack(alignment: .leading, spacing: vocabSkin.metrics.sectionHeaderGap) {
-                        VocabSectionHeader(
-                            title: selectedReviewState.title,
-                            trailingText: state.rows.isEmpty ? nil : "\(state.rows.count)"
-                        )
+                    VStack(alignment: .leading, spacing: 6) {
                         VocabTabSelector(options: state.reviewStateOptions, selection: $selectedReviewState)
+                        HStack {
+                            Spacer()
+                            VocabSortPill(sortOption: $sortOption)
+                        }
                     }
                 } content: {
                     if state.rows.isEmpty {
@@ -193,6 +194,7 @@ private enum KGVocabPresenterPreviewData {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.populatedState,
             selectedReviewState: .constant(.due),
+            sortOption: .constant(.default),
             onDismissBanner: {},
             onRetryBanner: {},
             onRowTapped: { _ in },
@@ -206,6 +208,7 @@ private enum KGVocabPresenterPreviewData {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.emptyState,
             selectedReviewState: .constant(.reviewed),
+            sortOption: .constant(.alphabetical),
             onDismissBanner: nil,
             onRetryBanner: nil,
             onRowTapped: { _ in },
