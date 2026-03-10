@@ -89,6 +89,7 @@ struct SettingsSubscriptionSection: View {
                     }
                     .buttonStyle(.plain)
                     .disabled(state.isRefreshing)
+                    .accessibilityLabel(state.ctaTitle)
                 }
                 .padding(vocabSkin.spacing.cardPadding)
             }

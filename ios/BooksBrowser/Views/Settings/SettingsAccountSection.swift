@@ -57,6 +57,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.plain)
                 .appSettingsButtonChrome()
+                .accessibilityLabel("使用 Google 帳號登入")
 
                 Button(action: actions.loginWithApple) {
                     SettingsAuthButton(title: "以 Apple 繼續") {
@@ -65,6 +66,7 @@ struct SettingsAccountSection: View {
                 }
                 .buttonStyle(.plain)
                 .appSettingsButtonChrome()
+                .accessibilityLabel("使用 Apple 帳號登入")
 
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
@@ -82,6 +84,7 @@ struct SettingsAccountSection: View {
                         Button("登入", action: actions.manualLogin)
                             .buttonStyle(.bordered)
                             .controlSize(.small)
+                            .accessibilityLabel("開發者登入")
                     }
 
                     if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
@@ -123,6 +126,7 @@ struct SettingsAccountSection: View {
             }
             .buttonStyle(.appAction(.destructive))
             .padding(vocabSkin.spacing.cardPadding)
+            .accessibilityLabel("登出帳號")
         }
     }
 }

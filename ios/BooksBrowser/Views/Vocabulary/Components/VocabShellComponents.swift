@@ -103,6 +103,7 @@ struct VocabChromeIconButton: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let systemImage: String
     var tone: Color? = nil
+    var label: String? = nil
     var action: () -> Void
 
     var body: some View {
@@ -121,6 +122,7 @@ struct VocabChromeIconButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(label ?? systemImage)
     }
 }
 
@@ -168,7 +170,7 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
 
             Spacer()
 
-            VocabChromeIconButton(systemImage: "xmark", action: onClose)
+            VocabChromeIconButton(systemImage: "xmark", label: "關閉", action: onClose)
         }
         .padding(.horizontal, vocabSkin.metrics.overlayHeaderHorizontalInset)
         .padding(.vertical, vocabSkin.metrics.overlayHeaderVerticalInset)
@@ -318,6 +320,8 @@ struct VocabSortPill: View {
             .font(vocabSkin.typography.caption)
             .foregroundStyle(vocabSkin.palette.secondaryText)
         }
+        .accessibilityLabel("排序方式：\(sortOption.label)")
+        .accessibilityHint("點兩下切換排序")
     }
 }
 
