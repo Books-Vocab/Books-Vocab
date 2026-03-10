@@ -29,7 +29,7 @@ struct BooksBrowserApp: App {
 
         let localConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([VocabularyEntry.self]),
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self]),
             cloudKitDatabase: .none
         )
 
@@ -40,7 +40,7 @@ struct BooksBrowserApp: App {
         )
 
         if let container = try? ModelContainer(
-            for: Book.self, VocabularyEntry.self,
+            for: Book.self, VocabularyEntry.self, ReviewRecord.self,
             configurations: localConfig, cloudConfig
         ) {
             modelContainer = container
@@ -64,7 +64,7 @@ struct BooksBrowserApp: App {
 
         do {
             modelContainer = try ModelContainer(
-                for: Book.self, VocabularyEntry.self,
+                for: Book.self, VocabularyEntry.self, ReviewRecord.self,
                 configurations: localConfig, cloudConfig
             )
             AuthManager.shared.modelContainer = modelContainer
@@ -124,6 +124,10 @@ struct BooksBrowserApp: App {
                             let actor = BackgroundSyncActor(modelContainer: modelContainer)
                             try? await actor.clearSyncedData()
                         }
+                        // 一次性遷移 UserDefaults 複習記錄至 SwiftData
+                        let migrationContext = ModelContext(modelContainer)
+                        ReviewActivityLog.migrateFromUserDefaultsIfNeeded(context: migrationContext)
+
                         subscriptionManager.listenForTransactionUpdates(using: kgService, authManager: authManager)
                         await subscriptionManager.loadProducts()
                         await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)

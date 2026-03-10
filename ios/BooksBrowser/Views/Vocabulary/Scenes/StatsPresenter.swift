@@ -17,7 +17,11 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
+    @Query(sort: \ReviewRecord.reviewedAt, order: .descending)
+    private var reviewRecords: [ReviewRecord]
+
     @State private var summary: StatsPresentation.Summary?
+    @State private var showCalendar = false
 
     var body: some View {
         ScrollView {
@@ -53,10 +57,19 @@ struct StatsPresenter: View {
         .onChange(of: syncedEntries.count) { _, _ in
             recompute()
         }
+        .onChange(of: reviewRecords.count) { _, _ in
+            recompute()
+        }
+        .sheet(isPresented: $showCalendar) {
+            ReviewCalendarPresenter()
+        }
     }
 
     private func recompute() {
-        summary = StatsPresentation.buildSummary(from: syncedEntries)
+        summary = StatsPresentation.buildSummary(
+            from: syncedEntries,
+            reviewRecords: reviewRecords
+        )
     }
 
     // MARK: - Sections
@@ -116,18 +129,30 @@ struct StatsPresenter: View {
 
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
-            sectionHeader(title: "學習日曆", systemImage: "calendar")
+            Button { showCalendar = true } label: {
+                HStack(spacing: vocabSkin.spacing.microGap) {
+                    sectionHeader(title: "學習日曆", systemImage: "calendar")
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(vocabSkin.typography.iconSmall)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                }
+            }
+            .buttonStyle(.plain)
 
-            VocabActivityHeatmap(activity: summary.activity, weeks: 20)
-                .padding(vocabSkin.spacing.cardPadding)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .fill(vocabSkin.palette.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                        )
-                )
+            Button { showCalendar = true } label: {
+                VocabActivityHeatmap(activity: summary.activity, weeks: 20)
+                    .padding(vocabSkin.spacing.cardPadding)
+                    .background(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                            .fill(vocabSkin.palette.cardBackground)
+                            .overlay(
+                                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                            )
+                    )
+            }
+            .buttonStyle(.plain)
         }
     }
 
