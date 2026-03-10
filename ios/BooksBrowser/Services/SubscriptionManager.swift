@@ -116,6 +116,13 @@ final class SubscriptionManager: SubscriptionManaging {
                         pro: merge(remote.pro, willRenew: willAutoRenew)
                     )
                 }
+                // 已過期 + 不續訂 → 本地直接降級，不等後端通知
+                if !remote.pro.will_renew, Self.isExpired(remote.pro.expires_at) {
+                    print("🔍 [Subscription] locally deactivating: expires_at=\(remote.pro.expires_at ?? "nil") already passed, will_renew=false")
+                    remote = KGEntitlements(
+                        pro: merge(remote.pro, status: "expired", isActive: false)
+                    )
+                }
             }
             entitlements = remote
             lastError = nil
@@ -315,18 +322,41 @@ final class SubscriptionManager: SubscriptionManaging {
         entitlements = try await kgService.syncAppStoreSubscription(snapshot)
     }
 
+    /// 檢查 ISO8601 到期時間是否已過
+    private static func isExpired(_ isoString: String?) -> Bool {
+        guard let isoString, !isoString.isEmpty else { return false }
+        let f1 = ISO8601DateFormatter()
+        f1.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let f2 = ISO8601DateFormatter()
+        f2.formatOptions = [.withInternetDateTime]
+        guard let date = f1.date(from: isoString) ?? f2.date(from: isoString) else { return false }
+        return date < Date()
+    }
+
     /// 從 StoreKit 2 的 Product.SubscriptionInfo 查詢真實的自動續訂狀態
     private func queryWillAutoRenew() async -> Bool {
         guard let product = proProduct, let subscription = product.subscription else {
-            return true // 查不到時保守回傳 true
+            print("⚠️ [Subscription] queryWillAutoRenew: no product/subscription info")
+            return true
         }
         do {
             let statuses = try await subscription.status
+            print("🔍 [Subscription] queryWillAutoRenew: \(statuses.count) status(es)")
+            // 優先從 active 狀態取
             for status in statuses where status.state == .subscribed || status.state == .inGracePeriod {
                 if let renewalInfo = try? checkVerified(status.renewalInfo) {
+                    print("🔍 [Subscription] active state=\(status.state), willAutoRenew=\(renewalInfo.willAutoRenew)")
                     return renewalInfo.willAutoRenew
                 }
             }
+            // 沒有 active 狀態，從 expired/revoked 取（sandbox 快速過期常見）
+            for status in statuses {
+                if let renewalInfo = try? checkVerified(status.renewalInfo) {
+                    print("🔍 [Subscription] fallback state=\(status.state), willAutoRenew=\(renewalInfo.willAutoRenew)")
+                    return renewalInfo.willAutoRenew
+                }
+            }
+            print("⚠️ [Subscription] queryWillAutoRenew: no verified renewalInfo found")
         } catch {
             print("⚠️ [Subscription] queryWillAutoRenew failed: \(error)")
         }
