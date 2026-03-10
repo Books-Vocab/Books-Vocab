@@ -355,7 +355,7 @@ struct TranslationPanelPresenter: View {
                 Text(timerValue)
                     .font(ReaderGlassTypography.numericMono)
                     .foregroundStyle(.tertiary)
-                    .padding(.leading, state.showsSavedStatus ? 8 : 0)
+                    .padding(.leading, state.showsSavedStatus ? AppMetrics.spacingSmall : 0)
             }
 
             Spacer()

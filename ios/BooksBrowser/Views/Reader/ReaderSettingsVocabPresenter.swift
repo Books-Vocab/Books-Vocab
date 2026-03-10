@@ -22,7 +22,7 @@ struct ReaderSettingsVocabPresenter: View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(0.24))
+                    .fill(vocabSkin.palette.quaternaryText.opacity(vocabSkin.metrics.panelHandleOpacity))
                     .frame(
                         width: vocabSkin.metrics.readerSettingsHandleWidth,
                         height: vocabSkin.metrics.readerSettingsHandleHeight
