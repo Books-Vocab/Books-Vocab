@@ -65,6 +65,12 @@ struct SettingsView: View {
                     badgeTone: subscriptionBadgeTone(for: pro),
                     summary: subscriptionSummary(for: pro),
                     detail: subscriptionDetail(for: pro),
+                    sourceLabel: subscriptionSourceLabel(for: pro),
+                    managementNote: subscriptionManagementNote(for: pro),
+                    pricingUnavailableMessage: subscriptionPricingUnavailableMessage(for: pro),
+                    restoreLabel: restoreLabel(for: pro),
+                    restoreDescription: restoreDescription(for: pro),
+                    isRestoreAvailable: restoreAvailable(for: pro),
                     ctaTitle: subscriptionCTA(for: pro),
                     isRefreshing: subscriptionManager.isLoading
                 )
@@ -271,6 +277,58 @@ struct SettingsView: View {
             return L10n.string("查看權限")
         }
         return status.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用")
+    }
+
+    private func subscriptionSourceLabel(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("管理員授權")
+        }
+        return L10n.string("App Store 訂閱")
+    }
+
+    private func subscriptionManagementNote(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("權限由管理員維護，不經由 App Store 續訂或恢復購買。")
+        }
+        if status.is_active {
+            return L10n.string("可在訂閱頁重新同步或恢復購買，確認 App Store 狀態。")
+        }
+        return L10n.string("價格、免費試用與續訂都以 App Store 顯示為準。")
+    }
+
+    private func subscriptionPricingUnavailableMessage(for status: KGSubscriptionStatus) -> String? {
+        if status.source == "admin", status.is_active {
+            return nil
+        }
+        let hasStorePrice = subscriptionManager.proProduct?.displayPrice.isEmpty == false
+        let hasRemotePrice = status.price_display?.isEmpty == false
+        guard !hasStorePrice, !hasRemotePrice else { return nil }
+
+        if let lastError = subscriptionManager.lastError, !lastError.isEmpty {
+            return L10n.format("目前無法取得 App Store 價格：%@", lastError)
+        }
+        return L10n.string("目前尚未取得 App Store 價格，稍後會自動更新。")
+    }
+
+    private func restoreLabel(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("恢復購買不可用")
+        }
+        return L10n.string("可恢復購買")
+    }
+
+    private func restoreDescription(for status: KGSubscriptionStatus) -> String {
+        if status.source == "admin", status.is_active {
+            return L10n.string("這個帳號的 Pro 來自管理員授權；若需延長或撤銷，請由管理員處理。")
+        }
+        if status.is_active {
+            return L10n.string("若裝置間狀態不同，可在訂閱頁使用恢復購買重新對齊 App Store。")
+        }
+        return L10n.string("若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。")
+    }
+
+    private func restoreAvailable(for status: KGSubscriptionStatus) -> Bool {
+        !(status.source == "admin" && status.is_active)
     }
 }
 

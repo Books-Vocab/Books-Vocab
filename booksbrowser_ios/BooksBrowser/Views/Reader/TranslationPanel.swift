@@ -35,6 +35,8 @@ struct TranslationPanel: View {
     let statusMessage: String?
 
     let isExplanationOnly: Bool
+    let translationErrorMessage: String?
+    let explanationErrorMessage: String?
     let onExpand: () -> Void
     let onDelete: () -> Void
     let onDismiss: () -> Void
@@ -60,6 +62,8 @@ struct TranslationPanel: View {
             isLoadingExplanation: isLoadingExplanation,
             statusMessage: statusMessage,
             isExplanationOnly: isExplanationOnly,
+            translationErrorMessage: translationErrorMessage,
+            explanationErrorMessage: explanationErrorMessage,
             timerText: timerText,
             isSpeaking: isSpeaking
         )
@@ -128,8 +132,15 @@ struct TranslationPanel: View {
 
 private struct TranslationPanelPreviewScene: View {
     let mode: TranslationPanelMode
-    let isExpanded: Bool
-    let isExplanationOnly: Bool
+    var isExpanded: Bool
+    var isExplanationOnly: Bool
+    var translation: String? = "華麗的；令人驚豔的"
+    var explanation: String? = nil
+    var isLoading: Bool = false
+    var isLoadingExplanation: Bool = false
+    var statusMessage: String? = nil
+    var translationErrorMessage: String? = nil
+    var explanationErrorMessage: String? = nil
 
     var body: some View {
         ZStack {
@@ -140,23 +151,27 @@ private struct TranslationPanelPreviewScene: View {
 
                 TranslationPanel(
                     word: "gorgeous",
-                    result: TranslationResult(
-                        translation: "華麗的；令人驚豔的",
-                        partOfSpeech: "adj.",
-                        pronunciation: nil,
-                        explanation: nil
-                    ),
+                    result: translation.map {
+                        TranslationResult(
+                            translation: $0,
+                            partOfSpeech: "adj.",
+                            pronunciation: nil,
+                            explanation: nil
+                        )
+                    },
                     pronunciation: "/ɡɔːrˈdʒəs/",
-                    isLoading: false,
+                    isLoading: isLoading,
                     isSaved: true,
                     isLoggedIn: true,
                     isExpanded: isExpanded,
-                    explanation: isExpanded
+                    explanation: explanation ?? (isExpanded
                         ? "常用來描述外觀、氣氛或令人印象深刻的事物，語氣通常偏正面且帶有審美色彩。"
-                        : nil,
-                    isLoadingExplanation: false,
-                    statusMessage: isExplanationOnly ? "以解釋模式顯示" : "已加入單字庫",
+                        : nil),
+                    isLoadingExplanation: isLoadingExplanation,
+                    statusMessage: statusMessage ?? (isExplanationOnly ? "以解釋模式顯示" : "已加入單字庫"),
                     isExplanationOnly: isExplanationOnly,
+                    translationErrorMessage: translationErrorMessage,
+                    explanationErrorMessage: explanationErrorMessage,
                     onExpand: {},
                     onDelete: {},
                     onDismiss: {}
@@ -183,5 +198,42 @@ private struct TranslationPanelPreviewScene: View {
 #Preview("Translation / Explain Only") {
     AppThemeContainer {
         TranslationPanelPreviewScene(mode: .vocab, isExpanded: true, isExplanationOnly: true)
+    }
+}
+
+#Preview("Translation / Empty") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            mode: .glass,
+            isExpanded: false,
+            isExplanationOnly: false,
+            translation: nil,
+            explanation: nil,
+            statusMessage: nil
+        )
+    }
+}
+
+#Preview("Translation / Error") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            mode: .vocab,
+            isExpanded: false,
+            isExplanationOnly: false,
+            translation: nil,
+            translationErrorMessage: "翻譯服務逾時，請稍後再試。"
+        )
+    }
+}
+
+#Preview("Explanation / Error") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            mode: .vocab,
+            isExpanded: true,
+            isExplanationOnly: false,
+            explanation: nil,
+            explanationErrorMessage: "語境分析暫時不可用。"
+        )
     }
 }
