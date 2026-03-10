@@ -85,13 +85,12 @@ extension TodayReviewPresenter {
         let card = currentCard.card
         let answerText = card.reviewMode == .production ? card.word : card.translation
         return ReviewFoldSurface(position: .bottom) {
-            ZStack(alignment: .topTrailing) {
-                combinedAnswerContent(currentCard)
-                    .accessibilityLabel("翻譯：\(answerText)")
-
-                ReviewFoldChevronButton(action: onCollapseReveal)
-                    .padding(reviewCardPadding)
-            }
+            combinedAnswerContent(currentCard)
+                .accessibilityLabel("翻譯：\(answerText)")
+        }
+        .overlay(alignment: .top) {
+            ReviewFoldChevronPill(action: onCollapseReveal)
+                .offset(y: -vocabSkin.metrics.reviewChevronButtonSize / 2)
         }
     }
 
