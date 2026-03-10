@@ -510,16 +510,7 @@ private struct SettingsSectionFooter: View {
     }
 }
 
-private struct SettingsDivider: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-
-    var body: some View {
-        Rectangle()
-            .fill(vocabSkin.palette.divider)
-            .frame(height: 1)
-            .padding(.leading, 50)
-    }
-}
+private typealias SettingsDivider = AppSettingsDivider
 
 private enum SettingsSocialKind {
     case google

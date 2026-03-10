@@ -112,6 +112,7 @@ enum ReaderGlassTypography {
     static let settingsStepLarge = Font.system(size: 22, weight: .medium)
     static let settingsValue = Font.system(size: 13, design: .monospaced)
     static let settingsIcon = Font.system(size: 14)
+    static let settingsCloseIcon = Font.system(size: ReaderPresentationMetrics.Settings.closeIconSize)
 }
 
 enum ReaderPresentationMetrics {
