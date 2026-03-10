@@ -5,8 +5,8 @@
 - **伺服器**: AWS Lightsail `booksbrowser-kg-api`，靜態 IP `54.95.189.179`
 - **Domain**: `wordnexus.lol`（Porkbun DNS → Caddy → Docker FastAPI）
 - **SSH Key**: `~/.ssh/lightsail_default.pem`
-- **本地代碼路徑**: `/Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/`
-- **devops.sh 位置**: BooksBrowserWorkspace 根目錄
+- **本地工作區**: `projects/kg/`
+- **devops.sh 位置**: KG workspace 根目錄
 
 ---
 
@@ -35,7 +35,7 @@
 ## 標準部署流程
 
 ```bash
-cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace
+cd ~/MPSO/projects/kg
 
 ./devops.sh deploy      # rsync + build + migrate + health
 ./devops.sh status      # 確認健康
@@ -108,7 +108,7 @@ echo "wordnexus.lol { reverse_proxy localhost:8000 }" | \
 sudo systemctl restart caddy && sudo systemctl enable caddy
 
 # 3. 部署
-cd /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace
+cd ~/MPSO/projects/kg
 ./devops.sh setup
 
 # 4. 開放防火牆
@@ -170,7 +170,7 @@ deploy 失敗
 
 # 恢復
 scp -i ~/.ssh/lightsail_default.pem -r \
-  /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/backups/data_<日期> \
+  ~/MPSO/projects/kg/backups/data_<日期> \
   ubuntu@54.95.189.179:~/knowledge_graph_api/data
 ./devops.sh restart
 ```
@@ -206,6 +206,6 @@ data 目錄由容器 root 寫入，host ubuntu user 無法直接 rm，需進容�
 rsync -avz \
   -e "ssh -i ~/.ssh/lightsail_default.pem" \
   --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
-  /Users/chenliangyu/Desktop/MultiProjectServerOps/projects/booksbrowser_workspace/knowledge_graph_api/ \
+  ~/MPSO/projects/kg/backend/ \
   ubuntu@54.95.189.179:~/knowledge_graph_api/
 ```

@@ -1,7 +1,7 @@
 # UI Component & Pattern Inventory
 
 Date: 2026-03-09
-Scope: `booksbrowser_ios/BooksBrowser`
+Scope: `ios/BooksBrowser`
 
 文檔網絡：
 - 設計規範主文檔：`docs/ui-design.md`
@@ -29,9 +29,9 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ### App Shell Layer
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/UIComponents/AppShellComponents.swift`
-- `booksbrowser_ios/BooksBrowser/UIComponents/AppSurface.swift`
-- `booksbrowser_ios/BooksBrowser/UIComponents/MorandiButtonStyle.swift`
+- `ios/BooksBrowser/UIComponents/AppShellComponents.swift`
+- `ios/BooksBrowser/UIComponents/AppSurface.swift`
+- `ios/BooksBrowser/UIComponents/MorandiButtonStyle.swift`
 
 核心元件：
 - `AppSectionCard`
@@ -58,9 +58,9 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ### Vocabulary Skin Layer
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Components/VocabSkinComponents.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/VocabSkinComponents.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift`
 
 核心元件：
 - `VocabCard`
@@ -89,14 +89,14 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ### Reader Layer
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/TranslationPanel.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderSettingsPanel.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderSettingsPanelPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderContentStyle.swift`
+- `ios/BooksBrowser/Views/Reader/TranslationPanel.swift`
+- `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/TranslationVocabPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderSettingsPanel.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderSettingsPanelPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift`
+- `ios/BooksBrowser/Views/Reader/ReaderViewPresenter.swift`
 
 核心元件 / 容器：
 - `TranslationPanel`
@@ -118,8 +118,8 @@ Scope: `booksbrowser_ios/BooksBrowser`
 ### Settings Layer
 
 主要檔案：
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
-- `booksbrowser_ios/BooksBrowser/Views/Settings/SettingsPresentation.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsPresenter.swift`
+- `ios/BooksBrowser/Views/Settings/SettingsPresentation.swift`
 
 核心元件：
 - `SettingsSectionHeader`
