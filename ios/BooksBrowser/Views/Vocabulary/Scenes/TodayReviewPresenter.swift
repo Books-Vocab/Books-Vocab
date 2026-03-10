@@ -40,6 +40,7 @@ struct TodayReviewPresenter: View {
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State private var swipeOffset: CGFloat = 0
+    @State private var containerWidth: CGFloat = 393
     @State private var dismissPhase: DismissPhase = .idle
     @State private var suppressTransition = false
     @State private var flingHapticTrigger = 0
@@ -106,6 +107,11 @@ struct TodayReviewPresenter: View {
             .frame(maxWidth: .infinity)
             .vocabCanvasBackground()
             .toolbar(.hidden, for: .navigationBar)
+            .onGeometryChange(for: CGFloat.self) { proxy in
+                proxy.size.width
+            } action: { newWidth in
+                containerWidth = newWidth
+            }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
         }
@@ -235,7 +241,7 @@ struct TodayReviewPresenter: View {
 
     // MARK: - Swipe Gesture + Fling Animation
 
-    private var screenWidth: CGFloat { UIScreen.main.bounds.width }
+    private var screenWidth: CGFloat { containerWidth }
 
     private var cardOpacity: Double {
         1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
