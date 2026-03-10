@@ -3,12 +3,14 @@
 //  BooksBrowser
 //
 //  統一的字體排印 (Design System Tokens)
-//  Serif: Athelas (EN) + STSongti-TC (CJK cascade)
-//  Mono:  ElmsSans (EN) + system monospaced (CJK fallback)
+//  Serif:  Athelas (EN) + STSongti-TC (CJK cascade)  — 標題用
+//  Sans:   ElmsSans (EN) + PingFang TC (CJK cascade)  — 內文用
+//  Mono:   ElmsSans (EN) + system monospaced (CJK fallback)
 //
 
 import SwiftUI
 import UIKit
+import CoreText
 
 enum AppFonts {
 
@@ -28,6 +30,16 @@ enum AppFonts {
         return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
     }
 
+    /// Sans: ElmsSans + PingFang TC cascade
+    static func sans(size: CGFloat, bold: Bool = false) -> Font {
+        let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
+        let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
+    }
+
     /// Mono: ElmsSans + system monospaced cascade
     static func mono(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
@@ -39,7 +51,7 @@ enum AppFonts {
         return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
     }
 
-    // MARK: - 標題層級 (Headers)
+    // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
     static func hero(weight: Font.Weight = .semibold) -> Font {
@@ -56,28 +68,28 @@ enum AppFonts {
         serif(size: 22, bold: weight.isBold)
     }
 
-    // MARK: - 內文層級 (Body)
+    // MARK: - 內文層級 (Body) — sans
 
-    /// 預設內文 — 17pt serif
+    /// 預設內文 — 17pt sans
     static func body(weight: Font.Weight = .regular) -> Font {
-        serif(size: 17, bold: weight.isBold)
+        sans(size: 17, bold: weight.isBold)
     }
 
-    /// 次要說明 — 15pt serif
+    /// 次要說明 — 15pt sans
     static func subhead(weight: Font.Weight = .regular) -> Font {
-        serif(size: 15, bold: weight.isBold)
+        sans(size: 15, bold: weight.isBold)
     }
 
-    // MARK: - 細節層級 (Caption & Mono)
+    // MARK: - 細節層級 (Caption & Mono) — sans
 
-    /// 提示小字 — 12pt serif
+    /// 提示小字 — 12pt sans
     static func caption(weight: Font.Weight = .regular) -> Font {
-        serif(size: 12, bold: weight.isBold)
+        sans(size: 12, bold: weight.isBold)
     }
 
-    /// 極小提示 — 11pt serif
+    /// 極小提示 — 11pt sans
     static func caption2(weight: Font.Weight = .regular) -> Font {
-        serif(size: 11, bold: weight.isBold)
+        sans(size: 11, bold: weight.isBold)
     }
 
     /// 等寬數字 — ElmsSans mono
@@ -88,6 +100,40 @@ enum AppFonts {
     /// Reader 進度條等寬細字 — 11pt ElmsSans mono
     static func monoProgress() -> Font {
         mono(size: 11)
+    }
+
+    // MARK: - On-Demand Font Download
+
+    /// 觸發 STSongti-TC 按需下載（系統字體，首次使用時需下載）
+    /// 在 App 啟動時呼叫一次即可，已下載過則立即返回。
+    static func ensureSerifCJKAvailable() {
+        let fontNames = ["STSongti-TC-Regular", "STSongti-TC-Bold"]
+        var descriptors: [UIFontDescriptor] = []
+
+        for name in fontNames {
+            let desc = UIFontDescriptor(fontAttributes: [.name: name])
+            // 檢查是否已可用
+            let ctDesc = desc as CTFontDescriptor
+            if CTFontDescriptorCopyAttribute(ctDesc, kCTFontURLAttribute) != nil {
+                continue  // 已存在，跳過
+            }
+            descriptors.append(desc)
+        }
+
+        guard !descriptors.isEmpty else { return }
+
+        let cfArray = descriptors as CFArray
+        CTFontDescriptorMatchFontDescriptorsWithProgressHandler(cfArray, nil) { state, _ in
+            switch state {
+            case .didFinish:
+                print("[AppFonts] STSongti-TC download completed")
+            case .didFailWithError:
+                print("[AppFonts] STSongti-TC download failed")
+            default:
+                break
+            }
+            return true  // 繼續下載
+        }
     }
 }
 
