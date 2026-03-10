@@ -12,6 +12,7 @@ import SwiftData
 struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
+    @Environment(\.vocabSkin) private var vocabSkin
     @Binding var searchText: String
 
     @Query private var syncedEntries: [VocabularyEntry]
@@ -44,7 +45,7 @@ struct KGVocabView: View {
                     )
                     Spacer()
                 }
-                .padding(AppMetrics.spacingLarge)
+                .padding(vocabSkin.metrics.cardBlockPadding)
                 .vocabCanvasBackground()
             } else if coordinator.isLoading && syncedEntries.isEmpty {
                 VStack {
@@ -58,7 +59,7 @@ struct KGVocabView: View {
                     }
                     Spacer()
                 }
-                .padding(AppMetrics.spacingLarge)
+                .padding(vocabSkin.metrics.cardBlockPadding)
                 .vocabCanvasBackground()
             } else {
                 content

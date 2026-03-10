@@ -22,8 +22,8 @@ struct WordDetailGraphLinkRow: View {
     }
 
     private func linkRowContent(showsAccessory: Bool) -> some View {
-        HStack(alignment: .top, spacing: AppMetrics.spacingSmall) {
-            VStack(alignment: .leading, spacing: 3) {
+        HStack(alignment: .top, spacing: vocabSkin.metrics.linkRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: vocabSkin.metrics.linkDetailGap) {
                 Text(link.word)
                     .font(vocabSkin.typography.rowWord)
                     .foregroundStyle(vocabSkin.palette.primaryText)
@@ -43,7 +43,7 @@ struct WordDetailGraphLinkRow: View {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, AppMetrics.spacingSmall)
+        .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
     }
 }
 
