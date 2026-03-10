@@ -169,6 +169,7 @@ enum ReaderPresentationMetrics {
         static let progressVerticalInset: CGFloat = 10
         static let topInset: CGFloat = 8
         static let bottomInset: CGFloat = 8
+        static let panelMaxWidth: CGFloat = 520
     }
 
     enum Header {
@@ -180,6 +181,7 @@ enum ReaderPresentationMetrics {
         static let buttonSize: CGFloat = 34
         static let compactButtonSize: CGFloat = 44
         static let titleMaxWidth: CGFloat = 160
+        static let titleMaxWidthRegular: CGFloat = 300
         static let trailingInset: CGFloat = 4
         static let progressSpacing: CGFloat = 6
         static let compactProgressInsetHorizontal: CGFloat = 10
