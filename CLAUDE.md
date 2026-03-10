@@ -101,6 +101,8 @@ xcodebuild \
 - **禁止** raw spacing magic number → 用 `AppShellMetrics` / `AppMetrics` / `VocabSkin.Spacing`
 - **禁止** raw animation（`.spring(...)`、`.easeOut(...)`、`.default`）→ 用 `AppMotion` token
 - **禁止** raw transition → 用 `AppTransition` token
+- **禁止** raw 中文字串直接出現在 UI（`Text("中文")`、`Button("中文")`、`title: "中文"` 等）→ 用 `"中文".localized` 或 `L10n.string("中文")`；`#Preview` 區塊除外
+- 新增的 L10n key 必須同步加入 `en.lproj/Localizable.strings`（英文翻譯）與 `zh-Hant.lproj/Localizable.strings`（繁中原文 identity mapping）
 
 ### 元件復用（先查後建）
 - 新增 UI 前**必須**查 inventory，確認無現成元件可用
@@ -120,9 +122,15 @@ xcodebuild \
 - Theme：`@Environment(\.appTheme)`，不可硬建 `AppTheme()` instance
 - VocabSkin：`@Environment(\.vocabSkin)`，不可硬建 instance
 
+### Localization 契約
+- 系統入口：`Localization/L10n.swift`，key = 中文原文，透過 `AppLanguageStore` 自訂 bundle 查找翻譯
+- 字串檔：`en.lproj/Localizable.strings`、`zh-Hant.lproj/Localizable.strings`
+- SwiftUI 的 `LocalizedStringKey` 自動查找**不適用**（因為 app 用自訂 bundle 而非 `Bundle.main`），所有 UI 字串必須顯式走 `.localized` 或 `L10n.string()`
+
 ### 完工自查
 - 對照 `docs/references/ui_review_checklist.md` 五大項逐一確認
 - 關鍵畫面須有 `#Preview`，preview 須能固定狀態（不依賴登入/後端）
+- grep 確認無 raw 中文字串洩漏到 UI 層（`#Preview` 除外）
 
 ## Common Commands
 - status: `./ops/devops_kg_safe.sh status`
