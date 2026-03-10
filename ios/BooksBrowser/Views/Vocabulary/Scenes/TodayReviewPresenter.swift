@@ -297,7 +297,7 @@ struct TodayReviewPresenter: View {
     }
 
     private var completionState: some View {
-        VStack(spacing: AppMetrics.spacingLarge) {
+        VStack(spacing: vocabSkin.metrics.cardBlockPadding) {
             Spacer()
             VocabEmptyStateContent(
                 title: "今天複習完成",
@@ -308,7 +308,7 @@ struct TodayReviewPresenter: View {
                 .buttonStyle(.ghost(vocabSkin.palette.primaryText))
             Spacer()
         }
-        .padding(.horizontal, AppMetrics.spacingLarge)
+        .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
     }
 
     private func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {

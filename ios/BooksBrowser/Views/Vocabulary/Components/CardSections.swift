@@ -13,7 +13,7 @@ import SwiftUI
 /// 卡片內部的水平分隔線（統一外觀，取代散落在各 View 的重複定義）
 struct CardSectionDivider: View {
     @Environment(\.vocabSkin) private var vocabSkin
-    var horizontalPadding: CGFloat = AppMetrics.spacingLarge
+    var horizontalPadding: CGFloat = VocabSkin.baseMetrics.cardDividerHorizontalPadding
 
     var body: some View {
         Rectangle()
@@ -52,9 +52,9 @@ struct CardHeroSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
-            HStack(alignment: .top, spacing: AppMetrics.spacingMedium) {
-                VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+            HStack(alignment: .top, spacing: vocabSkin.metrics.cardBlockContentGap) {
+                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
                     HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.heroBaselineGap) {
                         Text(card.word)
                             .font(vocabSkin.typography.detailWord)
@@ -82,7 +82,7 @@ struct CardHeroSection: View {
                 }
             }
 
-            HStack(spacing: AppMetrics.spacingSmall) {
+            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
                 Text(card.reviewMode.localizedTitle)
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
@@ -106,7 +106,7 @@ struct CardExamplesSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingMedium) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
             CardSectionLabel(title: "例句", systemImage: "text.quote")
 
             ForEach(Array(examples.enumerated()), id: \.offset) { _, example in
@@ -136,7 +136,7 @@ struct CardSourceSection: View {
     let chapterTitle: String?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源", systemImage: "quote.opening")
 
             CardRichTextRenderer.text(
@@ -173,7 +173,7 @@ struct CardExplanationSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "教學筆記", systemImage: "text.book.closed")
 
             CardRichTextRenderer.text(
@@ -200,11 +200,11 @@ struct CardFormsSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "變化形", systemImage: "text.badge.plus")
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: AppMetrics.spacingSmall) {
+                HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
                     ForEach(Array(forms.enumerated()), id: \.offset) { _, form in
                         let isRoot = form == rootForm
                         Text(form)
