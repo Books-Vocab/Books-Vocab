@@ -9,15 +9,13 @@ struct TodayReviewSession: Identifiable {
 enum TodayReviewRevealStage: Int {
     case front
     case back
-    case details
 
-    var showsAnswer: Bool { self != .front }
-    var showsDetails: Bool { self == .details }
+    var showsAnswer: Bool { self == .back }
 
     mutating func advance() {
         switch self {
         case .front: self = .back
-        case .back, .details: self = .details
+        case .back: break
         }
     }
 
@@ -25,7 +23,6 @@ enum TodayReviewRevealStage: Int {
         switch self {
         case .front: break
         case .back: self = .front
-        case .details: self = .back
         }
     }
 }
