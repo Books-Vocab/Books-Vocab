@@ -4,7 +4,7 @@ from logging import Logger
 from pathlib import Path
 from typing import Any, Callable
 
-from .api_models import VocabEntry
+from .api_models import CardResponse, GraphLinkResponse, VocabAddResponse, VocabEntry
 from .vocab_service import add_vocab_entries, delete_vocab_word, graph_links_payload, list_vocab_cards, lookup_vocab_word
 
 
@@ -36,7 +36,7 @@ def lookup_word_response(
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[[Path], Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
-) -> Any:
+) -> CardResponse:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"])
@@ -54,7 +54,7 @@ def delete_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
-) -> Any:
+) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
     return delete_vocab_word(word, cards_store=cards)
@@ -65,7 +65,7 @@ def get_graph_links_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     graph_store_factory: Callable[[Path], Any],
-) -> list[Any]:
+) -> list[GraphLinkResponse]:
     require_pro_access(user, "knowledge_graph")
     graph = graph_store_factory(user["dir"])
     return graph_links_payload(graph=graph)
@@ -80,7 +80,7 @@ def add_vocab_response(
     embedding_store_factory: Callable[..., Any],
     graph_store_factory: Callable[[Path], Any],
     logger: Logger,
-) -> Any:
+) -> VocabAddResponse:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
     return add_vocab_entries(
