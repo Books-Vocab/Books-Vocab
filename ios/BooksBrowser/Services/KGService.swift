@@ -86,6 +86,50 @@ struct KGSubscriptionStatus: Codable, Equatable {
     let last_synced_at: String?
 }
 
+// MARK: - KGSubscriptionStatus Convenience
+
+extension KGSubscriptionStatus {
+    var isCancelledButActive: Bool {
+        is_active && !will_renew && source != "admin"
+    }
+
+    var formattedExpiryDate: String {
+        Self.formattedExpiry(expires_at)
+    }
+
+    // MARK: - Date Formatting
+
+    private static let expiryISO8601Formatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return f
+    }()
+
+    private static let expiryISO8601FallbackFormatter: ISO8601DateFormatter = {
+        let f = ISO8601DateFormatter()
+        f.formatOptions = [.withInternetDateTime]
+        return f
+    }()
+
+    private static let expiryDisplayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy/MM/dd HH:mm"
+        f.locale = Locale(identifier: "zh_TW")
+        return f
+    }()
+
+    static func formattedExpiry(_ isoString: String?) -> String {
+        guard let isoString, !isoString.isEmpty else {
+            return L10n.string("未知時間")
+        }
+        if let date = expiryISO8601Formatter.date(from: isoString)
+            ?? expiryISO8601FallbackFormatter.date(from: isoString) {
+            return expiryDisplayFormatter.string(from: date)
+        }
+        return isoString
+    }
+}
+
 struct KGEntitlements: Codable, Equatable {
     let pro: KGSubscriptionStatus
 }
