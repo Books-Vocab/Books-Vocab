@@ -18,6 +18,8 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            translationErrorMessage = nil
+            explanationErrorMessage = nil
         }
         clearHighlightTrigger = UUID()
     }

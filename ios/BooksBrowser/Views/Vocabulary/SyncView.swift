@@ -53,6 +53,7 @@ struct SyncView: View {
             hasProAccess: subscriptionManager.hasProAccess,
             isConnected: kgService.isConnected,
             phase: coordinator.phase,
+            failureKind: coordinator.failureKind,
             pendingCount: pendingEntries.count,
             addCount: addActions.count,
             deleteCount: deleteActions.count,

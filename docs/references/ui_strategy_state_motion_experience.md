@@ -1,7 +1,7 @@
 # UI Strategy 2: State & Motion Experience
 
 Date: 2026-03-10
-Scope: `booksbrowser_ios/BooksBrowser`
+Scope: `ios/BooksBrowser`
 
 文檔網絡：
 - 主設計規範：`docs/ui-design.md`
@@ -12,12 +12,12 @@ Scope: `booksbrowser_ios/BooksBrowser`
 
 把「有動畫、有 state」提升成「狀態可預期、過場有語意、回饋一致」。
 
-目前的基礎已存在：
-- `AppMotion` 已建立
-- Reader / Review / Sync 主幹已有 motion token
-- state card / empty state / hero status pattern 已成形
+目前以下主幹工作已完成，不再列入這份待辦：
+- `AppMotion` 已建立並接入 Reader / Review / Sync 主幹
+- review card swap / sync phase transition / paywall access source 已有明確語意層
+- `app_store` 與 `admin` 的 access state 已在 paywall / settings 做出基礎分流
 
-但還有幾個落差：
+以下只保留仍未完成的缺口：
 - 有些錯誤仍只是文案，不是明確 error state
 - 有些 fallback 只是 detail text，不是正式 state
 - partial failure / empty / silent success 還不一致
@@ -48,45 +48,27 @@ Scope: `booksbrowser_ios/BooksBrowser`
 原則：
 - `empty`、`error`、`retryable`、`partial success` 不可以只靠一行字帶過
 
-### Work Package B: Motion Policy Completion
+### Work Package B: Remaining Paywall / Access Polish
 
-目標：
-- 讓 motion token 變成互動規則，而不是數值倉庫
+已完成：
+- `app_store` / `admin` 來源分流
+- access state 基礎文案與層級
 
-優先規則：
-- panel open / close
-- state card appear / disappear
-- success / save feedback
-- review card swap
-- sync phase transition
-
-要求：
-- 有 visual feedback 的地方，優先搭配 haptic policy
-- 不為了「更會動」而新增沒有語意的動畫
-
-### Work Package C: Paywall / Access State Clarity
-
-這次 entitlement 已區分：
-- `app_store`
-- `admin`
-
-接下來要把來源差異更清楚落到 UX：
-- active / trial / inactive / admin-granted
-- restore 可用與不可用
-- 來源說明與管理動作分層
+剩餘 polish：
+- active / trial / inactive / admin-granted 的層級再收乾淨
+- restore 可用與不可用的差異再簡化
+- 來源說明與管理動作避免過度暴露實作細節
 
 ## 執行順序
 
 1. 先補最影響信任感的 missing state
-2. 再統一 motion policy
-3. 最後把 paywall / access state 文案與層級收乾淨
+2. 再把 paywall / access state 文案與層級收乾淨
 
 ## 可並行原因
 
 這條線主要處理：
 - state presentation
-- motion consistency
-- UX feedback policy
+- 剩餘的 UX feedback polish
 
 它與 foundation convergence 只有少量共享元件依賴，可平行進行。
 
@@ -121,4 +103,4 @@ Scope: `booksbrowser_ios/BooksBrowser`
 
 - 更順、更可信的主流程體驗
 - 更一致的 state language
-- 更成熟的 motion semantics
+- 更乾淨的 access / error / empty polish

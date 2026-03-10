@@ -4,8 +4,8 @@ This document is the detailed workflow guide for the workspace after migration t
 
 ## Repository Topology
 - One root git repository tracks:
-  - iOS app: `booksbrowser_ios/`
-  - backend API: `knowledge_graph_api/`
+  - iOS app: `ios/`
+  - backend API: `backend/`
   - workspace ops/docs: `docs/`, `ops/`, `devops.sh`, policy/support pages
 
 ## Commit Strategy
@@ -19,12 +19,12 @@ This document is the detailed workflow guide for the workspace after migration t
 ## Typical Flows
 
 ### A) iOS-only change
-1. edit under `booksbrowser_ios/`
+1. edit under `ios/`
 2. validate iOS build/tests as needed
 3. commit with iOS-focused message
 
 ### B) API-only change
-1. edit under `knowledge_graph_api/`
+1. edit under `backend/`
 2. run API tests
 3. commit with API-focused message
 
@@ -45,15 +45,15 @@ git status --short
 git log --oneline -n 20
 
 # scope-limited status checks
-git status --short booksbrowser_ios
-git status --short knowledge_graph_api
+git status --short ios
+git status --short backend
 
 # fast search
-rg "pattern" booksbrowser_ios knowledge_graph_api docs
+rg "pattern" ios backend docs
 ```
 
 ## Migration Note
 - Previous nested child `.git` metadata was moved to:
-  - `backups/git_metadata_<timestamp>/booksbrowser_ios.git`
-  - `backups/git_metadata_<timestamp>/knowledge_graph_api.git`
+  - `backups/git_metadata_<timestamp>/ios.git`
+  - `backups/git_metadata_<timestamp>/backend.git`
 - Current source of truth is the root monorepo git history.
