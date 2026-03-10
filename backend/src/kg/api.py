@@ -374,6 +374,9 @@ def _load_users() -> dict[str, dict[str, Any]]:
 def _save_users(users: dict[str, dict[str, Any]]) -> None:
     save_users_to(_runtime_users_file(), users, _normalize_users_payload)
 
+load_users = _load_users
+save_users = _save_users
+
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
     return normalize_users_payload(users, _default_subscription_payload)
