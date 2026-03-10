@@ -9,89 +9,98 @@ struct SettingsSubscriptionSection: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "訂閱", icon: "sparkles.rectangle.stack")
 
-            VStack(alignment: .leading, spacing: 0) {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-                    HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
-                        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                            Text(state.planName)
-                                .font(vocabSkin.typography.sectionTitle)
-                                .foregroundStyle(vocabSkin.palette.primaryText)
+            VStack(spacing: 0) {
+                // ── 方案標題 + Badge ──
+                HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                        Text(state.planName)
+                            .font(vocabSkin.typography.sectionTitle)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
 
-                            Text(state.summary)
-                                .font(vocabSkin.typography.body)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .lineSpacing(4)
+                        Text(state.summary)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .lineSpacing(3)
+                    }
+
+                    Spacer()
+
+                    subscriptionBadge
+                }
+                .padding(vocabSkin.spacing.cardPadding)
+
+                SettingsDivider()
+
+                // ── 結構化 meta rows ──
+                SettingsRow(icon: "key", label: "權限來源") {
+                    Text(state.sourceLabel)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                }
+
+                SettingsDivider()
+
+                SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式") {
+                    Text(state.managementNote)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .multilineTextAlignment(.trailing)
+                }
+
+                if state.isRestoreAvailable {
+                    SettingsDivider()
+
+                    SettingsRow(icon: "arrow.clockwise", label: state.restoreLabel) {
+                        Text(state.restoreDescription)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.accent)
+                            .multilineTextAlignment(.trailing)
+                    }
+                    .transition(.statusRowReveal)
+                }
+
+                if let pricingUnavailableMessage = state.pricingUnavailableMessage {
+                    SettingsDivider()
+
+                    VocabStateMessageCard(
+                        title: "價格載入中",
+                        systemImage: "arrow.clockwise.circle",
+                        description: pricingUnavailableMessage
+                    )
+                    .padding(vocabSkin.spacing.cardPadding)
+                    .transition(.statusRowReveal)
+                }
+
+                SettingsDivider()
+
+                // ── CTA ──
+                Button(action: actions.showSubscriptionPaywall) {
+                    HStack(spacing: vocabSkin.spacing.controlGap) {
+                        if state.isRefreshing {
+                            ProgressView()
+                                .controlSize(.small)
+                        } else {
+                            Image(systemName: "arrow.right.circle.fill")
+                                .font(vocabSkin.typography.iconMedium)
                         }
+
+                        Text(state.ctaTitle)
+                            .font(vocabSkin.typography.body.weight(.medium))
 
                         Spacer()
 
-                        subscriptionBadge
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconSmall)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
                     }
-
-                    Text(state.detail)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-
-                    if let pricingUnavailableMessage = state.pricingUnavailableMessage {
-                        VocabStateMessageCard(
-                            title: "價格載入中",
-                            systemImage: "arrow.clockwise.circle",
-                            description: pricingUnavailableMessage
-                        )
-                        .transition(.statusRowReveal)
-                    }
-
-                    subscriptionMetaRow(
-                        title: "權限來源",
-                        value: state.sourceLabel
-                    )
-                    .transition(.statusRowReveal)
-
-                    if state.isRestoreAvailable {
-                        subscriptionMetaRow(
-                            title: state.restoreLabel,
-                            value: state.restoreDescription,
-                            emphasized: true
-                        )
-                        .transition(.statusRowReveal)
-                    }
-
-                    subscriptionMetaRow(
-                        title: "管理方式",
-                        value: state.managementNote
-                    )
-                    .transition(.statusRowReveal)
-
-                    Button(action: actions.showSubscriptionPaywall) {
-                        HStack(spacing: vocabSkin.spacing.controlGap) {
-                            if state.isRefreshing {
-                                ProgressView()
-                                    .controlSize(.small)
-                            } else {
-                                Image(systemName: "arrow.right.circle.fill")
-                                    .font(vocabSkin.typography.iconMedium)
-                            }
-
-                            Text(state.ctaTitle)
-                                .font(vocabSkin.typography.body.weight(.medium))
-
-                            Spacer()
-                        }
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                        .padding(.horizontal, vocabSkin.spacing.controlHorizontalPadding)
-                        .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
-                        .background(vocabSkin.palette.pageBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                        )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(state.isRefreshing)
-                    .accessibilityLabel(state.ctaTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                    .padding(.vertical, 13)
+                    .frame(minHeight: 50)
                 }
-                .padding(vocabSkin.spacing.cardPadding)
+                .buttonStyle(.plain)
+                .disabled(state.isRefreshing)
+                .accessibilityLabel(state.ctaTitle)
             }
             .settingsCard()
             .animation(AppMotion.phaseChange, value: state.badgeText)
@@ -119,22 +128,5 @@ struct SettingsSubscriptionSection: View {
             .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
-    }
-
-    private func subscriptionMetaRow(
-        title: String,
-        value: String,
-        emphasized: Bool = false
-    ) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.tinyGap) {
-            Text(title)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(emphasized ? vocabSkin.palette.accent : vocabSkin.palette.tertiaryText)
-
-            Text(value)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .fixedSize(horizontal: false, vertical: true)
-        }
     }
 }
