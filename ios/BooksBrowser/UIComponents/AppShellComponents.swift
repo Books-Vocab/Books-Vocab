@@ -292,7 +292,7 @@ extension AppSectionCardStyle {
             shadow: skin.palette.shadow,
             cornerRadius: skin.radii.card,
             borderOpacity: 0.7,
-            shadowRadius: 6,
+            shadowRadius: 4,
             shadowY: 2
         )
     }
