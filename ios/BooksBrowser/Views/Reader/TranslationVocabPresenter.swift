@@ -86,8 +86,10 @@ struct TranslationVocabPresenter: View {
             explanationOnlyBody
         case .translation(let translation):
             translationBody(translation)
+        case .translationError(let message):
+            translationErrorBody(message)
         case .empty:
-            EmptyView()
+            emptyStateBody
         }
     }
 
@@ -145,12 +147,22 @@ struct TranslationVocabPresenter: View {
                     }
                 }
                 .padding(.vertical, 4)
+            } else if let errorMessage = state.explanationErrorMessage {
+                VocabStateMessageCard(
+                    title: "語境解釋暫時無法載入",
+                    systemImage: "exclamationmark.triangle.fill",
+                    description: errorMessage
+                )
+                .padding(.vertical, 4)
             } else if let explanation = state.explanation {
                 Text(explanation)
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
                     .fixedSize(horizontal: false, vertical: true)
                     .lineSpacing(3)
+            } else {
+                emptyExplainStateCard
+                    .padding(.vertical, 4)
             }
 
             footerToolbar(showChevron: false, timerValue: state.statusTimerText)
@@ -187,17 +199,59 @@ struct TranslationVocabPresenter: View {
                         }
                     }
                     .padding(.vertical, 4)
+                } else if let errorMessage = state.explanationErrorMessage {
+                    VocabStateMessageCard(
+                        title: "語境解釋暫時無法載入",
+                        systemImage: "exclamationmark.triangle.fill",
+                        description: errorMessage
+                    )
+                    .padding(.vertical, 4)
                 } else if let explanation = state.explanation {
                     Text(explanation)
                         .font(vocabSkin.typography.body)
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .fixedSize(horizontal: false, vertical: true)
                         .lineSpacing(3)
+                } else {
+                    emptyExplainStateCard
+                        .padding(.vertical, 4)
                 }
             }
 
             footerToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
         }
+    }
+
+    private func translationErrorBody(_ message: String) -> some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VocabStateMessageCard(
+                title: "翻譯暫時失敗",
+                systemImage: "exclamationmark.triangle.fill",
+                description: message
+            )
+
+            footerToolbar(showChevron: false, timerValue: state.statusTimerText)
+        }
+    }
+
+    private var emptyStateBody: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            VocabStateMessageCard(
+                title: "尚未取得翻譯",
+                systemImage: "text.viewfinder",
+                description: "請重新選取文字，或稍後再試一次。"
+            )
+
+            footerToolbar(showChevron: false, timerValue: state.statusTimerText)
+        }
+    }
+
+    private var emptyExplainStateCard: some View {
+        VocabStateMessageCard(
+            title: "還沒有語境解釋",
+            systemImage: "text.bubble",
+            description: "展開後會在這裡顯示上下文說明。"
+        )
     }
 
     @ViewBuilder

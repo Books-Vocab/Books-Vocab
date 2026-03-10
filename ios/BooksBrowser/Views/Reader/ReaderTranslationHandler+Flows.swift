@@ -23,6 +23,8 @@ extension ReaderTranslationHandler {
                 isTranslating = false
                 isExpanded = false
                 explanationText = nil
+                translationErrorMessage = nil
+                explanationErrorMessage = nil
             }
             print("📦 從生詞庫載入: \(word) → \(existing.word)")
             return
@@ -35,6 +37,8 @@ extension ReaderTranslationHandler {
                 isSaved = false
                 isExpanded = false
                 explanationText = nil
+                translationErrorMessage = nil
+                explanationErrorMessage = nil
             }
             Task { @MainActor in
                 let fetchedPron = await DictionaryService.fetchPronunciation(word: word)
@@ -55,6 +59,8 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            translationErrorMessage = nil
+            explanationErrorMessage = nil
         }
 
         currentTranslationTask?.cancel()
@@ -85,6 +91,7 @@ extension ReaderTranslationHandler {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
+                    translationErrorMessage = nil
                 }
 
                 let fetchedPron = await pronTask.value
@@ -103,15 +110,11 @@ extension ReaderTranslationHandler {
                 guard !(error is CancellationError) else { return }
                 print("❌ 翻譯錯誤: \(error)")
                 let fetchedPron = await pronTask.value
-                translationResult = TranslationResult(
-                    translation: L10n.format("翻譯失敗：%@", error.localizedDescription),
-                    partOfSpeech: nil,
-                    pronunciation: nil,
-                    explanation: nil
-                )
+                translationResult = nil
                 pronunciation = fetchedPron
                 isTranslating = false
                 translationStatus = nil
+                translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
         }
     }
@@ -131,6 +134,8 @@ extension ReaderTranslationHandler {
             isSaved = false
             isExpanded = false
             explanationText = nil
+            translationErrorMessage = nil
+            explanationErrorMessage = nil
         }
 
         Task { @MainActor in
@@ -158,6 +163,7 @@ extension ReaderTranslationHandler {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
+                    translationErrorMessage = nil
                 }
                 autoSaveToVocabulary(
                     selection: selection,
@@ -166,14 +172,10 @@ extension ReaderTranslationHandler {
                     context: vocabularyContext
                 )
             } catch {
-                translationResult = TranslationResult(
-                    translation: L10n.format("翻譯失敗：%@", error.localizedDescription),
-                    partOfSpeech: nil,
-                    pronunciation: nil,
-                    explanation: nil
-                )
+                translationResult = nil
                 isTranslating = false
                 translationStatus = nil
+                translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
         }
     }
@@ -190,6 +192,8 @@ extension ReaderTranslationHandler {
             isExpanded = true
             isLoadingExplanation = true
             explanationText = nil
+            translationErrorMessage = nil
+            explanationErrorMessage = nil
         }
 
         Task { @MainActor in
@@ -211,11 +215,13 @@ extension ReaderTranslationHandler {
                     explanationText = explanation
                     isLoadingExplanation = false
                     explanationStatus = nil
+                    explanationErrorMessage = nil
                 }
             } catch {
-                explanationText = L10n.format("載入失敗：%@", error.localizedDescription)
+                explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
+                explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
         }
     }
@@ -231,6 +237,7 @@ extension ReaderTranslationHandler {
         explanationText = nil
         isLoadingExplanation = true
         explanationStatus = nil
+        explanationErrorMessage = nil
 
         Task { @MainActor in
             do {
@@ -247,10 +254,11 @@ extension ReaderTranslationHandler {
                         }
                     }
                 )
-                withAnimation {
+                withAnimation(AppMotion.feedbackPulse) {
                     explanationText = explanation
                     isLoadingExplanation = false
                     explanationStatus = nil
+                    explanationErrorMessage = nil
                     if var updatedResult = translationResult {
                         updatedResult.latency = latency
                         translationResult = updatedResult
@@ -258,9 +266,10 @@ extension ReaderTranslationHandler {
                 }
             } catch {
                 print("❌ 解釋錯誤: \(error)")
-                explanationText = L10n.format("載入失敗：%@", error.localizedDescription)
+                explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
+                explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
         }
     }

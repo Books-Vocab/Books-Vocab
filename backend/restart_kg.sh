@@ -1,7 +1,7 @@
 #!/bin/bash
 # restart_kg.sh — 一鍵重啟 KG 後端
 
-KG_DIR="/Users/chenliangyu/Desktop/Development/BooksBrowserWorkspace/knowledge_graph_api"
+KG_DIR="$(cd "$(dirname "$0")" && pwd)"
 VENV="$KG_DIR/.venv/bin/uvicorn"
 ENV_FILE="$KG_DIR/.env"
 

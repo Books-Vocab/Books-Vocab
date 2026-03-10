@@ -23,6 +23,8 @@ final class ReaderTranslationHandler {
     var isLoadingExplanation = false
     var translationStatus: String?
     var explanationStatus: String?
+    var translationErrorMessage: String?
+    var explanationErrorMessage: String?
 
     // MARK: - 底線觸發信號
     var lookedUpWords: [String] = []
