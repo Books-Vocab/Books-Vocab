@@ -77,7 +77,7 @@ struct TodayReviewView: View {
             currentCard: currentCardState,
             nextCard: nextCardState,
             revealStage: revealStage,
-            canShuffle: queue.count > 1,
+            canShuffle: queue.count - currentIndex > 1,
             canGoPrevious: currentIndex > 0,
             canGoNext: currentIndex < queue.count - 1,
             remainingCount: max(queue.count - currentIndex - 1, 0),
@@ -140,10 +140,12 @@ struct TodayReviewView: View {
     }
 
     private func shuffleQueue() {
-        guard queue.count > 1 else { return }
+        let remaining = queue.count - currentIndex
+        guard remaining > 1 else { return }
         withAnimation(AppMotion.reviewNavigationSpring) {
-            queue.shuffle()
-            currentIndex = 0
+            var tail = Array(queue[currentIndex...])
+            tail.shuffle()
+            queue.replaceSubrange(currentIndex..., with: tail)
             revealStage = .front
         }
         ReviewSessionStore.saveOrder(queue.map(\.id))
