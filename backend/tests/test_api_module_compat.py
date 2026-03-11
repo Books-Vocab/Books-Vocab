@@ -35,8 +35,6 @@ def test_api_module_exposes_legacy_surface():
         "_notification_status",
         "_decode_signed_transaction_info",
         "_decode_notification_payload",
-        "_build_test_catalog",
-        "_run_pytest_matrix",
         "translate_quick",
         "translate_phrase",
         "translate_explain",
@@ -67,8 +65,6 @@ def test_api_module_keeps_expected_callable_shapes():
     assert callable(api_mod._card_store)
     assert callable(api_mod._graph_store)
     assert callable(api_mod._embedding_store)
-    assert callable(api_mod._run_pytest_matrix)
-    assert callable(api_mod._build_test_catalog)
     assert callable(api_mod.translate_quick)
     assert callable(api_mod.translate_phrase)
     assert callable(api_mod.translate_explain)
