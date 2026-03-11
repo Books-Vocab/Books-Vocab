@@ -198,7 +198,7 @@ actor BackgroundSyncActor {
             entry.lastReviewedAt = serverLast
             entry.reviewCount = max(entry.reviewCount, card.reviewCount ?? 0)
             entry.lapseCount = max(entry.lapseCount, card.lapseCount ?? 0)
-            entry.reviewStreak = card.reviewStreak ?? entry.reviewStreak
+            entry.reviewStreak = max(entry.reviewStreak, card.reviewStreak ?? 0)
             entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
         }
     }
