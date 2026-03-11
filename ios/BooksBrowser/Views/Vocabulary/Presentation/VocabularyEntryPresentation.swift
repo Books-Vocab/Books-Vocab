@@ -65,6 +65,14 @@ enum VocabularyEntryPresentation {
         }
     }
 
+    static func knowledgeDueEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
+        syncedKnowledgeEntries(in: entries).filter { $0.reviewState == .due }
+    }
+
+    static func knowledgeUnlearnedEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
+        syncedKnowledgeEntries(in: entries).filter { $0.reviewState == .unlearned }
+    }
+
     static func countKnowledgeEntries(
         in entries: [VocabularyEntry],
         reviewState: VocabularyReviewState
