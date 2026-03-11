@@ -67,7 +67,8 @@ extension TodayReviewPresenter {
                         italic: true
                     ),
                     mode: .cloze,
-                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
+                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius,
+                    targetWord: card.word
                 )
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             }
@@ -138,7 +139,7 @@ extension TodayReviewPresenter {
             let backDoc = reviewBackDocument(for: card)
             if !backDoc.blocks.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: backDoc, truncateRadius: 5)
+                CardDocumentView(document: backDoc, truncateRadius: 5, targetWord: card.word)
                     .lineLimit(2)
             }
 

@@ -5,6 +5,7 @@ struct CardDocumentView: View {
 
     let document: CardDocument
     var truncateRadius: Int? = nil
+    var targetWord: String? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -15,7 +16,7 @@ struct CardDocumentView: View {
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .example(let paragraph):
-                    CardDocumentExampleBlock(paragraph: paragraph, truncateRadius: truncateRadius)
+                    CardDocumentExampleBlock(paragraph: paragraph, truncateRadius: truncateRadius, targetWord: targetWord)
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .divider:
@@ -100,6 +101,7 @@ private struct CardDocumentExampleBlock: View {
     @State private var copyTrigger = false
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
+    var targetWord: String? = nil
 
     var body: some View {
         Group {
@@ -112,7 +114,8 @@ private struct CardDocumentExampleBlock: View {
                         highlightColor: vocabSkin.palette.highlightMark,
                         italic: false
                     ),
-                    truncateAroundMarkedWordRadius: radius
+                    truncateAroundMarkedWordRadius: radius,
+                    targetWord: targetWord
                 )
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             } else {
