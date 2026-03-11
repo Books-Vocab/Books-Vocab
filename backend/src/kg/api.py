@@ -773,10 +773,15 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 # POST /api/translate/quick & /api/translate/explain
 # ---------------------------------------------------------------------------
+def _is_pro(user: dict) -> bool:
+    from .billing import current_pro_entitlement_record
+    return bool(current_pro_entitlement_record(user.get("record")).get("is_active"))
+
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Perform a quick UI translation via Gemini API (proxy)."""
     from .quota_service import check_quota, get_quota_state
-    quota = check_quota(user["id"], "translate_quick")
+    pro = _is_pro(user)
+    quota = check_quota(user["id"], "translate_quick", is_pro=pro)
     if quota["exceeded"]:
         raise HTTPException(
             429,
@@ -790,7 +795,7 @@ def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user
         gemini_client_factory=_gemini_client,
         logger=logger,
     )
-    state = get_quota_state(user["id"])
+    state = get_quota_state(user["id"], is_pro=pro)
     if response is not None:
         response.headers["X-Quota-Fraction"] = str(state["fraction"])
         response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
@@ -799,7 +804,8 @@ def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Translate a multi-word phrase or expression. Returns translation only."""
     from .quota_service import check_quota, get_quota_state
-    quota = check_quota(user["id"], "translate_phrase")
+    pro = _is_pro(user)
+    quota = check_quota(user["id"], "translate_phrase", is_pro=pro)
     if quota["exceeded"]:
         raise HTTPException(
             429,
@@ -812,7 +818,7 @@ def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_use
         require_pro_access=_require_pro_access,
         gemini_client_factory=_gemini_client,
     )
-    state = get_quota_state(user["id"])
+    state = get_quota_state(user["id"], is_pro=pro)
     if response is not None:
         response.headers["X-Quota-Fraction"] = str(state["fraction"])
         response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
@@ -821,7 +827,8 @@ def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_use
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
     from .quota_service import check_quota, get_quota_state
-    quota = check_quota(user["id"], "translate_explain")
+    pro = _is_pro(user)
+    quota = check_quota(user["id"], "translate_explain", is_pro=pro)
     if quota["exceeded"]:
         raise HTTPException(
             429,
@@ -834,7 +841,7 @@ def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_us
         require_pro_access=_require_pro_access,
         gemini_client_factory=_gemini_client,
     )
-    state = get_quota_state(user["id"])
+    state = get_quota_state(user["id"], is_pro=pro)
     if response is not None:
         response.headers["X-Quota-Fraction"] = str(state["fraction"])
         response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
@@ -845,13 +852,9 @@ def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_us
 # GET /api/user/quota
 # ---------------------------------------------------------------------------
 def get_user_quota(user: dict = Depends(get_current_user)):
-    """Return quota fraction for the current user (Pro only)."""
-    from .billing import current_pro_entitlement_record
+    """Return quota fraction for the current user."""
     from .quota_service import get_quota_state
-    ent = current_pro_entitlement_record(user.get("record"))
-    if not ent.get("is_active"):
-        return {"fraction": 1.0, "reset_seconds": 0}
-    return get_quota_state(user["id"])
+    return get_quota_state(user["id"], is_pro=_is_pro(user))
 
 
 # ---------------------------------------------------------------------------

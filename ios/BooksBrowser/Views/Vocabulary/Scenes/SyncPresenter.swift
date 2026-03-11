@@ -2,7 +2,6 @@ import SwiftUI
 
 struct SyncPresenterState {
     let isLoggedIn: Bool
-    let hasProAccess: Bool
     let isConnected: Bool
     let phase: SyncPhase
     let failureKind: SyncFailureKind?
@@ -21,7 +20,6 @@ struct SyncPresenter: View {
     let onPrimaryAction: () -> Void
     let onCancel: () -> Void
     let onShowSettings: () -> Void
-    let onShowPaywall: () -> Void
 
     var body: some View {
         VStack(spacing: 0) {
@@ -30,7 +28,7 @@ struct SyncPresenter: View {
                 .padding(.bottom, vocabSkin.metrics.reviewFoldPadding)
                 .animation(AppMotion.phaseChange, value: state.phase)
 
-            if state.isLoggedIn && state.hasProAccess && !state.steps.isEmpty {
+            if state.isLoggedIn && !state.steps.isEmpty {
                 VocabCard(padding: 0) {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.steps.enumerated()), id: \.element.id) { index, step in
@@ -84,13 +82,6 @@ struct SyncPresenter: View {
                 tone: vocabSkin.palette.tertiaryText,
                 title: "尚未登入帳號".localized,
                 description: "登入後即可將您的生詞庫同步至雲端知識庫。".localized
-            )
-        } else if !state.hasProAccess {
-            VocabStatusHero(
-                systemImage: "sparkles.rectangle.stack",
-                tone: vocabSkin.palette.accent,
-                title: "同步需 Pro".localized,
-                description: "升級後即可將待收錄生詞同步到雲端與知識庫。".localized
             )
         } else {
             switch state.phase {
@@ -196,7 +187,7 @@ struct SyncPresenter: View {
         VStack(spacing: 8) {
             switch state.phase {
             case .ready:
-                if state.isLoggedIn && state.hasProAccess {
+                if state.isLoggedIn {
                     Button(action: onPrimaryAction) {
                         Label("開始同步".localized, systemImage: "arrow.triangle.2.circlepath")
                             .frame(maxWidth: .infinity)
@@ -210,8 +201,8 @@ struct SyncPresenter: View {
                             .foregroundStyle(vocabSkin.palette.destructive)
                     }
                 } else {
-                    Button(action: state.isLoggedIn ? onShowPaywall : onShowSettings) {
-                        Text(state.isLoggedIn ? "升級為 Pro".localized : "前往設定登入".localized)
+                    Button(action: onShowSettings) {
+                        Text("前往設定登入".localized)
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.vocabAction(.neutral))
@@ -369,7 +360,7 @@ private enum SyncPresenterPreviewData {
 
     static let ready = SyncPresenterState(
         isLoggedIn: true,
-        hasProAccess: true,
+
         isConnected: true,
         phase: .ready,
         failureKind: nil,
@@ -382,7 +373,7 @@ private enum SyncPresenterPreviewData {
 
     static let running = SyncPresenterState(
         isLoggedIn: true,
-        hasProAccess: true,
+
         isConnected: true,
         phase: .running,
         failureKind: nil,
@@ -395,7 +386,7 @@ private enum SyncPresenterPreviewData {
 
     static let failed = SyncPresenterState(
         isLoggedIn: true,
-        hasProAccess: true,
+
         isConnected: false,
         phase: .failed,
         failureKind: .full,
@@ -419,7 +410,7 @@ private enum SyncPresenterPreviewData {
 
     static let partialFailed = SyncPresenterState(
         isLoggedIn: true,
-        hasProAccess: true,
+
         isConnected: true,
         phase: .failed,
         failureKind: .partial,
@@ -473,7 +464,7 @@ private enum SyncPresenterPreviewData {
 
     static let signedOut = SyncPresenterState(
         isLoggedIn: false,
-        hasProAccess: false,
+
         isConnected: true,
         phase: .ready,
         failureKind: nil,
@@ -484,22 +475,9 @@ private enum SyncPresenterPreviewData {
         summaryText: ""
     )
 
-    static let noPro = SyncPresenterState(
-        isLoggedIn: true,
-        hasProAccess: false,
-        isConnected: true,
-        phase: .ready,
-        failureKind: nil,
-        pendingCount: 14,
-        addCount: 12,
-        deleteCount: 2,
-        steps: [],
-        summaryText: ""
-    )
-
     static let completed = SyncPresenterState(
         isLoggedIn: true,
-        hasProAccess: true,
+
         isConnected: true,
         phase: .completed,
         failureKind: nil,
@@ -519,7 +497,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
+
             )
         }
     }
@@ -533,7 +511,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
+
             )
         }
     }
@@ -547,7 +525,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
+
             )
         }
     }
@@ -561,7 +539,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
+
             )
         }
     }
@@ -575,21 +553,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
-            )
-        }
-    }
-}
 
-#Preview("Sync / No Pro") {
-    AppThemeContainer {
-        NavigationStack {
-            SyncPresenter(
-                state: SyncPresenterPreviewData.noPro,
-                onPrimaryAction: {},
-                onCancel: {},
-                onShowSettings: {},
-                onShowPaywall: {}
             )
         }
     }
@@ -603,7 +567,7 @@ private enum SyncPresenterPreviewData {
                 onPrimaryAction: {},
                 onCancel: {},
                 onShowSettings: {},
-                onShowPaywall: {}
+
             )
         }
     }
