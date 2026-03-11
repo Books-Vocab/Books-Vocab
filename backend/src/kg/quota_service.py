@@ -16,7 +16,12 @@ _OUTPUT_PER_M = 0.40
 _EMBED_PER_M = 0.00025
 
 PRO_DAILY_LIMIT_USD = 0.30
+FREE_DAILY_LIMIT_USD = 0.03
 _ROLLING_WINDOW_SECONDS = 86400  # 24 h
+
+
+def _daily_limit(is_pro: bool) -> float:
+    return PRO_DAILY_LIMIT_USD if is_pro else FREE_DAILY_LIMIT_USD
 
 
 def _token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
@@ -53,11 +58,12 @@ def _reset_seconds() -> int:
     return _ROLLING_WINDOW_SECONDS
 
 
-def get_quota_state(user_id: str) -> dict:
+def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
     """Return {fraction, reset_seconds} where fraction = remaining / limit."""
+    limit = _daily_limit(is_pro)
     used = _used_usd(user_id)
-    remaining = max(PRO_DAILY_LIMIT_USD - used, 0.0)
-    fraction = round(remaining / PRO_DAILY_LIMIT_USD, 4)
+    remaining = max(limit - used, 0.0)
+    fraction = round(remaining / limit, 4)
     return {"fraction": fraction, "reset_seconds": _reset_seconds()}
 
 
@@ -97,13 +103,14 @@ def get_all_quota_usage() -> dict[str, dict]:
     return result
 
 
-def check_quota(user_id: str, call_type: str) -> dict:
+def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check before a translate call.
 
     Returns {exceeded: bool, fraction, reset_seconds}.
     """
+    limit = _daily_limit(is_pro)
     used = _used_usd(user_id)
-    exceeded = used >= PRO_DAILY_LIMIT_USD
-    remaining = max(PRO_DAILY_LIMIT_USD - used, 0.0)
-    fraction = round(remaining / PRO_DAILY_LIMIT_USD, 4)
+    exceeded = used >= limit
+    remaining = max(limit - used, 0.0)
+    fraction = round(remaining / limit, 4)
     return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _reset_seconds()}

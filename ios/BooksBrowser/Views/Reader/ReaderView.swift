@@ -224,7 +224,7 @@ struct ReaderView: View {
                 pronunciation: handler.pronunciation,
                 isLoading: handler.isTranslating,
                 isSaved: handler.isSaved,
-                isLoggedIn: authManager.isLoggedIn && subscriptionManager.hasProAccess,
+                isLoggedIn: authManager.isLoggedIn,
                 isExpanded: handler.isExpanded,
                 explanation: handler.explanationText,
                 isLoadingExplanation: handler.isLoadingExplanation,
@@ -377,12 +377,6 @@ struct ReaderView: View {
     }
 
     private func canUseProReaderFeature() -> Bool {
-        guard authManager.isLoggedIn else { return true }
-        guard subscriptionManager.hasProAccess else {
-            subscriptionManager.activePaywallSource = .reader
-            readerState.showSubscriptionPaywall = true
-            return false
-        }
         return true
     }
 }

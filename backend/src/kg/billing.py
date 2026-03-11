@@ -94,17 +94,8 @@ def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str,
 
 
 def require_pro_access(user: dict[str, Any], capability: str) -> None:
-    entitlement = current_pro_entitlement_record(user.get("record"))
-    if entitlement.get("is_active"):
-        return
-    raise HTTPException(
-        status_code=402,
-        detail={
-            "code": "pro_required",
-            "capability": capability,
-            "message": "BooksBrowser Pro subscription required.",
-        },
-    )
+    """No-op: all features are available to all users. Quota limits differ by tier."""
+    return
 
 
 def append_app_store_event(notifications_file: Path, payload: dict[str, Any]) -> None:
