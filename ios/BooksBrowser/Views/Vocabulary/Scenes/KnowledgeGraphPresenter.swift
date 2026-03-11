@@ -185,9 +185,9 @@ private struct KnowledgeGraphPresenterPreviewHarness: View {
 
 private enum KnowledgeGraphPresenterPreviewData {
     static let sampleNodes = [
-        KnowledgeGraphNode(id: "1", word: "subtle", tier: "core", degree: 3),
-        KnowledgeGraphNode(id: "2", word: "nuance", tier: "advanced", degree: 2),
-        KnowledgeGraphNode(id: "3", word: "precise", tier: "intermediate", degree: 2)
+        KnowledgeGraphNode(id: "1", word: "subtle", tier: "green", degree: 3),
+        KnowledgeGraphNode(id: "2", word: "nuance", tier: "red", degree: 2),
+        KnowledgeGraphNode(id: "3", word: "precise", tier: "yellow", degree: 2)
     ]
 
     static let sampleEdges = [
