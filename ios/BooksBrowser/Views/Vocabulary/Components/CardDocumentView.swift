@@ -37,6 +37,7 @@ struct CardDocumentView: View {
 
 private struct CardDocumentHeroBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.speechService) private var speechService
     @State private var copyTrigger = false
     let hero: CardDocumentHero
 
@@ -65,7 +66,7 @@ private struct CardDocumentHeroBlock: View {
                         }
 
                         Button {
-                            SpeechService.shared.speak(hero.word)
+                            speechService.speak(hero.word)
                             copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")

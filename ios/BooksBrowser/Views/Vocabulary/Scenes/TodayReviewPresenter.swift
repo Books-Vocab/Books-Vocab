@@ -39,6 +39,7 @@ struct TodayReviewPresenter: View {
     // internal — extension files 需要存取
     @Environment(\.vocabSkin) var vocabSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
+    @Environment(\.speechService) private var speechService
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
     @State private var swipeOffset: CGFloat = 0
@@ -191,7 +192,7 @@ struct TodayReviewPresenter: View {
                             VocabChromeIconButton(
                                 systemImage: "speaker.wave.2.fill",
                                 label: "播放發音".localized,
-                                action: { SpeechService.shared.speak(card.word) }
+                                action: { speechService.speak(card.word) }
                             )
                             VocabChromeIconButton(
                                 systemImage: "arrow.up.right",
