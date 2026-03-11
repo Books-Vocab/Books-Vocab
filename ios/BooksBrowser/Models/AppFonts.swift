@@ -11,6 +11,7 @@
 import SwiftUI
 import UIKit
 import CoreText
+import os
 
 enum AppFonts {
 
@@ -196,9 +197,9 @@ enum AppFonts {
         CTFontDescriptorMatchFontDescriptorsWithProgressHandler(cfArray, nil) { state, _ in
             switch state {
             case .didFinish:
-                print("[AppFonts] STSongti-TC download completed")
+                AppLog.fonts.info("STSongti-TC download completed")
             case .didFailWithError:
-                print("[AppFonts] STSongti-TC download failed")
+                AppLog.fonts.error("STSongti-TC download failed")
             default:
                 break
             }

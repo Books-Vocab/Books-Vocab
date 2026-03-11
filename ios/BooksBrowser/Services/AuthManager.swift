@@ -10,6 +10,7 @@ import Foundation
 import GoogleSignIn
 import SwiftData
 import AuthenticationServices
+import os
 
 @MainActor
 @Observable
@@ -75,7 +76,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         guard !userIdStr.isEmpty, !tokenStr.isEmpty else { return }
 
         if let existing = self.userId, existing != userIdStr {
-            print("🔄 Account switch detected (\(existing) → \(userIdStr)), clearing sync timestamp")
+            AppLog.auth.info("Account switch detected, clearing sync timestamp")
             UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
         }
 
@@ -134,7 +135,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
 
         let isAccountSwitch = self.userId != nil && self.userId != userId
         if isAccountSwitch, let container = modelContainer {
-            print("🧹 Account switch — clearing previous user's local data")
+            AppLog.auth.info("Account switch — clearing previous user's local data")
             await localDataCleaner.clearLocalData(container: container, reason: accountSwitchReason)
         }
         login(userId: userId, token: jwtToken)

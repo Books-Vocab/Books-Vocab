@@ -9,6 +9,7 @@ import SwiftUI
 import SwiftData
 import ReadiumShared
 import ReadiumNavigator
+import os
 
 /// 閱讀器主介面（Readium 版）
 struct ReaderView: View {
@@ -82,13 +83,13 @@ struct ReaderView: View {
                     publication: publication,
                     onSelect: { link in
                         readerState.showTableOfContents = false
-                        print("📖 TOC selected: \(link.title ?? "Untitled")")
+                        AppLog.reader.debug("TOC selected: \(link.title ?? "Untitled")")
                         Task { @MainActor in
                             if let locator = await publication.locate(link) {
-                                print("📖 Navigating to valid locator: \(locator.href)")
+                                AppLog.reader.debug("Navigating to valid locator: \(String(describing: locator.href))")
                                 navigateToLocator = (locator: locator, id: UUID())
                             } else {
-                                print("❌ TOC navigation failed: could not locate link \(link)")
+                                AppLog.reader.error("TOC navigation failed: could not locate link \(String(describing: link))")
                             }
                         }
                     }
@@ -414,15 +415,15 @@ struct TOCView: View {
                 do {
                     let toc = try await publication.tableOfContents().get()
                     tocLinks = toc
-                    print("📖 TOC loaded: \(toc.count) items")
+                    AppLog.reader.info("TOC loaded: \(toc.count) items")
                     for (i, link) in toc.enumerated() {
-                        print("  📖 [\(i)] \(link.title ?? "nil") → \(link.url())")
+                        AppLog.reader.debug("  [\(i)] \(link.title ?? "nil") → \(String(describing: link.url()))")
                     }
                     if toc.isEmpty {
-                        print("⚠️ TOC is empty — this book may not have a table of contents")
+                        AppLog.reader.warning("TOC is empty — this book may not have a table of contents")
                     }
                 } catch {
-                    print("❌ TOC load failed: \(error)")
+                    AppLog.reader.error("TOC load failed: \(error.localizedDescription)")
                 }
             }
         }

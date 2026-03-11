@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 import GoogleSignIn
 
@@ -52,7 +53,7 @@ struct BooksBrowserApp: App {
             return
         }
 
-        print("SwiftData migration failed, deleting old database...")
+        AppLog.app.warning("SwiftData migration failed, deleting old database...")
 
         let appSupport = FileManager.default.urls(for: .applicationSupportDirectory, in: .userDomainMask).first!
         let storeFiles = [

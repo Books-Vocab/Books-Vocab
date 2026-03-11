@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 @Observable @MainActor
 final class BookshelfCoordinator {
@@ -65,12 +66,12 @@ final class BookshelfCoordinator {
 
         Task { @MainActor in
             do {
-                print("🚀 BookshelfCoordinator: starting import from \(url)")
+                AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
                 loadingMessage = L10n.string("正在解析 EPUB...")
 
                 let draft = try await importService.importBook(from: url)
-                print("🚀 import succeeded: \(draft.epubFileName)")
-                print("🚀 book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
+                AppLog.book.info("Import succeeded: \(draft.epubFileName)")
+                AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 
                 loadingMessage = L10n.string("正在儲存...")
 
@@ -83,13 +84,13 @@ final class BookshelfCoordinator {
 
                 modelContext.insert(book)
                 try? modelContext.save()
-                print("🚀 book saved: \(book.title)")
+                AppLog.book.info("Book saved: \(book.title)")
 
                 isLoading = false
                 loadingMessage = ""
             } catch {
-                print("❌ BookshelfCoordinator import error: \(error)")
-                print("❌ error type: \(type(of: error))")
+                AppLog.book.error("BookshelfCoordinator import error: \(error.localizedDescription)")
+                AppLog.book.error("Error type: \(String(describing: type(of: error)))")
                 isLoading = false
                 loadingMessage = ""
                 errorMessage = "\(error)"

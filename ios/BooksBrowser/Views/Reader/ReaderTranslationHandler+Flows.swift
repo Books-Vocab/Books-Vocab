@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 extension ReaderTranslationHandler {
     func handleWordSelected(
@@ -26,7 +27,7 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
-            print("📦 從生詞庫載入: \(word) → \(existing.word)")
+            AppLog.reader.debug("從生詞庫載入: \(word) → \(existing.word)")
             return
         }
 
@@ -108,7 +109,7 @@ extension ReaderTranslationHandler {
                 }
             } catch {
                 guard !(error is CancellationError) else { return }
-                print("❌ 翻譯錯誤: \(error)")
+                AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
                 let fetchedPron = await pronTask.value
                 translationResult = nil
                 pronunciation = fetchedPron
@@ -265,7 +266,7 @@ extension ReaderTranslationHandler {
                     }
                 }
             } catch {
-                print("❌ 解釋錯誤: \(error)")
+                AppLog.reader.error("解釋錯誤: \(error.localizedDescription)")
                 explanationText = nil
                 isLoadingExplanation = false
                 explanationStatus = nil
