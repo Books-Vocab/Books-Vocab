@@ -92,7 +92,7 @@ def admin_stats_response(
                 "est_cost_usd": round(est_cost, 6),
                 "pro": entitlements.pro.model_dump(),
                 "admin_grant": admin_grant,
-                "quota": quota_usage.get(uid, {"used_points": 0, "limit": 300, "fraction_used": 0.0, "calls": {}}),
+                "quota": quota_usage.get(uid, {"used_usd": 0.0, "limit_usd": 0.30, "fraction_used": 0.0, "calls": {}}),
             }
         )
 

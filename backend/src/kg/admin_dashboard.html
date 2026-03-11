@@ -850,15 +850,15 @@ function buildDetailRow(u, colSpan) {
     <div class="detail-section">
       <div class="detail-section-title">每日翻譯額度（24h）</div>
       ${(() => {
-        const q = u.quota || {used_points:0,limit:300,fraction_used:0,calls:{}};
+        const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
         const pctUsed = Math.round(q.fraction_used * 100);
-        let html = '<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">' + q.used_points + ' / ' + q.limit + ' (' + pctUsed + '%)</span></div>';
+        let html = '<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">$' + q.used_usd.toFixed(4) + ' / $' + q.limit_usd.toFixed(2) + ' (' + pctUsed + '%)</span></div>';
         html += '<div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ' + quotaColor(q.fraction_used) + '" style="width:' + pctUsed + '%"></div></div></div>';
         const calls = q.calls || {};
-        const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain'};
+        const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',embed:'embed'};
         for (const [t, label] of Object.entries(typeLabels)) {
           const c = calls[t];
-          if (c) html += '<div class="detail-kv"><span class="detail-k">' + label + '</span><span class="detail-v">&times;' + c.count + ' = ' + c.points + ' pts</span></div>';
+          if (c) html += '<div class="detail-kv"><span class="detail-k">' + label + '</span><span class="detail-v">&times;' + c.count + ' = $' + c.cost_usd.toFixed(4) + '</span></div>';
         }
         if (!Object.keys(calls).length) html += '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
         return html;
@@ -925,9 +925,9 @@ function renderUserRows(users) {
     const proBadgeClass=pro.is_active?'badge-pro-active':'badge-pro-inactive';
     const proLabel=pro.is_active?(pro.source==='admin'?'Admin Grant':pro.status||'active'):'inactive';
     const isExpanded = _expandedUid === u.user_id;
-    const q = u.quota || {used_points:0,limit:300,fraction_used:0,calls:{}};
+    const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
     const qPct = Math.round(q.fraction_used * 100);
-    const qLabel = q.used_points > 0 ? q.used_points + '/' + q.limit : '—';
+    const qLabel = q.used_usd > 0 ? '$' + q.used_usd.toFixed(4) : '—';
     return `<tr class="expandable${isExpanded?' expanded':''}" onclick="toggleDetail('${escapeHtml(u.user_id)}')">
       <td><div class="uid">${escapeHtml(u.user_id)}</div>${u.email?`<div class="email">${escapeHtml(u.email)}</div>`:''}</td>
       <td><span class="badge b-${pc}">${pc}</span></td>
@@ -949,7 +949,7 @@ function renderUserRows(users) {
         </div>
       </td>
       <td style="min-width:120px">
-        ${q.used_points > 0
+        ${q.used_usd > 0
           ? `<div class="bar-wrap"><div class="bar"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${qPct}%"></div></div><span class="bar-label">${qLabel}</span></div>`
           : `<span class="bar-label">—</span>`}
       </td>
