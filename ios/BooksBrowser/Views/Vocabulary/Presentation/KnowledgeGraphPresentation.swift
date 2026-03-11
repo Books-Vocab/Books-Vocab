@@ -36,13 +36,14 @@ enum KnowledgeGraphPresentation {
         }
 
         return entries.compactMap { entry in
-            guard entry.isSynced, let kgId = entry.kgCardId else { return nil }
+            guard entry.isSynced, entry.syncAction != .delete, let kgId = entry.kgCardId else { return nil }
             let degree = degreeMap[kgId] ?? 0
             guard degree > 0 else { return nil }
+            let tier = entry.isArchived ? "archived" : reviewTone(for: entry, now: now)
             return KnowledgeGraphNode(
                 id: kgId,
                 word: entry.word,
-                tier: reviewTone(for: entry, now: now),
+                tier: tier,
                 degree: degree
             )
         }
@@ -84,7 +85,9 @@ enum KnowledgeGraphPresentation {
                 "green": cssHex(skin.palette.success),
                 "yellow": cssHex(skin.palette.tierIntermediate),
                 "orange": cssHex(skin.palette.tierAdvanced),
-                "red": cssHex(skin.palette.destructive)
+                "red": cssHex(skin.palette.destructive),
+                "gray": cssHex(skin.palette.secondaryText),
+                "archived": cssHex(skin.palette.quaternaryText)
             ],
             edgeHexes: [
                 "confusable": cssHex(skin.palette.tierAdvanced),

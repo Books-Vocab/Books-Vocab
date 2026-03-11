@@ -39,6 +39,7 @@ struct KGCard: Codable, Identifiable {
     let examples: [String]
     let mode: String
     let isDeleted: Bool?
+    let isArchived: Bool?
     let pronunciation: String?
     let inflections: [String]?
     let linksByKind: [String: [KGCardLinkSummary]]?
