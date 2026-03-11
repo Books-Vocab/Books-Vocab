@@ -126,25 +126,28 @@ struct VocabChromeIconButton: View {
     }
 }
 
-struct VocabOverlayHeader<LeadingAccessory: View>: View {
+struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let title: String
     let systemImage: String
     var badgeText: String? = nil
     let onClose: () -> Void
     @ViewBuilder let leadingAccessory: LeadingAccessory
+    @ViewBuilder let trailingAccessory: TrailingAccessory
 
     init(
         title: String,
         systemImage: String,
         badgeText: String? = nil,
         onClose: @escaping () -> Void,
+        @ViewBuilder trailing trailingAccessory: () -> TrailingAccessory = { EmptyView() },
         @ViewBuilder leadingAccessory: () -> LeadingAccessory = { EmptyView() }
     ) {
         self.title = title
         self.systemImage = systemImage
         self.badgeText = badgeText
         self.onClose = onClose
+        self.trailingAccessory = trailingAccessory()
         self.leadingAccessory = leadingAccessory()
     }
 
@@ -169,6 +172,8 @@ struct VocabOverlayHeader<LeadingAccessory: View>: View {
             }
 
             Spacer()
+
+            trailingAccessory
 
             VocabChromeIconButton(systemImage: "xmark", label: "關閉", action: onClose)
         }
