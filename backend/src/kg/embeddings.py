@@ -10,7 +10,7 @@ import numpy as np
 
 logger = logging.getLogger(__name__)
 import httpx
-from openai import OpenAI
+from openai import OpenAI, OpenAIError
 
 EMBEDDING_MODEL = "gemini-embedding-001"
 EMBEDDING_DIM = 3072
@@ -61,7 +61,7 @@ class EmbeddingStore:
                            0)
                 embedding = response.data[0].embedding
                 return np.array(embedding, dtype=np.float32)
-            except Exception as e:
+            except OpenAIError as e:
                 if attempt < 2:
                     time.sleep(2 ** attempt)
                     continue

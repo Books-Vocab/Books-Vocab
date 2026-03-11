@@ -60,7 +60,7 @@ def admin_stats_response(
         try:
             store = card_store_factory(user_dir)
             vocab_count = sum(1 for card in store.all() if not card.is_deleted)
-        except Exception:
+        except (OSError, ValueError):
             logger.warning("Failed to load card store for user %s", uid, exc_info=True)
 
         utoken = token_stats.get(uid, {})

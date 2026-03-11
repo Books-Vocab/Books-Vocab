@@ -158,7 +158,7 @@ def delete_user_account_response(
         try:
             shutil.rmtree(user_dir)
             deleted_dirs.append(uid)
-        except Exception as exc:
+        except OSError as exc:
             logger.exception("Failed to delete user directory %s: %s", user_dir, exc)
             raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}") from exc
 

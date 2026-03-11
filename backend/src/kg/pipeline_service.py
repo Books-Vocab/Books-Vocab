@@ -4,6 +4,9 @@ import asyncio
 import logging
 from typing import Any, Callable
 
+import httpx
+from openai import OpenAIError
+
 from .user_store import resolve_mochi_api_key_from_config
 
 
@@ -81,7 +84,7 @@ async def _step_embed(
                 if score > 0.655:
                     graph.add_candidate(card.id, other_id, score)
             backfilled += 1
-        except Exception as exc:
+        except (OpenAIError, OSError, ValueError) as exc:
             logger.warning("[%s] Embedding backfill failed for '%s': %s", uid, card.content, exc)
     logger.info("[%s] Backfilled %d embeddings", uid, backfilled)
 
@@ -136,9 +139,9 @@ async def _step_link(
                     result.reason,
                 )
                 created_links += 1
-    except Exception as exc:
+    except Exception:  # broad catch: must requeue candidates before propagating
         graph.requeue_candidates(candidates[index:])
-        raise exc
+        raise
 
     logger.info("[%s] Created %d links", uid, created_links)
 
@@ -218,6 +221,10 @@ async def run_pipeline_background(
     async with lock:
         try:
             logger.info("[%s] Pipeline started.", uid)
+
+            # Step isolation: each step logs its error (with traceback) and lets
+            # subsequent steps run.  Broad catch is intentional here — a single
+            # step failure must never abort the whole pipeline.
 
             try:
                 await _step_enrich(uid, user, card_store_factory=card_store_factory, gemini_client_factory=gemini_client_factory, logger=logger)
