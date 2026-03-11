@@ -16,6 +16,7 @@ struct SettingsView: View {
     @Environment(\.requestReview) private var requestReview
     @EnvironmentObject private var appLanguage: AppLanguageStore
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
+    @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
     @State private var showSubscriptionPaywall = false
     @StateObject private var coordinator = SettingsCoordinator()
 
@@ -66,7 +67,8 @@ struct SettingsView: View {
                 selectedLanguage: L10n.string(appLanguage.selection.titleKey),
                 selectedAppearance: appearanceStore.selection.titleKey,
                 translationSource: coordinator.translationSourceLang.nativeName,
-                translationTarget: coordinator.translationTargetLang.nativeName
+                translationTarget: coordinator.translationTargetLang.nativeName,
+                selectedReviewMode: reviewSettingsStore.settings.mode.displayName
             ),
             kg: authManager.isLoggedIn
                 ? .init(

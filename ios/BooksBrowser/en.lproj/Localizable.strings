@@ -455,3 +455,18 @@
 "難度等級：%@" = "Difficulty: %@";
 "複習進度" = "Review Progress";
 "載入解釋..." = "Loading explanation...";
+
+// Review Settings
+"寬鬆" = "Relaxed";
+"密集" = "Intensive";
+"自訂" = "Custom";
+"複習節奏" = "Review Pace";
+"複習模式" = "Review Mode";
+"自訂參數" = "Custom Parameters";
+"初始間隔" = "Initial Interval";
+"記得倍率" = "Remembered ×";
+"忘記倍率" = "Forgot ×";
+"最短間隔" = "Min Interval";
+"最長間隔" = "Max Interval";
+"選擇符合學習節奏的模式，設定立即生效。" = "Choose a pace that fits your learning rhythm. Changes apply immediately.";
+"目前生效：初始 %@・記得 %@・忘記 %@・最短 %@・最長 %@" = "Active: initial %@・remembered %@・forgot %@・min %@・max %@";
