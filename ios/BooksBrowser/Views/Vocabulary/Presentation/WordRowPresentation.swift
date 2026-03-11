@@ -6,15 +6,42 @@ extension VocabularyEntry {
         showsSourceContext: Bool = true,
         showsDifficultyTier: Bool = true,
         showsReviewProgress: Bool = false,
+        showsArchiveStyle: Bool = false,
         now: Date = Date()
     ) -> WordRow.ViewData {
         let isDelete = syncAction == .delete
         let status = rowStatus(showsReviewState: showsReviewState, isDelete: isDelete)
 
+        let wordTone: WordRow.ViewData.Tone
+        let leadingImage: String?
+        let leadingToneValue: WordRow.ViewData.Tone?
+        let trailingLabelText: String?
+        let trailingToneValue: WordRow.ViewData.Tone?
+
+        if isDelete {
+            wordTone = .destructive
+            leadingImage = "trash"
+            leadingToneValue = .destructive
+            trailingLabelText = "待刪除"
+            trailingToneValue = .destructive
+        } else if showsArchiveStyle {
+            wordTone = .secondary
+            leadingImage = "archivebox"
+            leadingToneValue = .tertiary
+            trailingLabelText = nil
+            trailingToneValue = nil
+        } else {
+            wordTone = .primary
+            leadingImage = nil
+            leadingToneValue = nil
+            trailingLabelText = nil
+            trailingToneValue = nil
+        }
+
         return WordRow.ViewData(
             id: id,
             word: word,
-            wordTone: isDelete ? .destructive : .primary,
+            wordTone: wordTone,
             isStrikethrough: isDelete,
             partOfSpeech: partOfSpeech,
             translation: translation.nilIfBlank,
@@ -26,10 +53,10 @@ extension VocabularyEntry {
                 isDelete: isDelete,
                 now: now
             ),
-            leadingSystemImage: isDelete ? "trash" : nil,
-            leadingTone: isDelete ? .destructive : nil,
-            trailingLabel: isDelete ? "待刪除" : nil,
-            trailingTone: isDelete ? .destructive : nil,
+            leadingSystemImage: leadingImage,
+            leadingTone: leadingToneValue,
+            trailingLabel: trailingLabelText,
+            trailingTone: trailingToneValue,
             statusText: status?.text,
             statusTone: status?.tone
         )

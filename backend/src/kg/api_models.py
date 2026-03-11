@@ -41,6 +41,7 @@ class CardResponse(BaseModel):
     examples: list[str]
     mode: str
     isDeleted: bool
+    isArchived: bool = False
     pronunciation: str | None = None
     inflections: list[str] = []
     linksByKind: dict[str, list["CardLinkSummaryResponse"]] = Field(default_factory=dict)
@@ -209,6 +210,10 @@ class DeleteAccountResponse(BaseModel):
 
 class AdminTestRunRequest(BaseModel):
     itemIds: list[str] = []
+
+
+class ArchiveWordRequest(BaseModel):
+    archived: bool
 
 
 class DeleteWordResponse(BaseModel):

@@ -80,6 +80,24 @@ enum VocabularyEntryPresentation {
         syncedKnowledgeEntries(in: entries).filter { $0.reviewState == reviewState }.count
     }
 
+    static func archivedEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
+        entries
+            .filter(\.shouldAppearInArchiveList)
+            .sorted { $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending }
+    }
+
+    static func filteredArchivedEntries(
+        in entries: [VocabularyEntry],
+        searchText: String
+    ) -> [VocabularyEntry] {
+        let all = archivedEntries(in: entries)
+        guard !searchText.isEmpty else { return all }
+        return all.filter {
+            $0.word.localizedCaseInsensitiveContains(searchText) ||
+            $0.translation.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
     static func compareKnowledgeEntries(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
         if reviewPriority(lhs.reviewState) != reviewPriority(rhs.reviewState) {
             return reviewPriority(lhs.reviewState) < reviewPriority(rhs.reviewState)
