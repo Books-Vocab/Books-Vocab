@@ -1,5 +1,6 @@
 import Foundation
 import WebKit
+import os
 
 extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
     func findWebView(in view: UIView?) -> WKWebView? {
@@ -22,7 +23,7 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
             case "markingProgress":
                 self.handleMarkingProgressMessage(message.body)
             case "wordDeselect":
-                print("👋 Word deselected (toggle off)")
+                AppLog.reader.debug("Word deselected (toggle off)")
                 self.parent.onWordDeselected()
             case "wordTap":
                 self.handleWordTapMessage(message.body)
@@ -42,7 +43,7 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
         } else {
             releaseSelectionLock(on: scrollView)
         }
-        print("📜 Selection state: \(isActive)")
+        AppLog.reader.debug("Selection state: \(isActive)")
     }
 
     private func handleMarkingProgressMessage(_ body: Any) {
@@ -64,7 +65,7 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
               let word = json["word"],
               let context = json["context"] else { return }
 
-        print("📝 Word from JS: \(word)")
+        AppLog.reader.debug("Word from JS: \(word)")
         parent.onWordSelected(word, context)
     }
 

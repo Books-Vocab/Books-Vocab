@@ -7,6 +7,7 @@
 
 import Foundation
 import FoundationModels
+import os
 
 /// AI 翻譯結果
 struct TranslationResult: Codable {
@@ -43,7 +44,7 @@ final class TranslationService: Translating {
         let startTime = Date()
         
         var result = try await withRetry(onRetry: onRetry) {
-            print("🌐 Quick翻譯請求: \(word)")
+            AppLog.translation.debug("Quick翻譯請求: \(word)")
             let data = try await self.callBackend(endpoint: "/api/translate/quick", word: word, context: context)
 
             struct QuickResult: Codable {
@@ -53,7 +54,7 @@ final class TranslationService: Translating {
             }
 
             let quick = try JSONDecoder().decode(QuickResult.self, from: data)
-            print("✅ Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
+            AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
 
             return TranslationResult(
                 translation: quick.t,
@@ -78,7 +79,7 @@ final class TranslationService: Translating {
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> String {
         return try await withRetry(onRetry: onRetry) {
-            print("🌐 短語翻譯請求: \(phrase)")
+            AppLog.translation.debug("短語翻譯請求: \(phrase)")
             let data = try await self.callBackend(endpoint: "/api/translate/phrase", word: phrase, context: context)
 
             struct PhraseResult: Codable {
@@ -86,7 +87,7 @@ final class TranslationService: Translating {
             }
 
             let result = try JSONDecoder().decode(PhraseResult.self, from: data)
-            print("✅ 短語翻譯: \(phrase) → \(result.t)")
+            AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
             return result.t
         }
     }
@@ -101,7 +102,7 @@ final class TranslationService: Translating {
         let startTime = Date()
         
         let explanation = try await withRetry(onRetry: onRetry) {
-            print("🌐 解釋請求: \(word)")
+            AppLog.translation.debug("解釋請求: \(word)")
             let data = try await self.callBackend(endpoint: "/api/translate/explain", word: word, context: context)
 
             struct ExplanationResult: Codable {
@@ -109,7 +110,7 @@ final class TranslationService: Translating {
             }
 
             let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
-            print("✅ 解釋完成: \(result.e.prefix(50))...")
+            AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
             return result.e
         }
         
@@ -160,7 +161,7 @@ final class TranslationService: Translating {
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
-            print("❌ Backend API 錯誤 [\(httpResponse.statusCode)]: \(errorBody)")
+            AppLog.translation.error("Backend API error [\(httpResponse.statusCode)]: \(errorBody)")
 
             if httpResponse.statusCode == 401 {
                 throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))

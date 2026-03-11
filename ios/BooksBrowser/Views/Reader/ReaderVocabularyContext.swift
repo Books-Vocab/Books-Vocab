@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import ReadiumShared
+import os
 
 @MainActor
 struct ReaderVocabularyContext {
@@ -24,10 +25,10 @@ struct ReaderVocabularyContext {
 
         if entry.isSynced {
             entry.queueDelete()
-            print("🗑️ Queued KG delete action for: \(word)")
+            AppLog.reader.info("Queued KG delete action for: \(word)")
         } else {
             modelContext.delete(entry)
-            print("🗑️ Deleted local entry: \(word)")
+            AppLog.reader.info("Deleted local entry: \(word)")
         }
         try? modelContext.save()
     }
