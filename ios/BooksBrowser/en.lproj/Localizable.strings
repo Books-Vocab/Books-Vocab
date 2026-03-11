@@ -470,3 +470,7 @@
 "最長間隔" = "Max Interval";
 "選擇符合學習節奏的模式，設定立即生效。" = "Choose a pace that fits your learning rhythm. Changes apply immediately.";
 "目前生效：初始 %@・記得 %@・忘記 %@・最短 %@・最長 %@" = "Active: initial %@・remembered %@・forgot %@・min %@・max %@";
+"編輯" = "Edit";
+"儲存" = "Save";
+"音標" = "Phonetics";
+"翻譯結果" = "Translation";

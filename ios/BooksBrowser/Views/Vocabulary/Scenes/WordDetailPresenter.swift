@@ -22,6 +22,7 @@ struct WordDetailPresenter: View {
     let state: State
     let wrapInNavigation: Bool
     let onClose: (() -> Void)?
+    let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
 
     var body: some View {
@@ -31,7 +32,12 @@ struct WordDetailPresenter: View {
                     VocabOverlayHeader(
                         title: state.title,
                         systemImage: state.systemImage,
-                        onClose: { onClose?() }
+                        onClose: { onClose?() },
+                        trailing: {
+                            if let onEdit {
+                                VocabChromeIconButton(systemImage: "pencil", label: "編輯".localized, action: onEdit)
+                            }
+                        }
                     )
 
                     detailContentScroll
