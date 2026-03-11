@@ -236,7 +236,7 @@ class MochiSync:
                 if not dry_run:
                     try:
                         self.client.delete_card(mochi_id)
-                    except Exception as e:
+                    except httpx.HTTPError as e:
                         logger.warning("Failed to delete orphaned Mochi card %s (local: %s): %s", mochi_id, card_id, e)
                     del self._map[card_id]
                     self._state.pop(card_id, None)

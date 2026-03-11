@@ -73,7 +73,7 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) 
         return []
 
     import time
-    from openai import RateLimitError, APIError, InternalServerError
+    from openai import RateLimitError, APIError, InternalServerError, OpenAIError
 
     for attempt in range(4):
         try:
@@ -189,7 +189,7 @@ async def enrich_cards_stream(
                 else:
                     loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
                     return
-            except Exception as e:
+            except (OpenAIError, json.JSONDecodeError, KeyError, TypeError) as e:
                 loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
                 return
 
