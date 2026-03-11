@@ -11,6 +11,7 @@ import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
 import ReadiumAdapterGCDWebServer
+import os
 
 /// Readium 服務 — 封裝 EPUB 開啟與 Publication 管理
 @MainActor
@@ -39,23 +40,23 @@ final class ReadiumService: ReadiumServing {
 
     /// 從 EPUB 檔案 URL 開啟 Publication
     func openPublication(at url: URL) async throws -> Publication {
-        print("📖 openPublication: \(url.path)")
+        AppLog.readium.info("openPublication: \(url.path)")
         guard let absoluteURL = FileURL(url: url) else {
-            print("❌ 無法轉換為 FileURL")
+            AppLog.readium.error("無法轉換為 FileURL")
             throw NSError(
                 domain: "ReadiumService",
                 code: 1,
                 userInfo: [NSLocalizedDescriptionKey: L10n.format("無法轉換檔案路徑: %@", url.path)]
             )
         }
-        print("📖 retrieving asset...")
+        AppLog.readium.info("Retrieving asset...")
         let asset = try await assetRetriever.retrieve(url: absoluteURL).get()
-        print("📖 asset retrieved: \(asset.format)")
+        AppLog.readium.info("Asset retrieved: \(String(describing: asset.format))")
         let publication = try await publicationOpener.open(
             asset: asset,
             allowUserInteraction: false
         ).get()
-        print("📖 publication opened: \(publication.metadata.title ?? "no title")")
+        AppLog.readium.info("Publication opened: \(publication.metadata.title ?? "no title")")
         return publication
     }
 
@@ -64,9 +65,9 @@ final class ReadiumService: ReadiumServing {
     /// 匯入 EPUB 檔案到 App Documents
     /// - Returns: (儲存的檔名, Publication)
     func importEPUB(from sourceURL: URL) async throws -> (fileName: String, publication: Publication) {
-        print("📦 importEPUB from: \(sourceURL.path)")
+        AppLog.readium.info("importEPUB from: \(sourceURL.path)")
         let sourceAccess = sourceURL.startAccessingSecurityScopedResource()
-        print("📦 security scoped access: \(sourceAccess)")
+        AppLog.readium.info("Security scoped access: \(sourceAccess)")
         defer {
             if sourceAccess {
                 sourceURL.stopAccessingSecurityScopedResource()
@@ -76,15 +77,15 @@ final class ReadiumService: ReadiumServing {
         // 建立唯一檔名
         let fileName = UUID().uuidString + ".epub"
         let destinationURL = Book.epubsDirectory.appendingPathComponent(fileName)
-        print("📦 destination: \(destinationURL.path)")
+        AppLog.readium.info("Destination: \(destinationURL.path)")
 
         // 複製到 App Documents
         try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
-        print("📦 file copied successfully")
+        AppLog.readium.info("File copied successfully")
 
         // 開啟 Publication 以提取 metadata
         let publication = try await openPublication(at: destinationURL)
-        print("📦 publication ready")
+        AppLog.readium.info("Publication ready")
 
         return (fileName, publication)
     }
@@ -96,7 +97,7 @@ final class ReadiumService: ReadiumServing {
         let title = publication.metadata.title ?? "Untitled"
         let authorNames = publication.metadata.authors.map(\.name)
         let author = authorNames.isEmpty ? "Unknown" : authorNames.joined(separator: ", ")
-        print("📖 metadata: title=\(title), author=\(author)")
+        AppLog.readium.info("Metadata: title=\(title), author=\(author)")
         return (title, author)
     }
 
@@ -148,11 +149,11 @@ final class ReadiumService: ReadiumServing {
                         uniqueWords.insert(word)
                     }
                 } catch {
-                    print("⚠️ extractUniqueWords: 無法讀取章節 \(link.href), error: \(error)")
+                    AppLog.readium.warning("extractUniqueWords: 無法讀取章節 \(String(describing: link.href)), error: \(error.localizedDescription)")
                 }
             }
             
-            print("📖 extractUniqueWords 完成：共提取了 \(uniqueWords.count) 個不重複單字")
+            AppLog.readium.info("extractUniqueWords 完成：共提取了 \(uniqueWords.count) 個不重複單字")
             return uniqueWords
         }.value
     }

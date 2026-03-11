@@ -1,4 +1,5 @@
 import SwiftUI
+import os
 
 extension ReaderTranslationHandler {
     func deleteFromVocabulary(_ word: String, context: ReaderVocabularyContext) {
@@ -43,7 +44,7 @@ extension ReaderTranslationHandler {
             rootForm: result.rootForm
         )
         if inserted {
-            print("✅ Auto-saved: \(selection.word)")
+            AppLog.reader.info("Auto-saved: \(selection.word)")
         }
         appendLookedUpWordIfNeeded(selection.word)
         withAnimation(AppMotion.feedbackPulse) { isSaved = true }
@@ -66,7 +67,7 @@ extension ReaderTranslationHandler {
             pronunciation: pronunciation
         )
         if inserted {
-            print("✅ Guest saved: \(selection.word)")
+            AppLog.reader.info("Guest saved: \(selection.word)")
         }
         appendLookedUpWordIfNeeded(selection.word)
         withAnimation(AppMotion.feedbackPulse) { isSaved = true }

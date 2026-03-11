@@ -10,6 +10,7 @@ import WebKit
 import ReadiumShared
 import ReadiumStreamer
 import ReadiumNavigator
+import os
 
 // MARK: - SwiftUI Representable
 
@@ -259,7 +260,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 if didLoadBookWords {
                     lastBookUniqueWordsCount = bookUniqueWords?.count ?? 0
                     let validWords = filterValidWords(lookedUpWords, bookWords: bookUniqueWords)
-                    print("📊 生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
+                    AppLog.reader.info("生字預過濾：全域 \(lookedUpWords.count) 字 -> 本書 \(validWords.count) 字 (\(String(format: "%.1f", (1.0 - Double(validWords.count)/Double(max(1, lookedUpWords.count))) * 100))% 縮減)")
                     return validWords.isEmpty ? [] : [.dom(.markVocabWords(validWords))]
                 }
 
@@ -383,9 +384,9 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
             switch command {
             case .navigate(let locator):
                 Task { @MainActor in
-                    print("🧭 Attempting navigation to: \(locator.href)")
+                    AppLog.reader.debug("Attempting navigation to: \(String(describing: locator.href))")
                     let success = await navigator?.go(to: locator)
-                    print("🧭 Navigation result: \(String(describing: success))")
+                    AppLog.reader.debug("Navigation result: \(String(describing: success))")
                 }
             case .applyPreferences(let preferences):
                 isApplyingPreferences = true
@@ -423,7 +424,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
 
         func navigator(_ navigator: any Navigator, presentError error: NavigatorError) {
-            print("❌ Navigator error: \(error)")
+            AppLog.reader.error("Navigator error: \(String(describing: error))")
         }
 
         // MARK: VisualNavigatorDelegate
@@ -470,7 +471,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
             let script = WKUserScript(source: js, injectionTime: .atDocumentEnd, forMainFrameOnly: false)
             userContentController.addUserScript(script)
-            print("📝 User scripts injected (三種狀態)")
+            AppLog.reader.info("User scripts injected")
 
             // Scripts 注入後重新標記所有生字（修復初始載入的 race condition）
             let words = parent.lookedUpWords
