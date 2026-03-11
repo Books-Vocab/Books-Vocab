@@ -3,7 +3,10 @@ import SwiftUI
 /// 全域 Environment 注入點
 /// App root 注入具體實例，View 與 Handler 依賴 protocol 類型
 
-// MainActor-isolated services 需要手動 EnvironmentKey（@Entry default value 在 nonisolated context evaluate）
+// MainActor-isolated services need manual EnvironmentKey because @Entry default
+// evaluates in nonisolated context. nonisolated(unsafe) + MainActor.assumeIsolated
+// is correct here: SwiftUI always evaluates EnvironmentKey defaults on the main
+// thread, and static let ensures one-time initialization.
 private struct SubscriptionManagerEnvironmentKey: EnvironmentKey {
     nonisolated(unsafe) static let defaultValue: any SubscriptionManaging = MainActor.assumeIsolated {
         SubscriptionManager.shared

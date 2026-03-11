@@ -4,7 +4,6 @@ import SwiftData
 import UIKit
 
 extension AuthManager {
-    @MainActor
     func loginWithGoogle(modelContainer: ModelContainer? = nil) {
         let window = UIApplication.shared.connectedScenes
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
