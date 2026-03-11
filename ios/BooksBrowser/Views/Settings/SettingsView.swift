@@ -18,7 +18,7 @@ struct SettingsView: View {
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
     @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
     @State private var showSubscriptionPaywall = false
-    @StateObject private var coordinator = SettingsCoordinator()
+    @State private var coordinator = SettingsCoordinator()
 
     private var userInitials: String? {
         guard let name = authManager.displayName, !name.isEmpty else { return nil }

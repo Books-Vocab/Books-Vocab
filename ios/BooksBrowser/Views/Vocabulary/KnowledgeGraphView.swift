@@ -6,7 +6,7 @@ struct KnowledgeGraphView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Query private var allEntries: [VocabularyEntry]
-    @StateObject private var coordinator = KnowledgeGraphCoordinator()
+    @State private var coordinator = KnowledgeGraphCoordinator()
 
     var body: some View {
         KnowledgeGraphPresenter(

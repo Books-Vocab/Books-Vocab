@@ -1,15 +1,15 @@
 import Foundation
 import SwiftData
 
-@MainActor
-final class VocabularyListCoordinator: ObservableObject {
-    @Published var showExportSheet = false
-    @Published var showSyncView = false
-    @Published var showSettings = false
-    @Published var exportURL: URL?
-    @Published var isForceRefreshing = false
-    @Published var selectedEntry: VocabularyEntry?
-    @Published var activeReviewSession: TodayReviewSession?
+@Observable @MainActor
+final class VocabularyListCoordinator {
+    var showExportSheet = false
+    var showSyncView = false
+    var showSettings = false
+    var exportURL: URL?
+    var isForceRefreshing = false
+    var selectedEntry: VocabularyEntry?
+    var activeReviewSession: TodayReviewSession?
 
     func presentSyncView() {
         showSyncView = true

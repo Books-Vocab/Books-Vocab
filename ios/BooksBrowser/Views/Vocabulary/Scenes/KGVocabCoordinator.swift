@@ -2,11 +2,11 @@ import Foundation
 import SwiftData
 import SwiftUI
 
-@MainActor
-final class KGVocabCoordinator: ObservableObject {
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var selectedEntry: VocabularyEntry?
+@Observable @MainActor
+final class KGVocabCoordinator {
+    var isLoading = false
+    var errorMessage: String?
+    var selectedEntry: VocabularyEntry?
 
     func dismissBanner() {
         errorMessage = nil
