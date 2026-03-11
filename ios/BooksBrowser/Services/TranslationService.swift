@@ -24,9 +24,15 @@ struct TranslationResult: Codable {
 final class TranslationService: Translating {
     @ObservationIgnored
     private let authSession: any AuthSessionProviding
+    @ObservationIgnored
+    private let quotaStore: any QuotaProviding
 
-    init(authSession: any AuthSessionProviding = AuthManager.shared) {
+    init(
+        authSession: any AuthSessionProviding = AuthManager.shared,
+        quotaStore: any QuotaProviding = QuotaStore.shared
+    ) {
         self.authSession = authSession
+        self.quotaStore = quotaStore
     }
 
     /// Backend Server URL
@@ -157,7 +163,7 @@ final class TranslationService: Translating {
         }
 
         // Update quota from response headers (before status check)
-        QuotaStore.shared.update(from: httpResponse)
+        quotaStore.update(from: httpResponse)
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
@@ -169,7 +175,7 @@ final class TranslationService: Translating {
             if httpResponse.statusCode == 429 {
                 // Distinguish quota exhausted vs rate limit
                 if errorBody.contains("quota_exhausted") {
-                    throw TranslationError.quotaExhausted(QuotaStore.shared.resetText)
+                    throw TranslationError.quotaExhausted(quotaStore.resetText)
                 }
                 throw TranslationError.apiError(L10n.string("請求過於頻繁，請稍後再試"))
             }

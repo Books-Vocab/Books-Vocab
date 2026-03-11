@@ -41,6 +41,7 @@ struct TranslationPanel: View {
     let onDelete: () -> Void
     let onDismiss: () -> Void
 
+    @Environment(\.speechService) private var speechService
     @State private var dragOffset: CGFloat = 0
     @State private var isSpeaking = false
     @State private var elapsedTime: Double = 0
@@ -113,7 +114,7 @@ struct TranslationPanel: View {
         case .glass:
             TranslationPanelPresenter(
                 state: presenterState,
-                onSpeak: { SpeechService.shared.speak(word); isSpeaking.toggle() },
+                onSpeak: { speechService.speak(word); isSpeaking.toggle() },
                 onExpand: onExpand,
                 onDelete: onDelete,
                 onDismiss: onDismiss
@@ -121,7 +122,7 @@ struct TranslationPanel: View {
         case .vocab:
             TranslationVocabPresenter(
                 state: presenterState,
-                onSpeak: { SpeechService.shared.speak(word); isSpeaking.toggle() },
+                onSpeak: { speechService.speak(word); isSpeaking.toggle() },
                 onExpand: onExpand,
                 onDelete: onDelete,
                 onDismiss: onDismiss
