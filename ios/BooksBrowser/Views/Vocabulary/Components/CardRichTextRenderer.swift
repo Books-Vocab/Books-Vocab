@@ -25,6 +25,11 @@ enum CardRichTextRenderer {
         pattern: "\\*\\*.+?\\*\\*"
     )
 
+    /// 移除所有 **word** 標記，只留詞本身（用於截斷前的清理）
+    private static let stripMarkPattern = try! NSRegularExpression(
+        pattern: "\\*\\*(.+?)\\*\\*"
+    )
+
     private static let tokenPattern = try! NSRegularExpression(
         pattern: "\\S+"
     )
@@ -173,6 +178,31 @@ enum CardRichTextRenderer {
     ) -> String {
         guard radiusWords >= 0 else { return raw }
 
+        // 當有 targetWord 時：先 strip 所有現有 ** 標記，再以 targetWord 為中心截斷。
+        // 這樣可避免「例句裡有其他詞被標記但 targetWord 沒被標記」時截到錯誤的上下文。
+        if let fallback = targetWordFallback, !fallback.isEmpty {
+            let nsRaw = raw as NSString
+            let stripped = stripMarkPattern.stringByReplacingMatches(
+                in: raw,
+                range: NSRange(location: 0, length: nsRaw.length),
+                withTemplate: "$1"
+            )
+            let nsStripped = stripped as NSString
+            let esc = NSRegularExpression.escapedPattern(for: fallback)
+            let pattern = "(?<![\\w\\p{L}])\(esc)(?![\\w\\p{L}])"
+            if let wordRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+               let wordMatch = wordRegex.firstMatch(in: stripped, range: NSRange(location: 0, length: nsStripped.length)) {
+                let actualWord = nsStripped.substring(with: wordMatch.range)
+                let marked = nsStripped.substring(to: wordMatch.range.location)
+                    + "**\(actualWord)**"
+                    + nsStripped.substring(from: wordMatch.range.location + wordMatch.range.length)
+                // 以唯一的 **targetWord** 為中心截斷（不傳 targetWordFallback 避免遞迴）
+                return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
+            }
+            // targetWord 不在例句中：顯示前 (2*radius+1) 個詞（stripped 版本，無雜訊標記）
+            return truncateLeadingWords(stripped, count: 2 * radiusWords + 1)
+        }
+
         let nsRaw = raw as NSString
         guard
             let match = markedWordPattern.firstMatch(
@@ -180,20 +210,6 @@ enum CardRichTextRenderer {
                 range: NSRange(location: 0, length: nsRaw.length)
             )
         else {
-            // 無標記詞：嘗試以 targetWord 動態建立標記後截斷
-            if let fallback = targetWordFallback, !fallback.isEmpty {
-                let escapedFallback = NSRegularExpression.escapedPattern(for: fallback)
-                let pattern = "(?<![\\w\\p{L}])\(escapedFallback)(?![\\w\\p{L}])"
-                if let wordRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-                   let wordMatch = wordRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length)) {
-                    let actualWord = nsRaw.substring(with: wordMatch.range)
-                    let marked = nsRaw.substring(to: wordMatch.range.location)
-                        + "**\(actualWord)**"
-                        + nsRaw.substring(from: wordMatch.range.location + wordMatch.range.length)
-                    return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
-                }
-            }
-            // 完全找不到目標詞：顯示前 (2*radius+1) 個詞
             return truncateLeadingWords(raw, count: 2 * radiusWords + 1)
         }
 
