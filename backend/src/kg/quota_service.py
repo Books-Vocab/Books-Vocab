@@ -57,6 +57,38 @@ def get_quota_state(user_id: str) -> dict:
     return {"fraction": fraction, "reset_seconds": _reset_seconds()}
 
 
+def get_all_quota_usage() -> dict[str, dict]:
+    """Return 24h quota usage for all users (admin only)."""
+    cutoff = datetime.now(timezone.utc).timestamp() - _ROLLING_WINDOW_SECONDS
+    cutoff_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+
+    with _lock:
+        conn = _get_conn()
+        rows = conn.execute(
+            """
+            SELECT user_id, call_type, COUNT(*) AS cnt
+            FROM token_usage
+            WHERE created_at >= ?
+            GROUP BY user_id, call_type
+            """,
+            (cutoff_iso,),
+        ).fetchall()
+
+    result: dict[str, dict] = {}
+    for user_id, call_type, cnt in rows:
+        if user_id not in result:
+            result[user_id] = {"used_points": 0, "limit": PRO_DAILY_LIMIT, "calls": {}}
+        cost = cnt * CALL_COST.get(call_type, 0)
+        result[user_id]["used_points"] += cost
+        result[user_id]["calls"][call_type] = {"count": cnt, "points": cost}
+
+    for uid in result:
+        used = result[uid]["used_points"]
+        result[uid]["fraction_used"] = round(used / PRO_DAILY_LIMIT, 4)
+
+    return result
+
+
 def check_quota(user_id: str, call_type: str) -> dict:
     """Pre-flight check before a translate call.
 
