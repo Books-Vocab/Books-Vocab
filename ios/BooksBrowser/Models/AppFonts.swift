@@ -103,22 +103,25 @@ enum AppFonts {
     }
 
     // MARK: - UIKit Fonts (for Appearance API)
-    //
-    // Note: UINavigationBarAppearance 不支援含 cascade list 的 font descriptor,
-    // 改用 UIFont(name:size:) 直接建構。CJK 文字由系統自動 fallback 到 PingFang。
 
-    /// UIKit serif font — Athelas (CJK auto-fallback by system)
+    /// UIKit serif font — Athelas + STSongti-TC cascade
     static func uiSerif(size: CGFloat, bold: Bool = false) -> UIFont {
-        let name = bold ? "Athelas-Bold" : "Athelas-Regular"
-        return UIFont(name: name, size: size)
-            ?? .systemFont(ofSize: size, weight: bold ? .bold : .regular)
+        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
+        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return UIFont(descriptor: descriptor, size: size)
     }
 
-    /// UIKit sans font — ElmsSans (CJK auto-fallback by system)
+    /// UIKit sans font — ElmsSans + PingFang TC cascade
     static func uiSans(size: CGFloat, bold: Bool = false) -> UIFont {
-        let name = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
-        return UIFont(name: name, size: size)
-            ?? .systemFont(ofSize: size, weight: bold ? .bold : .regular)
+        let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
+        let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return UIFont(descriptor: descriptor, size: size)
     }
 
     /// 建立 serif 導航列 appearance（opaque + transparent pair）
