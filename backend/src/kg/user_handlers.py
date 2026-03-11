@@ -14,6 +14,7 @@ from .api_models import (
     EntitlementsResponse,
     HealthResponse,
     MochiIntegrationConfig,
+    TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
     UserIntegrationsConfig,
@@ -23,10 +24,20 @@ from .user_store import resolve_mochi_api_key_from_config
 
 def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
     mochi_api_key = resolve_mochi_api_key_from_config(config)
+
+    translation_data = config.get("translation")
+    translation = None
+    if isinstance(translation_data, dict):
+        translation = TranslationLanguageConfig(
+            source_lang=translation_data.get("source_lang", "en"),
+            target_lang=translation_data.get("target_lang", "zh-Hant"),
+        )
+
     return UserConfigResponse(
         integrations=UserIntegrationsConfig(
             mochi=MochiIntegrationConfig(api_key=mochi_api_key)
         ) if mochi_api_key else None,
+        translation=translation,
     )
 
 
@@ -56,6 +67,13 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         config["integrations"] = integrations
     else:
         config.pop("integrations", None)
+
+    # Translation config
+    if req.translation:
+        config["translation"] = {
+            "source_lang": req.translation.source_lang,
+            "target_lang": req.translation.target_lang,
+        }
 
 
 def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:
