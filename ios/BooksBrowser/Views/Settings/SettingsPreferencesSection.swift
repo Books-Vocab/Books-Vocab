@@ -4,6 +4,7 @@ struct SettingsPreferencesSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
+    let onShowReviewSettings: () -> Void
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
@@ -84,6 +85,23 @@ struct SettingsPreferencesSection: View {
                     .buttonStyle(.plain)
                     .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
                 }
+
+                SettingsDivider()
+
+                // 複習節奏
+                Button(action: onShowReviewSettings) {
+                    SettingsRow(icon: "timer", label: "複習節奏") {
+                        HStack(spacing: 6) {
+                            Text(state.selectedReviewMode)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                            Image(systemName: "chevron.right")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
             }
             .settingsCard()
 

@@ -53,6 +53,7 @@ struct SettingsPresenterState {
         let selectedAppearance: String
         let translationSource: String
         let translationTarget: String
+        let selectedReviewMode: String
     }
 
     struct SyncSummaryState {
