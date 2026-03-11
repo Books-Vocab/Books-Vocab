@@ -100,10 +100,11 @@ struct KnowledgeGraphPresenter: View {
                 VocabOverlayHeader(
                     title: "關聯圖".localized,
                     systemImage: "point.3.connected.trianglepath.dotted",
-                    onClose: onToggleSettings
-                ) {
-                    VocabInlineActionButton(title: "重設".localized, action: onResetForces)
-                }
+                    onClose: onToggleSettings,
+                    leadingAccessory: {
+                        VocabInlineActionButton(title: "重設".localized, action: onResetForces)
+                    }
+                )
 
                 Divider().padding(.horizontal, vocabSkin.metrics.overlayCompactDividerInset)
 

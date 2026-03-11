@@ -28,7 +28,7 @@ final class TranslationService: Translating {
     private let quotaStore: any QuotaProviding
 
     init(
-        authSession: any AuthSessionProviding = AuthManager.shared,
+        authSession: any AuthSessionProviding = MainActor.assumeIsolated({ AuthManager.shared }),
         quotaStore: any QuotaProviding = QuotaStore.shared
     ) {
         self.authSession = authSession
