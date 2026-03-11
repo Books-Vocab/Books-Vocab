@@ -11,6 +11,7 @@ def build_user_router(
     *,
     get_user_config: Callable[..., Any],
     get_user_entitlements: Callable[..., Any],
+    get_user_quota: Callable[..., Any],
     update_user_config: Callable[..., Any],
     delete_user_account: Callable[..., Any],
     health: Callable[..., Any],
@@ -18,6 +19,7 @@ def build_user_router(
     router = APIRouter()
     router.get("/api/user/config", response_model=UserConfigResponse)(get_user_config)
     router.get("/api/user/entitlements", response_model=EntitlementsResponse)(get_user_entitlements)
+    router.get("/api/user/quota")(get_user_quota)
     router.put("/api/user/config", response_model=UserConfigResponse)(update_user_config)
     router.delete("/api/user/account", response_model=DeleteAccountResponse)(delete_user_account)
     router.get("/api/health", response_model=HealthResponse)(health)

@@ -24,6 +24,7 @@ def register_routes(
     get_terms: Callable[..., Any],
     get_user_config: Callable[..., Any],
     get_user_entitlements: Callable[..., Any],
+    get_user_quota: Callable[..., Any],
     update_user_config: Callable[..., Any],
     delete_user_account: Callable[..., Any],
     health: Callable[..., Any],
@@ -63,6 +64,7 @@ def register_routes(
         build_user_router(
             get_user_config=get_user_config,
             get_user_entitlements=get_user_entitlements,
+            get_user_quota=get_user_quota,
             update_user_config=update_user_config,
             delete_user_account=delete_user_account,
             health=health,

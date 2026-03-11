@@ -21,7 +21,7 @@ from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks
+from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -330,6 +330,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         get_terms=get_terms,
         get_user_config=get_user_config,
         get_user_entitlements=get_user_entitlements,
+        get_user_quota=get_user_quota,
         update_user_config=update_user_config,
         delete_user_account=delete_user_account,
         health=health,
@@ -772,33 +773,85 @@ async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 # POST /api/translate/quick & /api/translate/explain
 # ---------------------------------------------------------------------------
-def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user)):
+def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Perform a quick UI translation via Gemini API (proxy)."""
-    return translate_quick_response(
+    from .quota_service import check_quota, get_quota_state
+    quota = check_quota(user["id"], "translate_quick")
+    if quota["exceeded"]:
+        raise HTTPException(
+            429,
+            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
+        )
+    result = translate_quick_response(
         req,
         user,
         require_pro_access=_require_pro_access,
         gemini_client_factory=_gemini_client,
         logger=logger,
     )
+    state = get_quota_state(user["id"])
+    if response is not None:
+        response.headers["X-Quota-Fraction"] = str(state["fraction"])
+        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
+    return result
 
-def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user)):
+def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Translate a multi-word phrase or expression. Returns translation only."""
-    return translate_phrase_response(
+    from .quota_service import check_quota, get_quota_state
+    quota = check_quota(user["id"], "translate_phrase")
+    if quota["exceeded"]:
+        raise HTTPException(
+            429,
+            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
+        )
+    result = translate_phrase_response(
         req,
         user,
         require_pro_access=_require_pro_access,
         gemini_client_factory=_gemini_client,
     )
+    state = get_quota_state(user["id"])
+    if response is not None:
+        response.headers["X-Quota-Fraction"] = str(state["fraction"])
+        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
+    return result
 
-def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user)):
+def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
-    return translate_explain_response(
+    from .quota_service import check_quota, get_quota_state
+    quota = check_quota(user["id"], "translate_explain")
+    if quota["exceeded"]:
+        raise HTTPException(
+            429,
+            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
+        )
+    result = translate_explain_response(
         req,
         user,
         require_pro_access=_require_pro_access,
         gemini_client_factory=_gemini_client,
     )
+    state = get_quota_state(user["id"])
+    if response is not None:
+        response.headers["X-Quota-Fraction"] = str(state["fraction"])
+        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
+    return result
+
+
+# ---------------------------------------------------------------------------
+# GET /api/user/quota
+# ---------------------------------------------------------------------------
+def get_user_quota(user: dict = Depends(get_current_user)):
+    """Return quota fraction for the current user (Pro only)."""
+    from .billing import current_pro_entitlement_record
+    from .quota_service import get_quota_state
+    ent = current_pro_entitlement_record(user.get("record"))
+    if not ent.get("is_active"):
+        return {"fraction": 1.0, "reset_seconds": 0}
+    return get_quota_state(user["id"])
 
 
 # ---------------------------------------------------------------------------

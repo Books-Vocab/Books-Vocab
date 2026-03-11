@@ -190,6 +190,7 @@ struct TranslationPanelPresenter: View {
                 )
             )
 
+            quotaBar
             panelToolbar(showChevron: false, timerValue: nil)
         }
     }
@@ -233,6 +234,7 @@ struct TranslationPanelPresenter: View {
                     .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
             }
 
+            quotaBar
             panelToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
     }
@@ -281,6 +283,7 @@ struct TranslationPanelPresenter: View {
                 }
             }
 
+            quotaBar
             panelToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
         }
     }
@@ -292,6 +295,7 @@ struct TranslationPanelPresenter: View {
                 description: message
             )
 
+            quotaBar
             panelToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
     }
@@ -305,6 +309,7 @@ struct TranslationPanelPresenter: View {
             )
             .padding(.vertical, ReaderPresentationMetrics.Panel.messageVerticalInset)
 
+            quotaBar
             panelToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
     }
@@ -338,6 +343,10 @@ struct TranslationPanelPresenter: View {
         ) {
             accessory()
         }
+    }
+
+    private var quotaBar: some View {
+        QuotaBar(isLoggedIn: state.isLoggedIn)
     }
 
     @ViewBuilder
