@@ -30,7 +30,7 @@ struct ReaderVocabularyContext {
             modelContext.delete(entry)
             AppLog.reader.info("Deleted local entry: \(word)")
         }
-        try? modelContext.save()
+        modelContext.safeSave()
     }
 
     func saveEntry(
@@ -56,7 +56,7 @@ struct ReaderVocabularyContext {
         entry.rootForm = rootForm
         entry.bookId = book.id
         modelContext.insert(entry)
-        try? modelContext.save()
+        modelContext.safeSave()
         return true
     }
 

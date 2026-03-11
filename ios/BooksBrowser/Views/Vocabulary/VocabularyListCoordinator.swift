@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 @Observable @MainActor
 final class VocabularyListCoordinator {
@@ -58,7 +59,11 @@ final class VocabularyListCoordinator {
         defer { isForceRefreshing = false }
 
         await kgService.clearLocalData(container: modelContext.container, reason: "force_refresh")
-        try? await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+        do {
+            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+        } catch {
+            AppLog.sync.error("Force refresh pullCardsToLocal failed: \(error.localizedDescription)")
+        }
         await kgService.healthCheck()
     }
 
@@ -68,6 +73,6 @@ final class VocabularyListCoordinator {
         } else {
             modelContext.delete(entry)
         }
-        try? modelContext.save()
+        modelContext.safeSave()
     }
 }

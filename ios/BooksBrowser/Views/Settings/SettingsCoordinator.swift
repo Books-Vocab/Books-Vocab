@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import os
 
 @Observable @MainActor
 final class SettingsCoordinator {
@@ -72,10 +73,14 @@ final class SettingsCoordinator {
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
-                _ = try? await kgService.updateUserConfig(
-                    optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey,
-                    translationConfig: nil
-                )
+                do {
+                    _ = try await kgService.updateUserConfig(
+                        optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey,
+                        translationConfig: nil
+                    )
+                } catch {
+                    AppLog.kg.error("updateUserConfig (API key) failed: \(error.localizedDescription)")
+                }
                 fetchedKey = optionalIntegrationApiKey
             }
         }
@@ -123,13 +128,17 @@ final class SettingsCoordinator {
 
         guard authManager.isLoggedIn else { return }
         Task { @MainActor in
-            _ = try? await kgService.updateUserConfig(
-                optionalIntegrationKey: nil,
-                translationConfig: KGTranslationConfig(
-                    source_lang: source.rawValue,
-                    target_lang: target.rawValue
+            do {
+                _ = try await kgService.updateUserConfig(
+                    optionalIntegrationKey: nil,
+                    translationConfig: KGTranslationConfig(
+                        source_lang: source.rawValue,
+                        target_lang: target.rawValue
+                    )
                 )
-            )
+            } catch {
+                AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
+            }
         }
     }
 
