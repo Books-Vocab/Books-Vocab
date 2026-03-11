@@ -13,6 +13,8 @@ final class SettingsCoordinator: ObservableObject {
     @Published var deleteAccountError: String?
     @Published var manualLoginUserId = ""
     @Published var debugLocalServerURL = ""
+    @Published var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
+    @Published var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
     private var saveTask: Task<Void, Never>?
 
     init() {
@@ -41,6 +43,18 @@ final class SettingsCoordinator: ObservableObject {
                 let fetched = config.optionalIntegrationApiKey ?? ""
                 fetchedKey = fetched
                 optionalIntegrationApiKey = fetched
+
+                // Sync translation language from server config
+                if let translation = config.translation {
+                    if let src = translation.source_lang, let lang = TranslationLanguage(rawValue: src) {
+                        translationSourceLang = lang
+                        TranslationLanguage.currentSource = lang
+                    }
+                    if let tgt = translation.target_lang, let lang = TranslationLanguage(rawValue: tgt) {
+                        translationTargetLang = lang
+                        TranslationLanguage.currentTarget = lang
+                    }
+                }
             }
         } else {
             fetchedKey = ""
@@ -59,7 +73,8 @@ final class SettingsCoordinator: ObservableObject {
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
                 _ = try? await kgService.updateUserConfig(
-                    optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey
+                    optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey,
+                    translationConfig: nil
                 )
                 fetchedKey = optionalIntegrationApiKey
             }
@@ -92,6 +107,29 @@ final class SettingsCoordinator: ObservableObject {
             authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
         } catch {
             deleteAccountError = L10n.format("無法刪除帳號：%@", error.localizedDescription)
+        }
+    }
+
+    func updateTranslationLanguage(
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        authManager: any AuthManaging,
+        kgService: any KGServing
+    ) {
+        translationSourceLang = source
+        translationTargetLang = target
+        TranslationLanguage.currentSource = source
+        TranslationLanguage.currentTarget = target
+
+        guard authManager.isLoggedIn else { return }
+        Task { @MainActor in
+            _ = try? await kgService.updateUserConfig(
+                optionalIntegrationKey: nil,
+                translationConfig: KGTranslationConfig(
+                    source_lang: source.rawValue,
+                    target_lang: target.rawValue
+                )
+            )
         }
     }
 
