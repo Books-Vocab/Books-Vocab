@@ -30,6 +30,7 @@ enum TodayReviewRevealStage: Int {
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Query private var allEntries: [VocabularyEntry]
+    @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
 
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0
@@ -174,7 +175,7 @@ struct TodayReviewView: View {
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
-        current.applyReviewFeedback(feedback)
+        current.applyReviewFeedback(feedback, settings: reviewSettingsStore.settings)
 
         switch feedback {
         case .remembered:
