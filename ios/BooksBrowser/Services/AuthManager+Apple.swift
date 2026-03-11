@@ -4,7 +4,6 @@ import UIKit
 import AuthenticationServices
 
 extension AuthManager {
-    @MainActor
     func loginWithApple(modelContainer: ModelContainer? = nil) {
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]

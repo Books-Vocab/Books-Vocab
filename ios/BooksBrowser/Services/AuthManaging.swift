@@ -1,21 +1,24 @@
 import Foundation
 import SwiftData
 
+@MainActor
 protocol AuthSessionProviding: AnyObject {
     var isLoggedIn: Bool { get }
     var token: String? { get }
 }
 
+@MainActor
 protocol SessionInvalidating: AnyObject {
     func logout(modelContainer: ModelContainer?, reason: String)
 }
 
-protocol LocalDataClearing: AnyObject {
+protocol LocalDataClearing: AnyObject, Sendable {
     func clearLocalData(container: ModelContainer, reason: String) async
 }
 
 /// AuthManager 的行為契約，供 View / Handler 依賴，方便替換 Mock 進行測試
-@preconcurrency protocol AuthManaging: AnyObject {
+@MainActor
+protocol AuthManaging: AnyObject {
     var isLoggedIn: Bool { get }
     var userId: String? { get }
     var token: String? { get }
@@ -28,6 +31,6 @@ protocol LocalDataClearing: AnyObject {
     func login(userId: String, token: String)
     func login(customToken: String)
     func logout(modelContainer: ModelContainer?, reason: String)
-    @MainActor func loginWithGoogle(modelContainer: ModelContainer?)
-    @MainActor func loginWithApple(modelContainer: ModelContainer?)
+    func loginWithGoogle(modelContainer: ModelContainer?)
+    func loginWithApple(modelContainer: ModelContainer?)
 }
