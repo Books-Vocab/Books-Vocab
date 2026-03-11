@@ -159,9 +159,9 @@ def link(ctx: typer.Context) -> None:
                     f"{result.link.upper()} ({result.confidence:.2f})"
                 )
                 created += 1
-    except Exception as e:
+    except Exception:  # broad catch: must requeue candidates before propagating
         graph.requeue_candidates(candidates[i:])
-        raise e
+        raise
 
     typer.echo(f"\nCreated {created} links")
 

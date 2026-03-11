@@ -236,7 +236,7 @@ def _derive_inflections(word: str, root_form: str | None, *, logger: logging.Log
                 if lowered not in seen:
                     inflections.append(lowered)
                     seen.add(lowered)
-    except Exception as exc:
+    except (ImportError, ValueError, KeyError, TypeError) as exc:
         logger.warning("lemminflect failed for root '%s': %s", root, exc)
 
     return root, inflections
@@ -296,7 +296,7 @@ def add_vocab_entries(
                     for other_id, score in similar:
                         if score > 0.655:
                             graph.add_candidate(card.id, other_id, score)
-                except Exception as exc:
+                except (OSError, ValueError) as exc:
                     logger.warning("Failed to generate embedding for '%s': %s", word, exc)
                     continue
 

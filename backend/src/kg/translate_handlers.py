@@ -23,7 +23,7 @@ def translate_quick_response(
         return run_quick_translate(req, user, client=client, logger=logger)
     except HTTPException:
         raise
-    except Exception as exc:
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         logger.error("translate/quick failed: %s", exc, exc_info=True)
         raise HTTPException(500, f"Quick translation failed: {exc}") from exc
 
@@ -39,7 +39,9 @@ def translate_phrase_response(
     client = gemini_client_factory()
     try:
         return run_phrase_translate(req, user, client=client)
-    except Exception as exc:
+    except HTTPException:
+        raise
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         raise HTTPException(500, f"Phrase translation failed: {exc}") from exc
 
 
@@ -54,5 +56,7 @@ def translate_explain_response(
     client = gemini_client_factory()
     try:
         return run_explain_translate(req, user, client=client)
-    except Exception as exc:
+    except HTTPException:
+        raise
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         raise HTTPException(500, f"Explanation failed: {exc}") from exc

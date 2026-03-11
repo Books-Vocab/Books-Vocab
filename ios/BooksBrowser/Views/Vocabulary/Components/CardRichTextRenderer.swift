@@ -17,22 +17,19 @@ enum CardRichTextMode {
 }
 
 enum CardRichTextRenderer {
-    private static let inlinePattern = try! NSRegularExpression(
-        pattern: "\\*\\*(.+?)\\*\\*|`([^`]+)`"
-    )
+    private static func regex(_ pattern: String) -> NSRegularExpression {
+        do {
+            return try NSRegularExpression(pattern: pattern)
+        } catch {
+            preconditionFailure("Invalid regex pattern: \(pattern)")
+        }
+    }
 
-    private static let markedWordPattern = try! NSRegularExpression(
-        pattern: "\\*\\*.+?\\*\\*"
-    )
-
+    private static let inlinePattern = regex("\\*\\*(.+?)\\*\\*|`([^`]+)`")
+    private static let markedWordPattern = regex("\\*\\*.+?\\*\\*")
     /// 移除所有 **word** 標記，只留詞本身（用於截斷前的清理）
-    private static let stripMarkPattern = try! NSRegularExpression(
-        pattern: "\\*\\*(.+?)\\*\\*"
-    )
-
-    private static let tokenPattern = try! NSRegularExpression(
-        pattern: "\\S+"
-    )
+    private static let stripMarkPattern = regex("\\*\\*(.+?)\\*\\*")
+    private static let tokenPattern = regex("\\S+")
 
     static func text(
         _ raw: String,
