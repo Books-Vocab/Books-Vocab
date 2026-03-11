@@ -5,8 +5,9 @@ struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Query private var allEntries: [VocabularyEntry]
     @State private var localLinkedCardStack: [VocabularyEntry] = []
+    @State private var isEditing = false
 
-    let entry: VocabularyEntry
+    @Bindable var entry: VocabularyEntry
     private let wrapInNavigation: Bool
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
@@ -25,12 +26,16 @@ struct WordDetailSheet: View {
             state: presenterState,
             wrapInNavigation: wrapInNavigation,
             onClose: wrapInNavigation ? { dismiss() } : nil,
+            onEdit: wrapInNavigation ? { isEditing = true } : nil,
             onLinkTapped: handleLinkTap
         )
         .overlay {
             if wrapInNavigation {
                 LinkedCardOverlayStack(stack: linkedCardStack)
             }
+        }
+        .sheet(isPresented: $isEditing) {
+            WordEditSheet(entry: entry)
         }
     }
 

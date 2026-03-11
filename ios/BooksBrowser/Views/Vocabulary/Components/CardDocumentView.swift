@@ -54,21 +54,27 @@ private struct CardDocumentHeroBlock: View {
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
+                    }
+
+                    HStack(spacing: vocabSkin.spacing.heroBaselineGap) {
+                        if let pronunciation = hero.pronunciation, !pronunciation.isEmpty {
+                            Text("/\(pronunciation)/")
+                                .font(vocabSkin.typography.monoBody)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        }
 
                         Button {
                             SpeechService.shared.speak(hero.word)
+                            copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")
-                                .font(vocabSkin.typography.iconTiny)
+                                .font(vocabSkin.typography.iconSmall)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                                 .symbolEffect(.bounce, value: copyTrigger)
+                                .frame(width: 36, height: 36)
+                                .contentShape(Rectangle())
                         }
-                    }
-
-                    if let pronunciation = hero.pronunciation, !pronunciation.isEmpty {
-                        Text("/\(pronunciation)/")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .buttonStyle(.plain)
                     }
                 }
 
