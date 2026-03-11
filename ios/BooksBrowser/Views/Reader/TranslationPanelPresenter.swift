@@ -205,7 +205,7 @@ struct TranslationPanelPresenter: View {
 
             if state.isLoadingExplanation {
                 stateMessageContent(
-                    title: state.statusMessage ?? "載入解釋...",
+                    title: state.statusMessage ?? "載入解釋...".localized,
                     systemImage: "text.bubble"
                 ) {
                     HStack {
@@ -252,7 +252,7 @@ struct TranslationPanelPresenter: View {
 
                 if state.isLoadingExplanation {
                     stateMessageContent(
-                        title: state.statusMessage ?? "載入解釋...",
+                        title: state.statusMessage ?? "載入解釋...".localized,
                         systemImage: "text.bubble"
                     ) {
                         HStack {
@@ -266,7 +266,7 @@ struct TranslationPanelPresenter: View {
                     .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
                 } else if let errorMessage = state.explanationErrorMessage {
                     errorStateContent(
-                        title: "語境解釋暫時無法載入",
+                        title: "語境解釋暫時無法載入".localized,
                         description: errorMessage
                     )
                     .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)

@@ -38,7 +38,7 @@ struct VocabToneChip: View {
             .clipShape(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
             )
-            .accessibilityLabel("語氣標記")
+            .accessibilityLabel("語氣標記".localized)
     }
 }
 
@@ -61,7 +61,7 @@ struct VocabTierLabel: View {
                     }
                 }
             )
-            .accessibilityLabel("難度等級：\(tier)")
+            .accessibilityLabel(L10n.format("難度等級：%@", tier))
     }
 }
 
@@ -170,7 +170,7 @@ struct VocabReviewProgressBar: View {
                             .frame(width: max(6, proxy.size.width * fraction))
                             .animation(AppMotion.controlEaseOut, value: fraction)
                     }
-                    .accessibilityLabel("複習進度")
+                    .accessibilityLabel("複習進度".localized)
                     .accessibilityValue("\(Int(fraction * 100))%")
                 }
                 .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledBarHeight)
