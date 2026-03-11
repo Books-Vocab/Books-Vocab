@@ -12,7 +12,7 @@ protocol SessionInvalidating: AnyObject {
     func logout(modelContainer: ModelContainer?, reason: String)
 }
 
-protocol LocalDataClearing: AnyObject, Sendable {
+protocol LocalDataClearing: AnyObject {
     func clearLocalData(container: ModelContainer, reason: String) async
 }
 

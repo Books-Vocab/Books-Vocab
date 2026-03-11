@@ -48,7 +48,7 @@ final class ReaderTranslationHandler {
 
     init(
         translationService: any Translating = TranslationService(),
-        authManager: any AuthManaging = AuthManager.shared
+        authManager: any AuthManaging = MainActor.assumeIsolated({ AuthManager.shared })
     ) {
         self.translationService = translationService
         self.authManager = authManager
