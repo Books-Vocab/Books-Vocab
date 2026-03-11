@@ -84,10 +84,8 @@ from .app_store import (
     verify_and_decode_signed_jws,
 )
 from .google_auth import verify_google_token
-from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML
+from .admin_wiring import create_admin_handlers
 from .api_models import (
-    AdminGrantRequest,
-    AdminTestRunRequest,
     AppStoreNotificationRequest,
     AppStoreReconcileRequest,
     AppStoreSyncRequest,
@@ -125,25 +123,6 @@ from .vocab_service import (
     lookup_vocab_word,
 )
 from .pipeline_service import run_pipeline_background
-from .admin_test_matrix import (
-    build_test_catalog,
-    get_last_test_run,
-    run_pytest_matrix,
-    store_last_test_run,
-)
-from .admin_handlers import (
-    admin_grant_pro_access_response,
-    admin_last_test_run_response,
-    admin_logs_response,
-    admin_revoke_pro_access_response,
-    admin_run_tests_response,
-    admin_stats_response,
-    admin_test_catalog_response,
-    admin_tests_ui_response,
-    admin_ui_response,
-    admin_user_entitlement_response,
-    require_admin,
-)
 from .auth_handlers import auth_verify_response
 from .billing_handlers import (
     app_store_notifications_response,
@@ -325,6 +304,17 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_headers=["*"],
     )
 
+    admin_handlers = create_admin_handlers(
+        runtime_settings_fn=_runtime_settings,
+        runtime_users_lock_file_fn=_runtime_users_lock_file,
+        load_users_fn=_load_users,
+        save_users_fn=_save_users,
+        mem_log_getter=_mem_log.get,
+        card_store_factory=_card_store,
+        build_entitlements_response_fn=_build_entitlements_response,
+        current_admin_grant_record_fn=_current_admin_grant_record,
+    )
+
     register_routes(
         app,
         get_privacy_policy=get_privacy_policy,
@@ -351,16 +341,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         translate_phrase=translate_phrase,
         translate_explain=translate_explain,
         auth_verify=auth_verify,
-        admin_ui=admin_ui,
-        admin_stats=admin_stats,
-        admin_logs=admin_logs,
-        admin_user_entitlement=admin_user_entitlement,
-        admin_grant_pro_access=admin_grant_pro_access,
-        admin_revoke_pro_access=admin_revoke_pro_access,
-        admin_run_tests=admin_run_tests,
-        admin_last_test_run=admin_last_test_run,
-        admin_test_catalog=admin_test_catalog,
-        admin_tests_ui=admin_tests_ui,
+        **admin_handlers,
     )
     return app
 
@@ -927,134 +908,6 @@ async def auth_verify(req: AuthVerifyRequest):
         verify_apple_token=verify_apple_token,
         resolve_and_link_user=_resolve_and_link_user,
         create_jwt_token=_create_jwt_token,
-    )
-
-
-# ---------------------------------------------------------------------------
-# Admin endpoints
-# ---------------------------------------------------------------------------
-
-def _check_admin(token: str | None):
-    require_admin(token, admin_token=_runtime_settings().admin_token)
-
-
-def _build_test_catalog() -> dict[str, Any]:
-    return build_test_catalog()
-
-
-def _run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]:
-    return run_pytest_matrix(selected_items=selected_items)
-
-
-def admin_ui(token: str | None = None):
-    """Admin dashboard UI."""
-    return admin_ui_response(token, admin_token=_runtime_settings().admin_token, admin_html=ADMIN_HTML)
-
-
-def admin_stats(token: str | None = None):
-    """Return per-user token + vocab stats for admin dashboard."""
-    from .token_tracker import get_all_stats
-    settings = _runtime_settings()
-    return admin_stats_response(
-        token,
-        admin_token=settings.admin_token,
-        load_users=_load_users,
-        get_all_stats=get_all_stats,
-        build_entitlements_response=_build_entitlements_response,
-        current_admin_grant_record=_current_admin_grant_record,
-        data_dir=settings.data_dir,
-        card_store_factory=_card_store,
-    )
-
-
-def admin_logs(token: str | None = None, n: int = 200, level: str | None = None):
-    """Return recent in-memory log entries for the admin dashboard."""
-    return admin_logs_response(
-        token,
-        admin_token=_runtime_settings().admin_token,
-        log_getter=_mem_log.get,
-        n=n,
-        level=level,
-    )
-
-
-def admin_user_entitlement(user_id: str, token: str | None = None):
-    """Return one user's computed Pro entitlement plus raw admin grant metadata."""
-    return admin_user_entitlement_response(
-        token,
-        user_id,
-        admin_token=_runtime_settings().admin_token,
-        load_users=_load_users,
-        build_entitlements_response=_build_entitlements_response,
-        current_admin_grant_record=_current_admin_grant_record,
-    )
-
-
-def admin_grant_pro_access(req: AdminGrantRequest, user_id: str, token: str | None = None):
-    """Manually grant Pro access for a user through the admin surface."""
-    return admin_grant_pro_access_response(
-        token,
-        user_id,
-        req,
-        admin_token=_runtime_settings().admin_token,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
-        current_admin_grant_record=_current_admin_grant_record,
-        build_entitlements_response=_build_entitlements_response,
-    )
-
-
-def admin_revoke_pro_access(user_id: str, token: str | None = None):
-    """Remove manual Pro access for a user through the admin surface."""
-    return admin_revoke_pro_access_response(
-        token,
-        user_id,
-        admin_token=_runtime_settings().admin_token,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
-        current_admin_grant_record=_current_admin_grant_record,
-        build_entitlements_response=_build_entitlements_response,
-    )
-
-
-def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None):
-    """Run test suite and return matrix view data."""
-    return admin_run_tests_response(
-        token,
-        admin_token=_runtime_settings().admin_token,
-        req=req,
-        run_pytest_matrix=_run_pytest_matrix,
-        store_last_test_run=store_last_test_run,
-    )
-
-
-def admin_last_test_run(token: str | None = None):
-    """Get latest test run result for matrix page."""
-    return admin_last_test_run_response(
-        token,
-        admin_token=_runtime_settings().admin_token,
-        get_last_test_run=get_last_test_run,
-    )
-
-
-def admin_test_catalog(token: str | None = None):
-    """Return clickable test-matrix catalog."""
-    return admin_test_catalog_response(
-        token,
-        admin_token=_runtime_settings().admin_token,
-        build_test_catalog=_build_test_catalog,
-    )
-
-
-
-def admin_tests_ui(token: str | None = None):
-    """Minimal grayscale test matrix dashboard."""
-    return admin_tests_ui_response(
-        token,
-        admin_token=_runtime_settings().admin_token,
-        admin_tests_html=ADMIN_TESTS_HTML,
     )
 
 

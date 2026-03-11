@@ -598,7 +598,7 @@ def test_admin_test_matrix_endpoints(isolated_api):
     run_mock = MagicMock(return_value=fake_result)
     with (
         patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
-        patch.object(api_mod, "_run_pytest_matrix", run_mock),
+        patch("kg.admin_wiring.run_pytest_matrix", run_mock),
     ):
         assert client.get("/admin/tests").status_code == 403
         assert client.get("/admin/test").status_code == 403
