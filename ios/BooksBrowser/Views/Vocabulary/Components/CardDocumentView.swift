@@ -80,7 +80,7 @@ private struct CardDocumentHeroBlock: View {
             }
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = hero.word
                 copyTrigger.toggle()
             }
@@ -118,7 +118,7 @@ private struct CardDocumentExampleBlock: View {
             }
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = paragraph.plainText
                 copyTrigger.toggle()
             }
@@ -155,7 +155,7 @@ private struct CardDocumentMeaningBlock: View {
             }
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
             }
@@ -199,7 +199,7 @@ private struct CardDocumentSourceBlock: View {
             .foregroundStyle(vocabSkin.palette.quaternaryText)
         }
         .contextMenu {
-            Button("複製", systemImage: "doc.on.doc") {
+            Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
             }

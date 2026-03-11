@@ -24,6 +24,7 @@ struct BooksBrowserApp: App {
 
     init() {
         AppFonts.ensureSerifCJKAvailable()
+        AppFonts.configureGlobalAppearance()
         NSUbiquitousKeyValueStore.default.synchronize()
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
         bookFileManager = LocalBookFileManager()
