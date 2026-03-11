@@ -142,7 +142,6 @@ struct SettingsView: View {
             },
             showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount,
-            showTranslationLanguageSettings: {},
             openPrivacyPolicy: {
                 if let url = URL(string: "https://wordnexus.lol/privacy.html") {
                     openURL(url)

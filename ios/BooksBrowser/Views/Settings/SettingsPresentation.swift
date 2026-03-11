@@ -103,7 +103,6 @@ struct SettingsPresenterActions {
     let showSubscriptionPaywall: () -> Void
     let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
-    let showTranslationLanguageSettings: () -> Void
     let openPrivacyPolicy: () -> Void
     let openSupport: () -> Void
     let requestAppRating: () -> Void
