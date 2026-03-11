@@ -200,7 +200,6 @@ struct TodayReviewPresenter: View {
                             )
                         }
                         .padding(reviewCardPadding)
-                        .disabled(false)
                     }
 
                 if state.revealStage.showsAnswer {
