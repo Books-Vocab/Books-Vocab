@@ -78,7 +78,9 @@ enum TodayReviewPresenterPreviewData {
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
             persistenceFailureTrigger: 0,
-            persistenceErrorMessage: nil
+            persistenceErrorMessage: nil,
+            isAutoPlaying: false,
+            isAutoPlayPaused: false
         )
     }
 
@@ -96,8 +98,31 @@ enum TodayReviewPresenterPreviewData {
         rememberedFeedbackTrigger: 0,
         forgotFeedbackTrigger: 0,
         persistenceFailureTrigger: 0,
-        persistenceErrorMessage: nil
+        persistenceErrorMessage: nil,
+        isAutoPlaying: false,
+        isAutoPlayPaused: false
     )
+
+    static func autoplayState(paused: Bool = false) -> TodayReviewPresenterState {
+        .init(
+            progressText: "3 / 12",
+            currentCard: currentCard,
+            nextCard: nextCard,
+            revealStage: .back,
+            canShuffle: true,
+            canGoPrevious: true,
+            canGoNext: true,
+            remainingCount: 9,
+            forgotCount: 0,
+            rememberedCount: 0,
+            rememberedFeedbackTrigger: 0,
+            forgotFeedbackTrigger: 0,
+            persistenceFailureTrigger: 0,
+            persistenceErrorMessage: nil,
+            isAutoPlaying: true,
+            isAutoPlayPaused: paused
+        )
+    }
 
     static let noopCallbacks: (
         onClose: () -> Void,
@@ -108,8 +133,10 @@ enum TodayReviewPresenterPreviewData {
         onNext: () -> Void,
         onForgot: () -> Void,
         onRemembered: () -> Void,
-        onLinkTap: (KGCardLinkSummary) -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in })
+        onLinkTap: (KGCardLinkSummary) -> Void,
+        onToggleAutoPlay: () -> Void,
+        onToggleAutoPlayPause: () -> Void
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {})
 }
 
 #Preview("Today Review / Front") {
@@ -119,7 +146,8 @@ enum TodayReviewPresenterPreviewData {
             state: TodayReviewPresenterPreviewData.state(stage: .front),
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap
+            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
         )
     }
 }
@@ -131,7 +159,8 @@ enum TodayReviewPresenterPreviewData {
             state: TodayReviewPresenterPreviewData.state(stage: .back),
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap
+            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
         )
     }
 }
@@ -143,7 +172,21 @@ enum TodayReviewPresenterPreviewData {
             state: TodayReviewPresenterPreviewData.completedState,
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
-            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap
+            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
+        )
+    }
+}
+
+#Preview("Today Review / Autoplay") {
+    let cb = TodayReviewPresenterPreviewData.noopCallbacks
+    AppThemeContainer {
+        TodayReviewPresenter(
+            state: TodayReviewPresenterPreviewData.autoplayState(),
+            onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
+            onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
+            onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
         )
     }
 }
