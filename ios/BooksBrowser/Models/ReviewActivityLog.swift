@@ -129,7 +129,7 @@ enum ReviewActivityLog {
             }
         }
 
-        try? context.save()
+        context.safeSave()
         UserDefaults.standard.removeObject(forKey: legacyStorageKey)
         UserDefaults.standard.set(true, forKey: migrationDoneKey)
     }
