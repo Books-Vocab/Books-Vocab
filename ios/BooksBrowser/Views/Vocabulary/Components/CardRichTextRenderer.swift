@@ -33,14 +33,16 @@ enum CardRichTextRenderer {
         _ raw: String,
         style: CardRichTextStyle,
         mode: CardRichTextMode = .highlight,
-        truncateAroundMarkedWordRadius: Int? = nil
+        truncateAroundMarkedWordRadius: Int? = nil,
+        targetWord: String? = nil
     ) -> Text {
         Text(
             attributedString(
                 raw,
                 style: style,
                 mode: mode,
-                truncateAroundMarkedWordRadius: truncateAroundMarkedWordRadius
+                truncateAroundMarkedWordRadius: truncateAroundMarkedWordRadius,
+                targetWord: targetWord
             )
         )
     }
@@ -49,12 +51,14 @@ enum CardRichTextRenderer {
         _ raw: String,
         style: CardRichTextStyle,
         mode: CardRichTextMode = .highlight,
-        truncateAroundMarkedWordRadius: Int? = nil
+        truncateAroundMarkedWordRadius: Int? = nil,
+        targetWord: String? = nil
     ) -> AttributedString {
         let prepared = preparedRaw(
             from: raw,
             mode: mode,
-            truncateAroundMarkedWordRadius: truncateAroundMarkedWordRadius
+            truncateAroundMarkedWordRadius: truncateAroundMarkedWordRadius,
+            targetWord: targetWord
         )
 
         let nsString = prepared as NSString
@@ -100,11 +104,12 @@ enum CardRichTextRenderer {
     private static func preparedRaw(
         from raw: String,
         mode: CardRichTextMode,
-        truncateAroundMarkedWordRadius: Int?
+        truncateAroundMarkedWordRadius: Int?,
+        targetWord: String? = nil
     ) -> String {
         let truncated: String
         if let radius = truncateAroundMarkedWordRadius, radius >= 0 {
-            truncated = truncateAroundMarkedWord(raw, radiusWords: radius)
+            truncated = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
         } else {
             truncated = raw
         }
@@ -163,7 +168,8 @@ enum CardRichTextRenderer {
 
     static func truncateAroundMarkedWord(
         _ raw: String,
-        radiusWords: Int = 5
+        radiusWords: Int = 5,
+        targetWordFallback: String? = nil
     ) -> String {
         guard radiusWords >= 0 else { return raw }
 
@@ -174,7 +180,20 @@ enum CardRichTextRenderer {
                 range: NSRange(location: 0, length: nsRaw.length)
             )
         else {
-            // 無標記詞：顯示前 (2*radius+1) 個詞
+            // 無標記詞：嘗試以 targetWord 動態建立標記後截斷
+            if let fallback = targetWordFallback, !fallback.isEmpty {
+                let escapedFallback = NSRegularExpression.escapedPattern(for: fallback)
+                let pattern = "(?<![\\w\\p{L}])\(escapedFallback)(?![\\w\\p{L}])"
+                if let wordRegex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+                   let wordMatch = wordRegex.firstMatch(in: raw, range: NSRange(location: 0, length: nsRaw.length)) {
+                    let actualWord = nsRaw.substring(with: wordMatch.range)
+                    let marked = nsRaw.substring(to: wordMatch.range.location)
+                        + "**\(actualWord)**"
+                        + nsRaw.substring(from: wordMatch.range.location + wordMatch.range.length)
+                    return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
+                }
+            }
+            // 完全找不到目標詞：顯示前 (2*radius+1) 個詞
             return truncateLeadingWords(raw, count: 2 * radiusWords + 1)
         }
 
