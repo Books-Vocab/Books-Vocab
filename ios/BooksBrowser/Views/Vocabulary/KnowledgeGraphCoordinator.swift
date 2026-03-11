@@ -1,20 +1,20 @@
 import Foundation
 import SwiftUI
 
-@MainActor
-final class KnowledgeGraphCoordinator: ObservableObject {
-    @Published var isLoading = false
-    @Published var errorMessage: String?
-    @Published var isShowingSettings = false
-    @Published var links: [KGGraphLink] = []
-    @Published var selectedEntry: VocabularyEntry?
+@Observable @MainActor
+final class KnowledgeGraphCoordinator {
+    var isLoading = false
+    var errorMessage: String?
+    var isShowingSettings = false
+    var links: [KGGraphLink] = []
+    var selectedEntry: VocabularyEntry?
 
-    @Published var centerForce: Double = 0.05
-    @Published var repelForce: Double = 0.20
-    @Published var linkForce: Double = 0.50
-    @Published var linkDistance: Double = 50
-    @Published var nodeSize: Double = 5.0
-    @Published var linkThickness: Double = 1.0
+    var centerForce: Double = 0.05
+    var repelForce: Double = 0.20
+    var linkForce: Double = 0.50
+    var linkDistance: Double = 50
+    var nodeSize: Double = 5.0
+    var linkThickness: Double = 1.0
 
     func toggleSettings() {
         withAnimation(AppMotion.panelState) {

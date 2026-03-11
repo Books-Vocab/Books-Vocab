@@ -1,14 +1,14 @@
 import Foundation
 import SwiftData
 
-@MainActor
-final class BookshelfCoordinator: ObservableObject {
-    @Published var isImporting = false
-    @Published var isLoading = false
-    @Published var loadingMessage = ""
-    @Published var errorMessage: String?
-    @Published var showError = false
-    @Published var showSettings = false
+@Observable @MainActor
+final class BookshelfCoordinator {
+    var isImporting = false
+    var isLoading = false
+    var loadingMessage = ""
+    var errorMessage: String?
+    var showError = false
+    var showSettings = false
 
     func presentImporter() {
         isImporting = true

@@ -1,21 +1,21 @@
 import Foundation
 import SwiftData
 
-@MainActor
-final class SettingsCoordinator: ObservableObject {
-    @Published var optionalIntegrationApiKey = ""
-    @Published var fetchedKey = ""
-    @Published var showOptionalIntegrationInfo = false
-    @Published var connectionPulse = false
-    @Published var iconBreathing = false
-    @Published var showDeleteAccountConfirm = false
-    @Published var isDeletingAccount = false
-    @Published var deleteAccountError: String?
-    @Published var manualLoginUserId = ""
-    @Published var debugLocalServerURL = ""
-    @Published var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
-    @Published var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
-    private var saveTask: Task<Void, Never>?
+@Observable @MainActor
+final class SettingsCoordinator {
+    var optionalIntegrationApiKey = ""
+    var fetchedKey = ""
+    var showOptionalIntegrationInfo = false
+    var connectionPulse = false
+    var iconBreathing = false
+    var showDeleteAccountConfirm = false
+    var isDeletingAccount = false
+    var deleteAccountError: String?
+    var manualLoginUserId = ""
+    var debugLocalServerURL = ""
+    var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
+    var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
+    @ObservationIgnored private var saveTask: Task<Void, Never>?
 
     init() {
         #if DEBUG
