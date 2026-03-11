@@ -479,6 +479,8 @@
 "複習到期卡片（%@）" = "Review Due Cards (%@)";
 "學習新卡片（%@）" = "Learn New Cards (%@)";
 "全部複習（%@）" = "Review All (%@)";
+"播放發音" = "Play Pronunciation";
+"查看詳情" = "View Details";
 
 // Quota
 "今日額度" = "Today's Quota";

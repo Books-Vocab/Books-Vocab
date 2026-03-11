@@ -68,7 +68,8 @@ struct TodayReviewView: View {
             onRemembered: { submit(.remembered) },
             onLinkTap: handleLinkTap,
             onToggleAutoPlay: toggleAutoPlay,
-            onToggleAutoPlayPause: toggleAutoPlayPause
+            onToggleAutoPlayPause: toggleAutoPlayPause,
+            onDetailTap: handleDetailTap
         )
         .overlay {
             LinkedCardOverlayStack(stack: $linkedCardStack)
@@ -133,6 +134,11 @@ struct TodayReviewView: View {
     private func handleLinkTap(_ link: KGCardLinkSummary) {
         guard let target = allEntries.first(where: { $0.kgCardId == link.cardId }) else { return }
         linkedCardStack.append(target)
+    }
+
+    private func handleDetailTap() {
+        guard let current = currentEntry else { return }
+        linkedCardStack.append(current)
     }
 
     private func advanceReveal() {
