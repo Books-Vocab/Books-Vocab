@@ -79,6 +79,9 @@ actor BackgroundSyncActor {
                     existingEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
+                    if let serverPron = card.pronunciation, existingEntry.pronunciation == nil {
+                        existingEntry.pronunciation = serverPron
+                    }
                     existingEntry.markSynced()
 
                     // Merge review state from server (server newer wins)
@@ -95,7 +98,7 @@ actor BackgroundSyncActor {
                     context: card.examples.first ?? "",
                     explanation: card.note,
                     partOfSpeech: card.pos,
-                    pronunciation: nil,
+                    pronunciation: card.pronunciation,
                     bookTitle: "Knowledge Graph"
                 )
                 newEntry.difficultyTier = card.difficultyTier
