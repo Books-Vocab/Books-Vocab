@@ -12,6 +12,18 @@ from openai import OpenAI
 
 from .cards import Card
 
+_ENRICH_LANG_NAMES = {
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "zh-Hant": "Traditional Chinese",
+    "zh-Hans": "Simplified Chinese",
+}
+
+# Legacy constant kept for backward compatibility
 SYSTEM_PROMPT = """你是英語教學專家。針對每個英文詞彙，提供：
 1. pos：英文詞性縮寫 (n. / v. / adj. / adv. / phr. / conj.)
 2. note：一段精煉中文教學筆記（80 字內），包含：
@@ -20,6 +32,18 @@ SYSTEM_PROMPT = """你是英語教學專家。針對每個英文詞彙，提供�
    - 易混詞區辨（如有）
 
 回傳嚴格 JSON array，每個元素含 word, pos, note。"""
+
+
+def build_enrich_system_prompt(target_lang: str = "zh-Hant") -> str:
+    tgt_name = _ENRICH_LANG_NAMES.get(target_lang, "Traditional Chinese")
+    return f"""You are a language teaching expert. For each vocabulary word, provide:
+1. pos: POS abbreviation in English (n. / v. / adj. / adv. / phr. / conj.)
+2. note: A concise teaching note in {tgt_name} (80 characters or fewer), including:
+   - Common collocations (use `code` format)
+   - Usage context
+   - Easily confused words (if any)
+
+Return a strict JSON array, each element containing word, pos, note."""
 
 USER_TEMPLATE = """請分析以下單字：
 {words_json}

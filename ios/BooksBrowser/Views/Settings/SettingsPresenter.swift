@@ -6,12 +6,16 @@ struct SettingsPresenter: View {
 
     let state: SettingsPresenterState
     let optionalIntegrationApiKey: Binding<String>
+    let translationSourceLang: Binding<TranslationLanguage>
+    let translationTargetLang: Binding<TranslationLanguage>
+    let onTranslationLanguageChanged: (TranslationLanguage, TranslationLanguage) -> Void
     let manualLoginUserId: Binding<String>?
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions
 
     @State private var showAccountDetail = false
     @State private var showSubscriptionDetail = false
+    @State private var showTranslationLanguage = false
 
     var body: some View {
         NavigationStack {
@@ -51,6 +55,13 @@ struct SettingsPresenter: View {
                     authState: state.auth,
                     dangerState: state.danger,
                     actions: actions
+                )
+            }
+            .navigationDestination(isPresented: $showTranslationLanguage) {
+                TranslationLanguageSettingsView(
+                    sourceLang: translationSourceLang,
+                    targetLang: translationTargetLang,
+                    onChanged: onTranslationLanguageChanged
                 )
             }
             .navigationDestination(isPresented: $showSubscriptionDetail) {
@@ -394,6 +405,7 @@ private enum SettingsPresenterPreviewData {
         showSubscriptionPaywall: {},
         showOptionalIntegrationInfo: {},
         requestDeleteAccount: {},
+        showTranslationLanguageSettings: {},
         openPrivacyPolicy: {},
         openSupport: {},
         requestAppRating: {}
@@ -411,7 +423,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文"),
         kg: nil,
         subscription: nil,
         syncSummary: nil,
@@ -432,7 +444,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -475,7 +487,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色", translationSource: "English", translationTarget: "繁體中文"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: false,
@@ -518,7 +530,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色", translationSource: "English", translationTarget: "繁體中文"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -556,6 +568,9 @@ private enum SettingsPresenterPreviewData {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.loggedOut,
                 optionalIntegrationApiKey: .constant(""),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -570,6 +585,9 @@ private enum SettingsPresenterPreviewData {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.subscribedActive,
                 optionalIntegrationApiKey: .constant("sk-test-key"),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -584,6 +602,9 @@ private enum SettingsPresenterPreviewData {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.subscriptionLoading,
                 optionalIntegrationApiKey: .constant(""),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -598,6 +619,9 @@ private enum SettingsPresenterPreviewData {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.deletingAccount,
                 optionalIntegrationApiKey: .constant(""),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions

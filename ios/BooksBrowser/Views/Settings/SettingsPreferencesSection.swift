@@ -40,6 +40,23 @@ struct SettingsPreferencesSection: View {
 
                 SettingsDivider()
 
+                // 翻譯語言
+                Button(action: actions.showTranslationLanguageSettings) {
+                    SettingsRow(icon: "textformat.abc", label: "翻譯語言") {
+                        HStack(spacing: 6) {
+                            Text("\(state.translationSource) → \(state.translationTarget)")
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                            Image(systemName: "chevron.right")
+                                .font(vocabSkin.typography.iconTiny)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
+                SettingsDivider()
+
                 // 語言
                 SettingsRow(icon: "character.bubble", label: "語言") {
                     Menu {
