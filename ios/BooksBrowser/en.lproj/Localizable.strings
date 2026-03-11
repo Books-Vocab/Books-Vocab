@@ -474,3 +474,8 @@
 "儲存" = "Save";
 "音標" = "Phonetics";
 "翻譯結果" = "Translation";
+
+// Review Mode Picker
+"複習到期卡片（%@）" = "Review Due Cards (%@)";
+"學習新卡片（%@）" = "Learn New Cards (%@)";
+"全部複習（%@）" = "Review All (%@)";
