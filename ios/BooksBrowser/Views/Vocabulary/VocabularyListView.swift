@@ -20,7 +20,6 @@ struct VocabularyListView: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
-    @State private var showPaywall = false
     @StateObject private var coordinator = VocabularyListCoordinator()
 
     var body: some View {
@@ -47,7 +46,7 @@ struct VocabularyListView: View {
                 }
 
                 // Force refresh (知識庫 tab only)
-                if selectedTab == 1 && authManager.isLoggedIn && subscriptionManager.hasProAccess {
+                if selectedTab == 1 && authManager.isLoggedIn {
                     if knowledgeReviewCount > 0 {
                         ToolbarItem(placement: .topBarTrailing) {
                             Menu {
@@ -144,9 +143,6 @@ struct VocabularyListView: View {
             .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
-            .sheet(isPresented: $showPaywall) {
-                SubscriptionPaywallSheet()
-            }
             .sheet(item: $coordinator.exportURL) { url in
                 ShareSheet(url: url)
             }
@@ -204,14 +200,6 @@ struct VocabularyListView: View {
             )
         } else if !authManager.isLoggedIn {
             loggedOutState
-        } else if !subscriptionManager.hasProAccess {
-            proGateState(
-                source: selectedTab == 1 ? .knowledge : .graph,
-                title: selectedTab == 1 ? "知識庫需 Pro".localized : "關聯圖需 Pro".localized,
-                description: selectedTab == 1
-                    ? "升級後即可同步雲端字庫、啟動知識庫複習與跨裝置狀態。".localized
-                    : "升級後即可查看單字之間的關聯圖、節點結構與連結脈絡。".localized
-            )
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
         } else if selectedTab == 2 {
@@ -296,23 +284,6 @@ struct VocabularyListView: View {
         )
     }
 
-    private func proGateState(source: PaywallSource, title: String, description: String) -> some View {
-        VStack {
-            Spacer()
-            ProAccessGateCard(
-                title: title,
-                description: description,
-                actionTitle: "開始免費試用".localized,
-                systemImage: "sparkles.rectangle.stack"
-            ) {
-                subscriptionManager.activePaywallSource = source
-                showPaywall = true
-            }
-            Spacer()
-        }
-        .padding(AppMetrics.spacingLarge)
-        .vocabCanvasBackground()
-    }
     private func handlePendingRowTap(_ entryID: UUID) {
         coordinator.handlePendingRowTap(entryID, pendingEntries: pendingEntries)
     }

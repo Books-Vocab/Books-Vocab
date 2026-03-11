@@ -12,13 +12,11 @@ struct SyncView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
-    @Environment(\.subscriptionManager) private var subscriptionManager
     @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     private var pendingEntries: [VocabularyEntry]
 
     @State private var coordinator = SyncCoordinator()
     @State private var showSettings = false
-    @State private var showPaywall = false
 
     var body: some View {
         NavigationStack {
@@ -26,17 +24,10 @@ struct SyncView: View {
                 state: presenterState,
                 onPrimaryAction: handlePrimaryAction,
                 onCancel: coordinator.cancelSync,
-                onShowSettings: { showSettings = true },
-                onShowPaywall: {
-                    subscriptionManager.activePaywallSource = .sync
-                    showPaywall = true
-                }
+                onShowSettings: { showSettings = true }
             )
             .sheet(isPresented: $showSettings) {
                 SettingsView()
-            }
-            .sheet(isPresented: $showPaywall) {
-                SubscriptionPaywallSheet()
             }
             .task {
                 refreshStepLayout()
@@ -50,7 +41,6 @@ struct SyncView: View {
     private var presenterState: SyncPresenterState {
         SyncPresenterState(
             isLoggedIn: authManager.isLoggedIn,
-            hasProAccess: subscriptionManager.hasProAccess,
             isConnected: kgService.isConnected,
             phase: coordinator.phase,
             failureKind: coordinator.failureKind,
