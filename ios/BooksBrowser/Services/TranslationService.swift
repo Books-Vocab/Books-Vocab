@@ -135,11 +135,10 @@ final class TranslationService: Translating {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
 
         // 帶上授權 Header (因為 /api/translate 是受保護的端點)
-        if let token = authSession.token {
-            request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-        } else {
+        guard let token = await authSession.token else {
             throw TranslationError.apiError(L10n.string("未登入，無法調用翻譯 API"))
         }
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
         let body: [String: String] = [
             "word": word,

@@ -232,35 +232,40 @@ final class KGService: KGServing, LocalDataClearing {
 
     // MARK: - Auth Helper
 
-    private func applyAuth(to request: inout URLRequest) throws {
-        guard let token = authSession.token else {
+    private func currentAuthToken() async throws -> String {
+        guard let token = await authSession.token else {
             throw KGError.unauthorized
         }
+        return token
+    }
+
+    private func applyAuth(to request: inout URLRequest, token: String) {
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
     // MARK: - Health Check
 
     func healthCheck() async {
-        guard authSession.isLoggedIn else {
+        guard await authSession.isLoggedIn else {
             isConnected = false
             return
         }
         do {
+            let token = try await currentAuthToken()
             let url = baseURL.appendingPathComponent("api/health")
             var request = URLRequest(url: url)
-            try applyAuth(to: &request)
-            
+            applyAuth(to: &request, token: token)
+
             let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
             guard let httpResponse = response as? HTTPURLResponse else {
                 isConnected = false
                 return
             }
-            
+
             if httpResponse.statusCode == 401 {
                 print("❌ KG health check failed: 401 Unauthorized")
-                sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
+                await sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
                 isConnected = false
                 return
             }
@@ -288,10 +293,11 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Delete Card
 
     func deleteCard(word: String) async throws {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/vocab/\(word)")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -331,11 +337,12 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Batch Add Vocabulary
 
     func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/vocab")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let payload = entries.map { entry in
             KGVocabEntry(
@@ -366,10 +373,11 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Trigger Pipeline (Fire-and-forget)
 
     func triggerPipeline() async throws {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/pipeline")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -445,9 +453,10 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - User Configuration
 
     func fetchUserConfig() async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/user/config")
         var request = URLRequest(url: url)
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -465,9 +474,10 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     func fetchEntitlements() async throws -> KGEntitlements {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/user/entitlements")
         var request = URLRequest(url: url)
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -485,11 +495,12 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/billing/app-store/sync")
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
         request.httpBody = try JSONEncoder().encode(snapshot)
 
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
@@ -508,11 +519,12 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     func updateUserConfig(optionalIntegrationKey: String?, translationConfig: KGTranslationConfig? = nil) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/user/config")
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let payload = KGUserConfig(optionalIntegrationKey: optionalIntegrationKey, translation: translationConfig)
         request.httpBody = try JSONEncoder().encode(payload)
@@ -533,10 +545,11 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     func deleteAccount() async throws {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/user/account")
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -557,11 +570,12 @@ final class KGService: KGServing, LocalDataClearing {
         let payload = try await actor.buildReviewStatePushPayload()
         guard !payload.isEmpty else { return (0, 0) }
 
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/vocab/review")
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
 
         request.httpBody = try JSONSerialization.data(withJSONObject: ["entries": payload])
 
@@ -589,6 +603,7 @@ final class KGService: KGServing, LocalDataClearing {
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
     /// This makes all KG words available offline (for underlining and browsing).
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws {
+        let token = try await currentAuthToken()
         progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
         let defaults = UserDefaults.standard
@@ -597,12 +612,12 @@ final class KGService: KGServing, LocalDataClearing {
             defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
             progress?(L10n.string("升級卡片資料格式，重新同步全部卡片..."), 0, 0)
         }
-        
+
         var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
-        
+
         let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
         let isIncremental = lastSyncMillis > 0
-        
+
         if isIncremental {
             let lastSyncDate = Date(timeIntervalSince1970: lastSyncMillis)
             let formatter = ISO8601DateFormatter()
@@ -613,13 +628,13 @@ final class KGService: KGServing, LocalDataClearing {
         } else {
             print("🔄 Performing full sync")
         }
-        
+
         guard let url = urlComponents.url else {
             throw KGError.serverError("Invalid URL")
         }
-        
+
         var request = URLRequest(url: url)
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
         
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
@@ -670,9 +685,10 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Fetch Graph Links
     
     func pullGraphLinks() async throws -> [KGGraphLink] {
+        let token = try await currentAuthToken()
         let url = baseURL.appendingPathComponent("api/graph/links")
         var request = URLRequest(url: url)
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
         
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
         
