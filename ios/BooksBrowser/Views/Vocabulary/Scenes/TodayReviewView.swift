@@ -43,6 +43,9 @@ struct TodayReviewView: View {
     @State private var persistenceFailureTrigger = 0
     @State private var persistenceErrorMessage: String?
     @State private var pendingSaveTask: Task<Void, Never>?
+    @State private var isAutoPlaying = false
+    @State private var isAutoPlayPaused = false
+    @State private var autoplayTask: Task<Void, Never>?
 
     let onClose: () -> Void
 
@@ -63,7 +66,9 @@ struct TodayReviewView: View {
             onNext: goNext,
             onForgot: { submit(.forgot) },
             onRemembered: { submit(.remembered) },
-            onLinkTap: handleLinkTap
+            onLinkTap: handleLinkTap,
+            onToggleAutoPlay: toggleAutoPlay,
+            onToggleAutoPlayPause: toggleAutoPlayPause
         )
         .overlay {
             LinkedCardOverlayStack(stack: $linkedCardStack)
@@ -87,7 +92,9 @@ struct TodayReviewView: View {
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
             persistenceFailureTrigger: persistenceFailureTrigger,
-            persistenceErrorMessage: persistenceErrorMessage
+            persistenceErrorMessage: persistenceErrorMessage,
+            isAutoPlaying: isAutoPlaying,
+            isAutoPlayPaused: isAutoPlayPaused
         )
     }
 
@@ -158,6 +165,9 @@ struct TodayReviewView: View {
             revealStage = .front
             currentIndex -= 1
         }
+        if isAutoPlaying && !isAutoPlayPaused {
+            startAutoPlayLoop()
+        }
     }
 
     private func goNext() {
@@ -165,6 +175,74 @@ struct TodayReviewView: View {
         withAnimation(AppMotion.reviewNavigationSpring) {
             revealStage = .front
             currentIndex += 1
+        }
+        if isAutoPlaying && !isAutoPlayPaused {
+            startAutoPlayLoop()
+        }
+    }
+
+    // MARK: - Autoplay
+
+    private func toggleAutoPlay() {
+        if isAutoPlaying {
+            stopAutoPlay()
+        } else {
+            startAutoPlay()
+        }
+    }
+
+    private func toggleAutoPlayPause() {
+        isAutoPlayPaused.toggle()
+        if !isAutoPlayPaused {
+            startAutoPlayLoop()
+        }
+    }
+
+    private func startAutoPlay() {
+        isAutoPlaying = true
+        isAutoPlayPaused = false
+        startAutoPlayLoop()
+    }
+
+    private func stopAutoPlay() {
+        autoplayTask?.cancel()
+        autoplayTask = nil
+        isAutoPlaying = false
+        isAutoPlayPaused = false
+    }
+
+    private func startAutoPlayLoop() {
+        autoplayTask?.cancel()
+        autoplayTask = Task { @MainActor in
+            while !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused {
+                guard currentIndex < queue.count else {
+                    stopAutoPlay()
+                    return
+                }
+
+                // 正面停留 2 秒
+                if revealStage == .front {
+                    try? await Task.sleep(for: .seconds(2))
+                    guard !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused else { return }
+                    advanceReveal()
+                }
+
+                // 答案停留 4 秒
+                try? await Task.sleep(for: .seconds(4))
+                guard !Task.isCancelled && isAutoPlaying && !isAutoPlayPaused else { return }
+
+                // 前進到下一張（不歸類）
+                if currentIndex < queue.count - 1 {
+                    withAnimation(AppMotion.reviewNavigationSpring) {
+                        revealStage = .front
+                        currentIndex += 1
+                    }
+                } else {
+                    // 最後一張播完
+                    stopAutoPlay()
+                    return
+                }
+            }
         }
     }
 
