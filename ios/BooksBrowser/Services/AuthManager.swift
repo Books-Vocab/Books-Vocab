@@ -11,8 +11,9 @@ import GoogleSignIn
 import SwiftData
 import AuthenticationServices
 
+@MainActor
 @Observable
-final class AuthManager: @unchecked Sendable, AuthManaging, AuthSessionProviding, SessionInvalidating {
+final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating {
     static let shared = AuthManager()
 
     @ObservationIgnored
@@ -100,20 +101,17 @@ final class AuthManager: @unchecked Sendable, AuthManaging, AuthSessionProviding
             if let container {
                 await localDataCleaner.clearLocalData(container: container, reason: reason)
             }
-            await MainActor.run {
-                GIDSignIn.sharedInstance.signOut()
-                self.userId = nil
-                self.token = nil
-                self.displayName = nil
-                self.userEmail = nil
-                self.avatarURL = nil
-                self.sessionStore.clearSession()
-                self.isLoggedIn = false
-            }
+            GIDSignIn.sharedInstance.signOut()
+            self.userId = nil
+            self.token = nil
+            self.displayName = nil
+            self.userEmail = nil
+            self.avatarURL = nil
+            self.sessionStore.clearSession()
+            self.isLoggedIn = false
         }
     }
 
-    @MainActor
     func applyAuthenticatedUser(
         userId: String,
         jwtToken: String,
@@ -142,7 +140,6 @@ final class AuthManager: @unchecked Sendable, AuthManaging, AuthSessionProviding
         login(userId: userId, token: jwtToken)
     }
 
-    @MainActor
     func setAuthError(_ message: String) {
         authError = message
     }
