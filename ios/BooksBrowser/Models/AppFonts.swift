@@ -103,44 +103,65 @@ enum AppFonts {
     }
 
     // MARK: - UIKit Fonts (for Appearance API)
+    //
+    // Note: UINavigationBarAppearance 不支援含 cascade list 的 font descriptor,
+    // 改用 UIFont(name:size:) 直接建構。CJK 文字由系統自動 fallback 到 PingFang。
 
-    /// UIKit serif font for UINavigationBar / UITabBar appearance
+    /// UIKit serif font — Athelas (CJK auto-fallback by system)
     static func uiSerif(size: CGFloat, bold: Bool = false) -> UIFont {
-        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
-        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
-        let base = UIFontDescriptor(fontAttributes: [.name: primary])
-        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
-        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
-        return UIFont(descriptor: descriptor, size: size)
+        let name = bold ? "Athelas-Bold" : "Athelas-Regular"
+        return UIFont(name: name, size: size)
+            ?? .systemFont(ofSize: size, weight: bold ? .bold : .regular)
     }
 
-    /// UIKit sans font for UITabBar appearance
+    /// UIKit sans font — ElmsSans (CJK auto-fallback by system)
     static func uiSans(size: CGFloat, bold: Bool = false) -> UIFont {
-        let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
-        let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
-        let base = UIFontDescriptor(fontAttributes: [.name: primary])
-        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
-        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
-        return UIFont(descriptor: descriptor, size: size)
+        let name = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
+        return UIFont(name: name, size: size)
+            ?? .systemFont(ofSize: size, weight: bold ? .bold : .regular)
+    }
+
+    /// 建立 serif 導航列 appearance（opaque + transparent pair）
+    static func makeNavBarAppearances() -> (opaque: UINavigationBarAppearance, transparent: UINavigationBarAppearance) {
+        let serifLarge = uiSerif(size: 34, bold: true)
+        let serifInline = uiSerif(size: 17, bold: true)
+        let largeTitleAttrs: [NSAttributedString.Key: Any] = [.font: serifLarge]
+        let titleAttrs: [NSAttributedString.Key: Any] = [.font: serifInline]
+
+        let opaque = UINavigationBarAppearance()
+        opaque.configureWithDefaultBackground()
+        opaque.largeTitleTextAttributes = largeTitleAttrs
+        opaque.titleTextAttributes = titleAttrs
+
+        let transparent = UINavigationBarAppearance()
+        transparent.configureWithTransparentBackground()
+        transparent.largeTitleTextAttributes = largeTitleAttrs
+        transparent.titleTextAttributes = titleAttrs
+
+        return (opaque, transparent)
     }
 
     /// 設定 UINavigationBar + UITabBar 全域字體
+    ///
+    /// 重要：SwiftUI 的 `.toolbarBackground(.hidden)` 會覆蓋 UIKit appearance proxy，
+    /// 因此透明背景必須在這裡用 `configureWithTransparentBackground()` 實現，
+    /// 不能和 `.toolbarBackground(.hidden)` 混用。
     static func configureGlobalAppearance() {
-        // Navigation bar: serif
-        let navAppearance = UINavigationBarAppearance()
-        navAppearance.configureWithDefaultBackground()
-        navAppearance.largeTitleTextAttributes = [.font: uiSerif(size: 34, bold: true)]
-        navAppearance.titleTextAttributes = [.font: uiSerif(size: 17, bold: true)]
-        UINavigationBar.appearance().standardAppearance = navAppearance
-        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+        // Navigation bar: serif font + transparent background
+        let (_, transparent) = makeNavBarAppearances()
+        UINavigationBar.appearance().standardAppearance = transparent
+        UINavigationBar.appearance().compactAppearance = transparent
+        UINavigationBar.appearance().scrollEdgeAppearance = transparent
+        UINavigationBar.appearance().compactScrollEdgeAppearance = transparent
 
         // Tab bar: sans
-        let tabAppearance = UITabBarAppearance()
-        tabAppearance.configureWithDefaultBackground()
-        let tabItemAppearance = UITabBarItemAppearance()
         let tabFont = uiSans(size: 10)
+        let tabItemAppearance = UITabBarItemAppearance()
         tabItemAppearance.normal.titleTextAttributes = [.font: tabFont]
         tabItemAppearance.selected.titleTextAttributes = [.font: tabFont]
+
+        let tabAppearance = UITabBarAppearance()
+        tabAppearance.configureWithDefaultBackground()
         tabAppearance.stackedLayoutAppearance = tabItemAppearance
         tabAppearance.inlineLayoutAppearance = tabItemAppearance
         tabAppearance.compactInlineLayoutAppearance = tabItemAppearance

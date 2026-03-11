@@ -34,7 +34,6 @@ struct VocabularyListView: View {
             }
             .navigationTitle("生詞庫".localized)
             .navigationBarTitleDisplayMode(.large)
-            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 // Sync button
                 ToolbarItem(placement: .topBarLeading) {

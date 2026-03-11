@@ -72,7 +72,6 @@ struct BookshelfView: View {
             .navigationTitle("書庫".localized)
             .navigationBarTitleDisplayMode(.large)
             .animation(AppMotion.phaseChange, value: books.isEmpty)
-            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: coordinator.presentSettings) {
