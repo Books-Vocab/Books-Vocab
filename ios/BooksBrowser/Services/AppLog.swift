@@ -14,5 +14,6 @@ enum AppLog {
     static let book = Logger(subsystem: subsystem, category: "Book")
     static let reader = Logger(subsystem: subsystem, category: "Reader")
     static let fonts = Logger(subsystem: subsystem, category: "Fonts")
+    static let data = Logger(subsystem: subsystem, category: "Data")
     static let app = Logger(subsystem: subsystem, category: "App")
 }

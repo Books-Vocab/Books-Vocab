@@ -23,7 +23,7 @@ final class KGVocabCoordinator {
     ) {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
         entry.queueDelete()
-        try? modelContext.save()
+        modelContext.safeSave()
     }
 
     func loadInitialData(
@@ -63,7 +63,7 @@ final class KGVocabCoordinator {
             }
         }
 
-        try? modelContext.save()
+        modelContext.safeSave()
         await kgService.healthCheck()
     }
 }

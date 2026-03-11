@@ -83,7 +83,7 @@ final class BookshelfCoordinator {
                 )
 
                 modelContext.insert(book)
-                try? modelContext.save()
+                modelContext.safeSave()
                 AppLog.book.info("Book saved: \(book.title)")
 
                 isLoading = false
