@@ -18,7 +18,7 @@ struct KGVocabView: View {
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
 
-    @StateObject private var coordinator = KGVocabCoordinator()
+    @State private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
     @State private var sortOption: KGVocabSortOption = .default
     @State private var showArchiveList = false
