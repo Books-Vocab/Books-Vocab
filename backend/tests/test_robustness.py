@@ -21,6 +21,7 @@ import uuid
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
+import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -694,7 +695,9 @@ class TestBatchA_MochiOrphanWarning:
         graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
 
         client_mock = MagicMock()
-        client_mock.delete_card.side_effect = Exception("Mochi 503")
+        client_mock.delete_card.side_effect = httpx.HTTPStatusError(
+            "Mochi 503", request=httpx.Request("DELETE", "https://mochi"), response=httpx.Response(503)
+        )
         client_mock.list_decks.return_value = [{"name": "Knowledge", "id": "deck1"}]
 
         sync = MochiSync(
