@@ -8,7 +8,7 @@
 import AVFoundation
 
 /// 英文發音服務 — 使用 iOS 內建 TTS，零成本
-final class SpeechService {
+final class SpeechService: Speaking {
     static let shared = SpeechService()
 
     private let synthesizer = AVSpeechSynthesizer()
