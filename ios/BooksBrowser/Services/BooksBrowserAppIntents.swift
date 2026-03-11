@@ -38,7 +38,7 @@ struct AddVocabularyIntent: AppIntent {
         if let existing = try? modelContext.fetch(descriptor).first {
             if existing.syncAction == .delete {
                 existing.restorePendingEntry()
-                try? modelContext.save()
+                modelContext.safeSave()
                 return .result(dialog: IntentDialog(stringLiteral: L10n.format("已為您恢復追蹤單字「%@」。", targetWord)))
             } else {
                 return .result(dialog: IntentDialog(stringLiteral: L10n.format("單字「%@」已經在您的生字庫中了。", targetWord)))
@@ -54,8 +54,8 @@ struct AddVocabularyIntent: AppIntent {
         )
         entry.restorePendingEntry()
         modelContext.insert(entry)
-        try? modelContext.save()
-        
+        modelContext.safeSave()
+
         // 4. (可選) 觸發背景非同步翻譯（使用我們剛升級的端側 Foundation Models）
         Task.detached {
             let service = TranslationService()

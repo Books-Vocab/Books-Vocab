@@ -677,8 +677,12 @@ final class KGService: KGServing, LocalDataClearing {
     func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
         let actor = BackgroundSyncActor(modelContainer: container)
         AppLog.kg.info("clearLocalData requested. reason=\(reason)")
-        try? await actor.clearVocabularyData(reason: reason)
-        
+        do {
+            try await actor.clearVocabularyData(reason: reason)
+        } catch {
+            AppLog.kg.error("clearVocabularyData failed: \(error.localizedDescription)")
+        }
+
         UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)
         lastSyncDate = nil
         serverCardCount = 0
