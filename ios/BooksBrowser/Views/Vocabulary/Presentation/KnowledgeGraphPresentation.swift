@@ -50,7 +50,7 @@ enum KnowledgeGraphPresentation {
     }
 
     private static func reviewTone(for entry: VocabularyEntry, now: Date) -> String {
-        guard entry.reviewCount > 0 else { return "yellow" }
+        guard entry.reviewCount > 0 else { return "gray" }
         let startDate = entry.lastReviewedAt ?? entry.dateAdded
         let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
         let elapsed = max(0, now.timeIntervalSince(startDate))

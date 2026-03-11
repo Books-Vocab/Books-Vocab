@@ -139,6 +139,36 @@ actor BackgroundSyncActor {
         AppLog.sync.info("pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards.")
     }
 
+    /// Back-fill pronunciations for synced entries that are missing them.
+    /// Fetches from the free dictionary API (no LLM cost).
+    func backfillPronunciations(batchLimit: Int = 30) async throws {
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
+        )
+        let allSynced = try modelContext.fetch(descriptor)
+        let needsPron = allSynced.filter {
+            $0.pronunciation == nil && !$0.word.contains(" ")
+        }
+        guard !needsPron.isEmpty else { return }
+
+        let batch = Array(needsPron.prefix(batchLimit))
+        AppLog.sync.info("Backfilling pronunciations for \(batch.count)/\(needsPron.count) entries")
+
+        var updated = 0
+        for entry in batch {
+            if let pron = await DictionaryService.fetchPronunciation(word: entry.word) {
+                entry.pronunciation = pron
+                updated += 1
+            }
+            try? await Task.sleep(for: .milliseconds(50))
+        }
+
+        if updated > 0 {
+            try modelContext.save()
+            AppLog.sync.info("Backfilled \(updated) pronunciations")
+        }
+    }
+
     /// Deletes all vocabulary entries from local SwiftData storage.
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
