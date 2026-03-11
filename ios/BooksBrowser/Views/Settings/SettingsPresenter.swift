@@ -108,6 +108,7 @@ struct SettingsPresenter: View {
         SettingsPreferencesSection(
             state: state.preferences,
             actions: actions,
+            onShowTranslationLanguage: { showTranslationLanguage = true },
             onShowReviewSettings: { showReviewSection = true }
         )
     }
@@ -410,7 +411,7 @@ private enum SettingsPresenterPreviewData {
         showSubscriptionPaywall: {},
         showOptionalIntegrationInfo: {},
         requestDeleteAccount: {},
-        showTranslationLanguageSettings: {},
+
         openPrivacyPolicy: {},
         openSupport: {},
         requestAppRating: {}

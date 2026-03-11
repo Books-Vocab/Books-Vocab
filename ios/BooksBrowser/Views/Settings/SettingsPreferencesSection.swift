@@ -4,6 +4,7 @@ struct SettingsPreferencesSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
+    let onShowTranslationLanguage: () -> Void
     let onShowReviewSettings: () -> Void
 
     var body: some View {
@@ -42,7 +43,7 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 翻譯語言
-                Button(action: actions.showTranslationLanguageSettings) {
+                Button(action: onShowTranslationLanguage) {
                     SettingsRow(icon: "textformat.abc", label: "翻譯語言") {
                         HStack(spacing: 6) {
                             Text("\(state.translationSource) → \(state.translationTarget)")
