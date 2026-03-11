@@ -243,7 +243,7 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
         stdout = exc.stdout or ""
         stderr = exc.stderr or ""
         return_code = 124
-    except Exception as exc:
+    except OSError as exc:
         finished = datetime.now(tz=timezone.utc)
         return {
             "runId": run_id,

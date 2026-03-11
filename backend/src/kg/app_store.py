@@ -14,6 +14,7 @@ from typing import Any
 import httpx
 import jwt
 from cryptography import x509
+from cryptography.exceptions import InvalidSignature
 from cryptography.hazmat.primitives import hashes, serialization
 from cryptography.hazmat.primitives.asymmetric import ec, padding, rsa
 
@@ -122,7 +123,7 @@ def _verify_certificate_chain(certificates: list[x509.Certificate], trusted_root
                 return
             _verify_certificate_signature(chain_root, trusted_root)
             return
-        except Exception:
+        except (AppStoreVerificationError, InvalidSignature):
             logger.debug("Trusted root candidate did not match chain root", exc_info=True)
             continue
 

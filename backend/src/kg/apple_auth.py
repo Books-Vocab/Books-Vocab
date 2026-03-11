@@ -34,7 +34,7 @@ def _fetch_apple_public_keys() -> None:
             keys_data = resp.json()
             _apple_public_keys = {key["kid"]: key for key in keys_data.get("keys", [])}
             _keys_last_fetched = time.time()
-    except Exception as e:
+    except (httpx.HTTPError, ValueError, KeyError) as e:
         # If cache exists and request fails, keeping old cache is safer
         if not _apple_public_keys:
             raise HTTPException(status_code=500, detail=f"Failed to fetch Apple public keys: {e}")
@@ -118,9 +118,8 @@ def verify_apple_token(token: str, audience: str) -> str:
         raise HTTPException(status_code=401, detail="Invalid issuer")
     except jwt.PyJWTError as e:
         raise HTTPException(status_code=401, detail=f"Invalid token: {e}")
-    except Exception as e:
-        # Expose full error to backend logs, hide specific details in HTTP response
+    except HTTPException:
+        raise
+    except (KeyError, ValueError, httpx.HTTPError) as e:
         logger.error("Apple token verification error: %s", e)
-        if isinstance(e, HTTPException):
-            raise e
         raise HTTPException(status_code=401, detail="Authentication failed")
