@@ -50,12 +50,43 @@ struct VocabularyListView: View {
                 if selectedTab == 1 && authManager.isLoggedIn && subscriptionManager.hasProAccess {
                     if knowledgeReviewCount > 0 {
                         ToolbarItem(placement: .topBarTrailing) {
-                            Button {
-                                coordinator.startKnowledgeReview(entries: knowledgeReviewEntries)
+                            Menu {
+                                if !knowledgeDueEntries.isEmpty {
+                                    Button {
+                                        coordinator.startKnowledgeReview(entries: knowledgeDueEntries)
+                                    } label: {
+                                        Label(
+                                            L10n.format("複習到期卡片（%@）", "\(knowledgeDueEntries.count)"),
+                                            systemImage: "clock.badge.exclamationmark"
+                                        )
+                                    }
+                                }
+
+                                if !knowledgeUnlearnedEntries.isEmpty {
+                                    Button {
+                                        coordinator.startKnowledgeReview(entries: knowledgeUnlearnedEntries)
+                                    } label: {
+                                        Label(
+                                            L10n.format("學習新卡片（%@）", "\(knowledgeUnlearnedEntries.count)"),
+                                            systemImage: "sparkles"
+                                        )
+                                    }
+                                }
+
+                                Divider()
+
+                                Button {
+                                    coordinator.startKnowledgeReview(entries: knowledgeReviewEntries)
+                                } label: {
+                                    Label(
+                                        L10n.format("全部複習（%@）", "\(knowledgeReviewCount)"),
+                                        systemImage: "rectangle.stack"
+                                    )
+                                }
                             } label: {
                                 VocabToolbarGlyph(
                                     systemImage: "rectangle.stack.badge.play",
-                                    badge: "\(knowledgeReviewCount)"
+                                    badge: knowledgeDueCount > 0 ? "\(knowledgeDueCount)" : "\(knowledgeReviewCount)"
                                 )
                             }
                         }
@@ -230,6 +261,18 @@ struct VocabularyListView: View {
 
     private var knowledgeReviewCount: Int {
         knowledgeReviewEntries.count
+    }
+
+    private var knowledgeDueEntries: [VocabularyEntry] {
+        VocabularyEntryPresentation.knowledgeDueEntries(in: allEntries)
+    }
+
+    private var knowledgeDueCount: Int {
+        knowledgeDueEntries.count
+    }
+
+    private var knowledgeUnlearnedEntries: [VocabularyEntry] {
+        VocabularyEntryPresentation.knowledgeUnlearnedEntries(in: allEntries)
     }
 
     private var tabOptions: [VocabTabOption<Int>] {
