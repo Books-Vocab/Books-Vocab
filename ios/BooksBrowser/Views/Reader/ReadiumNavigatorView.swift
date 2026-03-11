@@ -101,6 +101,12 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         host.view.addSubview(navigator.view)
         navigator.didMove(toParent: host)
 
+        // 將 UIKit 層背景設為紙色，避免 iOS 26 glass effect 取樣到
+        // WKWebView 的原生深色背景（系統深色模式時 CSS 層與 UIKit 層不一致）
+        let paperUIColor = UIColor(viewConfiguration.paperColor)
+        host.view.backgroundColor = paperUIColor
+        navigator.view.backgroundColor = paperUIColor
+
         // 透明觸控攔截層：當翻譯面板開啟時覆蓋整個 WebView，阻止 click 穿透
         let blocker = UIView(frame: host.view.bounds)
         blocker.autoresizingMask = [.flexibleWidth, .flexibleHeight]
@@ -120,6 +126,11 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // 同步最新的 SwiftUI View 給 Coordinator，避免舊的 state capture 導致閉包操作拿不到最新的 bookUniqueWords
         context.coordinator.parent = self
         context.coordinator.sync(with: bridgeSnapshot, in: uiViewController)
+
+        // 同步 UIKit 層背景色（使用者切換閱讀主題時紙色會變）
+        let paperUIColor = UIColor(viewConfiguration.paperColor)
+        uiViewController.view.backgroundColor = paperUIColor
+        uiViewController.epubNavigator?.view.backgroundColor = paperUIColor
     }
 
     // MARK: - Coordinator
