@@ -16,6 +16,7 @@ struct SettingsPresenter: View {
     @State private var showAccountDetail = false
     @State private var showSubscriptionDetail = false
     @State private var showTranslationLanguage = false
+    @State private var showReviewSection = false
 
     var body: some View {
         NavigationStack {
@@ -49,6 +50,9 @@ struct SettingsPresenter: View {
                     Button("完成".localized, action: actions.dismiss)
                         .fontWeight(.semibold)
                 }
+            }
+            .navigationDestination(isPresented: $showReviewSection) {
+                SettingsReviewSection()
             }
             .navigationDestination(isPresented: $showAccountDetail) {
                 SettingsAccountDetailView(
@@ -103,7 +107,8 @@ struct SettingsPresenter: View {
     private var preferencesSection: some View {
         SettingsPreferencesSection(
             state: state.preferences,
-            actions: actions
+            actions: actions,
+            onShowReviewSettings: { showReviewSection = true }
         )
     }
 
@@ -423,7 +428,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
         kg: nil,
         subscription: nil,
         syncSummary: nil,
@@ -444,7 +449,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -487,7 +492,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色", translationSource: "English", translationTarget: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: false,
@@ -530,7 +535,7 @@ private enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色", translationSource: "English", translationTarget: "繁體中文"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
