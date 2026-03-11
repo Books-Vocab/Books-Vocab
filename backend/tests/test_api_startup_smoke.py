@@ -133,7 +133,7 @@ def test_startup_smoke_admin_run_updates_last_result(startup_env):
         "stderrTail": [],
     }
 
-    with patch.object(api_mod, "_run_pytest_matrix", return_value=fake_result):
+    with patch("kg.admin_wiring.run_pytest_matrix", return_value=fake_result):
         run = client.post(
             "/api/admin/tests/run",
             params={"token": "adm-secret"},
