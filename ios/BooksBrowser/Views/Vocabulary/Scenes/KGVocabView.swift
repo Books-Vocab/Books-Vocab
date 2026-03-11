@@ -8,6 +8,7 @@
 
 import SwiftUI
 import SwiftData
+import os
 
 struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
@@ -252,9 +253,9 @@ struct KGVocabView: View {
             do {
                 try await kgService.archiveCard(word: entry.word, archived: true)
                 entry.isArchived = true
-                try? modelContext.save()
+                modelContext.safeSave()
             } catch {
-                print("⚠️ Archive failed: \(error.localizedDescription)")
+                AppLog.kg.error("Archive failed: \(error.localizedDescription)")
             }
         }
     }

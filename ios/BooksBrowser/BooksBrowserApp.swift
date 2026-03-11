@@ -86,7 +86,11 @@ struct BooksBrowserApp: App {
             .appendingPathComponent("EPUBs")
         if let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
             .appendingPathComponent("Documents/EPUBs") {
-            try? FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
+            do {
+                try FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
+            } catch {
+                AppLog.app.error("iCloud EPUBs directory creation failed: \(error.localizedDescription)")
+            }
             if let files = try? FileManager.default.contentsOfDirectory(
                 at: localEpubsDir,
                 includingPropertiesForKeys: nil
@@ -94,7 +98,11 @@ struct BooksBrowserApp: App {
                 for file in files where file.pathExtension == "epub" {
                     let dest = iCloudURL.appendingPathComponent(file.lastPathComponent)
                     if !FileManager.default.fileExists(atPath: dest.path) {
-                        try? FileManager.default.copyItem(at: file, to: dest)
+                        do {
+                            try FileManager.default.copyItem(at: file, to: dest)
+                        } catch {
+                            AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
+                        }
                     }
                 }
             }
@@ -127,7 +135,11 @@ struct BooksBrowserApp: App {
                     .task {
                         if !authManager.isLoggedIn {
                             let actor = BackgroundSyncActor(modelContainer: modelContainer)
-                            try? await actor.clearSyncedData()
+                            do {
+                                try await actor.clearSyncedData()
+                            } catch {
+                                AppLog.app.error("clearSyncedData failed: \(error.localizedDescription)")
+                            }
                         }
                         // 一次性遷移 UserDefaults 複習記錄至 SwiftData
                         let migrationContext = ModelContext(modelContainer)

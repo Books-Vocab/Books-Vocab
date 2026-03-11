@@ -95,7 +95,7 @@ final class SyncCoordinator {
                             failedWords.append(entry.word)
                         }
                     }
-                    try? modelContext.save()
+                    modelContext.safeSave()
 
                     if failedWords.isEmpty {
                         updateStep(
@@ -128,7 +128,7 @@ final class SyncCoordinator {
                                 entry.kgCardId = cardId
                             }
                         }
-                        try? modelContext.save()
+                        modelContext.safeSave()
 
                         updateStep(
                             "upload_add",
@@ -140,7 +140,7 @@ final class SyncCoordinator {
                     } catch {
                         adds.forEach { $0.markSyncFailed() }
                         encounteredFailure = true
-                        try? modelContext.save()
+                        modelContext.safeSave()
                         updateStep(
                             "upload_add",
                             status: .error,

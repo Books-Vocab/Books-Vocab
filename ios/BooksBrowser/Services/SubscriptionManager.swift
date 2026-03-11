@@ -110,12 +110,16 @@ final class SubscriptionManager: SubscriptionManaging {
                 }
 
                 let product = self.proProduct
-                try? await self.syncTransaction(
-                    transaction,
-                    signedTransactionInfo: result.jwsRepresentation,
-                    product: product,
-                    using: kgService
-                )
+                do {
+                    try await self.syncTransaction(
+                        transaction,
+                        signedTransactionInfo: result.jwsRepresentation,
+                        product: product,
+                        using: kgService
+                    )
+                } catch {
+                    AppLog.subscription.error("syncTransaction failed: \(error.localizedDescription)")
+                }
                 await self.refresh(using: kgService, authManager: authManager, force: true)
             }
         }

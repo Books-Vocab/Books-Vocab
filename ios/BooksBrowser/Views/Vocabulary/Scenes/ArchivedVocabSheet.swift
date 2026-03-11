@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 struct ArchivedVocabSheet: View {
     @Environment(\.dismiss) private var dismiss
@@ -83,9 +84,9 @@ struct ArchivedVocabSheet: View {
             do {
                 try await kgService.archiveCard(word: entry.word, archived: false)
                 entry.isArchived = false
-                try? modelContext.save()
+                modelContext.safeSave()
             } catch {
-                print("⚠️ Unarchive failed: \(error.localizedDescription)")
+                AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
             }
         }
     }
