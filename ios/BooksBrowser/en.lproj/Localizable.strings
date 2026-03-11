@@ -479,3 +479,9 @@
 "複習到期卡片（%@）" = "Review Due Cards (%@)";
 "學習新卡片（%@）" = "Learn New Cards (%@)";
 "全部複習（%@）" = "Review All (%@)";
+
+// Quota
+"今日額度" = "Today's Quota";
+"今日額度已用完，%@" = "Today's quota exhausted, %@";
+"%@h %@m 後重置" = "%1$@h %2$@m until reset";
+"%@m 後重置" = "%@m until reset";

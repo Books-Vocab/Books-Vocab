@@ -126,6 +126,12 @@ struct SettingsPresenter: View {
                     SettingsDivider()
                 }
 
+                // 今日額度 (only when logged in and used)
+                if QuotaStore.shared.fraction < 1.0, state.auth.isLoggedIn {
+                    quotaRow
+                    SettingsDivider()
+                }
+
                 // Mochi 整合 (only when logged in)
                 if let optionalIntegration = state.optionalIntegration {
                     mochiRow(optionalIntegration)
@@ -190,6 +196,56 @@ struct SettingsPresenter: View {
                     .foregroundStyle(vocabSkin.palette.secondaryText)
                     .lineLimit(1)
             }
+        }
+    }
+
+    // MARK: - Quota Row
+
+    private var quotaRow: some View {
+        VStack(spacing: 0) {
+            SettingsRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized) {
+                HStack(spacing: 6) {
+                    Text(QuotaStore.shared.isExhausted
+                         ? QuotaStore.shared.resetText
+                         : "\(Int(QuotaStore.shared.fraction * 100))%")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(quotaTextColor)
+                        .lineLimit(1)
+                }
+            }
+
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(quotaBarColor.opacity(0.15))
+
+                    RoundedRectangle(cornerRadius: 1.5, style: .continuous)
+                        .fill(quotaBarColor)
+                        .frame(width: geo.size.width * QuotaStore.shared.fraction)
+                        .animation(AppMotion.standardSpring, value: QuotaStore.shared.fraction)
+                }
+            }
+            .frame(height: 3)
+            .padding(.horizontal, vocabSkin.spacing.cardPadding)
+            .padding(.bottom, vocabSkin.spacing.tinyGap)
+        }
+    }
+
+    private var quotaBarColor: Color {
+        switch QuotaStore.shared.level {
+        case .normal:    return vocabSkin.palette.success
+        case .warning:   return appTheme.palette.warning
+        case .critical:  return vocabSkin.palette.destructive
+        case .exhausted: return vocabSkin.palette.destructive
+        }
+    }
+
+    private var quotaTextColor: Color {
+        switch QuotaStore.shared.level {
+        case .normal:    return vocabSkin.palette.secondaryText
+        case .warning:   return appTheme.palette.warning
+        case .critical:  return vocabSkin.palette.destructive
+        case .exhausted: return vocabSkin.palette.destructive
         }
     }
 
