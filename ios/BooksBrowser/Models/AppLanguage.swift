@@ -5,6 +5,9 @@ enum AppLanguage: String, CaseIterable, Identifiable {
     case system
     case english
     case traditionalChinese
+    case simplifiedChinese
+    case japanese
+    case korean
 
     var id: String { rawValue }
 
@@ -16,6 +19,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
             return "en"
         case .traditionalChinese:
             return "zh-Hant"
+        case .simplifiedChinese:
+            return "zh-Hans"
+        case .japanese:
+            return "ja"
+        case .korean:
+            return "ko"
         }
     }
 
@@ -27,6 +36,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
             return Locale(identifier: "en")
         case .traditionalChinese:
             return Locale(identifier: "zh-Hant")
+        case .simplifiedChinese:
+            return Locale(identifier: "zh-Hans")
+        case .japanese:
+            return Locale(identifier: "ja")
+        case .korean:
+            return Locale(identifier: "ko")
         }
     }
 
@@ -38,6 +53,12 @@ enum AppLanguage: String, CaseIterable, Identifiable {
             return L10n.string("English")
         case .traditionalChinese:
             return L10n.string("繁體中文")
+        case .simplifiedChinese:
+            return L10n.string("简体中文")
+        case .japanese:
+            return L10n.string("日本語")
+        case .korean:
+            return L10n.string("한국어")
         }
     }
 
@@ -48,6 +69,15 @@ enum AppLanguage: String, CaseIterable, Identifiable {
 
         if preferred.hasPrefix("zh-hant") {
             return .traditionalChinese
+        }
+        if preferred.hasPrefix("zh-hans") {
+            return .simplifiedChinese
+        }
+        if preferred.hasPrefix("ja") {
+            return .japanese
+        }
+        if preferred.hasPrefix("ko") {
+            return .korean
         }
         if preferred.hasPrefix("en") {
             return .english
@@ -121,7 +151,7 @@ final class AppLanguageStore: ObservableObject {
         switch selection {
         case .system:
             return AppLanguage.resolvedSystemLanguage()
-        case .english, .traditionalChinese:
+        case .english, .traditionalChinese, .simplifiedChinese, .japanese, .korean:
             return selection
         }
     }
