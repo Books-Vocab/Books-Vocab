@@ -21,6 +21,7 @@ struct KGVocabView: View {
     @StateObject private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
     @State private var sortOption: KGVocabSortOption = .default
+    @State private var showArchiveList = false
 
     @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
     private var pendingDeletes: [VocabularyEntry]
@@ -72,6 +73,9 @@ struct KGVocabView: View {
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         }
+        .sheet(isPresented: $showArchiveList) {
+            ArchivedVocabSheet()
+        }
         .task {
             await coordinator.loadInitialData(
                 authManager: authManager,
@@ -104,6 +108,9 @@ struct KGVocabView: View {
             },
             onDeleteTapped: { entryID in
                 handleDeleteTap(entryID)
+            },
+            onArchiveTapped: { entryID in
+                handleArchiveTap(entryID)
             }
         )
     }
@@ -237,5 +244,22 @@ struct KGVocabView: View {
             syncedEntries: syncedEntries,
             modelContext: modelContext
         )
+    }
+
+    private func handleArchiveTap(_ entryID: UUID) {
+        guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
+        Task {
+            do {
+                try await kgService.archiveCard(word: entry.word, archived: true)
+                entry.isArchived = true
+                try? modelContext.save()
+            } catch {
+                print("⚠️ Archive failed: \(error.localizedDescription)")
+            }
+        }
+    }
+
+    var archiveCount: Int {
+        VocabularyEntryPresentation.archivedEntries(in: syncedEntries).count
     }
 }

@@ -35,6 +35,7 @@ class Card(SQLModel, table=True):
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
     is_deleted: bool = SQLField(default=False)
+    is_archived: bool = SQLField(default=False)
 
     # Spaced-review state (synced from client)
     review_interval_hours: float = SQLField(default=12.0)
@@ -69,6 +70,7 @@ class CardStore:
         """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
         review_columns = {
             "pronunciation": "TEXT",
+            "is_archived": "INTEGER DEFAULT 0",
             "review_interval_hours": "REAL DEFAULT 12.0",
             "next_review_at": "TIMESTAMP",
             "last_reviewed_at": "TIMESTAMP",

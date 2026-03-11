@@ -91,6 +91,7 @@ from .api_models import (
     AppStoreNotificationRequest,
     AppStoreReconcileRequest,
     AppStoreSyncRequest,
+    ArchiveWordRequest,
     AuthVerifyRequest,
     AuthVerifyResponse,
     CardLinkSummaryResponse,
@@ -200,6 +201,7 @@ from .user_store import (
 )
 from .vocab_handlers import (
     add_vocab_response,
+    archive_word_response,
     delete_word_response,
     get_graph_links_response,
     list_vocab_response,
@@ -339,6 +341,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         reconcile_app_store_subscription=reconcile_app_store_subscription,
         list_vocab=list_vocab,
         lookup_word=lookup_word,
+        archive_word=archive_word,
         delete_word=delete_word,
         get_graph_links=get_graph_links,
         add_vocab=add_vocab,
@@ -688,6 +691,19 @@ def lookup_word(word: str, user: dict = Depends(get_current_user)):
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
 
+
+# ---------------------------------------------------------------------------
+# PATCH /api/vocab/{word}/archive  — Archive or unarchive a word
+# ---------------------------------------------------------------------------
+def archive_word(word: str, req: ArchiveWordRequest, user: dict = Depends(get_current_user)):
+    """Set or clear the archived flag on a card."""
+    return archive_word_response(
+        word,
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+    )
 
 # ---------------------------------------------------------------------------
 # DELETE /api/vocab/{word}
