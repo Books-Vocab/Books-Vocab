@@ -156,14 +156,21 @@ final class TranslationService: Translating {
             throw TranslationError.apiError(L10n.string("無法取得 HTTP 回應"))
         }
 
+        // Update quota from response headers (before status check)
+        QuotaStore.shared.update(fromHeaders: httpResponse.allHeaderFields)
+
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
             print("❌ Backend API 錯誤 [\(httpResponse.statusCode)]: \(errorBody)")
-            
+
             if httpResponse.statusCode == 401 {
                 throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))
             }
             if httpResponse.statusCode == 429 {
+                // Distinguish quota exhausted vs rate limit
+                if errorBody.contains("quota_exhausted") {
+                    throw TranslationError.quotaExhausted(QuotaStore.shared.resetText)
+                }
                 throw TranslationError.apiError(L10n.string("請求過於頻繁，請稍後再試"))
             }
             throw TranslationError.apiError(L10n.format("後端伺服器錯誤 (%@)", "\(httpResponse.statusCode)"))
@@ -178,11 +185,13 @@ final class TranslationService: Translating {
 enum TranslationError: LocalizedError {
     case apiError(String)
     case parseError(String)
+    case quotaExhausted(String)
 
     var errorDescription: String? {
         switch self {
         case .apiError(let msg): return L10n.format("API 錯誤：%@", msg)
         case .parseError(let msg): return L10n.format("解析錯誤：%@", msg)
+        case .quotaExhausted(let resetText): return L10n.format("今日額度已用完，%@", resetText)
         }
     }
 }
