@@ -40,8 +40,11 @@ def admin_stats_response(
 ) -> dict[str, Any]:
     require_admin(token, admin_token=admin_token)
 
+    from .quota_service import get_all_quota_usage
+
     users_data = load_users()
     token_stats = get_all_stats()
+    quota_usage = get_all_quota_usage()
 
     in_per_m = 0.10
     out_per_m = 0.40
@@ -89,6 +92,7 @@ def admin_stats_response(
                 "est_cost_usd": round(est_cost, 6),
                 "pro": entitlements.pro.model_dump(),
                 "admin_grant": admin_grant,
+                "quota": quota_usage.get(uid, {"used_points": 0, "limit": 300, "fraction_used": 0.0, "calls": {}}),
             }
         )
 
