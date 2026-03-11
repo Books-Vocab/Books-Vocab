@@ -8,35 +8,75 @@ from fastapi import HTTPException
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 
+SUPPORTED_LANGUAGES = {
+    "en": "English",
+    "ja": "Japanese",
+    "ko": "Korean",
+    "fr": "French",
+    "de": "German",
+    "es": "Spanish",
+    "zh-Hant": "Traditional Chinese",
+    "zh-Hans": "Simplified Chinese",
+}
 
-def quick_translate_prompt(req: TranslateRequest) -> str:
-    return f'''英→繁中。給出翻譯、詞性、字典原形（lemma）。
-詞性限定: n. / v. / adj. / adv. / conj. / prep.
-字: "{req.word}"
-句: "{req.context[:300]}"
-
-lemma（r）規則：
-- 必須是合法英文字，可在字典查到
-- 禁止跨詞性（形容詞 lemma 仍是形容詞，非其衍生名詞）
-- 動詞屈折形→動詞原形（例：hurrying→hurry, gazed→gaze）
-- 名詞複數→單數（例：berries→berry）；無單數形式則回傳原字
-- 形容詞/副詞若本身即原形，r 回傳原字
-- 不確定時 r 回傳原字；絕不捏造不存在的英文字
-
-輸出純 JSON（無 Markdown）：{{ "t": "...", "p": "...", "r": "..." }}'''
+SUPPORTED_SOURCE_LANGS = {"en", "ja", "ko", "fr", "de", "es"}
+SUPPORTED_TARGET_LANGS = {"zh-Hant", "zh-Hans", "en", "ja", "ko"}
 
 
-def phrase_translate_prompt(req: TranslateRequest) -> str:
-    return f'''將以下英文片語/短語翻譯成繁體中文，給出最精確的中文對應。
-片語: "{req.word}"
-語境句子: "{req.context[:300]}"
-輸出純 JSON（無 Markdown）：{{ "t": "..." }}'''
+def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tuple[str, str]:
+    """Resolve source/target languages from request → user config → defaults."""
+    source = req.source_lang
+    target = req.target_lang
+
+    user_config = user.get("config", {})
+    translation_config = user_config.get("translation", {}) if isinstance(user_config, dict) else {}
+
+    if not source:
+        source = translation_config.get("source_lang", "en")
+    if not target:
+        target = translation_config.get("target_lang", "zh-Hant")
+
+    if source not in SUPPORTED_SOURCE_LANGS:
+        source = "en"
+    if target not in SUPPORTED_TARGET_LANGS:
+        target = "zh-Hant"
+
+    return source, target
 
 
-def explain_translate_prompt(req: TranslateRequest) -> str:
-    return f'''用繁體中文簡短說明「{req.word}」在以下語境中的含義（1-2句）。
-語境: "{req.context[:300]}"
-請以純 JSON 格式回答，包含一個 key: "e" 為解釋內容。不要包含任何 Markdown 標記，直接輸出 {{ "e": "..." }}'''
+def quick_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+    src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
+    tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
+    return f'''Translate from {src_name} to {tgt_name}. Provide translation, POS, and lemma (root form).
+POS options: n. / v. / adj. / adv. / conj. / prep.
+Word: "{req.word}"
+Context: "{req.context[:300]}"
+
+Lemma (r) rules:
+- Must be a valid {src_name} dictionary word
+- No cross-POS derivation (adjective lemma stays adjective, not its derived noun)
+- Verb inflections → base form (e.g. hurrying→hurry, gazed→gaze)
+- Plural nouns → singular (e.g. berries→berry); if no singular exists, return original
+- If adjective/adverb is already base form, r = original word
+- When uncertain, r = original word; never invent non-existent words
+
+Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "..." }}'''
+
+
+def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+    src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
+    tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
+    return f'''Translate the following {src_name} phrase/expression into {tgt_name}. Provide the most precise translation.
+Phrase: "{req.word}"
+Context: "{req.context[:300]}"
+Output pure JSON (no Markdown): {{ "t": "..." }}'''
+
+
+def explain_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
+    tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
+    return f'''Briefly explain the meaning of "{req.word}" in the given context using {tgt_name} (1-2 sentences).
+Context: "{req.context[:300]}"
+Output pure JSON (no Markdown) with a single key "e" for the explanation: {{ "e": "..." }}'''
 
 
 def _parse_json_payload(raw: str | None) -> dict[str, Any]:
@@ -62,9 +102,10 @@ def track_usage(user_id: str, operation: str, response: Any) -> None:
 
 
 def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger) -> QuickTranslateResponse:
+    source_lang, target_lang = resolve_translation_langs(req, user)
     response = client.chat.completions.create(
         model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": quick_translate_prompt(req)}],
+        messages=[{"role": "user", "content": quick_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
     )
@@ -82,9 +123,10 @@ def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: 
 
 
 def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> dict[str, str]:
+    source_lang, target_lang = resolve_translation_langs(req, user)
     response = client.chat.completions.create(
         model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": phrase_translate_prompt(req)}],
+        messages=[{"role": "user", "content": phrase_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
     )
@@ -94,9 +136,10 @@ def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client:
 
 
 def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> ExplainResponse:
+    source_lang, target_lang = resolve_translation_langs(req, user)
     response = client.chat.completions.create(
         model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": explain_translate_prompt(req)}],
+        messages=[{"role": "user", "content": explain_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
     )

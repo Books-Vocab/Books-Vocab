@@ -64,7 +64,9 @@ struct SettingsView: View {
             ),
             preferences: .init(
                 selectedLanguage: L10n.string(appLanguage.selection.titleKey),
-                selectedAppearance: appearanceStore.selection.titleKey
+                selectedAppearance: appearanceStore.selection.titleKey,
+                translationSource: coordinator.translationSourceLang.nativeName,
+                translationTarget: coordinator.translationTargetLang.nativeName
             ),
             kg: authManager.isLoggedIn
                 ? .init(
@@ -138,6 +140,7 @@ struct SettingsView: View {
             },
             showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount,
+            showTranslationLanguageSettings: {},
             openPrivacyPolicy: {
                 if let url = URL(string: "https://wordnexus.lol/privacy") {
                     openURL(url)
@@ -158,6 +161,16 @@ struct SettingsView: View {
         SettingsPresenter(
             state: presenterState,
             optionalIntegrationApiKey: optionalIntegrationApiKeyBinding,
+            translationSourceLang: translationSourceLangBinding,
+            translationTargetLang: translationTargetLangBinding,
+            onTranslationLanguageChanged: { source, target in
+                coordinator.updateTranslationLanguage(
+                    source: source,
+                    target: target,
+                    authManager: authManager,
+                    kgService: kgService
+                )
+            },
             manualLoginUserId: manualLoginBinding,
             debugLocalServerURL: debugLocalServerURLBinding,
             actions: presenterActions
@@ -213,6 +226,20 @@ struct SettingsView: View {
         } message: {
             Text((coordinator.deleteAccountError ?? "請稍後再試").localized)
         }
+    }
+
+    private var translationSourceLangBinding: Binding<TranslationLanguage> {
+        Binding(
+            get: { coordinator.translationSourceLang },
+            set: { coordinator.translationSourceLang = $0 }
+        )
+    }
+
+    private var translationTargetLangBinding: Binding<TranslationLanguage> {
+        Binding(
+            get: { coordinator.translationTargetLang },
+            set: { coordinator.translationTargetLang = $0 }
+        )
     }
 
     private var optionalIntegrationApiKeyBinding: Binding<String> {

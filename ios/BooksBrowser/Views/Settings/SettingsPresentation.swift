@@ -51,6 +51,8 @@ struct SettingsPresenterState {
     struct PreferencesSection {
         let selectedLanguage: String
         let selectedAppearance: String
+        let translationSource: String
+        let translationTarget: String
     }
 
     struct SyncSummaryState {
@@ -100,6 +102,7 @@ struct SettingsPresenterActions {
     let showSubscriptionPaywall: () -> Void
     let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
+    let showTranslationLanguageSettings: () -> Void
     let openPrivacyPolicy: () -> Void
     let openSupport: () -> Void
     let requestAppRating: () -> Void

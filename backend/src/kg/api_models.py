@@ -62,9 +62,16 @@ class CardLinkSummaryResponse(BaseModel):
     reason: str
 
 
+class TranslationLanguageConfig(BaseModel):
+    source_lang: str = "en"
+    target_lang: str = "zh-Hant"
+
+
 class TranslateRequest(BaseModel):
     word: str
     context: str
+    source_lang: str | None = None
+    target_lang: str | None = None
 
 
 class GraphLinkResponse(BaseModel):
@@ -109,10 +116,12 @@ class UserIntegrationsConfig(BaseModel):
 
 class UserConfigRequest(BaseModel):
     integrations: UserIntegrationsConfig | None = None
+    translation: TranslationLanguageConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
     integrations: UserIntegrationsConfig | None = None
+    translation: TranslationLanguageConfig | None = None
 
 
 class SubscriptionStatusResponse(BaseModel):
