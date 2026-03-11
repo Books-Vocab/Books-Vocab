@@ -21,7 +21,7 @@ struct VocabularyListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State private var showArchiveList = false
-    @StateObject private var coordinator = VocabularyListCoordinator()
+    @State private var coordinator = VocabularyListCoordinator()
 
     var body: some View {
         NavigationStack {

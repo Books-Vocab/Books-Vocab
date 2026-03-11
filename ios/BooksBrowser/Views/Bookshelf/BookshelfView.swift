@@ -38,7 +38,7 @@ struct BookshelfView: View {
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
-    @StateObject private var coordinator = BookshelfCoordinator()
+    @State private var coordinator = BookshelfCoordinator()
 
     private var columns: [GridItem] {
         let item: GridItem = sizeClass == .regular
