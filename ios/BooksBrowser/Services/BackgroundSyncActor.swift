@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import os
 
 @ModelActor
 actor BackgroundSyncActor {
@@ -61,7 +62,7 @@ actor BackgroundSyncActor {
             if let existingEntry = localDict[lowerContent] {
                 // Delete if marked as soft-deleted
                 if card.isDeleted == true {
-                    print("🧹 Remote soft-delete received: \(existingEntry.word)")
+                    AppLog.sync.info("Remote soft-delete received: \(existingEntry.word)")
                     modelContext.delete(existingEntry)
                     continue
                 }
@@ -127,7 +128,7 @@ actor BackgroundSyncActor {
             for entry in localEntries {
                 if entry.shouldAppearInKnowledgeList {
                     if !fetchedCardWords.contains(entry.word.lowercased()) {
-                        print("🧹 Cleaning up remote orphan: \(entry.word)")
+                        AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
                         modelContext.delete(entry)
                     }
                 }
@@ -135,19 +136,19 @@ actor BackgroundSyncActor {
         }
 
         try modelContext.save()
-        print("✅ pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards.")
+        AppLog.sync.info("pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards.")
     }
 
     /// Deletes all vocabulary entries from local SwiftData storage.
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
-        print("🧹 Clearing all local vocabulary entries... reason=\(reason)")
+        AppLog.sync.info("Clearing all local vocabulary entries... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
         }
         try modelContext.save()
-        print("✅ Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
+        AppLog.sync.info("Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).
@@ -161,7 +162,7 @@ actor BackgroundSyncActor {
         guard !entries.isEmpty else { return }
         entries.forEach { modelContext.delete($0) }
         try modelContext.save()
-        print("🧹 Cleared \(entries.count) stale synced entries on startup.")
+        AppLog.sync.info("Cleared \(entries.count) stale synced entries on startup.")
     }
 
     /// Build the payload for pushing review states to the backend.

@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import os
 
 // MARK: - Models
 
@@ -264,7 +265,7 @@ final class KGService: KGServing, LocalDataClearing {
             }
 
             if httpResponse.statusCode == 401 {
-                print("❌ KG health check failed: 401 Unauthorized")
+                AppLog.kg.error("Health check failed: 401 Unauthorized")
                 await sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
                 isConnected = false
                 return
@@ -286,7 +287,7 @@ final class KGService: KGServing, LocalDataClearing {
             }
         } catch {
             isConnected = false
-            print("❌ KG health check failed: \(error)")
+            AppLog.kg.error("Health check failed: \(error.localizedDescription)")
         }
     }
 
@@ -470,7 +471,7 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Failed to fetch config (HTTP \(httpResponse.statusCode))")
         }
 
-        print("✅ [KGService] Fetched config successfully")
+        AppLog.kg.info("Fetched config successfully")
         return try JSONDecoder().decode(KGUserConfig.self, from: data)
     }
 
@@ -491,7 +492,7 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Failed to fetch entitlements (HTTP \(httpResponse.statusCode))")
         }
 
-        print("✅ [KGService] Fetched entitlements successfully")
+        AppLog.kg.info("Fetched entitlements successfully")
         return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
@@ -515,7 +516,7 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Failed to sync subscription (HTTP \(httpResponse.statusCode))")
         }
 
-        print("✅ [KGService] Synced App Store subscription successfully")
+        AppLog.kg.info("Synced App Store subscription successfully")
         return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
@@ -541,7 +542,7 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Failed to update config (HTTP \(httpResponse.statusCode))")
         }
 
-        print("✅ [KGService] Updated config successfully")
+        AppLog.kg.info("Updated config successfully")
         return try JSONDecoder().decode(KGUserConfig.self, from: data)
     }
 
@@ -595,7 +596,7 @@ final class KGService: KGServing, LocalDataClearing {
             let skipped: Int
         }
         let result = try JSONDecoder().decode(PushResponse.self, from: data)
-        print("✅ pushReviewStates: updated=\(result.updated), skipped=\(result.skipped)")
+        AppLog.kg.info("pushReviewStates: updated=\(result.updated), skipped=\(result.skipped)")
         return (result.updated, result.skipped)
     }
 
@@ -625,9 +626,9 @@ final class KGService: KGServing, LocalDataClearing {
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let dateString = formatter.string(from: lastSyncDate)
             urlComponents.queryItems = [URLQueryItem(name: "since", value: dateString)]
-            print("🔄 Performing incremental sync since: \(dateString)")
+            AppLog.kg.info("Performing incremental sync since: \(dateString)")
         } else {
-            print("🔄 Performing full sync")
+            AppLog.kg.info("Performing full sync")
         }
 
         guard let url = urlComponents.url else {
@@ -653,7 +654,7 @@ final class KGService: KGServing, LocalDataClearing {
         do {
             fetchedCards = try JSONDecoder().decode([KGCard].self, from: data)
         } catch {
-            print("❌ Failed to decode KG cards: \(error)")
+            AppLog.kg.error("Failed to decode KG cards: \(error.localizedDescription)")
             throw KGError.serverError("Parse error: \(error.localizedDescription)")
         }
 
@@ -675,7 +676,7 @@ final class KGService: KGServing, LocalDataClearing {
     /// Clears all local KG data (SwiftData + Sync Timestamp)
     func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
         let actor = BackgroundSyncActor(modelContainer: container)
-        print("🧹 clearLocalData requested. reason=\(reason)")
+        AppLog.kg.info("clearLocalData requested. reason=\(reason)")
         try? await actor.clearVocabularyData(reason: reason)
         
         UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)

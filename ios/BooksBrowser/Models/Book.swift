@@ -7,6 +7,7 @@
 
 import Foundation
 import SwiftData
+import os
 
 /// 書籍資料模型 — 代表一本已匯入的 EPUB 書籍
 @Model
@@ -53,7 +54,7 @@ final class Book {
             forUbiquityContainerIdentifier: nil
         )?.appendingPathComponent("Documents/EPUBs") {
             try? FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
-            print("📂 EPUBs directory: iCloud (\(iCloudURL.path))")
+            AppLog.book.info("EPUBs directory: iCloud (\(iCloudURL.path))")
             _cachedEpubsDirectory = iCloudURL
             return iCloudURL
         }
@@ -62,7 +63,7 @@ final class Book {
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("EPUBs")
         try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
-        print("📂 EPUBs directory: local fallback (\(dir.path))")
+        AppLog.book.info("EPUBs directory: local fallback (\(dir.path))")
         // Don't cache local fallback — retry iCloud on next access
         return dir
     }

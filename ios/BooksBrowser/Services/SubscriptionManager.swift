@@ -1,6 +1,7 @@
 import Foundation
 import StoreKit
 import CryptoKit
+import os
 
 enum SubscriptionPurchaseError: LocalizedError {
     case unverifiedTransaction
@@ -104,7 +105,7 @@ final class SubscriptionManager: SubscriptionManaging {
 
                 // 只有在使用者已登入時才同步至後端，避免用錯誤帳號的 auth 送出交易
                 guard authManager.isLoggedIn else {
-                    print("⚠️ [Subscription] transaction update received but no user logged in, skipping sync")
+                    AppLog.subscription.warning("Transaction update received but no user logged in, skipping sync")
                     continue
                 }
 
@@ -149,7 +150,7 @@ final class SubscriptionManager: SubscriptionManaging {
 
             // async 返回後帳號可能已切換，丟棄過期回應
             guard authManager.userId == requestUserId else {
-                print("⚠️ [Subscription] discarding stale refresh: requested for \(requestUserId ?? "nil"), current is \(authManager.userId ?? "nil")")
+                AppLog.subscription.warning("Discarding stale refresh: requested for \(requestUserId ?? "nil"), current is \(authManager.userId ?? "nil")")
                 return
             }
 
@@ -163,7 +164,7 @@ final class SubscriptionManager: SubscriptionManaging {
                 }
                 // 已過期 + 不續訂 → 本地直接降級，不等後端通知
                 if !remote.pro.will_renew, remote.pro.isExpired {
-                    print("🔍 [Subscription] locally deactivating: expires_at=\(remote.pro.expires_at ?? "nil") already passed, will_renew=false")
+                    AppLog.subscription.debug("Locally deactivating: expires_at=\(remote.pro.expires_at ?? "nil") already passed, will_renew=false")
                     remote = KGEntitlements(
                         pro: merge(remote.pro, status: "expired", isActive: false)
                     )
@@ -200,12 +201,12 @@ final class SubscriptionManager: SubscriptionManaging {
         let delay = expiryDate.timeIntervalSinceNow
         guard delay > 0 else { return }
 
-        print("🔍 [Subscription] scheduling expiry refresh in \(Int(delay))s")
+        AppLog.subscription.debug("Scheduling expiry refresh in \(Int(delay))s")
         expiryTimer = Task { [weak self] in
             try? await Task.sleep(for: .seconds(delay + 1))
             guard !Task.isCancelled, let self else { return }
             guard let kgService = self._kgService, let authManager = self._authManager else { return }
-            print("🔍 [Subscription] expiry timer fired, refreshing...")
+            AppLog.subscription.debug("Expiry timer fired, refreshing...")
             await self.refresh(using: kgService, authManager: authManager, force: true)
         }
     }
@@ -218,8 +219,8 @@ final class SubscriptionManager: SubscriptionManaging {
         for attempt in 1...Self.productRetryAttempts {
             do {
                 let products = try await Product.products(for: [Self.proProductID])
-                print("🔍 [StoreKit] attempt \(attempt): returned \(products.count) product(s) for '\(Self.proProductID)'")
-                for p in products { print("🔍 [StoreKit] product: \(p.id) — \(p.displayPrice)") }
+                AppLog.subscription.debug("StoreKit attempt \(attempt): returned \(products.count) product(s) for '\(Self.proProductID)'")
+                for p in products { AppLog.subscription.debug("StoreKit product: \(p.id) — \(p.displayPrice)") }
                 if let product = products.first {
                     proProduct = product
                     if entitlements.pro.price_display == nil {
@@ -231,7 +232,7 @@ final class SubscriptionManager: SubscriptionManaging {
                     return
                 }
             } catch {
-                print("🔍 [StoreKit] attempt \(attempt) error: \(error)")
+                AppLog.subscription.debug("StoreKit attempt \(attempt) error: \(error.localizedDescription)")
             }
             if attempt < Self.productRetryAttempts {
                 try? await Task.sleep(nanoseconds: Self.productRetryDelay)
@@ -271,9 +272,9 @@ final class SubscriptionManager: SubscriptionManaging {
                         product: product,
                         using: kgService
                     )
-                    print("✅ [Subscription] sync succeeded")
+                    AppLog.subscription.info("Sync succeeded")
                 } catch {
-                    print("⚠️ [Subscription] sync failed: \(error)")
+                    AppLog.subscription.warning("Sync failed: \(error.localizedDescription)")
                 }
                 await refresh(using: kgService, authManager: authManager, force: true)
                 if hasProAccess {
@@ -369,13 +370,13 @@ final class SubscriptionManager: SubscriptionManaging {
                     product: product,
                     using: kgService
                 )
-                print("✅ [Subscription] currentEntitlements sync succeeded")
+                AppLog.subscription.info("currentEntitlements sync succeeded")
             } catch {
-                print("⚠️ [Subscription] currentEntitlements sync failed: \(error)")
+                AppLog.subscription.warning("currentEntitlements sync failed: \(error.localizedDescription)")
             }
             return
         }
-        print("⚠️ [Subscription] no current entitlement found for \(Self.proProductID)")
+        AppLog.subscription.warning("No current entitlement found for \(Self.proProductID)")
     }
 
     private func syncTransaction(
@@ -405,29 +406,29 @@ final class SubscriptionManager: SubscriptionManaging {
     /// 回傳 nil 表示無法確定（product 未載入或 StoreKit 查詢失敗），呼叫端應信任後端值
     private func queryWillAutoRenew() async -> Bool? {
         guard let product = proProduct, let subscription = product.subscription else {
-            print("⚠️ [Subscription] queryWillAutoRenew: no product/subscription info")
+            AppLog.subscription.warning("queryWillAutoRenew: no product/subscription info")
             return nil
         }
         do {
             let statuses = try await subscription.status
-            print("🔍 [Subscription] queryWillAutoRenew: \(statuses.count) status(es)")
+            AppLog.subscription.debug("queryWillAutoRenew: \(statuses.count) status(es)")
             // 優先從 active 狀態取
             for status in statuses where status.state == .subscribed || status.state == .inGracePeriod {
                 if let renewalInfo = try? checkVerified(status.renewalInfo) {
-                    print("🔍 [Subscription] active state=\(status.state), willAutoRenew=\(renewalInfo.willAutoRenew)")
+                    AppLog.subscription.debug("Active state=\(String(describing: status.state)), willAutoRenew=\(renewalInfo.willAutoRenew)")
                     return renewalInfo.willAutoRenew
                 }
             }
             // 沒有 active 狀態，從 expired/revoked 取（sandbox 快速過期常見）
             for status in statuses where status.state != .subscribed && status.state != .inGracePeriod {
                 if let renewalInfo = try? checkVerified(status.renewalInfo) {
-                    print("🔍 [Subscription] fallback state=\(status.state), willAutoRenew=\(renewalInfo.willAutoRenew)")
+                    AppLog.subscription.debug("Fallback state=\(String(describing: status.state)), willAutoRenew=\(renewalInfo.willAutoRenew)")
                     return renewalInfo.willAutoRenew
                 }
             }
-            print("⚠️ [Subscription] queryWillAutoRenew: no verified renewalInfo found")
+            AppLog.subscription.warning("queryWillAutoRenew: no verified renewalInfo found")
         } catch {
-            print("⚠️ [Subscription] queryWillAutoRenew failed: \(error)")
+            AppLog.subscription.warning("queryWillAutoRenew failed: \(error.localizedDescription)")
         }
         return nil
     }

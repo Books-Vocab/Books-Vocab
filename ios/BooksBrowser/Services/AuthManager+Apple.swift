@@ -2,6 +2,7 @@ import Foundation
 import SwiftData
 import UIKit
 import AuthenticationServices
+import os
 
 extension AuthManager {
     func loginWithApple(modelContainer: ModelContainer? = nil) {
@@ -43,9 +44,9 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
             .compactMap { $0 }
             .joined(separator: " ")
 
-        print("✅ Apple Sign-In Success")
+        AppLog.auth.info("Apple Sign-In success")
         if email.isEmpty {
-            print("⚠️ Apple didn't provide email. Creating new account without linking.")
+            AppLog.auth.warning("Apple didn't provide email. Creating new account without linking.")
         }
 
         Task { @MainActor [weak self] in
@@ -57,7 +58,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                     let identityTokenData = appleIDCredential.identityToken,
                     let identityToken = String(data: identityTokenData, encoding: .utf8)
                 else {
-                    print("❌ Failed to get Apple identity token")
+                    AppLog.auth.error("Failed to get Apple identity token")
                     return
                 }
 
@@ -77,7 +78,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                     modelContainer: modelContainer
                 )
             } catch {
-                print("❌ Backend verification failed: \(error)")
+                AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                 authManager.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
             }
         }
@@ -87,7 +88,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
         controller: ASAuthorizationController,
         didCompleteWithError error: Error
     ) {
-        print("❌ Apple Sign-In Error: \(error.localizedDescription)")
+        AppLog.auth.error("Apple Sign-In error: \(error.localizedDescription)")
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {

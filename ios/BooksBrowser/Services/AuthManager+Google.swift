@@ -2,6 +2,7 @@ import Foundation
 import GoogleSignIn
 import SwiftData
 import UIKit
+import os
 
 extension AuthManager {
     func loginWithGoogle(modelContainer: ModelContainer? = nil) {
@@ -9,13 +10,13 @@ extension AuthManager {
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
             .first { $0.isKeyWindow }
         guard let presentingViewController = window?.rootViewController?.topMostPresentedViewController else {
-            print("❌ Unable to find presenting view controller")
+            AppLog.auth.error("Unable to find presenting view controller")
             return
         }
 
         GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController) { [weak self] result, error in
             if let error = error {
-                print("❌ Google Sign-In Error: \(error.localizedDescription)")
+                AppLog.auth.error("Google Sign-In error: \(error.localizedDescription)")
                 return
             }
 
@@ -24,10 +25,10 @@ extension AuthManager {
             let email = user.profile?.email ?? ""
             let name = user.profile?.name ?? ""
             let avatar = user.profile?.imageURL(withDimension: 100)
-            print("✅ Google Sign-In Success")
+            AppLog.auth.info("Google Sign-In success")
 
             guard let idToken = user.idToken?.tokenString else {
-                print("❌ Failed to get Google ID token")
+                AppLog.auth.error("Failed to get Google ID token")
                 return
             }
 
@@ -47,7 +48,7 @@ extension AuthManager {
                         modelContainer: modelContainer
                     )
                 } catch {
-                    print("❌ Backend verification failed: \(error)")
+                    AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                     self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 }
             }

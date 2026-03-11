@@ -6,6 +6,7 @@
 //
 
 import Foundation
+import os
 
 /// 免費字典 API — 取得 IPA 音標（不消耗 LLM token）
 struct DictionaryService {
@@ -48,7 +49,7 @@ struct DictionaryService {
 
             return nil
         } catch {
-            print("⚠️ Dictionary API error: \(error.localizedDescription)")
+            AppLog.dictionary.warning("Dictionary API error: \(error.localizedDescription)")
             return nil
         }
     }
