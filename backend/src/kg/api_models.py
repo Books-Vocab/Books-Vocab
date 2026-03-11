@@ -12,6 +12,7 @@ class VocabEntry(BaseModel):
     translation: str
     context: str = ""
     root_form: str | None = None  # AI-determined lemma from translate/quick
+    pronunciation: str | None = None  # IPA phonetic transcription
 
 
 class VocabAddResponse(BaseModel):
@@ -40,6 +41,7 @@ class CardResponse(BaseModel):
     examples: list[str]
     mode: str
     isDeleted: bool
+    pronunciation: str | None = None
     inflections: list[str] = []
     linksByKind: dict[str, list["CardLinkSummaryResponse"]] = Field(default_factory=dict)
     # Review state

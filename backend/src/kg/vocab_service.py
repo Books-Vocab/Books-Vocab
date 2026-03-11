@@ -74,6 +74,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         examples=card.examples,
         mode=card.mode,
         isDeleted=card.is_deleted,
+        pronunciation=card.pronunciation,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
         reviewIntervalHours=card.review_interval_hours,
@@ -268,6 +269,7 @@ def add_vocab_entries(
             examples=[example] if example else [],
             root_form=root,
             inflections=inflections,
+            pronunciation=entry.pronunciation,
         )
         card_ids[word] = card.id
         existing.add(word.lower())
