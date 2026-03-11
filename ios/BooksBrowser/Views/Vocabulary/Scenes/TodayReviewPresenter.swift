@@ -29,6 +29,8 @@ struct TodayReviewPresenterState {
     let forgotFeedbackTrigger: Int
     let persistenceFailureTrigger: Int
     let persistenceErrorMessage: String?
+    let isAutoPlaying: Bool
+    let isAutoPlayPaused: Bool
 }
 
 // MARK: - Presenter
@@ -64,6 +66,8 @@ struct TodayReviewPresenter: View {
     let onForgot: () -> Void
     let onRemembered: () -> Void
     let onLinkTap: (KGCardLinkSummary) -> Void
+    let onToggleAutoPlay: () -> Void
+    let onToggleAutoPlayPause: () -> Void
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {
@@ -153,6 +157,12 @@ struct TodayReviewPresenter: View {
             .disabled(!state.canShuffle)
 
             Spacer()
+
+            VocabChromeIconButton(
+                systemImage: state.isAutoPlaying ? "play.circle.fill" : "play.circle",
+                tone: state.isAutoPlaying ? vocabSkin.palette.accent : nil,
+                action: onToggleAutoPlay
+            )
 
             VocabChromeIconButton(systemImage: "xmark", action: onClose)
         }
@@ -253,7 +263,7 @@ struct TodayReviewPresenter: View {
     }
 
     private var swipeEnabled: Bool {
-        state.revealStage.showsAnswer && dismissPhase == .idle
+        state.revealStage.showsAnswer && dismissPhase == .idle && !state.isAutoPlaying
     }
 
     private var swipeDragGesture: some Gesture {
@@ -356,7 +366,9 @@ struct TodayReviewPresenter: View {
                 .transition(.overlayFade)
             }
 
-            if dynamicTypeSize < .accessibility1 {
+            if state.isAutoPlaying {
+                autoplayControls
+            } else if dynamicTypeSize < .accessibility1 {
                 HStack(spacing: 0) {
                     navButtons
                     Spacer()
@@ -373,6 +385,7 @@ struct TodayReviewPresenter: View {
         .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
         .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
         .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
+        .animation(AppMotion.standardSpring, value: state.isAutoPlaying)
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
@@ -383,6 +396,42 @@ struct TodayReviewPresenter: View {
                 )
                 .ignoresSafeArea(edges: .bottom)
         )
+    }
+
+    // MARK: - Autoplay Controls
+
+    private var autoplayControls: some View {
+        HStack(spacing: vocabSkin.metrics.sectionHeaderGap * 2) {
+            Button {
+                guard isCardInteractive else { return }
+                onPrevious()
+            } label: {
+                Image(systemName: "backward.end.fill")
+                    .font(.system(size: 22))
+            }
+            .disabled(!state.canGoPrevious)
+
+            Button(action: onToggleAutoPlayPause) {
+                Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
+                    .font(.system(size: 28))
+                    .frame(width: 52, height: 52)
+                    .background(
+                        Circle()
+                            .fill(vocabSkin.palette.mutedFill)
+                    )
+            }
+
+            Button {
+                guard isCardInteractive else { return }
+                onNext()
+            } label: {
+                Image(systemName: "forward.end.fill")
+                    .font(.system(size: 22))
+            }
+            .disabled(!state.canGoNext)
+        }
+        .foregroundStyle(vocabSkin.palette.primaryText)
+        .frame(maxWidth: .infinity)
     }
 
     private var navButtons: some View {
