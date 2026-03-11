@@ -140,7 +140,6 @@ extension TodayReviewPresenter {
             if !backDoc.blocks.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
                 CardDocumentView(document: backDoc, truncateRadius: 5, targetWord: card.word)
-                    .lineLimit(2)
             }
 
             if !currentCard.linkGroups.isEmpty {
