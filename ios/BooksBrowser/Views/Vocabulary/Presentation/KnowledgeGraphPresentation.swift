@@ -26,7 +26,8 @@ struct KnowledgeGraphTheme: Equatable {
 enum KnowledgeGraphPresentation {
     static func nodes(
         from entries: [VocabularyEntry],
-        links: [KGGraphLink]
+        links: [KGGraphLink],
+        now: Date = Date()
     ) -> [KnowledgeGraphNode] {
         var degreeMap: [String: Int] = [:]
         for link in links {
@@ -41,10 +42,22 @@ enum KnowledgeGraphPresentation {
             return KnowledgeGraphNode(
                 id: kgId,
                 word: entry.word,
-                tier: entry.difficultyTier,
+                tier: reviewTone(for: entry, now: now),
                 degree: degree
             )
         }
+    }
+
+    private static func reviewTone(for entry: VocabularyEntry, now: Date) -> String {
+        guard entry.reviewCount > 0 else { return "yellow" }
+        let startDate = entry.lastReviewedAt ?? entry.dateAdded
+        let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
+        let elapsed = max(0, now.timeIntervalSince(startDate))
+        let fraction = min(max(elapsed / interval, 0), 1)
+        if fraction >= 1 { return "red" }
+        if fraction >= 0.72 { return "orange" }
+        if fraction >= 0.4 { return "yellow" }
+        return "green"
     }
 
     static func edges(
@@ -68,11 +81,10 @@ enum KnowledgeGraphPresentation {
         KnowledgeGraphTheme(
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [
-                "core": cssHex(skin.palette.success),
-                "intermediate": cssHex(skin.palette.tierIntermediate),
-                "advanced": cssHex(skin.palette.tierAdvanced),
-                "rare": cssHex(skin.palette.destructive),
-                "unknown": cssHex(skin.palette.secondaryText)
+                "green": cssHex(skin.palette.success),
+                "yellow": cssHex(skin.palette.tierIntermediate),
+                "orange": cssHex(skin.palette.tierAdvanced),
+                "red": cssHex(skin.palette.destructive)
             ],
             edgeHexes: [
                 "confusable": cssHex(skin.palette.tierAdvanced),
