@@ -230,6 +230,9 @@ tbody tr:hover td { background: #f6f4ef; }
   min-width: 64px;
 }
 .bar-fill { height: 100%; background: var(--ink-light); transition: width .3s ease; }
+.quota-fill-low { background: var(--ink-light); }
+.quota-fill-mid { background: #f0a030; }
+.quota-fill-high { background: #c0392b; }
 .bar-label {
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
@@ -621,7 +624,7 @@ tr.expanded td { background: #f0ece4; border-bottom-color: transparent; }
         <thead><tr>
           <th>用戶</th><th>Provider</th><th>最後登入</th>
           <th>單字數</th><th>Mochi</th>
-          <th>Pro 狀態</th><th>操作</th><th>Token 用量</th><th>預估費用</th>
+          <th>Pro 狀態</th><th>操作</th><th>每日額度</th><th>Token 用量</th><th>預估費用</th>
         </tr></thead>
         <tbody id="rows"></tbody>
       </table>
@@ -845,6 +848,23 @@ function buildDetailRow(u, colSpan) {
       <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
     </div>
     <div class="detail-section">
+      <div class="detail-section-title">每日翻譯額度（24h）</div>
+      ${(() => {
+        const q = u.quota || {used_points:0,limit:300,fraction_used:0,calls:{}};
+        const pctUsed = Math.round(q.fraction_used * 100);
+        let html = '<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">' + q.used_points + ' / ' + q.limit + ' (' + pctUsed + '%)</span></div>';
+        html += '<div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ' + quotaColor(q.fraction_used) + '" style="width:' + pctUsed + '%"></div></div></div>';
+        const calls = q.calls || {};
+        const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain'};
+        for (const [t, label] of Object.entries(typeLabels)) {
+          const c = calls[t];
+          if (c) html += '<div class="detail-kv"><span class="detail-k">' + label + '</span><span class="detail-v">&times;' + c.count + ' = ' + c.points + ' pts</span></div>';
+        }
+        if (!Object.keys(calls).length) html += '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
+        return html;
+      })()}
+    </div>
+    <div class="detail-section">
       <div class="detail-section-title">Token 消耗明細</div>
       ${Object.entries(u.tokens || {}).map(([t, d]) =>
         `<div class="detail-kv"><span class="detail-k">${escapeHtml(t)}</span><span class="detail-v">${fmt(d.input_tokens)}↑ ${fmt(d.output_tokens)}↓ ×${d.calls}</span></div>`
@@ -887,9 +907,15 @@ function renderStats(data) {
   applyFilters();
 }
 
+function quotaColor(frac) {
+  if (frac >= 0.8) return 'quota-fill-high';
+  if (frac >= 0.5) return 'quota-fill-mid';
+  return 'quota-fill-low';
+}
+
 function renderUserRows(users) {
   const maxTok=Math.max(...users.map(u=>u.total_input+u.total_output),1);
-  const colSpan = 9;
+  const colSpan = 10;
   document.getElementById('rows').innerHTML=users.map(u=>{
     const pc=u.provider||'manual';
     const total=u.total_input+u.total_output;
@@ -899,6 +925,9 @@ function renderUserRows(users) {
     const proBadgeClass=pro.is_active?'badge-pro-active':'badge-pro-inactive';
     const proLabel=pro.is_active?(pro.source==='admin'?'Admin Grant':pro.status||'active'):'inactive';
     const isExpanded = _expandedUid === u.user_id;
+    const q = u.quota || {used_points:0,limit:300,fraction_used:0,calls:{}};
+    const qPct = Math.round(q.fraction_used * 100);
+    const qLabel = q.used_points > 0 ? q.used_points + '/' + q.limit : '—';
     return `<tr class="expandable${isExpanded?' expanded':''}" onclick="toggleDetail('${escapeHtml(u.user_id)}')">
       <td><div class="uid">${escapeHtml(u.user_id)}</div>${u.email?`<div class="email">${escapeHtml(u.email)}</div>`:''}</td>
       <td><span class="badge b-${pc}">${pc}</span></td>
@@ -918,6 +947,11 @@ function renderUserRows(users) {
             ? `<button class="btn btn-mini btn-danger" onclick="revokePro('${escapeHtml(u.user_id)}')">Revoke</button>`
             : `<button class="btn btn-mini" onclick="openGrantModal('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
         </div>
+      </td>
+      <td style="min-width:120px">
+        ${q.used_points > 0
+          ? `<div class="bar-wrap"><div class="bar"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${qPct}%"></div></div><span class="bar-label">${qLabel}</span></div>`
+          : `<span class="bar-label">—</span>`}
       </td>
       <td style="min-width:140px">
         <div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-label">${fmt(total)}</span></div>
