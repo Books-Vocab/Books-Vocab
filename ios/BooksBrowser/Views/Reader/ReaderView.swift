@@ -41,9 +41,7 @@ struct ReaderView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
-
-    // 閱讀設定（全域單例）
-    private var settings = ReaderSettings.shared
+    @Environment(\.readerSettings) private var settings
 
     private var viewConfiguration: ReaderViewConfiguration {
         settings.viewConfiguration

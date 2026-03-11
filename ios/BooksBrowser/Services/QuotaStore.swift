@@ -1,7 +1,7 @@
 import Foundation
 
 @Observable
-final class QuotaStore {
+final class QuotaStore: QuotaProviding {
     static let shared = QuotaStore()
 
     private(set) var fraction: Double = 1.0
@@ -47,5 +47,5 @@ final class QuotaStore {
         return L10n.format("%@m 後重置", "\(m)")
     }
 
-    private init() {}
+    init() {}
 }

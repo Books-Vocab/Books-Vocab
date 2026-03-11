@@ -48,6 +48,7 @@ struct CardSectionLabel: View {
 /// 詳情頁頂部英雄區塊：單字 + 音標 + POS + Tier + 模式 + 翻譯
 struct CardHeroSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.speechService) private var speechService
     @State private var copyTrigger = false
     let card: CardPresentation
     let colorScheme: ColorScheme
@@ -69,7 +70,7 @@ struct CardHeroSection: View {
                         }
 
                         Button {
-                            SpeechService.shared.speak(card.word)
+                            speechService.speak(card.word)
                             copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")

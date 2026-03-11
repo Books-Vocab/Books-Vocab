@@ -2,10 +2,9 @@ import SwiftUI
 
 struct QuotaBar: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.quotaStore) private var store
 
     let isLoggedIn: Bool
-
-    private var store: QuotaStore { QuotaStore.shared }
 
     var body: some View {
         if isLoggedIn, store.fraction < 1.0 {

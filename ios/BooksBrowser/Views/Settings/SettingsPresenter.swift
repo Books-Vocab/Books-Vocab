@@ -3,6 +3,7 @@ import SwiftUI
 struct SettingsPresenter: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.quotaStore) private var quotaStore
 
     let state: SettingsPresenterState
     let optionalIntegrationApiKey: Binding<String>
@@ -127,7 +128,7 @@ struct SettingsPresenter: View {
                 }
 
                 // 今日額度 (only when logged in and used)
-                if QuotaStore.shared.fraction < 1.0, state.auth.isLoggedIn {
+                if quotaStore.fraction < 1.0, state.auth.isLoggedIn {
                     quotaRow
                     SettingsDivider()
                 }
@@ -205,9 +206,9 @@ struct SettingsPresenter: View {
         VStack(spacing: 0) {
             SettingsRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized) {
                 HStack(spacing: 6) {
-                    Text(QuotaStore.shared.isExhausted
-                         ? QuotaStore.shared.resetText
-                         : "\(Int(QuotaStore.shared.fraction * 100))%")
+                    Text(quotaStore.isExhausted
+                         ? quotaStore.resetText
+                         : "\(Int(quotaStore.fraction * 100))%")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(quotaTextColor)
                         .lineLimit(1)
@@ -221,8 +222,8 @@ struct SettingsPresenter: View {
 
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                         .fill(quotaBarColor)
-                        .frame(width: geo.size.width * QuotaStore.shared.fraction)
-                        .animation(AppMotion.standardSpring, value: QuotaStore.shared.fraction)
+                        .frame(width: geo.size.width * quotaStore.fraction)
+                        .animation(AppMotion.standardSpring, value: quotaStore.fraction)
                 }
             }
             .frame(height: 3)
@@ -232,7 +233,7 @@ struct SettingsPresenter: View {
     }
 
     private var quotaBarColor: Color {
-        switch QuotaStore.shared.level {
+        switch quotaStore.level {
         case .normal:    return vocabSkin.palette.success
         case .warning:   return appTheme.palette.warning
         case .critical:  return vocabSkin.palette.destructive
@@ -241,7 +242,7 @@ struct SettingsPresenter: View {
     }
 
     private var quotaTextColor: Color {
-        switch QuotaStore.shared.level {
+        switch quotaStore.level {
         case .normal:    return vocabSkin.palette.secondaryText
         case .warning:   return appTheme.palette.warning
         case .critical:  return vocabSkin.palette.destructive
