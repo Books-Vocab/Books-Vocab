@@ -81,6 +81,18 @@ enum VocabularyReviewPolicy {
         let multiplier = feedback == .remembered ? rememberedMultiplier : forgotMultiplier
         return min(maximumIntervalHours, max(minimumIntervalHours, base * multiplier))
     }
+
+    static func nextIntervalHours(
+        currentIntervalHours: Double,
+        feedback: ReviewFeedback,
+        settings: ReviewSettings
+    ) -> Double {
+        let minInterval = settings.effectiveMinimumIntervalHours
+        let maxInterval = settings.effectiveMaximumIntervalHours
+        let base = max(currentIntervalHours, minInterval)
+        let multiplier = feedback == .remembered ? settings.effectiveRememberedMultiplier : settings.effectiveForgotMultiplier
+        return min(maxInterval, max(minInterval, base * multiplier))
+    }
 }
 
 extension VocabularyEntry {
@@ -107,10 +119,12 @@ extension VocabularyEntry {
         return isReviewDue ? .due : .reviewed
     }
 
-    func applyReviewFeedback(_ feedback: ReviewFeedback, now: Date = Date()) {
+    func applyReviewFeedback(_ feedback: ReviewFeedback, settings: ReviewSettings = .default, now: Date = Date()) {
+        let baseInterval = reviewCount == 0 ? settings.effectiveInitialIntervalHours : reviewIntervalHours
         let updatedInterval = VocabularyReviewPolicy.nextIntervalHours(
-            currentIntervalHours: reviewIntervalHours,
-            feedback: feedback
+            currentIntervalHours: baseInterval,
+            feedback: feedback,
+            settings: settings
         )
 
         reviewIntervalHours = updatedInterval
