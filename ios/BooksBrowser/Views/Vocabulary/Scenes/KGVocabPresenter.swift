@@ -36,6 +36,8 @@ struct KGVocabPresenter: View {
     let onDeleteTapped: (UUID) -> Void
     let onArchiveTapped: (UUID) -> Void
 
+    @SwiftUI.State private var activeSwipeID: UUID?
+
     var body: some View {
         ScrollView {
             VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
@@ -70,30 +72,32 @@ struct KGVocabPresenter: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
-                                WordRow(viewData: item.row)
-                                    .contentShape(Rectangle())
-                                    .onTapGesture { onRowTapped(item.id) }
-                                    .swipeActions(edge: .trailing) {
-                                        Button {
-                                            onArchiveTapped(item.id)
-                                        } label: {
-                                            Label("封存".localized, systemImage: "archivebox")
+                                VocabSwipeRow(
+                                    itemID: item.id,
+                                    activeSwipeID: $activeSwipeID,
+                                    actionLabel: "封存",
+                                    actionImage: "archivebox",
+                                    actionTint: vocabSkin.palette.quaternaryText,
+                                    onAction: { onArchiveTapped(item.id) }
+                                ) {
+                                    WordRow(viewData: item.row)
+                                        .contentShape(Rectangle())
+                                        .onTapGesture {
+                                            if activeSwipeID != nil {
+                                                activeSwipeID = nil
+                                            } else {
+                                                onRowTapped(item.id)
+                                            }
                                         }
-                                        .tint(vocabSkin.palette.quaternaryText)
+                                        .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                                }
+                                .contextMenu {
+                                    Button(role: .destructive) {
+                                        onDeleteTapped(item.id)
+                                    } label: {
+                                        Label("刪除卡片".localized, systemImage: "trash")
                                     }
-                                    .contextMenu {
-                                        Button {
-                                            onArchiveTapped(item.id)
-                                        } label: {
-                                            Label("封存".localized, systemImage: "archivebox")
-                                        }
-                                        Button(role: .destructive) {
-                                            onDeleteTapped(item.id)
-                                        } label: {
-                                            Label("刪除卡片".localized, systemImage: "trash")
-                                        }
-                                    }
-                                    .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                                }
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
