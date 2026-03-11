@@ -269,7 +269,8 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert "Quick translation failed" in r.text
 
 
-def test_translate_requires_pro_subscription(isolated_api):
+def test_translate_works_without_pro_subscription(isolated_api):
+    """Free users can translate — no 402 pro gate."""
     client = isolated_api.client
     headers = isolated_api.headers
 
@@ -282,16 +283,22 @@ def test_translate_requires_pro_subscription(isolated_api):
     }
     isolated_api.users_file.write_text(json.dumps(users_data))
 
-    r = client.post(
-        "/api/translate/quick",
-        json={"word": "evoke", "context": "The story can evoke deep memories."},
-        headers=headers,
+    fake_client = MagicMock()
+    fake_client.chat.completions.create.return_value = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+        usage=None,
     )
-    assert r.status_code == 402, r.text
-    assert "pro_required" in r.text
+    with patch.object(api_mod, "_gemini_client", return_value=fake_client):
+        r = client.post(
+            "/api/translate/quick",
+            json={"word": "evoke", "context": "The story can evoke deep memories."},
+            headers=headers,
+        )
+    assert r.status_code == 200, r.text
 
 
-def test_vocab_ignores_removed_debug_subscription_bypass_env(isolated_api):
+def test_vocab_works_without_pro_subscription(isolated_api):
+    """Free users can access vocab — no 402 pro gate."""
     client = isolated_api.client
     headers = isolated_api.headers
 
@@ -304,43 +311,8 @@ def test_vocab_ignores_removed_debug_subscription_bypass_env(isolated_api):
     }
     isolated_api.users_file.write_text(json.dumps(users_data))
 
-    original = os.environ.get("DEBUG_BYPASS_SUBSCRIPTION")
-    os.environ["DEBUG_BYPASS_SUBSCRIPTION"] = "1"
-    try:
-        r = client.get("/api/vocab", headers=headers)
-    finally:
-        if original is None:
-            os.environ.pop("DEBUG_BYPASS_SUBSCRIPTION", None)
-        else:
-            os.environ["DEBUG_BYPASS_SUBSCRIPTION"] = original
-
-    assert r.status_code == 402, r.text
-
-
-def test_vocab_ignores_removed_whitelisted_developer_bypass_env(isolated_api):
-    client = isolated_api.client
-    headers = isolated_api.headers
-
-    users_data = json.loads(isolated_api.users_file.read_text())
-    users_data[isolated_api.user_id]["subscription"] = {
-        "is_active": False,
-        "status": "inactive",
-        "trial_days": 7,
-        "will_renew": False,
-    }
-    isolated_api.users_file.write_text(json.dumps(users_data))
-
-    original = os.environ.get("PRO_DEVELOPER_BYPASS_USER_IDS")
-    os.environ["PRO_DEVELOPER_BYPASS_USER_IDS"] = isolated_api.user_id
-    try:
-        r = client.get("/api/vocab", headers=headers)
-    finally:
-        if original is None:
-            os.environ.pop("PRO_DEVELOPER_BYPASS_USER_IDS", None)
-        else:
-            os.environ["PRO_DEVELOPER_BYPASS_USER_IDS"] = original
-
-    assert r.status_code == 402, r.text
+    r = client.get("/api/vocab", headers=headers)
+    assert r.status_code == 200, r.text
 
 
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):
