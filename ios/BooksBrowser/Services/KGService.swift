@@ -305,6 +305,29 @@ final class KGService: KGServing, LocalDataClearing {
         }
     }
 
+    // MARK: - Archive / Unarchive
+
+    func archiveCard(word: String, archived: Bool) async throws {
+        let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
+        let url = baseURL.appendingPathComponent("api/vocab/\(encoded)/archive")
+        var request = URLRequest(url: url)
+        request.httpMethod = "PATCH"
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        try applyAuth(to: &request)
+        request.httpBody = try JSONEncoder().encode(["archived": archived])
+
+        let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response")
+        }
+
+        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
+        guard httpResponse.statusCode == 200 else {
+            throw KGError.serverError("Failed to archive '\(word)'")
+        }
+    }
+
     // MARK: - Batch Add Vocabulary
 
     func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse {

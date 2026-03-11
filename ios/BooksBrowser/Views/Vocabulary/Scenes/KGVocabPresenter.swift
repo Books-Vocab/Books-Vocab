@@ -34,6 +34,7 @@ struct KGVocabPresenter: View {
     let onRetryBanner: (() -> Void)?
     let onRowTapped: (UUID) -> Void
     let onDeleteTapped: (UUID) -> Void
+    let onArchiveTapped: (UUID) -> Void
 
     var body: some View {
         ScrollView {
@@ -72,7 +73,20 @@ struct KGVocabPresenter: View {
                                 WordRow(viewData: item.row)
                                     .contentShape(Rectangle())
                                     .onTapGesture { onRowTapped(item.id) }
+                                    .swipeActions(edge: .trailing) {
+                                        Button {
+                                            onArchiveTapped(item.id)
+                                        } label: {
+                                            Label("封存".localized, systemImage: "archivebox")
+                                        }
+                                        .tint(vocabSkin.palette.quaternaryText)
+                                    }
                                     .contextMenu {
+                                        Button {
+                                            onArchiveTapped(item.id)
+                                        } label: {
+                                            Label("封存".localized, systemImage: "archivebox")
+                                        }
                                         Button(role: .destructive) {
                                             onDeleteTapped(item.id)
                                         } label: {
@@ -208,7 +222,8 @@ private enum KGVocabPresenterPreviewData {
             onDismissBanner: {},
             onRetryBanner: {},
             onRowTapped: { _ in },
-            onDeleteTapped: { _ in }
+            onDeleteTapped: { _ in },
+            onArchiveTapped: { _ in }
         )
     }
 }
@@ -222,7 +237,8 @@ private enum KGVocabPresenterPreviewData {
             onDismissBanner: nil,
             onRetryBanner: nil,
             onRowTapped: { _ in },
-            onDeleteTapped: { _ in }
+            onDeleteTapped: { _ in },
+            onArchiveTapped: { _ in }
         )
     }
 }

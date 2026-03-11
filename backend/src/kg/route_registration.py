@@ -33,6 +33,7 @@ def register_routes(
     reconcile_app_store_subscription: Callable[..., Any],
     list_vocab: Callable[..., Any],
     lookup_word: Callable[..., Any],
+    archive_word: Callable[..., Any],
     delete_word: Callable[..., Any],
     get_graph_links: Callable[..., Any],
     add_vocab: Callable[..., Any],
@@ -81,6 +82,7 @@ def register_routes(
         build_vocab_router(
             list_vocab=list_vocab,
             lookup_word=lookup_word,
+            archive_word=archive_word,
             delete_word=delete_word,
             get_graph_links=get_graph_links,
             add_vocab=add_vocab,

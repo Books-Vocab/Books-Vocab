@@ -82,6 +82,7 @@ actor BackgroundSyncActor {
                     if let serverPron = card.pronunciation, existingEntry.pronunciation == nil {
                         existingEntry.pronunciation = serverPron
                     }
+                    existingEntry.isArchived = card.isArchived ?? false
                     existingEntry.markSynced()
 
                     // Merge review state from server (server newer wins)
@@ -107,6 +108,7 @@ actor BackgroundSyncActor {
                 newEntry.reviewMode = VocabularyCardMode(rawValue: card.mode) ?? .recognition
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
+                newEntry.isArchived = card.isArchived ?? false
                 newEntry.markSynced()
 
                 // Apply server review state to new entry

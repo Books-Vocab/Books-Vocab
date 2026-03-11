@@ -20,6 +20,7 @@ struct VocabularyListView: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.horizontalSizeClass) private var sizeClass
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
+    @State private var showArchiveList = false
     @StateObject private var coordinator = VocabularyListCoordinator()
 
     var body: some View {
@@ -108,6 +109,15 @@ struct VocabularyListView: View {
                         }
                         .disabled(coordinator.isForceRefreshing)
                     }
+
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button { showArchiveList = true } label: {
+                            VocabToolbarGlyph(
+                                systemImage: "archivebox",
+                                badge: archivedCount > 0 ? "\(archivedCount)" : nil
+                            )
+                        }
+                    }
                 }
 
                 // Export menu (only for local vocab tab)
@@ -142,6 +152,9 @@ struct VocabularyListView: View {
             }
             .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
+            }
+            .sheet(isPresented: $showArchiveList) {
+                ArchivedVocabSheet()
             }
             .sheet(item: $coordinator.exportURL) { url in
                 ShareSheet(url: url)
@@ -275,6 +288,10 @@ struct VocabularyListView: View {
             .init(id: 2, title: "關聯圖".localized, systemImage: "point.3.connected.trianglepath.dotted"),
             .init(id: 3, title: "統計".localized, systemImage: "chart.bar")
         ]
+    }
+
+    private var archivedCount: Int {
+        VocabularyEntryPresentation.archivedEntries(in: allEntries).count
     }
 
     private var filteredPendingEntries: [VocabularyEntry] {

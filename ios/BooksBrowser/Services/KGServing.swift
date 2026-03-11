@@ -19,6 +19,7 @@ protocol KGServing: AnyObject {
     func deleteAccount() async throws
     func pullGraphLinks() async throws -> [KGGraphLink]
     func deleteCard(word: String) async throws
+    func archiveCard(word: String, archived: Bool) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func clearLocalData(container: ModelContainer, reason: String) async
 }
