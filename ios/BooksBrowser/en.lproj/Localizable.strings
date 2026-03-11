@@ -349,3 +349,7 @@
 "简体中文" = "Simplified Chinese";
 "日本語" = "Japanese";
 "한국어" = "Korean";
+"翻譯語言" = "Translation Language";
+"閱讀語言" = "Reading Language";
+"書籍的語言" = "The language of the book";
+"翻譯與解釋會以此語言呈現" = "Translations and explanations will be shown in this language";

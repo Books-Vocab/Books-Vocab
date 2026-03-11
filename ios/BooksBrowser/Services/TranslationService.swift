@@ -143,7 +143,9 @@ final class TranslationService: Translating {
 
         let body: [String: String] = [
             "word": word,
-            "context": context
+            "context": context,
+            "source_lang": TranslationLanguage.currentSource.rawValue,
+            "target_lang": TranslationLanguage.currentTarget.rawValue,
         ]
 
         request.httpBody = try JSONEncoder().encode(body)

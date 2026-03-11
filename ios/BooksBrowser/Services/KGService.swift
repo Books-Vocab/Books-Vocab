@@ -53,11 +53,21 @@ struct KGUserIntegrationsConfig: Codable {
     let mochi: KGOptionalIntegrationProviderConfig?
 }
 
+struct KGTranslationConfig: Codable {
+    let source_lang: String?
+    let target_lang: String?
+}
+
 /// User config request/response
 struct KGUserConfig: Codable {
     let integrations: KGUserIntegrationsConfig?
+    let translation: KGTranslationConfig?
 
-    init(optionalIntegrationKey: String?, integrations: KGUserIntegrationsConfig? = nil) {
+    init(
+        optionalIntegrationKey: String?,
+        integrations: KGUserIntegrationsConfig? = nil,
+        translation: KGTranslationConfig? = nil
+    ) {
         self.integrations = integrations ?? (
             optionalIntegrationKey == nil
                 ? nil
@@ -65,6 +75,7 @@ struct KGUserConfig: Codable {
                     mochi: KGOptionalIntegrationProviderConfig(api_key: optionalIntegrationKey)
                 )
         )
+        self.translation = translation
     }
 
     var optionalIntegrationApiKey: String? {
@@ -471,14 +482,14 @@ final class KGService: KGServing, LocalDataClearing {
         return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
-    func updateUserConfig(optionalIntegrationKey: String?) async throws -> KGUserConfig {
+    func updateUserConfig(optionalIntegrationKey: String?, translationConfig: KGTranslationConfig? = nil) async throws -> KGUserConfig {
         let url = baseURL.appendingPathComponent("api/user/config")
         var request = URLRequest(url: url)
         request.httpMethod = "PUT"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         try applyAuth(to: &request)
 
-        let payload = KGUserConfig(optionalIntegrationKey: optionalIntegrationKey)
+        let payload = KGUserConfig(optionalIntegrationKey: optionalIntegrationKey, translation: translationConfig)
         request.httpBody = try JSONEncoder().encode(payload)
 
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
