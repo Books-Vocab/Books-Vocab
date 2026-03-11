@@ -74,6 +74,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         examples=card.examples,
         mode=card.mode,
         isDeleted=card.is_deleted,
+        isArchived=card.is_archived,
         pronunciation=card.pronunciation,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
@@ -163,6 +164,14 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
     for card in cards_store.all():
         if card.content.lower() == word.lower():
             return card_response_builder(card, graph, cards_by_id)
+    raise HTTPException(404, f"Word '{word}' not found")
+
+
+def archive_vocab_word(word: str, *, archived: bool, cards_store: Any) -> dict[str, str]:
+    for card in cards_store.all():
+        if card.content.lower() == word.lower():
+            cards_store.update(card.id, is_archived=archived)
+            return {"word": word, "id": card.id, "archived": archived}
     raise HTTPException(404, f"Word '{word}' not found")
 
 

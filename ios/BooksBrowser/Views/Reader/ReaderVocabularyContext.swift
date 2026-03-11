@@ -60,7 +60,7 @@ struct ReaderVocabularyContext {
     }
 
     static func lookedUpWords(from vocabulary: [VocabularyEntry]) -> [String] {
-        vocabulary.flatMap { entry in
+        vocabulary.filter(\.shouldAppearInReader).flatMap { entry in
             var all = Set([entry.word.lowercased()] + entry.inflections.map { $0.lowercased() })
             if let root = entry.rootForm?.lowercased() { all.insert(root) }
             return Array(all)
