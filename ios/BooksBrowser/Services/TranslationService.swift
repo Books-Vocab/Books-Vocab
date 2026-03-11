@@ -157,7 +157,7 @@ final class TranslationService: Translating {
         }
 
         // Update quota from response headers (before status check)
-        QuotaStore.shared.update(fromHeaders: httpResponse.allHeaderFields)
+        QuotaStore.shared.update(from: httpResponse)
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")

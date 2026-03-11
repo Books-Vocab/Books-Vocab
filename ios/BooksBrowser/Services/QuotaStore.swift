@@ -27,12 +27,12 @@ final class QuotaStore {
         self.resetSeconds = resetSeconds
     }
 
-    func update(fromHeaders headers: [AnyHashable: Any]) {
-        if let fractionStr = headers["X-Quota-Fraction"] as? String,
+    func update(from response: HTTPURLResponse) {
+        if let fractionStr = response.value(forHTTPHeaderField: "X-Quota-Fraction"),
            let f = Double(fractionStr) {
             self.fraction = f
         }
-        if let resetStr = headers["X-Quota-Reset"] as? String,
+        if let resetStr = response.value(forHTTPHeaderField: "X-Quota-Reset"),
            let r = Int(resetStr) {
             self.resetSeconds = r
         }
