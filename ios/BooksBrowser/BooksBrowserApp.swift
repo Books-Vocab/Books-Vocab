@@ -129,6 +129,9 @@ struct BooksBrowserApp: App {
                     .environment(\.readiumService, readiumService)
                     .environment(\.bookshelfImportService, bookshelfImportService)
                     .environment(\.bookFileManager, bookFileManager)
+                    .environment(\.quotaStore, QuotaStore.shared)
+                    .environment(\.speechService, SpeechService.shared)
+                    .environment(\.readerSettings, .shared)
                     .onOpenURL { url in
                         GIDSignIn.sharedInstance.handle(url)
                     }

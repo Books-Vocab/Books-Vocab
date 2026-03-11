@@ -29,6 +29,9 @@ extension EnvironmentValues {
     @Entry var authManager: any AuthManaging = AuthManager.shared
     @Entry var kgService: any KGServing = KGService()
     @Entry var bookFileManager: any BookFileManaging = LocalBookFileManager()
+    @Entry var quotaStore: any QuotaProviding = QuotaStore.shared
+    @Entry var speechService: any Speaking = SpeechService.shared
+    @Entry var readerSettings: ReaderSettings = .shared
 
     var subscriptionManager: any SubscriptionManaging {
         get { self[SubscriptionManagerEnvironmentKey.self] }
