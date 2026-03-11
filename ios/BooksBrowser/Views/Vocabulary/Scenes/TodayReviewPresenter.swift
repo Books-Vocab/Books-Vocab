@@ -68,6 +68,7 @@ struct TodayReviewPresenter: View {
     let onLinkTap: (KGCardLinkSummary) -> Void
     let onToggleAutoPlay: () -> Void
     let onToggleAutoPlayPause: () -> Void
+    let onDetailTap: () -> Void
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {
@@ -185,6 +186,22 @@ struct TodayReviewPresenter: View {
             // 互動卡片
             VStack(spacing: 0) {
                 frontFoldSurface(card)
+                    .overlay(alignment: .topTrailing) {
+                        HStack(spacing: vocabSkin.spacing.inlineGap) {
+                            VocabChromeIconButton(
+                                systemImage: "speaker.wave.2.fill",
+                                label: "播放發音".localized,
+                                action: { SpeechService.shared.speak(card.word) }
+                            )
+                            VocabChromeIconButton(
+                                systemImage: "arrow.up.right",
+                                label: "查看詳情".localized,
+                                action: { guard isCardInteractive else { return }; onDetailTap() }
+                            )
+                        }
+                        .padding(reviewCardPadding)
+                        .disabled(false)
+                    }
 
                 if state.revealStage.showsAnswer {
                     answerFoldSurface(currentCard)

@@ -135,8 +135,9 @@ enum TodayReviewPresenterPreviewData {
         onRemembered: () -> Void,
         onLinkTap: (KGCardLinkSummary) -> Void,
         onToggleAutoPlay: () -> Void,
-        onToggleAutoPlayPause: () -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {})
+        onToggleAutoPlayPause: () -> Void,
+        onDetailTap: () -> Void
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {})
 }
 
 #Preview("Today Review / Front") {
@@ -147,7 +148,8 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onDetailTap: cb.onDetailTap
         )
     }
 }
@@ -160,7 +162,8 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onDetailTap: cb.onDetailTap
         )
     }
 }
@@ -173,7 +176,8 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onDetailTap: cb.onDetailTap
         )
     }
 }
@@ -186,7 +190,8 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
-            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause
+            onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
+            onDetailTap: cb.onDetailTap
         )
     }
 }
