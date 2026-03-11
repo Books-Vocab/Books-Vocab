@@ -64,7 +64,6 @@ struct SyncPresenter: View {
         .vocabCanvasBackground()
         .navigationTitle("同步".localized)
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .sensoryFeedback(.success, trigger: state.phase == .completed)
         .sensoryFeedback(.warning, trigger: state.failureKind == .partial)
         .sensoryFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled)
