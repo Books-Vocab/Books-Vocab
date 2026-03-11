@@ -82,15 +82,15 @@ struct VocabularySyncBadge: View {
         Group {
             switch VocabularySyncState(rawValue: status) ?? .pending {
             case .synced:
-                Label("已同步", systemImage: "checkmark.circle")
+                Label("已同步".localized, systemImage: "checkmark.circle")
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(successTone)
             case .failed:
-                Label("同步失敗", systemImage: "exclamationmark.circle")
+                Label("同步失敗".localized, systemImage: "exclamationmark.circle")
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(destructiveTone)
             case .pending:
-                Label("待同步", systemImage: "clock")
+                Label("待同步".localized, systemImage: "clock")
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.secondaryText)
             }

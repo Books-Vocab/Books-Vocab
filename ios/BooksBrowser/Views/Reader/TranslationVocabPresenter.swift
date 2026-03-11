@@ -127,13 +127,13 @@ struct TranslationVocabPresenter: View {
             CardSectionDivider(horizontalPadding: 0)
                 .padding(.vertical, 2)
 
-            Label("語境解釋", systemImage: "text.bubble")
+            Label("語境解釋".localized, systemImage: "text.bubble")
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.quaternaryText)
 
             if state.isLoadingExplanation {
                 VocabStateMessageCard(
-                    title: state.statusMessage ?? "載入解釋...",
+                    title: state.statusMessage ?? "載入解釋...".localized,
                     systemImage: "text.bubble"
                 ) {
                     HStack {
@@ -179,13 +179,13 @@ struct TranslationVocabPresenter: View {
                 CardSectionDivider(horizontalPadding: 0)
                     .padding(.vertical, 2)
 
-                Label("語境解釋", systemImage: "text.bubble")
+                Label("語境解釋".localized, systemImage: "text.bubble")
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
 
                 if state.isLoadingExplanation {
                     VocabStateMessageCard(
-                        title: state.statusMessage ?? "載入解釋...",
+                        title: state.statusMessage ?? "載入解釋...".localized,
                         systemImage: "text.bubble"
                     ) {
                         HStack {
@@ -201,7 +201,7 @@ struct TranslationVocabPresenter: View {
                     .padding(.vertical, vocabSkin.spacing.tinyGap)
                 } else if let errorMessage = state.explanationErrorMessage {
                     VocabStateMessageCard(
-                        title: "語境解釋暫時無法載入",
+                        title: "語境解釋暫時無法載入".localized,
                         systemImage: "exclamationmark.triangle.fill",
                         description: errorMessage
                     )
@@ -258,7 +258,7 @@ struct TranslationVocabPresenter: View {
     private func footerToolbar(showChevron: Bool, timerValue: String?) -> some View {
         HStack(spacing: 4) {
             if state.showsSavedStatus {
-                Label("已加入", systemImage: "checkmark.circle.fill")
+                Label("已加入".localized, systemImage: "checkmark.circle.fill")
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.success)
                     .symbolEffect(.bounce, value: state.isSaved)

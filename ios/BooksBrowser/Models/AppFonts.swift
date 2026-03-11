@@ -102,6 +102,52 @@ enum AppFonts {
         mono(size: 11)
     }
 
+    // MARK: - UIKit Fonts (for Appearance API)
+
+    /// UIKit serif font for UINavigationBar / UITabBar appearance
+    static func uiSerif(size: CGFloat, bold: Bool = false) -> UIFont {
+        let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
+        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    /// UIKit sans font for UITabBar appearance
+    static func uiSans(size: CGFloat, bold: Bool = false) -> UIFont {
+        let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
+        let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
+        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return UIFont(descriptor: descriptor, size: size)
+    }
+
+    /// 設定 UINavigationBar + UITabBar 全域字體
+    static func configureGlobalAppearance() {
+        // Navigation bar: serif
+        let navAppearance = UINavigationBarAppearance()
+        navAppearance.configureWithDefaultBackground()
+        navAppearance.largeTitleTextAttributes = [.font: uiSerif(size: 34, bold: true)]
+        navAppearance.titleTextAttributes = [.font: uiSerif(size: 17, bold: true)]
+        UINavigationBar.appearance().standardAppearance = navAppearance
+        UINavigationBar.appearance().scrollEdgeAppearance = navAppearance
+
+        // Tab bar: sans
+        let tabAppearance = UITabBarAppearance()
+        tabAppearance.configureWithDefaultBackground()
+        let tabItemAppearance = UITabBarItemAppearance()
+        let tabFont = uiSans(size: 10)
+        tabItemAppearance.normal.titleTextAttributes = [.font: tabFont]
+        tabItemAppearance.selected.titleTextAttributes = [.font: tabFont]
+        tabAppearance.stackedLayoutAppearance = tabItemAppearance
+        tabAppearance.inlineLayoutAppearance = tabItemAppearance
+        tabAppearance.compactInlineLayoutAppearance = tabItemAppearance
+        UITabBar.appearance().standardAppearance = tabAppearance
+        UITabBar.appearance().scrollEdgeAppearance = tabAppearance
+    }
+
     // MARK: - On-Demand Font Download
 
     /// 觸發 STSongti-TC 按需下載（系統字體，首次使用時需下載）

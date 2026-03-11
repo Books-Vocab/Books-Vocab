@@ -93,7 +93,7 @@ struct WordRow: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineLimit(2)
                 } else if !viewData.isStrikethrough {
-                    Label("待翻譯", systemImage: "clock")
+                    Label("待翻譯".localized, systemImage: "clock")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }

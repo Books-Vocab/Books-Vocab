@@ -449,3 +449,9 @@
 "管理員授權 · 有效至 %@" = "Admin Grant · valid until %@";
 "此帳號目前由管理員授權為 Pro；若需延長、撤銷或調整，請聯絡管理員。" = "This account has Pro through an admin grant. Contact the administrator to extend, revoke, or adjust access.";
 "到期後將回到免費方案。如需繼續使用 Pro，可重新訂閱。" = "Access reverts to the free plan after expiration. Re-subscribe to continue using Pro.";
+
+// ── Accessibility labels ──
+"語氣標記" = "Tone Marker";
+"難度等級：%@" = "Difficulty: %@";
+"複習進度" = "Review Progress";
+"載入解釋..." = "Loading explanation...";
