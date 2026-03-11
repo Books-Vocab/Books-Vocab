@@ -57,7 +57,7 @@ struct AddVocabularyIntent: AppIntent {
         modelContext.safeSave()
 
         // 4. (可選) 觸發背景非同步翻譯（使用我們剛升級的端側 Foundation Models）
-        Task.detached {
+        Task { @MainActor in
             let service = TranslationService()
             if let result = try? await service.translateQuick(word: targetWord, context: context ?? "") {
                 entry.translation = result.translation

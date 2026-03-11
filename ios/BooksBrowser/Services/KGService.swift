@@ -224,8 +224,8 @@ final class KGService: KGServing, LocalDataClearing {
     }
 
     init(
-        authSession: any AuthSessionProviding = AuthManager.shared,
-        sessionInvalidator: any SessionInvalidating = AuthManager.shared
+        authSession: any AuthSessionProviding = MainActor.assumeIsolated({ AuthManager.shared }),
+        sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared })
     ) {
         self.authSession = authSession
         self.sessionInvalidator = sessionInvalidator
