@@ -2,6 +2,7 @@ import Foundation
 import UIKit
 import ReadiumShared
 import ReadiumNavigator
+import os
 
 /// Globally debounces high-frequency navigator operations across instances.
 actor GlobalDebouncer {
@@ -36,7 +37,7 @@ final class NavigatorHostViewController: UIViewController {
         guard !highlight.isEmpty else { return }
 
         let context = buildMarkedContext(selection.locator.text)
-        print("🔍 AI Search: \(highlight)")
+        AppLog.reader.debug("AI Search: \(highlight)")
 
         Task { @MainActor in
             _ = await navigator.evaluateJavaScript(activeSelectionWrapScript)
@@ -54,7 +55,7 @@ final class NavigatorHostViewController: UIViewController {
         guard !highlight.isEmpty else { return }
 
         let context = buildMarkedContext(selection.locator.text)
-        print("💬 AI Explain: \(highlight)")
+        AppLog.reader.debug("AI Explain: \(highlight)")
 
         Task { @MainActor in
             _ = await navigator.evaluateJavaScript(activeSelectionWrapScript)

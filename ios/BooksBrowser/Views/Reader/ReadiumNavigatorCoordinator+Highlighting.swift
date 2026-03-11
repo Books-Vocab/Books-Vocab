@@ -1,10 +1,11 @@
 import Foundation
 import UIKit
 import ReadiumNavigator
+import os
 
 extension ReadiumNavigatorView.Coordinator {
     @objc func handleBlockerTap(_ gesture: UITapGestureRecognizer) {
-        print("👋 Blocker tapped, clearing selection...")
+        AppLog.reader.debug("Blocker tapped, clearing selection...")
         DispatchQueue.main.async {
             self.parent.onWordDeselected()
         }
@@ -27,7 +28,7 @@ extension ReadiumNavigatorView.Coordinator {
                     let js = "if(window.__markVocabWords) window.__markVocabWords([\(wordsJSON)]);"
 
                     Task { _ = await navigator.evaluateJavaScript(js) }
-                    print("📘 Marked \(words.count) vocab words")
+                    AppLog.reader.debug("Marked \(words.count) vocab words")
                 }
             }
         }
@@ -39,7 +40,7 @@ extension ReadiumNavigatorView.Coordinator {
         let js = "if(window.__markVocabWord) window.__markVocabWord(\"\(escaped)\");"
         Task { @MainActor in
             _ = await navigator.evaluateJavaScript(js)
-            print("📘 Marked new vocab: \(word)")
+            AppLog.reader.debug("Marked new vocab: \(word)")
         }
     }
 
@@ -58,7 +59,7 @@ extension ReadiumNavigatorView.Coordinator {
         """
         Task { @MainActor in
             _ = await navigator.evaluateJavaScript(js)
-            print("🧹 Cleared all vocab highlights")
+            AppLog.reader.debug("Cleared all vocab highlights")
         }
     }
 
@@ -68,7 +69,7 @@ extension ReadiumNavigatorView.Coordinator {
         let js = "if(window.__removeVocabWord) window.__removeVocabWord(\"\(escaped)\");"
         Task { @MainActor in
             _ = await navigator.evaluateJavaScript(js)
-            print("🗑️ Removed vocab underline: \(word)")
+            AppLog.reader.debug("Removed vocab underline: \(word)")
         }
     }
 
@@ -112,7 +113,7 @@ extension ReadiumNavigatorView.Coordinator {
         for def in fontDefs {
             guard let url = Bundle.main.url(forResource: def.file, withExtension: "ttf"),
                   let data = try? Data(contentsOf: url) else {
-                print("⚠️ Font not found in bundle: \(def.file).ttf")
+                AppLog.reader.warning("Font not found in bundle: \(def.file).ttf")
                 continue
             }
             let b64 = data.base64EncodedString()
