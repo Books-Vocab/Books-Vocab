@@ -314,12 +314,13 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Archive / Unarchive
 
     func archiveCard(word: String, archived: Bool) async throws {
+        let token = try await currentAuthToken()
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         let url = baseURL.appendingPathComponent("api/vocab/\(encoded)/archive")
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        try applyAuth(to: &request)
+        applyAuth(to: &request, token: token)
         request.httpBody = try JSONEncoder().encode(["archived": archived])
 
         let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
