@@ -25,9 +25,28 @@ private struct BookshelfImportServiceEnvironmentKey: EnvironmentKey {
     }
 }
 
+private struct AuthManagerEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any AuthManaging = MainActor.assumeIsolated {
+        AuthManager.shared
+    }
+}
+
+private struct KGServiceEnvironmentKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: any KGServing = MainActor.assumeIsolated {
+        KGService()
+    }
+}
+
 extension EnvironmentValues {
-    @Entry var authManager: any AuthManaging = AuthManager.shared
-    @Entry var kgService: any KGServing = KGService()
+    var authManager: any AuthManaging {
+        get { self[AuthManagerEnvironmentKey.self] }
+        set { self[AuthManagerEnvironmentKey.self] = newValue }
+    }
+
+    var kgService: any KGServing {
+        get { self[KGServiceEnvironmentKey.self] }
+        set { self[KGServiceEnvironmentKey.self] = newValue }
+    }
     @Entry var bookFileManager: any BookFileManaging = LocalBookFileManager()
     @Entry var quotaStore: any QuotaProviding = QuotaStore.shared
     @Entry var speechService: any Speaking = SpeechService.shared
