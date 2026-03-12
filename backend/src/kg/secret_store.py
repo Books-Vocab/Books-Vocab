@@ -19,8 +19,13 @@ def decrypt_value(stored: str, jwt_secret: str) -> str:
     """解密 'enc:' prefix 的密文。若無 prefix 則視為明文（向後相容）。"""
     if not stored.startswith("enc:"):
         return stored  # 未加密的舊值，向後相容
-    f = Fernet(_derive_key(jwt_secret))
-    return f.decrypt(stored[4:].encode()).decode()
+    if not jwt_secret:
+        return stored  # 無密鑰時原樣回傳
+    try:
+        f = Fernet(_derive_key(jwt_secret))
+        return f.decrypt(stored[4:].encode()).decode()
+    except InvalidToken:
+        return stored  # 密鑰不匹配時原樣回傳
 
 
 def is_encrypted(value: str) -> bool:
