@@ -91,10 +91,12 @@ def delete_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[[Path], Any] | None = None,
 ) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    return delete_vocab_word(word, cards_store=cards)
+    graph = graph_store_factory(user["dir"]) if graph_store_factory is not None else None
+    return delete_vocab_word(word, cards_store=cards, graph=graph)
 
 
 def get_graph_links_response(
