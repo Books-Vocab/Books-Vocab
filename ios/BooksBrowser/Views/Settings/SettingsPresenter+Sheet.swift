@@ -26,7 +26,7 @@ struct OptionalIntegrationInfoSheetView: View {
 
                     Rectangle()
                         .fill(vocabSkin.palette.divider)
-                        .frame(height: 1)
+                        .frame(height: AppMetrics.dividerStandard)
 
                     Text("如何取得 API Key？".localized)
                         .font(vocabSkin.typography.sectionTitle)
