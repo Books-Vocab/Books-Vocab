@@ -31,6 +31,7 @@ def _get_conn() -> sqlite3.Connection:
             )
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_user ON token_usage(user_id)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_user_created ON token_usage(user_id, created_at)")
         _conn.commit()
     return _conn
 
