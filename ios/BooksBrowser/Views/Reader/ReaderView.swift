@@ -14,42 +14,42 @@ import os
 /// 閱讀器主介面（Readium 版）
 struct ReaderView: View {
     @Bindable var book: Book
-    @Environment(\.modelContext) private var modelContext
+    @Environment(\.modelContext) var modelContext
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.readiumService) private var readiumService
+    @Environment(\.readiumService) var readiumService
     @Environment(\.iCloudDownloadManager) private var downloadManager
     // PERF: 詞彙量超過 5000 時考慮改為按書篩選
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
     )
-    private var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
+    var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
 
-    @State private var publication: Publication?
-    @State private var readerState = ReaderViewState()
+    @State var publication: Publication?
+    @State var readerState = ReaderViewState()
 
     // 翻譯 handler（封裝所有翻譯狀態與詞庫邏輯）
-    @State private var handler = ReaderTranslationHandler()
+    @State var handler = ReaderTranslationHandler()
 
     // 觸發導航
-    @State private var navigateToLocator: (locator: Locator, id: UUID)? = nil
+    @State var navigateToLocator: (locator: Locator, id: UUID)? = nil
 
     // 進度
-    @State private var currentLocator: Locator?
-    @State private var totalProgression: Double = 0
+    @State var currentLocator: Locator?
+    @State var totalProgression: Double = 0
 
     // 閱讀殼層狀態：集中 header / overlay / blocker 的控制面
-    @State private var chromeState = ReaderChromeState()
+    @State var chromeState = ReaderChromeState()
 
     @Environment(\.kgService) private var kgService
-    @Environment(\.authManager) private var authManager
+    @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
-    @Environment(\.readerSettings) private var settings
+    @Environment(\.readerSettings) var settings
 
-    private var viewConfiguration: ReaderViewConfiguration {
+    var viewConfiguration: ReaderViewConfiguration {
         settings.viewConfiguration
     }
 
-    private var appTheme: AppTheme {
+    var appTheme: AppTheme {
         AppTheme.resolve(for: viewConfiguration.swiftUIColorScheme)
     }
 
@@ -156,119 +156,6 @@ struct ReaderView: View {
         )
     }
 
-    private var vocabularyContext: ReaderVocabularyContext {
-        ReaderVocabularyContext(
-            vocabulary: allVocabulary,
-            modelContext: modelContext,
-            book: book,
-            currentLocator: currentLocator
-        )
-    }
-
-    @ViewBuilder
-    private var readerMainContent: some View {
-        if let publication = publication {
-            ReadiumNavigatorView(
-                publication: publication,
-                initialLocator: initialLocator,
-                httpServer: readiumService.httpServer,
-                lookedUpWords: handler.lookedUpWords,
-                bookUniqueWords: handler.bookUniqueWords,
-                viewConfiguration: viewConfiguration,
-                clearHighlightTrigger: handler.clearHighlightTrigger,
-                removeWordTrigger: handler.removeWordTrigger,
-                navigateToLocator: navigateToLocator,
-                isInteractionBlocked: chromeState.blocksReaderInteraction,
-                onLocationChanged: handleLocationChange,
-                onWordSelected: handleWordSelected,
-                onPhraseSelected: handlePhraseSelected,
-                onExplainSelected: { text, context in
-                    guard canUseProReaderFeature() else { return }
-                    handler.handleExplainSelected(text: text, context: context)
-                    withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
-                },
-                onWordDeselected: handleWordDeselected,
-                onMarkingProgress: handleMarkingProgress
-            )
-            .ignoresSafeArea(edges: [.horizontal, .bottom])
-            .safeAreaInset(edge: .top) {
-                Color.clear.frame(height: 0)
-            }
-        } else if let error = readerState.errorMessage {
-            readerErrorState(error)
-        }
-    }
-
-    private func readerErrorState(_ error: String) -> some View {
-        ScrollView {
-            VStack {
-                Spacer(minLength: ReaderPresentationMetrics.Preview.topInset)
-
-                AppEmptyStateCard(
-                    title: "無法開啟書籍".localized,
-                    systemImage: "exclamationmark.triangle",
-                    description: error
-                )
-                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-
-                Spacer(minLength: ReaderPresentationMetrics.Preview.bottomInset)
-            }
-            .frame(maxWidth: .infinity)
-        }
-        .background(viewConfiguration.paperColor.ignoresSafeArea())
-    }
-
-    @ViewBuilder
-    private var settingsPanelContent: some View {
-        if viewConfiguration.translationPanelMode == .vocab {
-            ReaderSettingsPanel(
-                settings: settings,
-                onDismiss: {
-                    closeOverlay(.settings)
-                }
-            )
-            .vocabSkin(VocabSkin.themed(appTheme))
-        }
-    }
-
-    @ViewBuilder
-    private var translationPanelContent: some View {
-        if let selection = handler.wordSelection {
-            TranslationPanel(
-                word: selection.word,
-                result: handler.translationResult,
-                pronunciation: handler.pronunciation,
-                isLoading: handler.isTranslating,
-                isSaved: handler.isSaved,
-                isLoggedIn: authManager.isLoggedIn,
-                isExpanded: handler.isExpanded,
-                explanation: handler.explanationText,
-                isLoadingExplanation: handler.isLoadingExplanation,
-                statusMessage: handler.statusMessage,
-                isExplanationOnly: handler.isExplanationOnly,
-                translationErrorMessage: handler.translationErrorMessage,
-                explanationErrorMessage: handler.explanationErrorMessage,
-                onExpand: { handler.handleExpand() },
-                onDelete: {
-                    handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
-                    closeOverlay(.translation)
-                },
-                onDismiss: {
-                    handler.dismiss()
-                    closeOverlay(.translation)
-                }
-            )
-            .environment(\.readerPanelMode, viewConfiguration.translationPanelMode)
-        }
-    }
-
-    // MARK: - 初始位置
-
-    private var initialLocator: Locator? {
-        guard let json = book.lastReadLocatorJSON else { return nil }
-        return try? Locator(jsonString: json)
-    }
-
     // MARK: - 載入 Publication
 
     private func loadPublication() async {
@@ -299,102 +186,5 @@ struct ReaderView: View {
                 readerState.isWebViewReady = true  // 顯示錯誤畫面
             }
         }
-    }
-
-    // MARK: - 位置變更
-
-    private func handleLocationChange(_ locator: Locator) {
-        if !readerState.isWebViewReady {
-            withAnimation(AppMotion.loadingState) { readerState.isWebViewReady = true }
-        }
-        currentLocator = locator
-        totalProgression = locator.locations.totalProgression ?? 0
-        book.lastReadLocatorJSON = locator.jsonString
-        book.dateLastRead = Date()
-        book.progression = totalProgression
-    }
-
-    private func handleWordSelected(_ word: String, _ context: String) {
-        guard canUseProReaderFeature() else { return }
-        // handler 先同步設定 wordSelection，確保 translationPanelContent 有內容
-        handler.handleWordSelected(
-            word: word,
-            context: context,
-            vocabularyContext: vocabularyContext
-        )
-        // overlay 動畫事務觸發時 panel 已就緒，.transition() 才會生效
-        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
-    }
-
-    private func handlePhraseSelected(_ phrase: String, _ context: String) {
-        guard canUseProReaderFeature() else { return }
-        handler.handlePhraseSelected(
-            phrase: phrase,
-            context: context,
-            vocabularyContext: vocabularyContext
-        )
-        withAnimation(AppMotion.panelState) { chromeState.overlay = .translation }
-    }
-
-    private func handleMarkingProgress(_ progress: Double) {
-        guard !readerState.hasCompletedInitialMarking else { return }
-        withAnimation(AppMotion.progressLinear) {
-            readerState.underlineProgress = progress
-        }
-        if progress >= 1.0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
-                withAnimation(AppMotion.contentFade) {
-                    readerState.underlineProgress = nil
-                }
-                readerState.hasCompletedInitialMarking = true
-            }
-        }
-    }
-
-    private func showReaderSettingsPanel() {
-        withAnimation(AppMotion.panelState) {
-            chromeState.overlay = .settings
-            chromeState.header = .compact
-        }
-    }
-
-    private func expandHeader() {
-        withAnimation(AppMotion.headerState) {
-            chromeState.header = .expanded
-        }
-    }
-
-    private func collapseHeader() {
-        withAnimation(AppMotion.headerState) {
-            chromeState.header = .compact
-        }
-    }
-
-    private func closeOverlay(_ overlay: ReaderChromeOverlay) {
-        guard chromeState.overlay == overlay else { return }
-        chromeState.overlay = .none
-    }
-
-    // MARK: - 取消選取（再次點擊 highlight 的字或點擊空白處）
-
-    private func handleWordDeselected() {
-        if chromeState.overlay == .translation {
-            withAnimation(AppMotion.panelState) {
-                handler.dismiss()
-                closeOverlay(.translation)
-            }
-        } else if chromeState.overlay == .settings {
-            withAnimation(AppMotion.panelState) {
-                closeOverlay(.settings)
-            }
-            handler.clearHighlightTrigger = UUID()
-        } else {
-            // 如果沒有開啟任何面板，也要確保清除原生的多字 Highlight 與 active-word
-            handler.clearHighlightTrigger = UUID()
-        }
-    }
-
-    private func canUseProReaderFeature() -> Bool {
-        return true
     }
 }
