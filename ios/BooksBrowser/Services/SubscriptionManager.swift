@@ -59,7 +59,7 @@ final class SubscriptionManager: SubscriptionManaging {
         pro: KGSubscriptionStatus(
             is_active: false,
             product_id: nil,
-            plan_name: "BooksBrowser Pro",
+            plan_name: "Books & Vocab Pro",
             price_display: nil,
             status: "inactive",
             is_trial: false,
@@ -325,7 +325,7 @@ final class SubscriptionManager: SubscriptionManaging {
             pro: KGSubscriptionStatus(
                 is_active: false,
                 product_id: nil,
-                plan_name: "BooksBrowser Pro",
+                plan_name: "Books & Vocab Pro",
                 price_display: nil,
                 status: "inactive",
                 is_trial: false,

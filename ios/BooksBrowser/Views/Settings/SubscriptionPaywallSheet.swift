@@ -149,7 +149,7 @@ struct SubscriptionPaywallSheet: View {
                 .font(vocabSkin.typography.symbolHero)
                 .foregroundStyle(vocabSkin.palette.accent)
 
-            Text("BooksBrowser Pro")
+            Text("Books & Vocab Pro")
                 .font(vocabSkin.typography.displayTitle)
                 .foregroundStyle(vocabSkin.palette.primaryText)
 
