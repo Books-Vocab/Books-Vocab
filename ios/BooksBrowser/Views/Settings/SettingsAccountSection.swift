@@ -95,9 +95,7 @@ struct SettingsAccountSection: View {
 
                     HStack(spacing: 8) {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
-                            .font(vocabSkin.typography.monoLabel)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
+                            .appSettingsTextInputStyle(alignment: .leading)
 
                         Button("登入".localized, action: actions.manualLogin)
                             .buttonStyle(.bordered)
