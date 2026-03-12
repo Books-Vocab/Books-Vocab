@@ -143,7 +143,7 @@ struct VocabularyListView: View {
                 ShareSheet(url: url)
             }
             .sheet(item: $coordinator.selectedEntry) { entry in
-                WordDetailSheet(entry: entry)
+                WordDetailSheet(entry: entry, allEntries: allEntries)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationContentInteraction(.scrolls)

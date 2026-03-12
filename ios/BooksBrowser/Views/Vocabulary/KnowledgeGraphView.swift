@@ -25,7 +25,7 @@ struct KnowledgeGraphView: View {
         )
         .task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
         .sheet(item: $coordinator.selectedEntry) { entry in
-            WordDetailSheet(entry: entry)
+            WordDetailSheet(entry: entry, allEntries: allEntries)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
