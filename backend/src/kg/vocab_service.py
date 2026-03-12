@@ -78,6 +78,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         pronunciation=card.pronunciation,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
+        updatedAt=_dt_to_iso(card.updated_at),
         reviewIntervalHours=card.review_interval_hours,
         nextReviewAt=_dt_to_iso(card.next_review_at),
         lastReviewedAt=_dt_to_iso(card.last_reviewed_at),
