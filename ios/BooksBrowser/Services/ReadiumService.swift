@@ -161,10 +161,13 @@ final class ReadiumService: ReadiumServing {
 
     // MARK: - 刪除
 
-    /// 刪除 EPUB 檔案
+    /// 刪除 EPUB 檔案（同時清理 iCloud 和本機）
     func deleteEPUB(fileName: String) {
-        let url = Book.epubsDirectory.appendingPathComponent(fileName)
-        try? FileManager.default.removeItem(at: url)
+        let fm = FileManager.default
+        if let iCloudDir = Book.iCloudEpubsDirectory {
+            try? fm.removeItem(at: iCloudDir.appendingPathComponent(fileName))
+        }
+        try? fm.removeItem(at: Book.localEpubsDirectory.appendingPathComponent(fileName))
     }
 }
 
