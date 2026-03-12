@@ -2,8 +2,25 @@ import Foundation
 import SwiftData
 import os
 
+@MainActor protocol VocabularyListCoordinating: AnyObject, Observable {
+    var showExportSheet: Bool { get set }
+    var showSyncView: Bool { get set }
+    var showSettings: Bool { get set }
+    var exportURL: URL? { get }
+    var selectedEntry: VocabularyEntry? { get set }
+    var activeReviewSession: TodayReviewSession? { get set }
+    func presentSyncView()
+    func presentSettings()
+    func exportCSV(entries: [VocabularyEntry])
+    func exportJSON(entries: [VocabularyEntry])
+    func exportAnki(entries: [VocabularyEntry])
+    func startKnowledgeReview(entries: [VocabularyEntry])
+    func handlePendingRowTap(_ entryID: UUID, pendingEntries: [VocabularyEntry])
+    func handlePendingActionTap(_ entryID: UUID, pendingEntries: [VocabularyEntry], modelContext: ModelContext)
+}
+
 @Observable @MainActor
-final class VocabularyListCoordinator {
+final class VocabularyListCoordinator: VocabularyListCoordinating {
     var showExportSheet = false
     var showSyncView = false
     var showSettings = false
