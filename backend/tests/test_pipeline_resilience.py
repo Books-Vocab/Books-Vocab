@@ -8,6 +8,10 @@ from types import SimpleNamespace
 from kg.pipeline_service import run_pipeline_background, _sync_embed_loop
 
 
+async def _async_lock():
+    return asyncio.Lock()
+
+
 class _FakeLogger:
     def __init__(self) -> None:
         self.info_messages: list[str] = []
@@ -126,7 +130,7 @@ def test_enrich_step_retries_on_transient_failure():
         try:
             await run_pipeline_background(
                 user,
-                get_user_lock_fn=lambda uid: asyncio.Lock(),
+                get_user_lock_fn=lambda uid: _async_lock(),
                 card_store_factory=lambda d: _CardsNeedEnrich(),
                 graph_store_factory=lambda d: _GraphOk(),
                 embedding_store_factory=lambda d, user_id=None: _EmbeddingsOk(),
@@ -156,7 +160,7 @@ def test_embed_step_runs_in_executor_thread():
         event_loop_thread_id = threading.get_ident()
         await run_pipeline_background(
             user,
-            get_user_lock_fn=lambda uid: asyncio.Lock(),
+            get_user_lock_fn=lambda uid: _async_lock(),
             card_store_factory=lambda d: _CardsBothFields(),
             graph_store_factory=lambda d: _GraphOk(),
             embedding_store_factory=lambda d, user_id=None: embeddings,
