@@ -866,9 +866,9 @@ def _with_quota_check(
     handler: Callable[[], Any],
 ) -> Any:
     """共用 quota 檢查 + header 注入邏輯。"""
-    from .quota_service import check_quota, get_quota_state
+    from .quota_service import check_and_get_quota
     pro = _is_pro(user)
-    quota = check_quota(user["id"], call_type, is_pro=pro)
+    quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
     if quota["exceeded"]:
         raise HTTPException(
             429,
@@ -876,10 +876,9 @@ def _with_quota_check(
             headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
         )
     result = handler()
-    state = get_quota_state(user["id"], is_pro=pro)
     if response is not None:
-        response.headers["X-Quota-Fraction"] = str(state["fraction"])
-        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
+        response.headers["X-Quota-Fraction"] = str(quota["fraction"])
+        response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
     return result
 
 def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
