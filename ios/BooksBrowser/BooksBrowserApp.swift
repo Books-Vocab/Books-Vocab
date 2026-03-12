@@ -173,10 +173,22 @@ struct BooksBrowserApp: App {
                         await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
                     }
                     .onChange(of: scenePhase) { _, newPhase in
-                        if newPhase == .active {
+                        switch newPhase {
+                        case .active:
                             Task {
                                 await subscriptionManager.refresh(using: kgService, authManager: authManager)
+                                // 回前景時拉取最新卡片（含其他裝置的複習狀態）
+                                guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
+                                await kgService.backgroundSync(container: modelContainer)
                             }
+                        case .background:
+                            // 進背景時推送本地複習狀態
+                            Task {
+                                guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
+                                await kgService.pushReviewQuietly(container: modelContainer)
+                            }
+                        default:
+                            break
                         }
                     }
                     .fullScreenCover(isPresented: $showWelcome) {

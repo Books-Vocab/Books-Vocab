@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import os
 
 struct TodayReviewSession: Identifiable {
     let id = UUID()
@@ -47,6 +48,9 @@ struct TodayReviewView: View {
     @State private var isAutoPlayPaused = false
     @State private var autoplayTask: Task<Void, Never>?
 
+    @Environment(\.kgService) private var kgService
+    @Environment(\.authManager) private var authManager
+
     let onClose: () -> Void
 
     init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
@@ -73,6 +77,13 @@ struct TodayReviewView: View {
         )
         .overlay {
             LinkedCardOverlayStack(stack: $linkedCardStack)
+        }
+        .onDisappear {
+            // 複習結束時推送複習狀態到 backend
+            guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
+            Task {
+                await kgService.pushReviewQuietly(container: modelContext.container)
+            }
         }
     }
 
