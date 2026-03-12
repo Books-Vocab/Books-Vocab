@@ -9,11 +9,7 @@ struct ArchivedVocabSheet: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     @Query(
-        filter: #Predicate<VocabularyEntry> {
-            $0.syncStatus == 1 &&
-            $0.actionType != "delete" &&
-            $0.isArchived == true
-        },
+        filter: #Predicate<VocabularyEntry> { $0.isArchived == true },
         sort: \VocabularyEntry.word
     )
     private var archivedAllEntries: [VocabularyEntry]
@@ -81,8 +77,9 @@ struct ArchivedVocabSheet: View {
     }
 
     private var archivedEntries: [VocabularyEntry] {
-        guard !searchText.isEmpty else { return archivedAllEntries }
-        return archivedAllEntries.filter {
+        let base = archivedAllEntries.filter { $0.syncStatus == 1 && $0.actionType != "delete" }
+        guard !searchText.isEmpty else { return base }
+        return base.filter {
             $0.word.localizedCaseInsensitiveContains(searchText) ||
             $0.translation.localizedCaseInsensitiveContains(searchText)
         }
