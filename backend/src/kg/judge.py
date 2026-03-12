@@ -3,8 +3,9 @@
 from __future__ import annotations
 
 import logging
-from pydantic import BaseModel
+
 from openai import OpenAI
+from pydantic import BaseModel
 
 from .graph import LinkKind
 

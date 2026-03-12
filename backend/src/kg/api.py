@@ -10,24 +10,16 @@ Usage:
 from __future__ import annotations
 
 import asyncio
-import json
 import logging
-import os
-import re
-import subprocess
-import sys
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import FastAPI, HTTPException, Depends, BackgroundTasks, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, FileResponse, HTMLResponse
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
-import httpx
-import jwt
-from filelock import FileLock
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logging.basicConfig(
     level=logging.INFO,
@@ -36,6 +28,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 import collections
+
 
 class _MemoryLogHandler(logging.Handler):
     """Ring-buffer log handler for the admin dashboard."""
@@ -74,16 +67,6 @@ _attach_memory_log_handler("uvicorn")
 _attach_memory_log_handler("uvicorn.error")
 _attach_memory_log_handler("uvicorn.access")
 
-from .graph import GraphStore, LinkKind, LINK_LABELS
-from .difficulty import get_tier
-from .apple_auth import verify_apple_token
-from .app_store import (
-    AppStoreConfigurationError,
-    AppStoreVerificationError,
-    fetch_transaction_info,
-    verify_and_decode_signed_jws,
-)
-from .google_auth import verify_google_token
 from .admin_wiring import create_admin_handlers
 from .api_models import (
     AppStoreNotificationRequest,
@@ -91,45 +74,21 @@ from .api_models import (
     AppStoreSyncRequest,
     ArchiveWordRequest,
     AuthVerifyRequest,
-    AuthVerifyResponse,
     CardLinkSummaryResponse,
-    CardResponse,
     DailyReviewStatsPushRequest,
-    DeleteAccountResponse,
     EntitlementsResponse,
-    ExplainResponse,
-    GraphLinkResponse,
-    HealthResponse,
-    QuickTranslateResponse,
     ReviewStatePushRequest,
-    SubscriptionStatusResponse,
     TranslateRequest,
     UserConfigRequest,
-    UserConfigResponse,
-    VocabAddResponse,
     VocabEntry,
 )
-from .translate_service import (
-    run_explain_translate,
-    run_phrase_translate,
-    run_quick_translate,
+from .app_store import (
+    fetch_transaction_info,
+    verify_and_decode_signed_jws,
 )
-from .vocab_service import (
-    add_vocab_entries,
-    build_links_by_kind,
-    card_response,
-    delete_vocab_word,
-    graph_links_payload,
-    list_vocab_cards,
-    lookup_vocab_word,
-)
-from .pipeline_service import run_pipeline_background
+from .apple_auth import verify_apple_token
 from .auth_handlers import auth_verify_response
-from .billing_handlers import (
-    app_store_notifications_response,
-    reconcile_app_store_subscription_response,
-    sync_app_store_subscription_response,
-)
+from .auth_service import create_jwt_token, resolve_and_link_user
 from .billing import (
     append_app_store_event,
     build_entitlements_response,
@@ -143,16 +102,23 @@ from .billing import (
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
+from .billing_handlers import (
+    app_store_notifications_response,
+    reconcile_app_store_subscription_response,
+    sync_app_store_subscription_response,
+)
+from .difficulty import get_tier
+from .google_auth import verify_google_token
+from .graph import LINK_LABELS, GraphStore, LinkKind
 from .pipeline_handlers import queue_pipeline_response
+from .pipeline_service import run_pipeline_background
+from .route_registration import register_routes
 from .runtime_state import (
     runtime_notifications_file,
     runtime_settings,
     runtime_users_file,
     runtime_users_lock_file,
 )
-from .route_registration import register_routes
-from .auth_service import create_jwt_token, resolve_and_link_user
-from .settings import KGSettings, load_settings
 from .service_factories import (
     create_card_store,
     create_daily_stats_store,
@@ -160,11 +126,13 @@ from .service_factories import (
     create_gemini_client,
     create_graph_store,
 )
+from .settings import KGSettings, load_settings
 from .translate_handlers import (
     translate_explain_response,
     translate_phrase_response,
     translate_quick_response,
 )
+from .user_context import resolve_current_user
 from .user_handlers import (
     delete_user_account_response,
     get_user_config_response,
@@ -172,7 +140,6 @@ from .user_handlers import (
     health_response,
     update_user_config_response,
 )
-from .user_context import resolve_current_user
 from .user_store import (
     collect_account_ids_for_deletion,
     load_users_from,
@@ -190,6 +157,10 @@ from .vocab_handlers import (
     pull_daily_stats_response,
     push_daily_stats_response,
     push_review_response,
+)
+from .vocab_service import (
+    build_links_by_kind,
+    card_response,
 )
 
 load_dotenv()
@@ -307,12 +278,15 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app = FastAPI(title="Knowledge Graph API", version="0.1.0")
     app.state.kg_settings = runtime_settings
 
-    # Allow BooksBrowser (iOS Simulator / device) to connect
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["*"],
-        allow_methods=["*"],
-        allow_headers=["*"],
+        allow_origins=[
+            "https://wordnexus.lol",
+            "http://localhost:8000",
+            "http://127.0.0.1:8000",
+        ],
+        allow_methods=["GET", "POST", "PUT", "DELETE"],
+        allow_headers=["Authorization", "Content-Type"],
     )
 
     admin_handlers = create_admin_handlers(
@@ -582,7 +556,7 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 def app_store_notifications(req: AppStoreNotificationRequest):
     """Receive App Store Server Notifications and persist/update subscription state."""
-    settings = _runtime_settings()
+    _runtime_settings()
     return app_store_notifications_response(
         req,
         users_lock_file=_runtime_users_lock_file(),
@@ -622,7 +596,7 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
-    settings = _runtime_settings()
+    _runtime_settings()
     return update_user_config_response(
         req,
         user,
