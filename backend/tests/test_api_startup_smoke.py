@@ -13,6 +13,7 @@ from fastapi.testclient import TestClient
 import kg.admin_test_matrix as admin_test_matrix_mod
 import kg.api as api_mod
 from kg.api import app
+from kg.settings import KGSettings
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -27,14 +28,29 @@ def make_jwt(user_id: str) -> str:
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
+def _swap_settings(new_settings):
+    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.billing import default_subscription_payload
+
+    app.state.kg_settings = new_settings
+
+    def _normalize(users):
+        from kg.secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
+    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    app.state.normalize_users_payload = _normalize
+
+
 @pytest.fixture()
 def startup_env(tmp_path):
     data_dir = tmp_path
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
-    lock_file = data_dir / "users.json.lock"
-    notifications_file = data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps(
             {
@@ -55,15 +71,19 @@ def startup_env(tmp_path):
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    with (
-        patch.object(api_mod, "DATA_DIR", data_dir),
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
-        patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", True),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", True),
-    ):
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+    test_settings = KGSettings(
+        data_dir=data_dir,
+        jwt_secret=TEST_JWT_SECRET,
+        admin_token="adm-secret",
+        app_store_allow_unsigned_sync=True,
+        app_store_allow_unsigned_notifications=True,
+    )
+    _swap_settings(test_settings)
+
+    try:
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
         admin_test_matrix_mod.LAST_TEST_RUN = None
@@ -74,6 +94,10 @@ def startup_env(tmp_path):
             headers=headers,
         )
         admin_test_matrix_mod.LAST_TEST_RUN = None
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
+        app.state.save_users = original_save
 
 
 def test_startup_smoke_serves_admin_and_core_routes(startup_env):
