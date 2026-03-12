@@ -43,6 +43,7 @@ struct KGCard: Codable, Identifiable {
     let pronunciation: String?
     let inflections: [String]?
     let linksByKind: [String: [KGCardLinkSummary]]?
+    let updatedAt: String?
     // Review state (from backend)
     let reviewIntervalHours: Double?
     let nextReviewAt: String?

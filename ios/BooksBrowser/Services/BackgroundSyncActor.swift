@@ -169,16 +169,20 @@ actor BackgroundSyncActor {
         }
     }
 
-    /// Deletes all vocabulary entries from local SwiftData storage.
+    /// Deletes all vocabulary entries and review records from local SwiftData storage.
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
-        AppLog.sync.info("Clearing all local vocabulary entries... reason=\(reason)")
+        AppLog.sync.info("Clearing all local vocabulary + review data... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
         }
+        let reviews = try modelContext.fetch(FetchDescriptor<ReviewRecord>())
+        for record in reviews {
+            modelContext.delete(record)
+        }
         try modelContext.save()
-        AppLog.sync.info("Core data cleared successfully. Deleted \(entries.count) entries. reason=\(reason)")
+        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review records. reason=\(reason)")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).
@@ -227,6 +231,9 @@ actor BackgroundSyncActor {
 
         let localLast = entry.lastReviewedAt ?? .distantPast
         if serverLast > localLast {
+            if localLast != .distantPast {
+                AppLog.sync.info("Review merge: server wins for '\(entry.word)' (server=\(serverLastStr), local=\(isoFormatter.string(from: localLast)))")
+            }
             entry.reviewIntervalHours = card.reviewIntervalHours ?? entry.reviewIntervalHours
             if let nextStr = card.nextReviewAt, let nextDate = parseISO8601(nextStr) {
                 entry.nextReviewAt = nextDate
@@ -236,6 +243,8 @@ actor BackgroundSyncActor {
             entry.lapseCount = max(entry.lapseCount, card.lapseCount ?? 0)
             entry.reviewStreak = max(entry.reviewStreak, card.reviewStreak ?? 0)
             entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
+        } else if localLast > serverLast {
+            AppLog.sync.info("Review merge: local wins for '\(entry.word)' (local=\(isoFormatter.string(from: localLast)), server=\(serverLastStr)), local review preserved")
         }
     }
 }
