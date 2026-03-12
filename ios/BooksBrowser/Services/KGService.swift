@@ -224,7 +224,10 @@ final class KGService: KGServing, LocalDataClearing {
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
             clean = "http://" + clean
         }
-        return URL(string: clean) ?? URL(string: Self.deployedServerURL)!
+        guard let url = URL(string: clean) ?? URL(string: Self.deployedServerURL) else {
+            fatalError("Invalid deployedServerURL constant: \(Self.deployedServerURL)")
+        }
+        return url
     }
 
     init(
@@ -604,7 +607,9 @@ final class KGService: KGServing, LocalDataClearing {
             progress?(L10n.string("升級卡片資料格式，重新同步全部卡片..."), 0, 0)
         }
 
-        var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
+        guard var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false) else {
+            throw KGError.serverError("Invalid URL")
+        }
 
         let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
         let isIncremental = lastSyncMillis > 0
