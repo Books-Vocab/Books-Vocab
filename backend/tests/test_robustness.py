@@ -83,7 +83,7 @@ def user_env(tmp_path):
             "subscription": {
                 "is_active": True,
                 "status": "active",
-                "plan_name": "BooksBrowser Pro",
+                "plan_name": "Books & Vocab Pro",
                 "trial_days": 7,
                 "will_renew": True,
             },

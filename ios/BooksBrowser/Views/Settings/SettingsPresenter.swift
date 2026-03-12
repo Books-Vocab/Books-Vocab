@@ -151,6 +151,18 @@ struct SettingsPresenter: View {
 
                 SettingsDivider()
 
+                // 服務條款
+                Button(action: actions.openTermsOfService) {
+                    SettingsRow(icon: "doc.text", label: "服務條款".localized) {
+                        Image(systemName: "chevron.right")
+                            .font(vocabSkin.typography.iconTiny)
+                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    }
+                }
+                .buttonStyle(.plain)
+
+                SettingsDivider()
+
                 // 支援
                 Button(action: actions.openSupport) {
                     SettingsRow(icon: "questionmark.circle", label: "支援".localized) {
@@ -470,6 +482,7 @@ private enum SettingsPresenterPreviewData {
         requestDeleteAccount: {},
 
         openPrivacyPolicy: {},
+        openTermsOfService: {},
         openSupport: {},
         requestAppRating: {}
     )

@@ -53,7 +53,7 @@ def isolated_api(tmp_path):
     users_data[user_id]["subscription"] = {
         "is_active": True,
         "status": "active",
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "trial_days": 7,
         "will_renew": True,
     }
@@ -380,7 +380,7 @@ def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
     users_data[isolated_api.user_id]["subscription"] = {
         "is_active": True,
         "product_id": "com.wordnexus.pro.monthly",
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "price_display": "$1.00/month",
         "status": "trial",
         "is_trial": True,
@@ -409,7 +409,7 @@ def test_get_entitlements_prefers_active_admin_grant(isolated_api):
     users_data[isolated_api.user_id]["subscription"] = {
         "is_active": True,
         "product_id": "com.wordnexus.pro.monthly",
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "price_display": "$1.00/month",
         "status": "active",
         "is_trial": False,
@@ -418,7 +418,7 @@ def test_get_entitlements_prefers_active_admin_grant(isolated_api):
     }
     users_data[isolated_api.user_id]["admin_grant"] = {
         "is_active": True,
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "status": "active",
         "source": "admin",
         "expires_at": None,
