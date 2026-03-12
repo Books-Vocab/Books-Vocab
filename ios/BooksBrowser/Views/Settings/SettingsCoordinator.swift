@@ -2,8 +2,29 @@ import Foundation
 import SwiftData
 import os
 
+@MainActor protocol SettingsCoordinating: AnyObject, Observable {
+    var optionalIntegrationApiKey: String { get set }
+    var fetchedKey: String { get }
+    var showOptionalIntegrationInfo: Bool { get set }
+    var connectionPulse: Bool { get }
+    var iconBreathing: Bool { get }
+    var showDeleteAccountConfirm: Bool { get set }
+    var isDeletingAccount: Bool { get }
+    var deleteAccountError: String? { get }
+    var translationSourceLang: TranslationLanguage { get set }
+    var translationTargetLang: TranslationLanguage { get set }
+    func handleAppear()
+    func loadData(authManager: any AuthManaging, kgService: any KGServing) async
+    func scheduleOptionalIntegrationSave(authManager: any AuthManaging, kgService: any KGServing)
+    func requestDeleteAccount()
+    func clearDeleteAccountError()
+    func presentOptionalIntegrationInfo()
+    func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
+    func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing)
+}
+
 @Observable @MainActor
-final class SettingsCoordinator {
+final class SettingsCoordinator: SettingsCoordinating {
     var optionalIntegrationApiKey = ""
     var fetchedKey = ""
     var showOptionalIntegrationInfo = false
