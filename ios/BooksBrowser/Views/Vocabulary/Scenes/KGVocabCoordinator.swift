@@ -36,6 +36,14 @@ final class KGVocabCoordinator {
     ) async {
         guard authManager.isLoggedIn else { return }
 
+        // Demo 模式已有本地資料，不需呼叫 API
+        if authManager.isDemoMode {
+            if dueEntries.isEmpty && !unlearnedEntries.isEmpty {
+                selectedReviewState.wrappedValue = .unlearned
+            }
+            return
+        }
+
         isLoading = true
         defer { isLoading = false }
 
