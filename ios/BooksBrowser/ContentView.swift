@@ -6,19 +6,31 @@
 //
 
 import SwiftUI
+import SwiftData
 
 /// 主介面 — Tab 導航
 struct ContentView: View {
+    @Environment(\.authManager) private var authManager
+    @Environment(\.modelContext) private var modelContext
+
     var body: some View {
-        TabView {
-            Tab("書庫".localized, systemImage: "books.vertical") {
-                BookshelfView()
+        VStack(spacing: 0) {
+            if authManager.isDemoMode {
+                DemoBanner {
+                    authManager.exitDemoMode(modelContainer: modelContext.container)
+                }
             }
-            Tab("生詞庫".localized, systemImage: "character.book.closed") {
-                VocabularyListView()
+
+            TabView {
+                Tab("書庫".localized, systemImage: "books.vertical") {
+                    BookshelfView()
+                }
+                Tab("生詞庫".localized, systemImage: "character.book.closed") {
+                    VocabularyListView()
+                }
             }
+            .tabViewStyle(.tabBarOnly)
         }
-        .tabViewStyle(.tabBarOnly)
     }
 }
 

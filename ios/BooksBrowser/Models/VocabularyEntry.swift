@@ -58,6 +58,7 @@ final class VocabularyEntry {
     var lastReviewFeedbackRaw: Int = -1
 
     var bookId: UUID?
+    var isDemoEntry: Bool = false
 
     /// Sync status convenience
     var syncState: VocabularySyncState {
