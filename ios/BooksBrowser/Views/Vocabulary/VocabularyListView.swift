@@ -185,6 +185,7 @@ struct VocabularyListView: View {
                 .presentationDetents([.large])
             }
             .task {
+                guard !authManager.isDemoMode else { return }
                 await kgService.healthCheck()
             }
             .onChange(of: selectedTab) { _, _ in
@@ -282,7 +283,9 @@ struct VocabularyListView: View {
             .init(
                 id: 1,
                 title: "知識庫".localized,
-                count: authManager.isLoggedIn ? kgService.serverCardCount : 0,
+                count: authManager.isDemoMode
+                    ? syncedKnowledgeEntries.count
+                    : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
                 systemImage: "books.vertical"
             ),
             .init(id: 2, title: "關聯圖".localized, systemImage: "point.3.connected.trianglepath.dotted"),
