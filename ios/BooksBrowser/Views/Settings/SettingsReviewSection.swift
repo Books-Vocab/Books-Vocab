@@ -43,26 +43,14 @@ struct SettingsReviewSection: View {
             updated.mode = mode
             reviewSettingsStore.update(updated)
         } label: {
-            VStack(alignment: .leading, spacing: ReviewSettingsMetrics.modeTileContentGap) {
-                Image(systemName: mode.icon)
-                    .font(vocabSkin.typography.iconToolbar)
-                Text(mode.displayName)
-                    .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+            SettingsSelectionTile(isSelected: isSelected) {
+                VStack(alignment: .leading, spacing: ReviewSettingsMetrics.modeTileContentGap) {
+                    Image(systemName: mode.icon)
+                        .font(vocabSkin.typography.iconToolbar)
+                    Text(mode.displayName)
+                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                }
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, ReviewSettingsMetrics.modeTileHorizontalPadding)
-            .padding(.vertical, ReviewSettingsMetrics.modeTileVerticalPadding)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-            )
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(
-                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(ReviewSettingsMetrics.unselectedTileBorderOpacity),
-                        lineWidth: 1
-                    )
-            )
             .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
@@ -153,37 +141,18 @@ struct SettingsReviewSection: View {
             Spacer()
 
             HStack(spacing: ReviewSettingsMetrics.stepperGap) {
-                stepButton(systemImage: "minus", action: onDecrement, enabled: canDecrement)
+                SettingsStepperIconButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
 
                 Text(value)
                     .font(vocabSkin.typography.monoBodyStrong)
                     .foregroundStyle(vocabSkin.palette.primaryText)
                     .frame(minWidth: ReviewSettingsMetrics.valueMinWidth, alignment: .center)
 
-                stepButton(systemImage: "plus", action: onIncrement, enabled: canIncrement)
+                SettingsStepperIconButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
             }
         }
         .padding(.horizontal, vocabSkin.spacing.cardPadding)
         .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
-    }
-
-    private func stepButton(systemImage: String, action: @escaping () -> Void, enabled: Bool) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconMedium.weight(.medium))
-                .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                .frame(width: ReviewSettingsMetrics.stepButtonSize, height: ReviewSettingsMetrics.stepButtonSize)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.pageBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
     }
 
     // MARK: - Footer
@@ -232,11 +201,7 @@ private extension Double {
 private enum ReviewSettingsMetrics {
     static let modeTileGap: CGFloat = 10
     static let modeTileContentGap: CGFloat = 8
-    static let modeTileHorizontalPadding: CGFloat = 14
-    static let modeTileVerticalPadding: CGFloat = 14
-    static let unselectedTileBorderOpacity: Double = 0.4
     static let stepperGap: CGFloat = 12
-    static let stepButtonSize: CGFloat = 52
     static let valueMinWidth: CGFloat = 52
 }
 
@@ -255,6 +220,22 @@ private enum ReviewSettingsMetrics {
         customForgotMultiplier: 0.45,
         customMinimumIntervalHours: 6,
         customMaximumIntervalHours: 1440
+    )))
+}
+
+#Preview("自訂模式") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsReviewSection()
+        }
+    }
+    .environment(\.reviewSettingsStore, ReviewSettingsStore(previewSettings: ReviewSettings(
+        mode: .custom,
+        customInitialIntervalHours: 24,
+        customRememberedMultiplier: 2.1,
+        customForgotMultiplier: 0.35,
+        customMinimumIntervalHours: 4,
+        customMaximumIntervalHours: 2160
     )))
 }
 
