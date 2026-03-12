@@ -56,15 +56,39 @@ extension TodayReviewPresenter {
 
     var bottomToolbar: some View {
         VStack(spacing: 10) {
-            if let msg = state.persistenceErrorMessage {
-                VocabStateMessageCard(
-                    title: "本機儲存失敗".localized,
-                    systemImage: "externaldrive.badge.exclamationmark",
-                    description: msg
+            persistenceMessage
+            toolbarControls
+        }
+        .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
+        .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
+        .background(
+            Rectangle()
+                .fill(vocabSkin.palette.pageBackground)
+                .shadow(
+                    color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.reviewToolbarShadowOpacity),
+                    radius: vocabSkin.metrics.reviewToolbarShadowRadius,
+                    y: vocabSkin.metrics.reviewToolbarShadowY
                 )
-                .transition(.overlayFade)
-            }
+                .ignoresSafeArea(edges: .bottom)
+        )
+    }
 
+    @ViewBuilder
+    private var persistenceMessage: some View {
+        if let msg = state.persistenceErrorMessage {
+            VocabStateMessageCard(
+                title: "本機儲存失敗".localized,
+                systemImage: "externaldrive.badge.exclamationmark",
+                description: msg
+            )
+            .transition(.overlayFade)
+            .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
+        }
+    }
+
+    @ViewBuilder
+    private var toolbarControls: some View {
+        Group {
             if state.isAutoPlaying {
                 autoplayControls
             } else if dynamicTypeSize < .accessibility1 {
@@ -80,21 +104,8 @@ extension TodayReviewPresenter {
                 }
             }
         }
-        .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
-        .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
         .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
-        .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
         .animation(AppMotion.standardSpring, value: state.isAutoPlaying)
-        .background(
-            Rectangle()
-                .fill(vocabSkin.palette.pageBackground)
-                .shadow(
-                    color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.reviewToolbarShadowOpacity),
-                    radius: vocabSkin.metrics.reviewToolbarShadowRadius,
-                    y: vocabSkin.metrics.reviewToolbarShadowY
-                )
-                .ignoresSafeArea(edges: .bottom)
-        )
     }
 
     // MARK: - Autoplay Controls
@@ -208,6 +219,7 @@ extension TodayReviewPresenter {
     // MARK: - Swipe ↔ Button Linkage
 
     var swipeIntensity: Double {
+        if dismissPhase == .animatingOut { return frozenSwipeIntensity }
         guard swipeEnabled else { return 0 }
         return max(-1, min(1, Double(swipeOffset / vocabSkin.metrics.reviewSwipeThreshold)))
     }
