@@ -10,14 +10,10 @@ import SwiftData
 import UniformTypeIdentifiers
 
 private enum BookshelfMetrics {
-    static let emptyStateSpacing: CGFloat = 20
-    static let cardSpacing: CGFloat = 8
-    static let cardMetadataSpacing: CGFloat = 3
     static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeight: CGFloat = 210
     static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 6
-    static let coverStrokeWidth: CGFloat = 0.5
     static let coverShadowOpacity: Double = 0.10
     static let coverShadowRadius: CGFloat = 6
     static let coverShadowY: CGFloat = 3
@@ -25,7 +21,6 @@ private enum BookshelfMetrics {
     static let progressBarCornerRadius: CGFloat = 2
     static let progressBarAccentOpacity: Double = 0.55
     static let progressBarSpacing: CGFloat = 6
-    static let loadingOverlaySpacing: CGFloat = 16
     static let loadingOverlayPadding: CGFloat = 28
     static let loadingOverlayCornerRadius: CGFloat = AppMetrics.cornerRadiusMedium
 }
@@ -115,7 +110,7 @@ struct BookshelfView: View {
 
     private var emptyState: some View {
         ScrollView {
-            VStack(spacing: BookshelfMetrics.emptyStateSpacing) {
+            VStack(spacing: AppMetrics.sectionInset) {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(
@@ -217,7 +212,7 @@ struct BookshelfView: View {
             appTheme.palette.scrim
                 .ignoresSafeArea()
 
-            VStack(spacing: BookshelfMetrics.loadingOverlaySpacing) {
+            VStack(spacing: AppMetrics.spacingMedium) {
                 ProgressView()
                     .scaleEffect(1.0)
                 Text(coordinator.loadingMessage)
@@ -240,7 +235,7 @@ struct BookCard: View {
     var coverHeight: CGFloat = BookshelfMetrics.coverHeight
 
     var body: some View {
-        VStack(alignment: .leading, spacing: BookshelfMetrics.cardSpacing) {
+        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
             // 封面
             coverView
                 .overlay(
@@ -250,7 +245,7 @@ struct BookCard: View {
                     )
                     .strokeBorder(
                         appTheme.palette.cardBorder,
-                        lineWidth: BookshelfMetrics.coverStrokeWidth
+                        lineWidth: AppMetrics.dividerThin
                     )
                 )
                 .overlay(alignment: .bottomTrailing) {
@@ -268,7 +263,7 @@ struct BookCard: View {
             }
 
             // 元資料
-            VStack(alignment: .leading, spacing: BookshelfMetrics.cardMetadataSpacing) {
+            VStack(alignment: .leading, spacing: AppMetrics.spacingTiny) {
                 Text(book.title)
                     .font(AppFonts.caption(weight: .medium))
                     .lineLimit(2)
@@ -311,7 +306,7 @@ struct BookCard: View {
             .fill(appTheme.palette.mutedFill)
             .frame(height: coverHeight)
             .overlay {
-                VStack(spacing: BookshelfMetrics.cardSpacing) {
+                VStack(spacing: AppMetrics.spacingSmall) {
                     Image(systemName: "book")
                         .font(AppFonts.h1(weight: .regular))
                         .foregroundStyle(appTheme.palette.tertiaryText)
@@ -489,7 +484,7 @@ private struct BookshelfLoadingPreview: View {
                 .ignoresSafeArea()
             appTheme.palette.scrim
                 .ignoresSafeArea()
-            VStack(spacing: BookshelfMetrics.loadingOverlaySpacing) {
+            VStack(spacing: AppMetrics.spacingMedium) {
                 ProgressView()
                 Text("正在匯入書籍...")
                     .font(AppFonts.caption())

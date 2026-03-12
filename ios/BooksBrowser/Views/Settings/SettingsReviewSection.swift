@@ -44,7 +44,7 @@ struct SettingsReviewSection: View {
             reviewSettingsStore.update(updated)
         } label: {
             SettingsSelectionTile(isSelected: isSelected) {
-                VStack(alignment: .leading, spacing: ReviewSettingsMetrics.modeTileContentGap) {
+                VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                     Image(systemName: mode.icon)
                         .font(vocabSkin.typography.iconToolbar)
                     Text(mode.displayName)
@@ -200,7 +200,6 @@ private extension Double {
 
 private enum ReviewSettingsMetrics {
     static let modeTileGap: CGFloat = 10
-    static let modeTileContentGap: CGFloat = 8
     static let stepperGap: CGFloat = 12
     static let valueMinWidth: CGFloat = 52
 }

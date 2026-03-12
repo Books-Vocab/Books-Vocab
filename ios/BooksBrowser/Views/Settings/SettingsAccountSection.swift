@@ -55,7 +55,7 @@ struct SettingsAccountSection: View {
                     .opacity(state.iconBreathing ? 0.85 : 1.0)
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
-                VStack(spacing: AccountMetrics.authCopySpacing) {
+                VStack(spacing: AppMetrics.spacingExtraSmall) {
                     Text("解鎖完整功能".localized)
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
@@ -64,7 +64,7 @@ struct SettingsAccountSection: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
             }
-            .padding(.vertical, AccountMetrics.authHeroVerticalPadding)
+            .padding(.vertical, AppMetrics.spacingLarge)
             .frame(maxWidth: .infinity)
 
             SettingsDivider(leadingInset: 0)
@@ -123,8 +123,8 @@ struct SettingsAccountSection: View {
                     .padding(.top, vocabSkin.spacing.microGap)
                 }
             }
-            .padding(.horizontal, AccountMetrics.authBlockPadding)
-            .padding(.vertical, AccountMetrics.authBlockPadding)
+            .padding(.horizontal, AppMetrics.spacingMedium)
+            .padding(.vertical, AppMetrics.spacingMedium)
         }
     }
 
@@ -225,10 +225,7 @@ struct SettingsAccountSection: View {
 
 private enum AccountMetrics {
     static let authHeroSpacing: CGFloat = 10
-    static let authCopySpacing: CGFloat = 4
     static let authActionSpacing: CGFloat = 10
-    static let authHeroVerticalPadding: CGFloat = 24
-    static let authBlockPadding: CGFloat = 16
     static let authButtonSpacing: CGFloat = 12
     static let authRowSpacing: CGFloat = 14
     static let authStatusSpacing: CGFloat = 6
