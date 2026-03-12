@@ -11,7 +11,6 @@ from dotenv import load_dotenv
 from openai import OpenAI
 from tqdm import tqdm
 
-from .api import load_users
 from .cards import CardStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind
@@ -338,9 +337,11 @@ def sync(
         typer.echo(f"Invalid intent. Choose from: {[i.value for i in RenderIntent]}")
         raise typer.Exit(1)  # noqa: B904
 
+    from .user_store import load_users_from
+
     user_id = ctx.obj["user_id"]
     user_dir = ctx.obj["user_dir"]
-    users = load_users()
+    users = load_users_from(DATA_DIR / "users.json", lambda u: (u, False))
     jwt_secret = os.getenv("JWT_SECRET", "")
     mochi_key = resolve_mochi_api_key_from_config(users.get(user_id, {}).get("config", {}), jwt_secret)
 
