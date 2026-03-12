@@ -45,10 +45,10 @@ struct ReaderSettingsPanelPresenter: View {
             Form {
                 Section {
                     HStack(spacing: 0) {
-                        fontSizeStepButton(
+                        stepControlButton(
                             label: "A",
                             font: ReaderGlassTypography.settingsStepSmall,
-                            isEnabled: state.canDecreaseFontSize,
+                            enabled: state.canDecreaseFontSize,
                             action: onDecreaseFontSize
                         )
 
@@ -57,10 +57,10 @@ struct ReaderSettingsPanelPresenter: View {
                             .foregroundStyle(appTheme.palette.secondaryText)
                             .frame(width: ReaderPresentationMetrics.Settings.centeredValueWidth, alignment: .center)
 
-                        fontSizeStepButton(
+                        stepControlButton(
                             label: "A",
                             font: ReaderGlassTypography.settingsStepLarge,
-                            isEnabled: state.canIncreaseFontSize,
+                            enabled: state.canIncreaseFontSize,
                             action: onIncreaseFontSize
                         )
                     }
@@ -93,22 +93,7 @@ struct ReaderSettingsPanelPresenter: View {
 
                     HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
                         ForEach(ReaderTheme.allCases) { theme in
-                            let isSelected = bindings.theme.wrappedValue == theme
-                            choiceButton(
-                                isSelected: isSelected,
-                                cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
-                                verticalPadding: ReaderPresentationMetrics.Settings.optionVerticalInset,
-                                action: { onSelectTheme(theme) }
-                            ) {
-                                HStack(spacing: ReaderPresentationMetrics.Settings.optionLabelSpacing) {
-                                    Image(systemName: theme.icon)
-                                        .font(ReaderGlassTypography.settingsValue)
-                                    Text(theme.rawValue)
-                                        .font(ReaderGlassTypography.body)
-                                        .fontWeight(isSelected ? .medium : .regular)
-                                }
-                                .frame(maxWidth: .infinity)
-                            }
+                            themeTile(theme)
                         }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
@@ -119,18 +104,7 @@ struct ReaderSettingsPanelPresenter: View {
                 Section {
                     HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
                         ForEach(opacityOptions) { option in
-                            let isSelected = bindings.underlineOpacity.wrappedValue == option.value
-                            choiceButton(
-                                isSelected: isSelected,
-                                cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
-                                verticalPadding: ReaderPresentationMetrics.Settings.underlineVerticalInset,
-                                action: { onSelectUnderlineOpacity(option.value) }
-                            ) {
-                                Text(option.label.localized)
-                                    .font(ReaderGlassTypography.body)
-                                    .fontWeight(isSelected ? .medium : .regular)
-                                    .frame(maxWidth: .infinity)
-                            }
+                            underlineOptionButton(option)
                         }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
@@ -161,35 +135,40 @@ struct ReaderSettingsPanelPresenter: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onDismiss) {
-                        Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(appTheme.palette.tertiaryText)
-                            .font(ReaderGlassTypography.settingsCloseIcon)
-                    }
+                    closeToolbarButton
                 }
             }
         }
     }
 
-    private func fontSizeStepButton(
+    private var closeToolbarButton: some View {
+        Button(action: onDismiss) {
+            Image(systemName: "xmark.circle.fill")
+                .foregroundStyle(appTheme.palette.tertiaryText)
+                .font(ReaderGlassTypography.settingsCloseIcon)
+        }
+    }
+
+    private func stepControlButton(
         label: String,
         font: Font,
-        isEnabled: Bool,
+        enabled: Bool,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             Text(label)
                 .font(font)
-                .foregroundStyle(isEnabled ? appTheme.palette.primaryText : appTheme.palette.quaternaryText)
+                .foregroundStyle(enabled ? appTheme.palette.primaryText : appTheme.palette.quaternaryText)
                 .frame(maxWidth: .infinity)
                 .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
                 .contentShape(Rectangle())
+                .background(controlSurfaceShape.fill(enabled ? appTheme.palette.primaryText.opacity(0.03) : Color.clear))
         }
-        .disabled(!isEnabled)
+        .disabled(!enabled)
         .buttonStyle(.plain)
     }
 
-    private func choiceButton<Content: View>(
+    private func selectionTile<Content: View>(
         isSelected: Bool,
         cornerRadius: CGFloat,
         verticalPadding: CGFloat,
@@ -217,6 +196,47 @@ struct ReaderSettingsPanelPresenter: View {
                 )
         }
         .buttonStyle(.plain)
+    }
+
+    private func themeTile(_ theme: ReaderTheme) -> some View {
+        let isSelected = bindings.theme.wrappedValue == theme
+        return selectionTile(
+            isSelected: isSelected,
+            cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
+            verticalPadding: ReaderPresentationMetrics.Settings.optionVerticalInset,
+            action: { onSelectTheme(theme) }
+        ) {
+            HStack(spacing: ReaderPresentationMetrics.Settings.optionLabelSpacing) {
+                Image(systemName: theme.icon)
+                    .font(ReaderGlassTypography.settingsValue)
+                Text(theme.rawValue)
+                    .font(ReaderGlassTypography.body)
+                    .fontWeight(isSelected ? .medium : .regular)
+            }
+            .frame(maxWidth: .infinity)
+        }
+    }
+
+    private func underlineOptionButton(_ option: UnderlineOption) -> some View {
+        let isSelected = bindings.underlineOpacity.wrappedValue == option.value
+        return selectionTile(
+            isSelected: isSelected,
+            cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
+            verticalPadding: ReaderPresentationMetrics.Settings.underlineVerticalInset,
+            action: { onSelectUnderlineOpacity(option.value) }
+        ) {
+            Text(option.label.localized)
+                .font(ReaderGlassTypography.body)
+                .fontWeight(isSelected ? .medium : .regular)
+                .frame(maxWidth: .infinity)
+        }
+    }
+
+    private var controlSurfaceShape: RoundedRectangle {
+        RoundedRectangle(
+            cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
+            style: .continuous
+        )
     }
 }
 
