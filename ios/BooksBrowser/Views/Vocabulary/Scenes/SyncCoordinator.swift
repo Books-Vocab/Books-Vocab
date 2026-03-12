@@ -2,6 +2,17 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+@MainActor protocol SyncCoordinating: AnyObject, Observable {
+    var steps: [PipelineStep] { get }
+    var phase: SyncPhase { get }
+    var summaryText: String { get }
+    var failureKind: SyncFailureKind? { get }
+    func buildSteps(deleteCount: Int, addCount: Int)
+    func startSync(pendingEntries: [VocabularyEntry], modelContext: ModelContext, kgService: any KGServing)
+    func cancelSync()
+    func resetForRetry(deleteCount: Int, addCount: Int)
+}
+
 struct PipelineStep: Identifiable {
     let id: String
     let label: String
@@ -36,7 +47,7 @@ enum SyncFailureKind {
 }
 
 @Observable @MainActor
-final class SyncCoordinator {
+final class SyncCoordinator: SyncCoordinating {
     var steps: [PipelineStep] = []
     var phase: SyncPhase = .ready
     var summaryText: String = ""
