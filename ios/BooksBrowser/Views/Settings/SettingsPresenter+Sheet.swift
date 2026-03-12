@@ -6,6 +6,13 @@ struct OptionalIntegrationInfoSheetView: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
 
+    private let setupSteps: [(icon: String, text: String)] = [
+        ("1.circle.fill", "登入網頁版的 app.mochi.cards".localized),
+        ("2.circle.fill", "點擊右上角設定 (Settings)".localized),
+        ("3.circle.fill", "選擇 API 分頁".localized),
+        ("4.circle.fill", "點擊 Generate API key 並複製貼上到前面設定中".localized)
+    ]
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -24,27 +31,29 @@ struct OptionalIntegrationInfoSheetView: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                         .lineSpacing(6)
 
-                    Rectangle()
-                        .fill(vocabSkin.palette.divider)
-                        .frame(height: AppMetrics.dividerStandard)
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                        SettingsSectionHeader(title: "如何取得 API Key？".localized, icon: "key")
 
-                    Text("如何取得 API Key？".localized)
-                        .font(vocabSkin.typography.sectionTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        SettingsFeaturePanel(borderTone: vocabSkin.palette.cardBorder) {
+                            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                                ForEach(Array(setupSteps.enumerated()), id: \.offset) { index, step in
+                                    Label(step.text, systemImage: step.icon)
+                                        .font(vocabSkin.typography.body)
+                                        .foregroundStyle(vocabSkin.palette.secondaryText)
 
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                        Label("1. 登入網頁版的 app.mochi.cards".localized, systemImage: "1.circle.fill")
-                        Label("2. 點擊右上角設定 (Settings)".localized, systemImage: "2.circle.fill")
-                        Label("3. 選擇 API 分頁".localized, systemImage: "3.circle.fill")
-                        Label("4. 點擊 Generate API key 並複製貼上到前面設定中".localized, systemImage: "4.circle.fill")
+                                    if index < setupSteps.count - 1 {
+                                        SettingsDivider()
+                                    }
+                                }
+                            }
+                        }
                     }
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
 
-                    Text("這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 Books & Vocab 的主要功能。".localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        .padding(.top, vocabSkin.spacing.actionButtonHorizontalPadding)
+                    VocabStateMessageCard(
+                        title: "這是保留給既有使用者的可選整合".localized,
+                        systemImage: "info.circle",
+                        description: "不填寫 API Key 也不影響 Books & Vocab 的主要功能。".localized
+                    )
                 }
                 .padding(vocabSkin.spacing.sheetPadding)
             }
@@ -56,5 +65,11 @@ struct OptionalIntegrationInfoSheetView: View {
                 }
             }
         }
+    }
+}
+
+#Preview("Optional Integration Info") {
+    AppThemeContainer {
+        OptionalIntegrationInfoSheetView()
     }
 }

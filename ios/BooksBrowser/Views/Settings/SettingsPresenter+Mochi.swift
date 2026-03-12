@@ -8,18 +8,10 @@ extension SettingsPresenter {
         SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
             HStack(spacing: 6) {
                 SecureField("可選".localized, text: optionalIntegrationApiKey)
-                    .font(vocabSkin.typography.monoLabel)
-                    .multilineTextAlignment(.trailing)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                    .appSettingsTextInputStyle()
                     .disabled(!optionalIntegration.isEnabled)
 
-                Button(action: actions.showOptionalIntegrationInfo) {
-                    Image(systemName: "info.circle")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-                .buttonStyle(.plain)
+                SettingsInlineInfoButton(action: actions.showOptionalIntegrationInfo)
             }
         }
     }
@@ -33,34 +25,63 @@ extension SettingsPresenter {
 
             VStack(spacing: 0) {
                 if let debug = kg.debug {
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                         HStack(spacing: 8) {
-                            Button("遠端正式站".localized, action: actions.useProductionBackend)
-                                .buttonStyle(.borderedProminent)
-                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.quaternaryText : vocabSkin.palette.accent)
-                                .accessibilityLabel("切換至遠端正式站".localized)
+                            debugBackendOptionButton(
+                                title: "遠端正式站".localized,
+                                systemImage: "network",
+                                isSelected: !debug.isUsingLocalServer,
+                                action: actions.useProductionBackend
+                            )
 
-                            Button("本地開發站".localized, action: actions.useLocalBackend)
-                                .buttonStyle(.borderedProminent)
-                                .tint(debug.isUsingLocalServer ? vocabSkin.palette.accent : vocabSkin.palette.quaternaryText)
-                                .accessibilityLabel("切換至本地開發站".localized)
+                            debugBackendOptionButton(
+                                title: "本地開發站".localized,
+                                systemImage: "laptopcomputer",
+                                isSelected: debug.isUsingLocalServer,
+                                action: actions.useLocalBackend
+                            )
                         }
 
-                        TextField("本地伺服器 URL".localized, text: debugLocalServerURL)
-                            .font(vocabSkin.typography.monoLabel)
-                            .textInputAutocapitalization(.never)
-                            .autocorrectionDisabled()
-                            .submitLabel(.done)
+                        SettingsLabeledInputField(title: "本地伺服器 URL".localized) {
+                            TextField("本地伺服器 URL".localized, text: debugLocalServerURL)
+                                .appSettingsTextInputStyle(alignment: .leading)
+                                .submitLabel(.done)
+                        }
 
-                        Text(debug.isUsingLocalServer ? "目前使用本地開發站。".localized : "目前使用遠端正式站。".localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        VocabStateMessageCard(
+                            title: debug.isUsingLocalServer ? "目前使用本地開發站".localized : "目前使用遠端正式站".localized,
+                            systemImage: debug.isUsingLocalServer ? "laptopcomputer" : "network",
+                            description: debug.isUsingLocalServer
+                                ? "切回正式站前，請確認本地 API 與 app schema 保持同步。".localized
+                                : "目前 app 會直接連到正式環境，請避免在這裡做破壞性測試。".localized
+                        )
                     }
                     .padding(vocabSkin.spacing.cardPadding)
                 }
             }
             .settingsCard()
         }
+    }
+
+    private func debugBackendOptionButton(
+        title: String,
+        systemImage: String,
+        isSelected: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            SettingsSelectionTile(isSelected: isSelected) {
+                HStack(spacing: 8) {
+                    Image(systemName: systemImage)
+                        .font(vocabSkin.typography.iconSmall)
+                    Text(title)
+                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                }
+            }
+            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel(title)
     }
     #endif
 }
