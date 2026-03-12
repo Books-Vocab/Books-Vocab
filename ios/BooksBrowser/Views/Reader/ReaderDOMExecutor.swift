@@ -3,7 +3,7 @@ import ReadiumNavigator
 
 struct ReaderDOMExecutor {
     func execute(
-        _ command: ReadiumNavigatorView.Coordinator.DOMCommand,
+        _ command: DOMCommand,
         navigator: EPUBNavigatorViewController?,
         clearActiveHighlight: @escaping () -> Void,
         clearAllVocabHighlights: @escaping () -> Void,
