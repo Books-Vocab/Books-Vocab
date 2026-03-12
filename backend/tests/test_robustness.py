@@ -14,11 +14,9 @@ import asyncio
 import json
 import logging
 import os
-import tempfile
 import threading
 import time
 import uuid
-from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import httpx
@@ -33,12 +31,13 @@ os.environ["KG_DATA_DIR"] = "/tmp/kg_test_default"
 os.environ["JWT_SECRET"] = "test-secret-key-for-ci-at-least-32-bytes"
 os.environ["GEMINI_API_KEY"] = "fake-key"
 
-from kg.api import app  # noqa: E402 — must come after env setup
+from datetime import UTC
+
 import kg.api as api_mod
-import kg.mochi as mochi_mod
-import kg.judge as judge_mod
-import kg.cards as cards_mod
 import kg.embeddings as emb_mod
+import kg.judge as judge_mod
+import kg.mochi as mochi_mod
+from kg.api import app  # noqa: E402 — must come after env setup
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -48,13 +47,14 @@ TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 # ---------------------------------------------------------------------------
 
 def make_jwt(user_id: str) -> str:
-    from datetime import datetime, timedelta, timezone
+    from datetime import datetime, timedelta
+
     import jwt as pyjwt
     payload = {
         "sub": user_id,
         "provider": "test",
-        "iat": datetime.now(tz=timezone.utc),
-        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        "iat": datetime.now(tz=UTC),
+        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
@@ -116,7 +116,7 @@ class TestBatchA_UsersJsonLock:
                        json={"integrations": {"mochi": {"api_key": "mk_abc123"}}},
                        headers=headers)
         assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_abc123"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc123"
@@ -160,7 +160,7 @@ class TestBatchA_UsersJsonLock:
         client.put("/api/user/config", json={"integrations": {"mochi": {"api_key": "mk_xyz"}}}, headers=headers)
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_xyz"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
     def test_nested_integrations_payload_is_accepted(self, user_env):
         client, user_id, headers, data_dir = user_env
@@ -171,7 +171,7 @@ class TestBatchA_UsersJsonLock:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_nested"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
@@ -337,7 +337,8 @@ class TestBatchA_AccountDeletion:
 class TestBatchA_NoPrintInModules:
 
     def _find_print_calls(self, mod) -> list[int]:
-        import ast, inspect
+        import ast
+        import inspect
         source = inspect.getsource(mod)
         tree = ast.parse(source)
         return [
@@ -388,9 +389,9 @@ class TestBatchA_NoPrintInModules:
 class TestBatchB_MochiAtomicStorage:
 
     def _make_sync(self, tmp_path):
-        from kg.mochi import MochiSync
         from kg.cards import CardStore
         from kg.graph import GraphStore
+        from kg.mochi import MochiSync
 
         cards = CardStore(tmp_path / "cards.db")
         graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
@@ -486,14 +487,14 @@ class TestBatchC_CardStoreCount:
     def test_count_does_not_load_rows_into_memory(self, tmp_path):
         """count() must use COUNT(*), not len(all()). Verify by patching session.exec
         to detect whether full rows are fetched."""
-        from kg.cards import CardStore
         from sqlmodel import Session
+
+        from kg.cards import CardStore
 
         s = CardStore(tmp_path / "cards.db")
         s.add("w1", "m1")
         s.add("w2", "m2")
 
-        row_loads = []
         original_exec = Session.exec
 
         def spy_exec(self, statement, *args, **kwargs):
@@ -686,9 +687,9 @@ class TestBatchD_UserLockAtomic:
 class TestBatchA_MochiOrphanWarning:
 
     def test_delete_failure_logs_warning(self, tmp_path, caplog):
-        from kg.mochi import MochiSync
         from kg.cards import CardStore
         from kg.graph import GraphStore
+        from kg.mochi import MochiSync
         from kg.renderer import RenderIntent
 
         cards = CardStore(tmp_path / "cards.db")

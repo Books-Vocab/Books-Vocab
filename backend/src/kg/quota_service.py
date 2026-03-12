@@ -6,7 +6,7 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 
 from .token_tracker import _get_conn, _lock
 
@@ -32,8 +32,8 @@ def _token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> fl
 
 def _used_usd(user_id: str) -> float:
     """Sum actual USD cost from token usage in the last 24 h."""
-    cutoff = datetime.now(timezone.utc).timestamp() - _ROLLING_WINDOW_SECONDS
-    cutoff_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+    cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
+    cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
     with _lock:
         conn = _get_conn()
@@ -69,8 +69,8 @@ def get_quota_state(user_id: str, *, is_pro: bool = False) -> dict:
 
 def get_all_quota_usage() -> dict[str, dict]:
     """Return 24h quota usage for all users (admin only)."""
-    cutoff = datetime.now(timezone.utc).timestamp() - _ROLLING_WINDOW_SECONDS
-    cutoff_iso = datetime.fromtimestamp(cutoff, tz=timezone.utc).isoformat()
+    cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
+    cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
     with _lock:
         conn = _get_conn()
