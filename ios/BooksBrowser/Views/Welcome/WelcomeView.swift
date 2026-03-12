@@ -80,7 +80,7 @@ struct WelcomeView: View {
     private func pageView(_ page: WelcomePage) -> some View {
         VStack(spacing: WelcomeMetrics.pageContentSpacing) {
             Image(systemName: page.icon)
-                .font(.system(size: WelcomeMetrics.featureIconSize, weight: .medium))
+                .font(AppFonts.h2(weight: .medium))
                 .foregroundStyle(appTheme.palette.accent)
                 .frame(width: WelcomeMetrics.featureIconFrame, height: WelcomeMetrics.featureIconFrame)
                 .background(

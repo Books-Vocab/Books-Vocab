@@ -93,6 +93,11 @@ enum AppFonts {
         sans(size: 11, bold: weight.isBold)
     }
 
+    /// 等寬內文 — 17pt ElmsSans mono（body 尺寸，用於音標、程式碼輸入等）
+    static func mono() -> Font {
+        mono(size: 17)
+    }
+
     /// 等寬數字 — ElmsSans mono
     static func monoNumbers(size: CGFloat = 14) -> Font {
         mono(size: size)
