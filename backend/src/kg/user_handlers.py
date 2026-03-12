@@ -43,31 +43,27 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
 
 
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
-    integrations = config.get("integrations")
-    if not isinstance(integrations, dict):
-        integrations = {}
+    if req.integrations and req.integrations.mochi and req.integrations.mochi.api_key is not None:
+        integrations = config.get("integrations")
+        if not isinstance(integrations, dict):
+            integrations = {}
 
-    mochi = integrations.get("mochi")
-    if not isinstance(mochi, dict):
-        mochi = {}
+        mochi = integrations.get("mochi")
+        if not isinstance(mochi, dict):
+            mochi = {}
 
-    if not req.integrations or not req.integrations.mochi or req.integrations.mochi.api_key is None:
-        config["integrations"] = integrations
-        return
-
-    resolved_key = req.integrations.mochi.api_key.strip()
-    if resolved_key:
-        mochi["api_key"] = resolved_key
-        integrations["mochi"] = mochi
-        config["integrations"] = integrations
-        return
-
-    mochi.pop("api_key", None)
-    integrations.pop("mochi", None)
-    if integrations:
-        config["integrations"] = integrations
-    else:
-        config.pop("integrations", None)
+        resolved_key = req.integrations.mochi.api_key.strip()
+        if resolved_key:
+            mochi["api_key"] = resolved_key
+            integrations["mochi"] = mochi
+            config["integrations"] = integrations
+        else:
+            mochi.pop("api_key", None)
+            integrations.pop("mochi", None)
+            if integrations:
+                config["integrations"] = integrations
+            else:
+                config.pop("integrations", None)
 
     # Translation config
     if req.translation:
