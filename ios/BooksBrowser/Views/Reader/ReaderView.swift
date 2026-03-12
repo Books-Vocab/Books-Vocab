@@ -18,6 +18,7 @@ struct ReaderView: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.readiumService) private var readiumService
     @Environment(\.iCloudDownloadManager) private var downloadManager
+    // PERF: 詞彙量超過 5000 時考慮改為按書篩選
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
     )
