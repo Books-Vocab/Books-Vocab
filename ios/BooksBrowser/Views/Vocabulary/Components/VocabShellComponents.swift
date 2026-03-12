@@ -366,7 +366,7 @@ struct VocabListCard<Header: View, Content: View>: View {
 
                 Rectangle()
                     .fill(vocabSkin.palette.divider)
-                    .frame(height: 0.5)
+                    .frame(height: AppMetrics.dividerThin)
                     .padding(.horizontal, vocabSkin.metrics.listDividerInset)
 
                 content
