@@ -114,3 +114,17 @@ def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     remaining = max(limit - used, 0.0)
     fraction = round(remaining / limit, 4)
     return {"exceeded": exceeded, "fraction": fraction, "reset_seconds": _reset_seconds()}
+
+
+def check_and_get_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
+    """Pre-flight check + state in one query."""
+    limit = _daily_limit(is_pro)
+    used = _used_usd(user_id)
+    remaining = max(limit - used, 0.0)
+    fraction = round(remaining / limit, 4)
+    exceeded = used >= limit
+    return {
+        "exceeded": exceeded,
+        "fraction": fraction,
+        "reset_seconds": _reset_seconds(),
+    }
