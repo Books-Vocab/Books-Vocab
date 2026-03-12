@@ -42,22 +42,11 @@ extension SettingsPresenter {
                             )
                         }
 
-                        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                            Text("本地伺服器 URL".localized)
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-
+                        SettingsLabeledInputField(title: "本地伺服器 URL".localized) {
                             TextField("本地伺服器 URL".localized, text: debugLocalServerURL)
                                 .appSettingsTextInputStyle(alignment: .leading)
                                 .submitLabel(.done)
                         }
-                        .padding(vocabSkin.spacing.cardPadding)
-                        .background(vocabSkin.palette.pageBackground)
-                        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                        )
 
                         VocabStateMessageCard(
                             title: debug.isUsingLocalServer ? "目前使用本地開發站".localized : "目前使用遠端正式站".localized,
