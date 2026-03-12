@@ -71,7 +71,7 @@ extension TranslationPanelPresenterState {
 }
 
 struct TranslationPanelPresenter: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var appTheme
 
     let state: TranslationPanelPresenterState
     let onSpeak: () -> Void
@@ -99,13 +99,13 @@ struct TranslationPanelPresenter: View {
                         if let pronunciation = state.pronunciation {
                             Text(pronunciation)
                                 .font(ReaderGlassTypography.pronunciation)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(appTheme.palette.secondaryText)
                         }
 
                         Button(action: onSpeak) {
                             Image(systemName: "speaker.wave.2.fill")
                                 .font(ReaderGlassTypography.iconTiny)
-                                .foregroundStyle(.secondary)
+                                .foregroundStyle(appTheme.palette.secondaryText)
                                 .symbolEffect(.bounce, value: state.isSpeaking)
                         }
 
@@ -116,8 +116,8 @@ struct TranslationPanelPresenter: View {
                                 .font(ReaderGlassTypography.partOfSpeech)
                                 .padding(.horizontal, ReaderPresentationMetrics.Panel.badgeHorizontalPadding)
                                 .padding(.vertical, ReaderPresentationMetrics.Panel.badgeVerticalPadding)
-                                .background(AppColors.accent(colorScheme).opacity(0.12))
-                                .foregroundStyle(AppColors.accent(colorScheme))
+                                .background(appTheme.palette.accent.opacity(0.12))
+                                .foregroundStyle(appTheme.palette.accent)
                                 .clipShape(Capsule())
                         }
                     }
@@ -155,7 +155,7 @@ struct TranslationPanelPresenter: View {
                     if let timerText = state.activeTimerText {
                         Text(timerText)
                             .font(ReaderGlassTypography.numericMono)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(appTheme.palette.tertiaryText)
                     }
                 }
             }
@@ -182,7 +182,7 @@ struct TranslationPanelPresenter: View {
             )
             .padding(.vertical, ReaderPresentationMetrics.Panel.statusInsetVertical)
             .padding(.horizontal, ReaderPresentationMetrics.Panel.statusInsetHorizontal)
-            .background((state.isSaved ? AppColors.saved(colorScheme) : AppColors.accent(colorScheme)).opacity(0.06))
+            .background((state.isSaved ? appTheme.palette.success : appTheme.palette.accent).opacity(0.06))
             .clipShape(
                 RoundedRectangle(
                     cornerRadius: ReaderPresentationMetrics.Panel.statusCornerRadius,
@@ -197,42 +197,7 @@ struct TranslationPanelPresenter: View {
 
     private var explanationOnlyBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Divider()
-                .padding(.vertical, ReaderPresentationMetrics.Panel.dividerInsetVertical)
-
-            Label("語境解釋".localized, systemImage: "text.bubble")
-                .font(ReaderGlassTypography.labelSmall)
-                .foregroundStyle(.tertiary)
-
-            if state.isLoadingExplanation {
-                stateMessageContent(
-                    title: state.statusMessage ?? "載入解釋...".localized,
-                    systemImage: "text.bubble"
-                ) {
-                    HStack {
-                        ProgressView().scaleEffect(0.7)
-                        Spacer()
-                        Text(state.timerText)
-                            .font(ReaderGlassTypography.numericMono)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-            } else if let errorMessage = state.explanationErrorMessage {
-                errorStateContent(
-                    title: "語境解釋暫時無法載入".localized,
-                    description: errorMessage
-                )
-                .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-            } else if let explanation = state.explanation {
-                Text(explanation)
-                    .font(ReaderGlassTypography.body)
-                    .foregroundStyle(.secondary)
-                    .lineSpacing(3)
-            } else {
-                emptyExplainStateContent
-                    .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-            }
+            explanationSection
 
             quotaBar
             panelToolbar(showChevron: false, timerValue: state.statusTimerText)
@@ -245,42 +210,7 @@ struct TranslationPanelPresenter: View {
                 .font(ReaderGlassTypography.translationTitle)
 
             if state.isExpanded {
-                Divider()
-                    .padding(.vertical, ReaderPresentationMetrics.Panel.dividerInsetVertical)
-
-                Label("語境解釋".localized, systemImage: "text.bubble")
-                    .font(ReaderGlassTypography.labelSmall)
-                    .foregroundStyle(.tertiary)
-
-                if state.isLoadingExplanation {
-                    stateMessageContent(
-                        title: state.statusMessage ?? "載入解釋...".localized,
-                        systemImage: "text.bubble"
-                    ) {
-                        HStack {
-                            ProgressView().scaleEffect(0.7)
-                            Spacer()
-                            Text(state.timerText)
-                                .font(ReaderGlassTypography.numericMono)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-                } else if let errorMessage = state.explanationErrorMessage {
-                    errorStateContent(
-                        title: "語境解釋暫時無法載入".localized,
-                        description: errorMessage
-                    )
-                    .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-                } else if let explanation = state.explanation {
-                    Text(explanation)
-                        .font(ReaderGlassTypography.body)
-                        .foregroundStyle(.secondary)
-                        .lineSpacing(3)
-                } else {
-                    emptyExplainStateContent
-                        .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
-                }
+                explanationSection
             }
 
             quotaBar
@@ -322,6 +252,54 @@ struct TranslationPanelPresenter: View {
         )
     }
 
+    private var explanationSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            Divider()
+                .padding(.vertical, ReaderPresentationMetrics.Panel.dividerInsetVertical)
+
+            Label("語境解釋".localized, systemImage: "text.bubble")
+                .font(ReaderGlassTypography.labelSmall)
+                .foregroundStyle(appTheme.palette.tertiaryText)
+
+            explanationContent
+        }
+    }
+
+    @ViewBuilder
+    private var explanationContent: some View {
+        if state.isLoadingExplanation {
+            stateMessageContent(
+                title: state.statusMessage ?? "載入解釋...".localized,
+                systemImage: "text.bubble"
+            ) {
+                HStack {
+                    ProgressView().scaleEffect(0.7)
+                    Spacer()
+                    if let timerText = state.activeTimerText {
+                        Text(timerText)
+                            .font(ReaderGlassTypography.numericMono)
+                            .foregroundStyle(appTheme.palette.tertiaryText)
+                    }
+                }
+            }
+            .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
+        } else if let errorMessage = state.explanationErrorMessage {
+            errorStateContent(
+                title: "語境解釋暫時無法載入".localized,
+                description: errorMessage
+            )
+            .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
+        } else if let explanation = state.explanation {
+            Text(explanation)
+                .font(ReaderGlassTypography.body)
+                .foregroundStyle(appTheme.palette.secondaryText)
+                .lineSpacing(3)
+        } else {
+            emptyExplainStateContent
+                .padding(.vertical, ReaderPresentationMetrics.Panel.explanationInsetVertical)
+        }
+    }
+
     private func errorStateContent(title: String, description: String) -> some View {
         stateMessageContent(
             title: title,
@@ -355,7 +333,7 @@ struct TranslationPanelPresenter: View {
             if state.showsSavedStatus {
                 Label("已加入".localized, systemImage: "checkmark.circle.fill")
                     .font(ReaderGlassTypography.savedStatus)
-                    .foregroundStyle(AppColors.saved(colorScheme))
+                    .foregroundStyle(appTheme.palette.success)
                     .symbolEffect(.bounce, value: state.isSaved)
                     .transition(.feedbackBadge)
             }
@@ -363,54 +341,54 @@ struct TranslationPanelPresenter: View {
             if let timerValue {
                 Text(timerValue)
                     .font(ReaderGlassTypography.numericMono)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(appTheme.palette.tertiaryText)
                     .padding(.leading, state.showsSavedStatus ? AppMetrics.spacingSmall : 0)
             }
 
             Spacer()
 
             if showChevron {
-                Button(action: onExpand) {
-                    Image(systemName: state.isExpanded ? "chevron.up" : "chevron.down")
-                        .font(ReaderGlassTypography.toolbarIcon)
-                        .foregroundStyle(.secondary)
-                        .frame(
-                            width: ReaderPresentationMetrics.Panel.actionButtonSize,
-                            height: ReaderPresentationMetrics.Panel.actionButtonSize
-                        )
-                        .contentShape(Rectangle())
-                        .symbolEffect(.bounce, value: state.isExpanded)
-                        .glassEffect(.clear, in: Circle())
-                }
+                panelIconButton(
+                    systemImage: state.isExpanded ? "chevron.up" : "chevron.down",
+                    tone: appTheme.palette.secondaryText,
+                    action: onExpand
+                )
+                .symbolEffect(.bounce, value: state.isExpanded)
             }
 
             if state.showsDeleteAction {
-                Button(action: onDelete) {
-                    Image(systemName: "trash")
-                        .font(ReaderGlassTypography.toolbarIcon)
-                        .foregroundStyle(AppColors.destructive(colorScheme).opacity(0.65))
-                        .frame(
-                            width: ReaderPresentationMetrics.Panel.actionButtonSize,
-                            height: ReaderPresentationMetrics.Panel.actionButtonSize
-                        )
-                        .contentShape(Rectangle())
-                        .glassEffect(.clear, in: Circle())
-                }
+                panelIconButton(
+                    systemImage: "trash",
+                    tone: appTheme.palette.destructive.opacity(0.72),
+                    action: onDelete
+                )
             }
 
-            Button(action: onDismiss) {
-                Image(systemName: "xmark.circle.fill")
-                    .font(ReaderGlassTypography.toolbarIcon)
-                    .foregroundStyle(.tertiary)
-                    .frame(
-                        width: ReaderPresentationMetrics.Panel.actionButtonSize,
-                        height: ReaderPresentationMetrics.Panel.actionButtonSize
-                    )
-                    .contentShape(Rectangle())
-                    .glassEffect(.clear, in: Circle())
-            }
+            panelIconButton(
+                systemImage: "xmark.circle.fill",
+                tone: appTheme.palette.tertiaryText,
+                action: onDismiss
+            )
         }
         .padding(.top, ReaderPresentationMetrics.Panel.toolbarTopInset)
+    }
+
+    private func panelIconButton(
+        systemImage: String,
+        tone: Color,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(ReaderGlassTypography.toolbarIcon)
+                .foregroundStyle(tone)
+                .frame(
+                    width: ReaderPresentationMetrics.Panel.actionButtonSize,
+                    height: ReaderPresentationMetrics.Panel.actionButtonSize
+                )
+                .contentShape(Rectangle())
+                .glassEffect(.clear, in: Circle())
+        }
     }
 }
 

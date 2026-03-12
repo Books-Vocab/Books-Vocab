@@ -150,6 +150,7 @@ enum ReaderPresentationMetrics {
         static let sliderSpacing: CGFloat = 14
         static let sliderValueWidth: CGFloat = 28
         static let optionSpacing: CGFloat = 8
+        static let optionLabelSpacing: CGFloat = 6
         static let optionVerticalInset: CGFloat = 12
         static let optionCornerRadius: CGFloat = 10
         static let underlineCornerRadius: CGFloat = 8

@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ReaderSettingsPanelPresenter: View {
+    @Environment(\.appTheme) private var appTheme
+
     struct State {
         let fontSizeText: String
         let canDecreaseFontSize: Bool
@@ -16,6 +18,13 @@ struct ReaderSettingsPanelPresenter: View {
         let translationPanelMode: Binding<TranslationPanelMode>
     }
 
+    private struct UnderlineOption: Identifiable {
+        let label: String
+        let value: Double
+
+        var id: Double { value }
+    }
+
     let state: State
     let bindings: Bindings
     let onDecreaseFontSize: () -> Void
@@ -24,11 +33,11 @@ struct ReaderSettingsPanelPresenter: View {
     let onSelectUnderlineOpacity: (Double) -> Void
     let onDismiss: () -> Void
 
-    private let opacityOptions: [(label: String, value: Double)] = [
-        ("隱藏", 0.0),
-        ("淡", 0.15),
-        ("中", 0.35),
-        ("深", 0.60)
+    private let opacityOptions: [UnderlineOption] = [
+        .init(label: "隱藏", value: 0.0),
+        .init(label: "淡", value: 0.15),
+        .init(label: "中", value: 0.35),
+        .init(label: "深", value: 0.60)
     ]
 
     var body: some View {
@@ -36,44 +45,37 @@ struct ReaderSettingsPanelPresenter: View {
             Form {
                 Section {
                     HStack(spacing: 0) {
-                        Button(action: onDecreaseFontSize) {
-                            Text("A")
-                                .font(ReaderGlassTypography.settingsStepSmall)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
-                                .contentShape(Rectangle())
-                        }
-                        .disabled(!state.canDecreaseFontSize)
-                        .buttonStyle(.plain)
+                        fontSizeStepButton(
+                            label: "A",
+                            font: ReaderGlassTypography.settingsStepSmall,
+                            isEnabled: state.canDecreaseFontSize,
+                            action: onDecreaseFontSize
+                        )
 
                         Text(state.fontSizeText)
                             .font(ReaderGlassTypography.settingsValue)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(appTheme.palette.secondaryText)
                             .frame(width: ReaderPresentationMetrics.Settings.centeredValueWidth, alignment: .center)
 
-                        Button(action: onIncreaseFontSize) {
-                            Text("A")
-                                .font(ReaderGlassTypography.settingsStepLarge)
-                                .frame(maxWidth: .infinity)
-                                .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
-                                .contentShape(Rectangle())
-                        }
-                        .disabled(!state.canIncreaseFontSize)
-                        .buttonStyle(.plain)
+                        fontSizeStepButton(
+                            label: "A",
+                            font: ReaderGlassTypography.settingsStepLarge,
+                            isEnabled: state.canIncreaseFontSize,
+                            action: onIncreaseFontSize
+                        )
                     }
-                    .foregroundStyle(.primary)
 
                     HStack(spacing: ReaderPresentationMetrics.Settings.sliderSpacing) {
                         Image(systemName: "text.line.spacing")
                             .font(ReaderGlassTypography.settingsIcon)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(appTheme.palette.secondaryText)
 
                         Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
-                            .tint(.primary)
+                            .tint(appTheme.palette.tint)
 
                         Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
                             .font(ReaderGlassTypography.settingsValue)
-                            .foregroundStyle(.secondary)
+                            .foregroundStyle(appTheme.palette.secondaryText)
                             .frame(width: ReaderPresentationMetrics.Settings.sliderValueWidth, alignment: .trailing)
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
@@ -91,42 +93,22 @@ struct ReaderSettingsPanelPresenter: View {
 
                     HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
                         ForEach(ReaderTheme.allCases) { theme in
-                            Button {
-                                onSelectTheme(theme)
-                            } label: {
-                                HStack(spacing: 6) {
+                            let isSelected = bindings.theme.wrappedValue == theme
+                            choiceButton(
+                                isSelected: isSelected,
+                                cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
+                                verticalPadding: ReaderPresentationMetrics.Settings.optionVerticalInset,
+                                action: { onSelectTheme(theme) }
+                            ) {
+                                HStack(spacing: ReaderPresentationMetrics.Settings.optionLabelSpacing) {
                                     Image(systemName: theme.icon)
                                         .font(ReaderGlassTypography.settingsValue)
                                     Text(theme.rawValue)
                                         .font(ReaderGlassTypography.body)
-                                        .fontWeight(bindings.theme.wrappedValue == theme ? .medium : .regular)
+                                        .fontWeight(isSelected ? .medium : .regular)
                                 }
-                                .padding(.vertical, ReaderPresentationMetrics.Settings.optionVerticalInset)
                                 .frame(maxWidth: .infinity)
-                                .background(
-                                    RoundedRectangle(
-                                        cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
-                                        style: .continuous
-                                    )
-                                    .fill(
-                                        bindings.theme.wrappedValue == theme
-                                        ? Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedFillOpacity)
-                                        : Color.clear
-                                    )
-                                )
-                                .overlay(
-                                    RoundedRectangle(
-                                        cornerRadius: ReaderPresentationMetrics.Settings.optionCornerRadius,
-                                        style: .continuous
-                                    )
-                                    .stroke(
-                                        Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedStrokeOpacity),
-                                        lineWidth: bindings.theme.wrappedValue == theme ? 1 : 0
-                                    )
-                                )
-                                .foregroundStyle(bindings.theme.wrappedValue == theme ? .primary : .secondary)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
@@ -136,39 +118,19 @@ struct ReaderSettingsPanelPresenter: View {
 
                 Section {
                     HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
-                        ForEach(opacityOptions, id: \.label) { option in
-                            Button {
-                                onSelectUnderlineOpacity(option.value)
-                            } label: {
+                        ForEach(opacityOptions) { option in
+                            let isSelected = bindings.underlineOpacity.wrappedValue == option.value
+                            choiceButton(
+                                isSelected: isSelected,
+                                cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
+                                verticalPadding: ReaderPresentationMetrics.Settings.underlineVerticalInset,
+                                action: { onSelectUnderlineOpacity(option.value) }
+                            ) {
                                 Text(option.label.localized)
                                     .font(ReaderGlassTypography.body)
-                                    .fontWeight(bindings.underlineOpacity.wrappedValue == option.value ? .medium : .regular)
+                                    .fontWeight(isSelected ? .medium : .regular)
                                     .frame(maxWidth: .infinity)
-                                    .padding(.vertical, ReaderPresentationMetrics.Settings.underlineVerticalInset)
-                                    .background(
-                                        RoundedRectangle(
-                                            cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
-                                            style: .continuous
-                                        )
-                                        .fill(
-                                            bindings.underlineOpacity.wrappedValue == option.value
-                                            ? Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedFillOpacity)
-                                            : Color.clear
-                                        )
-                                    )
-                                    .overlay(
-                                        RoundedRectangle(
-                                            cornerRadius: ReaderPresentationMetrics.Settings.underlineCornerRadius,
-                                            style: .continuous
-                                        )
-                                        .stroke(
-                                            Color.primary.opacity(ReaderPresentationMetrics.Settings.selectedStrokeOpacity),
-                                            lineWidth: bindings.underlineOpacity.wrappedValue == option.value ? 1 : 0
-                                        )
-                                    )
-                                    .foregroundStyle(bindings.underlineOpacity.wrappedValue == option.value ? .primary : .secondary)
                             }
-                            .buttonStyle(.plain)
                         }
                     }
                     .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
@@ -178,7 +140,7 @@ struct ReaderSettingsPanelPresenter: View {
 
                 Section {
                     Toggle("顯示點擊熱區".localized, isOn: bindings.showHitTestingDebug)
-                        .tint(.primary)
+                        .tint(appTheme.palette.tint)
                 } header: {
                     Text("開發者與除錯".localized)
                 }
@@ -201,12 +163,60 @@ struct ReaderSettingsPanelPresenter: View {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: onDismiss) {
                         Image(systemName: "xmark.circle.fill")
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(appTheme.palette.tertiaryText)
                             .font(ReaderGlassTypography.settingsCloseIcon)
                     }
                 }
             }
         }
+    }
+
+    private func fontSizeStepButton(
+        label: String,
+        font: Font,
+        isEnabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(font)
+                .foregroundStyle(isEnabled ? appTheme.palette.primaryText : appTheme.palette.quaternaryText)
+                .frame(maxWidth: .infinity)
+                .frame(height: ReaderPresentationMetrics.Settings.controlHeight)
+                .contentShape(Rectangle())
+        }
+        .disabled(!isEnabled)
+        .buttonStyle(.plain)
+    }
+
+    private func choiceButton<Content: View>(
+        isSelected: Bool,
+        cornerRadius: CGFloat,
+        verticalPadding: CGFloat,
+        action: @escaping () -> Void,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        Button(action: action) {
+            content()
+                .padding(.vertical, verticalPadding)
+                .foregroundStyle(isSelected ? appTheme.palette.primaryText : appTheme.palette.secondaryText)
+                .background(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .fill(
+                            isSelected
+                            ? appTheme.palette.primaryText.opacity(ReaderPresentationMetrics.Settings.selectedFillOpacity)
+                            : Color.clear
+                        )
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(
+                            appTheme.palette.primaryText.opacity(ReaderPresentationMetrics.Settings.selectedStrokeOpacity),
+                            lineWidth: isSelected ? 1 : 0
+                        )
+                )
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -231,4 +241,30 @@ struct ReaderSettingsPanelPresenter: View {
         onSelectUnderlineOpacity: { _ in },
         onDismiss: {}
     )
+}
+
+#Preview("ReaderSettingsPanel / Disabled Bounds") {
+    AppThemeContainer {
+        ReaderSettingsPanelPresenter(
+            state: .init(
+                fontSizeText: "0.75x",
+                canDecreaseFontSize: false,
+                canIncreaseFontSize: true
+            ),
+            bindings: .init(
+                lineHeight: .constant(2.5),
+                font: .constant(.sans),
+                theme: .constant(.dark),
+                underlineOpacity: .constant(0.0),
+                showHitTestingDebug: .constant(true),
+                translationPanelMode: .constant(.vocab)
+            ),
+            onDecreaseFontSize: {},
+            onIncreaseFontSize: {},
+            onSelectTheme: { _ in },
+            onSelectUnderlineOpacity: { _ in },
+            onDismiss: {}
+        )
+    }
+    .preferredColorScheme(.dark)
 }
