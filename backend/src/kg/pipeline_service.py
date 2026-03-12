@@ -7,6 +7,7 @@ from typing import Any
 
 from openai import OpenAIError
 
+from .retry import async_retry
 from .user_store import resolve_mochi_api_key_from_config
 
 
@@ -57,6 +58,27 @@ async def _step_enrich(
     logger.info("[%s] Enriched %d cards", uid, updated)
 
 
+def _sync_embed_loop(
+    missing: list[Any],
+    embeddings: Any,
+    graph: Any,
+    uid: str,
+    logger: logging.Logger,
+) -> int:
+    backfilled = 0
+    for card in missing:
+        try:
+            embeddings.add(card.id, card.embed_text())
+            similar = embeddings.find_similar(card.id, k=3)
+            for other_id, score in similar:
+                if score > 0.655:
+                    graph.add_candidate(card.id, other_id, score)
+            backfilled += 1
+        except (OpenAIError, OSError, ValueError) as exc:
+            logger.warning("[%s] Embedding backfill failed for '%s': %s", uid, card.content, exc)
+    return backfilled
+
+
 async def _step_embed(
     uid: str,
     user: dict[str, Any],
@@ -75,17 +97,10 @@ async def _step_embed(
         return
 
     logger.info("[%s] Backfilling embeddings for %d cards", uid, len(missing))
-    backfilled = 0
-    for card in missing:
-        try:
-            embeddings.add(card.id, card.embed_text())
-            similar = embeddings.find_similar(card.id, k=3)
-            for other_id, score in similar:
-                if score > 0.655:
-                    graph.add_candidate(card.id, other_id, score)
-            backfilled += 1
-        except (OpenAIError, OSError, ValueError) as exc:
-            logger.warning("[%s] Embedding backfill failed for '%s': %s", uid, card.content, exc)
+    loop = asyncio.get_event_loop()
+    backfilled = await loop.run_in_executor(
+        None, _sync_embed_loop, missing, embeddings, graph, uid, logger
+    )
     logger.info("[%s] Backfilled %d embeddings", uid, backfilled)
 
 
@@ -229,19 +244,46 @@ async def run_pipeline_background(
             # step failure must never abort the whole pipeline.
 
             try:
-                await _step_enrich(uid, user, card_store_factory=card_store_factory, gemini_client_factory=gemini_client_factory, logger=logger)
+                await async_retry(
+                    _step_enrich, uid, user,
+                    card_store_factory=card_store_factory,
+                    gemini_client_factory=gemini_client_factory,
+                    logger=logger,
+                    max_attempts=2,
+                    retryable_exceptions=(OpenAIError, OSError),
+                    step_name="Enrich", uid=uid,
+                )
             except Exception as exc:
-                logger.error("[%s] Step 1 (Enrich) failed: %s", uid, exc, exc_info=True)
+                logger.error("[%s] Step 1 (Enrich) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
-                await _step_embed(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, embedding_store_factory=embedding_store_factory, logger=logger)
+                await async_retry(
+                    _step_embed, uid, user,
+                    card_store_factory=card_store_factory,
+                    graph_store_factory=graph_store_factory,
+                    embedding_store_factory=embedding_store_factory,
+                    logger=logger,
+                    max_attempts=2,
+                    retryable_exceptions=(OpenAIError, OSError),
+                    step_name="Embed", uid=uid,
+                )
             except Exception as exc:
-                logger.error("[%s] Step 1b (Embedding backfill) failed: %s", uid, exc, exc_info=True)
+                logger.error("[%s] Step 1b (Embedding backfill) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
-                await _step_link(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, gemini_client_factory=gemini_client_factory, logger=logger, link_kind_enum=link_kind_enum)
+                await async_retry(
+                    _step_link, uid, user,
+                    card_store_factory=card_store_factory,
+                    graph_store_factory=graph_store_factory,
+                    gemini_client_factory=gemini_client_factory,
+                    logger=logger,
+                    link_kind_enum=link_kind_enum,
+                    max_attempts=2,
+                    retryable_exceptions=(OpenAIError, OSError),
+                    step_name="Link", uid=uid,
+                )
             except Exception as exc:
-                logger.error("[%s] Step 2 (Link) failed: %s", uid, exc, exc_info=True)
+                logger.error("[%s] Step 2 (Link) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
                 await _step_difficulty(uid, user, card_store_factory=card_store_factory, logger=logger)
