@@ -31,6 +31,7 @@ COPY pytest.ini /app/
 COPY privacy.html /app/
 COPY support.html /app/
 COPY terms.html /app/
+COPY guide.html /app/
 
 # 建立資料夾
 RUN mkdir -p /app/data
