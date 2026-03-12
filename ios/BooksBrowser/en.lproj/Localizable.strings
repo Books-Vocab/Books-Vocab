@@ -488,3 +488,29 @@
 "今日額度已用完，%@" = "Today's quota exhausted, %@";
 "%@h %@m 後重置" = "%1$@h %2$@m until reset";
 "%@m 後重置" = "%@m until reset";
+
+// ── Auto-generated: missing L10n keys ──
+"Apple 購買成功，但後端同步尚未完成。請稍後點「重新同步」。" = "Apple purchase succeeded, but backend sync is not yet complete. Tap \"Re-sync\" later.";
+"Demo 模式" = "Demo Mode";
+"了解更多" = "Learn More";
+"先體驗看看" = "Try It First";
+"在知識庫中左滑卡片即可封存。" = "Swipe left on a card in the knowledge base to archive it.";
+"字母序" = "Alphabetical";
+"尚未取得訂閱方案，請稍後再試。" = "Subscription plans not yet loaded. Please try again later.";
+"已向 App Store 恢復購買，但後端尚未同步成功。請稍後再試。" = "Restore sent to the App Store, but backend sync has not completed. Please try again later.";
+"搜尋封存單字" = "Search archived words";
+"最近新增" = "Recently Added";
+"未知時間" = "Unknown time";
+"沒有封存的卡片" = "No Archived Cards";
+"結束" = "End";
+"複習優先" = "Review Priority";
+"複習結果尚未寫入本機：%@" = "Review results not saved locally: %@";
+"解除封存" = "Unarchive";
+"訂閱已啟用，感謝支持！" = "Subscription activated. Thank you for your support!";
+"購買已恢復，Pro 已啟用。" = "Purchase restored. Pro is now active.";
+"購買成功，正在同步訂閱狀態⋯" = "Purchase successful. Syncing subscription status…";
+"部分項目未成功同步，可直接再次重試。" = "Some items did not sync successfully. You can retry right away.";
+"開始使用" = "Get Started";
+"難度" = "Difficulty";
+"體驗複習與圖譜" = "Try Review and Graph";
+"點一下翻轉卡片" = "Tap to flip card";
