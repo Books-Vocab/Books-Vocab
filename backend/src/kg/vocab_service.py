@@ -7,7 +7,7 @@ from typing import Any, Callable
 
 from fastapi import HTTPException
 
-from .api_models import CardLinkSummaryResponse, CardResponse, GraphLinkResponse, ReviewStateEntry, VocabAddResponse, VocabEntry
+from .api_models import CardLinkSummaryResponse, CardResponse, DailyReviewStatEntry, GraphLinkResponse, ReviewStateEntry, VocabAddResponse, VocabEntry
 from .user_store import parse_datetime
 
 
@@ -307,3 +307,44 @@ def add_vocab_entries(
         duplicates=duplicates,
         cardIds=card_ids,
     )
+
+
+def push_daily_review_stats(
+    entries: list[DailyReviewStatEntry],
+    *,
+    stats_store: Any,
+    logger: logging.Logger,
+) -> dict[str, int]:
+    """Merge client daily review stats into server. Returns {upserted}."""
+    upserted = 0
+    for entry in entries:
+        stats_store.upsert(
+            day_key=entry.day_key,
+            total=entry.total,
+            remembered=entry.remembered,
+            forgot=entry.forgot,
+        )
+        upserted += 1
+    logger.info("push_daily_review_stats: upserted %d entries", upserted)
+    return {"upserted": upserted}
+
+
+def pull_daily_review_stats(
+    *,
+    since: str | None,
+    stats_store: Any,
+) -> list[DailyReviewStatEntry]:
+    """Return all daily review stats, optionally filtered by since day_key."""
+    if since:
+        stats = stats_store.get_since(since)
+    else:
+        stats = stats_store.all()
+    return [
+        DailyReviewStatEntry(
+            day_key=s.day_key,
+            total=s.total,
+            remembered=s.remembered,
+            forgot=s.forgot,
+        )
+        for s in stats
+    ]
