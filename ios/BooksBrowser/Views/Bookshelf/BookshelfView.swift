@@ -233,6 +233,7 @@ struct BookshelfView: View {
 
 struct BookCard: View {
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.iCloudDownloadManager) private var downloadManager
     let book: Book
     var coverHeight: CGFloat = BookshelfMetrics.coverHeight
 
@@ -251,14 +252,7 @@ struct BookCard: View {
                     )
                 )
                 .overlay(alignment: .bottomTrailing) {
-                    if book.needsICloudDownload {
-                        Image(systemName: "icloud.and.arrow.down")
-                            .font(AppFonts.caption2(weight: .semibold))
-                            .foregroundStyle(.white)
-                            .padding(6)
-                            .background(.ultraThinMaterial, in: Circle())
-                            .padding(6)
-                    }
+                    iCloudDownloadBadge
                 }
                 .shadow(
                     color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
@@ -329,6 +323,32 @@ struct BookCard: View {
         }
     }
 
+    @ViewBuilder
+    private var iCloudDownloadBadge: some View {
+        if let state = downloadManager.state(for: book.epubFileName) {
+            switch state {
+            case .downloading(let progress):
+                ICloudProgressBadge(progress: progress)
+                    .padding(6)
+            case .notDownloaded:
+                cloudIconBadge
+            case .current:
+                EmptyView()
+            }
+        } else if book.needsICloudDownload {
+            cloudIconBadge
+        }
+    }
+
+    private var cloudIconBadge: some View {
+        Image(systemName: "icloud.and.arrow.down")
+            .font(AppFonts.caption2(weight: .semibold))
+            .foregroundStyle(.white)
+            .padding(6)
+            .background(.ultraThinMaterial, in: Circle())
+            .padding(6)
+    }
+
     private func progressBar(_ progress: Double) -> some View {
         HStack(spacing: BookshelfMetrics.progressBarSpacing) {
             GeometryReader { geo in
@@ -347,6 +367,28 @@ struct BookCard: View {
                 .font(AppFonts.monoNumbers(size: 10))
                 .foregroundStyle(appTheme.palette.tertiaryText)
         }
+    }
+}
+
+// MARK: - iCloud 下載進度徽章
+
+private struct ICloudProgressBadge: View {
+    let progress: Double
+
+    var body: some View {
+        ZStack {
+            Circle()
+                .stroke(.white.opacity(0.3), lineWidth: 2.5)
+            Circle()
+                .trim(from: 0, to: progress)
+                .stroke(.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .rotationEffect(.degrees(-90))
+            Text("\(Int(progress * 100))")
+                .font(AppFonts.monoNumbers(size: 8))
+                .foregroundStyle(.white)
+        }
+        .frame(width: 32, height: 32)
+        .background(.ultraThinMaterial, in: Circle())
     }
 }
 
