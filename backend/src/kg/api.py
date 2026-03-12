@@ -16,7 +16,7 @@ from pathlib import Path
 from typing import Any, Callable
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
@@ -126,6 +126,7 @@ from .service_factories import (
     create_gemini_client,
     create_graph_store,
 )
+from .rate_limit import api_limiter, translate_limiter
 from .settings import KGSettings, load_settings
 from .translate_handlers import (
     translate_explain_response,
@@ -294,6 +295,36 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         content_length = request.headers.get("content-length")
         if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
+    _RATE_LIMIT_EXEMPT = {
+        "/docs",
+        "/openapi.json",
+        "/privacy",
+        "/support",
+        "/terms",
+        "/guide",
+        "/api/billing/app-store/notifications",
+        "/admin",
+    }
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
+            return await call_next(request)
+
+        auth = request.headers.get("authorization", "")
+        key = auth[-16:] if len(auth) > 16 else (request.client.host if request.client else "unknown")
+
+        limiter = translate_limiter if "/api/translate" in path else api_limiter
+
+        if not await limiter.is_allowed(key):
+            return JSONResponse(
+                {"detail": "Too many requests"},
+                status_code=429,
+                headers={"Retry-After": str(limiter.window_seconds)},
+            )
         return await call_next(request)
 
     admin_handlers = create_admin_handlers(
