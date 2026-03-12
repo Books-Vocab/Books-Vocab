@@ -103,6 +103,48 @@ struct SettingsMenuValue: View {
     }
 }
 
+struct SettingsTitleSubtitleStack: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let subtitle: String?
+    let titleFont: Font
+    let titleColor: Color
+    let subtitleColor: Color
+    let subtitleLineLimit: Int?
+
+    init(
+        title: String,
+        subtitle: String? = nil,
+        titleFont: Font,
+        titleColor: Color,
+        subtitleColor: Color,
+        subtitleLineLimit: Int? = 1
+    ) {
+        self.title = title
+        self.subtitle = subtitle
+        self.titleFont = titleFont
+        self.titleColor = titleColor
+        self.subtitleColor = subtitleColor
+        self.subtitleLineLimit = subtitleLineLimit
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 3) {
+            Text(title)
+                .font(titleFont)
+                .foregroundStyle(titleColor)
+                .lineLimit(1)
+
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(subtitleColor)
+                    .lineLimit(subtitleLineLimit)
+            }
+        }
+    }
+}
+
 struct SettingsStatusBadge: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let text: String
@@ -116,6 +158,20 @@ struct SettingsStatusBadge: View {
             .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
+    }
+}
+
+struct SettingsInlineInfoButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: "info.circle")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+        }
+        .buttonStyle(.plain)
     }
 }
 
@@ -364,5 +420,24 @@ struct SettingsCardModifier: ViewModifier {
 extension View {
     func settingsCard() -> some View {
         modifier(SettingsCardModifier())
+    }
+
+    func appSettingsButtonChrome() -> some View {
+        modifier(SettingsButtonChromeModifier())
+    }
+}
+
+struct SettingsButtonChromeModifier: ViewModifier {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    func body(content: Content) -> some View {
+        content
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(vocabSkin.palette.pageBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
     }
 }

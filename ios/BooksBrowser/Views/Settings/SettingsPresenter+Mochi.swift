@@ -14,12 +14,7 @@ extension SettingsPresenter {
                     .textInputAutocapitalization(.never)
                     .disabled(!optionalIntegration.isEnabled)
 
-                Button(action: actions.showOptionalIntegrationInfo) {
-                    Image(systemName: "info.circle")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                }
-                .buttonStyle(.plain)
+                SettingsInlineInfoButton(action: actions.showOptionalIntegrationInfo)
             }
         }
     }
