@@ -119,6 +119,49 @@ struct SettingsStatusBadge: View {
     }
 }
 
+struct SettingsActionRowLabel<Trailing: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let systemImage: String
+    let isLoading: Bool
+    let trailing: Trailing
+
+    init(
+        title: String,
+        systemImage: String,
+        isLoading: Bool = false,
+        @ViewBuilder trailing: () -> Trailing = { SettingsTrailingChevronIcon() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.isLoading = isLoading
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
+            if isLoading {
+                ProgressView()
+                    .controlSize(.small)
+            } else {
+                Image(systemName: systemImage)
+                    .font(vocabSkin.typography.iconMedium)
+            }
+
+            Text(title)
+                .font(vocabSkin.typography.body.weight(.medium))
+
+            Spacer()
+
+            trailing
+        }
+        .foregroundStyle(vocabSkin.palette.primaryText)
+        .padding(.horizontal, vocabSkin.spacing.cardPadding)
+        .padding(.vertical, 13)
+        .frame(minHeight: 50)
+    }
+}
+
 extension SubscriptionBadgeTone {
     func color(in skin: VocabSkin) -> Color {
         switch self {
@@ -151,6 +194,76 @@ struct SettingsFeaturePanel<Content: View>: View {
                 RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
                     .stroke(borderTone, lineWidth: 1)
             )
+    }
+}
+
+struct SettingsSubscriptionInfoBlock: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let detail: String?
+    let titleFont: Font
+
+    init(title: String, detail: String? = nil, titleFont: Font) {
+        self.title = title
+        self.detail = detail
+        self.titleFont = titleFont
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+            Text(title)
+                .font(titleFont)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+
+            if let detail, !detail.isEmpty {
+                Text(detail)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+        }
+    }
+}
+
+struct SettingsSubscriptionFeatureItem: Identifiable {
+    let title: String
+    let description: String?
+    let icon: String
+    let tone: Color
+
+    var id: String { title }
+}
+
+struct SettingsSubscriptionFeatureList: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let borderTone: Color
+    let items: [SettingsSubscriptionFeatureItem]
+
+    var body: some View {
+        SettingsFeaturePanel(borderTone: borderTone) {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                ForEach(items) { item in
+                    HStack(alignment: .top, spacing: vocabSkin.spacing.controlGap) {
+                        Image(systemName: item.icon)
+                            .font(vocabSkin.typography.iconMedium)
+                            .foregroundStyle(item.tone)
+
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(item.title)
+                                .font(item.description == nil ? vocabSkin.typography.body : vocabSkin.typography.body.weight(.medium))
+                                .foregroundStyle(vocabSkin.palette.primaryText)
+
+                            if let description = item.description {
+                                Text(description)
+                                    .font(vocabSkin.typography.caption)
+                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            }
+                        }
+
+                        Spacer()
+                    }
+                }
+            }
+        }
     }
 }
 

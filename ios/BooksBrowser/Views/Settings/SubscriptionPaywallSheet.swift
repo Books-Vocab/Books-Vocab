@@ -14,6 +14,52 @@ struct SubscriptionPaywallSheet: View {
             .first!
     }
 
+    private var activeFeatures: [SettingsSubscriptionFeatureItem] {
+        [
+            .init(
+                title: "AI 翻譯與語境解釋".localized,
+                description: nil,
+                icon: "checkmark.circle.fill",
+                tone: vocabSkin.palette.success
+            ),
+            .init(
+                title: "知識庫同步與跨裝置狀態".localized,
+                description: nil,
+                icon: "checkmark.circle.fill",
+                tone: vocabSkin.palette.success
+            ),
+            .init(
+                title: "關聯圖與內建複習".localized,
+                description: nil,
+                icon: "checkmark.circle.fill",
+                tone: vocabSkin.palette.success
+            )
+        ]
+    }
+
+    private var paywallFeatures: [SettingsSubscriptionFeatureItem] {
+        [
+            .init(
+                title: "AI 翻譯與語境解釋".localized,
+                description: "閱讀時即時查詢翻譯與語境".localized,
+                icon: "sparkles",
+                tone: vocabSkin.palette.accent
+            ),
+            .init(
+                title: "知識庫同步與跨裝置狀態".localized,
+                description: "生詞與閱讀進度跨裝置同步".localized,
+                icon: "sparkles",
+                tone: vocabSkin.palette.accent
+            ),
+            .init(
+                title: "關聯圖與內建複習".localized,
+                description: "視覺化詞彙關聯與間隔複習".localized,
+                icon: "sparkles",
+                tone: vocabSkin.palette.accent
+            )
+        ]
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -63,28 +109,17 @@ struct SubscriptionPaywallSheet: View {
             .padding(.top, vocabSkin.spacing.inlineGap)
 
             // 功能已解鎖列表
-            SettingsFeaturePanel(borderTone: vocabSkin.palette.success.opacity(0.2)) {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                    subscriptionFeatureRow(
-                        title: "AI 翻譯與語境解釋".localized,
-                        icon: "checkmark.circle.fill",
-                        tone: vocabSkin.palette.success
-                    )
-                    subscriptionFeatureRow(
-                        title: "知識庫同步與跨裝置狀態".localized,
-                        icon: "checkmark.circle.fill",
-                        tone: vocabSkin.palette.success
-                    )
-                    subscriptionFeatureRow(
-                        title: "關聯圖與內建複習".localized,
-                        icon: "checkmark.circle.fill",
-                        tone: vocabSkin.palette.success
-                    )
-                }
-            }
+            SettingsSubscriptionFeatureList(
+                borderTone: vocabSkin.palette.success.opacity(0.2),
+                items: activeFeatures
+            )
 
             // 來源資訊
-            priceInfoBlock(titleFont: vocabSkin.typography.captionStrong)
+            SettingsSubscriptionInfoBlock(
+                title: priceLine,
+                detail: L10n.format("權限來源：%@", entitlementSourceLine),
+                titleFont: vocabSkin.typography.captionStrong
+            )
 
             // 管理按鈕
             VStack(spacing: vocabSkin.spacing.controlGap) {
@@ -154,31 +189,17 @@ struct SubscriptionPaywallSheet: View {
                 .lineSpacing(6)
 
             // 價格區塊（突出）
-            priceInfoBlock(titleFont: vocabSkin.typography.sectionTitle)
+            SettingsSubscriptionInfoBlock(
+                title: priceLine,
+                detail: L10n.format("權限來源：%@", entitlementSourceLine),
+                titleFont: vocabSkin.typography.sectionTitle
+            )
 
             // 功能列（行銷式 — 強調你「缺少」什麼）
-            SettingsFeaturePanel(borderTone: vocabSkin.palette.cardBorder) {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                    subscriptionFeatureRow(
-                        title: "AI 翻譯與語境解釋".localized,
-                        description: "閱讀時即時查詢翻譯與語境".localized,
-                        icon: "sparkles",
-                        tone: vocabSkin.palette.accent
-                    )
-                    subscriptionFeatureRow(
-                        title: "知識庫同步與跨裝置狀態".localized,
-                        description: "生詞與閱讀進度跨裝置同步".localized,
-                        icon: "sparkles",
-                        tone: vocabSkin.palette.accent
-                    )
-                    subscriptionFeatureRow(
-                        title: "關聯圖與內建複習".localized,
-                        description: "視覺化詞彙關聯與間隔複習".localized,
-                        icon: "sparkles",
-                        tone: vocabSkin.palette.accent
-                    )
-                }
-            }
+            SettingsSubscriptionFeatureList(
+                borderTone: vocabSkin.palette.cardBorder,
+                items: paywallFeatures
+            )
 
             // CTA 按鈕（強烈）
             VStack(spacing: vocabSkin.spacing.controlGap) {
@@ -229,43 +250,6 @@ struct SubscriptionPaywallSheet: View {
             legalLinksFooter
         }
         .padding(vocabSkin.spacing.sheetPaddingCompact)
-    }
-
-    // MARK: - Feature Rows
-
-    private func subscriptionFeatureRow(
-        title: String,
-        description: String? = nil,
-        icon: String,
-        tone: Color
-    ) -> some View {
-        HStack(alignment: .top, spacing: vocabSkin.spacing.controlGap) {
-            Image(systemName: icon)
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(tone)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(description == nil ? vocabSkin.typography.body : vocabSkin.typography.body.weight(.medium))
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                if let description {
-                    Text(description)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
-            }
-            Spacer()
-        }
-    }
-
-    private func priceInfoBlock(titleFont: Font) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-            Text(priceLine)
-                .font(titleFont)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-            Text(L10n.format("權限來源：%@", entitlementSourceLine))
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-        }
     }
 
     @ViewBuilder
