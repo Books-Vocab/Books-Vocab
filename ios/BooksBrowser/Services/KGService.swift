@@ -214,6 +214,7 @@ final class KGService: KGServing, LocalDataClearing {
     var isConnected: Bool = false
     var lastSyncDate: Date?
     var serverCardCount: Int = 0
+    var sessionExpiredReason: String?
 
     private var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -266,6 +267,7 @@ final class KGService: KGServing, LocalDataClearing {
 
             if httpResponse.statusCode == 401 {
                 AppLog.kg.error("Health check failed: 401 Unauthorized")
+                sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
                 await sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
                 isConnected = false
                 return

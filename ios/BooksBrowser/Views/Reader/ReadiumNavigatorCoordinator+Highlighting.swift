@@ -6,7 +6,7 @@ import os
 extension ReadiumNavigatorView.Coordinator {
     @objc func handleBlockerTap(_ gesture: UITapGestureRecognizer) {
         AppLog.reader.debug("Blocker tapped, clearing selection...")
-        DispatchQueue.main.async {
+        Task { @MainActor in
             self.parent.onWordDeselected()
         }
     }
