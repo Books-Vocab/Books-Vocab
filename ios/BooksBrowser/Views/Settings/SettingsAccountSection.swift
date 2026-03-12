@@ -163,17 +163,13 @@ struct SettingsAccountSection: View {
                                              : vocabSkin.palette.accent)
 
                         VStack(alignment: .leading, spacing: 2) {
-                            Text(subscription.isActive
-                                 ? "Pro 已啟用".localized
-                                 : subscription.planName)
+                            Text(subscriptionRowTitle(for: subscription))
                                 .font(vocabSkin.typography.body.weight(.medium))
                                 .foregroundStyle(vocabSkin.palette.primaryText)
-                            Text(subscription.isActive
-                                 ? subscription.detail
-                                 : "升級解鎖完整功能".localized)
+                            Text(subscriptionRowSubtitle(for: subscription))
                                 .font(vocabSkin.typography.caption)
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .lineLimit(1)
+                                .lineLimit(2)
                         }
 
                         Spacer()
@@ -210,15 +206,21 @@ struct SettingsAccountSection: View {
     }
 
     private func subscriptionBadge(_ sub: SettingsPresenterState.SubscriptionSection) -> some View {
-        let tone: Color = {
-            switch sub.badgeTone {
-            case .neutral: return vocabSkin.palette.secondaryText
-            case .accent: return vocabSkin.palette.accent
-            case .success: return vocabSkin.palette.success
-            }
-        }()
+        SettingsStatusBadge(text: sub.badgeText, tone: sub.badgeTone.color(in: vocabSkin))
+    }
 
-        return SettingsStatusBadge(text: sub.badgeText, tone: tone)
+    private func subscriptionRowTitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
+        subscription.isActive ? "Pro 已啟用".localized : subscription.planName
+    }
+
+    private func subscriptionRowSubtitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
+        if subscription.isActive {
+            return subscription.summary.isEmpty ? subscription.detail : subscription.summary
+        }
+        if let pricingUnavailableMessage = subscription.pricingUnavailableMessage, !pricingUnavailableMessage.isEmpty {
+            return pricingUnavailableMessage
+        }
+        return subscription.summary
     }
 }
 

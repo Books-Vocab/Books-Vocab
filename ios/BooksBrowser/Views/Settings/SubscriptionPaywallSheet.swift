@@ -63,28 +63,28 @@ struct SubscriptionPaywallSheet: View {
             .padding(.top, vocabSkin.spacing.inlineGap)
 
             // 功能已解鎖列表
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                unlockedFeatureRow("AI 翻譯與語境解釋".localized)
-                unlockedFeatureRow("知識庫同步與跨裝置狀態".localized)
-                unlockedFeatureRow("關聯圖與內建複習".localized)
+            SettingsFeaturePanel(borderTone: vocabSkin.palette.success.opacity(0.2)) {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                    subscriptionFeatureRow(
+                        title: "AI 翻譯與語境解釋".localized,
+                        icon: "checkmark.circle.fill",
+                        tone: vocabSkin.palette.success
+                    )
+                    subscriptionFeatureRow(
+                        title: "知識庫同步與跨裝置狀態".localized,
+                        icon: "checkmark.circle.fill",
+                        tone: vocabSkin.palette.success
+                    )
+                    subscriptionFeatureRow(
+                        title: "關聯圖與內建複習".localized,
+                        icon: "checkmark.circle.fill",
+                        tone: vocabSkin.palette.success
+                    )
+                }
             }
-            .padding(vocabSkin.spacing.cardPadding)
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .stroke(vocabSkin.palette.success.opacity(0.2), lineWidth: 1)
-            )
 
             // 來源資訊
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                Text(priceLine)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                Text(L10n.format("權限來源：%@", entitlementSourceLine))
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-            }
+            priceInfoBlock(titleFont: vocabSkin.typography.captionStrong)
 
             // 管理按鈕
             VStack(spacing: vocabSkin.spacing.controlGap) {
@@ -125,12 +125,7 @@ struct SubscriptionPaywallSheet: View {
                 .disabled(subscriptionManager.isLoading)
             }
 
-            if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
-                VocabStateMessageCard(
-                    title: purchaseStatusMessage,
-                    systemImage: "checkmark.circle"
-                )
-            }
+            purchaseStatusCard
 
             Text(footerNote)
                 .font(vocabSkin.typography.caption)
@@ -159,28 +154,31 @@ struct SubscriptionPaywallSheet: View {
                 .lineSpacing(6)
 
             // 價格區塊（突出）
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                Text(priceLine)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                Text(L10n.format("權限來源：%@", entitlementSourceLine))
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-            }
+            priceInfoBlock(titleFont: vocabSkin.typography.sectionTitle)
 
             // 功能列（行銷式 — 強調你「缺少」什麼）
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
-                lockedFeatureRow("AI 翻譯與語境解釋".localized, description: "閱讀時即時查詢翻譯與語境".localized)
-                lockedFeatureRow("知識庫同步與跨裝置狀態".localized, description: "生詞與閱讀進度跨裝置同步".localized)
-                lockedFeatureRow("關聯圖與內建複習".localized, description: "視覺化詞彙關聯與間隔複習".localized)
+            SettingsFeaturePanel(borderTone: vocabSkin.palette.cardBorder) {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.rowContentSpacing) {
+                    subscriptionFeatureRow(
+                        title: "AI 翻譯與語境解釋".localized,
+                        description: "閱讀時即時查詢翻譯與語境".localized,
+                        icon: "sparkles",
+                        tone: vocabSkin.palette.accent
+                    )
+                    subscriptionFeatureRow(
+                        title: "知識庫同步與跨裝置狀態".localized,
+                        description: "生詞與閱讀進度跨裝置同步".localized,
+                        icon: "sparkles",
+                        tone: vocabSkin.palette.accent
+                    )
+                    subscriptionFeatureRow(
+                        title: "關聯圖與內建複習".localized,
+                        description: "視覺化詞彙關聯與間隔複習".localized,
+                        icon: "sparkles",
+                        tone: vocabSkin.palette.accent
+                    )
+                }
             }
-            .padding(vocabSkin.spacing.cardPadding)
-            .background(vocabSkin.palette.cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-            )
 
             // CTA 按鈕（強烈）
             VStack(spacing: vocabSkin.spacing.controlGap) {
@@ -213,28 +211,10 @@ struct SubscriptionPaywallSheet: View {
                 .disabled(subscriptionManager.isLoading)
             }
 
-            if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
-                VocabStateMessageCard(
-                    title: purchaseStatusMessage,
-                    systemImage: "checkmark.circle"
-                )
-            }
+            purchaseStatusCard
 
             if subscriptionManager.proProduct == nil, subscriptionManager.lastError != nil {
-                VocabStateMessageCard(
-                    title: "訂閱方案載入中".localized,
-                    systemImage: "arrow.clockwise.circle",
-                    description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。".localized
-                ) {
-                    Button {
-                        Task { await subscriptionManager.loadProducts() }
-                    } label: {
-                        Text("重新載入".localized)
-                            .font(vocabSkin.typography.caption)
-                    }
-                    .buttonStyle(.vocabAction(.neutral))
-                    .disabled(subscriptionManager.isLoading)
-                }
+                loadProductsRetryCard
             }
 
             Text(footerNote)
@@ -253,32 +233,65 @@ struct SubscriptionPaywallSheet: View {
 
     // MARK: - Feature Rows
 
-    private func unlockedFeatureRow(_ text: String) -> some View {
-        HStack(spacing: vocabSkin.spacing.controlGap) {
-            Image(systemName: "checkmark.circle.fill")
+    private func subscriptionFeatureRow(
+        title: String,
+        description: String? = nil,
+        icon: String,
+        tone: Color
+    ) -> some View {
+        HStack(alignment: .top, spacing: vocabSkin.spacing.controlGap) {
+            Image(systemName: icon)
                 .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(vocabSkin.palette.success)
-            Text(text)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .foregroundStyle(tone)
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(description == nil ? vocabSkin.typography.body : vocabSkin.typography.body.weight(.medium))
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                if let description {
+                    Text(description)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
+            }
             Spacer()
         }
     }
 
-    private func lockedFeatureRow(_ title: String, description: String) -> some View {
-        HStack(alignment: .top, spacing: vocabSkin.spacing.controlGap) {
-            Image(systemName: "sparkles")
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(vocabSkin.palette.accent)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(vocabSkin.typography.body.weight(.medium))
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                Text(description)
+    private func priceInfoBlock(titleFont: Font) -> some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+            Text(priceLine)
+                .font(titleFont)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+            Text(L10n.format("權限來源：%@", entitlementSourceLine))
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+    }
+
+    @ViewBuilder
+    private var purchaseStatusCard: some View {
+        if let purchaseStatusMessage = subscriptionManager.purchaseStatusMessage {
+            VocabStateMessageCard(
+                title: purchaseStatusMessage,
+                systemImage: "checkmark.circle"
+            )
+        }
+    }
+
+    private var loadProductsRetryCard: some View {
+        VocabStateMessageCard(
+            title: "訂閱方案載入中".localized,
+            systemImage: "arrow.clockwise.circle",
+            description: "App Store 尚未回傳訂閱資訊，請稍候或點下方重試。".localized
+        ) {
+            Button {
+                Task { await subscriptionManager.loadProducts() }
+            } label: {
+                Text("重新載入".localized)
                     .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
             }
-            Spacer()
+            .buttonStyle(.vocabAction(.neutral))
+            .disabled(subscriptionManager.isLoading)
         }
     }
 
