@@ -84,17 +84,17 @@ struct SettingsView: View {
                 ? .init(
                     isActive: pro.is_active,
                     planName: pro.plan_name ?? "Books & Vocab Pro",
-                    badgeText: subscriptionBadgeText(for: pro),
-                    badgeTone: subscriptionBadgeTone(for: pro),
-                    summary: subscriptionSummary(for: pro),
-                    detail: subscriptionDetail(for: pro),
-                    sourceLabel: subscriptionSourceLabel(for: pro),
-                    managementNote: subscriptionManagementNote(for: pro),
-                    pricingUnavailableMessage: subscriptionPricingUnavailableMessage(for: pro),
-                    restoreLabel: restoreLabel(for: pro),
-                    restoreDescription: restoreDescription(for: pro),
-                    isRestoreAvailable: restoreAvailable(for: pro),
-                    ctaTitle: subscriptionCTA(for: pro),
+                    badgeText: SubscriptionPresentation.badgeText(for: pro),
+                    badgeTone: SubscriptionPresentation.badgeTone(for: pro),
+                    summary: SubscriptionPresentation.summary(for: pro),
+                    detail: SubscriptionPresentation.detail(for: pro, proProduct: subscriptionManager.proProduct),
+                    sourceLabel: SubscriptionPresentation.sourceLabel(for: pro),
+                    managementNote: SubscriptionPresentation.managementNote(for: pro),
+                    pricingUnavailableMessage: SubscriptionPresentation.pricingUnavailableMessage(for: pro, hasStorePrice: subscriptionManager.proProduct?.displayPrice.isEmpty == false),
+                    restoreLabel: SubscriptionPresentation.restoreLabel(for: pro),
+                    restoreDescription: SubscriptionPresentation.restoreDescription(for: pro),
+                    isRestoreAvailable: SubscriptionPresentation.restoreAvailable(for: pro),
+                    ctaTitle: SubscriptionPresentation.ctaTitle(for: pro),
                     isRefreshing: subscriptionManager.isLoading
                 )
                 : nil,
@@ -286,140 +286,6 @@ struct SettingsView: View {
 #else
         nil
 #endif
-    }
-
-    private func subscriptionBadgeText(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return "ADMIN"
-        }
-        if status.isCancelledButActive {
-            return "EXPIRING"
-        }
-        switch status.status {
-        case "active":
-            return "ACTIVE"
-        case "trial":
-            return "TRIAL"
-        case "grace_period":
-            return "GRACE"
-        default:
-            return "FREE"
-        }
-    }
-
-    private func subscriptionBadgeTone(for status: KGSubscriptionStatus) -> SubscriptionBadgeTone {
-        if status.source == "admin", status.is_active {
-            return .success
-        }
-        if status.isCancelledButActive {
-            return .accent
-        }
-        switch status.status {
-        case "active":
-            return .success
-        case "trial", "grace_period":
-            return .accent
-        default:
-            return .neutral
-        }
-    }
-
-    private func subscriptionSummary(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("你目前已由管理員授權為 Pro，可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
-        }
-        if status.isCancelledButActive {
-            return L10n.format("訂閱已取消，將於 %@ 到期。到期前仍可使用所有 Pro 功能。", status.formattedExpiryDate)
-        }
-        if status.status == "grace_period" {
-            return L10n.string("訂閱目前在寬限期，請確認付款方式以維持存取。")
-        }
-        if status.is_trial {
-            return L10n.string("免費試用中，期間可使用 AI 翻譯、雲端同步、知識圖譜與內建複習。")
-        }
-        if status.is_active {
-            return L10n.string("你目前已解鎖 AI 翻譯、雲端同步、知識圖譜與第三方整合。")
-        }
-        return L10n.string("升級後可使用 AI 翻譯、語境解釋、雲端同步、知識圖譜與內建複習。")
-    }
-
-    private func subscriptionDetail(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            if let expiresAt = status.expires_at, !expiresAt.isEmpty {
-                return L10n.format("來源：管理員授權 · 有效至 %@", expiresAt)
-            }
-            return L10n.string("來源：管理員授權")
-        }
-        if let price = subscriptionManager.proProduct?.displayPrice, !price.isEmpty, !status.is_active {
-            let days = status.trial_days ?? 7
-            return L10n.format("%@ / month · %@ 天免費試用", price, "\(days)")
-        }
-        if let price = status.price_display, !price.isEmpty {
-            if let expiresAt = status.expires_at, !expiresAt.isEmpty {
-                return L10n.format("%@ · 到期 %@", price, expiresAt)
-            }
-            return price
-        }
-        if let days = status.trial_days, !status.is_active {
-            return L10n.format("預設提供 %@ 天免費試用", "\(days)")
-        }
-        return L10n.string("價格與試用長度會以 App Store 顯示為準")
-    }
-
-    private func subscriptionCTA(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("查看權限")
-        }
-        return status.is_active ? L10n.string("管理訂閱") : L10n.string("開始免費試用")
-    }
-
-    private func subscriptionSourceLabel(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("管理員授權")
-        }
-        return L10n.string("App Store 訂閱")
-    }
-
-    private func subscriptionManagementNote(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("如需延長或調整，請聯絡管理員。")
-        }
-        if status.is_active {
-            return L10n.string("可在訂閱頁重新同步或恢復購買，確認訂閱狀態。")
-        }
-        return L10n.string("價格、免費試用與續訂都以 App Store 顯示為準。")
-    }
-
-    private func subscriptionPricingUnavailableMessage(for status: KGSubscriptionStatus) -> String? {
-        if status.source == "admin", status.is_active {
-            return nil
-        }
-        let hasStorePrice = subscriptionManager.proProduct?.displayPrice.isEmpty == false
-        let hasRemotePrice = status.price_display?.isEmpty == false
-        guard !hasStorePrice, !hasRemotePrice else { return nil }
-
-        return L10n.string("App Store 價格載入中，稍後會自動更新。")
-    }
-
-    private func restoreLabel(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("恢復購買不可用")
-        }
-        return L10n.string("可恢復購買")
-    }
-
-    private func restoreDescription(for status: KGSubscriptionStatus) -> String {
-        if status.source == "admin", status.is_active {
-            return L10n.string("這個帳號的 Pro 來自管理員授權；若需延長或撤銷，請由管理員處理。")
-        }
-        if status.is_active {
-            return L10n.string("若裝置間狀態不同，可在訂閱頁使用恢復購買重新對齊 App Store。")
-        }
-        return L10n.string("若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。")
-    }
-
-    private func restoreAvailable(for status: KGSubscriptionStatus) -> Bool {
-        !(status.source == "admin" && status.is_active)
     }
 
 }
