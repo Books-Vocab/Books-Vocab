@@ -42,17 +42,17 @@ struct TodayReviewPresenter: View {
     @Environment(\.speechService) private var speechService
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
-    @State private var swipeOffset: CGFloat = 0
-    @State private var containerWidth: CGFloat = 393
-    @State private var dismissPhase: DismissPhase = .idle
-    @State private var suppressTransition = false
-    @State private var flingHapticTrigger = 0
-    @State private var stackRotations: [Double] = [
+    @State var swipeOffset: CGFloat = 0
+    @State var containerWidth: CGFloat = 393
+    @State var dismissPhase: DismissPhase = .idle
+    @State var suppressTransition = false
+    @State var flingHapticTrigger = 0
+    @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
     ]
 
-    private enum DismissPhase {
+    enum DismissPhase {
         case idle
         case animatingOut
     }
@@ -123,59 +123,9 @@ struct TodayReviewPresenter: View {
         }
     }
 
-    // MARK: - Top Bar
+    // MARK: - Card
 
-    private var topBar: some View {
-        HStack(alignment: .center, spacing: 12) {
-            Text(state.progressText)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.mutedFill)
-                )
-
-            Button {
-                guard isCardInteractive else { return }
-                onShuffle()
-            } label: {
-                HStack(spacing: 6) {
-                    Image(systemName: "shuffle")
-                        .font(vocabSkin.typography.iconTiny)
-                    Text("洗牌".localized)
-                        .font(vocabSkin.typography.captionStrong)
-                }
-                .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
-                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.mutedFill)
-                )
-            }
-            .buttonStyle(.plain)
-            .disabled(!state.canShuffle)
-
-            Spacer()
-
-            VocabChromeIconButton(
-                systemImage: state.isAutoPlaying ? "play.circle.fill" : "play.circle",
-                tone: state.isAutoPlaying ? vocabSkin.palette.accent : nil,
-                action: onToggleAutoPlay
-            )
-
-            VocabChromeIconButton(systemImage: "xmark", action: onClose)
-        }
-        .padding(.horizontal, vocabSkin.metrics.reviewTopBarHorizontalInset)
-        .padding(.top, vocabSkin.metrics.reviewTopBarTopInset)
-        .padding(.bottom, vocabSkin.metrics.reviewTopBarBottomInset)
-    }
-
-    // MARK: - Card + Deck
-
-    private func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+    func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
         let card = currentCard.card
         let cardIdentity = card.word + "-" + String(card.dateAdded.timeIntervalSinceReferenceDate)
 
@@ -210,8 +160,6 @@ struct TodayReviewPresenter: View {
                 }
             }
             .id(cardIdentity)
-            // fling 時牌堆已同步升頂完畢，用 .identity 跳過 transition；
-            // prev/next 導航仍走 scale+offset 升頂動畫
             .transition(suppressTransition ? .identity : .asymmetric(
                 insertion: .scale(scale: TodayReviewMetrics.promoteScale)
                     .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
@@ -223,294 +171,13 @@ struct TodayReviewPresenter: View {
                 anchor: .bottom
             )
             .opacity(cardOpacity)
-            // 不用 .animation() modifier — 所有動畫由 withAnimation 顯式控制
             .simultaneousGesture(swipeDragGesture)
-        }
-    }
-
-    private func cardStackLayers() -> some View {
-        ZStack(alignment: .top) {
-            if state.remainingCount >= 2 { stackCard(depth: 2) }
-            if state.remainingCount >= 1 { stackCard(depth: 1) }
-        }
-    }
-
-    private func stackCard(depth: Int) -> some View {
-        let progress = dismissProgress
-        let effectiveDepth = CGFloat(depth) * (1.0 - progress)
-        let scale: CGFloat = 1.0 - effectiveDepth * 0.025
-        let yOff: CGFloat = effectiveDepth * 5
-        let rotation = stackRotations[depth - 1] * Double(1.0 - progress)
-        let baseOpacity = depth == 1 ? TodayReviewMetrics.cardBorderActiveOpacity : 0.35
-        let targetOpacity: Double = depth == 1 ? 1.0 : TodayReviewMetrics.cardBorderActiveOpacity
-        let opacity = baseOpacity + (targetOpacity - baseOpacity) * Double(progress)
-
-        return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
-                )
-                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
-
-            if depth == 1, let nextCard = state.nextCard {
-                reviewCardFront(nextCard.card)
-                    .allowsHitTesting(false)
-            }
-        }
-        .frame(height: frontCardHeight)
-        .scaleEffect(scale)
-        .offset(y: yOff)
-        .rotationEffect(.degrees(rotation), anchor: .center)
-        .opacity(opacity)
-    }
-
-    // MARK: - Swipe Gesture + Fling Animation
-
-    private var screenWidth: CGFloat { containerWidth }
-
-    private var cardOpacity: Double {
-        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
-    }
-
-    /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
-    private var dismissProgress: CGFloat {
-        min(abs(swipeOffset) / 200, 1.0)
-    }
-
-    private var swipeEnabled: Bool {
-        state.revealStage.showsAnswer && dismissPhase == .idle && !state.isAutoPlaying
-    }
-
-    private var swipeDragGesture: some Gesture {
-        DragGesture(minimumDistance: 15, coordinateSpace: .local)
-            .onChanged { value in
-                guard swipeEnabled else { return }
-                guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                withAnimation(AppMotion.swipeTrackingSpring) {
-                    swipeOffset = value.translation.width
-                }
-            }
-            .onEnded { value in
-                guard swipeEnabled else { return }
-                let threshold = vocabSkin.metrics.reviewSwipeThreshold
-                if value.translation.width < -threshold {
-                    flingCard(direction: -1, callback: onForgot)
-                } else if value.translation.width > threshold {
-                    flingCard(direction: 1, callback: onRemembered)
-                } else {
-                    withAnimation(AppMotion.swipeSnapBackSpring) {
-                        swipeOffset = 0
-                    }
-                }
-            }
-    }
-
-    /// 統一的甩出動畫 — swipe 和按鈕共用
-    ///
-    /// 牌堆升頂不再是獨立階段 — 透過 dismissProgress 與甩出同步進行。
-    /// 甩出動畫一律同步啟動（不經 Task 調度），消除首幀凍結。
-    private func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
-        guard dismissPhase == .idle else { return }
-        dismissPhase = .animatingOut
-        flingHapticTrigger += 1
-
-        // 同步啟動甩出 — swipe 與按鈕統一路徑
-        withAnimation(AppMotion.swipeFlingSpring) {
-            swipeOffset = direction * screenWidth * 1.3
-        }
-
-        Task { @MainActor in
-            // stiffness=500: ~50ms 卡片已飛出螢幕、牌堆已升頂
-            try? await Task.sleep(for: .milliseconds(60))
-
-            // 瞬間換卡
-            var noAnim = Transaction(animation: nil)
-            noAnim.disablesAnimations = true
-            withTransaction(noAnim) {
-                suppressTransition = true
-                swipeOffset = 0
-                stackRotations = [.random(in: -1...1), .random(in: -1...1)]
-                callback()
-            }
-            suppressTransition = false
-
-            dismissPhase = .idle
-        }
-    }
-
-    // MARK: - Swipe ↔ 按鈕連動
-
-    private var swipeIntensity: Double {
-        guard swipeEnabled else { return 0 }
-        return max(-1, min(1, Double(swipeOffset / vocabSkin.metrics.reviewSwipeThreshold)))
-    }
-
-    private var forgotButtonScale: CGFloat   { 1.0 + CGFloat(max(-swipeIntensity, 0)) * 0.12 }
-    private var forgotButtonOffset: CGFloat  { CGFloat(max(-swipeIntensity, 0)) * -4 }
-    private var forgotButtonOpacity: Double  { 1.0 - max(swipeIntensity, 0) * 0.45 }
-    private var forgotButtonGlow: Double     { max(-swipeIntensity, 0) }
-
-    private var rememberedButtonScale: CGFloat   { 1.0 + CGFloat(max(swipeIntensity, 0)) * 0.12 }
-    private var rememberedButtonOffset: CGFloat  { CGFloat(max(swipeIntensity, 0)) * -4 }
-    private var rememberedButtonOpacity: Double  { 1.0 - max(-swipeIntensity, 0) * 0.45 }
-    private var rememberedButtonGlow: Double     { max(swipeIntensity, 0) }
-
-    // MARK: - Bottom Toolbar
-
-    private var bottomToolbar: some View {
-        VStack(spacing: 10) {
-            if let msg = state.persistenceErrorMessage {
-                VocabStateMessageCard(
-                    title: "本機儲存失敗".localized,
-                    systemImage: "externaldrive.badge.exclamationmark",
-                    description: msg
-                )
-                .transition(.overlayFade)
-            }
-
-            if state.isAutoPlaying {
-                autoplayControls
-            } else if dynamicTypeSize < .accessibility1 {
-                HStack(spacing: 0) {
-                    navButtons
-                    Spacer()
-                    feedbackButtons
-                }
-            } else {
-                VStack(spacing: vocabSkin.spacing.inlineGap) {
-                    feedbackButtons.frame(maxWidth: .infinity)
-                    navButtons
-                }
-            }
-        }
-        .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
-        .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
-        .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
-        .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
-        .animation(AppMotion.standardSpring, value: state.isAutoPlaying)
-        .background(
-            Rectangle()
-                .fill(vocabSkin.palette.pageBackground)
-                .shadow(
-                    color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.reviewToolbarShadowOpacity),
-                    radius: vocabSkin.metrics.reviewToolbarShadowRadius,
-                    y: vocabSkin.metrics.reviewToolbarShadowY
-                )
-                .ignoresSafeArea(edges: .bottom)
-        )
-    }
-
-    // MARK: - Autoplay Controls
-
-    private var autoplayControls: some View {
-        HStack(spacing: vocabSkin.metrics.sectionHeaderGap * 2) {
-            Button {
-                guard isCardInteractive else { return }
-                onPrevious()
-            } label: {
-                Image(systemName: "backward.end.fill")
-                    .font(AppFonts.h2())
-            }
-            .disabled(!state.canGoPrevious)
-
-            Button(action: onToggleAutoPlayPause) {
-                Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
-                    .font(AppFonts.h1())
-                    .frame(width: 52, height: 52)
-                    .background(
-                        Circle()
-                            .fill(vocabSkin.palette.mutedFill)
-                    )
-            }
-
-            Button {
-                guard isCardInteractive else { return }
-                onNext()
-            } label: {
-                Image(systemName: "forward.end.fill")
-                    .font(AppFonts.h2())
-            }
-            .disabled(!state.canGoNext)
-        }
-        .foregroundStyle(vocabSkin.palette.primaryText)
-        .frame(maxWidth: .infinity)
-    }
-
-    private var navButtons: some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
-            Button { guard isCardInteractive else { return }; onPrevious() } label: {
-                Image(systemName: "chevron.left").font(vocabSkin.typography.iconNavigation)
-            }
-            .disabled(!state.canGoPrevious)
-
-            Button { guard isCardInteractive else { return }; onNext() } label: {
-                Image(systemName: "chevron.right").font(vocabSkin.typography.iconNavigation)
-            }
-            .disabled(!state.canGoNext)
-        }
-        .foregroundStyle(vocabSkin.palette.secondaryText)
-    }
-
-    private var feedbackButtons: some View {
-        let spring = AppMotion.feedbackButtonSpring
-        let buttonsDisabled = !state.revealStage.showsAnswer
-
-        return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-            Button { flingCard(direction: -1, callback: onForgot) } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "xmark")
-                    Text("忘記".localized)
-                    if state.forgotCount > 0 {
-                        Text("·\(state.forgotCount)").font(vocabSkin.typography.monoLabel)
-                    }
-                }
-                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-            }
-            .buttonStyle(.vocabAction(.destructive))
-            .disabled(buttonsDisabled)
-            .overlay(alignment: .center) {
-                if forgotButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.destructive.opacity(forgotButtonGlow * 0.10))
-                        .allowsHitTesting(false)
-                }
-            }
-            .scaleEffect(forgotButtonScale)
-            .offset(y: forgotButtonOffset)
-            .opacity(forgotButtonOpacity)
-            .animation(spring, value: swipeIntensity)
-
-            Button { flingCard(direction: 1, callback: onRemembered) } label: {
-                HStack(spacing: 4) {
-                    Image(systemName: "checkmark")
-                    Text("記得".localized)
-                    if state.rememberedCount > 0 {
-                        Text("·\(state.rememberedCount)").font(vocabSkin.typography.monoLabel)
-                    }
-                }
-                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
-            }
-            .buttonStyle(.vocabAction(.success))
-            .disabled(buttonsDisabled)
-            .overlay(alignment: .center) {
-                if rememberedButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.success.opacity(rememberedButtonGlow * 0.10))
-                        .allowsHitTesting(false)
-                }
-            }
-            .scaleEffect(rememberedButtonScale)
-            .offset(y: rememberedButtonOffset)
-            .opacity(rememberedButtonOpacity)
-            .animation(spring, value: swipeIntensity)
         }
     }
 
     // MARK: - Completion / Expand Zone
 
-    private var completionState: some View {
+    var completionState: some View {
         VStack(spacing: vocabSkin.metrics.cardBlockPadding) {
             Spacer()
             VocabEmptyStateContent(
@@ -525,7 +192,7 @@ struct TodayReviewPresenter: View {
         .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
     }
 
-    private func revealExpandZone(
+    func revealExpandZone(
         title: String,
         minHeight: CGFloat,
         action: @escaping () -> Void
