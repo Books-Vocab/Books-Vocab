@@ -72,6 +72,9 @@ class GraphStore:
         data = [lk.model_dump(mode="json") for lk in self._links.values()]
         tmp_path = self.links_path.with_suffix(".json.tmp")
         tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        if self.links_path.exists():
+            bak_path = self.links_path.with_suffix(".json.bak")
+            self.links_path.replace(bak_path)
         tmp_path.replace(self.links_path)
 
     def _save_candidates(self) -> None:
@@ -79,6 +82,9 @@ class GraphStore:
         data = [c.model_dump(mode="json") for c in self._candidates]
         tmp_path = self.candidates_path.with_suffix(".json.tmp")
         tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+        if self.candidates_path.exists():
+            bak_path = self.candidates_path.with_suffix(".json.bak")
+            self.candidates_path.replace(bak_path)
         tmp_path.replace(self.candidates_path)
 
     # --- Links ---
