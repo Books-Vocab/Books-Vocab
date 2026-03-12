@@ -173,9 +173,10 @@ async def _step_external_sync(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[[Any], Any],
     logger: logging.Logger,
+    jwt_secret: str = "",
 ) -> None:
     logger.info("[%s] Step 4: Optional External Sync", uid)
-    mochi_key = resolve_mochi_api_key_from_config(user["config"])
+    mochi_key = resolve_mochi_api_key_from_config(user["config"], jwt_secret)
     if not mochi_key:
         logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
         return
@@ -211,6 +212,7 @@ async def run_pipeline_background(
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     link_kind_enum: Any,
+    jwt_secret: str = "",
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -247,7 +249,7 @@ async def run_pipeline_background(
                 logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
 
             try:
-                await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger)
+                await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret)
             except Exception as exc:
                 logger.error("[%s] Step 4 (Optional External Sync) failed: %s", uid, exc, exc_info=True)
 
