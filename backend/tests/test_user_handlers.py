@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 
 from kg.api_models import (
     MochiIntegrationConfig,
+    TranslationLanguageConfig,
     UserConfigRequest,
     UserIntegrationsConfig,
 )
@@ -60,6 +61,40 @@ class TestMergeUserConfig:
         )
         _merge_user_config(config, req)
         assert config["integrations"]["mochi"]["api_key"] == "mk_keep"
+
+    def test_translation_patch_preserves_existing_integrations(self):
+        config = {"integrations": {"mochi": {"api_key": "mk_keep"}}}
+        req = UserConfigRequest(
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ja")
+        )
+
+        _merge_user_config(config, req)
+
+        assert config["integrations"]["mochi"]["api_key"] == "mk_keep"
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
+
+    def test_integration_patch_preserves_existing_translation(self):
+        config = {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}
+        req = self._req("mk_new")
+
+        _merge_user_config(config, req)
+
+        assert config["integrations"]["mochi"]["api_key"] == "mk_new"
+        assert config["translation"] == {"source_lang": "en", "target_lang": "zh-Hant"}
+
+    def test_translation_and_integration_patch_can_merge_together(self):
+        config = {}
+        req = UserConfigRequest(
+            integrations=UserIntegrationsConfig(
+                mochi=MochiIntegrationConfig(api_key="mk_combo")
+            ),
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ko"),
+        )
+
+        _merge_user_config(config, req)
+
+        assert config["integrations"]["mochi"]["api_key"] == "mk_combo"
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ko"}
 
 
 # ===========================================================================
