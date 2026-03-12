@@ -35,6 +35,7 @@ struct KGVocabPresenter: View {
     let onRowTapped: (UUID) -> Void
     let onDeleteTapped: (UUID) -> Void
     let onArchiveTapped: (UUID) -> Void
+    var onRefresh: (() async -> Void)?
 
     @SwiftUI.State private var activeSwipeID: UUID?
 
@@ -119,6 +120,9 @@ struct KGVocabPresenter: View {
             .padding(.bottom, vocabSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
+        .refreshable { [onRefresh] in
+            await onRefresh?()
+        }
         .animation(AppMotion.standardSpring, value: state.banner == nil)
     }
 }
@@ -227,7 +231,8 @@ private enum KGVocabPresenterPreviewData {
             onRetryBanner: {},
             onRowTapped: { _ in },
             onDeleteTapped: { _ in },
-            onArchiveTapped: { _ in }
+            onArchiveTapped: { _ in },
+            onRefresh: {}
         )
     }
 }
@@ -242,7 +247,8 @@ private enum KGVocabPresenterPreviewData {
             onRetryBanner: nil,
             onRowTapped: { _ in },
             onDeleteTapped: { _ in },
-            onArchiveTapped: { _ in }
+            onArchiveTapped: { _ in },
+            onRefresh: {}
         )
     }
 }
