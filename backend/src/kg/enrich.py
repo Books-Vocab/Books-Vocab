@@ -11,17 +11,7 @@ from concurrent.futures import ThreadPoolExecutor
 from openai import OpenAI
 
 from .cards import Card
-
-_ENRICH_LANG_NAMES = {
-    "en": "English",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "zh-Hant": "Traditional Chinese",
-    "zh-Hans": "Simplified Chinese",
-}
+from .languages import LANGUAGE_NAMES
 
 # Legacy constant kept for backward compatibility
 SYSTEM_PROMPT = """你是英語教學專家。針對每個英文詞彙，提供：
@@ -35,7 +25,7 @@ SYSTEM_PROMPT = """你是英語教學專家。針對每個英文詞彙，提供�
 
 
 def build_enrich_system_prompt(target_lang: str = "zh-Hant") -> str:
-    tgt_name = _ENRICH_LANG_NAMES.get(target_lang, "Traditional Chinese")
+    tgt_name = LANGUAGE_NAMES.get(target_lang, "Traditional Chinese")
     return f"""You are a language teaching expert. For each vocabulary word, provide:
 1. pos: POS abbreviation in English (n. / v. / adj. / adv. / phr. / conj.)
 2. note: A concise teaching note in {tgt_name} (80 characters or fewer), including:
