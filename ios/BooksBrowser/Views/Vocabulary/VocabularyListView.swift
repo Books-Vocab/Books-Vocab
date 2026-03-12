@@ -202,7 +202,7 @@ struct VocabularyListView: View {
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
         } else if selectedTab == 2 {
-            KnowledgeGraphView()
+            KnowledgeGraphView(allEntries: allEntries)
         } else {
             StatsPresenter()
         }
