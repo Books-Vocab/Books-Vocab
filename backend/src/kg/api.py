@@ -94,6 +94,7 @@ from .api_models import (
     AuthVerifyResponse,
     CardLinkSummaryResponse,
     CardResponse,
+    DailyReviewStatsPushRequest,
     DeleteAccountResponse,
     EntitlementsResponse,
     ExplainResponse,
@@ -154,6 +155,7 @@ from .auth_service import create_jwt_token, resolve_and_link_user
 from .settings import KGSettings, load_settings
 from .service_factories import (
     create_card_store,
+    create_daily_stats_store,
     create_embedding_store,
     create_gemini_client,
     create_graph_store,
@@ -185,6 +187,8 @@ from .vocab_handlers import (
     get_graph_links_response,
     list_vocab_response,
     lookup_word_response,
+    pull_daily_stats_response,
+    push_daily_stats_response,
     push_review_response,
 )
 
@@ -344,6 +348,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         get_graph_links=get_graph_links,
         add_vocab=add_vocab,
         push_review=push_review,
+        push_daily_stats=push_daily_stats,
+        pull_daily_stats=pull_daily_stats,
         run_pipeline=run_pipeline,
         translate_quick=translate_quick,
         translate_phrase=translate_phrase,
@@ -399,6 +405,10 @@ def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(securit
 
 def _card_store(user_dir: Path):
     return create_card_store(user_dir)
+
+
+def _daily_stats_store(user_dir: Path):
+    return create_daily_stats_store(user_dir)
 
 
 def _graph_store(user_dir: Path) -> GraphStore:
@@ -744,6 +754,33 @@ def push_review(req: ReviewStatePushRequest, user: dict = Depends(get_current_us
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
         logger=logger,
+    )
+
+
+# ---------------------------------------------------------------------------
+# PATCH /api/vocab/daily-stats  — Push daily review stats from client
+# ---------------------------------------------------------------------------
+def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_current_user)):
+    """Merge client daily review stats into server."""
+    return push_daily_stats_response(
+        req,
+        user,
+        require_pro_access=_require_pro_access,
+        daily_stats_store_factory=_daily_stats_store,
+        logger=logger,
+    )
+
+
+# ---------------------------------------------------------------------------
+# GET /api/vocab/daily-stats  — Pull daily review stats
+# ---------------------------------------------------------------------------
+def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_user)):
+    """Return daily review stats, optionally filtered by since day_key."""
+    return pull_daily_stats_response(
+        since,
+        user,
+        require_pro_access=_require_pro_access,
+        daily_stats_store_factory=_daily_stats_store,
     )
 
 
