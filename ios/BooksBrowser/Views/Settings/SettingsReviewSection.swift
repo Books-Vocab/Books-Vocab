@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsReviewSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
-    @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     var body: some View {
         ScrollView {
@@ -237,7 +237,7 @@ private extension Double {
             SettingsReviewSection()
         }
     }
-    .environmentObject(ReviewSettingsStore(previewSettings: ReviewSettings(
+    .environment(\.reviewSettingsStore, ReviewSettingsStore(previewSettings: ReviewSettings(
         mode: .relaxed,
         customInitialIntervalHours: 12,
         customRememberedMultiplier: 1.9,
@@ -253,7 +253,7 @@ private extension Double {
             SettingsReviewSection()
         }
     }
-    .environmentObject(ReviewSettingsStore(previewSettings: ReviewSettings(
+    .environment(\.reviewSettingsStore, ReviewSettingsStore(previewSettings: ReviewSettings(
         mode: .intensive,
         customInitialIntervalHours: 12,
         customRememberedMultiplier: 1.9,
@@ -269,7 +269,7 @@ private extension Double {
             SettingsReviewSection()
         }
     }
-    .environmentObject(ReviewSettingsStore(previewSettings: ReviewSettings(
+    .environment(\.reviewSettingsStore, ReviewSettingsStore(previewSettings: ReviewSettings(
         mode: .custom,
         customInitialIntervalHours: 12,
         customRememberedMultiplier: 1.9,
