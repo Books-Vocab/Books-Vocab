@@ -84,31 +84,49 @@ struct BooksBrowserApp: App {
         // Migrate EPUBs to iCloud Documents
         let localEpubsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("EPUBs")
-        if let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
-            .appendingPathComponent("Documents/EPUBs") {
-            do {
-                try FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
-            } catch {
-                AppLog.app.error("iCloud EPUBs directory creation failed: \(error.localizedDescription)")
-            }
-            if let files = try? FileManager.default.contentsOfDirectory(
-                at: localEpubsDir,
-                includingPropertiesForKeys: nil
-            ) {
-                for file in files where file.pathExtension == "epub" {
-                    let dest = iCloudURL.appendingPathComponent(file.lastPathComponent)
-                    if !FileManager.default.fileExists(atPath: dest.path) {
-                        do {
-                            try FileManager.default.copyItem(at: file, to: dest)
-                        } catch {
-                            AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
-                        }
-                    }
+        guard let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
+            .appendingPathComponent("Documents/EPUBs") else {
+            // iCloud not available — skip migration, retry on next launch
+            AppLog.app.info("iCloud not available, deferring EPUB migration")
+            return
+        }
+
+        do {
+            try FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
+        } catch {
+            AppLog.app.error("iCloud EPUBs directory creation failed: \(error.localizedDescription)")
+            return
+        }
+
+        guard let files = try? FileManager.default.contentsOfDirectory(
+            at: localEpubsDir,
+            includingPropertiesForKeys: nil
+        ) else {
+            // No local EPUBs dir or empty — migration complete
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            return
+        }
+
+        let epubs = files.filter { $0.pathExtension == "epub" }
+        var failedCount = 0
+        for file in epubs {
+            let dest = iCloudURL.appendingPathComponent(file.lastPathComponent)
+            if !FileManager.default.fileExists(atPath: dest.path) {
+                do {
+                    try FileManager.default.copyItem(at: file, to: dest)
+                } catch {
+                    failedCount += 1
+                    AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
                 }
             }
         }
 
-        UserDefaults.standard.set(true, forKey: migrationKey)
+        if failedCount == 0 {
+            UserDefaults.standard.set(true, forKey: migrationKey)
+            AppLog.app.info("iCloud EPUB migration completed: \(epubs.count) files")
+        } else {
+            AppLog.app.warning("iCloud EPUB migration incomplete: \(failedCount)/\(epubs.count) failed, will retry next launch")
+        }
     }
 
     @Environment(\.scenePhase) private var scenePhase
