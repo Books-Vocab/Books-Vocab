@@ -37,7 +37,17 @@ private struct KGServiceEnvironmentKey: EnvironmentKey {
     }
 }
 
+private struct ICloudDownloadManagerKey: EnvironmentKey {
+    static let defaultValue = MainActor.assumeIsolated {
+        ICloudDownloadManager()
+    }
+}
+
 extension EnvironmentValues {
+    var iCloudDownloadManager: ICloudDownloadManager {
+        get { self[ICloudDownloadManagerKey.self] }
+        set { self[ICloudDownloadManagerKey.self] = newValue }
+    }
     var authManager: any AuthManaging {
         get { self[AuthManagerEnvironmentKey.self] }
         set { self[AuthManagerEnvironmentKey.self] = newValue }
