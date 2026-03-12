@@ -4,15 +4,16 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timezone
-from enum import Enum
+from collections.abc import Iterator
+from datetime import UTC, datetime
+from enum import StrEnum
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Literal
 
 from pydantic import BaseModel, Field
 
 
-class LinkKind(str, Enum):
+class LinkKind(StrEnum):
     """Types of relationships between cards."""
 
     CONFUSABLE = "confusable"
@@ -36,7 +37,7 @@ class GraphLink(BaseModel):
     kind: LinkKind
     confidence: float
     reason: str
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     status: Literal["candidate", "active", "deprecated"] = "active"
 
 
@@ -46,7 +47,7 @@ class CandidatePair(BaseModel):
     from_id: str
     to_id: str
     similarity: float  # embedding similarity score
-    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
 
 
 class GraphStore:

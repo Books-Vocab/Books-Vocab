@@ -2,12 +2,21 @@ from __future__ import annotations
 
 import logging
 import re
+from collections.abc import Callable
 from datetime import datetime
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import HTTPException
 
-from .api_models import CardLinkSummaryResponse, CardResponse, DailyReviewStatEntry, GraphLinkResponse, ReviewStateEntry, VocabAddResponse, VocabEntry
+from .api_models import (
+    CardLinkSummaryResponse,
+    CardResponse,
+    DailyReviewStatEntry,
+    GraphLinkResponse,
+    ReviewStateEntry,
+    VocabAddResponse,
+    VocabEntry,
+)
 from .user_store import parse_datetime
 
 

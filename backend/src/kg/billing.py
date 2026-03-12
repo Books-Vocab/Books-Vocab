@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import HTTPException
 
@@ -56,7 +57,7 @@ def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
     if not admin_grant.get("is_active"):
         return False
     expires_at = parse_datetime(admin_grant.get("expires_at"))
-    if expires_at and expires_at <= datetime.now(tz=timezone.utc):
+    if expires_at and expires_at <= datetime.now(tz=UTC):
         return False
     return True
 
@@ -152,7 +153,7 @@ def write_subscription_snapshot(
     price_display: str | None,
     source: str,
 ) -> dict[str, Any]:
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
     record = users.setdefault(user_id, {})
     subscription = default_subscription_payload()
     existing = record.get("subscription")
@@ -205,7 +206,7 @@ def normalize_ms_timestamp(raw: Any, parse_datetime_fn: Callable[[Any], datetime
     except (TypeError, ValueError):
         parsed = parse_datetime_fn(raw)
         return parsed.isoformat() if parsed else None
-    return datetime.fromtimestamp(timestamp_ms / 1000, tz=timezone.utc).isoformat()
+    return datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).isoformat()
 
 
 def bool_from_any(raw: Any, default: bool = False) -> bool:
@@ -226,12 +227,12 @@ def status_from_transaction_payload(
     if payload.get("revocationDate"):
         return "expired"
     expires_at = parse_datetime_fn(normalize_ms_timestamp(payload.get("expiresDate"), parse_datetime_fn))
-    if expires_at and expires_at <= datetime.now(tz=timezone.utc):
+    if expires_at and expires_at <= datetime.now(tz=UTC):
         return "expired"
     grace = renewal_payload.get("gracePeriodExpiresDate") if isinstance(renewal_payload, dict) else None
     if grace:
         grace_dt = parse_datetime_fn(normalize_ms_timestamp(grace, parse_datetime_fn))
-        if grace_dt and grace_dt > datetime.now(tz=timezone.utc):
+        if grace_dt and grace_dt > datetime.now(tz=UTC):
             return "grace_period"
     offer_type = payload.get("offerType")
     offer_discount_type = str(payload.get("offerDiscountType") or "").upper()

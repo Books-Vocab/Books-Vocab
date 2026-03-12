@@ -4,10 +4,9 @@ import os
 import re
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
-
 
 LAST_TEST_RUN: dict[str, Any] | None = None
 CASE_LINE_RE = re.compile(
@@ -197,14 +196,14 @@ def build_test_catalog() -> dict[str, Any]:
 def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]:
     """Run pytest and build matrix data grouped by test module."""
     project_root = Path(__file__).resolve().parent.parent.parent
-    started = datetime.now(tz=timezone.utc)
+    started = datetime.now(tz=UTC)
     run_id = started.strftime("%Y%m%d%H%M%S")
     tests_dir = project_root / "tests"
     selected_items = selected_items or []
     nodeids = selected_nodeids(selected_items)
 
     if not tests_dir.exists():
-        finished = datetime.now(tz=timezone.utc)
+        finished = datetime.now(tz=UTC)
         return {
             "runId": run_id,
             "startedAt": started.isoformat(),
@@ -244,7 +243,7 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
         stderr = exc.stderr or ""
         return_code = 124
     except OSError as exc:
-        finished = datetime.now(tz=timezone.utc)
+        finished = datetime.now(tz=UTC)
         return {
             "runId": run_id,
             "startedAt": started.isoformat(),
@@ -261,7 +260,7 @@ def run_pytest_matrix(selected_items: list[str] | None = None) -> dict[str, Any]
             "stderrTail": [f"{type(exc).__name__}: {exc}"],
         }
 
-    finished = datetime.now(tz=timezone.utc)
+    finished = datetime.now(tz=UTC)
     duration = round((finished - started).total_seconds(), 3)
 
     cases: list[dict[str, str]] = []
