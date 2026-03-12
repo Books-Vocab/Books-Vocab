@@ -276,47 +276,45 @@ struct ReaderSettingsVocabPresenter: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            Text(label)
-                .font(font)
-                .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                .frame(width: 52, height: 52)
-                .background(controlSurfaceShape.fill(vocabSkin.palette.pageBackground))
-                .overlay(controlSurfaceShape.stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
+            VocabChromeSurface(
+                fill: vocabSkin.palette.pageBackground,
+                border: vocabSkin.palette.cardBorder
+            ) {
+                Text(label)
+                    .font(font)
+                    .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                    .frame(width: 52, height: 52)
+            }
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
     }
 
     private func controlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
-            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
-            .background(controlSurfaceShape.fill(vocabSkin.palette.pageBackground))
-            .overlay(controlSurfaceShape.stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
-            .contentShape(Rectangle())
+        VocabChromeSurface(
+            fill: vocabSkin.palette.pageBackground,
+            border: vocabSkin.palette.cardBorder
+        ) {
+            content()
+                .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
+                .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+                .contentShape(Rectangle())
+        }
     }
 
     private func selectionTile<Content: View>(
         isSelected: Bool,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        content()
-            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-            .background(
-                controlSurfaceShape
-                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-            )
-            .overlay(
-                controlSurfaceShape
-                    .stroke(
-                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity),
-                        lineWidth: 1
-                    )
-            )
-    }
-
-    private var controlSurfaceShape: RoundedRectangle {
-        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+        VocabChromeSurface(
+            fill: isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground,
+            border: isSelected
+                ? vocabSkin.palette.cardBorder
+                : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity)
+        ) {
+            content()
+                .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+        }
     }
 
     private func themeTile(_ theme: ReaderTheme) -> some View {
