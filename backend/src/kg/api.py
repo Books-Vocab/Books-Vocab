@@ -766,6 +766,7 @@ def delete_word(word: str, user: dict = Depends(get_current_user)):
         user,
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
     )
 
 # ---------------------------------------------------------------------------
