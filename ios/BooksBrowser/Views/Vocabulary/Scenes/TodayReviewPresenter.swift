@@ -411,13 +411,13 @@ struct TodayReviewPresenter: View {
                 onPrevious()
             } label: {
                 Image(systemName: "backward.end.fill")
-                    .font(.system(size: 22))
+                    .font(AppFonts.h2())
             }
             .disabled(!state.canGoPrevious)
 
             Button(action: onToggleAutoPlayPause) {
                 Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
-                    .font(.system(size: 28))
+                    .font(AppFonts.h1())
                     .frame(width: 52, height: 52)
                     .background(
                         Circle()
@@ -430,7 +430,7 @@ struct TodayReviewPresenter: View {
                 onNext()
             } label: {
                 Image(systemName: "forward.end.fill")
-                    .font(.system(size: 22))
+                    .font(AppFonts.h2())
             }
             .disabled(!state.canGoNext)
         }
