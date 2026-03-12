@@ -70,6 +70,9 @@ enum AppMotion {
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
     static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
     static let stackPromotionSpring = Animation.spring(response: 0.25, dampingFraction: 0.78)
+    static let reviewSubmitFling = Animation.interpolatingSpring(stiffness: 500, damping: 28)
+    static let reviewSubmitSettle = Animation.spring(response: 0.3, dampingFraction: 0.82)
+    static let reviewSubmitSnapBack = Animation.spring(response: 0.36, dampingFraction: 0.84)
 
     // Swipe gesture
     static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
@@ -77,7 +80,7 @@ enum AppMotion {
 
     // MARK: - Micro-interaction Springs
     /// 卡片甩出畫面（高剛性快速飛離）
-    static let swipeFlingSpring = Animation.interpolatingSpring(stiffness: 500, damping: 28)
+    static let swipeFlingSpring = reviewSubmitFling
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
     static let feedbackButtonSpring = Animation.spring(response: 0.22, dampingFraction: 0.72)
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
@@ -122,6 +125,8 @@ enum TodayReviewMetrics {
     static let promoteYOffset: CGFloat = 22
     /// 卡片升起時的縮放比例
     static let promoteScale: CGFloat = 0.96
+    /// 新卡接手時的水平偏移，會依提交方向反向進場
+    static let promoteXOffset: CGFloat = 22
 
     // ── 展開提示 ───────────────────────────────────────────────────
     /// 展開提示出現時，卡片右側的內縮量（為提示圖示騰出空間）
@@ -168,6 +173,8 @@ enum TodayReviewMetrics {
     static let stackLayerMicroOffset: CGFloat = -1
     /// 答案展開提示區塊的頂部微調
     static let answerHintTopPadding: CGFloat = 2
+    /// 甩出完成後再提交下一張，避免半途換卡
+    static let submitCommitDelayMs: UInt64 = 220
 }
 
 enum AppShadows {

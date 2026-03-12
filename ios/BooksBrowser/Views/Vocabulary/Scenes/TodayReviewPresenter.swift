@@ -47,6 +47,7 @@ struct TodayReviewPresenter: View {
     @State var dismissPhase: DismissPhase = .idle
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
+    @State var lastDismissDirection: CGFloat = 1
     @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -162,7 +163,12 @@ struct TodayReviewPresenter: View {
             .id(cardIdentity)
             .transition(suppressTransition ? .identity : .asymmetric(
                 insertion: .scale(scale: TodayReviewMetrics.promoteScale)
-                    .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
+                    .combined(
+                        with: .offset(
+                            x: -lastDismissDirection * TodayReviewMetrics.promoteXOffset,
+                            y: TodayReviewMetrics.promoteYOffset
+                        )
+                    ),
                 removal: .identity
             ))
             .offset(x: swipeOffset)
