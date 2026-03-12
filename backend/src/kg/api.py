@@ -116,12 +116,6 @@ from .graph import LINK_LABELS, GraphStore, LinkKind
 from .pipeline_handlers import queue_pipeline_response
 from .pipeline_service import run_pipeline_background
 from .route_registration import register_routes
-from .runtime_state import (
-    runtime_notifications_file,
-    runtime_settings,
-    runtime_users_file,
-    runtime_users_lock_file,
-)
 from .service_factories import (
     create_card_store,
     create_daily_stats_store,
@@ -197,90 +191,36 @@ def get_guide():
         return HTMLResponse("<h1>Guide Not Found</h1>", status_code=404)
     return FileResponse(guide_path)
 
+
 # ---------------------------------------------------------------------------
-# Data directory & Multi-User
+# Settings DI dependency
 # ---------------------------------------------------------------------------
-DATA_DIR = Path()
-USERS_FILE = Path()
-USERS_LOCK_FILE = Path()
-APP_STORE_NOTIFICATIONS_FILE = Path()
-
-# JWT / auth / admin configuration
-JWT_SECRET = ""
-JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_MINUTES = 60 * 24 * 30  # 30 days
-GOOGLE_CLIENT_ID = ""
-APPLE_BUNDLE_ID = "com.Max0228.BooksBrowser"
-APP_STORE_ALLOW_UNSIGNED_SYNC = False
-APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = False
-ADMIN_TOKEN = ""
-
-
-def configure_runtime(settings: KGSettings) -> KGSettings:
-    """Apply settings to the legacy module-level runtime surface."""
-    global DATA_DIR
-    global USERS_FILE
-    global USERS_LOCK_FILE
-    global APP_STORE_NOTIFICATIONS_FILE
-    global JWT_SECRET
-    global JWT_ALGORITHM
-    global JWT_EXPIRY_MINUTES
-    global GOOGLE_CLIENT_ID
-    global APPLE_BUNDLE_ID
-    global APP_STORE_ALLOW_UNSIGNED_SYNC
-    global APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS
-    global ADMIN_TOKEN
-
-    DATA_DIR = settings.data_dir
-    USERS_FILE = settings.users_file
-    USERS_LOCK_FILE = settings.users_lock_file
-    APP_STORE_NOTIFICATIONS_FILE = settings.app_store_notifications_file
-    JWT_SECRET = settings.jwt_secret
-    JWT_ALGORITHM = settings.jwt_algorithm
-    JWT_EXPIRY_MINUTES = settings.jwt_expiry_minutes
-    GOOGLE_CLIENT_ID = settings.google_client_id
-    APPLE_BUNDLE_ID = settings.apple_bundle_id
-    APP_STORE_ALLOW_UNSIGNED_SYNC = settings.app_store_allow_unsigned_sync
-    APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS = settings.app_store_allow_unsigned_notifications
-    ADMIN_TOKEN = settings.admin_token
-    return settings
-
-
-def _runtime_settings() -> KGSettings:
-    """Read the current legacy runtime surface as a single settings object."""
-    return runtime_settings(
-        data_dir=DATA_DIR,
-        jwt_secret=JWT_SECRET,
-        jwt_algorithm=JWT_ALGORITHM,
-        jwt_expiry_minutes=JWT_EXPIRY_MINUTES,
-        google_client_id=GOOGLE_CLIENT_ID,
-        apple_bundle_id=APPLE_BUNDLE_ID,
-        app_store_allow_unsigned_sync=APP_STORE_ALLOW_UNSIGNED_SYNC,
-        app_store_allow_unsigned_notifications=APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS,
-        admin_token=ADMIN_TOKEN,
-    )
-
-
-def _runtime_users_file() -> Path:
-    return runtime_users_file(explicit_users_file=USERS_FILE, settings=_runtime_settings())
-
-
-def _runtime_users_lock_file() -> Path:
-    return runtime_users_lock_file(explicit_users_lock_file=USERS_LOCK_FILE, settings=_runtime_settings())
-
-
-def _runtime_notifications_file() -> Path:
-    return runtime_notifications_file(
-        explicit_notifications_file=APP_STORE_NOTIFICATIONS_FILE,
-        settings=_runtime_settings(),
-    )
+def _get_settings(request: Request) -> KGSettings:
+    return request.app.state.kg_settings
 
 
 def create_app(settings: KGSettings | None = None) -> FastAPI:
-    runtime_settings = configure_runtime(settings or load_settings())
+    settings = settings or load_settings()
 
     app = FastAPI(title="Knowledge Graph API", version="0.1.0")
-    app.state.kg_settings = runtime_settings
+    app.state.kg_settings = settings
+
+    # --- user store helpers (closures capturing app reference) ---
+    def _normalize_users_payload_fn(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+        from .secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    def _load_users_fn() -> dict[str, dict[str, Any]]:
+        return load_users_from(app.state.kg_settings.users_file, _normalize_users_payload_fn)
+
+    def _save_users_fn(users: dict[str, dict[str, Any]]) -> None:
+        save_users_to(app.state.kg_settings.users_file, users, _normalize_users_payload_fn)
+
+    app.state.load_users = _load_users_fn
+    app.state.save_users = _save_users_fn
+    app.state.normalize_users_payload = _normalize_users_payload_fn
 
     app.add_middleware(
         CORSMiddleware,
@@ -356,11 +296,17 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
+    def _settings_fn() -> KGSettings:
+        return app.state.kg_settings
+
+    def _users_lock_file_fn() -> Path:
+        return app.state.kg_settings.users_lock_file
+
     admin_handlers = create_admin_handlers(
-        runtime_settings_fn=_runtime_settings,
-        runtime_users_lock_file_fn=_runtime_users_lock_file,
-        load_users_fn=_load_users,
-        save_users_fn=_save_users,
+        runtime_settings_fn=_settings_fn,
+        runtime_users_lock_file_fn=_users_lock_file_fn,
+        load_users_fn=_load_users_fn,
+        save_users_fn=_save_users_fn,
         mem_log_getter=_mem_log.get,
         card_store_factory=_card_store,
         build_entitlements_response_fn=_build_entitlements_response,
@@ -425,30 +371,19 @@ async def get_user_lock(user_id: str) -> asyncio.Lock:
         return lock
 
 
-def _load_users() -> dict[str, dict[str, Any]]:
-    return load_users_from(_runtime_users_file(), _normalize_users_payload)
-
-def _save_users(users: dict[str, dict[str, Any]]) -> None:
-    save_users_to(_runtime_users_file(), users, _normalize_users_payload)
-
-load_users = _load_users
-save_users = _save_users
-
-
-def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    from .secret_store import encrypt_value
-    jwt_secret = _runtime_settings().jwt_secret
-    encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
-    return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
-
 def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
 
-def get_current_user(credentials: HTTPAuthorizationCredentials = Depends(security)) -> dict[str, Any]:
+def get_current_user(
+    request: Request,
+    credentials: HTTPAuthorizationCredentials = Depends(security),
+) -> dict[str, Any]:
+    settings = request.app.state.kg_settings
+    load_users_fn = request.app.state.load_users
     return resolve_current_user(
         credentials.credentials,
-        settings=_runtime_settings(),
-        load_users=_load_users,
+        settings=settings,
+        load_users=load_users_fn,
         parse_datetime=_parse_datetime,
     )
 
@@ -526,10 +461,6 @@ def _require_pro_access(user: dict[str, Any], capability: str) -> None:
     require_pro_access(user, capability)
 
 
-def _append_app_store_event(payload: dict[str, Any]) -> None:
-    append_app_store_event(_runtime_notifications_file(), payload)
-
-
 def _resolve_user_id_from_subscription_index(users: dict[str, Any], original_transaction_id: str | None, transaction_id: str | None) -> str | None:
     return resolve_user_id_from_subscription_index(users, original_transaction_id, transaction_id)
 
@@ -569,32 +500,16 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
     return notification_status(notification_type, subtype)
 
 
-def _decode_signed_transaction_info(signed_transaction_info: str) -> dict[str, Any]:
-    return decode_signed_transaction_info(
-        signed_transaction_info,
-        bundle_id=_runtime_settings().apple_bundle_id,
-        parse_datetime_fn=_parse_datetime,
-        verify_signed_jws=verify_and_decode_signed_jws,
-    )
-
-
-def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict[str, Any], dict[str, Any] | None]:
-    settings = _runtime_settings()
-    return decode_notification_payload(
-        req,
-        bundle_id=settings.apple_bundle_id,
-        allow_unsigned_notifications=settings.app_store_allow_unsigned_notifications,
-        parse_datetime_fn=_parse_datetime,
-        verify_signed_jws=verify_and_decode_signed_jws,
-    )
-
-
 # ---------------------------------------------------------------------------
 # GET /api/user/config
 # ---------------------------------------------------------------------------
-def get_user_config(user: dict = Depends(get_current_user)):
+def get_user_config(
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Get user configuration."""
-    return get_user_config_response(user, jwt_secret=_runtime_settings().jwt_secret)
+    settings = request.app.state.kg_settings
+    return get_user_config_response(user, jwt_secret=settings.jwt_secret)
 
 
 # ---------------------------------------------------------------------------
@@ -611,17 +526,30 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/sync
 # ---------------------------------------------------------------------------
-def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(get_current_user)):
+def sync_app_store_subscription(
+    req: AppStoreSyncRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Persist the latest App Store subscription snapshot for the current user."""
-    settings = _runtime_settings()
+    settings = request.app.state.kg_settings
+
+    def _decode_signed_txn(signed_transaction_info: str) -> dict[str, Any]:
+        return decode_signed_transaction_info(
+            signed_transaction_info,
+            bundle_id=settings.apple_bundle_id,
+            parse_datetime_fn=_parse_datetime,
+            verify_signed_jws=verify_and_decode_signed_jws,
+        )
+
     return sync_app_store_subscription_response(
         req,
         user,
         allow_unsigned_sync=settings.app_store_allow_unsigned_sync,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
-        decode_signed_transaction_info=_decode_signed_transaction_info,
+        users_lock_file=settings.users_lock_file,
+        load_users=request.app.state.load_users,
+        save_users=request.app.state.save_users,
+        decode_signed_transaction_info=_decode_signed_txn,
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
     )
@@ -630,16 +558,29 @@ def sync_app_store_subscription(req: AppStoreSyncRequest, user: dict = Depends(g
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/notifications
 # ---------------------------------------------------------------------------
-def app_store_notifications(req: AppStoreNotificationRequest):
+def app_store_notifications(req: AppStoreNotificationRequest, request: Request):
     """Receive App Store Server Notifications and persist/update subscription state."""
-    _runtime_settings()
+    settings = request.app.state.kg_settings
+
+    def _decode_notif_payload(r: AppStoreNotificationRequest) -> tuple[dict[str, Any], dict[str, Any] | None]:
+        return decode_notification_payload(
+            r,
+            bundle_id=settings.apple_bundle_id,
+            allow_unsigned_notifications=settings.app_store_allow_unsigned_notifications,
+            parse_datetime_fn=_parse_datetime,
+            verify_signed_jws=verify_and_decode_signed_jws,
+        )
+
+    def _append_event(payload: dict[str, Any]) -> None:
+        append_app_store_event(settings.app_store_notifications_file, payload)
+
     return app_store_notifications_response(
         req,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
-        decode_notification_payload=_decode_notification_payload,
-        append_app_store_event=_append_app_store_event,
+        users_lock_file=settings.users_lock_file,
+        load_users=request.app.state.load_users,
+        save_users=request.app.state.save_users,
+        decode_notification_payload=_decode_notif_payload,
+        append_app_store_event=_append_event,
         resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
@@ -649,18 +590,31 @@ def app_store_notifications(req: AppStoreNotificationRequest):
 # ---------------------------------------------------------------------------
 # POST /api/billing/app-store/reconcile
 # ---------------------------------------------------------------------------
-async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: dict = Depends(get_current_user)):
+async def reconcile_app_store_subscription(
+    req: AppStoreReconcileRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Fetch transaction state from Apple's App Store Server API and persist it."""
-    settings = _runtime_settings()
+    settings = request.app.state.kg_settings
+
+    def _decode_signed_txn(signed_transaction_info: str) -> dict[str, Any]:
+        return decode_signed_transaction_info(
+            signed_transaction_info,
+            bundle_id=settings.apple_bundle_id,
+            parse_datetime_fn=_parse_datetime,
+            verify_signed_jws=verify_and_decode_signed_jws,
+        )
+
     return await reconcile_app_store_subscription_response(
         req,
         user,
         apple_bundle_id=settings.apple_bundle_id,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
+        users_lock_file=settings.users_lock_file,
+        load_users=request.app.state.load_users,
+        save_users=request.app.state.save_users,
         fetch_transaction_info=fetch_transaction_info,
-        decode_signed_transaction_info=_decode_signed_transaction_info,
+        decode_signed_transaction_info=_decode_signed_txn,
         resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
@@ -670,15 +624,19 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 # PUT /api/user/config
 # ---------------------------------------------------------------------------
-def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
+def update_user_config(
+    req: UserConfigRequest,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
     """Update user configuration."""
-    settings = _runtime_settings()
+    settings = request.app.state.kg_settings
     return update_user_config_response(
         req,
         user,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
+        users_lock_file=settings.users_lock_file,
+        load_users=request.app.state.load_users,
+        save_users=request.app.state.save_users,
         jwt_secret=settings.jwt_secret,
     )
 
@@ -686,14 +644,14 @@ def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 # DELETE /api/user/account
 # ---------------------------------------------------------------------------
-def delete_user_account(user: dict = Depends(get_current_user)):
+def delete_user_account(request: Request, user: dict = Depends(get_current_user)):
     """Permanently delete the current account and all related user data."""
-    settings = _runtime_settings()
+    settings = request.app.state.kg_settings
     return delete_user_account_response(
         user,
-        users_lock_file=_runtime_users_lock_file(),
-        load_users=_load_users,
-        save_users=_save_users,
+        users_lock_file=settings.users_lock_file,
+        load_users=request.app.state.load_users,
+        save_users=request.app.state.save_users,
         collect_account_ids_for_deletion=_collect_account_ids_for_deletion,
         data_dir=settings.data_dir,
         logger=logger,
@@ -784,7 +742,7 @@ def get_graph_links(user: dict = Depends(get_current_user)):
 # POST /api/vocab  — Batch add from BooksBrowser
 # ---------------------------------------------------------------------------
 def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
-    """Add vocabulary entries from BooksBrowser → KG Cards."""
+    """Add vocabulary entries from BooksBrowser -> KG Cards."""
     return add_vocab_response(
         entries,
         user,
@@ -840,7 +798,7 @@ def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_
 # ---------------------------------------------------------------------------
 # POST /api/pipeline  — Run full pipeline in background
 # ---------------------------------------------------------------------------
-async def _run_pipeline_background(user: dict):
+async def _run_pipeline_background(user: dict, *, settings: KGSettings):
     await run_pipeline_background(
         user,
         get_user_lock_fn=get_user_lock,
@@ -850,20 +808,29 @@ async def _run_pipeline_background(user: dict):
         gemini_client_factory=_gemini_client,
         logger=logger,
         link_kind_enum=LinkKind,
-        jwt_secret=_runtime_settings().jwt_secret,
+        jwt_secret=settings.jwt_secret,
     )
 
 
-async def run_pipeline(background_tasks: BackgroundTasks, user: dict = Depends(get_current_user)):
-    """Run enrich → link → difficulty → sync pipeline for the user in the background.
+async def run_pipeline(
+    background_tasks: BackgroundTasks,
+    request: Request,
+    user: dict = Depends(get_current_user),
+):
+    """Run enrich -> link -> difficulty -> sync pipeline for the user in the background.
 
     Returns immediately with accepted status.
     """
+    settings = request.app.state.kg_settings
+
+    async def _bg(u: dict) -> None:
+        await _run_pipeline_background(u, settings=settings)
+
     return queue_pipeline_response(
         background_tasks,
         user,
         require_pro_access=_require_pro_access,
-        run_pipeline_background_fn=_run_pipeline_background,
+        run_pipeline_background_fn=_bg,
     )
 
 # ---------------------------------------------------------------------------
@@ -879,7 +846,6 @@ def _with_quota_check(
     response: Response | None,
     handler: Callable[[], Any],
 ) -> Any:
-    """共用 quota 檢查 + header 注入邏輯。"""
     from .quota_service import check_and_get_quota
     pro = _is_pro(user)
     quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
@@ -927,8 +893,7 @@ def get_user_quota(user: dict = Depends(get_current_user)):
 # Authentication
 # ---------------------------------------------------------------------------
 
-def _create_jwt_token(user_id: str, provider: str) -> str:
-    settings = _runtime_settings()
+def _create_jwt_token(user_id: str, provider: str, *, settings: KGSettings) -> str:
     return create_jwt_token(
         user_id,
         provider,
@@ -938,36 +903,40 @@ def _create_jwt_token(user_id: str, provider: str) -> str:
     )
 
 
-def _resolve_and_link_user(provider_user_id: str, provider: str, email: str | None = None) -> str:
+def _resolve_and_link_user(
+    provider_user_id: str,
+    provider: str,
+    email: str | None = None,
+    *,
+    settings: KGSettings,
+    load_users_fn: Callable,
+    save_users_fn: Callable,
+) -> str:
     return resolve_and_link_user(
         provider_user_id,
         provider,
-        users_lock_file=str(_runtime_users_lock_file()),
-        load_users_fn=_load_users,
-        save_users_fn=_save_users,
+        users_lock_file=str(settings.users_lock_file),
+        load_users_fn=load_users_fn,
+        save_users_fn=save_users_fn,
         email=email,
     )
 
 
-async def auth_verify(req: AuthVerifyRequest):
-    """Verify Google/Apple token and return JWT access token.
+async def auth_verify(req: AuthVerifyRequest, request: Request):
+    """Verify Google/Apple token and return JWT access token."""
+    settings = request.app.state.kg_settings
+    load_users_fn = request.app.state.load_users
+    save_users_fn = request.app.state.save_users
 
-    Request:
-        {
-            "provider": "google" | "apple",
-            "token": "<provider-issued-token>",
-            "email": "<optional-email>"
-        }
+    def _jwt_token(user_id: str, provider: str) -> str:
+        return _create_jwt_token(user_id, provider, settings=settings)
 
-    Response:
-        {
-            "access_token": "<jwt>",
-            "token_type": "bearer",
-            "user_id": "<canonical-user-id>",
-            "expires_in": 900
-        }
-    """
-    settings = _runtime_settings()
+    def _link_user(provider_user_id: str, provider: str, email: str | None = None) -> str:
+        return _resolve_and_link_user(
+            provider_user_id, provider, email,
+            settings=settings, load_users_fn=load_users_fn, save_users_fn=save_users_fn,
+        )
+
     return await auth_verify_response(
         req,
         google_client_id=settings.google_client_id,
@@ -975,8 +944,8 @@ async def auth_verify(req: AuthVerifyRequest):
         jwt_expiry_minutes=settings.jwt_expiry_minutes,
         verify_google_token=verify_google_token,
         verify_apple_token=verify_apple_token,
-        resolve_and_link_user=_resolve_and_link_user,
-        create_jwt_token=_create_jwt_token,
+        resolve_and_link_user=_link_user,
+        create_jwt_token=_jwt_token,
     )
 
 
