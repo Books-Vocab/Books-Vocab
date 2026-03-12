@@ -181,3 +181,18 @@ class GraphStore:
 
     def candidate_count(self) -> int:
         return len(self._candidates)
+
+    # --- Cleanup ---
+
+    def deprecate_links_for(self, card_id: str) -> int:
+        """Deprecate all active links involving a card. Returns count of deprecated links."""
+        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+        count = 0
+        for lid in list(link_ids):
+            lk = self._links.get(lid)
+            if lk and lk.status == "active":
+                lk.status = "deprecated"
+                count += 1
+        if count:
+            self._save_links()
+        return count
