@@ -46,6 +46,10 @@ class _FakeCardsStore:
             return list(self._cards)
         return [card for card in self._cards if not card.is_deleted]
 
+    def all_limited(self, limit: int = 5000, include_deleted: bool = False):
+        cards = self.all(include_deleted=include_deleted)
+        return cards[:limit]
+
     def all_as_dict(self, include_deleted: bool = False):
         return {card.id: card for card in self.all(include_deleted=include_deleted)}
 
