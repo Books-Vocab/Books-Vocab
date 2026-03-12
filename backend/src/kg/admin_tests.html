@@ -390,7 +390,7 @@ tbody tr:hover td { background: #f6f4ef; }
   </div>
   <div class="nav-actions">
     <span id="ts"></span>
-    <a class="btn" id="back-link" href="/admin?token=">Dashboard</a>
+    <a class="btn" id="back-link" href="/admin">Dashboard</a>
     <button class="btn" id="reload-btn">Reload</button>
     <button class="btn" id="rerun-btn" disabled>Rerun</button>
     <button class="btn btn-cta" id="run-all-btn">Run All</button>
@@ -453,8 +453,24 @@ tbody tr:hover td { background: #f6f4ef; }
 </div>
 
 <script>
-const TOKEN = new URLSearchParams(location.search).get('token') || '';
-document.getElementById('back-link').href = '/admin?token=' + encodeURIComponent(TOKEN);
+const _urlToken = new URLSearchParams(location.search).get('token');
+if (_urlToken) {
+    sessionStorage.setItem('admin_token', _urlToken);
+    history.replaceState(null, '', location.pathname);
+}
+const TOKEN = sessionStorage.getItem('admin_token') || '';
+
+function adminFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            'Authorization': 'Bearer ' + TOKEN,
+        },
+    });
+}
+
+document.getElementById('back-link').href = '/admin';
 
 const S = { catalog: null, run: null, caseFilter: 'all', busy: false };
 
@@ -667,7 +683,7 @@ async function runTests(itemIds = []) {
   noticeEl.className = 'notice';
   noticeEl.textContent = '';
   try {
-    const r = await fetch('/api/admin/tests/run?token=' + encodeURIComponent(TOKEN), {
+    const r = await adminFetch('/api/admin/tests/run', {
       method: 'POST',
       headers: {'Content-Type':'application/json'},
       body: JSON.stringify({itemIds}),
@@ -681,7 +697,7 @@ async function runTests(itemIds = []) {
 
 async function loadCatalog() {
   try {
-    const r = await fetch('/api/admin/tests/catalog?token=' + encodeURIComponent(TOKEN));
+    const r = await adminFetch('/api/admin/tests/catalog');
     if (!r.ok) { showError('Catalog error ' + r.status); return; }
     S.catalog = await r.json();
     renderCatalog();
@@ -690,7 +706,7 @@ async function loadCatalog() {
 
 async function loadLast() {
   try {
-    const r = await fetch('/api/admin/tests/last?token=' + encodeURIComponent(TOKEN));
+    const r = await adminFetch('/api/admin/tests/last');
     if (!r.ok) { showError('Load failed: HTTP ' + r.status); return; }
     S.run = await r.json();
     renderAll();

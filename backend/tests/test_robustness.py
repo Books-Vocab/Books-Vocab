@@ -116,7 +116,7 @@ class TestBatchA_UsersJsonLock:
                        json={"integrations": {"mochi": {"api_key": "mk_abc123"}}},
                        headers=headers)
         assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_abc123"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc123"
@@ -160,7 +160,7 @@ class TestBatchA_UsersJsonLock:
         client.put("/api/user/config", json={"integrations": {"mochi": {"api_key": "mk_xyz"}}}, headers=headers)
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_xyz"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
     def test_nested_integrations_payload_is_accepted(self, user_env):
         client, user_id, headers, data_dir = user_env
@@ -171,7 +171,7 @@ class TestBatchA_UsersJsonLock:
             headers=headers,
         )
         assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["api_key"] == "mk_nested"
+        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
         assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
