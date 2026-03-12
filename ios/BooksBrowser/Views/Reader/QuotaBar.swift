@@ -1,7 +1,8 @@
 import SwiftUI
 
 struct QuotaBar: View {
-    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.appTheme) private var appTheme
+    @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.quotaStore) private var store
 
     let isLoggedIn: Bool
@@ -25,10 +26,10 @@ struct QuotaBar: View {
 
     private var barColor: Color {
         switch store.level {
-        case .normal:    return AppColors.saved(colorScheme)
-        case .warning:   return AppColors.warning(colorScheme)
-        case .critical:  return AppColors.destructive(colorScheme)
-        case .exhausted: return AppColors.destructive(colorScheme)
+        case .normal:    return vocabSkin.palette.success
+        case .warning:   return appTheme.palette.warning
+        case .critical:  return vocabSkin.palette.destructive
+        case .exhausted: return vocabSkin.palette.destructive
         }
     }
 
@@ -43,6 +44,8 @@ struct QuotaBar: View {
 }
 
 #Preview("QuotaBar / Normal") {
-    QuotaBar(isLoggedIn: true)
-        .padding()
+    AppThemeContainer {
+        QuotaBar(isLoggedIn: true)
+            .padding()
+    }
 }
