@@ -132,20 +132,21 @@ class TestRateLimitMiddlewareEnforcement:
         from kg.rate_limit import api_limiter
         import time
 
-        # Pre-fill the limiter for a specific key to force 429
+        token = "AAAA0000BBBB1111"
+        auth_header = f"Bearer {token}"
+        rate_key = auth_header[-16:]
+
         async def exhaust():
-            key = "exhaust-test-key-xx"
-            dq = api_limiter._requests.setdefault(key, __import__("collections").deque())
+            dq = api_limiter._requests.setdefault(rate_key, __import__("collections").deque())
             now = time.monotonic()
             for _ in range(api_limiter.max_requests):
                 dq.append(now)
 
         asyncio.run(exhaust())
 
-        # Send a request with a matching auth suffix
         r = isolated_client.get(
             "/api/health",
-            headers={"Authorization": "Bearer exhaust-test-key-xx"},
+            headers={"Authorization": auth_header},
         )
         assert r.status_code == 429, f"Expected 429, got {r.status_code}"
         assert "Retry-After" in r.headers
@@ -155,9 +156,12 @@ class TestRateLimitMiddlewareEnforcement:
         import time
         import collections
 
+        token = "CCCC2222DDDD3333"
+        auth_header = f"Bearer {token}"
+        rate_key = auth_header[-16:]
+
         async def exhaust():
-            key = "retry-after-key-xxxx"
-            dq = api_limiter._requests.setdefault(key, collections.deque())
+            dq = api_limiter._requests.setdefault(rate_key, collections.deque())
             now = time.monotonic()
             for _ in range(api_limiter.max_requests):
                 dq.append(now)
@@ -166,7 +170,7 @@ class TestRateLimitMiddlewareEnforcement:
 
         r = isolated_client.get(
             "/api/health",
-            headers={"Authorization": "Bearer retry-after-key-xxxx"},
+            headers={"Authorization": auth_header},
         )
         assert r.status_code == 429
         assert r.headers.get("Retry-After") == str(api_limiter.window_seconds)

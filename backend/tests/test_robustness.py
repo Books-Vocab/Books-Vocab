@@ -106,6 +106,16 @@ def user_env(tmp_path):
 # BATCH A-1 — users.json FileLock
 # ============================================================================
 
+
+def _assert_mochi_key_matches(stored_key, expected):
+    if stored_key.startswith("enc:"):
+        from kg.secret_store import decrypt_value
+        from kg.api import _runtime_settings
+        assert decrypt_value(stored_key, _runtime_settings().jwt_secret) == expected
+    else:
+        assert stored_key == expected
+
+
 class TestBatchA_UsersJsonLock:
 
     def test_sequential_config_update_persists(self, user_env):
@@ -119,7 +129,7 @@ class TestBatchA_UsersJsonLock:
         assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
-        assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc123"
+        _assert_mochi_key_matches(data[user_id]["config"]["integrations"]["mochi"]["api_key"], "mk_abc123")
 
     def test_concurrent_writes_no_json_corruption(self, user_env):
         """10 concurrent PUT /api/user/config must not corrupt users.json."""
@@ -174,7 +184,7 @@ class TestBatchA_UsersJsonLock:
         assert r.json()["integrations"]["mochi"]["has_api_key"] is True
 
         data = json.loads((data_dir / "users.json").read_text())
-        assert data[user_id]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
+        _assert_mochi_key_matches(data[user_id]["config"]["integrations"]["mochi"]["api_key"], "mk_nested")
 
     def test_get_entitlements_returns_default_subscription_snapshot(self, user_env):
         """GET /api/user/entitlements should return a stable default snapshot."""
