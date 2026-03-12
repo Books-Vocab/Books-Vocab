@@ -8,7 +8,15 @@ struct ArchivedVocabSheet: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.vocabSkin) private var vocabSkin
 
-    @Query private var allEntries: [VocabularyEntry]
+    @Query(
+        filter: #Predicate<VocabularyEntry> {
+            $0.syncStatus == 1 &&
+            $0.actionType != "delete" &&
+            $0.isArchived == true
+        },
+        sort: \VocabularyEntry.word
+    )
+    private var archivedAllEntries: [VocabularyEntry]
     @State private var searchText = ""
     @State private var selectedEntry: VocabularyEntry?
 
@@ -73,10 +81,11 @@ struct ArchivedVocabSheet: View {
     }
 
     private var archivedEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredArchivedEntries(
-            in: allEntries,
-            searchText: searchText
-        )
+        guard !searchText.isEmpty else { return archivedAllEntries }
+        return archivedAllEntries.filter {
+            $0.word.localizedCaseInsensitiveContains(searchText) ||
+            $0.translation.localizedCaseInsensitiveContains(searchText)
+        }
     }
 
     private func handleUnarchive(_ entry: VocabularyEntry) {
