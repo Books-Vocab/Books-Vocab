@@ -4,14 +4,14 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Iterator
 from pathlib import Path
-from typing import Iterator
 
 import httpx
 
 from .cards import Card, CardStore
 from .graph import GraphStore
-from .renderer import CardRenderer, RenderIntent, TEMPLATE_ID
+from .renderer import TEMPLATE_ID, CardRenderer, RenderIntent
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,9 @@ class MochiClient:
 
     def _request(self, method: str, path: str, **kwargs) -> dict:
         import time
+
         from httpx import HTTPStatusError, RequestError
-        
+
         for attempt in range(4):
             try:
                 resp = self._client.request(method, path, **kwargs)
@@ -56,7 +57,7 @@ class MochiClient:
                     time.sleep(wait)
                     continue
                 raise e
-                
+
         return {}  # Fallback
 
     # --- Decks ---
@@ -97,7 +98,7 @@ class MochiClient:
         """Create a new card in a deck."""
         return self._request("POST", "/cards", json={"deck-id": deck_id, "content": content})
 
-    def update_card(self, card_id: str, content: str, tags: list[str] | None = None, 
+    def update_card(self, card_id: str, content: str, tags: list[str] | None = None,
                     fields: dict | None = None, template_id: str | None = None) -> dict:
         """Update card content and optionally tags/fields."""
         payload: dict = {"content": content}
@@ -215,12 +216,12 @@ class MochiSync:
             self.client.retry_callback = None
 
         import hashlib
-        
+
         if not dry_run:
             deck_id = self._ensure_deck()
         else:
             deck_id = "dry-run-deck-id"
-            
+
         all_cards = list(self.cards.all())
 
         stats = {"created": 0, "updated": 0, "skipped": 0, "deleted": 0}
@@ -253,50 +254,50 @@ class MochiSync:
                     result = self.client.create_card(deck_id, "")
                     self._map[card.id] = result["id"]
                 stats["created"] += 1
-        
+
         if not dry_run:
             self._save()
 
         # Phase 2: Render all cards (fields), find which ones changed
         renderer = CardRenderer(self.cards, self.graph, self._map)
-        
+
         from .difficulty import get_tier
-        
+
         to_update: list[tuple[Card, str, dict, list[str] | None]] = []  # (card, content, fields, tags)
-        
+
         for card in all_cards:
             mochi_id = self._map.get(card.id)
             if not mochi_id:
                 continue
-            
+
             # Render fields & content
             fields = renderer.render_fields(card, intent)
             content = renderer.render(card, intent) # Keep fallback content
-            
+
             # Hash fields for accurate change detection
             fields_json = json.dumps(fields, sort_keys=True)
             content_hash = hashlib.md5(fields_json.encode("utf-8")).hexdigest()
-            
+
             if self._state.get(card.id) == content_hash:
                 stats["skipped"] += 1
                 continue
-            
+
             # Build tags using calibrated static thresholds
             tags = None
             if card.difficulty is not None:
                 tier = get_tier(card.content)
                 tags = [tier.tag]
-            
+
             # Include tags in hash so tier changes trigger sync
             hash_data = json.dumps({"fields": fields, "tags": tags}, sort_keys=True)
             content_hash = hashlib.md5(hash_data.encode("utf-8")).hexdigest()
-            
+
             if self._state.get(card.id) == content_hash:
                 stats["skipped"] += 1
                 continue
-            
+
             to_update.append((card, content, fields, tags))
-        
+
         # Phase 3: Update only changed cards (with API calls + progress)
         if to_update:
             total_updates = len(to_update)
@@ -307,12 +308,12 @@ class MochiSync:
                 if not dry_run:
                     self.client.update_card(mochi_id, content, tags=tags,
                                           fields=fields, template_id=TEMPLATE_ID)
-                    
+
                     hash_data = json.dumps({"fields": json.loads(json.dumps(fields, sort_keys=True)), "tags": tags}, sort_keys=True)
                     content_hash = hashlib.md5(hash_data.encode("utf-8")).hexdigest()
                     self._state[card.id] = content_hash
                 stats["updated"] += 1
-        
+
         if not dry_run:
             self._save()
 
@@ -321,16 +322,16 @@ class MochiSync:
     def pull_updates(self, dry_run: bool = False) -> dict:
         """Pull updates from Mochi and update local cards."""
         from .parser import MochiParser
-        
+
         if not self._map:
             return {"updated": 0, "skipped": 0}
 
         parser = MochiParser()
         stats = {"updated": 0, "skipped": 0}
-        
+
         # Invert map for efficiency if needed, but we check by local ID
         mochi_to_local = {v: k for k, v in self._map.items()}
-        
+
         # 1. Fetch all cards from Mochi deck (more efficient than N requests)
         deck_id = self._ensure_deck()
         mochi_cards = {}
@@ -338,20 +339,20 @@ class MochiSync:
             if card["id"] in mochi_to_local:
                 # Store full card object to access fields
                 mochi_cards[card["id"]] = card
-        
+
         # 2. Iterate local cards that are mapped
         from tqdm import tqdm
         iterator = tqdm(mochi_to_local.items(), desc="Pulling from Mochi", unit="card")
-        
+
         for mochi_id, local_id in iterator:
             remote_card = mochi_cards.get(mochi_id)
             if not remote_card:
                 continue
-                
+
             local_card = self.cards.get(local_id)
             if not local_card:
                 continue
-                
+
             # Parse remote content
             # Try fields first (new system), fallback to content (legacy)
             if remote_card.get("fields"):
@@ -362,15 +363,15 @@ class MochiSync:
             if not updates:
                 stats["skipped"] += 1
                 continue
-                
+
             # Check for changes
             changed = False
-            
+
             # Helper to check change
-            def has_changed(key: str) -> bool:
-                if key not in updates:
+            def has_changed(key: str) -> bool:  # noqa: B023
+                if key not in updates:  # noqa: B023
                     return False
-                if getattr(local_card, key) != updates[key]:
+                if getattr(local_card, key) != updates[key]:  # noqa: B023
                     return True
                 return False
 
@@ -378,22 +379,22 @@ class MochiSync:
                 if not dry_run:
                     local_card.content = updates["content"]
                 changed = True
-                
+
             if has_changed("meaning"):
                 if not dry_run:
                     local_card.meaning = updates["meaning"]
                 changed = True
-                
+
             if has_changed("pos"):
                 if not dry_run:
                     local_card.pos = updates["pos"]
                 changed = True
-            
+
             if "note" in updates and local_card.note != updates["note"]:
                 if not dry_run:
                     local_card.note = updates["note"]
                 changed = True
-            
+
             # Sync lists carefully
             if "collocations" in updates:
                 # If remote has collocations and different from local, update
@@ -414,8 +415,8 @@ class MochiSync:
                 stats["updated"] += 1
             else:
                 stats["skipped"] += 1
-                
+
         if not dry_run and stats["updated"] > 0:
             self.cards.save()
-            
+
         return stats

@@ -1,8 +1,9 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
+from collections.abc import Awaitable, Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Awaitable, Callable
+from typing import Any
 
 import httpx
 from fastapi import HTTPException
@@ -96,7 +97,7 @@ def app_store_notifications_response(
         raise HTTPException(status_code=400, detail=str(exc)) from exc
 
     event = {
-        "received_at": datetime.now(tz=timezone.utc).isoformat(),
+        "received_at": datetime.now(tz=UTC).isoformat(),
         "notification_type": req.notification_type,
         "subtype": req.subtype,
         "product_id": snapshot["product_id"],

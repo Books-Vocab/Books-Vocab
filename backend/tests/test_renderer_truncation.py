@@ -1,11 +1,13 @@
 
 import unittest
+
 from kg.renderer import CardRenderer
+
 
 class TestCardRendererTruncation(unittest.TestCase):
     def setUp(self):
         # minimal mock for CardRenderer dependencies
-        self.renderer = CardRenderer(None, None, {}) 
+        self.renderer = CardRenderer(None, None, {})
 
     def test_truncate_short_sentence(self):
         text = "This is a **short** sentence."
@@ -28,7 +30,7 @@ class TestCardRendererTruncation(unittest.TestCase):
         expected = "Start here **target** one two three four five..."
         result = self.renderer._truncate_example(text, radius=5)
         self.assertEqual(result, expected)
-        
+
     def test_truncate_both_sides(self):
         # 7 words before, 7 after
         text = "One two three four five six seven **target** one two three four five six seven."
@@ -45,9 +47,9 @@ class TestCardRendererTruncation(unittest.TestCase):
         # After: "her home was hardly even a" (6 words) -> keep 5: "her home was hardly even a"
         # Wait, the user example result was "...Siri had heard from passing **ramblemen**, her home was hardly even..."
         # "her home was hardly even" is 5 words.
-        
+
         expected = "...Siri had heard from passing **ramblemen**, her home was hardly even..."
-        # Note: checking punctuation handling might be tricky with simple split. 
+        # Note: checking punctuation handling might be tricky with simple split.
         # But let's assume basic split is fine for now.
         result = self.renderer._truncate_example(text, radius=5)
         self.assertEqual(result, expected)

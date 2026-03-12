@@ -8,15 +8,14 @@ and the incremental sync boundary in list_vocab_cards().
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 import pytest
 
-from kg.cards import CardStore
-from kg.vocab_service import push_review_states, list_vocab_cards
 from kg.api_models import ReviewStateEntry
-
+from kg.cards import CardStore
+from kg.vocab_service import list_vocab_cards, push_review_states
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -34,7 +33,7 @@ def _iso(dt: datetime) -> str:
 
 
 def _now() -> datetime:
-    return datetime.now(timezone.utc)
+    return datetime.now(UTC)
 
 
 def _entry(
@@ -176,7 +175,7 @@ class TestPushReviewStates:
     def test_case_insensitive_word_match(self, tmp_path):
         """Word matching should be case-insensitive."""
         store = _make_store(tmp_path)
-        card = store.add("Evoke", "喚起")
+        store.add("Evoke", "喚起")
 
         entry = _entry("evoke", _iso(_now()), review_count=3)
         result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
@@ -360,6 +359,7 @@ class TestIncrementalSync:
         """Invalid since timestamp should raise HTTP 400."""
         store = _make_store(tmp_path)
         from unittest.mock import MagicMock
+
         from fastapi import HTTPException
 
         with pytest.raises(HTTPException) as exc_info:

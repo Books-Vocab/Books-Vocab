@@ -6,7 +6,7 @@ Supports concurrent batch processing via ThreadPoolExecutor.
 from __future__ import annotations
 
 import json
-from concurrent.futures import ThreadPoolExecutor, as_completed
+from concurrent.futures import ThreadPoolExecutor
 
 from openai import OpenAI
 
@@ -73,7 +73,8 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) 
         return []
 
     import time
-    from openai import RateLimitError, APIError, InternalServerError, OpenAIError
+
+    from openai import APIError, InternalServerError, RateLimitError
 
     for attempt in range(4):
         try:
@@ -116,6 +117,7 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) 
 
 import asyncio
 
+
 async def enrich_cards_stream(
     client: OpenAI,
     cards: list[Card],
@@ -137,7 +139,8 @@ async def enrich_cards_stream(
     completed_cards = 0
 
     import time
-    from openai import RateLimitError, APIError, InternalServerError
+
+    from openai import APIError, InternalServerError, OpenAIError, RateLimitError
 
     def _process_batch_with_retry(batch: list[Card], loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
         """Worker function that handles retries and pushes progress to the async queue."""
@@ -152,7 +155,7 @@ async def enrich_cards_stream(
                     temperature=0.3,
                     response_format={"type": "json_object"},
                 )
-                
+
                 raw = response.choices[0].message.content or "{}"
                 data = json.loads(raw)
 
@@ -177,38 +180,38 @@ async def enrich_cards_stream(
                 # Push success to queue
                 loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch), "usage": usage_data})
                 return
-                
+
             except (RateLimitError, APIError, InternalServerError) as e:
                 if attempt < 3:
                     wait_time = 2 ** (attempt + 1)
                     loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "retry", 
+                        "type": "retry",
                         "detail": f"Gemini API rate limit, retrying in {wait_time}s..."
                     })
                     time.sleep(wait_time)
                 else:
                     loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
                     return
-            except (OpenAIError, json.JSONDecodeError, KeyError, TypeError) as e:
+            except (OpenAIError, json.JSONDecodeError, KeyError, TypeError) as e:  # noqa: B904
                 loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
                 return
 
     queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
-    
+
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
         # Submit all batches
-        futures = [
+        [
             loop.run_in_executor(executor, _process_batch_with_retry, batch, loop, queue)
             for batch in batches
         ]
-        
+
         # Await results as they come in
         tasks_remaining = len(batches)
-        
+
         while tasks_remaining > 0:
             msg = await queue.get()
-            
+
             if msg["type"] == "success":
                 completed_cards += msg["count"]
                 tasks_remaining -= 1

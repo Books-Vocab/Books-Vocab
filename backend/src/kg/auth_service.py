@@ -1,7 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime, timedelta
+from typing import Any
 
 import jwt
 from filelock import FileLock
@@ -15,7 +16,7 @@ def create_jwt_token(
     jwt_algorithm: str,
     jwt_expiry_minutes: int,
 ) -> str:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     expires = now + timedelta(minutes=jwt_expiry_minutes)
 
     payload = {
@@ -43,7 +44,7 @@ def resolve_and_link_user(
             users["_email_index"] = {}
 
         canonical_id = None
-        now = datetime.now(tz=timezone.utc).isoformat()
+        now = datetime.now(tz=UTC).isoformat()
 
         if email and email in users["_email_index"]:
             canonical_id = users["_email_index"][email]

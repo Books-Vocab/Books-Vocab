@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 
@@ -120,7 +119,7 @@ class TestJudgeAPIFailure:
         mock_client = MagicMock()
         mock_client.chat.completions.create.side_effect = Exception("API error")
         judge = Judge(client=mock_client)
-        with pytest.raises(Exception):
+        with pytest.raises(Exception):  # noqa: B017
             judge.evaluate("a", "meaning a", "b", "meaning b")
 
     def test_both_calls_fail_json_parse_returns_none(self):
