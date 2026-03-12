@@ -112,6 +112,12 @@ struct KGVocabView: View {
             },
             onArchiveTapped: { entryID in
                 handleArchiveTap(entryID)
+            },
+            onRefresh: {
+                await coordinator.forceRefresh(
+                    kgService: kgService,
+                    modelContext: modelContext
+                )
             }
         )
     }
