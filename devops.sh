@@ -234,17 +234,21 @@ cmd_deploy() {
   cmd_migrate
 
   section "Step 4/4: 健康驗證"
+  local max_attempts=5
+  local delay=5
+  local url="http://localhost:8000/docs"
   local http_code=""
-  for i in 1 2 3 4 5; do
-    http_code=$(run_remote "curl -o /dev/null -s -w '%{http_code}' http://localhost:8000/docs" || echo "000")
-    [[ "$http_code" == "200" ]] && break
-    info "attempt $i: HTTP ${http_code}，等待 3 秒..."
-    sleep 3
+  for i in $(seq 1 $max_attempts); do
+    http_code=$(run_remote "curl -o /dev/null -s -w '%{http_code}' $url" || echo "000")
+    if [[ "$http_code" == "200" ]]; then
+      ok "健康檢查通過 (attempt $i)"
+      break
+    fi
+    info "attempt $i: HTTP ${http_code}，等待 ${delay} 秒..."
+    sleep $delay
   done
-  if [[ "$http_code" == "200" ]]; then
-    ok "API 回應正常 (HTTP 200)"
-  else
-    run_remote "docker logs knowledge-graph-api -n 30"
+  if [[ "$http_code" != "200" ]]; then
+    run_remote "cd $REMOTE_DIR && docker compose logs --tail=30"
     err "部署後健康檢查失敗 (HTTP $http_code)，請確認日誌"
   fi
 
@@ -325,6 +329,21 @@ cmd_logs() {
 }
 
 # ── 指令：backup ──────────────────────────────────────────────────────────────
+cleanup_old_backups() {
+  local backup_dir="$BACKUP_DIR"
+  local keep=10
+  local count
+  count=$(ls -1d "$backup_dir"/data_* 2>/dev/null | wc -l)
+  if [ "$count" -gt "$keep" ]; then
+    local to_delete=$(( count - keep ))
+    echo "清理舊備份：刪除最舊的 $to_delete 份..."
+    ls -1d "$backup_dir"/data_* | head -n "$to_delete" | while read -r dir; do
+      echo "  刪除: $(basename "$dir")"
+      rm -rf "$dir"
+    done
+  fi
+}
+
 cmd_backup() {
   local date_str; date_str=$(date +%Y%m%d_%H%M)
   local dest="$BACKUP_DIR/data_$date_str"
@@ -335,6 +354,7 @@ cmd_backup() {
 
   ok "備份完成: $dest"
   ls -lh "$BACKUP_DIR" | tail -5
+  cleanup_old_backups
 }
 
 # ── 指令：users ───────────────────────────────────────────────────────────────
