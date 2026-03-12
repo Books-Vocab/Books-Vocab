@@ -7,6 +7,7 @@ extension ReaderTranslationHandler {
         context: String,
         vocabularyContext: ReaderVocabularyContext
     ) {
+        cancelCurrentTranslationTask()
         let normalizedWord = normalizeWord(word)
         let selection = WordSelection(word: normalizedWord, context: context, position: .zero)
         wordSelection = selection
@@ -41,8 +42,9 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
-            Task { @MainActor in
+            let task = Task { @MainActor in
                 let fetchedPron = await DictionaryService.fetchPronunciation(word: word)
+                guard !Task.isCancelled, wordSelection?.word == selection.word else { return }
                 pronunciation = fetchedPron
                 guestSaveToVocabulary(
                     selection: selection,
@@ -50,6 +52,7 @@ extension ReaderTranslationHandler {
                     context: vocabularyContext
                 )
             }
+            replaceCurrentTranslationTask(with: task)
             return
         }
 
@@ -64,7 +67,6 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        currentTranslationTask?.cancel()
         let newTask = Task { @MainActor in
             guard !Task.isCancelled else { return }
 
@@ -122,7 +124,7 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
         }
-        currentTranslationTask = newTask
+        replaceCurrentTranslationTask(with: newTask)
     }
 
     func handlePhraseSelected(
@@ -130,6 +132,7 @@ extension ReaderTranslationHandler {
         context: String,
         vocabularyContext: ReaderVocabularyContext
     ) {
+        cancelCurrentTranslationTask()
         let selection = WordSelection(word: phrase, context: context, position: .zero)
         wordSelection = selection
 
@@ -144,7 +147,7 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        Task { @MainActor in
+        let task = Task { @MainActor in
             do {
                 let translation = try await translationService.translatePhrase(
                     phrase: phrase,
@@ -184,9 +187,11 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
         }
+        replaceCurrentTranslationTask(with: task)
     }
 
     func handleExplainSelected(text: String, context: String) {
+        cancelCurrentTranslationTask()
         let selection = WordSelection(word: text, context: context, position: .zero)
         wordSelection = selection
 
@@ -202,7 +207,7 @@ extension ReaderTranslationHandler {
             explanationErrorMessage = nil
         }
 
-        Task { @MainActor in
+        let task = Task { @MainActor in
             do {
                 let (explanation, _) = try await translationService.fetchExplanation(
                     word: text,
@@ -230,6 +235,7 @@ extension ReaderTranslationHandler {
                 explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
         }
+        replaceCurrentTranslationTask(with: task)
     }
 
     func handleExpand() {
@@ -245,7 +251,7 @@ extension ReaderTranslationHandler {
         explanationStatus = nil
         explanationErrorMessage = nil
 
-        Task { @MainActor in
+        let task = Task { @MainActor in
             do {
                 let (explanation, latency) = try await translationService.fetchExplanation(
                     word: selection.word,
@@ -278,5 +284,6 @@ extension ReaderTranslationHandler {
                 explanationErrorMessage = L10n.format("載入失敗：%@", error.localizedDescription)
             }
         }
+        replaceCurrentTranslationTask(with: task)
     }
 }
