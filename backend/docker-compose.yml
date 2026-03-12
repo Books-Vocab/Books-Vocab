@@ -15,7 +15,7 @@ services:
     deploy:
       resources:
         limits:
-          memory: 512M
+          memory: 1024M
           cpus: "1.0"
         reservations:
           memory: 128M
@@ -28,5 +28,5 @@ services:
     logging:
       driver: json-file
       options:
-        max-size: "10m"
-        max-file: "3"
+        max-size: "50m"
+        max-file: "5"
