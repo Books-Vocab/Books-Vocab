@@ -95,6 +95,17 @@ class _DummyEmbeddingStore:
         return []
 
 
+
+def _assert_mochi_key_matches(stored_key, expected):
+    if stored_key.startswith("enc:"):
+        from kg.secret_store import decrypt_value
+        from kg.api import _runtime_settings
+        assert decrypt_value(stored_key, _runtime_settings().jwt_secret) == expected
+    else:
+        assert stored_key == expected
+
+
+
 def test_vocab_lifecycle_and_since_sync(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
@@ -366,7 +377,7 @@ def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
     ):
         users = api_mod.load_users()
 
-    assert users["legacy_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_legacy"
+    _assert_mochi_key_matches(users["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
     assert "mochi_api_key" not in users["legacy_user"]
     assert "mochi_api_key" not in users["legacy_user"]["config"]
 
@@ -455,7 +466,7 @@ def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
         )
 
     stored = json.loads(users_file.read_text())
-    assert stored["legacy_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_legacy"
+    _assert_mochi_key_matches(stored["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
     assert "mochi_api_key" not in stored["legacy_user"]
     assert "mochi_api_key" not in stored["legacy_user"]["config"]
 
@@ -486,7 +497,7 @@ def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
     ):
         users = api_mod.load_users()
 
-    assert users["nested_user"]["config"]["integrations"]["mochi"]["api_key"] == "mk_nested"
+    _assert_mochi_key_matches(users["nested_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_nested")
 
 
 def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
