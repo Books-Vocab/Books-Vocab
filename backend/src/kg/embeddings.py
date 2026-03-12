@@ -11,7 +11,7 @@ import numpy as np
 logger = logging.getLogger(__name__)
 from openai import OpenAI, OpenAIError
 
-EMBEDDING_MODEL = "gemini-embedding-001"
+EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
 
 
