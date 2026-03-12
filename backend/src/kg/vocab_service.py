@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import re
+import unicodedata
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
@@ -18,6 +19,13 @@ from .api_models import (
     VocabEntry,
 )
 from .user_store import parse_datetime
+
+MAX_BATCH_SIZE = 500
+MAX_WORD_LENGTH = 200
+
+
+def _normalize_word(word: str) -> str:
+    return unicodedata.normalize("NFC", word).strip().lower()
 
 
 def _dt_to_iso(dt: datetime | None) -> str | None:
@@ -55,7 +63,7 @@ def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any]
     for kind in link_kinds:
         items = grouped.get(kind.value)
         if items:
-            ordered[kind.value] = sorted(items, key=lambda item: item.word.lower())
+            ordered[kind.value] = sorted(items, key=lambda item: _normalize_word(item.word))
 
     return ordered
 
@@ -120,12 +128,12 @@ def push_review_states(
     """Merge client review states into server cards. Returns {updated, skipped}."""
     card_by_word: dict[str, Any] = {}
     for card in cards_store.all():
-        card_by_word[card.content.lower()] = card
+        card_by_word[_normalize_word(card.content)] = card
 
     updated = 0
     skipped = 0
     for entry in entries:
-        card = card_by_word.get(entry.word.lower())
+        card = card_by_word.get(_normalize_word(entry.word))
         if not card:
             skipped += 1
             continue
@@ -170,24 +178,33 @@ def push_review_states(
 
 
 def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> CardResponse:
+    if len(word) > MAX_WORD_LENGTH:
+        raise HTTPException(status_code=422, detail="Word too long")
     cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
+    norm = _normalize_word(word)
     for card in cards_store.all():
-        if card.content.lower() == word.lower():
+        if _normalize_word(card.content) == norm:
             return card_response_builder(card, graph, cards_by_id)
     raise HTTPException(404, f"Word '{word}' not found")
 
 
 def archive_vocab_word(word: str, *, archived: bool, cards_store: Any) -> dict[str, str]:
+    if len(word) > MAX_WORD_LENGTH:
+        raise HTTPException(status_code=422, detail="Word too long")
+    norm = _normalize_word(word)
     for card in cards_store.all():
-        if card.content.lower() == word.lower():
+        if _normalize_word(card.content) == norm:
             cards_store.update(card.id, is_archived=archived)
             return {"word": word, "id": card.id, "archived": archived}
     raise HTTPException(404, f"Word '{word}' not found")
 
 
 def delete_vocab_word(word: str, *, cards_store: Any) -> dict[str, str]:
+    if len(word) > MAX_WORD_LENGTH:
+        raise HTTPException(status_code=422, detail="Word too long")
+    norm = _normalize_word(word)
     for card in cards_store.all():
-        if card.content.lower() == word.lower():
+        if _normalize_word(card.content) == norm:
             card_id = card.id
             cards_store.delete(card_id)
             return {"deleted": word, "id": card_id}
@@ -261,7 +278,12 @@ def add_vocab_entries(
     graph: Any,
     logger: logging.Logger,
 ) -> VocabAddResponse:
-    existing = {card.content.lower() for card in cards.all()}
+    if len(entries) > MAX_BATCH_SIZE:
+        raise HTTPException(
+            status_code=422,
+            detail=f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}",
+        )
+    existing = {_normalize_word(card.content) for card in cards.all()}
 
     created = 0
     skipped = 0
@@ -270,11 +292,12 @@ def add_vocab_entries(
 
     for entry in entries:
         word = entry.word.strip()
-        if word.lower() in existing:
+        if _normalize_word(word) in existing:
             skipped += 1
             duplicates.append(word)
+            norm = _normalize_word(word)
             for card in cards.all():
-                if card.content.lower() == word.lower():
+                if _normalize_word(card.content) == norm:
                     card_ids[word] = card.id
                     break
             continue
@@ -291,7 +314,7 @@ def add_vocab_entries(
             pronunciation=entry.pronunciation,
         )
         card_ids[word] = card.id
-        existing.add(word.lower())
+        existing.add(_normalize_word(word))
         created += 1
 
     if created > 0:
