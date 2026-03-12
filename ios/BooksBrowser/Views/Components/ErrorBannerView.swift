@@ -47,7 +47,7 @@ struct ErrorBannerView: View {
         .background(appTheme.palette.warning.opacity(AppBannerMetrics.backgroundOpacity))
         .overlay(
             Rectangle()
-                .frame(height: 1)
+                .frame(height: AppMetrics.dividerStandard)
                 .foregroundStyle(appTheme.palette.warning.opacity(AppBannerMetrics.borderOpacity)),
             alignment: .bottom
         )
