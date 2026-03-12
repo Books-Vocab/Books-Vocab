@@ -6,7 +6,16 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from kg.vocab_service import delete_vocab_word, graph_links_payload, list_vocab_cards, lookup_vocab_word
+from kg.vocab_service import (
+    MAX_BATCH_SIZE,
+    MAX_WORD_LENGTH,
+    _normalize_word,
+    add_vocab_entries,
+    delete_vocab_word,
+    graph_links_payload,
+    list_vocab_cards,
+    lookup_vocab_word,
+)
 
 
 @dataclass
@@ -84,3 +93,117 @@ def test_graph_links_payload_only_returns_active_links():
     assert len(payload) == 1
     assert payload[0].id == "l1"
     assert payload[0].kind == "confusable"
+
+
+# ---------------------------------------------------------------------------
+# Task 1: 批次大小限制
+# ---------------------------------------------------------------------------
+
+class _FakeCards:
+    def __init__(self):
+        self._cards = []
+
+    def all(self, include_deleted=False):
+        return list(self._cards)
+
+    def add(self, content, meaning, **kwargs):
+        from types import SimpleNamespace
+
+        def _embed_text():
+            return f"{content}: {meaning}"
+
+        card = SimpleNamespace(id=f"id_{content}", content=content, meaning=meaning, embed_text=_embed_text)
+        self._cards.append(card)
+        return card
+
+    def get(self, card_id):
+        for c in self._cards:
+            if c.id == card_id:
+                return c
+        return None
+
+
+class _FakeEmbeddings:
+    def has(self, card_id):
+        return False
+
+    def add(self, card_id, text):
+        pass
+
+    def find_similar(self, card_id, k=3):
+        return []
+
+
+class _FakeGraph:
+    def add_candidate(self, *args, **kwargs):
+        pass
+
+
+def test_add_vocab_entries_rejects_oversized_batch():
+    from kg.api_models import VocabEntry
+    entries = [VocabEntry(word=f"word{i}", translation="t", context="c") for i in range(MAX_BATCH_SIZE + 1)]
+    with pytest.raises(HTTPException) as exc_info:
+        add_vocab_entries(
+            entries,
+            user={"id": "u1"},
+            cards=_FakeCards(),
+            embeddings=_FakeEmbeddings(),
+            graph=_FakeGraph(),
+            logger=SimpleNamespace(warning=lambda *a, **k: None, info=lambda *a, **k: None),
+        )
+    assert exc_info.value.status_code == 422
+    assert "500" in exc_info.value.detail
+
+
+def test_add_vocab_entries_accepts_boundary_batch():
+    from kg.api_models import VocabEntry
+    entries = [VocabEntry(word=f"word{i}", translation="t", context="c") for i in range(MAX_BATCH_SIZE)]
+    result = add_vocab_entries(
+        entries,
+        user={"id": "u1"},
+        cards=_FakeCards(),
+        embeddings=_FakeEmbeddings(),
+        graph=_FakeGraph(),
+        logger=SimpleNamespace(warning=lambda *a, **k: None, info=lambda *a, **k: None),
+    )
+    assert result.created == MAX_BATCH_SIZE
+
+
+# ---------------------------------------------------------------------------
+# Task 2: Word 長度驗證
+# ---------------------------------------------------------------------------
+
+def test_lookup_vocab_word_rejects_too_long():
+    cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
+    long_word = "a" * (MAX_WORD_LENGTH + 1)
+    with pytest.raises(HTTPException) as exc_info:
+        lookup_vocab_word(long_word, cards_store=cards, graph=object(), card_response_builder=_card_builder)
+    assert exc_info.value.status_code == 422
+
+
+def test_delete_vocab_word_rejects_too_long():
+    cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
+    long_word = "a" * (MAX_WORD_LENGTH + 1)
+    with pytest.raises(HTTPException) as exc_info:
+        delete_vocab_word(long_word, cards_store=cards)
+    assert exc_info.value.status_code == 422
+
+
+# ---------------------------------------------------------------------------
+# Task 4: Unicode 正規化
+# ---------------------------------------------------------------------------
+
+def test_normalize_word_nfc():
+    import unicodedata
+    precomposed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    assert _normalize_word(precomposed) == _normalize_word(decomposed)
+
+
+def test_lookup_vocab_word_unicode_normalized():
+    import unicodedata
+    precomposed = unicodedata.normalize("NFC", "café")
+    decomposed = unicodedata.normalize("NFD", "café")
+    cards = _FakeCardsStore([_FakeCard(id="c1", content=precomposed)])
+    result = lookup_vocab_word(decomposed, cards_store=cards, graph=object(), card_response_builder=_card_builder)
+    assert result["id"] == "c1"
