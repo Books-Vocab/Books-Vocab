@@ -164,7 +164,7 @@ struct SettingsReviewSection: View {
             }
         }
         .padding(.horizontal, vocabSkin.spacing.cardPadding)
-        .padding(.vertical, 12)
+        .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
     }
 
     private func stepButton(systemImage: String, action: @escaping () -> Void, enabled: Bool) -> some View {
