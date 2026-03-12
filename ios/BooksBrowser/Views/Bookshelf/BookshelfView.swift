@@ -9,22 +9,6 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-private enum BookshelfMetrics {
-    static let placeholderTitleHorizontalPadding: CGFloat = 12
-    static let coverHeight: CGFloat = 210
-    static let coverHeightRegular: CGFloat = 260
-    static let coverCornerRadius: CGFloat = 6
-    static let coverShadowOpacity: Double = 0.10
-    static let coverShadowRadius: CGFloat = 6
-    static let coverShadowY: CGFloat = 3
-    static let progressBarHeight: CGFloat = 4
-    static let progressBarCornerRadius: CGFloat = 2
-    static let progressBarAccentOpacity: Double = 0.55
-    static let progressBarSpacing: CGFloat = 6
-    static let loadingOverlayPadding: CGFloat = 28
-    static let loadingOverlayCornerRadius: CGFloat = AppMetrics.cornerRadiusMedium
-}
-
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
@@ -43,7 +27,7 @@ struct BookshelfView: View {
     }
 
     private var coverHeight: CGFloat {
-        sizeClass == .regular ? BookshelfMetrics.coverHeightRegular : BookshelfMetrics.coverHeight
+        sizeClass == .regular ? AppBookshelfMetrics.coverHeightRegular : AppBookshelfMetrics.coverHeightCompact
     }
 
     var body: some View {
@@ -219,8 +203,8 @@ struct BookshelfView: View {
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
-            .padding(BookshelfMetrics.loadingOverlayPadding)
-            .glassEffect(.regular, in: .rect(cornerRadius: BookshelfMetrics.loadingOverlayCornerRadius))
+            .padding(AppBookshelfMetrics.loadingOverlayPadding)
+            .glassEffect(.regular, in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
         }
     }
 
@@ -232,7 +216,7 @@ struct BookCard: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.iCloudDownloadManager) private var downloadManager
     let book: Book
-    var coverHeight: CGFloat = BookshelfMetrics.coverHeight
+    var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
@@ -240,7 +224,7 @@ struct BookCard: View {
             coverView
                 .overlay(
                     RoundedRectangle(
-                        cornerRadius: BookshelfMetrics.coverCornerRadius,
+                        cornerRadius: AppBookshelfMetrics.coverCornerRadius,
                         style: .continuous
                     )
                     .strokeBorder(
@@ -252,9 +236,9 @@ struct BookCard: View {
                     iCloudDownloadBadge
                 }
                 .shadow(
-                    color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
-                    radius: BookshelfMetrics.coverShadowRadius,
-                    y: BookshelfMetrics.coverShadowY
+                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
+                    radius: AppBookshelfMetrics.coverShadowRadius,
+                    y: AppBookshelfMetrics.coverShadowY
                 )
 
             // 進度條（封面外獨立元素）
@@ -294,13 +278,13 @@ struct BookCard: View {
                 .frame(height: coverHeight)
                 .clipShape(
                     RoundedRectangle(
-                        cornerRadius: BookshelfMetrics.coverCornerRadius,
+                        cornerRadius: AppBookshelfMetrics.coverCornerRadius,
                         style: .continuous
                     )
                 )
         } else {
             RoundedRectangle(
-                cornerRadius: BookshelfMetrics.coverCornerRadius,
+                cornerRadius: AppBookshelfMetrics.coverCornerRadius,
                 style: .continuous
             )
             .fill(appTheme.palette.mutedFill)
@@ -314,7 +298,7 @@ struct BookCard: View {
                         .font(AppFonts.caption2())
                         .foregroundStyle(appTheme.palette.secondaryText)
                         .multilineTextAlignment(.center)
-                        .padding(.horizontal, BookshelfMetrics.placeholderTitleHorizontalPadding)
+                        .padding(.horizontal, AppBookshelfMetrics.placeholderTitleHorizontalPadding)
                 }
             }
         }
@@ -347,17 +331,17 @@ struct BookCard: View {
     }
 
     private func progressBar(_ progress: Double) -> some View {
-        HStack(spacing: BookshelfMetrics.progressBarSpacing) {
+        HStack(spacing: AppBookshelfMetrics.progressBarSpacing) {
             GeometryReader { geo in
                 Capsule()
                     .fill(appTheme.palette.mutedFill)
                     .overlay(alignment: .leading) {
                         Capsule()
-                            .fill(appTheme.palette.accent.opacity(BookshelfMetrics.progressBarAccentOpacity))
+                            .fill(appTheme.palette.accent.opacity(AppBookshelfMetrics.progressBarAccentOpacity))
                             .frame(width: geo.size.width * progress)
                     }
             }
-            .frame(height: BookshelfMetrics.progressBarHeight)
+            .frame(height: AppBookshelfMetrics.progressBarHeight)
             .clipShape(Capsule())
 
             Text("\(Int(progress * 100))%")
@@ -490,8 +474,8 @@ private struct BookshelfLoadingPreview: View {
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
-            .padding(BookshelfMetrics.loadingOverlayPadding)
-            .glassEffect(.regular, in: .rect(cornerRadius: BookshelfMetrics.loadingOverlayCornerRadius))
+            .padding(AppBookshelfMetrics.loadingOverlayPadding)
+            .glassEffect(.regular, in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
         }
     }
 }

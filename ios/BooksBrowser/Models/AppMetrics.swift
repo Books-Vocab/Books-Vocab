@@ -54,6 +54,46 @@ enum AppBannerMetrics {
     static let backgroundOpacity: Double = 0.08
 }
 
+enum AppWelcomeMetrics {
+    static let iconBottomPadding: CGFloat = 12
+    static let pageHeight: CGFloat = 240
+    static let featureIconFrame: CGFloat = 64
+    static let subtitleHorizontalPadding: CGFloat = 40
+    static let bottomPadding: CGFloat = 40
+}
+
+enum AppBookshelfMetrics {
+    static let placeholderTitleHorizontalPadding: CGFloat = 12
+    static let coverHeightCompact: CGFloat = 210
+    static let coverHeightRegular: CGFloat = 260
+    static let coverCornerRadius: CGFloat = 6
+    static let coverShadowOpacity: Double = 0.10
+    static let coverShadowRadius: CGFloat = 6
+    static let coverShadowY: CGFloat = 3
+    static let progressBarHeight: CGFloat = 4
+    static let progressBarAccentOpacity: Double = 0.55
+    static let progressBarSpacing: CGFloat = 6
+    static let loadingOverlayPadding: CGFloat = 28
+}
+
+enum AppSettingsMetrics {
+    static let accountHeroSpacing: CGFloat = 10
+    static let accountActionSpacing: CGFloat = 10
+    static let accountButtonSpacing: CGFloat = 12
+    static let accountRowSpacing: CGFloat = 14
+    static let accountAvatarSize: CGFloat = 46
+    static let socialBadgeSize: CGFloat = 22
+    static let reviewModeTileGap: CGFloat = 10
+    static let reviewStepperGap: CGFloat = 12
+    static let reviewValueMinWidth: CGFloat = 52
+}
+
+enum AppOverlayMetrics {
+    static let linkedCardLayerOffsetX: CGFloat = 8
+    static let linkedCardLayerOffsetY: CGFloat = 10
+    static let linkedCardLayerShrinkStep: CGFloat = 18
+}
+
 enum AppMotion {
     static let quickEaseOut = Animation.easeOut(duration: 0.15)
     static let controlEaseOut = Animation.easeOut(duration: 0.14)
