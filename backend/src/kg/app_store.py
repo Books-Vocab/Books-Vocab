@@ -7,7 +7,7 @@ import os
 
 logger = logging.getLogger(__name__)
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Any
 
@@ -98,7 +98,7 @@ def _verify_certificate_signature(child: x509.Certificate, issuer: x509.Certific
 
 
 def _ensure_certificate_valid_now(cert: x509.Certificate) -> None:
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     not_before = cert.not_valid_before_utc
     not_after = cert.not_valid_after_utc
     if now < not_before or now > not_after:
@@ -189,7 +189,7 @@ def _load_private_key() -> tuple[str, str, str]:
 
 def make_app_store_api_token(bundle_id: str) -> str:
     issuer_id, key_id, private_key_pem = _load_private_key()
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     payload = {
         "iss": issuer_id,
         "iat": int(now.timestamp()),

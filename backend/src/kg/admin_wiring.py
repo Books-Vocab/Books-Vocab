@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML
 from .admin_handlers import (
