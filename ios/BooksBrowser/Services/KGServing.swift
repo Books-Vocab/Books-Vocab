@@ -7,6 +7,7 @@ protocol KGServing: AnyObject {
     var isConnected: Bool { get }
     var lastSyncDate: Date? { get }
     var serverCardCount: Int { get }
+    var sessionExpiredReason: String? { get set }
 
     func healthCheck() async
     func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse

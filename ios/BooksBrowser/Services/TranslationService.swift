@@ -124,6 +124,13 @@ final class TranslationService: Translating {
         return (explanation, endTime.timeIntervalSince(startTime))
     }
 
+    // MARK: - API Error Model
+
+    private struct APIErrorDetail: Decodable {
+        let code: String?
+        let detail: String?
+    }
+
     // MARK: - Backend Translation API 呼叫
 
     private func callBackend(endpoint: String, word: String, context: String) async throws -> Data {
@@ -173,8 +180,16 @@ final class TranslationService: Translating {
                 throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))
             }
             if httpResponse.statusCode == 429 {
-                // Distinguish quota exhausted vs rate limit
-                if errorBody.contains("quota_exhausted") {
+                // Prefer structured JSON check, fallback to string match
+                var isQuotaExhausted = false
+                if let errorData = errorBody.data(using: .utf8),
+                   let json = try? JSONDecoder().decode(APIErrorDetail.self, from: errorData),
+                   json.code == "quota_exhausted" {
+                    isQuotaExhausted = true
+                } else if errorBody.contains("quota_exhausted") {
+                    isQuotaExhausted = true
+                }
+                if isQuotaExhausted {
                     throw TranslationError.quotaExhausted(quotaStore.resetText)
                 }
                 throw TranslationError.apiError(L10n.string("請求過於頻繁，請稍後再試"))
