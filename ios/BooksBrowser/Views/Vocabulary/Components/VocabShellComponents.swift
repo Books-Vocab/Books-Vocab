@@ -108,21 +108,47 @@ struct VocabChromeIconButton: View {
 
     var body: some View {
         Button(action: action) {
-            Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
-                .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.cardBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
+            VocabChromeSurface(
+                fill: vocabSkin.palette.cardBackground,
+                border: vocabSkin.palette.cardBorder
+            ) {
+                Image(systemName: systemImage)
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
+                    .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+            }
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label ?? systemImage)
+    }
+}
+
+struct VocabChromeSurface<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let fill: Color
+    let border: Color
+    let content: Content
+
+    init(
+        fill: Color? = nil,
+        border: Color? = nil,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.fill = fill ?? .clear
+        self.border = border ?? .clear
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .fill(fill)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(border, lineWidth: 1)
+            )
     }
 }
 
