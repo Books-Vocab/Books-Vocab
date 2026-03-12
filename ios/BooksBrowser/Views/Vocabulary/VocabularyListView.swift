@@ -19,6 +19,7 @@ struct VocabularyListView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.appTheme) private var appTheme
     @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State private var showArchiveList = false
     @State private var coordinator = VocabularyListCoordinator()
@@ -321,7 +322,7 @@ struct VocabularyListView: View {
                         Text("先體驗看看".localized)
                     }
                     .font(AppFonts.body(weight: .medium))
-                    .foregroundStyle(AppColors.tint)
+                    .foregroundStyle(appTheme.palette.accent)
                 }
                 .buttonStyle(.plain)
             }
