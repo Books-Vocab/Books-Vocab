@@ -16,18 +16,18 @@
 
 ### BookshelfMetrics
 **位置**：`Views/Bookshelf/BookshelfView.swift`
-**Token 數**：18
+**Token 數**：13（已刪除 5 個升級候選）
 
 | Token | 值 | 與 AppMetrics 比對 | 建議 |
 |-------|----|--------------------|------|
-| `emptyStateSpacing` | 20 | = `AppMetrics.sectionInset` (20) | 升級 → 改用 `AppMetrics.sectionInset` |
-| `cardSpacing` | 8 | = `AppMetrics.spacingSmall` (8) | 升級 → 改用 `AppMetrics.spacingSmall` |
-| `cardMetadataSpacing` | 3 | = `AppMetrics.spacingTiny` (3) | 升級 → 改用 `AppMetrics.spacingTiny` |
+| ~~`emptyStateSpacing`~~ | 20 | = `AppMetrics.sectionInset` (20) | ✅ 已升級 |
+| ~~`cardSpacing`~~ | 8 | = `AppMetrics.spacingSmall` (8) | ✅ 已升級 |
+| ~~`cardMetadataSpacing`~~ | 3 | = `AppMetrics.spacingTiny` (3) | ✅ 已升級 |
 | `placeholderTitleHorizontalPadding` | 12 | 無對應 | 保留 local |
 | `coverHeight` | 210 | feature-specific | 保留 local |
 | `coverHeightRegular` | 260 | feature-specific | 保留 local |
 | `coverCornerRadius` | 6 | = `AppMetrics.cornerRadiusSmall` (8) 接近但不同 | 保留 local（語義不同） |
-| `coverStrokeWidth` | 0.5 | = `AppMetrics.dividerThin` (0.5) | 升級 → 改用 `AppMetrics.dividerThin` |
+| ~~`coverStrokeWidth`~~ | 0.5 | = `AppMetrics.dividerThin` (0.5) | ✅ 已升級 |
 | `coverShadowOpacity` | 0.10 | 無對應，AppShadows.coverOpacity = 0.06 | 保留 local（值不同）|
 | `coverShadowRadius` | 6 | 無直接對應 | 保留 local |
 | `coverShadowY` | 3 | 無直接對應 | 保留 local |
@@ -35,7 +35,7 @@
 | `progressBarCornerRadius` | 2 | feature-specific | 保留 local |
 | `progressBarAccentOpacity` | 0.55 | feature-specific | 保留 local |
 | `progressBarSpacing` | 6 | feature-specific | 保留 local |
-| `loadingOverlaySpacing` | 16 | = `AppMetrics.spacingMedium` (16) | 升級 → 改用 `AppMetrics.spacingMedium` |
+| ~~`loadingOverlaySpacing`~~ | 16 | = `AppMetrics.spacingMedium` (16) | ✅ 已升級 |
 | `loadingOverlayPadding` | 28 | 無對應 | 保留 local |
 | `loadingOverlayCornerRadius` | `AppMetrics.cornerRadiusMedium` | 已引用 AppMetrics | 已升級 |
 
@@ -43,32 +43,32 @@
 
 ### WelcomeMetrics
 **位置**：`Views/Welcome/WelcomeView.swift`
-**Token 數**：8
+**Token 數**：6（已刪除 2 個升級候選）
 
 | Token | 值 | 與 AppMetrics 比對 | 建議 |
 |-------|----|--------------------|------|
 | `iconBottomPadding` | 12 | 無對應 | 保留 local |
 | `pageHeight` | 240 | feature-specific | 保留 local |
-| `pageContentSpacing` | 16 | = `AppMetrics.spacingMedium` (16) | 升級 → 改用 `AppMetrics.spacingMedium` |
+| ~~`pageContentSpacing`~~ | 16 | = `AppMetrics.spacingMedium` (16) | ✅ 已升級 |
 | `featureIconSize` | 32 | feature-specific | 保留 local |
 | `featureIconFrame` | 64 | feature-specific | 保留 local |
 | `subtitleHorizontalPadding` | 40 | feature-specific | 保留 local |
-| `buttonSpacing` | 8 | = `AppMetrics.spacingSmall` (8) | 升級 → 改用 `AppMetrics.spacingSmall` |
+| ~~`buttonSpacing`~~ | 8 | = `AppMetrics.spacingSmall` (8) | ✅ 已升級 |
 | `bottomPadding` | 40 | feature-specific | 保留 local |
 
 ---
 
 ### AccountMetrics
 **位置**：`Views/Settings/SettingsAccountSection.swift`
-**Token 數**：12
+**Token 數**：9（已刪除 3 個升級候選）
 
 | Token | 值 | 與 AppMetrics 比對 | 建議 |
 |-------|----|--------------------|------|
 | `authHeroSpacing` | 10 | 無對應 | 保留 local |
-| `authCopySpacing` | 4 | = `AppMetrics.spacingExtraSmall` (4) | 升級 → 改用 `AppMetrics.spacingExtraSmall` |
+| ~~`authCopySpacing`~~ | 4 | = `AppMetrics.spacingExtraSmall` (4) | ✅ 已升級 |
 | `authActionSpacing` | 10 | 無對應 | 保留 local |
-| `authHeroVerticalPadding` | 24 | = `AppMetrics.spacingLarge` (24) | 升級 → 改用 `AppMetrics.spacingLarge` |
-| `authBlockPadding` | 16 | = `AppMetrics.spacingMedium` (16) | 升級 → 改用 `AppMetrics.spacingMedium` |
+| ~~`authHeroVerticalPadding`~~ | 24 | = `AppMetrics.spacingLarge` (24) | ✅ 已升級 |
+| ~~`authBlockPadding`~~ | 16 | = `AppMetrics.spacingMedium` (16) | ✅ 已升級 |
 | `authButtonSpacing` | 12 | 無對應 | 保留 local |
 | `authRowSpacing` | 14 | 無對應 | 保留 local |
 | `authStatusSpacing` | 6 | 無對應 | 保留 local |
@@ -81,12 +81,12 @@
 
 ### ReviewSettingsMetrics
 **位置**：`Views/Settings/SettingsReviewSection.swift`
-**Token 數**：4
+**Token 數**：3（已刪除 1 個升級候選）
 
 | Token | 值 | 與 AppMetrics 比對 | 建議 |
 |-------|----|--------------------|------|
 | `modeTileGap` | 10 | 無對應 | 保留 local |
-| `modeTileContentGap` | 8 | = `AppMetrics.spacingSmall` (8) | 升級 → 改用 `AppMetrics.spacingSmall` |
+| ~~`modeTileContentGap`~~ | 8 | = `AppMetrics.spacingSmall` (8) | ✅ 已升級 |
 | `stepperGap` | 12 | 無對應 | 保留 local |
 | `valueMinWidth` | 52 | feature-specific | 保留 local |
 
@@ -94,15 +94,15 @@
 
 ### LinkedCardStackMetrics
 **位置**：`Views/Vocabulary/Overlay/LinkedCardOverlayStack.swift`
-**Token 數**：6
+**Token 數**：3（已刪除 2 個升級候選）
 
 | Token | 值 | 與 AppMetrics 比對 | 建議 |
 |-------|----|--------------------|------|
 | `layerOffsetX` | 8 | feature-specific（堆疊動畫幾何） | 保留 local |
 | `layerOffsetY` | 10 | feature-specific（堆疊動畫幾何） | 保留 local |
 | `layerShrinkStep` | 18 | feature-specific（堆疊動畫幾何） | 保留 local |
-| `baseHorizontalPadding` | 16 | = `AppMetrics.spacingMedium` (16) | 升級 → 改用 `AppMetrics.spacingMedium` |
-| `baseVerticalPadding` | 20 | = `AppMetrics.sectionInset` (20) | 升級 → 改用 `AppMetrics.sectionInset` |
+| ~~`baseHorizontalPadding`~~ | 16 | = `AppMetrics.spacingMedium` (16) | ✅ 已升級 |
+| ~~`baseVerticalPadding`~~ | 20 | = `AppMetrics.sectionInset` (20) | ✅ 已升級 |
 
 ---
 
@@ -119,4 +119,4 @@
 | 24 | `spacingLarge` | AccountMetrics.authHeroVerticalPadding |
 | 0.5 | `dividerThin` | BookshelfMetrics.coverStrokeWidth |
 
-這 10 個 token 為優先升級候選，替換後可直接刪除對應 local constant。
+這 10 個 token 已全數升級完成，對應 local constant 已刪除。
