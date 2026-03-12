@@ -28,10 +28,10 @@ COPY --from=builder /install /usr/local
 COPY src/ src/
 COPY privacy.html support.html terms.html guide.html ./
 
-RUN mkdir -p /app/data
-
-# 非 root 用戶
-RUN useradd --create-home --shell /bin/bash appuser
+# 非 root 用戶（UID 1000 匹配 host ubuntu 預設）
+RUN useradd --create-home --shell /bin/bash --uid 1000 appuser \
+    && mkdir -p /app/data \
+    && chown appuser:appuser /app/data
 USER appuser
 
 EXPOSE 8000
