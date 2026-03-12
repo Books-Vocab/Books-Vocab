@@ -116,6 +116,6 @@ final class Book {
 
     /// 是否需要從 iCloud 下載（metadata 已到、檔案未到）
     var needsICloudDownload: Bool {
-        !isEpubFileLocal && Self.iCloudEpubsDirectory != nil
+        !isEpubFileLocal
     }
 }
