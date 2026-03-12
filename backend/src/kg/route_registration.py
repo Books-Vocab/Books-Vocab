@@ -22,6 +22,7 @@ def register_routes(
     get_privacy_policy: Callable[..., Any],
     get_support: Callable[..., Any],
     get_terms: Callable[..., Any],
+    get_guide: Callable[..., Any],
     get_user_config: Callable[..., Any],
     get_user_entitlements: Callable[..., Any],
     get_user_quota: Callable[..., Any],
@@ -59,6 +60,7 @@ def register_routes(
             get_privacy_policy=get_privacy_policy,
             get_support=get_support,
             get_terms=get_terms,
+            get_guide=get_guide,
         )
     )
     app.include_router(

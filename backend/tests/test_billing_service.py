@@ -24,7 +24,7 @@ def test_default_subscription_payload_schema():
     p = default_subscription_payload()
     assert p["is_active"] is False
     assert p["product_id"] is None
-    assert p["plan_name"] == "BooksBrowser Pro"
+    assert p["plan_name"] == "Books & Vocab Pro"
     assert p["status"] == "inactive"
     assert p["is_trial"] is False
     assert p["trial_days"] == 7
@@ -37,7 +37,7 @@ def test_default_subscription_payload_schema():
 def test_default_admin_grant_payload_schema():
     p = default_admin_grant_payload()
     assert p["is_active"] is False
-    assert p["plan_name"] == "BooksBrowser Pro"
+    assert p["plan_name"] == "Books & Vocab Pro"
     assert p["status"] == "inactive"
     assert p["source"] == "admin"
     assert p["expires_at"] is None

@@ -159,10 +159,25 @@ struct BookshelfView: View {
             .animation(AppMotion.contentFade, value: books.count)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .padding(.top, AppMetrics.spacingSmall)
-            .padding(.bottom, AppMetrics.spacingExtraLarge)
+
+            epubGuideHint
+                .padding(.top, AppMetrics.spacingLarge)
+                .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .navigationDestination(for: Book.self) { book in
             ReaderView(book: book)
+        }
+    }
+
+    // MARK: - EPUB 取得提示
+
+    private var epubGuideHint: some View {
+        Link(destination: URL(string: "https://wordnexus.lol/guide.html")!) {
+            Text("了解更多".localized)
+                .font(AppFonts.caption2())
+                .foregroundStyle(appTheme.palette.quaternaryText)
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, AppMetrics.spacingSmall)
         }
     }
 

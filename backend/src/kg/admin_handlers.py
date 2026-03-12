@@ -199,7 +199,7 @@ def admin_grant_pro_access_response(
         admin_grant.update(
             {
                 "is_active": True,
-                "plan_name": admin_grant.get("plan_name") or "BooksBrowser Pro",
+                "plan_name": admin_grant.get("plan_name") or "Books & Vocab Pro",
                 "status": "active",
                 "source": "admin",
                 "expires_at": req.expires_at,
