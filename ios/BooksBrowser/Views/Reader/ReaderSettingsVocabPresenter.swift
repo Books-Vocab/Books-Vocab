@@ -54,16 +54,9 @@ struct ReaderSettingsVocabPresenter: View {
 
     private var headerBlock: some View {
         HStack(alignment: .top, spacing: vocabSkin.metrics.readerSettingsHeaderSpacing) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text("reader")
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .tracking(1.2)
-
-                Text("閱讀設定")
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-            }
+            Text("閱讀設定")
+                .font(vocabSkin.typography.sectionTitle)
+                .foregroundStyle(vocabSkin.palette.primaryText)
 
             Spacer()
 
@@ -74,10 +67,7 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private var typographySection: some View {
-        settingsSection(
-            title: "排版".localized,
-            eyebrow: "Typography"
-        ) {
+        settingsSection(title: "排版".localized) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 0) {
                     stepControlButton(
@@ -119,10 +109,7 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private var appearanceSection: some View {
-        settingsSection(
-            title: "外觀".localized,
-            eyebrow: "Atmosphere"
-        ) {
+        settingsSection(title: "外觀".localized) {
             VStack(alignment: .leading, spacing: 16) {
                 Menu {
                     ForEach(ReaderFont.allCases) { font in
@@ -167,10 +154,7 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private var highlightSection: some View {
-        settingsSection(
-            title: "生字標記".localized,
-            eyebrow: "Highlights"
-        ) {
+        settingsSection(title: "生字標記".localized) {
             HStack(spacing: 8) {
                 ForEach(opacityOptions, id: \.label) { option in
                     let isSelected = bindings.underlineOpacity.wrappedValue == option.value
@@ -191,10 +175,7 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private var modeSection: some View {
-        settingsSection(
-            title: "閱讀介面".localized,
-            eyebrow: "Render Mode"
-        ) {
+        settingsSection(title: "閱讀介面".localized) {
             HStack(spacing: 10) {
                 ForEach(TranslationPanelMode.allCases) { mode in
                     let isSelected = bindings.translationPanelMode.wrappedValue == mode
@@ -220,16 +201,13 @@ struct ReaderSettingsVocabPresenter: View {
     }
 
     private var debugSection: some View {
-        settingsSection(
-            title: "開發者與除錯".localized,
-            eyebrow: "Debug"
-        ) {
+        settingsSection(title: "開發者與除錯".localized) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("顯示點擊熱區")
                         .font(vocabSkin.typography.body.weight(.medium))
                         .foregroundStyle(vocabSkin.palette.primaryText)
-                    Text("用於校正 reader hit-testing。")
+                    Text("用於校正閱讀器點擊熱區。")
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
@@ -245,10 +223,9 @@ struct ReaderSettingsVocabPresenter: View {
 
     private func settingsSection<Content: View>(
         title: String,
-        eyebrow: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        AppSectionBlock(title: title, eyebrow: eyebrow) {
+        AppSectionBlock(title: title) {
             content()
         }
     }
