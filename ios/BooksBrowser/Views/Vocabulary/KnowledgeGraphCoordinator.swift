@@ -40,6 +40,13 @@ final class KnowledgeGraphCoordinator {
         kgService: any KGServing
     ) async {
         guard authManager.isLoggedIn else { return }
+
+        // Demo mode uses bundled graph links — no API call
+        if authManager.isDemoMode {
+            links = DemoDataProvider.demoGraphLinks
+            return
+        }
+
         isLoading = true
         errorMessage = nil
         defer { isLoading = false }

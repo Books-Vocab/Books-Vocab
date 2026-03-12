@@ -53,6 +53,9 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     // True while Apple/Google sign-in + backend verify is in progress
     var isAuthenticating: Bool = false
 
+    // Demo mode — unlocks UI without real auth
+    var isDemoMode: Bool = false
+
     init(
         verifier: any AuthVerifying = AuthBackendVerifier(),
         localDataCleaner: any LocalDataClearing = LocalDataCleanerService(),
@@ -74,6 +77,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         let userIdStr = userId.trimmingCharacters(in: .whitespacesAndNewlines)
         let tokenStr = token.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !userIdStr.isEmpty, !tokenStr.isEmpty else { return }
+
+        // Real login replaces demo mode — clean up demo data
+        if isDemoMode, let container = modelContainer {
+            DemoDataProvider.removeDemoEntries(from: container)
+            isDemoMode = false
+        }
 
         if let existing = self.userId, existing != userIdStr {
             AppLog.auth.info("Account switch detected, clearing sync timestamp")
@@ -139,6 +148,26 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
             await localDataCleaner.clearLocalData(container: container, reason: accountSwitchReason)
         }
         login(userId: userId, token: jwtToken)
+    }
+
+    func enterDemoMode(modelContainer: ModelContainer) {
+        isDemoMode = true
+        isLoggedIn = true
+        displayName = "Demo"
+        DemoDataProvider.injectDemoEntries(into: modelContainer)
+    }
+
+    func exitDemoMode(modelContainer: ModelContainer) {
+        DemoDataProvider.removeDemoEntries(from: modelContainer)
+        isDemoMode = false
+        // Restore real auth state
+        let persisted = sessionStore.loadSession()
+        isLoggedIn = persisted.token != nil
+        userId = persisted.userId
+        token = persisted.token
+        displayName = persisted.displayName
+        userEmail = persisted.userEmail
+        avatarURL = persisted.avatarURL
     }
 
     func setAuthError(_ message: String) {
