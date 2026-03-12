@@ -93,9 +93,7 @@ struct SettingsSubscriptionSection: View {
 
                         Spacer()
 
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconSmall)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        SettingsTrailingChevronIcon()
                     }
                     .foregroundStyle(vocabSkin.palette.primaryText)
                     .padding(.horizontal, vocabSkin.spacing.cardPadding)
@@ -125,13 +123,7 @@ struct SettingsSubscriptionSection: View {
             tone = vocabSkin.palette.success
         }
 
-        return Text(state.badgeText)
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-            .background(tone.opacity(0.12))
-            .clipShape(Capsule())
+        return SettingsStatusBadge(text: state.badgeText, tone: tone)
     }
 
     private func pricingUnavailableCard(_ message: String) -> some View {

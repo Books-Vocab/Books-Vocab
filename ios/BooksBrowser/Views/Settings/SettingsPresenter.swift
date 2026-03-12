@@ -194,9 +194,7 @@ struct SettingsPresenter: View {
     private func externalActionRow(_ item: ExternalActionItem) -> some View {
         Button(action: item.action) {
             SettingsRow(icon: item.icon, label: item.label.localized) {
-                Image(systemName: "chevron.right")
-                    .font(vocabSkin.typography.iconTiny)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                SettingsTrailingChevronIcon()
             }
         }
         .buttonStyle(.plain)

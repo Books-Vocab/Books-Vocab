@@ -115,12 +115,12 @@ struct SettingsAccountSection: View {
 #endif
 
                 if let error = state.authError {
-                    Text(error)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.destructive)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, vocabSkin.spacing.inlineGap)
-                        .padding(.bottom, vocabSkin.spacing.tinyGap)
+                    VocabStateMessageCard(
+                        title: "登入暫時失敗".localized,
+                        systemImage: "exclamationmark.triangle.fill",
+                        description: error
+                    )
+                    .padding(.top, vocabSkin.spacing.microGap)
                 }
             }
             .padding(.horizontal, AccountMetrics.authBlockPadding)
@@ -136,9 +136,7 @@ struct SettingsAccountSection: View {
             } label: {
                 HStack {
                     SettingsAuthSummary(state: state)
-                    Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconTiny)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    SettingsTrailingChevronIcon()
                 }
                 .padding(vocabSkin.spacing.cardPadding)
             }
@@ -183,18 +181,13 @@ struct SettingsAccountSection: View {
                         if subscription.isActive {
                             subscriptionBadge(subscription)
                         } else {
-                            Text("升級".localized)
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.accent)
-                                .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-                                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-                                .background(vocabSkin.palette.accent.opacity(0.12))
-                                .clipShape(Capsule())
+                            SettingsStatusBadge(
+                                text: "升級".localized,
+                                tone: vocabSkin.palette.accent
+                            )
                         }
 
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        SettingsTrailingChevronIcon()
                     }
                     .padding(.horizontal, vocabSkin.spacing.cardPadding)
                     .padding(.vertical, 13)
@@ -225,13 +218,7 @@ struct SettingsAccountSection: View {
             }
         }()
 
-        return Text(sub.badgeText)
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-            .background(tone.opacity(0.12))
-            .clipShape(Capsule())
+        return SettingsStatusBadge(text: sub.badgeText, tone: tone)
     }
 }
 
