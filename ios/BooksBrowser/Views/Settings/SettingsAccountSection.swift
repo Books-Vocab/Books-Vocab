@@ -162,15 +162,14 @@ struct SettingsAccountSection: View {
                                              ? vocabSkin.palette.success
                                              : vocabSkin.palette.accent)
 
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(subscriptionRowTitle(for: subscription))
-                                .font(vocabSkin.typography.body.weight(.medium))
-                                .foregroundStyle(vocabSkin.palette.primaryText)
-                            Text(subscriptionRowSubtitle(for: subscription))
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .lineLimit(2)
-                        }
+                        SettingsTitleSubtitleStack(
+                            title: subscriptionRowTitle(for: subscription),
+                            subtitle: subscriptionRowSubtitle(for: subscription),
+                            titleFont: vocabSkin.typography.body.weight(.medium),
+                            titleColor: vocabSkin.palette.primaryText,
+                            subtitleColor: vocabSkin.palette.secondaryText,
+                            subtitleLineLimit: 2
+                        )
 
                         Spacer()
 
@@ -325,19 +324,13 @@ struct SettingsAuthSummary: View {
         HStack(spacing: AccountMetrics.authRowSpacing) {
             avatar
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(state.displayName)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(1)
-
-                if let email = state.email {
-                    Text(email)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineLimit(1)
-                }
-            }
+            SettingsTitleSubtitleStack(
+                title: state.displayName,
+                subtitle: state.email,
+                titleFont: vocabSkin.typography.sectionTitle,
+                titleColor: vocabSkin.palette.primaryText,
+                subtitleColor: vocabSkin.palette.secondaryText
+            )
 
             Spacer()
 
@@ -381,26 +374,5 @@ struct SettingsAuthSummary: View {
                     .foregroundStyle(vocabSkin.palette.secondaryText)
             }
         }
-    }
-}
-
-private struct SettingsButtonChromeModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
-
-    func body(content: Content) -> some View {
-        content
-            .padding(AccountMetrics.authBlockPadding)
-            .background(vocabSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-            )
-    }
-}
-
-private extension View {
-    func appSettingsButtonChrome() -> some View {
-        modifier(SettingsButtonChromeModifier())
     }
 }
