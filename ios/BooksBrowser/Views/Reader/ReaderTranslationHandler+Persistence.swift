@@ -12,6 +12,7 @@ extension ReaderTranslationHandler {
     }
 
     func dismiss() {
+        cancelCurrentTranslationTask()
         withAnimation(AppMotion.panelState) {
             wordSelection = nil
             translationResult = nil

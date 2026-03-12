@@ -77,12 +77,14 @@ struct BookshelfView: View {
                     Button(action: coordinator.presentSettings) {
                         AppToolbarGlyph(systemImage: "gearshape")
                     }
+                    .accessibilityIdentifier("bookshelf.settingsButton")
                 }
 
                 ToolbarItem(placement: .topBarTrailing) {
                     Button(action: coordinator.presentImporter) {
                         AppToolbarGlyph(systemImage: "plus")
                     }
+                    .accessibilityIdentifier("bookshelf.importButton")
                 }
             }
             .fileImporter(
