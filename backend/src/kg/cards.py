@@ -154,6 +154,14 @@ class CardStore:
                 statement = statement.where(Card.is_deleted.is_(False))
             return {card.id: card for card in session.exec(statement).all()}
 
+    def all_limited(self, limit: int = 5000, include_deleted: bool = False) -> list[Card]:
+        with Session(self.engine) as session:
+            statement = select(Card)
+            if not include_deleted:
+                statement = statement.where(Card.is_deleted.is_(False))
+            statement = statement.order_by(Card.updated_at.desc()).limit(limit)
+            return list(session.exec(statement).all())
+
     def get_modified_since(self, since: datetime) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
         with Session(self.engine) as session:
