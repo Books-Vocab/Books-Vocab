@@ -161,6 +161,78 @@ struct SettingsStatusBadge: View {
     }
 }
 
+struct SettingsStatusValue: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let text: String
+    let color: Color
+
+    var body: some View {
+        Text(text)
+            .font(vocabSkin.typography.caption)
+            .foregroundStyle(color)
+            .lineLimit(1)
+    }
+}
+
+struct SettingsStatusSummaryValue: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let text: String
+    let color: Color
+    let showsIndicator: Bool
+
+    init(text: String, color: Color, showsIndicator: Bool = true) {
+        self.text = text
+        self.color = color
+        self.showsIndicator = showsIndicator
+    }
+
+    var body: some View {
+        HStack(spacing: 6) {
+            if showsIndicator {
+                Circle()
+                    .fill(color)
+                    .frame(width: 8, height: 8)
+            }
+
+            Text(text)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .lineLimit(1)
+        }
+    }
+}
+
+struct SettingsNavigationRow<Trailing: View>: View {
+    let icon: String
+    let label: String
+    let action: () -> Void
+    let trailing: Trailing
+
+    init(
+        icon: String,
+        label: String,
+        action: @escaping () -> Void,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.icon = icon
+        self.label = label
+        self.action = action
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            SettingsRow(icon: icon, label: label) {
+                HStack(spacing: 6) {
+                    trailing
+                    SettingsTrailingChevronIcon()
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct SettingsInlineInfoButton: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let action: () -> Void
