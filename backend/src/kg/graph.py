@@ -58,7 +58,23 @@ class GraphStore:
         self.candidates_path = candidates_path
         self._links: dict[str, GraphLink] = {}
         self._candidates: list[CandidatePair] = []
+        self._from_index: dict[str, set[str]] = {}  # card_id → set of link_ids
+        self._to_index: dict[str, set[str]] = {}    # card_id → set of link_ids
         self._load()
+
+    def _index_link(self, link: GraphLink) -> None:
+        self._from_index.setdefault(link.from_id, set()).add(link.id)
+        self._to_index.setdefault(link.to_id, set()).add(link.id)
+
+    def _unindex_link(self, link: GraphLink) -> None:
+        self._from_index.get(link.from_id, set()).discard(link.id)
+        self._to_index.get(link.to_id, set()).discard(link.id)
+
+    def _rebuild_index(self) -> None:
+        self._from_index = {}
+        self._to_index = {}
+        for link in self._links.values():
+            self._index_link(link)
 
     def _load(self) -> None:
         if self.links_path.exists():
@@ -67,6 +83,7 @@ class GraphStore:
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
+        self._rebuild_index()
 
     def _save_links(self) -> None:
         self.links_path.parent.mkdir(parents=True, exist_ok=True)
@@ -107,20 +124,20 @@ class GraphStore:
             reason=reason,
         )
         self._links[link.id] = link
+        self._index_link(link)
         self._save_links()
         return link
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
         """Get all active links involving a card."""
-        return [
-            lk
-            for lk in self._links.values()
-            if lk.status == "active" and (lk.from_id == card_id or lk.to_id == card_id)
-        ]
+        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+        return [self._links[lid] for lid in link_ids if self._links[lid].status == "active"]
 
     def has_link(self, id_a: str, id_b: str) -> bool:
         """Check if a link exists between two cards."""
-        for lk in self._links.values():
+        candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
+        for lid in candidates:
+            lk = self._links[lid]
             if lk.status != "active":
                 continue
             if (lk.from_id == id_a and lk.to_id == id_b) or (
