@@ -334,6 +334,37 @@ struct SettingsActionRowLabel<Trailing: View>: View {
     }
 }
 
+struct SettingsCompactActionButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let action: () -> Void
+    let isEnabled: Bool
+
+    init(title: String, isEnabled: Bool = true, action: @escaping () -> Void) {
+        self.title = title
+        self.action = action
+        self.isEnabled = isEnabled
+    }
+
+    var body: some View {
+        Button(title, action: action)
+            .font(vocabSkin.typography.captionStrong)
+            .foregroundStyle(isEnabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 9)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .fill(vocabSkin.palette.pageBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            )
+            .buttonStyle(.plain)
+            .disabled(!isEnabled)
+    }
+}
+
 extension SubscriptionBadgeTone {
     func color(in skin: VocabSkin) -> Color {
         switch self {
@@ -372,11 +403,13 @@ struct SettingsFeaturePanel<Content: View>: View {
 struct SettingsSubscriptionInfoBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let title: String
+    let subtitle: String?
     let detail: String?
     let titleFont: Font
 
-    init(title: String, detail: String? = nil, titleFont: Font) {
+    init(title: String, subtitle: String? = nil, detail: String? = nil, titleFont: Font) {
         self.title = title
+        self.subtitle = subtitle
         self.detail = detail
         self.titleFont = titleFont
     }
@@ -387,10 +420,18 @@ struct SettingsSubscriptionInfoBlock: View {
                 .font(titleFont)
                 .foregroundStyle(vocabSkin.palette.primaryText)
 
+            if let subtitle, !subtitle.isEmpty {
+                Text(subtitle)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .lineSpacing(3)
+            }
+
             if let detail, !detail.isEmpty {
                 Text(detail)
                     .font(vocabSkin.typography.caption)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .lineSpacing(3)
             }
         }
     }
@@ -572,5 +613,33 @@ struct SettingsTextInputModifier: ViewModifier {
             .multilineTextAlignment(alignment)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
+    }
+}
+
+struct SettingsLabeledInputField<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let title: String
+    let content: Content
+
+    init(title: String, @ViewBuilder content: () -> Content) {
+        self.title = title
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+            Text(title)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+
+            content
+        }
+        .padding(vocabSkin.spacing.cardPadding)
+        .background(vocabSkin.palette.pageBackground)
+        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+        .overlay(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+        )
     }
 }
