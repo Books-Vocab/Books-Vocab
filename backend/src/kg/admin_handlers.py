@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hmac
 import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
@@ -17,10 +18,11 @@ from .user_store import resolve_mochi_api_key_from_config
 
 
 def _resolve_admin_token(token: str | None, authorization: str | None) -> str | None:
-    if token:
-        return token
     if authorization and authorization.startswith("Bearer "):
         return authorization[7:]
+    if token:
+        logger.warning("Admin token via URL query param is deprecated, use Authorization header")
+        return token
     return None
 
 
@@ -28,7 +30,7 @@ def require_admin(token: str | None, *, admin_token: str, authorization: str | N
     resolved = _resolve_admin_token(token, authorization)
     if not admin_token:
         raise HTTPException(403, "ADMIN_TOKEN not configured")
-    if resolved != admin_token:
+    if not hmac.compare_digest(resolved or "", admin_token):
         raise HTTPException(403, "Forbidden")
 
 
