@@ -65,8 +65,8 @@ struct VocabActivityHeatmap: View {
                         // Weekday labels
                         VStack(alignment: .trailing, spacing: 0) {
                             ForEach(0..<7, id: \.self) { row in
-                                if weekdayIndices.contains(row) {
-                                    Text(weekdayLabels[weekdayIndices.firstIndex(of: row)!])
+                                if let index = weekdayIndices.firstIndex(of: row) {
+                                    Text(weekdayLabels[index])
                                         .font(vocabSkin.typography.monoLabel)
                                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                                         .frame(height: cellSize + cellSpacing)
