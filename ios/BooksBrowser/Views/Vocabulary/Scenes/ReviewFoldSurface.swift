@@ -26,7 +26,7 @@ struct ReviewFoldSurface<Content: View>: View {
                 if position != .top && position != .single {
                     Rectangle()
                         .fill(vocabSkin.palette.divider.opacity(TodayReviewMetrics.dividerFillOpacity))
-                        .frame(height: 0.5)
+                        .frame(height: AppMetrics.dividerThin)
                         .padding(.horizontal, vocabSkin.spacing.cardPadding)
                 }
             }
