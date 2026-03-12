@@ -233,6 +233,40 @@ struct SettingsNavigationRow<Trailing: View>: View {
     }
 }
 
+struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let action: () -> Void
+    let leading: Leading
+    let trailing: Trailing
+
+    init(
+        action: @escaping () -> Void,
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing = { EmptyView() }
+    ) {
+        self.action = action
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: vocabSkin.spacing.controlGap) {
+                leading
+
+                Spacer(minLength: vocabSkin.spacing.inlineGap)
+
+                trailing
+
+                SettingsTrailingChevronIcon()
+            }
+            .padding(.horizontal, vocabSkin.spacing.cardPadding)
+            .padding(.vertical, 13)
+        }
+        .buttonStyle(.plain)
+    }
+}
+
 struct SettingsInlineInfoButton: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let action: () -> Void
