@@ -79,26 +79,11 @@ struct SettingsSubscriptionSection: View {
 
                 // ── CTA ──
                 Button(action: actions.showSubscriptionPaywall) {
-                    HStack(spacing: vocabSkin.spacing.controlGap) {
-                        if state.isRefreshing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(vocabSkin.typography.iconMedium)
-                        }
-
-                        Text(state.ctaTitle)
-                            .font(vocabSkin.typography.body.weight(.medium))
-
-                        Spacer()
-
-                        SettingsTrailingChevronIcon()
-                    }
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                    .padding(.vertical, 13)
-                    .frame(minHeight: 50)
+                    SettingsActionRowLabel(
+                        title: state.ctaTitle,
+                        systemImage: "arrow.right.circle.fill",
+                        isLoading: state.isRefreshing
+                    )
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isRefreshing)
