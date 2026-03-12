@@ -66,6 +66,7 @@ final class SyncCoordinator {
         modelContext: ModelContext,
         kgService: any KGServing
     ) {
+        guard phase != .running else { return }
         phase = .running
         summaryText = ""
         failureKind = nil

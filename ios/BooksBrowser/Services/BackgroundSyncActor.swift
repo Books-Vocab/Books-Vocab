@@ -230,7 +230,7 @@ actor BackgroundSyncActor {
               let serverLast = parseISO8601(serverLastStr) else { return }
 
         let localLast = entry.lastReviewedAt ?? .distantPast
-        if serverLast > localLast {
+        if serverLast >= localLast {
             if localLast != .distantPast {
                 AppLog.sync.info("Review merge: server wins for '\(entry.word)' (server=\(serverLastStr), local=\(isoFormatter.string(from: localLast)))")
             }
