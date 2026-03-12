@@ -70,8 +70,6 @@ enum AppMotion {
     static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
 
     // MARK: - Micro-interaction Springs
-    /// 按鈕蓄力微動（極短回饋，10pt 以內位移）
-    static let buttonWindupSpring = Animation.spring(response: 0.10, dampingFraction: 0.90)
     /// 卡片甩出畫面（高剛性快速飛離）
     static let swipeFlingSpring = Animation.interpolatingSpring(stiffness: 500, damping: 28)
     /// 回饋按鈕跟隨 swipe 強度（快速貼合手勢）
