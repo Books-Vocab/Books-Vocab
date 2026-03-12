@@ -82,6 +82,21 @@ private struct ReaderChromePreviewScene: View {
     )
 }
 
+#Preview("Reader Chrome / Loading Vocab") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepia,
+            isWebViewReady: false,
+            loadingPhase: "標記生字…",
+            underlineProgress: 0.68,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.18,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .vocab
+        )
+    )
+}
+
 #Preview("Reader Chrome / Compact") {
     ReaderChromePreviewScene(
         state: .init(
