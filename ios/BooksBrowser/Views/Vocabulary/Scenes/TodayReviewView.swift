@@ -44,6 +44,7 @@ struct TodayReviewView: View {
     @State private var persistenceFailureTrigger = 0
     @State private var persistenceErrorMessage: String?
     @State private var pendingSaveTask: Task<Void, Never>?
+    @State private var presentationCache: [UUID: CardPresentation] = [:]
     @State private var isAutoPlaying = false
     @State private var isAutoPlayPaused = false
     @State private var autoplayTask: Task<Void, Never>?
@@ -57,6 +58,12 @@ struct TodayReviewView: View {
         let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
         _queue = State(initialValue: ordered)
         self.onClose = onClose
+        // 預算前 3 張卡的 CardPresentation，避免首次渲染時 JSON parse 阻塞
+        var cache: [UUID: CardPresentation] = [:]
+        for entry in ordered.prefix(3) {
+            cache[entry.id] = CardPresentation(entry: entry)
+        }
+        _presentationCache = State(initialValue: cache)
     }
 
     var body: some View {
@@ -113,12 +120,26 @@ struct TodayReviewView: View {
     private var nextCardState: TodayReviewPresenterState.CurrentCard? {
         let nextIndex = currentIndex + 1
         guard nextIndex < queue.count else { return nil }
-        return .init(card: queue[nextIndex].cardPresentation, linkGroups: [])
+        return .init(card: cachedPresentation(for: queue[nextIndex]), linkGroups: [])
+    }
+
+    private func cachedPresentation(for entry: VocabularyEntry) -> CardPresentation {
+        presentationCache[entry.id] ?? CardPresentation(entry: entry)
+    }
+
+    private func warmUpcomingCards() {
+        let end = min(currentIndex + 3, queue.count)
+        for i in currentIndex..<end {
+            let entry = queue[i]
+            if presentationCache[entry.id] == nil {
+                presentationCache[entry.id] = CardPresentation(entry: entry)
+            }
+        }
     }
 
     private var currentCardState: TodayReviewPresenterState.CurrentCard? {
         guard let current = currentEntry else { return nil }
-        let card = current.cardPresentation
+        let card = cachedPresentation(for: current)
         let compactGroups = card.linkGroups.map { fullGroup in
             let limited = fullGroup.limited(to: 2)
             return TodayReviewPresenterState.LinkGroup(
@@ -174,6 +195,7 @@ struct TodayReviewView: View {
             revealStage = .front
         }
         ReviewSessionStore.saveOrder(queue.map(\.id))
+        Task { @MainActor in warmUpcomingCards() }
     }
 
     private func goPrevious() {
@@ -185,6 +207,7 @@ struct TodayReviewView: View {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
+        Task { @MainActor in warmUpcomingCards() }
     }
 
     private func goNext() {
@@ -196,6 +219,7 @@ struct TodayReviewView: View {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
+        Task { @MainActor in warmUpcomingCards() }
     }
 
     // MARK: - Autoplay
@@ -263,15 +287,16 @@ struct TodayReviewView: View {
         }
     }
 
-    /// 歸類卡片：記錄回饋 → 推進 index → 延後寫入
-    /// 所有動畫由 Presenter 的 flingCard 控制，此處不包 withAnimation
+    /// 歸類卡片：推進 index → 延後 SwiftData 寫入
+    /// 所有動畫由 Presenter 的 flingCard 控制，此處不包 withAnimation。
+    /// SwiftData 變動（applyReviewFeedback / insert ReviewRecord）延後至下一幀，
+    /// 避免 @Query 重算和 JSON 解析阻塞動畫幀。
     private func submit(_ feedback: ReviewFeedback) {
         guard let current = currentEntry else { return }
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
-        current.applyReviewFeedback(feedback, settings: reviewSettingsStore.settings)
-
+        // UI 計數器更新（輕量，同步）
         switch feedback {
         case .remembered:
             rememberedFeedbackTrigger += 1
@@ -281,13 +306,7 @@ struct TodayReviewView: View {
             forgotCount += 1
         }
 
-        ReviewActivityLog.recordReview(
-            word: current.word,
-            entryID: current.id,
-            feedback: feedback,
-            context: modelContext
-        )
-
+        // 推進卡片（同步 — presenterState 透過 cache 瞬間完成）
         revealStage = .front
         currentIndex += 1
 
@@ -295,7 +314,21 @@ struct TodayReviewView: View {
             ReviewSessionStore.clear()
         }
 
-        // 延後 save — 避免 @Query 重算在升頂動畫期間觸發 re-render
+        // SwiftData 變動延後至動畫幀結束後，避免 @Query re-render 風暴
+        let entryToUpdate = current
+        let settings = reviewSettingsStore.settings
+        Task { @MainActor in
+            entryToUpdate.applyReviewFeedback(feedback, settings: settings)
+            ReviewActivityLog.recordReview(
+                word: entryToUpdate.word,
+                entryID: entryToUpdate.id,
+                feedback: feedback,
+                context: modelContext
+            )
+            warmUpcomingCards()
+        }
+
+        // 延後 save — 防止 @Query 反覆重算
         pendingSaveTask = Task { @MainActor in
             try? await Task.sleep(for: .milliseconds(500))
             do {
