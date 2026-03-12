@@ -113,17 +113,7 @@ struct SettingsSubscriptionSection: View {
     }
 
     private var subscriptionBadge: some View {
-        let tone: Color
-        switch state.badgeTone {
-        case .neutral:
-            tone = vocabSkin.palette.secondaryText
-        case .accent:
-            tone = vocabSkin.palette.accent
-        case .success:
-            tone = vocabSkin.palette.success
-        }
-
-        return SettingsStatusBadge(text: state.badgeText, tone: tone)
+        SettingsStatusBadge(text: state.badgeText, tone: state.badgeTone.color(in: vocabSkin))
     }
 
     private func pricingUnavailableCard(_ message: String) -> some View {
