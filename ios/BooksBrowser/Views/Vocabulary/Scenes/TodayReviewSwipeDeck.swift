@@ -52,8 +52,7 @@ extension TodayReviewPresenter {
 
     /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
     var dismissProgress: CGFloat {
-        let promotionDistance = vocabSkin.metrics.reviewSwipeThreshold * 1.15
-        return min(abs(swipeOffset) / max(promotionDistance, 1), 1.0)
+        min(abs(swipeOffset) / 200, 1.0)
     }
 
     var swipeEnabled: Bool {
@@ -65,7 +64,9 @@ extension TodayReviewPresenter {
             .onChanged { value in
                 guard swipeEnabled else { return }
                 guard abs(value.translation.width) > abs(value.translation.height) else { return }
-                swipeOffset = value.translation.width
+                withAnimation(AppMotion.swipeTrackingSpring) {
+                    swipeOffset = value.translation.width
+                }
             }
             .onEnded { value in
                 guard swipeEnabled else { return }
@@ -75,7 +76,7 @@ extension TodayReviewPresenter {
                 } else if value.translation.width > threshold {
                     flingCard(direction: 1, callback: onRemembered)
                 } else {
-                    withAnimation(AppMotion.reviewSubmitSnapBack) {
+                    withAnimation(AppMotion.swipeSnapBackSpring) {
                         swipeOffset = 0
                     }
                 }
@@ -86,15 +87,14 @@ extension TodayReviewPresenter {
     func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
-        lastDismissDirection = direction
         flingHapticTrigger += 1
 
-        withAnimation(AppMotion.reviewSubmitFling) {
+        withAnimation(AppMotion.swipeFlingSpring) {
             swipeOffset = direction * screenWidth * 1.3
         }
 
         Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(TodayReviewMetrics.submitCommitDelayMs))
+            try? await Task.sleep(for: .milliseconds(60))
 
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
@@ -102,11 +102,9 @@ extension TodayReviewPresenter {
                 suppressTransition = true
                 swipeOffset = 0
                 stackRotations = [.random(in: -1...1), .random(in: -1...1)]
-            }
-            suppressTransition = false
-            withAnimation(AppMotion.reviewSubmitSettle) {
                 callback()
             }
+            suppressTransition = false
 
             dismissPhase = .idle
         }
