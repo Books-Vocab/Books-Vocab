@@ -21,6 +21,14 @@ struct SettingsSubscriptionSection: View {
                             .font(vocabSkin.typography.caption)
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                             .lineSpacing(3)
+
+                        if !state.detail.isEmpty {
+                            Text(state.detail)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                .lineSpacing(3)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
                     }
 
                     Spacer()
@@ -62,13 +70,9 @@ struct SettingsSubscriptionSection: View {
                 if let pricingUnavailableMessage = state.pricingUnavailableMessage {
                     SettingsDivider()
 
-                    VocabStateMessageCard(
-                        title: "價格載入中".localized,
-                        systemImage: "arrow.clockwise.circle",
-                        description: pricingUnavailableMessage
-                    )
-                    .padding(vocabSkin.spacing.cardPadding)
-                    .transition(.statusRowReveal)
+                    pricingUnavailableCard(pricingUnavailableMessage)
+                        .padding(vocabSkin.spacing.cardPadding)
+                        .transition(.statusRowReveal)
                 }
 
                 SettingsDivider()
@@ -128,5 +132,37 @@ struct SettingsSubscriptionSection: View {
             .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
+    }
+
+    private func pricingUnavailableCard(_ message: String) -> some View {
+        VocabStateMessageCard(
+            title: state.isRefreshing ? "價格載入中".localized : "價格稍後更新".localized,
+            systemImage: state.isRefreshing ? "arrow.clockwise.circle" : "info.circle",
+            description: message
+        )
+    }
+}
+
+#Preview("Subscription / Active") {
+    AppThemeContainer {
+        ScrollView {
+            SettingsSubscriptionSection(
+                state: SettingsPresenterPreviewData.subscribedActive.subscription!,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+            .padding()
+        }
+    }
+}
+
+#Preview("Subscription / Pricing Unavailable") {
+    AppThemeContainer {
+        ScrollView {
+            SettingsSubscriptionSection(
+                state: SettingsPresenterPreviewData.pricingUnavailable.subscription!,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+            .padding()
+        }
     }
 }

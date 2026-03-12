@@ -173,6 +173,49 @@ enum SettingsPresenterPreviewData {
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: true)
     )
+
+    static let pricingUnavailable = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: true,
+            userInitials: "CL",
+            avatarURL: nil,
+            displayName: "Chen Liang",
+            email: "chen@example.com",
+            authError: nil,
+            isAuthenticating: false,
+            iconBreathing: false,
+            debug: nil
+        ),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        kg: .init(
+            serverURL: "https://wordnexus.lol",
+            isConnected: true,
+            connectionPulse: false,
+            serverCardCount: 128,
+            lastSyncDescription: "10 分鐘前",
+            debug: nil
+        ),
+        subscription: .init(
+            isActive: false,
+            planName: "Pro",
+            badgeText: "確認中",
+            badgeTone: .neutral,
+            summary: "免費試用與月費將以 App Store 顯示為準。",
+            detail: "目前已取得方案狀態，但價格資訊尚未回來；不影響你稍後進入訂閱頁。",
+            sourceLabel: "App Store",
+            managementNote: "價格與試用週期會在 App Store 完整顯示。",
+            pricingUnavailableMessage: "App Store 價格載入中，稍後會自動更新。",
+            restoreLabel: "可恢復購買",
+            restoreDescription: "若先前已訂閱但此處顯示未啟用，可在訂閱頁使用恢復購買。",
+            isRestoreAvailable: true,
+            ctaTitle: "開始免費試用",
+            isRefreshing: false
+        ),
+        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 10 分鐘前"),
+        optionalIntegration: nil,
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
+        danger: .init(isDeletingAccount: false)
+    )
 }
 
 #Preview("Settings / Logged Out") {
@@ -231,6 +274,23 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.deletingAccount,
+                optionalIntegrationApiKey: .constant(""),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
+                manualLoginUserId: nil,
+                debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}
+
+#Preview("Settings / Pricing Unavailable") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.pricingUnavailable,
                 optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
