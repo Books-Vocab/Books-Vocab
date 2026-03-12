@@ -80,7 +80,11 @@ Output pure JSON (no Markdown) with a single key "e" for the explanation: {{ "e"
 
 
 def _parse_json_payload(raw: str | None) -> dict[str, Any]:
-    data = json.loads(raw or "{}")
+    try:
+        data = json.loads(raw or "{}")
+    except json.JSONDecodeError:
+        logging.getLogger("kg").warning("Failed to parse JSON payload: %s", raw[:200] if raw else None)
+        return {}
     if isinstance(data, list):
         data = data[0] if data else {}
     if not isinstance(data, dict):

@@ -3,11 +3,11 @@
 from __future__ import annotations
 
 import re
-from enum import Enum
+from enum import StrEnum
 
 from .cards import Card, CardStore
 from .difficulty import TIERS
-from .graph import GraphStore, LinkKind, LINK_LABELS
+from .graph import LINK_LABELS, GraphStore, LinkKind
 
 
 def _difficulty_div(zipf: float | None) -> str:
@@ -21,7 +21,7 @@ def _difficulty_div(zipf: float | None) -> str:
     return f'<div class="{last.css_class}">{last.tag}</div>'
 
 
-class RenderIntent(str, Enum):
+class RenderIntent(StrEnum):
     """Rendering intent controls which fields to display."""
 
     STANDARD = "standard"    # word + example + meaning + note
@@ -67,21 +67,21 @@ class CardRenderer:
 
         target = match.group(1)
         start, end = match.span()
-        
+
         before_text = text[:start]
         after_text = text[end:]
-        
+
         # Regex for tokens (non-whitespace)
         # We use this to find offsets but we want to filter what counts as a 'word'
         def get_tokens(s):
             return list(re.finditer(r"\S+", s))
-            
+
         before_tokens = get_tokens(before_text)
         after_tokens = get_tokens(after_text)
-        
+
         prefix = ""
         new_before = before_text
-        
+
         # Filter tokens that should count towards radius (at least one alphanumeric char)
         def is_word(match):
             return any(c.isalnum() for c in match.group())
@@ -96,10 +96,10 @@ class CardRenderer:
             cut_start = before_tokens[full_token_index].start()
             new_before = before_text[cut_start:]
             prefix = "..."
-        
+
         suffix = ""
         new_after = after_text
-        
+
         # Process AFTER
         # We need the first 'radius' valid words
         valid_indices_after = [i for i, m in enumerate(after_tokens) if is_word(m)]
@@ -109,14 +109,14 @@ class CardRenderer:
             cut_end = after_tokens[full_token_index].end()
             new_after = after_text[:cut_end]
             suffix = "..."
-            
+
         return f"{prefix}{new_before}{target}{new_after}{suffix}"
 
     def _format_example(self, text: str, wrap_italics: bool = True) -> str:
         """Format example: truncate -> italic + ==highlight== for marked words."""
         # 1. Truncate first (on raw text with **word**)
         truncated = self._truncate_example(text)
-        
+
         # 2. Highlight
         highlighted = re.sub(r"\*\*(.+?)\*\*", r"==\1==", truncated)
         return f"_{highlighted}_" if wrap_italics else highlighted
@@ -155,14 +155,14 @@ class CardRenderer:
         parts: list[str] = []
         for kind, entries in links_by_kind.items():
             label = LINK_LABELS.get(kind, kind.value)
-            
+
             link_strs: list[str] = []
             for word_name, mochi_id in entries:
                 if mochi_id:
                     link_strs.append(f"[[{mochi_id}]]")
                 else:
                     link_strs.append(f"*{word_name}*")
-            
+
             if link_strs:
                 parts.append(f"{label}：{'、'.join(link_strs)}")
 
@@ -235,17 +235,17 @@ class CardRenderer:
         if card.examples:
             # For production cloze, we also might want truncation?
             # User request didn't specify, but usually cloze also benefits from context focus.
-            # But cloze replaces the word with blanks. 
+            # But cloze replaces the word with blanks.
             # Let's stick to recognition/standard view for now as per "example" field request.
             # If I change _format_example, it affects front of recognition card.
             # But _make_cloze is manual.
-            
+
             # Let's apply truncation to cloze too for consistency?
             # The user request showed "Siri had heard...", which is a recognition example.
-            
+
             # Use raw example for cloze generation to ensure we find **word**
             # transform to cloze then truncate? No, truncate uses **word**.
-            
+
             truncated = self._truncate_example(card.examples[0])
             cloze = self._make_cloze(truncated)
             front_lines.append("")
@@ -289,7 +289,7 @@ class CardRenderer:
         from .difficulty import get_tier
 
         # content for legacy/search
-        content = self.render(card, intent)
+        self.render(card, intent)
 
         fields = {
             FIELDS["word"]: {"id": FIELDS["word"], "value": card.content},
@@ -298,7 +298,7 @@ class CardRenderer:
 
         if card.pos:
             fields[FIELDS["pos"]] = {"id": FIELDS["pos"], "value": card.pos}
-        
+
         if card.difficulty is not None:
              tier = get_tier(card.content)
              fields[FIELDS["difficulty"]] = {"id": FIELDS["difficulty"], "value": tier.tag}
@@ -308,10 +308,10 @@ class CardRenderer:
             # Template already adds italics (_..._), so we don't wrap here to avoid bold (__...__)
             example = self._format_example(card.examples[0], wrap_italics=False)
             fields[FIELDS["example"]] = {"id": FIELDS["example"], "value": example}
-        
+
         if card.note:
             fields[FIELDS["note"]] = {"id": FIELDS["note"], "value": card.note}
-            
+
         if intent == RenderIntent.FULL:
             links_by_kind = self._get_links_by_kind(card)
             if links_by_kind:

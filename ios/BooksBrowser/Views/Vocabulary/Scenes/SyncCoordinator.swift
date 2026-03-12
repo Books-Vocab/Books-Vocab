@@ -72,6 +72,7 @@ final class SyncCoordinator {
         failureKind = nil
 
         pipelineTask = Task {
+            defer { pipelineTask = nil }
             do {
                 let deletes = pendingEntries.filter { $0.syncAction == .delete && $0.shouldUploadOnNextSync }
                 let adds = pendingEntries.filter { $0.syncAction == .add && $0.shouldUploadOnNextSync }
@@ -87,10 +88,12 @@ final class SyncCoordinator {
                         entry.prepareForRetryAttempt()
                         do {
                             try await kgService.deleteCard(word: entry.word)
+                            if Task.isCancelled { break }
                             modelContext.delete(entry)
                             deleted += 1
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
+                            if Task.isCancelled { break }
                             entry.markSyncFailed()
                             encounteredFailure = true
                             failedWords.append(entry.word)
@@ -200,7 +203,6 @@ final class SyncCoordinator {
 
     func cancelSync() {
         pipelineTask?.cancel()
-        pipelineTask = nil
         phase = .failed
         failureKind = .cancelled
         summaryText = L10n.string("同步已取消")

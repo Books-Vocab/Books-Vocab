@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 
 def load_users_from(users_file: Path, normalize_users_payload: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]]) -> dict[str, dict[str, Any]]:
@@ -127,16 +128,16 @@ def parse_datetime(raw: Any) -> datetime | None:
         return None
     if isinstance(raw, datetime):
         if raw.tzinfo is None:
-            return raw.replace(tzinfo=timezone.utc)
-        return raw.astimezone(timezone.utc)
+            return raw.replace(tzinfo=UTC)
+        return raw.astimezone(UTC)
     if isinstance(raw, (int, float)):
-        return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+        return datetime.fromtimestamp(float(raw), tz=UTC)
     if isinstance(raw, str):
         try:
-            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(timezone.utc)
+            return datetime.fromisoformat(raw.replace("Z", "+00:00")).astimezone(UTC)
         except ValueError:
             try:
-                return datetime.fromtimestamp(float(raw), tz=timezone.utc)
+                return datetime.fromtimestamp(float(raw), tz=UTC)
             except ValueError:
                 return None
     return None

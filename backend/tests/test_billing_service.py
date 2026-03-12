@@ -1,7 +1,6 @@
 from __future__ import annotations
 
-from datetime import datetime, timedelta, timezone
-from unittest.mock import MagicMock
+from datetime import UTC, datetime, timedelta
 
 import pytest
 
@@ -16,7 +15,6 @@ from kg.billing import (
     status_from_transaction_payload,
     write_subscription_snapshot,
 )
-
 
 # ── default factories ──────────────────────────────────────────────────────────
 
@@ -50,11 +48,11 @@ def test_default_admin_grant_payload_schema():
 # ── admin_grant_is_active ──────────────────────────────────────────────────────
 
 def _future_iso():
-    return (datetime.now(tz=timezone.utc) + timedelta(days=30)).isoformat()
+    return (datetime.now(tz=UTC) + timedelta(days=30)).isoformat()
 
 
 def _past_iso():
-    return (datetime.now(tz=timezone.utc) - timedelta(days=1)).isoformat()
+    return (datetime.now(tz=UTC) - timedelta(days=1)).isoformat()
 
 
 def test_admin_grant_is_active_true_not_expired():
@@ -138,19 +136,19 @@ def test_status_from_payload_revocation_date():
 
 
 def test_status_from_payload_expired_by_date():
-    past_ms = int((_past_iso_dt() - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds() * 1000)
+    past_ms = int((_past_iso_dt() - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds() * 1000)
     payload = {"expiresDate": past_ms}
     assert status_from_transaction_payload(payload, _parse_dt) == "expired"
 
 
 def _past_iso_dt():
-    return datetime.now(tz=timezone.utc) - timedelta(days=2)
+    return datetime.now(tz=UTC) - timedelta(days=2)
 
 
 def test_status_from_payload_grace_period():
     # expiresDate not set (None), gracePeriodExpiresDate in the future → grace_period
     future_ms = int(
-        (datetime.now(tz=timezone.utc) + timedelta(days=5) - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
+        (datetime.now(tz=UTC) + timedelta(days=5) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
         * 1000
     )
     payload = {"expiresDate": None}
@@ -160,7 +158,7 @@ def test_status_from_payload_grace_period():
 
 def test_status_from_payload_trial_offer_type():
     future_ms = int(
-        (datetime.now(tz=timezone.utc) + timedelta(days=7) - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
+        (datetime.now(tz=UTC) + timedelta(days=7) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
         * 1000
     )
     payload = {"expiresDate": future_ms, "offerType": 1}
@@ -169,7 +167,7 @@ def test_status_from_payload_trial_offer_type():
 
 def test_status_from_payload_active():
     future_ms = int(
-        (datetime.now(tz=timezone.utc) + timedelta(days=30) - datetime(1970, 1, 1, tzinfo=timezone.utc)).total_seconds()
+        (datetime.now(tz=UTC) + timedelta(days=30) - datetime(1970, 1, 1, tzinfo=UTC)).total_seconds()
         * 1000
     )
     payload = {"expiresDate": future_ms}

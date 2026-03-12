@@ -179,6 +179,21 @@ struct BooksBrowserApp: App {
                             break
                         }
                     }
+                    .alert(
+                        L10n.string("登入已過期"),
+                        isPresented: Binding(
+                            get: { kgService.sessionExpiredReason != nil },
+                            set: { if !$0 { kgService.sessionExpiredReason = nil } }
+                        )
+                    ) {
+                        Button(L10n.string("確定")) {
+                            kgService.sessionExpiredReason = nil
+                        }
+                    } message: {
+                        if let reason = kgService.sessionExpiredReason {
+                            Text(reason)
+                        }
+                    }
                     .fullScreenCover(isPresented: $showWelcome) {
                         WelcomeView(
                             onStart: {
