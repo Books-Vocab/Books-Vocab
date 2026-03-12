@@ -143,7 +143,7 @@ struct VocabularyListView: View {
                 ShareSheet(url: url)
             }
             .sheet(item: $coordinator.selectedEntry) { entry in
-                WordDetailSheet(entry: entry)
+                WordDetailSheet(entry: entry, allEntries: allEntries)
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationContentInteraction(.scrolls)
@@ -202,7 +202,7 @@ struct VocabularyListView: View {
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
         } else if selectedTab == 2 {
-            KnowledgeGraphView()
+            KnowledgeGraphView(allEntries: allEntries)
         } else {
             StatsPresenter()
         }
