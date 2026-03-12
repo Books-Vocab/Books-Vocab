@@ -30,7 +30,7 @@ enum TodayReviewRevealStage: Int {
 
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
-    @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     @State private var queue: [VocabularyEntry]
     @State private var currentIndex = 0

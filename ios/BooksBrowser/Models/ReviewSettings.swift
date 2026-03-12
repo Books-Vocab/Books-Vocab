@@ -1,4 +1,6 @@
 import Foundation
+import Observation
+import SwiftUI
 
 enum ReviewSettingsMode: String, CaseIterable {
     case relaxed
@@ -80,7 +82,8 @@ struct ReviewSettings {
     }
 }
 
-final class ReviewSettingsStore: ObservableObject {
+@Observable
+final class ReviewSettingsStore {
     static let shared = ReviewSettingsStore()
 
     private enum Keys {
@@ -88,7 +91,7 @@ final class ReviewSettingsStore: ObservableObject {
         static let customParams = "review_settings_custom_params"
     }
 
-    @Published private(set) var settings: ReviewSettings
+    private(set) var settings: ReviewSettings
 
     private init() {
         let defaults = UserDefaults.standard
@@ -139,4 +142,8 @@ final class ReviewSettingsStore: ObservableObject {
     init(previewSettings: ReviewSettings) {
         self.settings = previewSettings
     }
+}
+
+extension EnvironmentValues {
+    @Entry var reviewSettingsStore: ReviewSettingsStore = .shared
 }
