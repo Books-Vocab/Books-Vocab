@@ -12,16 +12,12 @@ struct SettingsSubscriptionSection: View {
             VStack(spacing: 0) {
                 // ── 方案標題 + Badge ──
                 HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                        Text(state.planName)
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-
-                        Text(state.summary)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineSpacing(3)
-                    }
+                    SettingsSubscriptionInfoBlock(
+                        title: state.planName,
+                        subtitle: state.summary,
+                        detail: state.detail,
+                        titleFont: vocabSkin.typography.sectionTitle
+                    )
 
                     Spacer()
 
@@ -33,28 +29,31 @@ struct SettingsSubscriptionSection: View {
 
                 // ── 結構化 meta rows ──
                 SettingsRow(icon: "key", label: "權限來源".localized) {
-                    Text(state.sourceLabel)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                    SettingsStatusValue(
+                        text: state.sourceLabel,
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
 
                 SettingsDivider()
 
                 SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式".localized) {
-                    Text(state.managementNote)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .multilineTextAlignment(.trailing)
+                    SettingsStatusValue(
+                        text: state.managementNote,
+                        color: vocabSkin.palette.secondaryText,
+                        lineLimit: 2
+                    )
                 }
 
                 if state.isRestoreAvailable {
                     SettingsDivider()
 
                     SettingsRow(icon: "arrow.clockwise", label: state.restoreLabel) {
-                        Text(state.restoreDescription)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.accent)
-                            .multilineTextAlignment(.trailing)
+                        SettingsStatusValue(
+                            text: state.restoreDescription,
+                            color: vocabSkin.palette.accent,
+                            lineLimit: 2
+                        )
                     }
                     .transition(.statusRowReveal)
                 }
@@ -62,41 +61,20 @@ struct SettingsSubscriptionSection: View {
                 if let pricingUnavailableMessage = state.pricingUnavailableMessage {
                     SettingsDivider()
 
-                    VocabStateMessageCard(
-                        title: "價格載入中".localized,
-                        systemImage: "arrow.clockwise.circle",
-                        description: pricingUnavailableMessage
-                    )
-                    .padding(vocabSkin.spacing.cardPadding)
-                    .transition(.statusRowReveal)
+                    pricingUnavailableCard(pricingUnavailableMessage)
+                        .padding(vocabSkin.spacing.cardPadding)
+                        .transition(.statusRowReveal)
                 }
 
                 SettingsDivider()
 
                 // ── CTA ──
                 Button(action: actions.showSubscriptionPaywall) {
-                    HStack(spacing: vocabSkin.spacing.controlGap) {
-                        if state.isRefreshing {
-                            ProgressView()
-                                .controlSize(.small)
-                        } else {
-                            Image(systemName: "arrow.right.circle.fill")
-                                .font(vocabSkin.typography.iconMedium)
-                        }
-
-                        Text(state.ctaTitle)
-                            .font(vocabSkin.typography.body.weight(.medium))
-
-                        Spacer()
-
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconSmall)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    }
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                    .padding(.vertical, 13)
-                    .frame(minHeight: 50)
+                    SettingsActionRowLabel(
+                        title: state.ctaTitle,
+                        systemImage: "arrow.right.circle.fill",
+                        isLoading: state.isRefreshing
+                    )
                 }
                 .buttonStyle(.plain)
                 .disabled(state.isRefreshing)
@@ -111,22 +89,38 @@ struct SettingsSubscriptionSection: View {
     }
 
     private var subscriptionBadge: some View {
-        let tone: Color
-        switch state.badgeTone {
-        case .neutral:
-            tone = vocabSkin.palette.secondaryText
-        case .accent:
-            tone = vocabSkin.palette.accent
-        case .success:
-            tone = vocabSkin.palette.success
-        }
+        SettingsStatusBadge(text: state.badgeText, tone: state.badgeTone.color(in: vocabSkin))
+    }
 
-        return Text(state.badgeText)
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-            .background(tone.opacity(0.12))
-            .clipShape(Capsule())
+    private func pricingUnavailableCard(_ message: String) -> some View {
+        VocabStateMessageCard(
+            title: state.isRefreshing ? "價格載入中".localized : "價格稍後更新".localized,
+            systemImage: state.isRefreshing ? "arrow.clockwise.circle" : "info.circle",
+            description: message
+        )
+    }
+}
+
+#Preview("Subscription / Active") {
+    AppThemeContainer {
+        ScrollView {
+            SettingsSubscriptionSection(
+                state: SettingsPresenterPreviewData.subscribedActive.subscription!,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+            .padding()
+        }
+    }
+}
+
+#Preview("Subscription / Pricing Unavailable") {
+    AppThemeContainer {
+        ScrollView {
+            SettingsSubscriptionSection(
+                state: SettingsPresenterPreviewData.pricingUnavailable.subscription!,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+            .padding()
+        }
     }
 }
