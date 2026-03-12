@@ -7,20 +7,7 @@ from typing import Any
 from fastapi import HTTPException
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
-
-SUPPORTED_LANGUAGES = {
-    "en": "English",
-    "ja": "Japanese",
-    "ko": "Korean",
-    "fr": "French",
-    "de": "German",
-    "es": "Spanish",
-    "zh-Hant": "Traditional Chinese",
-    "zh-Hans": "Simplified Chinese",
-}
-
-SUPPORTED_SOURCE_LANGS = {"en", "ja", "ko", "fr", "de", "es"}
-SUPPORTED_TARGET_LANGS = {"zh-Hant", "zh-Hans", "en", "ja", "ko"}
+from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
 
 
 def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tuple[str, str]:
