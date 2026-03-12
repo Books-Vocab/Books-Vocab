@@ -66,7 +66,7 @@ struct AppStartupRecoveryView: View {
                             .foregroundStyle(appTheme.palette.tertiaryText)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                            .padding(16)
+                            .padding(AppMetrics.spacingMedium)
                             .background(appTheme.palette.cardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
                             .overlay {
                                 RoundedRectangle(cornerRadius: 18, style: .continuous)
@@ -74,7 +74,7 @@ struct AppStartupRecoveryView: View {
                             }
                     }
                 }
-                .padding(24)
+                .padding(AppMetrics.spacingLarge)
             }
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle(L10n.string("啟動保護模式"))
