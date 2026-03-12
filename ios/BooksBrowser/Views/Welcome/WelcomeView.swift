@@ -55,7 +55,7 @@ struct WelcomeView: View {
             Spacer()
 
             // CTA buttons
-            VStack(spacing: WelcomeMetrics.buttonSpacing) {
+            VStack(spacing: AppMetrics.spacingSmall) {
                 Button("開始使用".localized, action: onStart)
                     .buttonStyle(.appAction(.primary))
 
@@ -78,7 +78,7 @@ struct WelcomeView: View {
     }
 
     private func pageView(_ page: WelcomePage) -> some View {
-        VStack(spacing: WelcomeMetrics.pageContentSpacing) {
+        VStack(spacing: AppMetrics.spacingMedium) {
             Image(systemName: page.icon)
                 .font(AppFonts.h2(weight: .medium))
                 .foregroundStyle(appTheme.palette.accent)
@@ -112,11 +112,9 @@ private struct WelcomePage {
 private enum WelcomeMetrics {
     static let iconBottomPadding: CGFloat = 12
     static let pageHeight: CGFloat = 240
-    static let pageContentSpacing: CGFloat = 16
     static let featureIconSize: CGFloat = 32
     static let featureIconFrame: CGFloat = 64
     static let subtitleHorizontalPadding: CGFloat = 40
-    static let buttonSpacing: CGFloat = 8
     static let bottomPadding: CGFloat = 40
 }
 
