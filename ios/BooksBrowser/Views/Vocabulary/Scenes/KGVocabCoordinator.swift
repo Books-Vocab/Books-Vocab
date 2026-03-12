@@ -77,15 +77,23 @@ final class KGVocabCoordinator {
         kgService: any KGServing,
         modelContext: ModelContext
     ) async {
+        var failedCount = 0
         for entry in pendingDeletes {
             do {
                 try await kgService.deleteCard(word: entry.word)
                 modelContext.delete(entry)
             } catch {
+                failedCount += 1
+                AppLog.kg.error("Failed to delete '\(entry.word)': \(error.localizedDescription)")
             }
         }
 
         modelContext.safeSave()
+
+        if failedCount > 0 {
+            errorMessage = L10n.format("刪除失敗 %@ 筆，稍後將自動重試", "\(failedCount)")
+        }
+
         await kgService.healthCheck()
     }
 }
