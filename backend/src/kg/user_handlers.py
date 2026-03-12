@@ -172,14 +172,29 @@ def health_response(
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[[Path], Any],
 ) -> HealthResponse:
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"])
+    user_dir: Path = user["dir"]
+    cards = card_store_factory(user_dir)
+    graph = graph_store_factory(user_dir)
 
-    cards_path = user["dir"] / "cards.json"
+    cards_path = user_dir / "cards.json"
     last_mod = None
     if cards_path.exists():
         ts = cards_path.stat().st_mtime
         last_mod = datetime.fromtimestamp(ts, tz=UTC).isoformat()
+
+    db_ok = True
+    try:
+        cards.count()
+    except Exception:
+        db_ok = False
+
+    data_dir_exists = user_dir.exists()
+
+    disk_free_mb: int | None = None
+    try:
+        disk_free_mb = shutil.disk_usage(user_dir).free // (1024 * 1024)
+    except Exception:
+        pass
 
     return HealthResponse(
         status="ok",
@@ -187,4 +202,7 @@ def health_response(
         links=graph.link_count(),
         pendingCandidates=graph.candidate_count(),
         lastModified=last_mod,
+        db_ok=db_ok,
+        disk_free_mb=disk_free_mb,
+        data_dir_exists=data_dir_exists,
     )
