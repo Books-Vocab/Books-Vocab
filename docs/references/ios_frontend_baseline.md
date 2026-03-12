@@ -9,17 +9,17 @@
 | 行數 | 路徑 |
 |------|------|
 | 645 | `ios/BooksBrowser/Views/Settings/SettingsPresenter+Components.swift` |
-| 617 | `ios/BooksBrowser/UIComponents/AppShellComponents.swift` |
+| 619 | `ios/BooksBrowser/UIComponents/AppShellComponents.swift` |
 | 601 | `ios/BooksBrowser/Views/Vocabulary/Skin/VocabSkin.swift` |
 | 587 | `ios/BooksBrowser/Views/Vocabulary/Components/VocabShellComponents.swift` |
 | 581 | `ios/BooksBrowser/Views/Reader/TranslationPanelPresenter.swift` |
 | 502 | `ios/BooksBrowser/Views/Reader/ReadiumNavigatorJS.swift` |
+| 481 | `ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift` |
 | 449 | `ios/BooksBrowser/Services/DemoDataProvider.swift` |
-| 445 | `ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift` |
-| 414 | `ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift` |
-| 400 | `ios/BooksBrowser/Views/Reader/ReaderView.swift` |
+| 391 | `ios/BooksBrowser/Views/Reader/ReaderSettingsVocabPresenter.swift` |
+| 376 | `ios/BooksBrowser/Views/Settings/SubscriptionPaywallSheet.swift` |
 
-總 Swift 行數: 27,459 / 175 檔案
+總 Swift 行數: 27,577 / 181 檔案
 
 ---
 
@@ -27,9 +27,9 @@
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 115 |
+| Views/ + UIComponents/ 檔案總數 | 121 |
 | 含 `#Preview` 的檔案數 | 28 |
-| 覆蓋率 | 24.3% |
+| 覆蓋率 | 23.1% |
 
 全專案含 `#Preview` 的 .swift 檔: 29
 
@@ -81,3 +81,23 @@
 | raw-transition | 0 |
 
 結果: `[OK] No violations found.` — Exit 0
+
+---
+
+## 6. 核心容器拆分快照
+
+| Surface | 當前主檔 / extension | 行數 |
+|---------|----------------------|------|
+| Reader | `ReaderView.swift` | 190 |
+| Reader | `ReaderView+Panels.swift` | 115 |
+| Reader | `ReaderView+Handlers.swift` | 94 |
+| Vocabulary | `VocabularyListView.swift` | 77 |
+| Vocabulary | `VocabularyListView+State.swift` | 161 |
+| Vocabulary | `VocabularyListView+Sheets.swift` | 74 |
+| Settings | `SettingsView.swift` | 96 |
+| Settings | `SettingsView+State.swift` | 162 |
+| Settings | `SettingsView+Bindings.swift` | 51 |
+
+判讀：
+- Reader / Vocabulary / Settings 三個核心容器已不再由單一主檔承載全部 UI 與 state wiring
+- 後續基線比較應以「container + extension 組」為單位，而不是只看舊主檔行數

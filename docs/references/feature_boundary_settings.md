@@ -6,7 +6,9 @@
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `SettingsView.swift` | 295 | 主容器 `struct SettingsView: View`，持有 @State/@Environment，組裝 body |
+| `SettingsView.swift` | 96 | 主容器 `struct SettingsView: View`，保留 body 組裝、task、sheet、alert wiring |
+| `SettingsView+State.swift` | 162 | `presenterState` / `presenterActions` / 派生狀態組裝 |
+| `SettingsView+Bindings.swift` | 51 | Binding 與 debug/local server wiring |
 
 ### Coordinator Layer（導航協調）
 
@@ -62,10 +64,16 @@
 
 ## State 邊界
 
-- `SettingsCoordinator`：Settings 的全部導航狀態（哪個 sheet 開著、detail 導航）；由 `SettingsView` 持有，不外洩
+- `SettingsCoordinator`：Settings 的導航與 side-effect state（optional integration sheet、subscription paywall、delete confirm、translation config、debug backend）；由 `SettingsView` 持有，不外洩
 - `SettingsPresenterState`：Presenter 接收的 UI 狀態快照，純值類型，可跨 layer 傳遞
 - `SettingsPresenterActions`：callback closure 集合，由 Container 注入，不持有 mutable state
-- 帳號刪除流程：`SettingsAccountDetailView` 內部管理確認狀態，不上浮到 `SettingsCoordinator`
+- 帳號刪除確認與 paywall 開關目前由 `SettingsCoordinator` / `SettingsView` 一起驅動；不直接散落到 section view
+
+## 現況判讀
+
+- `SettingsView` 已從單檔主容器拆成 `View + State + Bindings` 三檔
+- 主檔已縮到 100 行內，主要保留組裝、task、sheet、alert
+- 後續若再新增設定區塊，優先擴充 `SettingsView+State.swift` 或對應 section view，而不是把狀態組裝塞回主檔
 
 ## 共用依賴
 

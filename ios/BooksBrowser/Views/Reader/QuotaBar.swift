@@ -8,7 +8,7 @@ struct QuotaBar: View {
     let isLoggedIn: Bool
 
     var body: some View {
-        if isLoggedIn, store.fraction < 1.0 {
+        if isLoggedIn {
             GeometryReader { geo in
                 ZStack(alignment: .leading) {
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
