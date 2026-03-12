@@ -216,6 +216,37 @@ enum SettingsPresenterPreviewData {
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
+
+    static let debugBackendLocal = SettingsPresenterState(
+        auth: .init(
+            isLoggedIn: true,
+            userInitials: "CL",
+            avatarURL: nil,
+            displayName: "Chen Liang",
+            email: "chen@example.com",
+            authError: nil,
+            isAuthenticating: false,
+            iconBreathing: false,
+            debug: .init(manualLoginHint: "僅供本地測試帳號切換使用".localized)
+        ),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        kg: .init(
+            serverURL: "http://127.0.0.1:8000",
+            isConnected: false,
+            connectionPulse: true,
+            serverCardCount: 12,
+            lastSyncDescription: "剛剛",
+            debug: .init(
+                isUsingLocalServer: true,
+                localServerURL: "http://127.0.0.1:8000"
+            )
+        ),
+        subscription: nil,
+        syncSummary: .init(isConnected: false, summaryText: "離線"),
+        optionalIntegration: .init(isEnabled: true),
+        about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
+        danger: .init(isDeletingAccount: false)
+    )
 }
 
 #Preview("Settings / Logged Out") {
@@ -297,6 +328,23 @@ enum SettingsPresenterPreviewData {
                 onTranslationLanguageChanged: { _, _ in },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
+                actions: SettingsPresenterPreviewData.noopActions
+            )
+        }
+    }
+}
+
+#Preview("Settings / Debug Backend Local") {
+    AppThemeContainer {
+        NavigationStack {
+            SettingsPresenter(
+                state: SettingsPresenterPreviewData.debugBackendLocal,
+                optionalIntegrationApiKey: .constant(""),
+                translationSourceLang: .constant(.en),
+                translationTargetLang: .constant(.zhHant),
+                onTranslationLanguageChanged: { _, _ in },
+                manualLoginUserId: .constant("debug-user-id"),
+                debugLocalServerURL: .constant("http://127.0.0.1:8000"),
                 actions: SettingsPresenterPreviewData.noopActions
             )
         }
