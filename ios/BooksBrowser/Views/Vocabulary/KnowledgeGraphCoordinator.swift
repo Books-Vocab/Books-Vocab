@@ -1,8 +1,26 @@
 import Foundation
 import SwiftUI
 
+@MainActor protocol KnowledgeGraphCoordinating: AnyObject, Observable {
+    var isLoading: Bool { get }
+    var errorMessage: String? { get }
+    var isShowingSettings: Bool { get set }
+    var links: [KGGraphLink] { get }
+    var selectedEntry: VocabularyEntry? { get set }
+    var centerForce: Double { get set }
+    var repelForce: Double { get set }
+    var linkForce: Double { get set }
+    var linkDistance: Double { get set }
+    var nodeSize: Double { get set }
+    var linkThickness: Double { get set }
+    func toggleSettings()
+    func resetForces()
+    func handleNodeTap(_ nodeID: String, allEntries: [VocabularyEntry])
+    func loadGraphData(authManager: any AuthManaging, kgService: any KGServing) async
+}
+
 @Observable @MainActor
-final class KnowledgeGraphCoordinator {
+final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
     var isLoading = false
     var errorMessage: String?
     var isShowingSettings = false

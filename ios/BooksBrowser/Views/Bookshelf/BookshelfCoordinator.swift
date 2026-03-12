@@ -2,8 +2,22 @@ import Foundation
 import SwiftData
 import os
 
+@MainActor protocol BookshelfCoordinating: AnyObject, Observable {
+    var isImporting: Bool { get set }
+    var isLoading: Bool { get }
+    var loadingMessage: String { get }
+    var errorMessage: String? { get }
+    var showError: Bool { get set }
+    var showSettings: Bool { get set }
+    func presentImporter()
+    func presentSettings()
+    func dismissError()
+    func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting)
+    func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging)
+}
+
 @Observable @MainActor
-final class BookshelfCoordinator {
+final class BookshelfCoordinator: BookshelfCoordinating {
     var isImporting = false
     var isLoading = false
     var loadingMessage = ""
