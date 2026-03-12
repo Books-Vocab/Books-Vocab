@@ -161,10 +161,11 @@ final class SyncCoordinator {
                     updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
                 }
 
-                // Push review state before pull so server has latest review data
+                // Push review state + daily stats before pull
                 updateStep("push_review", status: .running)
                 do {
                     let result = try await kgService.pushReviewStates(container: modelContext.container)
+                    _ = try? await kgService.pushDailyStats(container: modelContext.container)
                     updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
                 } catch {
                     encounteredFailure = true
@@ -177,6 +178,9 @@ final class SyncCoordinator {
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
                 }
+
+                // Also pull daily stats from server
+                try? await kgService.pullDailyStats(container: modelContext.container)
 
                 updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
                 if encounteredFailure {
