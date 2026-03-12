@@ -50,6 +50,31 @@ struct KGVocabView: View {
                 }
                 .padding(vocabSkin.metrics.cardBlockPadding)
                 .vocabCanvasBackground()
+            } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
+                VStack {
+                    Spacer()
+                    VocabStateMessageCard(
+                        title: "無法載入知識庫".localized,
+                        systemImage: "exclamationmark.triangle"
+                    ) {
+                        Button("重試".localized) {
+                            Task {
+                                await coordinator.loadInitialData(
+                                    authManager: authManager,
+                                    kgService: kgService,
+                                    modelContext: modelContext,
+                                    dueEntries: dueEntries,
+                                    unlearnedEntries: unlearnedEntries,
+                                    selectedReviewState: $selectedReviewState
+                                )
+                            }
+                        }
+                        .buttonStyle(.vocabAction())
+                    }
+                    Spacer()
+                }
+                .padding(vocabSkin.metrics.cardBlockPadding)
+                .vocabCanvasBackground()
             } else if coordinator.isLoading && syncedEntries.isEmpty {
                 VStack {
                     Spacer()
