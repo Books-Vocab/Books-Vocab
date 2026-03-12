@@ -9,7 +9,6 @@ from pathlib import Path
 import numpy as np
 
 logger = logging.getLogger(__name__)
-import httpx
 from openai import OpenAI, OpenAIError
 
 EMBEDDING_MODEL = "gemini-embedding-001"
@@ -40,7 +39,7 @@ class EmbeddingStore:
             tmp_emb = self.embeddings_path.with_name(self.embeddings_path.stem + "_tmp.npy")
             np.save(tmp_emb, self._embeddings)
             tmp_emb.replace(self.embeddings_path)
-            
+
         tmp_ids = self.ids_path.with_suffix(".json.tmp")
         tmp_ids.write_text(json.dumps(self._ids))
         tmp_ids.replace(self.ids_path)

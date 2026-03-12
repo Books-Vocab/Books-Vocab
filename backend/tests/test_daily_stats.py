@@ -5,11 +5,9 @@ from __future__ import annotations
 import logging
 from pathlib import Path
 
-import pytest
-
-from kg.daily_stats import DailyReviewStatsStore
 from kg.api_models import DailyReviewStatEntry
-from kg.vocab_service import push_daily_review_stats, pull_daily_review_stats
+from kg.daily_stats import DailyReviewStatsStore
+from kg.vocab_service import pull_daily_review_stats, push_daily_review_stats
 
 
 def _make_store(tmp_path: Path) -> DailyReviewStatsStore:

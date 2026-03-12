@@ -1,18 +1,23 @@
 from __future__ import annotations
 
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from unittest.mock import MagicMock
 
 import pytest
 from fastapi import HTTPException
 
-from kg.api_models import AppStoreNotificationRequest, AppStoreReconcileRequest, AppStoreSyncRequest, EntitlementsResponse, SubscriptionStatusResponse
+from kg.api_models import (
+    AppStoreNotificationRequest,
+    AppStoreReconcileRequest,
+    AppStoreSyncRequest,
+    EntitlementsResponse,
+    SubscriptionStatusResponse,
+)
 from kg.billing_handlers import (
     app_store_notifications_response,
     reconcile_app_store_subscription_response,
     sync_app_store_subscription_response,
 )
-
 
 # ── helpers ────────────────────────────────────────────────────────────────────
 
@@ -137,7 +142,6 @@ def test_notification_normal_flow_updated(tmp_path):
     decode_fn = MagicMock(return_value=(snapshot, {"notification_type": "DID_RENEW"}))
     append_fn = MagicMock()
 
-    users_store = {"orig-1": "u1"}
     lock = tmp_path / "lock"
 
     def resolve_fn(users, oti, ti):

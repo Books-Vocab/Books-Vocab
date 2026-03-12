@@ -5,6 +5,8 @@ from types import SimpleNamespace
 from kg.api_models import TranslateRequest
 from kg.translate_service import (
     _parse_json_payload as parse_json_payload,
+)
+from kg.translate_service import (
     run_explain_translate,
     run_phrase_translate,
     run_quick_translate,

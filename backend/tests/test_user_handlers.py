@@ -1,26 +1,19 @@
 from __future__ import annotations
 
 import json
-import shutil
-from pathlib import Path
-from unittest.mock import MagicMock, patch
-
-import pytest
+from unittest.mock import MagicMock
 
 from kg.api_models import (
     MochiIntegrationConfig,
     UserConfigRequest,
     UserIntegrationsConfig,
 )
-from kg.user_handlers import delete_user_account_response, health_response
-from kg.user_store import collect_account_ids_for_deletion
-
 
 # ===========================================================================
 # _merge_user_config  (tested indirectly via module import)
 # ===========================================================================
-
-from kg.user_handlers import _merge_user_config
+from kg.user_handlers import _merge_user_config, delete_user_account_response, health_response
+from kg.user_store import collect_account_ids_for_deletion
 
 
 class TestMergeUserConfig:

@@ -13,9 +13,9 @@ import logging
 import os
 import time
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
-from unittest.mock import MagicMock, patch
+from unittest.mock import patch
 
 import jwt as pyjwt
 import pytest
@@ -26,7 +26,7 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-for-ci-at-least-32-bytes")
 os.environ.setdefault("GEMINI_API_KEY", "fake-key")
 
 import kg.api as api_mod  # noqa: E402
-from kg.api import app    # noqa: E402
+from kg.api import app  # noqa: E402
 
 _JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -35,8 +35,8 @@ def _make_jwt(user_id: str) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
-        "iat": datetime.now(tz=timezone.utc),
-        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        "iat": datetime.now(tz=UTC),
+        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
 
