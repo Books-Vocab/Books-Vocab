@@ -26,7 +26,7 @@ struct SettingsReviewSection: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "複習模式", icon: "timer")
 
-            HStack(spacing: ReviewSettingsMetrics.modeTileGap) {
+            HStack(spacing: AppSettingsMetrics.reviewModeTileGap) {
                 ForEach(ReviewSettingsMode.allCases, id: \.rawValue) { mode in
                     modeTile(mode)
                 }
@@ -140,13 +140,13 @@ struct SettingsReviewSection: View {
 
             Spacer()
 
-            HStack(spacing: ReviewSettingsMetrics.stepperGap) {
+            HStack(spacing: AppSettingsMetrics.reviewStepperGap) {
                 SettingsStepperIconButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
 
                 Text(value)
                     .font(vocabSkin.typography.monoBodyStrong)
                     .foregroundStyle(vocabSkin.palette.primaryText)
-                    .frame(minWidth: ReviewSettingsMetrics.valueMinWidth, alignment: .center)
+                    .frame(minWidth: AppSettingsMetrics.reviewValueMinWidth, alignment: .center)
 
                 SettingsStepperIconButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
             }
@@ -196,12 +196,6 @@ private extension Double {
         let factor = pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
-}
-
-private enum ReviewSettingsMetrics {
-    static let modeTileGap: CGFloat = 10
-    static let stepperGap: CGFloat = 12
-    static let valueMinWidth: CGFloat = 52
 }
 
 // MARK: - Preview

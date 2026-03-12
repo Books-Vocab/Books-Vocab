@@ -9,6 +9,7 @@ extension TodayReviewPresenter {
             if state.remainingCount >= 2 { stackCard(depth: 2) }
             if state.remainingCount >= 1 { stackCard(depth: 1) }
         }
+        .drawingGroup(opaque: false)
     }
 
     func stackCard(depth: Int) -> some View {
@@ -72,9 +73,9 @@ extension TodayReviewPresenter {
                 guard swipeEnabled else { return }
                 let threshold = vocabSkin.metrics.reviewSwipeThreshold
                 if value.translation.width < -threshold {
-                    flingCard(direction: -1, callback: onForgot)
+                    flingCard(direction: -1, velocity: abs(value.velocity.width), callback: onForgot)
                 } else if value.translation.width > threshold {
-                    flingCard(direction: 1, callback: onRemembered)
+                    flingCard(direction: 1, velocity: abs(value.velocity.width), callback: onRemembered)
                 } else {
                     withAnimation(AppMotion.swipeSnapBackSpring) {
                         swipeOffset = 0
@@ -84,29 +85,30 @@ extension TodayReviewPresenter {
     }
 
     /// 統一的甩出動畫 — swipe 和按鈕共用
-    func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
+    func flingCard(direction: CGFloat, velocity: CGFloat = 1200, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
+        frozenSwipeIntensity = swipeIntensity
         flingHapticTrigger += 1
 
-        withAnimation(AppMotion.swipeFlingSpring) {
-            swipeOffset = direction * screenWidth * 1.3
-        }
+        let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(60))
-
+        withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
+            swipeOffset = direction * distance
+        } completion: {
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
             withTransaction(noAnim) {
                 suppressTransition = true
+                frozenSwipeIntensity = 0
                 swipeOffset = 0
                 stackRotations = [.random(in: -1...1), .random(in: -1...1)]
                 callback()
             }
-            suppressTransition = false
-
-            dismissPhase = .idle
+            DispatchQueue.main.async {
+                suppressTransition = false
+                dismissPhase = .idle
+            }
         }
     }
 }

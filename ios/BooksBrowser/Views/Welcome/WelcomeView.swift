@@ -30,6 +30,12 @@ struct WelcomeView: View {
         ),
     ]
 
+    init(initialPage: Int = 0, onStart: @escaping () -> Void, onTryDemo: @escaping () -> Void) {
+        self.onStart = onStart
+        self.onTryDemo = onTryDemo
+        self._currentPage = State(initialValue: initialPage)
+    }
+
     var body: some View {
         VStack(spacing: 0) {
             Spacer()
@@ -40,7 +46,7 @@ struct WelcomeView: View {
                 .scaledToFit()
                 .frame(width: 80, height: 80)
                 .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
-                .padding(.bottom, WelcomeMetrics.iconBottomPadding)
+                .padding(.bottom, AppWelcomeMetrics.iconBottomPadding)
 
             // Page content
             TabView(selection: $currentPage) {
@@ -50,7 +56,7 @@ struct WelcomeView: View {
                 }
             }
             .tabViewStyle(.page(indexDisplayMode: .always))
-            .frame(height: WelcomeMetrics.pageHeight)
+            .frame(height: AppWelcomeMetrics.pageHeight)
 
             Spacer()
 
@@ -72,7 +78,7 @@ struct WelcomeView: View {
                 .padding(.vertical, AppMetrics.spacingSmall)
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.bottom, WelcomeMetrics.bottomPadding)
+            .padding(.bottom, AppWelcomeMetrics.bottomPadding)
         }
         .background(appTheme.palette.pageBackground.ignoresSafeArea())
     }
@@ -82,7 +88,7 @@ struct WelcomeView: View {
             Image(systemName: page.icon)
                 .font(AppFonts.h2(weight: .medium))
                 .foregroundStyle(appTheme.palette.accent)
-                .frame(width: WelcomeMetrics.featureIconFrame, height: WelcomeMetrics.featureIconFrame)
+                .frame(width: AppWelcomeMetrics.featureIconFrame, height: AppWelcomeMetrics.featureIconFrame)
                 .background(
                     Circle()
                         .fill(appTheme.palette.accent.opacity(0.10))
@@ -96,7 +102,7 @@ struct WelcomeView: View {
                 .font(AppFonts.body())
                 .foregroundStyle(appTheme.palette.secondaryText)
                 .multilineTextAlignment(.center)
-                .padding(.horizontal, WelcomeMetrics.subtitleHorizontalPadding)
+                .padding(.horizontal, AppWelcomeMetrics.subtitleHorizontalPadding)
         }
     }
 }
@@ -109,24 +115,30 @@ private struct WelcomePage {
     let subtitle: String
 }
 
-private enum WelcomeMetrics {
-    static let iconBottomPadding: CGFloat = 12
-    static let pageHeight: CGFloat = 240
-    static let featureIconSize: CGFloat = 32
-    static let featureIconFrame: CGFloat = 64
-    static let subtitleHorizontalPadding: CGFloat = 40
-    static let bottomPadding: CGFloat = 40
-}
+private struct WelcomePreviewScene: View {
+    let initialPage: Int
+    let preferredColorScheme: ColorScheme?
 
-#Preview("Welcome / Light") {
-    AppThemeContainer {
-        WelcomeView(onStart: {}, onTryDemo: {})
+    var body: some View {
+        AppThemeContainer {
+            WelcomeView(initialPage: initialPage, onStart: {}, onTryDemo: {})
+        }
+        .preferredColorScheme(preferredColorScheme)
     }
 }
 
-#Preview("Welcome / Dark") {
-    AppThemeContainer {
-        WelcomeView(onStart: {}, onTryDemo: {})
-    }
-    .preferredColorScheme(.dark)
+#Preview("Welcome / Reader") {
+    WelcomePreviewScene(initialPage: 0, preferredColorScheme: nil)
+}
+
+#Preview("Welcome / Translate") {
+    WelcomePreviewScene(initialPage: 1, preferredColorScheme: nil)
+}
+
+#Preview("Welcome / Review") {
+    WelcomePreviewScene(initialPage: 2, preferredColorScheme: nil)
+}
+
+#Preview("Welcome / Graph Dark") {
+    WelcomePreviewScene(initialPage: 3, preferredColorScheme: .dark)
 }

@@ -6,6 +6,7 @@ import os
     var optionalIntegrationApiKey: String { get set }
     var fetchedKey: String { get }
     var showOptionalIntegrationInfo: Bool { get set }
+    var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
     var iconBreathing: Bool { get }
     var showDeleteAccountConfirm: Bool { get set }
@@ -19,6 +20,7 @@ import os
     func requestDeleteAccount()
     func clearDeleteAccountError()
     func presentOptionalIntegrationInfo()
+    func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
     func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing)
 }
@@ -28,6 +30,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     var optionalIntegrationApiKey = ""
     var fetchedKey = ""
     var showOptionalIntegrationInfo = false
+    var showSubscriptionPaywall = false
     var connectionPulse = false
     var iconBreathing = false
     var showDeleteAccountConfirm = false
@@ -116,6 +119,10 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     func presentOptionalIntegrationInfo() {
         showOptionalIntegrationInfo = true
+    }
+
+    func presentSubscriptionPaywall() {
+        showSubscriptionPaywall = true
     }
 
     func deleteAccount(
