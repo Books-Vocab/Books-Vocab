@@ -58,6 +58,19 @@ final class KGVocabCoordinator {
         }
     }
 
+    func forceRefresh(
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async {
+        do {
+            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+            errorMessage = nil
+        } catch {
+            errorMessage = error.localizedDescription
+        }
+        await kgService.healthCheck()
+    }
+
     func retryPendingDeletes(
         pendingDeletes: [VocabularyEntry],
         kgService: any KGServing,
