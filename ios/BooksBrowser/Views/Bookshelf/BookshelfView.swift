@@ -112,39 +112,45 @@ struct BookshelfView: View {
     @Environment(\.authManager) private var authManager
 
     private var emptyState: some View {
-        VStack(spacing: BookshelfMetrics.emptyStateSpacing) {
-            Spacer()
+        ScrollView {
+            VStack(spacing: BookshelfMetrics.emptyStateSpacing) {
+                Spacer(minLength: 120)
 
-            AppEmptyStateContent(
-                title: "尚無書籍".localized,
-                systemImage: "book",
-                description: "匯入 EPUB 電子書開始閱讀".localized,
-                style: .bookshelf(appTheme)
-            )
+                AppEmptyStateContent(
+                    title: "尚無書籍".localized,
+                    systemImage: "book",
+                    description: "匯入 EPUB 電子書開始閱讀".localized,
+                    style: .bookshelf(appTheme)
+                )
 
-            Button("匯入".localized) {
-                coordinator.presentImporter()
-            }
-            .buttonStyle(.appAction(.outline))
-            .fixedSize(horizontal: false, vertical: true)
-
-            if !authManager.isDemoMode && !authManager.isLoggedIn {
-                Button(action: {
-                    authManager.enterDemoMode(modelContainer: modelContext.container)
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.circle")
-                        Text("體驗複習與圖譜".localized)
-                    }
-                    .font(AppFonts.caption(weight: .medium))
-                    .foregroundStyle(appTheme.palette.accent)
+                Button("匯入".localized) {
+                    coordinator.presentImporter()
                 }
-                .buttonStyle(.plain)
-            }
+                .buttonStyle(.appAction(.outline))
+                .fixedSize(horizontal: false, vertical: true)
 
-            Spacer()
+                if !authManager.isDemoMode && !authManager.isLoggedIn {
+                    Button(action: {
+                        authManager.enterDemoMode(modelContainer: modelContext.container)
+                    }) {
+                        HStack(spacing: 6) {
+                            Image(systemName: "play.circle")
+                            Text("體驗複習與圖譜".localized)
+                        }
+                        .font(AppFonts.caption(weight: .medium))
+                        .foregroundStyle(appTheme.palette.accent)
+                    }
+                    .buttonStyle(.plain)
+                }
+
+                Spacer(minLength: 120)
+            }
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
-        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+        .refreshable {
+            try? await Task.sleep(for: .seconds(1.5))
+        }
     }
 
     // MARK: - 書籍網格
