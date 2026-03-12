@@ -635,9 +635,12 @@ final class KGService: KGServing, LocalDataClearing {
             throw KGError.serverError("Invalid URL")
         }
 
+        // Bug A fix: 記錄邊界在發起請求前，避免 pull 期間新增的卡片被跳過
+        let pullBoundary = Date().timeIntervalSince1970
+
         var request = URLRequest(url: url)
         applyAuth(to: &request, token: token)
-        
+
         let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
 
         guard let httpResponse = response as? HTTPURLResponse else {
@@ -668,8 +671,8 @@ final class KGService: KGServing, LocalDataClearing {
             }
         )
         
-        // Save the successful sync boundary to avoid re-fetching later
-        defaults.set(Date().timeIntervalSince1970, forKey: SyncKeys.incrementalBoundary)
+        // 使用 pull 開始前的時間戳作為邊界，確保不遺漏 pull 期間的變更
+        defaults.set(pullBoundary, forKey: SyncKeys.incrementalBoundary)
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
         // Back-fill pronunciations for entries that are missing them (non-blocking)
@@ -691,6 +694,31 @@ final class KGService: KGServing, LocalDataClearing {
         UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)
         lastSyncDate = nil
         serverCardCount = 0
+    }
+
+    // MARK: - Background Sync (輕量：push review + pull)
+
+    /// 自動背景同步 — 只推送複習狀態 + 拉取最新卡片，跳過 upload/delete/trigger
+    func backgroundSync(container: ModelContainer) async {
+        do {
+            _ = try await pushReviewStates(container: container)
+        } catch {
+            AppLog.kg.warning("backgroundSync pushReview failed: \(error.localizedDescription)")
+        }
+        do {
+            try await pullCardsToLocal(container: container, progress: nil)
+        } catch {
+            AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
+        }
+    }
+
+    /// 只推送複習狀態（進背景時用）
+    func pushReviewQuietly(container: ModelContainer) async {
+        do {
+            _ = try await pushReviewStates(container: container)
+        } catch {
+            AppLog.kg.warning("pushReviewQuietly failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Fetch Graph Links
