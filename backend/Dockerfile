@@ -9,7 +9,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && rm -rf /var/lib/apt/lists/*
 
 COPY pyproject.toml .
-RUN pip install --no-cache-dir --prefix=/install .
+RUN pip install --no-cache-dir --prefix=/install . pytest pytest-asyncio
 
 # === Runtime stage ===
 FROM python:3.12-slim AS runtime
@@ -26,6 +26,8 @@ COPY --from=builder /install /usr/local
 
 # 複製應用程式碼
 COPY src/ src/
+COPY tests/ tests/
+COPY pytest.ini ./
 COPY privacy.html support.html terms.html guide.html ./
 
 # 非 root 用戶（UID 1000 匹配 host ubuntu 預設）
