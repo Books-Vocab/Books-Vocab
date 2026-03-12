@@ -46,6 +46,9 @@ class _FakeCardsStore:
             return list(self._cards)
         return [card for card in self._cards if not card.is_deleted]
 
+    def all_as_dict(self, include_deleted: bool = False):
+        return {card.id: card for card in self.all(include_deleted=include_deleted)}
+
     def get_modified_since(self, parsed_since):
         return list(self._cards)
 

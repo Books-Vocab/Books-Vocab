@@ -341,7 +341,8 @@ def sync(
     user_id = ctx.obj["user_id"]
     user_dir = ctx.obj["user_dir"]
     users = load_users()
-    mochi_key = resolve_mochi_api_key_from_config(users.get(user_id, {}).get("config", {}))
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    mochi_key = resolve_mochi_api_key_from_config(users.get(user_id, {}).get("config", {}), jwt_secret)
 
     if not mochi_key:
         raise typer.Exit(f"MOCHI_API_KEY not configured for user {user_id}. Set it in users.json")

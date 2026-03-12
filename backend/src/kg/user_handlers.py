@@ -23,8 +23,8 @@ from .api_models import (
 from .user_store import resolve_mochi_api_key_from_config
 
 
-def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
-    mochi_api_key = resolve_mochi_api_key_from_config(config)
+def _build_user_config_response(config: dict[str, Any], jwt_secret: str = "") -> UserConfigResponse:
+    mochi_api_key = resolve_mochi_api_key_from_config(config, jwt_secret)
 
     translation_data = config.get("translation")
     translation = None
@@ -73,8 +73,8 @@ def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
         }
 
 
-def get_user_config_response(user: dict[str, Any]) -> UserConfigResponse:
-    return _build_user_config_response(user["config"])
+def get_user_config_response(user: dict[str, Any], jwt_secret: str = "") -> UserConfigResponse:
+    return _build_user_config_response(user["config"], jwt_secret)
 
 
 def get_user_entitlements_response(
@@ -92,6 +92,7 @@ def update_user_config_response(
     users_lock_file: Path,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     save_users: Callable[[dict[str, dict[str, Any]]], None],
+    jwt_secret: str = "",
 ) -> UserConfigResponse:
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -107,7 +108,7 @@ def update_user_config_response(
 
         save_users(users)
 
-    return _build_user_config_response(users[user_id]["config"])
+    return _build_user_config_response(users[user_id]["config"], jwt_secret)
 
 
 def delete_user_account_response(
