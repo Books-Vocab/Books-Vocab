@@ -80,44 +80,24 @@ struct ReaderSettingsVocabPresenter: View {
         ) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 0) {
-                    Button(action: onDecreaseFontSize) {
-                        Text("A")
-                            .font(vocabSkin.typography.settingsAdjustSmall)
-                            .foregroundStyle(state.canDecreaseFontSize ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                            .frame(width: 52, height: 52)
-                            .background(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .fill(vocabSkin.palette.pageBackground)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!state.canDecreaseFontSize)
+                    stepControlButton(
+                        label: "A",
+                        font: vocabSkin.typography.settingsAdjustSmall,
+                        enabled: state.canDecreaseFontSize,
+                        action: onDecreaseFontSize
+                    )
 
                     Text(state.fontSizeText)
                         .font(vocabSkin.typography.settingsFontSizeDisplay)
                         .foregroundStyle(vocabSkin.palette.primaryText)
                         .frame(maxWidth: .infinity)
 
-                    Button(action: onIncreaseFontSize) {
-                        Text("A")
-                            .font(vocabSkin.typography.settingsAdjustLarge)
-                            .foregroundStyle(state.canIncreaseFontSize ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                            .frame(width: 52, height: 52)
-                            .background(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .fill(vocabSkin.palette.pageBackground)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                            )
-                    }
-                    .buttonStyle(.plain)
-                    .disabled(!state.canIncreaseFontSize)
+                    stepControlButton(
+                        label: "A",
+                        font: vocabSkin.typography.settingsAdjustLarge,
+                        enabled: state.canIncreaseFontSize,
+                        action: onIncreaseFontSize
+                    )
                 }
 
                 Divider()
@@ -151,38 +131,29 @@ struct ReaderSettingsVocabPresenter: View {
                         }
                     }
                 } label: {
-                    HStack(spacing: 12) {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text("字體")
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                            Text(bindings.font.wrappedValue.rawValue)
-                                .font(vocabSkin.typography.translationTitle)
-                                .foregroundStyle(vocabSkin.palette.primaryText)
-                        }
+                    controlSurface {
+                        HStack(spacing: 12) {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text("字體")
+                                    .font(vocabSkin.typography.captionStrong)
+                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                Text(bindings.font.wrappedValue.rawValue)
+                                    .font(vocabSkin.typography.translationTitle)
+                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                            }
 
-                        Spacer()
+                            Spacer()
 
-                        HStack(spacing: 6) {
-                            Text(fontToneLabel)
-                                .font(vocabSkin.typography.monoLabel)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                            Image(systemName: "chevron.down")
-                                .font(vocabSkin.typography.iconTiny.weight(.bold))
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            HStack(spacing: 6) {
+                                Text(fontToneLabel)
+                                    .font(vocabSkin.typography.monoLabel)
+                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                Image(systemName: "chevron.down")
+                                    .font(vocabSkin.typography.iconTiny.weight(.bold))
+                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            }
                         }
                     }
-                    .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
-                    .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
-                    .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                            .fill(vocabSkin.palette.pageBackground)
-                    )
-                    .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                    )
-                    .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
 
@@ -206,19 +177,12 @@ struct ReaderSettingsVocabPresenter: View {
                     Button {
                         onSelectUnderlineOpacity(option.value)
                     } label: {
-                        Text(option.label.localized)
-                            .font(vocabSkin.typography.captionStrong)
-                            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, 10)
-                            .background(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-                            )
-                            .overlay(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                    .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
-                            )
+                        selectionTile(isSelected: isSelected) {
+                            Text(option.label.localized)
+                                .font(vocabSkin.typography.captionStrong)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, 10)
+                        }
                     }
                     .buttonStyle(.plain)
                 }
@@ -238,23 +202,16 @@ struct ReaderSettingsVocabPresenter: View {
                     Button {
                         bindings.translationPanelMode.wrappedValue = mode
                     } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: icon)
-                                .font(vocabSkin.typography.iconToolbar)
-                            Text(mode.label)
-                                .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                        selectionTile(isSelected: isSelected) {
+                            HStack(spacing: 10) {
+                                Image(systemName: icon)
+                                    .font(vocabSkin.typography.iconToolbar)
+                                Text(mode.label)
+                                    .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                            }
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
                         }
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
-                        .background(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
-                        )
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                                .stroke(isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity), lineWidth: 1)
-                        )
-                        .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
                     }
                     .buttonStyle(.plain)
                 }
@@ -312,40 +269,76 @@ struct ReaderSettingsVocabPresenter: View {
         )
     }
 
-    private func themeTile(_ theme: ReaderTheme) -> some View {
-        let isSelected = bindings.theme.wrappedValue == theme
-        return Button {
-            onSelectTheme(theme)
-        } label: {
-            VStack(alignment: .leading, spacing: 12) {
-                Image(systemName: theme.icon)
-                    .font(vocabSkin.typography.iconToolbar)
-                Text(theme.rawValue)
-                    .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
-                Rectangle()
-                    .fill(themeSwatchColor(theme))
-                    .frame(height: 8)
-                    .clipShape(Capsule(style: .continuous))
-            }
-            .frame(maxWidth: .infinity)
+    private func stepControlButton(
+        label: String,
+        font: Font,
+        enabled: Bool,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Text(label)
+                .font(font)
+                .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                .frame(width: 52, height: 52)
+                .background(controlSurfaceShape.fill(vocabSkin.palette.pageBackground))
+                .overlay(controlSurfaceShape.stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+
+    private func controlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
             .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
             .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+            .background(controlSurfaceShape.fill(vocabSkin.palette.pageBackground))
+            .overlay(controlSurfaceShape.stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
+            .contentShape(Rectangle())
+    }
+
+    private func selectionTile<Content: View>(
+        isSelected: Bool,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        content()
+            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                controlSurfaceShape
                     .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                controlSurfaceShape
                     .stroke(
                         isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity),
                         lineWidth: 1
                     )
             )
-            .foregroundStyle(
-                isSelected
-                    ? vocabSkin.palette.primaryText
-                    : vocabSkin.palette.secondaryText
-            )
+    }
+
+    private var controlSurfaceShape: RoundedRectangle {
+        RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+    }
+
+    private func themeTile(_ theme: ReaderTheme) -> some View {
+        let isSelected = bindings.theme.wrappedValue == theme
+        return Button {
+            onSelectTheme(theme)
+        } label: {
+            selectionTile(isSelected: isSelected) {
+                VStack(alignment: .leading, spacing: 12) {
+                    Image(systemName: theme.icon)
+                        .font(vocabSkin.typography.iconToolbar)
+                    Text(theme.rawValue)
+                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                    Rectangle()
+                        .fill(themeSwatchColor(theme))
+                        .frame(height: 8)
+                        .clipShape(Capsule(style: .continuous))
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
+                .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+            }
         }
         .buttonStyle(.plain)
     }
@@ -367,4 +360,57 @@ struct ReaderSettingsVocabPresenter: View {
         vocabSkin.readerThemeSwatchColor(theme)
     }
 
+}
+
+#Preview("ReaderSettings Vocab / Default") {
+    AppThemeContainer {
+        ReaderSettingsVocabPresenter(
+            state: .init(
+                fontSizeText: "17pt",
+                canDecreaseFontSize: true,
+                canIncreaseFontSize: true
+            ),
+            bindings: .init(
+                lineHeight: .constant(1.4),
+                font: .constant(.serif),
+                theme: .constant(.light),
+                underlineOpacity: .constant(0.35),
+                showHitTestingDebug: .constant(false),
+                translationPanelMode: .constant(.vocab)
+            ),
+            onDecreaseFontSize: {},
+            onIncreaseFontSize: {},
+            onSelectTheme: { _ in },
+            onSelectUnderlineOpacity: { _ in },
+            onDismiss: {}
+        )
+        .padding()
+    }
+}
+
+#Preview("ReaderSettings Vocab / Bounds") {
+    AppThemeContainer {
+        ReaderSettingsVocabPresenter(
+            state: .init(
+                fontSizeText: "0.75x",
+                canDecreaseFontSize: false,
+                canIncreaseFontSize: true
+            ),
+            bindings: .init(
+                lineHeight: .constant(2.5),
+                font: .constant(.mono),
+                theme: .constant(.dark),
+                underlineOpacity: .constant(0.0),
+                showHitTestingDebug: .constant(true),
+                translationPanelMode: .constant(.glass)
+            ),
+            onDecreaseFontSize: {},
+            onIncreaseFontSize: {},
+            onSelectTheme: { _ in },
+            onSelectUnderlineOpacity: { _ in },
+            onDismiss: {}
+        )
+        .padding()
+    }
+    .preferredColorScheme(.dark)
 }
