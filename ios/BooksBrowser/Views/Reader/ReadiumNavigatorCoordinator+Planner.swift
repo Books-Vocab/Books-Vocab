@@ -1,5 +1,6 @@
 import Foundation
 import ReadiumNavigator
+import ReadiumShared
 
 struct BridgePlanner {
     var lastClearHighlightTrigger: UUID?
