@@ -3,20 +3,22 @@ import SwiftData
 
 struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Query private var allEntries: [VocabularyEntry]
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
 
     @Bindable var entry: VocabularyEntry
+    let allEntries: [VocabularyEntry]
     private let wrapInNavigation: Bool
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
     init(
         entry: VocabularyEntry,
+        allEntries: [VocabularyEntry] = [],
         wrapInNavigation: Bool = true,
         linkedCardStack: Binding<[VocabularyEntry]>? = nil
     ) {
         self.entry = entry
+        self.allEntries = allEntries
         self.wrapInNavigation = wrapInNavigation
         self.externalLinkedCardStack = linkedCardStack
     }
@@ -31,7 +33,7 @@ struct WordDetailSheet: View {
         )
         .overlay {
             if wrapInNavigation {
-                LinkedCardOverlayStack(stack: linkedCardStack)
+                LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
             }
         }
         .sheet(isPresented: $isEditing) {
