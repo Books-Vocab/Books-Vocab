@@ -17,7 +17,7 @@ from .embeddings import EmbeddingStore
 from .graph import GraphStore, LinkKind
 from .judge import Judge
 from .mochi import MochiClient, MochiSync
-from .renderer import RenderIntent, CardRenderer
+from .renderer import CardRenderer, RenderIntent
 from .user_store import resolve_mochi_api_key_from_config
 
 load_dotenv()
@@ -42,10 +42,10 @@ def main(
     user_id = user or os.getenv("DEFAULT_USER_ID")
     if not user_id:
         raise typer.Exit("No user specified. Use --user or define DEFAULT_USER_ID in .env")
-        
+
     user_dir = DATA_DIR / "users" / user_id
     user_dir.mkdir(parents=True, exist_ok=True)
-    
+
     ctx.obj = {
         "user_id": user_id,
         "user_dir": user_dir
@@ -133,7 +133,7 @@ def link(ctx: typer.Context) -> None:
 
     try:
         i = 0
-        for i, candidate in enumerate(tqdm(candidates, desc="Processing")):
+        for i, candidate in enumerate(tqdm(candidates, desc="Processing")):  # noqa: B007
             card_a = cards.get(candidate.from_id)
             card_b = cards.get(candidate.to_id)
             if not card_a or not card_b:
@@ -169,7 +169,7 @@ def link(ctx: typer.Context) -> None:
 @app.command()
 def difficulty(ctx: typer.Context) -> None:
     """Score all cards by word frequency (Zipf) using absolute thresholds."""
-    from .difficulty import get_zipf, get_tier, TIERS
+    from .difficulty import TIERS, get_tier, get_zipf
 
     user_dir = ctx.obj["user_dir"]
     cards = get_card_store(user_dir)
@@ -306,7 +306,7 @@ def preview(
         render_intent = RenderIntent(intent)
     except ValueError:
         typer.echo(f"Invalid intent. Choose from: {[i.value for i in RenderIntent]}")
-        raise typer.Exit(1)
+        raise typer.Exit(1)  # noqa: B904
 
     user_dir = ctx.obj["user_dir"]
     cards = get_card_store(user_dir)
@@ -336,13 +336,13 @@ def sync(
         render_intent = RenderIntent(intent)
     except ValueError:
         typer.echo(f"Invalid intent. Choose from: {[i.value for i in RenderIntent]}")
-        raise typer.Exit(1)
+        raise typer.Exit(1)  # noqa: B904
 
     user_id = ctx.obj["user_id"]
     user_dir = ctx.obj["user_dir"]
     users = load_users()
     mochi_key = resolve_mochi_api_key_from_config(users.get(user_id, {}).get("config", {}))
-    
+
     if not mochi_key:
         raise typer.Exit(f"MOCHI_API_KEY not configured for user {user_id}. Set it in users.json")
 
@@ -553,24 +553,23 @@ def auto_pipeline(
     """Run the complete automated pipeline: import -> enrich -> link -> difficulty -> sync."""
     user = ctx.obj["user_id"]
     typer.secho(f"🚀 Starting automated pipeline for {file} (User: {user})", fg=typer.colors.GREEN, bold=True)
-    
-    user_args = ["--user", user]
-    
+
+
     typer.secho("\n--- [1/5] Import ---", fg=typer.colors.CYAN, bold=True)
     import_readlang(ctx, file, dry_run=False)
-    
+
     typer.secho("\n--- [2/5] Enrich (LLM) ---", fg=typer.colors.CYAN, bold=True)
     enrich(ctx, dry_run=False, force=False, workers=5)
-    
+
     typer.secho("\n--- [3/5] Link (LLM) ---", fg=typer.colors.CYAN, bold=True)
     link(ctx)
-    
+
     typer.secho("\n--- [4/5] Difficulty (Zipf) ---", fg=typer.colors.CYAN, bold=True)
     difficulty(ctx)
-    
+
     typer.secho("\n--- [5/5] Sync (Mochi) ---", fg=typer.colors.CYAN, bold=True)
     sync(ctx, "full", dry_run=False, pull=False)
-    
+
     typer.secho("\n✅ Pipeline completed successfully!", fg=typer.colors.GREEN, bold=True)
 
 

@@ -7,11 +7,11 @@ Each record represents one calendar day's review activity.
 from __future__ import annotations
 
 import uuid
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator, Optional
 
-from sqlmodel import SQLModel, Field as SQLField, Session, select, create_engine
+from sqlmodel import Field as SQLField
+from sqlmodel import Session, SQLModel, create_engine, select
 
 
 class DailyReviewStat(SQLModel, table=True):
@@ -22,7 +22,7 @@ class DailyReviewStat(SQLModel, table=True):
     total: int = SQLField(default=0)
     remembered: int = SQLField(default=0)
     forgot: int = SQLField(default=0)
-    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
 
 
 class DailyReviewStatsStore:
@@ -50,7 +50,7 @@ class DailyReviewStatsStore:
                 existing.total = max(existing.total, total)
                 existing.remembered = max(existing.remembered, remembered)
                 existing.forgot = max(existing.forgot, forgot)
-                existing.updated_at = datetime.now(timezone.utc)
+                existing.updated_at = datetime.now(UTC)
                 session.add(existing)
                 session.commit()
                 session.refresh(existing)

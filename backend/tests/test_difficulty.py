@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import pytest
-
 from kg.difficulty import DifficultyTier, get_tier, get_zipf
 
 

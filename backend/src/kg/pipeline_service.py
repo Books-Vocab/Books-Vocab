@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import asyncio
 import logging
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
-import httpx
 from openai import OpenAIError
 
 from .user_store import resolve_mochi_api_key_from_config
@@ -116,7 +116,7 @@ async def _step_link(
     index = 0
 
     try:
-        for index, candidate in enumerate(candidates):
+        for index, candidate in enumerate(candidates):  # noqa: B007
             card_a = cards.get(candidate.from_id)
             card_b = cards.get(candidate.to_id)
             if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted:
