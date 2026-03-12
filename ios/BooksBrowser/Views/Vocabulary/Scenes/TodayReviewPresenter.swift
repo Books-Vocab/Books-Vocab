@@ -310,31 +310,18 @@ struct TodayReviewPresenter: View {
     /// 統一的甩出動畫 — swipe 和按鈕共用
     ///
     /// 牌堆升頂不再是獨立階段 — 透過 dismissProgress 與甩出同步進行。
-    /// 滑動觸發時甩出動畫同步啟動（不經 Task 調度），消除一幀凍結。
-    private func flingCard(direction: CGFloat, isFromButton: Bool = false, callback: @escaping () -> Void) {
+    /// 甩出動畫一律同步啟動（不經 Task 調度），消除首幀凍結。
+    private func flingCard(direction: CGFloat, callback: @escaping () -> Void) {
         guard dismissPhase == .idle else { return }
         dismissPhase = .animatingOut
         flingHapticTrigger += 1
 
-        // 滑動觸發：同步啟動甩出，與 dismissPhase 同幀渲染
-        if !isFromButton {
-            withAnimation(AppMotion.swipeFlingSpring) {
-                swipeOffset = direction * screenWidth * 1.3
-            }
+        // 同步啟動甩出 — swipe 與按鈕統一路徑
+        withAnimation(AppMotion.swipeFlingSpring) {
+            swipeOffset = direction * screenWidth * 1.3
         }
 
         Task { @MainActor in
-            // 按鈕蓄力微動 → 甩出（按鈕路徑才需 Task 內的延遲）
-            if isFromButton {
-                withAnimation(AppMotion.buttonWindupSpring) {
-                    swipeOffset = -direction * 8
-                }
-                try? await Task.sleep(for: .milliseconds(60))
-                withAnimation(AppMotion.swipeFlingSpring) {
-                    swipeOffset = direction * screenWidth * 1.3
-                }
-            }
-
             // stiffness=500: ~50ms 卡片已飛出螢幕、牌堆已升頂
             try? await Task.sleep(for: .milliseconds(60))
 
@@ -471,7 +458,7 @@ struct TodayReviewPresenter: View {
         let buttonsDisabled = !state.revealStage.showsAnswer
 
         return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
-            Button { flingCard(direction: -1, isFromButton: true, callback: onForgot) } label: {
+            Button { flingCard(direction: -1, callback: onForgot) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "xmark")
                     Text("忘記".localized)
@@ -495,7 +482,7 @@ struct TodayReviewPresenter: View {
             .opacity(forgotButtonOpacity)
             .animation(spring, value: swipeIntensity)
 
-            Button { flingCard(direction: 1, isFromButton: true, callback: onRemembered) } label: {
+            Button { flingCard(direction: 1, callback: onRemembered) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "checkmark")
                     Text("記得".localized)
