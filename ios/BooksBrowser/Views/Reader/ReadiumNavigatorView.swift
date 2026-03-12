@@ -85,7 +85,8 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                         scroll: false
                     ),
                     editingActions: [aiSearchAction, aiExplainAction, .copy, .lookup]
-                )
+                ),
+                httpServer: httpServer
             )
         } catch {
             fatalError("Failed to create EPUBNavigatorViewController: \(error)")
