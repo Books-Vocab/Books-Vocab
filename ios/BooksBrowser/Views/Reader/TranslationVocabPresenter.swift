@@ -95,7 +95,7 @@ struct TranslationVocabPresenter: View {
 
     private var loadingSection: some View {
         VocabStateMessageCard(
-            title: state.statusMessage ?? "翻譯中...",
+            title: state.loadingTitle,
             systemImage: "translate"
         ) {
             HStack {
@@ -113,8 +113,8 @@ struct TranslationVocabPresenter: View {
     private var guestModeBody: some View {
         VStack(alignment: .leading, spacing: 10) {
             VocabStateMessageCard(
-                title: state.isSaved ? "已加入待收錄" : "正在記錄…",
-                systemImage: state.isSaved ? "checkmark.circle.fill" : "clock",
+                title: state.guestMessageTitle,
+                systemImage: state.guestMessageIcon,
                 description: "登入後即可獲得 AI 翻譯，並同步至知識庫。"
             )
 
@@ -191,9 +191,10 @@ struct TranslationVocabPresenter: View {
 
     @ViewBuilder
     private var explanationContent: some View {
-        if state.isLoadingExplanation {
+        switch state.explanationContentMode {
+        case .loading(let title):
             VocabStateMessageCard(
-                title: state.statusMessage ?? "載入解釋...".localized,
+                title: title,
                 systemImage: "text.bubble"
             ) {
                 HStack {
@@ -207,20 +208,20 @@ struct TranslationVocabPresenter: View {
                 }
             }
             .padding(.vertical, vocabSkin.spacing.tinyGap)
-        } else if let errorMessage = state.explanationErrorMessage {
+        case .error(let errorMessage):
             VocabStateMessageCard(
                 title: "語境解釋暫時無法載入".localized,
                 systemImage: "exclamationmark.triangle.fill",
                 description: errorMessage
             )
             .padding(.vertical, vocabSkin.spacing.tinyGap)
-        } else if let explanation = state.explanation {
+        case .content(let explanation):
             Text(explanation)
                 .font(vocabSkin.typography.body)
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
-        } else {
+        case .empty:
             emptyExplainStateCard
                 .padding(.vertical, vocabSkin.spacing.tinyGap)
         }
@@ -264,5 +265,31 @@ struct TranslationVocabPresenter: View {
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
         .padding(.top, vocabSkin.spacing.tinyGap)
+    }
+}
+
+#Preview("Translation Vocab / Full Result") {
+    AppThemeContainer {
+        VStack {
+            Spacer()
+            TranslationVocabPresenter(
+                state: TranslationPanelPreviewData.fullTranslation,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+            .padding()
+        }
+    }
+}
+
+#Preview("Translation Vocab / Explanation Error") {
+    AppThemeContainer {
+        VStack {
+            Spacer()
+            TranslationVocabPresenter(
+                state: TranslationPanelPreviewData.explanationError,
+                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            )
+            .padding()
+        }
     }
 }
