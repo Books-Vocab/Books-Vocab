@@ -103,7 +103,7 @@ struct KGVocabPresenter: View {
                                 if index < state.rows.count - 1 {
                                     Rectangle()
                                         .fill(vocabSkin.palette.divider)
-                                        .frame(height: 0.5)
+                                        .frame(height: AppMetrics.dividerThin)
                                         .padding(.leading, vocabSkin.metrics.listDividerInset)
                                 }
                             }

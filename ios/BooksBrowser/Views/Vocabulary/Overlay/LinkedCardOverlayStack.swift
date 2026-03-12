@@ -49,7 +49,7 @@ struct LinkedCardOverlayStack: View {
 
             Rectangle()
                 .fill(vocabSkin.palette.divider)
-                .frame(height: 0.5)
+                .frame(height: AppMetrics.dividerThin)
 
             WordDetailSheet(
                 entry: entry,
