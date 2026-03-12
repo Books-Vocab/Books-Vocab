@@ -223,6 +223,101 @@ actor BackgroundSyncActor {
         return payload
     }
 
+    // MARK: - Daily Review Stats Sync
+
+    /// Build daily aggregated review stats from local ReviewRecords for pushing to backend.
+    func buildDailyStatsPushPayload() throws -> [[String: Any]] {
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let records = try modelContext.fetch(descriptor)
+        guard !records.isEmpty else { return [] }
+
+        // Group by dayKey
+        var grouped: [String: (total: Int, remembered: Int, forgot: Int)] = [:]
+        for record in records {
+            var stat = grouped[record.dayKey] ?? (0, 0, 0)
+            stat.total += 1
+            if record.feedback == 1 {
+                stat.remembered += 1
+            } else {
+                stat.forgot += 1
+            }
+            grouped[record.dayKey] = stat
+        }
+
+        return grouped.map { dayKey, stat in
+            [
+                "day_key": dayKey,
+                "total": stat.total,
+                "remembered": stat.remembered,
+                "forgot": stat.forgot,
+            ] as [String: Any]
+        }
+    }
+
+    /// Merge remote daily stats into local ReviewRecords.
+    /// For days where remote has data but local doesn't, create placeholder records.
+    /// For days where local already has data, remote is ignored (local is authoritative for detail).
+    func mergeDailyStats(_ remoteStats: [[String: Any]]) throws {
+        let descriptor = FetchDescriptor<ReviewRecord>()
+        let allRecords = try modelContext.fetch(descriptor)
+
+        // Count local records per day
+        var localDayCounts: [String: Int] = [:]
+        for record in allRecords {
+            localDayCounts[record.dayKey, default: 0] += 1
+        }
+
+        var inserted = 0
+        for stat in remoteStats {
+            guard let dayKey = stat["day_key"] as? String,
+                  let total = stat["total"] as? Int,
+                  let remembered = stat["remembered"] as? Int else { continue }
+            let forgot = (stat["forgot"] as? Int) ?? (total - remembered)
+
+            let localCount = localDayCounts[dayKey] ?? 0
+            if localCount >= total {
+                // Local already has equal or more records for this day — skip
+                continue
+            }
+
+            // Need to create (total - localCount) placeholder records
+            let deficit = total - localCount
+            // Distribute: fill remembered first, then forgot
+            let localRemembered = allRecords.filter { $0.dayKey == dayKey && $0.feedback == 1 }.count
+            let localForgot = allRecords.filter { $0.dayKey == dayKey && $0.feedback == 0 }.count
+            let needRemembered = max(0, remembered - localRemembered)
+            let needForgot = max(0, forgot - localForgot)
+            let toCreate = min(deficit, needRemembered + needForgot)
+
+            guard toCreate > 0, let date = Self.dayFormatter.date(from: dayKey) else { continue }
+
+            for i in 0..<toCreate {
+                let feedback = i < needRemembered ? 1 : 0
+                let record = ReviewRecord(
+                    word: "（跨裝置同步）",
+                    entryID: nil,
+                    feedback: feedback,
+                    reviewedAt: date
+                )
+                modelContext.insert(record)
+                inserted += 1
+            }
+        }
+
+        if inserted > 0 {
+            try modelContext.save()
+            AppLog.sync.info("mergeDailyStats: inserted \(inserted) placeholder records from remote")
+        }
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        return f
+    }()
+
     // MARK: - Review State Merge Helper
 
     private static func mergeReviewState(from card: KGCard, into entry: VocabularyEntry) {

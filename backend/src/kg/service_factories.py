@@ -6,12 +6,17 @@ from pathlib import Path
 from fastapi import HTTPException
 
 from .cards import CardStore
+from .daily_stats import DailyReviewStatsStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
 
 
 def create_card_store(user_dir: Path) -> CardStore:
     return CardStore(user_dir / "cards.db")
+
+
+def create_daily_stats_store(user_dir: Path) -> DailyReviewStatsStore:
+    return DailyReviewStatsStore(user_dir / "daily_review_stats.db")
 
 
 def create_graph_store(user_dir: Path) -> GraphStore:
