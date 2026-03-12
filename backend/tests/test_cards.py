@@ -1,8 +1,6 @@
 from __future__ import annotations
 
-import tempfile
-from datetime import datetime, timezone
-from pathlib import Path
+from datetime import UTC, datetime
 
 import pytest
 
@@ -84,7 +82,7 @@ class TestUpdate:
 class TestGetModifiedSince:
     def test_returns_cards_modified_after_timestamp(self, store):
         c1 = store.add(content="affect", meaning="influence")
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
         c2 = store.add(content="effect", meaning="result")
         results = store.get_modified_since(ts)
         ids = [c.id for c in results]
@@ -101,7 +99,7 @@ class TestGetModifiedSince:
 
     def test_includes_deleted_cards(self, store):
         c1 = store.add(content="affect", meaning="influence")
-        ts = datetime.now(timezone.utc)
+        ts = datetime.now(UTC)
         store.delete(c1.id)
         results = store.get_modified_since(ts)
         ids = [c.id for c in results]
@@ -111,7 +109,7 @@ class TestGetModifiedSince:
 class TestCount:
     def test_count_only_active(self, store):
         c1 = store.add(content="affect", meaning="influence")
-        c2 = store.add(content="effect", meaning="result")
+        store.add(content="effect", meaning="result")
         assert store.count() == 2
         store.delete(c1.id)
         assert store.count() == 1

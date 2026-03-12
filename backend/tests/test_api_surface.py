@@ -1,9 +1,8 @@
 from __future__ import annotations
 
 import json
-import os
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -22,8 +21,8 @@ def make_jwt(user_id: str) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
-        "iat": datetime.now(tz=timezone.utc),
-        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        "iat": datetime.now(tz=UTC),
+        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
@@ -127,7 +126,7 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
     r_bad_since = client.get("/api/vocab", params={"since": "not-a-timestamp"}, headers=headers)
     assert r_bad_since.status_code == 400
 
-    since = (datetime.now(tz=timezone.utc) - timedelta(seconds=1)).isoformat()
+    since = (datetime.now(tz=UTC) - timedelta(seconds=1)).isoformat()
     r_delete = client.delete("/api/vocab/evoke", headers=headers)
     assert r_delete.status_code == 200, r_delete.text
 

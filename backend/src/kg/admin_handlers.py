@@ -1,9 +1,10 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 logger = logging.getLogger(__name__)
 
@@ -187,7 +188,7 @@ def admin_grant_pro_access_response(
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
 ) -> AdminUserEntitlementResponse:
     require_admin(token, admin_token=admin_token)
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
 
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -231,7 +232,7 @@ def admin_revoke_pro_access_response(
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
 ) -> AdminUserEntitlementResponse:
     require_admin(token, admin_token=admin_token)
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
 
     with FileLock(str(users_lock_file)):
         users = load_users()
