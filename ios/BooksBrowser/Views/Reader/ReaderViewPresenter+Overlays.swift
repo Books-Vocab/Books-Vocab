@@ -51,7 +51,7 @@ extension ReaderViewPresenter {
                     progressOverlayContent(
                         progress: progress,
                         trackColor: vocabSkin.palette.divider,
-                        fillColor: Color.accentColor,
+                        fillColor: vocabSkin.palette.accent,
                         textFont: ReaderGlassTypography.progressText,
                         textColor: vocabSkin.palette.secondaryText
                     )

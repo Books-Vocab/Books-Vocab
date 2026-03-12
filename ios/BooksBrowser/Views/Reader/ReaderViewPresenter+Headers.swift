@@ -90,7 +90,7 @@ extension ReaderViewPresenter {
         }
         .glassEffect(in: Capsule())
         .shadow(
-            color: .black.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
+            color: vocabSkin.palette.shadow.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
             radius: ReaderPresentationMetrics.Header.expandedShadowRadius,
             x: 0,
             y: ReaderPresentationMetrics.Header.shadowY
@@ -107,7 +107,7 @@ extension ReaderViewPresenter {
             if state.totalProgression > 0 {
                 Text(String(format: "%.1f%%", state.totalProgression * 100))
                     .font(ReaderGlassTypography.progressText)
-                    .foregroundStyle(.tertiary)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
                     .padding(.trailing, ReaderPresentationMetrics.Header.trailingInset)
             }
 
@@ -124,7 +124,7 @@ extension ReaderViewPresenter {
                 }
                 .glassEffect(in: Circle())
                 .shadow(
-                    color: .black.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
+                    color: vocabSkin.palette.shadow.opacity(ReaderPresentationMetrics.Header.shadowOpacity),
                     radius: ReaderPresentationMetrics.Header.compactShadowRadius,
                     x: 0,
                     y: ReaderPresentationMetrics.Header.shadowY
