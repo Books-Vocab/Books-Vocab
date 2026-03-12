@@ -407,7 +407,10 @@ save_users = _save_users
 
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    return normalize_users_payload(users, _default_subscription_payload)
+    from .secret_store import encrypt_value
+    jwt_secret = _runtime_settings().jwt_secret
+    encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+    return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
 
 def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
@@ -562,7 +565,7 @@ def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict
 # ---------------------------------------------------------------------------
 def get_user_config(user: dict = Depends(get_current_user)):
     """Get user configuration."""
-    return get_user_config_response(user)
+    return get_user_config_response(user, jwt_secret=_runtime_settings().jwt_secret)
 
 
 # ---------------------------------------------------------------------------
@@ -640,13 +643,14 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
-    _runtime_settings()
+    settings = _runtime_settings()
     return update_user_config_response(
         req,
         user,
         users_lock_file=_runtime_users_lock_file(),
         load_users=_load_users,
         save_users=_save_users,
+        jwt_secret=settings.jwt_secret,
     )
 
 
@@ -815,6 +819,7 @@ async def _run_pipeline_background(user: dict):
         gemini_client_factory=_gemini_client,
         logger=logger,
         link_kind_enum=LinkKind,
+        jwt_secret=_runtime_settings().jwt_secret,
     )
 
 

@@ -49,6 +49,7 @@ def admin_stats_response(
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
     authorization: str | None = None,
+    jwt_secret: str = "",
 ) -> dict[str, Any]:
     require_admin(token, admin_token=admin_token, authorization=authorization)
 
@@ -97,7 +98,7 @@ def admin_stats_response(
                 "provider": info.get("provider") if isinstance(info, dict) else None,
                 "last_login": info.get("last_login") if isinstance(info, dict) else None,
                 "vocab_count": vocab_count,
-                "has_mochi": bool(resolve_mochi_api_key_from_config(config)),
+                "has_mochi": bool(resolve_mochi_api_key_from_config(config, jwt_secret)),
                 "tokens": utoken,
                 "total_input": total_input,
                 "total_output": total_output,
