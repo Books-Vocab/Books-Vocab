@@ -21,6 +21,8 @@ protocol KGServing: AnyObject {
     func deleteCard(word: String) async throws
     func archiveCard(word: String, archived: Bool) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
+    func pushDailyStats(container: ModelContainer) async throws -> Int
+    func pullDailyStats(container: ModelContainer) async throws
     func backgroundSync(container: ModelContainer) async
     func pushReviewQuietly(container: ModelContainer) async
     func clearLocalData(container: ModelContainer, reason: String) async

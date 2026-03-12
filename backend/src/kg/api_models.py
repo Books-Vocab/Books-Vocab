@@ -257,3 +257,22 @@ class ReviewStatePushRequest(BaseModel):
 class ReviewStatePushResponse(BaseModel):
     updated: int
     skipped: int
+
+
+class DailyReviewStatEntry(BaseModel):
+    day_key: str  # "yyyy-MM-dd"
+    total: int
+    remembered: int
+    forgot: int
+
+
+class DailyReviewStatsPushRequest(BaseModel):
+    entries: list[DailyReviewStatEntry]
+
+
+class DailyReviewStatsPushResponse(BaseModel):
+    upserted: int
+
+
+class DailyReviewStatsResponse(BaseModel):
+    entries: list[DailyReviewStatEntry]
