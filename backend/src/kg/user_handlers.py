@@ -1,10 +1,11 @@
 from __future__ import annotations
 
 import shutil
-from datetime import datetime, timezone
+from collections.abc import Callable
+from datetime import UTC, datetime
 from logging import Logger
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
 from fastapi import HTTPException
 from filelock import FileLock
@@ -13,11 +14,11 @@ from .api_models import (
     DeleteAccountResponse,
     EntitlementsResponse,
     HealthResponse,
-    MochiIntegrationConfig,
+    MochiIntegrationResponseConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
-    UserIntegrationsConfig,
+    UserIntegrationsResponseConfig,
 )
 from .user_store import resolve_mochi_api_key_from_config
 
@@ -34,8 +35,8 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
         )
 
     return UserConfigResponse(
-        integrations=UserIntegrationsConfig(
-            mochi=MochiIntegrationConfig(api_key=mochi_api_key)
+        integrations=UserIntegrationsResponseConfig(
+            mochi=MochiIntegrationResponseConfig(has_api_key=True)
         ) if mochi_api_key else None,
         translation=translation,
     )
@@ -123,7 +124,7 @@ def delete_user_account_response(
     data_dir: Path,
     logger: Logger,
 ) -> DeleteAccountResponse:
-    now_iso = datetime.now(tz=timezone.utc).isoformat()
+    now_iso = datetime.now(tz=UTC).isoformat()
     user_id = user["id"]
 
     with FileLock(str(users_lock_file)):
@@ -182,7 +183,7 @@ def health_response(
     last_mod = None
     if cards_path.exists():
         ts = cards_path.stat().st_mtime
-        last_mod = datetime.fromtimestamp(ts, tz=timezone.utc).isoformat()
+        last_mod = datetime.fromtimestamp(ts, tz=UTC).isoformat()
 
     return HealthResponse(
         status="ok",

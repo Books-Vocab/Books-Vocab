@@ -29,7 +29,7 @@ final class AuthBackendVerifier: AuthVerifying {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, _) = try await URLSession.shared.data(for: request)
+        let (data, _) = try await sharedURLSession.data(for: request)
         guard !data.isEmpty else {
             throw AuthVerificationError.emptyResponse
         }
