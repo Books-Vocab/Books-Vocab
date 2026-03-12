@@ -585,7 +585,7 @@ tr.expanded td { background: #f0ece4; border-bottom-color: transparent; }
   </div>
   <div class="nav-actions">
     <span id="ts"></span>
-    <a class="btn" id="admin-tests-link" href="/admin/tests?token=">Admin Test</a>
+    <a class="btn" id="admin-tests-link" href="/admin/tests">Admin Test</a>
     <button class="btn btn-cta" onclick="refreshCurrent()">Refresh</button>
   </div>
 </div>
@@ -679,8 +679,24 @@ tr.expanded td { background: #f0ece4; border-bottom-color: transparent; }
 </div>
 
 <script>
-const TOKEN = new URLSearchParams(location.search).get('token') || '';
-document.getElementById('admin-tests-link').href = '/admin/tests?token=' + encodeURIComponent(TOKEN);
+const _urlToken = new URLSearchParams(location.search).get('token');
+if (_urlToken) {
+    sessionStorage.setItem('admin_token', _urlToken);
+    history.replaceState(null, '', location.pathname);
+}
+const TOKEN = sessionStorage.getItem('admin_token') || '';
+
+function adminFetch(url, options = {}) {
+    return fetch(url, {
+        ...options,
+        headers: {
+            ...options.headers,
+            'Authorization': 'Bearer ' + TOKEN,
+        },
+    });
+}
+
+document.getElementById('admin-tests-link').href = '/admin/tests';
 let _tab = 'users';
 let _logLevel = '';
 let _logs = [];
@@ -778,7 +794,7 @@ async function submitGrant() {
   const expiresVal = document.getElementById('grant-expires').value;
   const expiresAt = expiresVal ? new Date(expiresVal + 'T23:59:59Z').toISOString() : null;
   const grantedBy = document.getElementById('grant-by').value.trim() || 'admin';
-  const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
+  const r = await adminFetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant', {
     method: 'POST',
     headers: {'Content-Type': 'application/json'},
     body: JSON.stringify({ reason, expires_at: expiresAt, granted_by: grantedBy }),
@@ -793,7 +809,7 @@ async function submitGrant() {
 
 async function revokePro(userId) {
   if (!window.confirm('確定撤銷 ' + userId + ' 的管理員 Pro 權限？')) return;
-  const r = await fetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant?token=' + encodeURIComponent(TOKEN), {
+  const r = await adminFetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant', {
     method: 'DELETE',
   });
   if (!r.ok) {
@@ -879,7 +895,7 @@ async function loadStats() {
   document.getElementById('loading').style.display = '';
   document.getElementById('app').style.display = 'none';
   try {
-    const r = await fetch('/api/admin/stats?token=' + TOKEN);
+    const r = await adminFetch('/api/admin/stats');
     if (!r.ok) { document.getElementById('loading').textContent='Error '+r.status+': '+await r.text(); return; }
     const data = await r.json();
     _usersData = data.users;
@@ -976,7 +992,7 @@ function toggleAuto(cb) {
 
 async function loadLogs() {
   try {
-    const r = await fetch('/api/admin/logs?token=' + TOKEN + '&n=300');
+    const r = await adminFetch('/api/admin/logs?n=300');
     if (!r.ok) return;
     _logs = (await r.json()).logs;
     renderLogs();
