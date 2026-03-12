@@ -344,6 +344,18 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             )
         return await call_next(request)
 
+    @app.middleware("http")
+    async def security_headers_middleware(request: Request, call_next):
+        response = await call_next(request)
+        response.headers["X-Content-Type-Options"] = "nosniff"
+        response.headers["X-Frame-Options"] = "DENY"
+        response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+        response.headers["X-XSS-Protection"] = "0"
+        response.headers["Permissions-Policy"] = "camera=(), microphone=(), geolocation=()"
+        if request.url.scheme == "https":
+            response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+        return response
+
     admin_handlers = create_admin_handlers(
         runtime_settings_fn=_runtime_settings,
         runtime_users_lock_file_fn=_runtime_users_lock_file,
