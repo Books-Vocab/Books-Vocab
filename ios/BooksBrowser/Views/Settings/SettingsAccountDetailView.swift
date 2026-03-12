@@ -51,9 +51,10 @@ struct SettingsAccountDetailView: View {
             VStack(spacing: 0) {
                 ForEach(Array(accountInfoItems.enumerated()), id: \.element.id) { index, item in
                     SettingsRow(icon: item.icon, label: item.label) {
-                        Text(item.value)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                        SettingsStatusValue(
+                            text: item.value,
+                            color: vocabSkin.palette.secondaryText
+                        )
                     }
 
                     if index < accountInfoItems.count - 1 {
