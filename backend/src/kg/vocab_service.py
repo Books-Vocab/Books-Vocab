@@ -199,7 +199,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any) -> dict[s
     raise HTTPException(404, f"Word '{word}' not found")
 
 
-def delete_vocab_word(word: str, *, cards_store: Any) -> dict[str, str]:
+def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
     norm = _normalize_word(word)
@@ -207,6 +207,8 @@ def delete_vocab_word(word: str, *, cards_store: Any) -> dict[str, str]:
         if _normalize_word(card.content) == norm:
             card_id = card.id
             cards_store.delete(card_id)
+            if graph is not None:
+                graph.deprecate_links_for(card_id)
             return {"deleted": word, "id": card_id}
     raise HTTPException(404, f"Word '{word}' not found")
 
