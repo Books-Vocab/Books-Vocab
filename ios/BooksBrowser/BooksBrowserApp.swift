@@ -81,20 +81,9 @@ struct BooksBrowserApp: App {
         let migrationKey = "iCloudDataMigrationCompleted_v1"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
 
-        // Migrate EPUBs to iCloud Documents
-        let localEpubsDir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
-            .appendingPathComponent("EPUBs")
-        guard let iCloudURL = FileManager.default.url(forUbiquityContainerIdentifier: nil)?
-            .appendingPathComponent("Documents/EPUBs") else {
-            // iCloud not available — skip migration, retry on next launch
+        let localEpubsDir = Book.localEpubsDirectory
+        guard let iCloudDir = Book.iCloudEpubsDirectory else {
             AppLog.app.info("iCloud not available, deferring EPUB migration")
-            return
-        }
-
-        do {
-            try FileManager.default.createDirectory(at: iCloudURL, withIntermediateDirectories: true)
-        } catch {
-            AppLog.app.error("iCloud EPUBs directory creation failed: \(error.localizedDescription)")
             return
         }
 
@@ -102,7 +91,6 @@ struct BooksBrowserApp: App {
             at: localEpubsDir,
             includingPropertiesForKeys: nil
         ) else {
-            // No local EPUBs dir or empty — migration complete
             UserDefaults.standard.set(true, forKey: migrationKey)
             return
         }
@@ -110,7 +98,7 @@ struct BooksBrowserApp: App {
         let epubs = files.filter { $0.pathExtension == "epub" }
         var failedCount = 0
         for file in epubs {
-            let dest = iCloudURL.appendingPathComponent(file.lastPathComponent)
+            let dest = iCloudDir.appendingPathComponent(file.lastPathComponent)
             if !FileManager.default.fileExists(atPath: dest.path) {
                 do {
                     try FileManager.default.copyItem(at: file, to: dest)

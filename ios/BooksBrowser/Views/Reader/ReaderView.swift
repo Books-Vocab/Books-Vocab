@@ -258,9 +258,17 @@ struct ReaderView: View {
         do {
             let url = book.epubFileURL
 
-            // 確保 iCloud 檔案已下載到本機
+            // 檔案不可讀：區分 iCloud placeholder 與真正遺失
             if !FileManager.default.isReadableFile(atPath: url.path) {
-                try await ensureICloudFileDownloaded(at: url)
+                if Book.isInICloudContainer(url) {
+                    try await ensureICloudFileDownloaded(at: url)
+                } else {
+                    throw NSError(
+                        domain: "Book",
+                        code: 2,
+                        userInfo: [NSLocalizedDescriptionKey: L10n.string("找不到書籍檔案，請重新匯入。")]
+                    )
+                }
             }
 
             await MainActor.run { readerState.loadingPhase = L10n.string("開啟書本…") }
