@@ -87,8 +87,8 @@ class TestMemoryLogHandlerRequestId:
     def test_log_entry_contains_request_id_field(self):
         tok = request_id_var.set("test-rid-abc")
         try:
-            logger = logging.getLogger("kg.api")
-            logger.info("observability test message")
+            record = logging.LogRecord("kg.api", logging.INFO, "", 0, "observability test message", (), None)
+            _mem_log.emit(record)
         finally:
             request_id_var.reset(tok)
 
@@ -98,8 +98,8 @@ class TestMemoryLogHandlerRequestId:
         assert matching[-1]["request_id"] == "test-rid-abc"
 
     def test_log_entry_default_request_id_when_no_context(self):
-        logger = logging.getLogger("kg.api")
-        logger.info("no-context observability message")
+        record = logging.LogRecord("kg.api", logging.INFO, "", 0, "no-context observability message", (), None)
+        _mem_log.emit(record)
 
         entries = _mem_log.get(n=50)
         matching = [e for e in entries if "no-context observability message" in e.get("msg", "")]
