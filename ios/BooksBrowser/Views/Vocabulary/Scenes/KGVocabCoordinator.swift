@@ -62,13 +62,14 @@ final class KGVocabCoordinator {
         kgService: any KGServing,
         modelContext: ModelContext
     ) async {
+        async let health: Void = kgService.healthCheck()
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription
         }
-        await kgService.healthCheck()
+        await health
     }
 
     func retryPendingDeletes(
