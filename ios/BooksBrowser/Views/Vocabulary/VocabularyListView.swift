@@ -35,101 +35,25 @@ struct VocabularyListView: View {
             }
             .navigationTitle("生詞庫".localized)
             .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                // Sync button
-                ToolbarItem(placement: .topBarLeading) {
-                    Button(action: coordinator.presentSyncView) {
-                        VocabToolbarGlyph(
-                            systemImage: "arrow.triangle.2.circlepath",
-                            badge: pendingCount > 0 ? "\(pendingCount)" : nil
-                        )
-                    }
-                    .accessibilityLabel("同步詞彙".localized)
-                }
-
-                // Force refresh (知識庫 tab only)
-                if selectedTab == 1 && authManager.isLoggedIn {
-                    if knowledgeReviewCount > 0 {
-                        ToolbarItem(placement: .topBarTrailing) {
-                            Menu {
-                                if !knowledgeDueEntries.isEmpty {
-                                    Button {
-                                        coordinator.startKnowledgeReview(entries: knowledgeDueEntries)
-                                    } label: {
-                                        Label(
-                                            L10n.format("複習到期卡片（%@）", "\(knowledgeDueEntries.count)"),
-                                            systemImage: "clock.badge.exclamationmark"
-                                        )
-                                    }
-                                }
-
-                                if !knowledgeUnlearnedEntries.isEmpty {
-                                    Button {
-                                        coordinator.startKnowledgeReview(entries: knowledgeUnlearnedEntries)
-                                    } label: {
-                                        Label(
-                                            L10n.format("學習新卡片（%@）", "\(knowledgeUnlearnedEntries.count)"),
-                                            systemImage: "sparkles"
-                                        )
-                                    }
-                                }
-
-                                Divider()
-
-                                Button {
-                                    coordinator.startKnowledgeReview(entries: knowledgeReviewEntries)
-                                } label: {
-                                    Label(
-                                        L10n.format("全部複習（%@）", "\(knowledgeReviewCount)"),
-                                        systemImage: "rectangle.stack"
-                                    )
-                                }
-                            } label: {
-                                VocabToolbarGlyph(
-                                    systemImage: "rectangle.stack.badge.play",
-                                    badge: knowledgeDueCount > 0 ? "\(knowledgeDueCount)" : "\(knowledgeReviewCount)"
-                                )
-                            }
-                        }
-                    }
-
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button { showArchiveList = true } label: {
-                            VocabToolbarGlyph(
-                                systemImage: "archivebox",
-                                badge: archivedCount > 0 ? "\(archivedCount)" : nil
-                            )
-                        }
-                    }
-                }
-
-                // Export menu (only for local vocab tab)
-                if selectedTab == 0 && !pendingEntries.isEmpty {
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Menu {
-                            Button {
-                                coordinator.exportCSV(entries: pendingEntries)
-                            } label: {
-                                Label("匯出 CSV".localized, systemImage: "tablecells")
-                            }
-
-                            Button {
-                                coordinator.exportJSON(entries: pendingEntries)
-                            } label: {
-                                Label("匯出 JSON".localized, systemImage: "doc.text")
-                            }
-
-                            Button {
-                                coordinator.exportAnki(entries: pendingEntries)
-                            } label: {
-                                Label("匯出 Anki TSV".localized, systemImage: "rectangle.stack")
-                            }
-                        } label: {
-                            VocabToolbarGlyph(systemImage: "square.and.arrow.up")
-                        }
-                    }
-                }
-            }
+            .modifier(VocabularyListToolbar(
+                selectedTab: selectedTab,
+                isLoggedIn: authManager.isLoggedIn,
+                pendingCount: pendingCount,
+                knowledgeReviewCount: knowledgeReviewCount,
+                knowledgeDueCount: knowledgeDueCount,
+                archivedCount: archivedCount,
+                onSync: coordinator.presentSyncView,
+                onStartDueReview: { coordinator.startKnowledgeReview(entries: knowledgeDueEntries) },
+                onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: knowledgeUnlearnedEntries) },
+                onStartAllReview: { coordinator.startKnowledgeReview(entries: knowledgeReviewEntries) },
+                onShowArchive: { showArchiveList = true },
+                onExportCSV: { coordinator.exportCSV(entries: pendingEntries) },
+                onExportJSON: { coordinator.exportJSON(entries: pendingEntries) },
+                onExportAnki: { coordinator.exportAnki(entries: pendingEntries) },
+                hasPendingEntries: !pendingEntries.isEmpty,
+                knowledgeDueEntriesCount: knowledgeDueEntries.count,
+                knowledgeUnlearnedEntriesCount: knowledgeUnlearnedEntries.count
+            ))
             .sheet(isPresented: $coordinator.showSyncView) {
                 SyncView()
             }
@@ -350,4 +274,9 @@ struct ShareSheet: UIViewControllerRepresentable {
 
 extension URL: @retroactive Identifiable {
     public var id: String { absoluteString }
+}
+
+#Preview {
+    VocabularyListView()
+        .modelContainer(for: [VocabularyEntry.self], inMemory: true)
 }
