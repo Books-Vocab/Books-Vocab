@@ -152,7 +152,7 @@ extension TodayReviewPresenter {
 
     var feedbackButtons: some View {
         let spring = AppMotion.feedbackButtonSpring
-        let buttonsDisabled = !state.revealStage.showsAnswer
+        let buttonsDisabled = false
 
         return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, callback: onForgot) } label: {
