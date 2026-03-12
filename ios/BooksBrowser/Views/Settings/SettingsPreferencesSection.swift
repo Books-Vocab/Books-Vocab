@@ -36,12 +36,15 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 翻譯語言
-                Button(action: onShowTranslationLanguage) {
-                    SettingsRow(icon: "textformat.abc", label: "翻譯語言") {
-                        SettingsDisclosureValue(text: "\(state.translationSource) → \(state.translationTarget)")
-                    }
+                SettingsNavigationRow(
+                    icon: "textformat.abc",
+                    label: "翻譯語言",
+                    action: onShowTranslationLanguage
+                ) {
+                    Text("\(state.translationSource) → \(state.translationTarget)")
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
-                .buttonStyle(.plain)
 
                 SettingsDivider()
 
@@ -69,12 +72,16 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 複習節奏
-                Button(action: onShowReviewSettings) {
-                    SettingsRow(icon: "timer", label: "複習節奏") {
-                        SettingsDisclosureValue(text: state.selectedReviewMode)
-                    }
+                SettingsNavigationRow(
+                    icon: "timer",
+                    label: "複習節奏",
+                    action: onShowReviewSettings
+                ) {
+                    SettingsStatusValue(
+                        text: state.selectedReviewMode,
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
-                .buttonStyle(.plain)
             }
             .settingsCard()
 

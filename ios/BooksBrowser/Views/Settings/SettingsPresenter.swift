@@ -179,24 +179,18 @@ struct SettingsPresenter: View {
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
         SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning)
-                    .frame(width: 8, height: 8)
-                Text(summary.summaryText)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .lineLimit(1)
-            }
+            SettingsStatusSummaryValue(
+                text: summary.summaryText,
+                color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
+            )
         }
     }
 
     private func externalActionRow(_ item: ExternalActionItem) -> some View {
-        Button(action: item.action) {
-            SettingsRow(icon: item.icon, label: item.label.localized) {
-                SettingsTrailingChevronIcon()
-            }
-        }
-        .buttonStyle(.plain)
+        SettingsNavigationRow(
+            icon: item.icon,
+            label: item.label.localized,
+            action: item.action
+        )
     }
 }
