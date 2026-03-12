@@ -109,6 +109,8 @@ struct BookshelfView: View {
 
     // MARK: - 空狀態
 
+    @Environment(\.authManager) private var authManager
+
     private var emptyState: some View {
         VStack(spacing: BookshelfMetrics.emptyStateSpacing) {
             Spacer()
@@ -125,6 +127,20 @@ struct BookshelfView: View {
             }
             .buttonStyle(.appAction(.outline))
             .fixedSize(horizontal: false, vertical: true)
+
+            if !authManager.isDemoMode && !authManager.isLoggedIn {
+                Button(action: {
+                    authManager.enterDemoMode(modelContainer: modelContext.container)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle")
+                        Text("體驗複習與圖譜".localized)
+                    }
+                    .font(AppFonts.caption(weight: .medium))
+                    .foregroundStyle(appTheme.palette.accent)
+                }
+                .buttonStyle(.plain)
+            }
 
             Spacer()
         }

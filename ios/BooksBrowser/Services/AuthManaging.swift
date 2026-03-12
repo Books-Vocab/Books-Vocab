@@ -27,7 +27,10 @@ protocol AuthManaging: AnyObject {
     var avatarURL: URL? { get }
     var authError: String? { get }
     var isAuthenticating: Bool { get }
+    var isDemoMode: Bool { get }
 
+    func enterDemoMode(modelContainer: ModelContainer)
+    func exitDemoMode(modelContainer: ModelContainer)
     func login(userId: String, token: String)
     func login(customToken: String)
     func logout(modelContainer: ModelContainer?, reason: String)
