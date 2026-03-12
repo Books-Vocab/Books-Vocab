@@ -189,3 +189,19 @@ private struct ReaderChromePreviewScene: View {
         showsErrorCard: true
     )
 }
+
+#Preview("Reader Chrome / Underline Progress") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepia,
+            isWebViewReady: true,
+            loadingPhase: "標記生字…",
+            underlineProgress: 0.55,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.22,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .vocab
+        ),
+        showsErrorCard: false
+    )
+}
