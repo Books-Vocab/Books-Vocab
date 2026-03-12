@@ -258,10 +258,10 @@ struct ReaderView: View {
         do {
             let url = book.epubFileURL
 
-            // 檔案不可讀：區分 iCloud placeholder 與真正遺失
+            // 檔案不可讀：嘗試從 iCloud 下載
             if !FileManager.default.isReadableFile(atPath: url.path) {
-                if Book.isInICloudContainer(url) {
-                    try await ensureICloudFileDownloaded(at: url)
+                if Book.iCloudEpubsDirectory != nil {
+                    try await waitForICloudFile(at: url)
                 } else {
                     throw NSError(
                         domain: "Book",
@@ -299,42 +299,60 @@ struct ReaderView: View {
 
     // MARK: - iCloud 檔案下載
 
-    /// 觸發 iCloud 下載並等待完成（最多 60 秒）
-    private func ensureICloudFileDownloaded(at url: URL) async throws {
+    /// 等待 iCloud 檔案就緒。
+    ///
+    /// 處理兩種情境：
+    /// 1. 檔案已在 iCloud 但被 evict（有 .icloud placeholder）→ 觸發下載
+    /// 2. 檔案尚未從其他裝置同步到（連 placeholder 都沒有）→ 等待出現後再下載
+    private func waitForICloudFile(at url: URL) async throws {
         let fm = FileManager.default
-
-        // 嘗試觸發 iCloud 下載；若非 ubiquitous item 會拋錯 → 檔案遺失
-        do {
-            try fm.startDownloadingUbiquitousItem(at: url)
-        } catch {
-            AppLog.readium.error("startDownloadingUbiquitousItem failed: \(error.localizedDescription)")
-            throw NSError(
-                domain: "Book",
-                code: 2,
-                userInfo: [NSLocalizedDescriptionKey: L10n.string("找不到書籍檔案，請重新匯入。")]
-            )
-        }
 
         await MainActor.run {
             readerState.loadingPhase = L10n.string("正在從 iCloud 下載…")
         }
-        AppLog.readium.info("iCloud download triggered for: \(url.lastPathComponent)")
 
-        // 輪詢等待檔案就緒
-        let deadline = Date().addingTimeInterval(60)
+        // 嘗試觸發下載（如果 iOS 已知此檔案）
+        let downloadTriggered = (try? fm.startDownloadingUbiquitousItem(at: url)) != nil
+        if downloadTriggered {
+            AppLog.readium.info("iCloud download triggered for: \(url.lastPathComponent)")
+        } else {
+            AppLog.readium.info("File not yet known to iCloud, waiting for sync: \(url.lastPathComponent)")
+            await MainActor.run {
+                readerState.loadingPhase = L10n.string("等待 iCloud 同步…")
+            }
+        }
+
+        // 輪詢等待檔案就緒（最多 90 秒）
+        let deadline = Date().addingTimeInterval(90)
+        var retried = false
         while Date() < deadline {
             if fm.isReadableFile(atPath: url.path) {
                 AppLog.readium.info("iCloud file ready: \(url.lastPathComponent)")
                 return
             }
+
+            // 檔案可能中途出現為 placeholder → 重新觸發下載
+            if !retried && !downloadTriggered {
+                let placeholder = url.deletingLastPathComponent()
+                    .appendingPathComponent(".\(url.lastPathComponent).icloud")
+                if fm.fileExists(atPath: placeholder.path) {
+                    try? fm.startDownloadingUbiquitousItem(at: url)
+                    retried = true
+                    await MainActor.run {
+                        readerState.loadingPhase = L10n.string("正在從 iCloud 下載…")
+                    }
+                    AppLog.readium.info("Placeholder appeared, download triggered: \(url.lastPathComponent)")
+                }
+            }
+
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        AppLog.readium.error("iCloud download timed out: \(url.lastPathComponent)")
+        AppLog.readium.error("iCloud file wait timed out: \(url.lastPathComponent)")
         throw NSError(
             domain: "Book",
             code: 3,
-            userInfo: [NSLocalizedDescriptionKey: L10n.string("iCloud 下載逾時，請確認網路連線後重試。")]
+            userInfo: [NSLocalizedDescriptionKey: L10n.string("iCloud 同步逾時，請確認網路連線後稍後再試。")]
         )
     }
 

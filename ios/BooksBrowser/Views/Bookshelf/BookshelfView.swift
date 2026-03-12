@@ -250,6 +250,16 @@ struct BookCard: View {
                         lineWidth: BookshelfMetrics.coverStrokeWidth
                     )
                 )
+                .overlay(alignment: .bottomTrailing) {
+                    if book.needsICloudDownload {
+                        Image(systemName: "icloud.and.arrow.down")
+                            .font(AppFonts.caption2(weight: .semibold))
+                            .foregroundStyle(.white)
+                            .padding(6)
+                            .background(.ultraThinMaterial, in: Circle())
+                            .padding(6)
+                    }
+                }
                 .shadow(
                     color: .black.opacity(BookshelfMetrics.coverShadowOpacity),
                     radius: BookshelfMetrics.coverShadowRadius,

@@ -105,6 +105,8 @@
 "找不到書籍檔案，請重新匯入。" = "Book file not found. Please re-import.";
 "正在從 iCloud 下載…" = "Downloading from iCloud…";
 "iCloud 下載逾時，請確認網路連線後重試。" = "iCloud download timed out. Please check your connection and try again.";
+"等待 iCloud 同步…" = "Waiting for iCloud sync…";
+"iCloud 同步逾時，請確認網路連線後稍後再試。" = "iCloud sync timed out. Please check your connection and try again later.";
 "無法觸發: %@" = "Unable to trigger: %@";
 "生字庫" = "Vocabulary";
 "生字底線強度" = "Vocabulary Underline Strength";
