@@ -130,14 +130,10 @@ struct SubscriptionPaywallSheet: View {
                             await subscriptionManager.resyncAfterManagement(using: kgService, authManager: authManager)
                         }
                     } label: {
-                        HStack {
-                            Text("管理訂閱".localized)
-                            Spacer()
-                            Image(systemName: "arrow.up.forward")
-                                .font(vocabSkin.typography.iconSmall)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                        .frame(maxWidth: .infinity)
+                        paywallActionLabel(
+                            title: "管理訂閱".localized,
+                            trailingSystemImage: "arrow.up.forward"
+                        )
                     }
                     .buttonStyle(.vocabAction(.primary))
                 }
@@ -147,14 +143,10 @@ struct SubscriptionPaywallSheet: View {
                         await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
                     }
                 } label: {
-                    HStack {
-                        if subscriptionManager.isLoading {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text(primaryActionTitle)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
+                    paywallActionLabel(
+                        title: primaryActionTitle,
+                        isLoading: subscriptionManager.isLoading
+                    )
                 }
                 .buttonStyle(.vocabAction(.neutral))
                 .disabled(subscriptionManager.isLoading)
@@ -208,14 +200,10 @@ struct SubscriptionPaywallSheet: View {
                         await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
                     }
                 } label: {
-                    HStack {
-                        if subscriptionManager.isLoading {
-                            ProgressView().controlSize(.small)
-                        }
-                        Text("開始免費試用".localized)
-                        Spacer()
-                    }
-                    .frame(maxWidth: .infinity)
+                    paywallActionLabel(
+                        title: "開始免費試用".localized,
+                        isLoading: subscriptionManager.isLoading
+                    )
                 }
                 .buttonStyle(.vocabAction(.primary))
                 .disabled(subscriptionManager.isLoading)
@@ -225,8 +213,7 @@ struct SubscriptionPaywallSheet: View {
                         await subscriptionManager.restorePurchases(using: kgService, authManager: authManager)
                     }
                 } label: {
-                    Text("恢復購買".localized)
-                        .frame(maxWidth: .infinity)
+                    paywallActionLabel(title: "恢復購買".localized)
                 }
                 .buttonStyle(.vocabAction(.neutral))
                 .disabled(subscriptionManager.isLoading)
@@ -271,12 +258,36 @@ struct SubscriptionPaywallSheet: View {
             Button {
                 Task { await subscriptionManager.loadProducts() }
             } label: {
-                Text("重新載入".localized)
-                    .font(vocabSkin.typography.caption)
+                paywallActionLabel(title: "重新載入".localized, font: vocabSkin.typography.caption)
             }
             .buttonStyle(.vocabAction(.neutral))
             .disabled(subscriptionManager.isLoading)
         }
+    }
+
+    private func paywallActionLabel(
+        title: String,
+        isLoading: Bool = false,
+        trailingSystemImage: String? = nil,
+        font: Font? = nil
+    ) -> some View {
+        HStack {
+            if isLoading {
+                ProgressView().controlSize(.small)
+            }
+
+            Text(title)
+                .font(font)
+
+            Spacer()
+
+            if let trailingSystemImage {
+                Image(systemName: trailingSystemImage)
+                    .font(vocabSkin.typography.iconSmall)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+        }
+        .frame(maxWidth: .infinity)
     }
 
     // MARK: - Legal Links Footer
