@@ -30,7 +30,6 @@ enum TodayReviewRevealStage: Int {
 
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
-    @Query private var allEntries: [VocabularyEntry]
     @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
 
     @State private var queue: [VocabularyEntry]
@@ -44,7 +43,7 @@ struct TodayReviewView: View {
     @State private var persistenceFailureTrigger = 0
     @State private var persistenceErrorMessage: String?
     @State private var pendingSaveTask: Task<Void, Never>?
-    @State private var presentationCache: [UUID: CardPresentation] = [:]
+    @State private var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
     @State private var isAutoPlaying = false
     @State private var isAutoPlayPaused = false
     @State private var autoplayTask: Task<Void, Never>?
@@ -52,18 +51,15 @@ struct TodayReviewView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
 
+    private let linkedEntryLookup: [String: VocabularyEntry]
     let onClose: () -> Void
 
-    init(entries: [VocabularyEntry], onClose: @escaping () -> Void) {
+    init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], onClose: @escaping () -> Void) {
         let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
         _queue = State(initialValue: ordered)
+        _preparedCardCache = State(initialValue: Self.buildPreparedCardCache(from: ordered))
+        linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
         self.onClose = onClose
-        // 預算前 3 張卡的 CardPresentation，避免首次渲染時 JSON parse 阻塞
-        var cache: [UUID: CardPresentation] = [:]
-        for entry in ordered.prefix(3) {
-            cache[entry.id] = CardPresentation(entry: entry)
-        }
-        _presentationCache = State(initialValue: cache)
     }
 
     var body: some View {
@@ -120,36 +116,12 @@ struct TodayReviewView: View {
     private var nextCardState: TodayReviewPresenterState.CurrentCard? {
         let nextIndex = currentIndex + 1
         guard nextIndex < queue.count else { return nil }
-        return .init(card: cachedPresentation(for: queue[nextIndex]), linkGroups: [])
-    }
-
-    private func cachedPresentation(for entry: VocabularyEntry) -> CardPresentation {
-        presentationCache[entry.id] ?? CardPresentation(entry: entry)
-    }
-
-    private func warmUpcomingCards() {
-        let end = min(currentIndex + 3, queue.count)
-        for i in currentIndex..<end {
-            let entry = queue[i]
-            if presentationCache[entry.id] == nil {
-                presentationCache[entry.id] = CardPresentation(entry: entry)
-            }
-        }
+        return preparedCardCache[queue[nextIndex].id]
     }
 
     private var currentCardState: TodayReviewPresenterState.CurrentCard? {
         guard let current = currentEntry else { return nil }
-        let card = cachedPresentation(for: current)
-        let compactGroups = card.linkGroups.map { fullGroup in
-            let limited = fullGroup.limited(to: 2)
-            return TodayReviewPresenterState.LinkGroup(
-                id: fullGroup.id,
-                label: fullGroup.label,
-                items: limited.items,
-                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
-            )
-        }
-        return .init(card: card, linkGroups: compactGroups)
+        return preparedCardCache[current.id]
     }
 
     private var currentEntry: VocabularyEntry? {
@@ -164,7 +136,7 @@ struct TodayReviewView: View {
     // MARK: - Actions
 
     private func handleLinkTap(_ link: KGCardLinkSummary) {
-        guard let target = allEntries.first(where: { $0.kgCardId == link.cardId }) else { return }
+        guard let target = linkedEntryLookup[link.cardId] else { return }
         linkedCardStack.append(target)
     }
 
@@ -195,7 +167,6 @@ struct TodayReviewView: View {
             revealStage = .front
         }
         ReviewSessionStore.saveOrder(queue.map(\.id))
-        Task { @MainActor in warmUpcomingCards() }
     }
 
     private func goPrevious() {
@@ -207,7 +178,6 @@ struct TodayReviewView: View {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
-        Task { @MainActor in warmUpcomingCards() }
     }
 
     private func goNext() {
@@ -219,7 +189,6 @@ struct TodayReviewView: View {
         if isAutoPlaying && !isAutoPlayPaused {
             startAutoPlayLoop()
         }
-        Task { @MainActor in warmUpcomingCards() }
     }
 
     // MARK: - Autoplay
@@ -289,8 +258,7 @@ struct TodayReviewView: View {
 
     /// 歸類卡片：推進 index → 延後 SwiftData 寫入
     /// 所有動畫由 Presenter 的 flingCard 控制，此處不包 withAnimation。
-    /// SwiftData 變動（applyReviewFeedback / insert ReviewRecord）延後至下一幀，
-    /// 避免 @Query 重算和 JSON 解析阻塞動畫幀。
+    /// SwiftData 變動延後到 fling 尾段完全落地後，避免主線程在動畫尾幀做資料更新。
     private func submit(_ feedback: ReviewFeedback) {
         guard let current = currentEntry else { return }
         pendingSaveTask?.cancel()
@@ -314,10 +282,11 @@ struct TodayReviewView: View {
             ReviewSessionStore.clear()
         }
 
-        // SwiftData 變動延後至動畫幀結束後，避免 @Query re-render 風暴
+        // 真正延後 model mutation，避免 fling 尾段撞上 SwiftData 變動與存取追蹤。
         let entryToUpdate = current
         let settings = reviewSettingsStore.settings
         Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(280))
             entryToUpdate.applyReviewFeedback(feedback, settings: settings)
             ReviewActivityLog.recordReview(
                 word: entryToUpdate.word,
@@ -325,12 +294,11 @@ struct TodayReviewView: View {
                 feedback: feedback,
                 context: modelContext
             )
-            warmUpcomingCards()
         }
 
-        // 延後 save — 防止 @Query 反覆重算
+        // 延後 save，合併連續 review 的寫入。
         pendingSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(500))
+            try? await Task.sleep(for: .milliseconds(650))
             do {
                 try modelContext.save()
             } catch {
@@ -339,6 +307,36 @@ struct TodayReviewView: View {
                 }
                 persistenceFailureTrigger += 1
             }
+        }
+    }
+
+    private static func buildPreparedCardCache(
+        from entries: [VocabularyEntry]
+    ) -> [UUID: TodayReviewPresenterState.CurrentCard] {
+        var cache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
+        cache.reserveCapacity(entries.count)
+        for entry in entries {
+            let card = CardPresentation(entry: entry)
+            let compactGroups = card.linkGroups.map { fullGroup in
+                let limited = fullGroup.limited(to: 2)
+                return TodayReviewPresenterState.LinkGroup(
+                    id: fullGroup.id,
+                    label: fullGroup.label,
+                    items: limited.items,
+                    overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
+                )
+            }
+            cache[entry.id] = .init(card: card, linkGroups: compactGroups)
+        }
+        return cache
+    }
+
+    private static func buildLinkedEntryLookup(
+        from entries: [VocabularyEntry]
+    ) -> [String: VocabularyEntry] {
+        entries.reduce(into: [String: VocabularyEntry]()) { lookup, entry in
+            guard let cardID = entry.kgCardId else { return }
+            lookup[cardID] = entry
         }
     }
 }
