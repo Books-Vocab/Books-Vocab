@@ -703,10 +703,11 @@ def health(user: dict = Depends(get_current_user)):
 # ---------------------------------------------------------------------------
 # GET /api/vocab
 # ---------------------------------------------------------------------------
-def list_vocab(since: str | None = None, user: dict = Depends(get_current_user)):
+def list_vocab(since: str | None = None, limit: int = 5000, user: dict = Depends(get_current_user)):
     """List all cards for the current user, optionally filtered by a since timestamp."""
     return list_vocab_response(
         since=since,
+        limit=limit,
         user=user,
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
