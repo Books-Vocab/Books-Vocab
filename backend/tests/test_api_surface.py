@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
+from dataclasses import replace
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -13,6 +14,7 @@ from fastapi.testclient import TestClient
 import kg.api as api_mod
 from kg.api import app
 from kg.graph import LinkKind
+from kg.settings import KGSettings
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -25,6 +27,24 @@ def make_jwt(user_id: str) -> str:
         "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
+
+
+def _swap_settings(new_settings):
+    """Replace app.state.kg_settings and rebuild load/save closures."""
+    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.billing import default_subscription_payload
+
+    app.state.kg_settings = new_settings
+
+    def _normalize(users):
+        from kg.secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
+    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    app.state.normalize_users_payload = _normalize
 
 
 @pytest.fixture()
@@ -61,14 +81,18 @@ def isolated_api(tmp_path):
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    with (
-        patch.object(api_mod, "DATA_DIR", data_dir),
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", True),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", True),
-    ):
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+    test_settings = KGSettings(
+        data_dir=data_dir,
+        jwt_secret=TEST_JWT_SECRET,
+        app_store_allow_unsigned_sync=True,
+        app_store_allow_unsigned_notifications=True,
+    )
+    _swap_settings(test_settings)
+
+    try:
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
@@ -79,6 +103,10 @@ def isolated_api(tmp_path):
             data_dir=data_dir,
             users_file=users_file,
         )
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
+        app.state.save_users = original_save
 
 
 class _DummyEmbeddingStore:
@@ -99,8 +127,7 @@ class _DummyEmbeddingStore:
 def _assert_mochi_key_matches(stored_key, expected):
     if stored_key.startswith("enc:"):
         from kg.secret_store import decrypt_value
-        from kg.api import _runtime_settings
-        assert decrypt_value(stored_key, _runtime_settings().jwt_secret) == expected
+        assert decrypt_value(stored_key, app.state.kg_settings.jwt_secret) == expected
     else:
         assert stored_key == expected
 
@@ -328,38 +355,41 @@ def test_vocab_works_without_pro_subscription(isolated_api):
 def test_auth_verify_links_google_and_apple_by_email(isolated_api):
     client = isolated_api.client
 
-    with (
-        patch.object(api_mod, "GOOGLE_CLIENT_ID", "fake-google-client"),
-        patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="google-sub")),
-        patch.object(api_mod, "verify_apple_token", return_value="apple-sub"),
-    ):
-        r_google = client.post(
-            "/auth/verify",
-            json={"provider": "google", "token": "g-token", "email": "same@example.com"},
-        )
-        assert r_google.status_code == 200, r_google.text
-        assert r_google.json()["user_id"] == "google-sub"
-        assert r_google.json()["access_token"]
+    original_settings = app.state.kg_settings
+    _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
+    try:
+        with (
+            patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="google-sub")),
+            patch.object(api_mod, "verify_apple_token", return_value="apple-sub"),
+        ):
+            r_google = client.post(
+                "/auth/verify",
+                json={"provider": "google", "token": "g-token", "email": "same@example.com"},
+            )
+            assert r_google.status_code == 200, r_google.text
+            assert r_google.json()["user_id"] == "google-sub"
+            assert r_google.json()["access_token"]
 
-        r_apple = client.post(
-            "/auth/verify",
-            json={"provider": "apple", "token": "a-token", "email": "same@example.com"},
-        )
-        assert r_apple.status_code == 200, r_apple.text
-        assert r_apple.json()["user_id"] == "google-sub"
+            r_apple = client.post(
+                "/auth/verify",
+                json={"provider": "apple", "token": "a-token", "email": "same@example.com"},
+            )
+            assert r_apple.status_code == 200, r_apple.text
+            assert r_apple.json()["user_id"] == "google-sub"
 
-    users_data = json.loads(isolated_api.users_file.read_text())
-    assert users_data["_email_index"]["same@example.com"] == "google-sub"
-    assert users_data["google-sub"]["linked_ids"] == ["apple-sub"]
-    assert users_data["apple-sub"]["_linked_to"] == "google-sub"
+        users_data = json.loads(isolated_api.users_file.read_text())
+        assert users_data["_email_index"]["same@example.com"] == "google-sub"
+        assert users_data["google-sub"]["linked_ids"] == ["apple-sub"]
+        assert users_data["apple-sub"]["_linked_to"] == "google-sub"
 
-    r_unknown = client.post("/auth/verify", json={"provider": "line", "token": "x"})
-    assert r_unknown.status_code == 400
+        r_unknown = client.post("/auth/verify", json={"provider": "line", "token": "x"})
+        assert r_unknown.status_code == 400
+    finally:
+        _swap_settings(original_settings)
 
 
 def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
     users_file.write_text(
         json.dumps(
             {
@@ -371,11 +401,15 @@ def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
         )
     )
 
-    with (
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-    ):
-        users = api_mod.load_users()
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
+    _swap_settings(test_settings)
+    try:
+        users = app.state.load_users()
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
 
     _assert_mochi_key_matches(users["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
     assert "mochi_api_key" not in users["legacy_user"]
@@ -450,13 +484,13 @@ def test_get_entitlements_prefers_active_admin_grant(isolated_api):
 
 def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
 
-    with (
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-    ):
-        api_mod.save_users(
+    original_settings = app.state.kg_settings
+    original_save = app.state.save_users
+    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
+    _swap_settings(test_settings)
+    try:
+        app.state.save_users(
             {
                 "legacy_user": {
                     "mochi_api_key": "mk_legacy",
@@ -464,6 +498,9 @@ def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
                 }
             }
         )
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.save_users = original_save
 
     stored = json.loads(users_file.read_text())
     _assert_mochi_key_matches(stored["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
@@ -473,7 +510,6 @@ def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
 
 def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
     users_file.write_text(
         json.dumps(
             {
@@ -491,11 +527,15 @@ def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
         )
     )
 
-    with (
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-    ):
-        users = api_mod.load_users()
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
+    _swap_settings(test_settings)
+    try:
+        users = app.state.load_users()
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
 
     _assert_mochi_key_matches(users["nested_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_nested")
 
@@ -515,36 +555,40 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
         }
     }
 
-    with (
-        patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
-        patch("kg.token_tracker.get_all_stats", return_value=usage),
-    ):
-        # HTML shell pages are served without auth (data requires authenticated API calls)
-        assert client.get("/admin").status_code == 200
-        assert client.get("/api/admin/stats").status_code == 403
-        assert client.get("/api/admin/logs").status_code == 403
+    original_settings = app.state.kg_settings
+    _swap_settings(replace(original_settings, admin_token="adm-secret"))
+    try:
+        with patch("kg.token_tracker.get_all_stats", return_value=usage):
+            # HTML shell pages are served without auth (data requires authenticated API calls)
+            assert client.get("/admin").status_code == 200
+            assert client.get("/api/admin/stats").status_code == 403
+            assert client.get("/api/admin/logs").status_code == 403
 
-        r_stats = client.get("/api/admin/stats", params={"token": "adm-secret"})
-        assert r_stats.status_code == 200, r_stats.text
-        body = r_stats.json()
-        assert "users" in body
+            r_stats = client.get("/api/admin/stats", params={"token": "adm-secret"})
+            assert r_stats.status_code == 200, r_stats.text
+            body = r_stats.json()
+            assert "users" in body
 
-        other = next(u for u in body["users"] if u["user_id"] == "other_user")
-        assert other["vocab_count"] == 2
-        assert other["has_mochi"] is True
-        assert other["total_input"] == 3000
-        assert other["total_output"] == 500
-        assert other["est_cost_usd"] == pytest.approx(0.000301, rel=1e-4)
+            other = next(u for u in body["users"] if u["user_id"] == "other_user")
+            assert other["vocab_count"] == 2
+            assert other["has_mochi"] is True
+            assert other["total_input"] == 3000
+            assert other["total_output"] == 500
+            assert other["est_cost_usd"] == pytest.approx(0.000301, rel=1e-4)
 
-        r_logs = client.get("/api/admin/logs", params={"token": "adm-secret", "n": 20})
-        assert r_logs.status_code == 200
-        assert isinstance(r_logs.json().get("logs"), list)
+            r_logs = client.get("/api/admin/logs", params={"token": "adm-secret", "n": 20})
+            assert r_logs.status_code == 200
+            assert isinstance(r_logs.json().get("logs"), list)
+    finally:
+        _swap_settings(original_settings)
 
 
 def test_admin_can_grant_and_revoke_pro_access(isolated_api):
     client = isolated_api.client
 
-    with patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"):
+    original_settings = app.state.kg_settings
+    _swap_settings(replace(original_settings, admin_token="adm-secret"))
+    try:
         grant = client.post(
             "/api/admin/users/other_user/admin-grant",
             params={"token": "adm-secret"},
@@ -569,6 +613,8 @@ def test_admin_can_grant_and_revoke_pro_access(isolated_api):
         revoked_body = revoke.json()
         assert revoked_body["pro"]["is_active"] is False
         assert revoked_body["admin_grant"]["is_active"] is False
+    finally:
+        _swap_settings(original_settings)
 
 
 def test_admin_test_matrix_endpoints(isolated_api):
@@ -607,49 +653,53 @@ def test_admin_test_matrix_endpoints(isolated_api):
     }
 
     run_mock = MagicMock(return_value=fake_result)
-    with (
-        patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
-        patch("kg.admin_wiring.run_pytest_matrix", run_mock),
-    ):
-        # HTML shell pages are served without auth
-        r_ui = client.get("/admin/tests")
-        assert r_ui.status_code == 200
-        assert "WordNexus Admin" in r_ui.text
-        r_ui_alias = client.get("/admin/test")
-        assert r_ui_alias.status_code == 200
-        assert "WordNexus Admin" in r_ui_alias.text
+    original_settings = app.state.kg_settings
+    _swap_settings(replace(original_settings, admin_token="adm-secret"))
+    try:
+        with patch("kg.admin_wiring.run_pytest_matrix", run_mock):
+            # HTML shell pages are served without auth
+            r_ui = client.get("/admin/tests")
+            assert r_ui.status_code == 200
+            assert "WordNexus Admin" in r_ui.text
+            r_ui_alias = client.get("/admin/test")
+            assert r_ui_alias.status_code == 200
+            assert "WordNexus Admin" in r_ui_alias.text
 
-        r_catalog = client.get("/api/admin/tests/catalog", params={"token": "adm-secret"})
-        assert r_catalog.status_code == 200
-        assert "columns" in r_catalog.json()
-        assert "rows" in r_catalog.json()
+            r_catalog = client.get("/api/admin/tests/catalog", params={"token": "adm-secret"})
+            assert r_catalog.status_code == 200
+            assert "columns" in r_catalog.json()
+            assert "rows" in r_catalog.json()
 
-        r_run = client.post(
-            "/api/admin/tests/run",
-            params={"token": "adm-secret"},
-            json={"itemIds": ["renderer_truncation"]},
-        )
-        assert r_run.status_code == 200
-        assert r_run.json()["runId"] == fake_result["runId"]
-        run_mock.assert_called_once_with(selected_items=["renderer_truncation"])
+            r_run = client.post(
+                "/api/admin/tests/run",
+                params={"token": "adm-secret"},
+                json={"itemIds": ["renderer_truncation"]},
+            )
+            assert r_run.status_code == 200
+            assert r_run.json()["runId"] == fake_result["runId"]
+            run_mock.assert_called_once_with(selected_items=["renderer_truncation"])
 
-        r_last = client.get("/api/admin/tests/last", params={"token": "adm-secret"})
-        assert r_last.status_code == 200
-        assert r_last.json()["totals"]["total"] == 5
+            r_last = client.get("/api/admin/tests/last", params={"token": "adm-secret"})
+            assert r_last.status_code == 200
+            assert r_last.json()["totals"]["total"] == 5
+    finally:
+        _swap_settings(original_settings)
 
 
 def test_auth_verify_response_contract(isolated_api):
     """POST /auth/verify must return access_token, user_id, expires_in with correct types and a decodable JWT."""
     client = isolated_api.client
 
-    with (
-        patch.object(api_mod, "GOOGLE_CLIENT_ID", "fake-google-client"),
-        patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="contract-user-id")),
-    ):
-        r = client.post(
-            "/auth/verify",
-            json={"provider": "google", "token": "g-tok", "email": "contract@test.com"},
-        )
+    original_settings = app.state.kg_settings
+    _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
+    try:
+        with patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="contract-user-id")):
+            r = client.post(
+                "/auth/verify",
+                json={"provider": "google", "token": "g-tok", "email": "contract@test.com"},
+            )
+    finally:
+        _swap_settings(original_settings)
 
     assert r.status_code == 200, r.text
     body = r.json()
