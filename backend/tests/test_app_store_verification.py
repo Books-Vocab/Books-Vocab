@@ -3,7 +3,7 @@ from __future__ import annotations
 import base64
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, patch
@@ -26,8 +26,8 @@ def make_jwt(user_id: str) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
-        "iat": datetime.now(tz=timezone.utc),
-        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        "iat": datetime.now(tz=UTC),
+        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
@@ -37,7 +37,7 @@ def _build_certificate(subject_cn: str, issuer_cert=None, issuer_key=None):
     subject = x509.Name([x509.NameAttribute(NameOID.COMMON_NAME, subject_cn)])
     issuer = issuer_cert.subject if issuer_cert else subject
     signer_key = issuer_key or key
-    now = datetime.now(tz=timezone.utc)
+    now = datetime.now(tz=UTC)
     builder = (
         x509.CertificateBuilder()
         .subject_name(subject)
@@ -127,7 +127,7 @@ def signed_app_store_env(tmp_path, monkeypatch):
 
 
 def _transaction_payload(*, transaction_id: str, original_transaction_id: str, status: str = "active") -> dict:
-    now_ms = int(datetime.now(tz=timezone.utc).timestamp() * 1000)
+    now_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
     expires_at = now_ms + (7 * 24 * 60 * 60 * 1000)
     if status == "expired":
         expires_at = now_ms - 1000

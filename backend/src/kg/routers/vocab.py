@@ -1,10 +1,19 @@
 from __future__ import annotations
 
-from typing import Any, Callable
+from collections.abc import Callable
+from typing import Any
 
 from fastapi import APIRouter
 
-from ..api_models import CardResponse, DailyReviewStatsPushResponse, DailyReviewStatsResponse, DeleteWordResponse, GraphLinkResponse, ReviewStatePushResponse, VocabAddResponse
+from ..api_models import (
+    CardResponse,
+    DailyReviewStatsPushResponse,
+    DailyReviewStatsResponse,
+    DeleteWordResponse,
+    GraphLinkResponse,
+    ReviewStatePushResponse,
+    VocabAddResponse,
+)
 
 
 def build_vocab_router(

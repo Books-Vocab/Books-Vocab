@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-from pathlib import Path
-from typing import Any, Callable
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
 
 import jwt
 from fastapi import HTTPException
@@ -32,7 +32,7 @@ def resolve_current_user(
         user_id = decoded.get("sub")
         if not user_id:
             raise ValueError("No sub in token")
-        token_iat = parse_datetime(decoded.get("iat")) or datetime.now(tz=timezone.utc)
+        token_iat = parse_datetime(decoded.get("iat")) or datetime.now(tz=UTC)
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=401,

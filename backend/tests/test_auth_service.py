@@ -1,12 +1,10 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
 
 import jwt as pyjwt
 
 from kg.auth_service import create_jwt_token, resolve_and_link_user
-
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
