@@ -506,22 +506,22 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "cryptography", specifier = ">=46.0.5" },
-    { name = "fastapi", specifier = ">=0.115" },
-    { name = "filelock" },
-    { name = "google-auth", extras = ["requests"], specifier = ">=2.25.0" },
-    { name = "httpx" },
-    { name = "lemminflect" },
-    { name = "numpy" },
-    { name = "openai", specifier = ">=1.0" },
-    { name = "pydantic", specifier = ">=2.0" },
-    { name = "pyjwt", specifier = ">=2.11.0" },
-    { name = "python-dotenv" },
-    { name = "sqlmodel" },
-    { name = "tqdm" },
-    { name = "typer" },
-    { name = "uvicorn", extras = ["standard"] },
-    { name = "wordfreq" },
+    { name = "cryptography", specifier = ">=46.0.5,<47.0" },
+    { name = "fastapi", specifier = ">=0.115,<1.0" },
+    { name = "filelock", specifier = ">=3.0,<4.0" },
+    { name = "google-auth", extras = ["requests"], specifier = ">=2.25.0,<3.0" },
+    { name = "httpx", specifier = ">=0.25,<1.0" },
+    { name = "lemminflect", specifier = ">=0.2,<1.0" },
+    { name = "numpy", specifier = ">=1.26,<3.0" },
+    { name = "openai", specifier = ">=1.0,<3.0" },
+    { name = "pydantic", specifier = ">=2.0,<3.0" },
+    { name = "pyjwt", specifier = ">=2.11.0,<3.0" },
+    { name = "python-dotenv", specifier = ">=1.0,<2.0" },
+    { name = "sqlmodel", specifier = ">=0.0.16,<1.0" },
+    { name = "tqdm", specifier = ">=4.0,<5.0" },
+    { name = "typer", specifier = ">=0.9,<1.0" },
+    { name = "uvicorn", extras = ["standard"], specifier = ">=0.30,<1.0" },
+    { name = "wordfreq", specifier = ">=3.0,<4.0" },
 ]
 
 [[package]]
