@@ -7,14 +7,12 @@ extension SettingsPresenter {
     var quotaRow: some View {
         VStack(spacing: 0) {
             SettingsRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized) {
-                HStack(spacing: 6) {
-                    Text(quotaStore.isExhausted
-                         ? quotaStore.resetText
-                         : "\(Int(quotaStore.fraction * 100))%")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(quotaTextColor)
-                        .lineLimit(1)
-                }
+                SettingsStatusValue(
+                    text: quotaStore.isExhausted
+                        ? quotaStore.resetText
+                        : "\(Int(quotaStore.fraction * 100))%",
+                    color: quotaTextColor
+                )
             }
 
             GeometryReader { geo in
