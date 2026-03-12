@@ -12,8 +12,18 @@ struct ReviewCalendarPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.dismiss) private var dismiss
 
-    @Query(sort: \ReviewRecord.reviewedAt, order: .reverse)
-    var allRecords: [ReviewRecord]
+    @Query var allRecords: [ReviewRecord]
+
+    private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
+
+    init() {
+        let cutoff = Self.sixMonthsAgo
+        _allRecords = Query(
+            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
+            sort: \ReviewRecord.reviewedAt,
+            order: .reverse
+        )
+    }
 
     @State private var displayedMonth: Date = Date()
     @State private var selectedDay: String? = ReviewRecord.makeDayKey(from: Date())
