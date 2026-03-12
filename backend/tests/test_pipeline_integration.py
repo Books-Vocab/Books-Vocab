@@ -1,7 +1,7 @@
 """Pipeline integration tests.
 
 Verifies that POST /api/pipeline triggers the full 4-stage background pipeline
-(Enrich → Link → Difficulty → Mochi Sync) and completes without errors.
+(Enrich -> Link -> Difficulty -> Mochi Sync) and completes without errors.
 
 External APIs (Gemini enrich, embedding) are mocked. Difficulty (Zipf) and
 candidate-link evaluation run against an empty graph, so no LLM calls needed.
@@ -27,6 +27,7 @@ os.environ.setdefault("GEMINI_API_KEY", "fake-key")
 
 import kg.api as api_mod  # noqa: E402
 from kg.api import app  # noqa: E402
+from kg.settings import KGSettings
 
 _JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -39,6 +40,23 @@ def _make_jwt(user_id: str) -> str:
         "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, _JWT_SECRET, algorithm="HS256")
+
+
+def _swap_settings(new_settings):
+    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.billing import default_subscription_payload
+
+    app.state.kg_settings = new_settings
+
+    def _normalize(users):
+        from kg.secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
+    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    app.state.normalize_users_payload = _normalize
 
 
 @pytest.fixture()
@@ -67,17 +85,24 @@ def pipeline_api(tmp_path):
     )
     token = _make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
-    with (
-        patch.object(api_mod, "DATA_DIR", tmp_path),
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-    ):
+
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=_JWT_SECRET)
+    _swap_settings(test_settings)
+
+    try:
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
         )
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
+        app.state.save_users = original_save
 
 
 class _DummyEmbeddingStore:
@@ -102,7 +127,7 @@ class TestPipelineIntegration:
         headers = pipeline_api.headers
         emb = _DummyEmbeddingStore()
 
-        # Add a card (no pos/note → enrich step will have work to do)
+        # Add a card (no pos/note -> enrich step will have work to do)
         with patch.object(api_mod, "_embedding_store", return_value=emb):
             r = client.post(
                 "/api/vocab",

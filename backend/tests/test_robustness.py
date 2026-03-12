@@ -38,6 +38,7 @@ import kg.embeddings as emb_mod
 import kg.judge as judge_mod
 import kg.mochi as mochi_mod
 from kg.api import app  # noqa: E402 — must come after env setup
+from kg.settings import KGSettings
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -59,14 +60,32 @@ def make_jwt(user_id: str) -> str:
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 
 
+def _swap_settings(new_settings):
+    """Replace app.state.kg_settings and rebuild load/save closures."""
+    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.billing import default_subscription_payload
+
+    app.state.kg_settings = new_settings
+
+    def _normalize(users):
+        from kg.secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
+    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    app.state.normalize_users_payload = _normalize
+
+
 # ---------------------------------------------------------------------------
-# Fixture: per-test isolated data directory, patched into api_mod globals
+# Fixture: per-test isolated data directory
 # ---------------------------------------------------------------------------
 
 @pytest.fixture()
 def user_env(tmp_path):
     """
-    Patch api_mod.DATA_DIR / USERS_FILE / USERS_LOCK_FILE to tmp_path.
+    Swap app.state.kg_settings to point at tmp_path.
     Returns (client, user_id, auth_headers, tmp_path).
     """
     (tmp_path / "users").mkdir()
@@ -90,16 +109,24 @@ def user_env(tmp_path):
         }
     }))
 
-    with (
-        patch.object(api_mod, "DATA_DIR", tmp_path),
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", True),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", True),
-    ):
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+    test_settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret=TEST_JWT_SECRET,
+        app_store_allow_unsigned_sync=True,
+        app_store_allow_unsigned_notifications=True,
+    )
+    _swap_settings(test_settings)
+
+    try:
         client = TestClient(app, raise_server_exceptions=False)
         yield client, user_id, headers, tmp_path
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
+        app.state.save_users = original_save
 
 
 # ============================================================================
@@ -110,8 +137,7 @@ def user_env(tmp_path):
 def _assert_mochi_key_matches(stored_key, expected):
     if stored_key.startswith("enc:"):
         from kg.secret_store import decrypt_value
-        from kg.api import _runtime_settings
-        assert decrypt_value(stored_key, _runtime_settings().jwt_secret) == expected
+        assert decrypt_value(stored_key, app.state.kg_settings.jwt_secret) == expected
     else:
         assert stored_key == expected
 
@@ -375,7 +401,7 @@ class TestBatchA_NoPrintInModules:
         assert not lines, f"embeddings.py still has print() at lines: {lines}"
 
     def test_pipeline_step_failure_emits_error_log(self, user_env, caplog):
-        """A failing pipeline step must emit ≥1 ERROR log record."""
+        """A failing pipeline step must emit >=1 ERROR log record."""
         client, user_id, headers, data_dir = user_env
 
         # _embedding_store calls _gemini_client internally; force Step 1b to blow up
@@ -387,7 +413,7 @@ class TestBatchA_NoPrintInModules:
 
         error_lines = [r.message for r in caplog.records if r.levelno >= logging.ERROR]
         assert error_lines, (
-            "Expected ≥1 ERROR log from failing pipeline step.\n"
+            "Expected >=1 ERROR log from failing pipeline step.\n"
             f"All records: {[(r.levelno, r.message) for r in caplog.records]}"
         )
 
@@ -442,7 +468,7 @@ class TestBatchB_MochiAtomicStorage:
         assert data["state"] == sync._state
 
     def test_migration_from_legacy_separate_files(self, tmp_path):
-        """Legacy mochi_map.json + sync_state.json → migrated to mochi_sync.json."""
+        """Legacy mochi_map.json + sync_state.json -> migrated to mochi_sync.json."""
         (tmp_path / "mochi_map.json").write_text(json.dumps({"old": "mochi_id"}))
         (tmp_path / "sync_state.json").write_text(json.dumps({"old": "hashval"}))
 
@@ -715,7 +741,7 @@ class TestBatchA_MochiOrphanWarning:
             client=client_mock, cards=cards, graph=graph,
             map_path=tmp_path / "mochi_map.json",
         )
-        # Inject orphan (card_id not in cards DB → orphan)
+        # Inject orphan (card_id not in cards DB -> orphan)
         sync._map = {"gone_card": "mochi_orphan"}
         sync._state = {}
 
