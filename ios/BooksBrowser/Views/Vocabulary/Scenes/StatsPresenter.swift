@@ -17,11 +17,21 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
-    @Query(sort: \ReviewRecord.reviewedAt, order: .reverse)
-    var reviewRecords: [ReviewRecord]
+    @Query var reviewRecords: [ReviewRecord]
 
     @State private var summary: StatsPresentation.Summary?
     @State private var showCalendar = false
+
+    private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
+
+    init() {
+        let cutoff = Self.sixMonthsAgo
+        _reviewRecords = Query(
+            filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
+            sort: \ReviewRecord.reviewedAt,
+            order: .reverse
+        )
+    }
 
     var body: some View {
         ScrollView {
