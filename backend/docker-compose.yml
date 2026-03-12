@@ -4,13 +4,29 @@ services:
   kg-api:
     build: .
     container_name: knowledge-graph-api
-    restart: always # 確保伺服器重啟或崩潰時自動重啟
+    restart: always
     ports:
       - "8000:8000"
     volumes:
-      # 將本機的 data 資料夾掛載到容器內，確保資料持久化 (單字庫、設定檔不會因為容器刪除而消失)
       - ./data:/app/data
-      # App Store 憑證（JWS 驗證 + Server API 認證）
       - ./certs:/app/certs:ro
     env_file:
       - .env
+    deploy:
+      resources:
+        limits:
+          memory: 512M
+          cpus: "1.0"
+        reservations:
+          memory: 128M
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 15s
+    logging:
+      driver: json-file
+      options:
+        max-size: "10m"
+        max-file: "3"
