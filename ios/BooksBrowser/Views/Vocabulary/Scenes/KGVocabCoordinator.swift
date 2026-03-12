@@ -2,8 +2,20 @@ import Foundation
 import SwiftData
 import SwiftUI
 
+@MainActor protocol KGVocabCoordinating: AnyObject, Observable {
+    var isLoading: Bool { get }
+    var errorMessage: String? { get }
+    var selectedEntry: VocabularyEntry? { get set }
+    func dismissBanner()
+    func handleRowTap(_ entryID: UUID, syncedEntries: [VocabularyEntry])
+    func handleDeleteTap(_ entryID: UUID, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
+    func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext, dueEntries: [VocabularyEntry], unlearnedEntries: [VocabularyEntry], selectedReviewState: Binding<VocabularyReviewState>) async
+    func forceRefresh(kgService: any KGServing, modelContext: ModelContext) async
+    func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
+}
+
 @Observable @MainActor
-final class KGVocabCoordinator {
+final class KGVocabCoordinator: KGVocabCoordinating {
     var isLoading = false
     var errorMessage: String?
     var selectedEntry: VocabularyEntry?
