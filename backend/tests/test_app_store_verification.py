@@ -18,6 +18,7 @@ from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 from kg.api import app
+from kg.settings import KGSettings
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -82,14 +83,29 @@ def _sign_jws(payload: dict, leaf_key, chain: list[x509.Certificate]) -> str:
     return pyjwt.encode(payload, leaf_key, algorithm="ES256", headers={"alg": "ES256", "x5c": x5c})
 
 
+def _swap_settings(new_settings):
+    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.billing import default_subscription_payload
+
+    app.state.kg_settings = new_settings
+
+    def _normalize(users):
+        from kg.secret_store import encrypt_value
+        jwt_secret = app.state.kg_settings.jwt_secret
+        encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+        return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
+
+    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
+    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    app.state.normalize_users_payload = _normalize
+
+
 @pytest.fixture()
 def signed_app_store_env(tmp_path, monkeypatch):
     data_dir = tmp_path
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
-    lock_file = data_dir / "users.json.lock"
-    notifications_file = data_dir / "app_store_notifications.ndjson"
     users_file.write_text(json.dumps({user_id: {"config": {}}}))
 
     chain = _certificate_chain()
@@ -105,14 +121,18 @@ def signed_app_store_env(tmp_path, monkeypatch):
     token = make_jwt(user_id)
     headers = {"Authorization": f"Bearer {token}"}
 
-    with (
-        patch.object(api_mod, "DATA_DIR", data_dir),
-        patch.object(api_mod, "USERS_FILE", users_file),
-        patch.object(api_mod, "USERS_LOCK_FILE", lock_file),
-        patch.object(api_mod, "APP_STORE_NOTIFICATIONS_FILE", notifications_file),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_SYNC", False),
-        patch.object(api_mod, "APP_STORE_ALLOW_UNSIGNED_NOTIFICATIONS", False),
-    ):
+    original_settings = app.state.kg_settings
+    original_load = app.state.load_users
+    original_save = app.state.save_users
+    test_settings = KGSettings(
+        data_dir=data_dir,
+        jwt_secret=TEST_JWT_SECRET,
+        app_store_allow_unsigned_sync=False,
+        app_store_allow_unsigned_notifications=False,
+    )
+    _swap_settings(test_settings)
+
+    try:
         api_mod._USER_LOCKS.clear()
         api_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
@@ -124,6 +144,10 @@ def signed_app_store_env(tmp_path, monkeypatch):
             users_file=users_file,
             chain=chain,
         )
+    finally:
+        app.state.kg_settings = original_settings
+        app.state.load_users = original_load
+        app.state.save_users = original_save
 
 
 def _transaction_payload(*, transaction_id: str, original_transaction_id: str, status: str = "active") -> dict:
@@ -132,7 +156,7 @@ def _transaction_payload(*, transaction_id: str, original_transaction_id: str, s
     if status == "expired":
         expires_at = now_ms - 1000
     payload = {
-        "bundleId": api_mod.APPLE_BUNDLE_ID,
+        "bundleId": app.state.kg_settings.apple_bundle_id,
         "productId": "com.wordnexus.pro.monthly",
         "transactionId": transaction_id,
         "originalTransactionId": original_transaction_id,
@@ -198,7 +222,7 @@ def test_signed_notification_verifies_nested_jws_and_updates_subscription(signed
     )
     signed_renewal_info = _sign_jws(
         {
-            "bundleId": api_mod.APPLE_BUNDLE_ID,
+            "bundleId": app.state.kg_settings.apple_bundle_id,
             "productId": "com.wordnexus.pro.monthly",
             "originalTransactionId": "otx-signed-2",
             "autoRenewStatus": 0,
@@ -210,9 +234,9 @@ def test_signed_notification_verifies_nested_jws_and_updates_subscription(signed
         {
             "notificationType": "EXPIRED",
             "subtype": None,
-            "bundleId": api_mod.APPLE_BUNDLE_ID,
+            "bundleId": app.state.kg_settings.apple_bundle_id,
             "data": {
-                "bundleId": api_mod.APPLE_BUNDLE_ID,
+                "bundleId": app.state.kg_settings.apple_bundle_id,
                 "signedTransactionInfo": signed_transaction_info,
                 "signedRenewalInfo": signed_renewal_info,
             },
