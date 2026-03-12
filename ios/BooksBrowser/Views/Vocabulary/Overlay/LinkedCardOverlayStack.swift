@@ -1,14 +1,5 @@
 import SwiftUI
 
-private enum LinkedCardStackMetrics {
-    /// 每層堆疊的水平位移步長
-    static let layerOffsetX: CGFloat = 8
-    /// 每層堆疊的垂直位移步長
-    static let layerOffsetY: CGFloat = 10
-    /// 每層堆疊的尺寸縮減步長
-    static let layerShrinkStep: CGFloat = 18
-}
-
 struct LinkedCardOverlayStack: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var stack: [VocabularyEntry]
@@ -55,8 +46,8 @@ struct LinkedCardOverlayStack: View {
             )
         }
         .frame(
-            maxWidth: max(420, 680 - CGFloat(index) * LinkedCardStackMetrics.layerShrinkStep),
-            maxHeight: max(420, 620 - CGFloat(index) * LinkedCardStackMetrics.layerShrinkStep)
+            maxWidth: max(420, 680 - CGFloat(index) * AppOverlayMetrics.linkedCardLayerShrinkStep),
+            maxHeight: max(420, 620 - CGFloat(index) * AppOverlayMetrics.linkedCardLayerShrinkStep)
         )
         .background(vocabSkin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous))
@@ -65,10 +56,10 @@ struct LinkedCardOverlayStack: View {
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
-        .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
-        .padding(.vertical, AppMetrics.sectionInset + CGFloat(index) * LinkedCardStackMetrics.layerOffsetX)
+        .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
+        .padding(.vertical, AppMetrics.sectionInset + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
-        .offset(x: CGFloat(index) * LinkedCardStackMetrics.layerOffsetX, y: CGFloat(index) * LinkedCardStackMetrics.layerOffsetY)
+        .offset(x: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX, y: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
         .transition(.linkedOverlayCard)
     }
 

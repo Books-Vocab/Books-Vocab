@@ -46,7 +46,7 @@ struct SettingsAccountSection: View {
 
     private var loginView: some View {
         VStack(spacing: 0) {
-            VStack(spacing: AccountMetrics.authHeroSpacing) {
+            VStack(spacing: AppSettingsMetrics.accountHeroSpacing) {
                 Image("AppIconImage")
                     .resizable()
                     .scaledToFit()
@@ -69,7 +69,7 @@ struct SettingsAccountSection: View {
 
             SettingsDivider(leadingInset: 0)
 
-            VStack(spacing: AccountMetrics.authActionSpacing) {
+            VStack(spacing: AppSettingsMetrics.accountActionSpacing) {
                 Button(action: actions.loginWithGoogle) {
                     SettingsAuthButton(title: "以 Google 繼續") {
                         SettingsSocialBadge(kind: .google)
@@ -223,18 +223,6 @@ struct SettingsAccountSection: View {
 
 // MARK: - Private Helpers
 
-private enum AccountMetrics {
-    static let authHeroSpacing: CGFloat = 10
-    static let authActionSpacing: CGFloat = 10
-    static let authButtonSpacing: CGFloat = 12
-    static let authRowSpacing: CGFloat = 14
-    static let authStatusSpacing: CGFloat = 6
-    static let authAvatarSize: CGFloat = 46
-    static let authSocialBadgeSize: CGFloat = 22
-    static let authSocialShadowRadius: CGFloat = AppShadows.controlRadius
-    static let authSocialShadowY: CGFloat = AppShadows.controlY
-}
-
 private enum SettingsSocialKind {
     case google
     case apple
@@ -249,13 +237,13 @@ private struct SettingsSocialBadge: View {
             Circle()
                 .fill(backgroundColor)
                 .frame(
-                    width: AccountMetrics.authSocialBadgeSize,
-                    height: AccountMetrics.authSocialBadgeSize
+                    width: AppSettingsMetrics.socialBadgeSize,
+                    height: AppSettingsMetrics.socialBadgeSize
                 )
                 .shadow(
                     color: shadowColor,
-                    radius: AccountMetrics.authSocialShadowRadius,
-                    y: AccountMetrics.authSocialShadowY
+                    radius: AppShadows.controlRadius,
+                    y: AppShadows.controlY
                 )
 
             Group {
@@ -298,7 +286,7 @@ private struct SettingsAuthButton<Leading: View>: View {
     @ViewBuilder let leading: Leading
 
     var body: some View {
-        HStack(spacing: AccountMetrics.authButtonSpacing) {
+        HStack(spacing: AppSettingsMetrics.accountButtonSpacing) {
             leading
 
             Text(title.localized)
@@ -316,7 +304,7 @@ struct SettingsAuthSummary: View {
     let state: SettingsPresenterState.AuthSection
 
     var body: some View {
-        HStack(spacing: AccountMetrics.authRowSpacing) {
+        HStack(spacing: AppSettingsMetrics.accountRowSpacing) {
             avatar
 
             SettingsTitleSubtitleStack(
@@ -342,8 +330,8 @@ struct SettingsAuthSummary: View {
             Circle()
                 .fill(vocabSkin.palette.mutedFill)
                 .frame(
-                    width: AccountMetrics.authAvatarSize,
-                    height: AccountMetrics.authAvatarSize
+                    width: AppSettingsMetrics.accountAvatarSize,
+                    height: AppSettingsMetrics.accountAvatarSize
                 )
 
             if let avatarURL = state.avatarURL {
@@ -355,8 +343,8 @@ struct SettingsAuthSummary: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
                 .frame(
-                    width: AccountMetrics.authAvatarSize,
-                    height: AccountMetrics.authAvatarSize
+                    width: AppSettingsMetrics.accountAvatarSize,
+                    height: AppSettingsMetrics.accountAvatarSize
                 )
                 .clipShape(Circle())
             } else if let initials = state.userInitials {

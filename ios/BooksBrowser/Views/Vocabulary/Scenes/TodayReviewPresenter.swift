@@ -42,6 +42,7 @@ struct TodayReviewPresenter: View {
     @Environment(\.speechService) private var speechService
 
     // 動畫狀態 — dismissPhase 是唯一的互動鎖
+    @State var frozenSwipeIntensity: Double = 0
     @State var swipeOffset: CGFloat = 0
     @State var containerWidth: CGFloat = 393
     @State var dismissPhase: DismissPhase = .idle

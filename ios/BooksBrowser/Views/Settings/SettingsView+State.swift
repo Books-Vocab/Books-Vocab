@@ -124,7 +124,7 @@ extension SettingsView {
             selectAppearance: { appearanceStore.setAppearance($0) },
             showSubscriptionPaywall: {
                 subscriptionManager.activePaywallSource = .settings
-                showSubscriptionPaywall = true
+                coordinator.presentSubscriptionPaywall()
             },
             showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount,

@@ -17,7 +17,6 @@ struct SettingsView: View {
     @EnvironmentObject var appLanguage: AppLanguageStore
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
-    @State var showSubscriptionPaywall = false
     @State var coordinator = SettingsCoordinator()
 
     var body: some View {
@@ -48,7 +47,7 @@ struct SettingsView: View {
                 await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
             }
         }
-        .onChange(of: showSubscriptionPaywall) { _, isPresented in
+        .onChange(of: coordinator.showSubscriptionPaywall) { _, isPresented in
             if !isPresented, authManager.isLoggedIn {
                 Task {
                     await subscriptionManager.refresh(using: kgService, authManager: authManager, force: true)
@@ -64,7 +63,7 @@ struct SettingsView: View {
         .sheet(isPresented: $coordinator.showOptionalIntegrationInfo) {
             OptionalIntegrationInfoSheetView()
         }
-        .sheet(isPresented: $showSubscriptionPaywall) {
+        .sheet(isPresented: $coordinator.showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
         }
         .alert("刪除帳號與雲端資料？".localized, isPresented: $coordinator.showDeleteAccountConfirm) {
