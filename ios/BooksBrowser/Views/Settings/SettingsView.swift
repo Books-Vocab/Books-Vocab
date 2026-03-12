@@ -16,7 +16,7 @@ struct SettingsView: View {
     @Environment(\.requestReview) private var requestReview
     @EnvironmentObject private var appLanguage: AppLanguageStore
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
-    @EnvironmentObject private var reviewSettingsStore: ReviewSettingsStore
+    @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @State private var showSubscriptionPaywall = false
     @State private var coordinator = SettingsCoordinator()
 
