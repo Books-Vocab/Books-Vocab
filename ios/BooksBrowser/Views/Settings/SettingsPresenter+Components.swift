@@ -63,6 +63,62 @@ struct SettingsRow<Content: View>: View {
     }
 }
 
+struct SettingsTrailingChevronIcon: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    var body: some View {
+        Image(systemName: "chevron.right")
+            .font(vocabSkin.typography.iconTiny)
+            .foregroundStyle(vocabSkin.palette.tertiaryText)
+    }
+}
+
+struct SettingsDisclosureValue: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+            SettingsTrailingChevronIcon()
+        }
+    }
+}
+
+struct SettingsMenuValue: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let text: String
+
+    var body: some View {
+        HStack(spacing: 6) {
+            Text(text)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+            Image(systemName: "chevron.up.chevron.down")
+                .font(vocabSkin.typography.iconTiny)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+    }
+}
+
+struct SettingsStatusBadge: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let text: String
+    let tone: Color
+
+    var body: some View {
+        Text(text)
+            .font(vocabSkin.typography.monoLabel)
+            .foregroundStyle(tone)
+            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
+            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+            .background(tone.opacity(0.12))
+            .clipShape(Capsule())
+    }
+}
+
 struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
