@@ -223,7 +223,7 @@ private enum ReviewSettingsMetrics {
     )))
 }
 
-#Preview("自訂模式") {
+#Preview("自訂模式 / 緊湊參數") {
     AppThemeContainer {
         NavigationStack {
             SettingsReviewSection()
