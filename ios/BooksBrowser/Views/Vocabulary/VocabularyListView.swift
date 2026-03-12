@@ -93,24 +93,6 @@ struct VocabularyListView: View {
                     }
 
                     ToolbarItem(placement: .topBarTrailing) {
-                        Button {
-                            Task {
-                                await coordinator.forceRefresh(
-                                    kgService: kgService,
-                                    modelContext: modelContext
-                                )
-                            }
-                        } label: {
-                            if coordinator.isForceRefreshing {
-                                ProgressView().scaleEffect(0.8)
-                            } else {
-                                VocabToolbarGlyph(systemImage: "arrow.clockwise")
-                            }
-                        }
-                        .disabled(coordinator.isForceRefreshing)
-                    }
-
-                    ToolbarItem(placement: .topBarTrailing) {
                         Button { showArchiveList = true } label: {
                             VocabToolbarGlyph(
                                 systemImage: "archivebox",
