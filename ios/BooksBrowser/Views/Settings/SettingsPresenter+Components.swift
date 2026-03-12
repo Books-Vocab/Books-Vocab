@@ -165,12 +165,22 @@ struct SettingsStatusValue: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let text: String
     let color: Color
+    let lineLimit: Int?
+    let alignment: TextAlignment
+
+    init(text: String, color: Color, lineLimit: Int? = 1, alignment: TextAlignment = .trailing) {
+        self.text = text
+        self.color = color
+        self.lineLimit = lineLimit
+        self.alignment = alignment
+    }
 
     var body: some View {
         Text(text)
             .font(vocabSkin.typography.caption)
             .foregroundStyle(color)
-            .lineLimit(1)
+            .lineLimit(lineLimit)
+            .multilineTextAlignment(alignment)
     }
 }
 
