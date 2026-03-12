@@ -65,7 +65,9 @@ extension ReaderTranslationHandler {
         }
 
         currentTranslationTask?.cancel()
-        currentTranslationTask = Task { @MainActor in
+        let newTask = Task { @MainActor in
+            guard !Task.isCancelled else { return }
+
             let translationTask = Task {
                 try await translationService.translateQuick(
                     word: word,
@@ -88,6 +90,7 @@ extension ReaderTranslationHandler {
 
             do {
                 let result = try await translationTask.value
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
@@ -96,6 +99,7 @@ extension ReaderTranslationHandler {
                 }
 
                 let fetchedPron = await pronTask.value
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.feedbackPulse) {
                     pronunciation = fetchedPron
                 }
@@ -108,7 +112,7 @@ extension ReaderTranslationHandler {
                     )
                 }
             } catch {
-                guard !(error is CancellationError) else { return }
+                guard !(error is CancellationError), !Task.isCancelled else { return }
                 AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
                 let fetchedPron = await pronTask.value
                 translationResult = nil
@@ -118,6 +122,7 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
             }
         }
+        currentTranslationTask = newTask
     }
 
     func handlePhraseSelected(
