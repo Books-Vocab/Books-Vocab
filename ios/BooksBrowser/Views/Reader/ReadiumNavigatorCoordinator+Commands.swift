@@ -1,5 +1,6 @@
 import Foundation
 import ReadiumNavigator
+import ReadiumShared
 
 enum BridgeCommand {
     case host(HostCommand)
