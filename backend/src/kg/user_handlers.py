@@ -14,11 +14,11 @@ from .api_models import (
     DeleteAccountResponse,
     EntitlementsResponse,
     HealthResponse,
-    MochiIntegrationConfig,
+    MochiIntegrationResponseConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
-    UserIntegrationsConfig,
+    UserIntegrationsResponseConfig,
 )
 from .user_store import resolve_mochi_api_key_from_config
 
@@ -35,8 +35,8 @@ def _build_user_config_response(config: dict[str, Any]) -> UserConfigResponse:
         )
 
     return UserConfigResponse(
-        integrations=UserIntegrationsConfig(
-            mochi=MochiIntegrationConfig(api_key=mochi_api_key)
+        integrations=UserIntegrationsResponseConfig(
+            mochi=MochiIntegrationResponseConfig(has_api_key=True)
         ) if mochi_api_key else None,
         translation=translation,
     )

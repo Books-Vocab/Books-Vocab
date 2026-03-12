@@ -508,7 +508,8 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
         patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
         patch("kg.token_tracker.get_all_stats", return_value=usage),
     ):
-        assert client.get("/admin").status_code == 403
+        # HTML shell pages are served without auth (data requires authenticated API calls)
+        assert client.get("/admin").status_code == 200
         assert client.get("/api/admin/stats").status_code == 403
         assert client.get("/api/admin/logs").status_code == 403
 
@@ -599,12 +600,11 @@ def test_admin_test_matrix_endpoints(isolated_api):
         patch.object(api_mod, "ADMIN_TOKEN", "adm-secret"),
         patch("kg.admin_wiring.run_pytest_matrix", run_mock),
     ):
-        assert client.get("/admin/tests").status_code == 403
-        assert client.get("/admin/test").status_code == 403
-        r_ui = client.get("/admin/tests", params={"token": "adm-secret"})
+        # HTML shell pages are served without auth
+        r_ui = client.get("/admin/tests")
         assert r_ui.status_code == 200
         assert "WordNexus Admin" in r_ui.text
-        r_ui_alias = client.get("/admin/test", params={"token": "adm-secret"})
+        r_ui_alias = client.get("/admin/test")
         assert r_ui_alias.status_code == 200
         assert "WordNexus Admin" in r_ui_alias.text
 
