@@ -1,0 +1,162 @@
+//
+//  SettingsView+State.swift
+//  BooksBrowser
+//
+
+import SwiftUI
+
+extension SettingsView {
+    var userInitials: String? {
+        guard let name = authManager.displayName, !name.isEmpty else { return nil }
+        let parts = name.split(separator: " ")
+        if parts.count >= 2 {
+            return String(parts[0].prefix(1)) + String(parts[1].prefix(1))
+        }
+        return String(name.prefix(2)).uppercased()
+    }
+
+    var authDebugState: SettingsPresenterState.DebugAuthSection? {
+#if DEBUG
+        SettingsPresenterState.DebugAuthSection(manualLoginHint: L10n.string("手動登入只用於切換測試帳號；Pro 權限請改由 /admin 或 App Store 管理。"))
+#else
+        nil
+#endif
+    }
+
+    var syncSummaryText: String {
+        if !kgService.isConnected { return "離線".localized }
+        var parts: [String] = ["已連線".localized]
+        if kgService.serverCardCount > 0 {
+            parts.append(L10n.format("%@ 張", "\(kgService.serverCardCount)"))
+        }
+        if let lastSync = kgService.lastSyncDate?.formatted(.relative(presentation: .named)) {
+            parts.append(lastSync)
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    var presenterState: SettingsPresenterState {
+        let pro = subscriptionManager.entitlements.pro
+        return SettingsPresenterState(
+            auth: .init(
+                isLoggedIn: authManager.isLoggedIn,
+                userInitials: userInitials,
+                avatarURL: authManager.avatarURL,
+                displayName: authManager.displayName ?? authManager.userEmail ?? L10n.string("已登入"),
+                email: authManager.displayName != nil ? authManager.userEmail : nil,
+                authError: authManager.authError,
+                isAuthenticating: authManager.isAuthenticating,
+                iconBreathing: coordinator.iconBreathing,
+                debug: authDebugState
+            ),
+            preferences: .init(
+                selectedLanguage: L10n.string(appLanguage.selection.titleKey),
+                selectedAppearance: appearanceStore.selection.titleKey,
+                translationSource: coordinator.translationSourceLang.nativeName,
+                translationTarget: coordinator.translationTargetLang.nativeName,
+                selectedReviewMode: reviewSettingsStore.settings.mode.displayName
+            ),
+            kg: authManager.isLoggedIn
+                ? .init(
+                    serverURL: KGService.getServerURL(),
+                    isConnected: kgService.isConnected,
+                    connectionPulse: coordinator.connectionPulse,
+                    serverCardCount: kgService.serverCardCount,
+                    lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named)),
+                    debug: kgDebugState
+                )
+                : nil,
+            subscription: authManager.isLoggedIn
+                ? .init(
+                    isActive: pro.is_active,
+                    planName: pro.plan_name ?? "Books & Vocab Pro",
+                    badgeText: SubscriptionPresentation.badgeText(for: pro),
+                    badgeTone: SubscriptionPresentation.badgeTone(for: pro),
+                    summary: SubscriptionPresentation.summary(for: pro),
+                    detail: SubscriptionPresentation.detail(for: pro, proProduct: subscriptionManager.proProduct),
+                    sourceLabel: SubscriptionPresentation.sourceLabel(for: pro),
+                    managementNote: SubscriptionPresentation.managementNote(for: pro),
+                    pricingUnavailableMessage: SubscriptionPresentation.pricingUnavailableMessage(for: pro, hasStorePrice: subscriptionManager.proProduct?.displayPrice.isEmpty == false),
+                    restoreLabel: SubscriptionPresentation.restoreLabel(for: pro),
+                    restoreDescription: SubscriptionPresentation.restoreDescription(for: pro),
+                    isRestoreAvailable: SubscriptionPresentation.restoreAvailable(for: pro),
+                    ctaTitle: SubscriptionPresentation.ctaTitle(for: pro),
+                    isRefreshing: subscriptionManager.isLoading
+                )
+                : nil,
+            syncSummary: authManager.isLoggedIn
+                ? .init(
+                    isConnected: kgService.isConnected,
+                    summaryText: syncSummaryText
+                )
+                : nil,
+            optionalIntegration: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
+            about: .init(
+                version: "1.1.0",
+                developerName: "陳亮宇"
+            ),
+            danger: authManager.isLoggedIn ? .init(isDeletingAccount: coordinator.isDeletingAccount) : nil
+        )
+    }
+
+    var presenterActions: SettingsPresenterActions {
+        SettingsPresenterActions(
+            dismiss: { dismiss() },
+            loginWithGoogle: { authManager.loginWithGoogle(modelContainer: modelContext.container) },
+            loginWithApple: { authManager.loginWithApple(modelContainer: modelContext.container) },
+            logout: { authManager.logout(modelContainer: modelContext.container, reason: "settings_logout") },
+            manualLogin: { coordinator.handleManualLogin(authManager: authManager) },
+            useProductionBackend: {
+                #if DEBUG
+                Task {
+                    await coordinator.useProductionBackend(authManager: authManager, kgService: kgService)
+                }
+                #endif
+            },
+            useLocalBackend: {
+                #if DEBUG
+                Task {
+                    await coordinator.useLocalBackend(authManager: authManager, kgService: kgService)
+                }
+                #endif
+            },
+            selectLanguage: { appLanguage.setLanguage($0) },
+            selectAppearance: { appearanceStore.setAppearance($0) },
+            showSubscriptionPaywall: {
+                subscriptionManager.activePaywallSource = .settings
+                showSubscriptionPaywall = true
+            },
+            showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
+            requestDeleteAccount: coordinator.requestDeleteAccount,
+            openPrivacyPolicy: {
+                if let url = URL(string: "https://wordnexus.lol/privacy.html") {
+                    openURL(url)
+                }
+            },
+            openTermsOfService: {
+                if let url = URL(string: "https://wordnexus.lol/terms.html") {
+                    openURL(url)
+                }
+            },
+            openSupport: {
+                if let url = URL(string: "https://wordnexus.lol/support.html") {
+                    openURL(url)
+                }
+            },
+            requestAppRating: {
+                requestReview()
+            }
+        )
+    }
+
+    var kgDebugState: SettingsPresenterState.KGSection.DebugSection? {
+#if DEBUG
+        .init(
+            isUsingLocalServer: KGService.getDebugServerMode() == .local,
+            localServerURL: coordinator.debugLocalServerURL
+        )
+#else
+        nil
+#endif
+    }
+}
