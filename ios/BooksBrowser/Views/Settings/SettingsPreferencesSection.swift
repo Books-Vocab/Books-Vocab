@@ -41,9 +41,10 @@ struct SettingsPreferencesSection: View {
                     label: "翻譯語言",
                     action: onShowTranslationLanguage
                 ) {
-                    Text("\(state.translationSource) → \(state.translationTarget)")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                    SettingsStatusValue(
+                        text: "\(state.translationSource) → \(state.translationTarget)",
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
 
                 SettingsDivider()
