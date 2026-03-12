@@ -63,41 +63,37 @@ struct TranslationLanguageSettingsView: View {
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
-            HStack(spacing: vocabSkin.spacing.inlineGap) {
+            SettingsSelectableRow(isSelected: isSelected) {
                 Text(lang.flagEmoji)
                     .font(vocabSkin.typography.body)
 
                 Text(lang.nativeName)
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.primaryText)
-
-                Spacer()
-
-                if isSelected {
-                    Image(systemName: "checkmark")
-                        .font(vocabSkin.typography.iconSmall)
-                        .foregroundStyle(vocabSkin.palette.accent)
-                }
             }
-            .padding(.horizontal, vocabSkin.spacing.cardPadding)
-            .padding(.vertical, vocabSkin.spacing.rowPadding)
-            .contentShape(Rectangle())
-            .background(
-                isSelected
-                    ? vocabSkin.palette.accent.opacity(0.08)
-                    : Color.clear
-            )
         }
         .buttonStyle(.plain)
     }
 }
 
-#Preview {
+#Preview("Translation Language / Default") {
     AppThemeContainer {
         NavigationStack {
             TranslationLanguageSettingsView(
                 sourceLang: .constant(.en),
                 targetLang: .constant(.zhHant),
+                onChanged: { _, _ in }
+            )
+        }
+    }
+}
+
+#Preview("Translation Language / Alt Pair") {
+    AppThemeContainer {
+        NavigationStack {
+            TranslationLanguageSettingsView(
+                sourceLang: .constant(.ja),
+                targetLang: .constant(.en),
                 onChanged: { _, _ in }
             )
         }

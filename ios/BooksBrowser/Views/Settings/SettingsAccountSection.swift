@@ -312,9 +312,7 @@ private struct SettingsAuthButton<Leading: View>: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+            SettingsTrailingChevronIcon()
         }
     }
 }
@@ -343,12 +341,10 @@ struct SettingsAuthSummary: View {
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: AccountMetrics.authStatusSpacing) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(vocabSkin.typography.symbolLarge)
-                    .foregroundStyle(vocabSkin.palette.success)
-                    .symbolEffect(.bounce, value: state.isLoggedIn)
-            }
+            Image(systemName: "checkmark.circle.fill")
+                .font(vocabSkin.typography.symbolLarge)
+                .foregroundStyle(vocabSkin.palette.success)
+                .symbolEffect(.bounce, value: state.isLoggedIn)
         }
     }
 
