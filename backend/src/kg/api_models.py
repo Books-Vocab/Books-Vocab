@@ -44,7 +44,7 @@ class CardResponse(BaseModel):
     isArchived: bool = False
     pronunciation: str | None = None
     inflections: list[str] = []
-    linksByKind: dict[str, list["CardLinkSummaryResponse"]] = Field(default_factory=dict)
+    linksByKind: dict[str, list[CardLinkSummaryResponse]] = Field(default_factory=dict)
     updatedAt: str | None = None
     # Review state
     reviewIntervalHours: float = 12.0

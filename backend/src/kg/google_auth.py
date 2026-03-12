@@ -2,11 +2,10 @@
 
 import logging
 
-import httpx
 from fastapi import HTTPException
 from google.auth.exceptions import GoogleAuthError
-from google.oauth2 import id_token
 from google.auth.transport import requests
+from google.oauth2 import id_token
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +33,7 @@ async def verify_google_token(token: str, client_id: str) -> str:
 
     except ValueError as e:
         # Invalid token signature or claims
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {e}")
+        raise HTTPException(status_code=401, detail=f"Invalid Google token: {e}")  # noqa: B904
     except (GoogleAuthError, OSError) as e:
         logger.error("Google token verification error: %s", e)
-        raise HTTPException(status_code=401, detail="Google authentication failed")
+        raise HTTPException(status_code=401, detail="Google authentication failed")  # noqa: B904

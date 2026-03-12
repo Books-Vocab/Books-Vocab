@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 import uuid
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from unittest.mock import patch
 
@@ -10,8 +10,8 @@ import jwt as pyjwt
 import pytest
 from fastapi.testclient import TestClient
 
-import kg.api as api_mod
 import kg.admin_test_matrix as admin_test_matrix_mod
+import kg.api as api_mod
 from kg.api import app
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
@@ -21,8 +21,8 @@ def make_jwt(user_id: str) -> str:
     payload = {
         "sub": user_id,
         "provider": "test",
-        "iat": datetime.now(tz=timezone.utc),
-        "exp": datetime.now(tz=timezone.utc) + timedelta(hours=1),
+        "iat": datetime.now(tz=UTC),
+        "exp": datetime.now(tz=UTC) + timedelta(hours=1),
     }
     return pyjwt.encode(payload, TEST_JWT_SECRET, algorithm="HS256")
 

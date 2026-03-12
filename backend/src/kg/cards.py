@@ -2,17 +2,15 @@
 
 from __future__ import annotations
 
-import json
 import uuid
-from datetime import datetime, timezone
+from collections.abc import Iterator
+from datetime import UTC, datetime
 from pathlib import Path
-from typing import Iterator, Literal
+from typing import Literal
 
-from typing import Iterator, Literal, Optional
-
-from pydantic import BaseModel, Field
-from sqlalchemy import Column, JSON
-from sqlmodel import SQLModel, Field as SQLField, Session, select, create_engine
+from sqlalchemy import JSON, Column
+from sqlmodel import Field as SQLField
+from sqlmodel import Session, SQLModel, create_engine, select
 
 CardMode = Literal["recognition", "production"]
 
@@ -22,25 +20,25 @@ class Card(SQLModel, table=True):
 
     id: str = SQLField(default_factory=lambda: uuid.uuid4().hex[:12], primary_key=True)
     content: str  # word or phrase
-    pos: Optional[str] = None  # part of speech [v.] [n.] [adj.]
+    pos: str | None = None  # part of speech [v.] [n.] [adj.]
     meaning: str  # canonical definition
     examples: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))
     collocations: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # common collocations
-    note: Optional[str] = None  # LLM-generated teacher note (markdown)
-    difficulty: Optional[float] = None  # Zipf frequency score (higher = more common)
+    note: str | None = None  # LLM-generated teacher note (markdown)
+    difficulty: float | None = None  # Zipf frequency score (higher = more common)
     mode: str = "recognition"  # recognition: 英→中, production: 中→英
-    pronunciation: Optional[str] = None  # IPA phonetic transcription
-    root_form: Optional[str] = None  # lemma (e.g. "laid" → "lay")
+    pronunciation: str | None = None  # IPA phonetic transcription
+    root_form: str | None = None  # lemma (e.g. "laid" → "lay")
     inflections: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # all inflected forms from dictionary
-    created_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
-    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(timezone.utc))
+    created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     is_deleted: bool = SQLField(default=False)
     is_archived: bool = SQLField(default=False)
 
     # Spaced-review state (synced from client)
     review_interval_hours: float = SQLField(default=12.0)
-    next_review_at: Optional[datetime] = SQLField(default=None)
-    last_reviewed_at: Optional[datetime] = SQLField(default=None)
+    next_review_at: datetime | None = SQLField(default=None)
+    last_reviewed_at: datetime | None = SQLField(default=None)
     review_count: int = SQLField(default=0)
     lapse_count: int = SQLField(default=0)
     review_streak: int = SQLField(default=0)
@@ -91,13 +89,13 @@ class CardStore:
         self,
         content: str,
         meaning: str,
-        pos: Optional[str] = None,
-        examples: Optional[list[str]] = None,
-        collocations: Optional[list[str]] = None,
+        pos: str | None = None,
+        examples: list[str] | None = None,
+        collocations: list[str] | None = None,
         mode: str = "recognition",
-        root_form: Optional[str] = None,
-        inflections: Optional[list[str]] = None,
-        pronunciation: Optional[str] = None,
+        root_form: str | None = None,
+        inflections: list[str] | None = None,
+        pronunciation: str | None = None,
     ) -> Card:
         """Create and store a new card."""
         card = Card(
@@ -117,7 +115,7 @@ class CardStore:
             session.refresh(card)
         return card
 
-    def get(self, card_id: str) -> Optional[Card]:
+    def get(self, card_id: str) -> Card | None:
         with Session(self.engine) as session:
             return session.get(Card, card_id)
 
@@ -125,10 +123,9 @@ class CardStore:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
-                statement = statement.where(Card.is_deleted == False)
+                statement = statement.where(not Card.is_deleted)
             results = session.exec(statement).all()
-            for row in results:
-                yield row
+            yield from results
 
     def get_modified_since(self, since: datetime) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
@@ -140,7 +137,7 @@ class CardStore:
         from sqlalchemy import func
         with Session(self.engine) as session:
             return session.scalar(
-                select(func.count()).select_from(Card).where(Card.is_deleted == False)
+                select(func.count()).select_from(Card).where(not Card.is_deleted)
             ) or 0
 
     def delete(self, card_id: str) -> bool:
@@ -149,13 +146,13 @@ class CardStore:
             card = session.get(Card, card_id)
             if card and not card.is_deleted:
                 card.is_deleted = True
-                card.updated_at = datetime.now(timezone.utc)
+                card.updated_at = datetime.now(UTC)
                 session.add(card)
                 session.commit()
                 return True
         return False
-        
-    def update(self, card_id: str, **kwargs) -> Optional[Card]:
+
+    def update(self, card_id: str, **kwargs) -> Card | None:
         """Update specific fields of a card. Automatically sets updated_at."""
         with Session(self.engine) as session:
             card = session.get(Card, card_id)
@@ -165,9 +162,9 @@ class CardStore:
                     if hasattr(card, key) and getattr(card, key) != value:
                         setattr(card, key, value)
                         has_changes = True
-                
+
                 if has_changes:
-                    card.updated_at = datetime.now(timezone.utc)
+                    card.updated_at = datetime.now(UTC)
                     session.add(card)
                     session.commit()
                     session.refresh(card)

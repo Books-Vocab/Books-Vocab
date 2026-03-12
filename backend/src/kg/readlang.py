@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import csv
 import re
 from pathlib import Path
 from typing import Any
-
 
 # Known Readlang column names (case-insensitive matching)
 _ALIASES: dict[str, str] = {
@@ -67,7 +65,7 @@ def parse_readlang_tsv(path: Path) -> list[dict[str, Any]]:
     Returns list of dicts with keys: content, meaning, examples, source
     """
     text = path.read_text(encoding="utf-8-sig")
-    lines = [l for l in text.strip().splitlines() if l.strip()]
+    lines = [line for line in text.strip().splitlines() if line.strip()]
 
     if not lines:
         return []
@@ -94,7 +92,7 @@ def parse_readlang_tsv(path: Path) -> list[dict[str, Any]]:
         # No header — auto-detect column order using [[...]] markers
         # Readlang context columns contain [[word]] markers
         n_cols = len(fields)
-        
+
         if n_cols >= 3:
             # Check which column has [[...]] (that's the context/example column)
             has_brackets = [bool(re.search(r"\[\[.+?\]\]", f)) for f in fields]

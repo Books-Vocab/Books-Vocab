@@ -5,7 +5,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
@@ -39,7 +39,7 @@ def record(user_id: str, call_type: str, input_tokens: int, output_tokens: int) 
     """Record token usage for a user."""
     if not user_id:
         return
-    now = datetime.now(timezone.utc).isoformat()
+    now = datetime.now(UTC).isoformat()
     with _lock:
         conn = _get_conn()
         conn.execute(
