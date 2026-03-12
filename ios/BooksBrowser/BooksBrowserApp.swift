@@ -120,7 +120,9 @@ struct BooksBrowserApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
-    @State private var showWelcome = !UserDefaults.standard.bool(forKey: "hasSeenWelcome")
+    @State private var showWelcome =
+        !ProcessInfo.processInfo.arguments.contains("-skipWelcome") &&
+        !UserDefaults.standard.bool(forKey: "hasSeenWelcome")
 
     var body: some Scene {
         WindowGroup {

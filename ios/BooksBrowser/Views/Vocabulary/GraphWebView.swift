@@ -132,7 +132,11 @@ struct GraphWebView: UIViewRepresentable {
         let linkPayloads = edges.map {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
         }
-        let colorPairs = colorsDict.mapValues { TierPair(dark: $0["dark"]!, light: $0["light"]!) }
+        let colorPairs = colorsDict.reduce(into: [String: TierPair]()) { partialResult, entry in
+            let dark = entry.value["dark"] ?? "#888888"
+            let light = entry.value["light"] ?? dark
+            partialResult[entry.key] = TierPair(dark: dark, light: light)
+        }
         let theme = ThemePayload(
             mode: mode,
             background: bg,

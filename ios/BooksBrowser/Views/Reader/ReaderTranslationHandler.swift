@@ -53,4 +53,14 @@ final class ReaderTranslationHandler {
         self.translationService = translationService
         self.authManager = authManager
     }
+
+    func cancelCurrentTranslationTask() {
+        currentTranslationTask?.cancel()
+        currentTranslationTask = nil
+    }
+
+    func replaceCurrentTranslationTask(with task: Task<Void, Never>) {
+        cancelCurrentTranslationTask()
+        currentTranslationTask = task
+    }
 }
