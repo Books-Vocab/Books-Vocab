@@ -108,4 +108,14 @@ final class Book {
         guard let iCloudDir = _cachedICloudDir else { return false }
         return url.path.hasPrefix(iCloudDir.path)
     }
+
+    /// EPUB 檔案是否已在本機可讀（用於書架顯示 iCloud 狀態）
+    var isEpubFileLocal: Bool {
+        FileManager.default.isReadableFile(atPath: epubFileURL.path)
+    }
+
+    /// 是否需要從 iCloud 下載（metadata 已到、檔案未到）
+    var needsICloudDownload: Bool {
+        !isEpubFileLocal && Self.iCloudEpubsDirectory != nil
+    }
 }
