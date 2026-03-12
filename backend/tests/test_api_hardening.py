@@ -148,15 +148,14 @@ class TestInputValidation:
         assert r.status_code == 422, r.text
 
     def test_translate_word_at_limit_accepted(self, client_env):
+        """Exactly 500 chars should pass Pydantic validation (not 422)."""
         client, user_id, headers, _ = client_env
-        from unittest.mock import AsyncMock, patch as _patch
-
-        with _patch("kg.translate_service.quick_translate", new=AsyncMock(return_value={"t": "hello", "p": None, "r": None})):
-            r = client.post(
-                "/api/translate/quick",
-                json={"word": "x" * 500, "context": "some context"},
-                headers=headers,
-            )
+        r = client.post(
+            "/api/translate/quick",
+            json={"word": "x" * 500, "context": "some context"},
+            headers=headers,
+        )
+        # Any status other than 422 means Pydantic accepted the input
         assert r.status_code != 422, f"Exactly 500 chars should be accepted, got {r.status_code}"
 
     def test_vocab_word_too_long_returns_422(self, client_env):
