@@ -4,48 +4,45 @@
 
 ## 收集指令
 
-執行以下指令收集 build 時間數據（從 `projects/kg/` 目錄執行）：
+量測規則：
+- `xcodebuild` 本體必須維持 workspace SOP 指定的唯一合法指令
+- 若要量時間，只能在外層包時間戳或 wrapper；不可改動 build 指令參數
+
+執行以下方式收集 build 時間數據（從 `projects/kg/` 目錄執行）：
 
 ```bash
-# Incremental build
-time xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -quiet build 2>&1
-
-# Clean build
-xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser clean 2>&1 > /dev/null
-
-time xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -quiet build 2>&1
-
-# Bottleneck 分析（build time > 60s 時使用）
-xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -showBuildTimingSummary \
-  -quiet build 2>&1
+# 例：用外層 wrapper 量測兩次合法 build
+python3 - <<'PY'
+import subprocess, time
+cmd = [
+    'xcodebuild',
+    '-project', 'ios/BooksBrowser.xcodeproj',
+    '-scheme', 'BooksBrowser',
+    '-destination', 'platform=iOS Simulator,name=iPhone 17 Pro Max',
+    '-quiet', 'build'
+]
+for label in ('measured_build', 'warm_build'):
+    start = time.time()
+    proc = subprocess.run(cmd, cwd='.')
+    print(label, round(time.time() - start, 2), proc.returncode)
+    if proc.returncode != 0:
+        break
+PY
 ```
 
 ## Build 時間
 
 | 類型 | 時間 |
 |------|------|
-| Incremental | — |
-| Clean | — |
-
-*填入實際執行結果*
+| measured build | 4.95s |
+| warm build | 2.89s |
 
 ## Bottleneck 分析
 
-（執行 `-showBuildTimingSummary` 後填入）
+- 2026-03-12 本地量測未觀察到長時間卡住
+- `xcodebuild` 兩次都穩定返回 `exit 0`
+- 目前沒有明顯 compile / link / simulator bottleneck 訊號
+- 若後續 build 明顯超過 30-60 秒，再另開慢建置調查並保留原始輸出
 
 ## 環境
 
@@ -59,4 +56,15 @@ xcodebuild \
 
 | 日期 | Incremental | Clean | 備註 |
 |------|-------------|-------|------|
-| 2026-03-12 | — | — | 基線建立，待首次執行填入 |
+| 2026-03-12 | 4.95s | 2.89s（warm build） | 兩次 build 皆 `exit 0`，目前無明顯 bottleneck |
+
+## 問題清單
+
+### 環境問題
+
+- 目前未觀察到穩定可重現的環境級阻塞
+
+### 專案問題
+
+- 目前未觀察到穩定可重現的 compile / link / simulator bottleneck
+- 後續需在 build 顯著變慢時，再針對慢建置樣本補充問題清單
