@@ -41,28 +41,31 @@ struct SettingsSubscriptionSection: View {
 
                 // ── 結構化 meta rows ──
                 SettingsRow(icon: "key", label: "權限來源".localized) {
-                    Text(state.sourceLabel)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                    SettingsStatusValue(
+                        text: state.sourceLabel,
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
 
                 SettingsDivider()
 
                 SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式".localized) {
-                    Text(state.managementNote)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .multilineTextAlignment(.trailing)
+                    SettingsStatusValue(
+                        text: state.managementNote,
+                        color: vocabSkin.palette.secondaryText,
+                        lineLimit: 2
+                    )
                 }
 
                 if state.isRestoreAvailable {
                     SettingsDivider()
 
                     SettingsRow(icon: "arrow.clockwise", label: state.restoreLabel) {
-                        Text(state.restoreDescription)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.accent)
-                            .multilineTextAlignment(.trailing)
+                        SettingsStatusValue(
+                            text: state.restoreDescription,
+                            color: vocabSkin.palette.accent,
+                            lineLimit: 2
+                        )
                     }
                     .transition(.statusRowReveal)
                 }
