@@ -83,6 +83,9 @@ struct ReaderSettingsPanel: View {
 
 private struct ReaderSettingsPanelPreviewHarness: View {
     let mode: TranslationPanelMode
+    let initialFontSizeText: String
+    let canDecreaseFontSize: Bool
+    let canIncreaseFontSize: Bool
 
     @State private var lineHeight: Double = 1.5
     @State private var font: ReaderFont = .serif
@@ -93,9 +96,9 @@ private struct ReaderSettingsPanelPreviewHarness: View {
 
     private var state: ReaderSettingsPanelPresenter.State {
         .init(
-            fontSizeText: "1.0x",
-            canDecreaseFontSize: true,
-            canIncreaseFontSize: true
+            fontSizeText: initialFontSizeText,
+            canDecreaseFontSize: canDecreaseFontSize,
+            canIncreaseFontSize: canIncreaseFontSize
         )
     }
 
@@ -149,12 +152,33 @@ private struct ReaderSettingsPanelPreviewHarness: View {
 
 #Preview("Reader Settings / Glass") {
     AppThemeContainer {
-        ReaderSettingsPanelPreviewHarness(mode: .glass)
+        ReaderSettingsPanelPreviewHarness(
+            mode: .glass,
+            initialFontSizeText: "1.0x",
+            canDecreaseFontSize: true,
+            canIncreaseFontSize: true
+        )
     }
 }
 
 #Preview("Reader Settings / Vocab") {
     AppThemeContainer {
-        ReaderSettingsPanelPreviewHarness(mode: .vocab)
+        ReaderSettingsPanelPreviewHarness(
+            mode: .vocab,
+            initialFontSizeText: "1.0x",
+            canDecreaseFontSize: true,
+            canIncreaseFontSize: true
+        )
+    }
+}
+
+#Preview("Reader Settings / Glass Bounds") {
+    AppThemeContainer {
+        ReaderSettingsPanelPreviewHarness(
+            mode: .glass,
+            initialFontSizeText: "0.75x",
+            canDecreaseFontSize: false,
+            canIncreaseFontSize: true
+        )
     }
 }
