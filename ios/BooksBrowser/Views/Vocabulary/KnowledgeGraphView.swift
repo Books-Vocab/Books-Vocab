@@ -5,7 +5,7 @@ struct KnowledgeGraphView: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
-    @Query private var allEntries: [VocabularyEntry]
+    let allEntries: [VocabularyEntry]
     @State private var coordinator = KnowledgeGraphCoordinator()
 
     var body: some View {
@@ -25,7 +25,7 @@ struct KnowledgeGraphView: View {
         )
         .task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
         .sheet(item: $coordinator.selectedEntry) { entry in
-            WordDetailSheet(entry: entry)
+            WordDetailSheet(entry: entry, allEntries: allEntries)
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
