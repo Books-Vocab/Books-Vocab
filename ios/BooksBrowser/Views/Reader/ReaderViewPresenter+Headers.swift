@@ -182,23 +182,20 @@ extension ReaderViewPresenter {
             Spacer()
 
             if state.totalProgression > 0 {
-                HStack(spacing: 6) {
-                    Image(systemName: "book.closed")
-                        .font(vocabSkin.typography.iconSmall)
-                    Text(String(format: "%.1f%%", state.totalProgression * 100))
-                        .font(vocabSkin.typography.monoLabel)
+                VocabChromeSurface(
+                    fill: vocabSkin.palette.cardBackground,
+                    border: vocabSkin.palette.cardBorder
+                ) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "book.closed")
+                            .font(vocabSkin.typography.iconSmall)
+                        Text(String(format: "%.1f%%", state.totalProgression * 100))
+                            .font(vocabSkin.typography.monoLabel)
+                    }
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .padding(.horizontal, ReaderPresentationMetrics.Header.compactProgressInsetHorizontal)
+                    .padding(.vertical, ReaderPresentationMetrics.Header.compactProgressInsetVertical)
                 }
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .padding(.horizontal, ReaderPresentationMetrics.Header.compactProgressInsetHorizontal)
-                .padding(.vertical, ReaderPresentationMetrics.Header.compactProgressInsetVertical)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.cardBackground)
-                )
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
             }
 
             VocabChromeIconButton(systemImage: "ellipsis", label: "展開標題列".localized, action: onExpandHeader)
