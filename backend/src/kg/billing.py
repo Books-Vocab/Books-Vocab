@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import logging
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
 from fastapi import HTTPException
+
+_logger = logging.getLogger(__name__)
 
 from .api_models import AppStoreNotificationRequest, EntitlementsResponse, SubscriptionStatusResponse
 from .user_store import parse_datetime
@@ -294,6 +297,9 @@ def decode_notification_payload(
 ) -> tuple[dict[str, Any], dict[str, Any] | None]:
     if not req.signed_payload:
         if allow_unsigned_notifications:
+            _logger.warning(
+                "Accepting unsigned App Store notification (signature verification skipped)"
+            )
             return (
                 {
                     "product_id": req.product_id,
