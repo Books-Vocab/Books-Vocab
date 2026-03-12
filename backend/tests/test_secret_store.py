@@ -47,12 +47,10 @@ class TestBackwardCompatibility:
         assert decrypt_value(plaintext, _SECRET) == plaintext
 
     def test_decrypt_empty_jwt_secret_returns_stored(self):
-        # empty jwt_secret → skip decryption
+        # empty jwt_secret → return encrypted value as-is
         encrypted = encrypt_value("mykey", _SECRET)
         result = decrypt_value(encrypted, "")
-        # Without secret we can't decrypt, but decrypt_value with "" still has enc: prefix
-        # so it would attempt fernet with empty key — test is_encrypted branch only
-        assert is_encrypted(encrypted)
+        assert result == encrypted  # can't decrypt without secret
 
 
 class TestIsEncrypted:
