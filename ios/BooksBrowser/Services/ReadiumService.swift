@@ -40,9 +40,10 @@ final class ReadiumService: ReadiumServing {
 
     /// 從 EPUB 檔案 URL 開啟 Publication
     func openPublication(at url: URL) async throws -> Publication {
-        AppLog.readium.info("openPublication: \(url.path)")
+        let fm = FileManager.default
+        AppLog.readium.info("openPublication: \(url.path) | exists=\(fm.fileExists(atPath: url.path)) readable=\(fm.isReadableFile(atPath: url.path))")
         guard let absoluteURL = FileURL(url: url) else {
-            AppLog.readium.error("無法轉換為 FileURL")
+            AppLog.readium.error("無法轉換為 FileURL — file exists=\(fm.fileExists(atPath: url.path))")
             throw NSError(
                 domain: "ReadiumService",
                 code: 1,
