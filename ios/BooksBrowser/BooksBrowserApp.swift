@@ -113,6 +113,8 @@ struct BooksBrowserApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
+    @State private var showWelcome = !UserDefaults.standard.bool(forKey: "hasSeenWelcome")
+
     var body: some Scene {
         WindowGroup {
             AppThemeContainer {
@@ -158,6 +160,19 @@ struct BooksBrowserApp: App {
                                 await subscriptionManager.refresh(using: kgService, authManager: authManager)
                             }
                         }
+                    }
+                    .fullScreenCover(isPresented: $showWelcome) {
+                        WelcomeView(
+                            onStart: {
+                                UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+                                showWelcome = false
+                            },
+                            onTryDemo: {
+                                UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+                                showWelcome = false
+                                authManager.enterDemoMode(modelContainer: modelContainer)
+                            }
+                        )
                     }
             }
         }

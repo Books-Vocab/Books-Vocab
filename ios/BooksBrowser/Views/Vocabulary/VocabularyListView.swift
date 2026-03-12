@@ -327,6 +327,18 @@ struct VocabularyListView: View {
                     coordinator.presentSettings()
                 }
                 .buttonStyle(.appAction(.primary))
+
+                Button(action: {
+                    authManager.enterDemoMode(modelContainer: modelContext.container)
+                }) {
+                    HStack(spacing: 6) {
+                        Image(systemName: "play.circle")
+                        Text("先體驗看看".localized)
+                    }
+                    .font(AppFonts.body(weight: .medium))
+                    .foregroundStyle(AppColors.tint)
+                }
+                .buttonStyle(.plain)
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .padding(.top, AppMetrics.spacingMedium)
