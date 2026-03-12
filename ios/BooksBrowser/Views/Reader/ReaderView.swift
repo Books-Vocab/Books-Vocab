@@ -17,6 +17,7 @@ struct ReaderView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
     @Environment(\.readiumService) private var readiumService
+    @Environment(\.iCloudDownloadManager) private var downloadManager
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.actionType != "delete" }
     )
@@ -293,58 +294,79 @@ struct ReaderView: View {
 
     /// 等待 iCloud 檔案就緒。
     ///
-    /// 處理兩種情境：
-    /// 1. 檔案已在 iCloud 但被 evict（有 .icloud placeholder）→ 觸發下載
-    /// 2. 檔案尚未從其他裝置同步到（連 placeholder 都沒有）→ 等待出現後再下載
+    /// 結合 ICloudDownloadManager 的即時狀態與 polling fallback：
+    /// 1. 透過 download manager 觸發下載並追蹤進度
+    /// 2. 如果 manager 找不到檔案，fallback 到 placeholder 偵測
     private func waitForICloudFile(at url: URL) async throws {
         let fm = FileManager.default
+        let fileName = url.lastPathComponent
+
+        // 透過 download manager 觸發下載
+        downloadManager.triggerDownload(for: fileName)
 
         await MainActor.run {
             readerState.loadingPhase = L10n.string("正在從 iCloud 下載…")
         }
 
-        // 嘗試觸發下載（如果 iOS 已知此檔案）
+        // 嘗試直接觸發（fallback，manager 內部也會做）
         let downloadTriggered = (try? fm.startDownloadingUbiquitousItem(at: url)) != nil
-        if downloadTriggered {
-            AppLog.readium.info("iCloud download triggered for: \(url.lastPathComponent)")
-        } else {
-            AppLog.readium.info("File not yet known to iCloud, waiting for sync: \(url.lastPathComponent)")
+        if !downloadTriggered {
+            AppLog.readium.info("File not yet known to iCloud, waiting for sync: \(fileName)")
             await MainActor.run {
                 readerState.loadingPhase = L10n.string("等待 iCloud 同步…")
             }
         }
 
-        // 輪詢等待檔案就緒（最多 90 秒）
-        let deadline = Date().addingTimeInterval(90)
+        // 輪詢等待檔案就緒（最多 120 秒），同時顯示下載進度
+        let deadline = Date().addingTimeInterval(120)
         var retried = false
         while Date() < deadline {
             if fm.isReadableFile(atPath: url.path) {
-                AppLog.readium.info("iCloud file ready: \(url.lastPathComponent)")
+                AppLog.readium.info("iCloud file ready: \(fileName)")
                 return
             }
 
-            // 檔案可能中途出現為 placeholder → 重新觸發下載
+            // 讀取 download manager 的即時進度並更新 UI
+            if let state = downloadManager.state(for: fileName) {
+                switch state {
+                case .current:
+                    // manager 報告已下載，但 isReadableFile 尚未通過 — 稍等一下
+                    try await Task.sleep(nanoseconds: 200_000_000)
+                    continue
+                case .downloading(let progress):
+                    let pct = Int(progress * 100)
+                    await MainActor.run {
+                        readerState.loadingPhase = L10n.string("正在從 iCloud 下載… \(pct)%")
+                    }
+                case .notDownloaded:
+                    break
+                }
+            }
+
+            // Placeholder fallback：檔案中途出現為 .icloud → 觸發下載
             if !retried && !downloadTriggered {
                 let placeholder = url.deletingLastPathComponent()
-                    .appendingPathComponent(".\(url.lastPathComponent).icloud")
+                    .appendingPathComponent(".\(fileName).icloud")
                 if fm.fileExists(atPath: placeholder.path) {
                     try? fm.startDownloadingUbiquitousItem(at: url)
                     retried = true
                     await MainActor.run {
                         readerState.loadingPhase = L10n.string("正在從 iCloud 下載…")
                     }
-                    AppLog.readium.info("Placeholder appeared, download triggered: \(url.lastPathComponent)")
+                    AppLog.readium.info("Placeholder appeared, download triggered: \(fileName)")
                 }
             }
 
             try await Task.sleep(nanoseconds: 500_000_000)
         }
 
-        AppLog.readium.error("iCloud file wait timed out: \(url.lastPathComponent)")
+        AppLog.readium.error("iCloud file wait timed out: \(fileName)")
         throw NSError(
             domain: "Book",
             code: 3,
-            userInfo: [NSLocalizedDescriptionKey: L10n.string("iCloud 同步逾時，請確認網路連線後稍後再試。")]
+            userInfo: [NSLocalizedDescriptionKey: L10n.string(
+                "iCloud 同步逾時。可能原因：\n• 原始裝置尚未完成上傳\n• 網路連線不穩定\n\n請確認兩台裝置都已登入相同 Apple ID 並開啟 iCloud 雲碟。"
+            )]
         )
     }
 

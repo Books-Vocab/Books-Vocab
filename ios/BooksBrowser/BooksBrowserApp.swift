@@ -23,6 +23,7 @@ struct BooksBrowserApp: App {
     let readiumService: any ReadiumServing = ReadiumService.shared
     let bookshelfImportService: any BookshelfImporting
     let bookFileManager: any BookFileManaging
+    let iCloudDownloadManager = ICloudDownloadManager()
 
     init() {
         AppFonts.ensureSerifCJKAvailable()
@@ -137,11 +138,15 @@ struct BooksBrowserApp: App {
                     .environment(\.readiumService, readiumService)
                     .environment(\.bookshelfImportService, bookshelfImportService)
                     .environment(\.bookFileManager, bookFileManager)
+                    .environment(\.iCloudDownloadManager, iCloudDownloadManager)
                     .environment(\.quotaStore, QuotaStore.shared)
                     .environment(\.speechService, SpeechService.shared)
                     .environment(\.readerSettings, .shared)
                     .onOpenURL { url in
                         GIDSignIn.sharedInstance.handle(url)
+                    }
+                    .task {
+                        iCloudDownloadManager.startMonitoring()
                     }
                     .task {
                         if !authManager.isLoggedIn {
