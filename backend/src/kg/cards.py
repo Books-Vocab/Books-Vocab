@@ -61,6 +61,7 @@ class CardStore:
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+            conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         SQLModel.metadata.create_all(self.engine, checkfirst=True)
         self._migrate_review_columns()
 
@@ -82,7 +83,10 @@ class CardStore:
             existing = {row[1] for row in result}
             for col_name, col_type in review_columns.items():
                 if col_name not in existing:
-                    conn.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {col_name} {col_type}")
+                    try:
+                        conn.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {col_name} {col_type}")
+                    except Exception:
+                        pass
             conn.commit()
 
     def add(
