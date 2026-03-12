@@ -97,9 +97,11 @@ struct SettingsAccountSection: View {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
                             .appSettingsTextInputStyle(alignment: .leading)
 
-                        Button("登入".localized, action: actions.manualLogin)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                        SettingsCompactActionButton(
+                            title: "登入".localized,
+                            isEnabled: !manualLoginUserId.wrappedValue.isEmpty,
+                            action: actions.manualLogin
+                        )
                             .accessibilityLabel("開發者登入".localized)
                     }
 

@@ -12,24 +12,12 @@ struct SettingsSubscriptionSection: View {
             VStack(spacing: 0) {
                 // ── 方案標題 + Badge ──
                 HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                        Text(state.planName)
-                            .font(vocabSkin.typography.sectionTitle)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
-
-                        Text(state.summary)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
-                            .lineSpacing(3)
-
-                        if !state.detail.isEmpty {
-                            Text(state.detail)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                                .lineSpacing(3)
-                                .fixedSize(horizontal: false, vertical: true)
-                        }
-                    }
+                    SettingsSubscriptionInfoBlock(
+                        title: state.planName,
+                        subtitle: state.summary,
+                        detail: state.detail,
+                        titleFont: vocabSkin.typography.sectionTitle
+                    )
 
                     Spacer()
 
