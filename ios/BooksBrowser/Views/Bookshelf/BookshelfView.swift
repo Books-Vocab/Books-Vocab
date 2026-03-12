@@ -424,6 +424,18 @@ private enum BookshelfPreviewData {
         book.dateLastRead = Calendar.current.date(byAdding: .hour, value: -5, to: Date())
         return book
     }()
+
+    @MainActor
+    static var containerWithBooks: ModelContainer = {
+        let schema = Schema([Book.self, VocabularyEntry.self])
+        let config = ModelConfiguration(isStoredInMemoryOnly: true)
+        let container = try! ModelContainer(for: schema, configurations: config)
+        let context = ModelContext(container)
+        context.insert(activeBook)
+        context.insert(placeholderBook)
+        try? context.save()
+        return container
+    }()
 }
 
 #Preview("Bookshelf Card / Progress") {
@@ -441,5 +453,50 @@ private enum BookshelfPreviewData {
             .padding()
             .frame(width: 180)
             .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+    }
+}
+
+// MARK: - 全頁四態 Preview
+
+#Preview("Bookshelf / Empty") {
+    AppThemeContainer {
+        BookshelfView()
+            .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
+    }
+}
+
+#Preview("Bookshelf / With Books") {
+    AppThemeContainer {
+        BookshelfView()
+            .modelContainer(BookshelfPreviewData.containerWithBooks)
+    }
+}
+
+#Preview("Bookshelf / Loading") {
+    AppThemeContainer {
+        BookshelfLoadingPreview()
+            .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
+    }
+}
+
+/// 獨立展示 loadingOverlay 的輔助 view，用於 Loading State preview
+private struct BookshelfLoadingPreview: View {
+    @Environment(\.appTheme) private var appTheme
+
+    var body: some View {
+        ZStack {
+            appTheme.palette.pageBackground
+                .ignoresSafeArea()
+            appTheme.palette.scrim
+                .ignoresSafeArea()
+            VStack(spacing: BookshelfMetrics.loadingOverlaySpacing) {
+                ProgressView()
+                Text("正在匯入書籍...")
+                    .font(AppFonts.caption())
+                    .foregroundStyle(appTheme.palette.secondaryText)
+            }
+            .padding(BookshelfMetrics.loadingOverlayPadding)
+            .glassEffect(.regular, in: .rect(cornerRadius: BookshelfMetrics.loadingOverlayCornerRadius))
+        }
     }
 }
