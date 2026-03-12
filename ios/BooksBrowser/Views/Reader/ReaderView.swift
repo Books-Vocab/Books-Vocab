@@ -256,8 +256,15 @@ struct ReaderView: View {
 
     private func loadPublication() async {
         do {
+            let url = book.epubFileURL
+
+            // 確保 iCloud 檔案已下載到本機
+            if !FileManager.default.isReadableFile(atPath: url.path) {
+                try await ensureICloudFileDownloaded(at: url)
+            }
+
             await MainActor.run { readerState.loadingPhase = L10n.string("開啟書本…") }
-            let pub = try await readiumService.openPublication(at: book.epubFileURL)
+            let pub = try await readiumService.openPublication(at: url)
 
             await MainActor.run {
                 readerState.loadingPhase = L10n.string("渲染頁面…")
@@ -280,6 +287,47 @@ struct ReaderView: View {
                 readerState.isWebViewReady = true  // 顯示錯誤畫面
             }
         }
+    }
+
+    // MARK: - iCloud 檔案下載
+
+    /// 觸發 iCloud 下載並等待完成（最多 60 秒）
+    private func ensureICloudFileDownloaded(at url: URL) async throws {
+        let fm = FileManager.default
+
+        // 嘗試觸發 iCloud 下載；若非 ubiquitous item 會拋錯 → 檔案遺失
+        do {
+            try fm.startDownloadingUbiquitousItem(at: url)
+        } catch {
+            AppLog.readium.error("startDownloadingUbiquitousItem failed: \(error.localizedDescription)")
+            throw NSError(
+                domain: "Book",
+                code: 2,
+                userInfo: [NSLocalizedDescriptionKey: L10n.string("找不到書籍檔案，請重新匯入。")]
+            )
+        }
+
+        await MainActor.run {
+            readerState.loadingPhase = L10n.string("正在從 iCloud 下載…")
+        }
+        AppLog.readium.info("iCloud download triggered for: \(url.lastPathComponent)")
+
+        // 輪詢等待檔案就緒
+        let deadline = Date().addingTimeInterval(60)
+        while Date() < deadline {
+            if fm.isReadableFile(atPath: url.path) {
+                AppLog.readium.info("iCloud file ready: \(url.lastPathComponent)")
+                return
+            }
+            try await Task.sleep(nanoseconds: 500_000_000)
+        }
+
+        AppLog.readium.error("iCloud download timed out: \(url.lastPathComponent)")
+        throw NSError(
+            domain: "Book",
+            code: 3,
+            userInfo: [NSLocalizedDescriptionKey: L10n.string("iCloud 下載逾時，請確認網路連線後重試。")]
+        )
     }
 
     // MARK: - 位置變更
