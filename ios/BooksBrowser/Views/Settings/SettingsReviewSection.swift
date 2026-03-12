@@ -26,7 +26,7 @@ struct SettingsReviewSection: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "複習模式", icon: "timer")
 
-            HStack(spacing: 10) {
+            HStack(spacing: ReviewSettingsMetrics.modeTileGap) {
                 ForEach(ReviewSettingsMode.allCases, id: \.rawValue) { mode in
                     modeTile(mode)
                 }
@@ -43,15 +43,15 @@ struct SettingsReviewSection: View {
             updated.mode = mode
             reviewSettingsStore.update(updated)
         } label: {
-            VStack(alignment: .leading, spacing: 8) {
+            VStack(alignment: .leading, spacing: ReviewSettingsMetrics.modeTileContentGap) {
                 Image(systemName: mode.icon)
                     .font(vocabSkin.typography.iconToolbar)
                 Text(mode.displayName)
                     .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.horizontal, 14)
-            .padding(.vertical, 14)
+            .padding(.horizontal, ReviewSettingsMetrics.modeTileHorizontalPadding)
+            .padding(.vertical, ReviewSettingsMetrics.modeTileVerticalPadding)
             .background(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
@@ -59,7 +59,7 @@ struct SettingsReviewSection: View {
             .overlay(
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .stroke(
-                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(0.4),
+                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(ReviewSettingsMetrics.unselectedTileBorderOpacity),
                         lineWidth: 1
                     )
             )
@@ -152,13 +152,13 @@ struct SettingsReviewSection: View {
 
             Spacer()
 
-            HStack(spacing: 12) {
+            HStack(spacing: ReviewSettingsMetrics.stepperGap) {
                 stepButton(systemImage: "minus", action: onDecrement, enabled: canDecrement)
 
                 Text(value)
                     .font(vocabSkin.typography.monoBodyStrong)
                     .foregroundStyle(vocabSkin.palette.primaryText)
-                    .frame(minWidth: 52, alignment: .center)
+                    .frame(minWidth: ReviewSettingsMetrics.valueMinWidth, alignment: .center)
 
                 stepButton(systemImage: "plus", action: onIncrement, enabled: canIncrement)
             }
@@ -172,7 +172,7 @@ struct SettingsReviewSection: View {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconMedium.weight(.medium))
                 .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                .frame(width: 52, height: 52)
+                .frame(width: ReviewSettingsMetrics.stepButtonSize, height: ReviewSettingsMetrics.stepButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.pageBackground)
@@ -227,6 +227,17 @@ private extension Double {
         let factor = pow(10.0, Double(places))
         return (self * factor).rounded() / factor
     }
+}
+
+private enum ReviewSettingsMetrics {
+    static let modeTileGap: CGFloat = 10
+    static let modeTileContentGap: CGFloat = 8
+    static let modeTileHorizontalPadding: CGFloat = 14
+    static let modeTileVerticalPadding: CGFloat = 14
+    static let unselectedTileBorderOpacity: Double = 0.4
+    static let stepperGap: CGFloat = 12
+    static let stepButtonSize: CGFloat = 52
+    static let valueMinWidth: CGFloat = 52
 }
 
 // MARK: - Preview

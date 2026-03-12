@@ -154,6 +154,35 @@ struct SettingsFeaturePanel<Content: View>: View {
     }
 }
 
+struct SettingsSelectableRow<Leading: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let isSelected: Bool
+    let leading: Leading
+
+    init(isSelected: Bool, @ViewBuilder leading: () -> Leading) {
+        self.isSelected = isSelected
+        self.leading = leading()
+    }
+
+    var body: some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            leading
+
+            Spacer()
+
+            if isSelected {
+                Image(systemName: "checkmark")
+                    .font(vocabSkin.typography.iconSmall)
+                    .foregroundStyle(vocabSkin.palette.accent)
+            }
+        }
+        .padding(.horizontal, vocabSkin.spacing.cardPadding)
+        .padding(.vertical, vocabSkin.spacing.rowPadding)
+        .contentShape(Rectangle())
+        .background(isSelected ? vocabSkin.palette.accent.opacity(0.08) : Color.clear)
+    }
+}
+
 struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
