@@ -40,9 +40,15 @@ struct VocabSwipeRow<Content: View>: View {
                 .offset(x: offset)
                 .overlay {
                     if isOpen {
-                        Color.clear
-                            .contentShape(Rectangle())
-                            .onTapGesture { close() }
+                        HStack(spacing: 0) {
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .onTapGesture { close() }
+                            Color.clear
+                                .contentShape(Rectangle())
+                                .frame(width: buttonWidth)
+                                .onTapGesture { performAction() }
+                        }
                     }
                 }
                 .gesture(swipeGesture)

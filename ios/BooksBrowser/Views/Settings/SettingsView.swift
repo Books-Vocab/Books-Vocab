@@ -83,7 +83,7 @@ struct SettingsView: View {
             subscription: authManager.isLoggedIn
                 ? .init(
                     isActive: pro.is_active,
-                    planName: pro.plan_name ?? "BooksBrowser Pro",
+                    planName: pro.plan_name ?? "Books & Vocab Pro",
                     badgeText: subscriptionBadgeText(for: pro),
                     badgeTone: subscriptionBadgeTone(for: pro),
                     summary: subscriptionSummary(for: pro),
@@ -144,6 +144,11 @@ struct SettingsView: View {
             requestDeleteAccount: coordinator.requestDeleteAccount,
             openPrivacyPolicy: {
                 if let url = URL(string: "https://wordnexus.lol/privacy.html") {
+                    openURL(url)
+                }
+            },
+            openTermsOfService: {
+                if let url = URL(string: "https://wordnexus.lol/terms.html") {
                     openURL(url)
                 }
             },

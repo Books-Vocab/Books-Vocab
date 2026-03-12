@@ -15,7 +15,7 @@ def default_subscription_payload() -> dict[str, Any]:
     return {
         "is_active": False,
         "product_id": None,
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "price_display": None,
         "status": "inactive",
         "is_trial": False,
@@ -30,7 +30,7 @@ def default_subscription_payload() -> dict[str, Any]:
 def default_admin_grant_payload() -> dict[str, Any]:
     return {
         "is_active": False,
-        "plan_name": "BooksBrowser Pro",
+        "plan_name": "Books & Vocab Pro",
         "status": "inactive",
         "source": "admin",
         "expires_at": None,
@@ -67,7 +67,7 @@ def current_pro_entitlement_record(user_record: dict[str, Any] | None) -> dict[s
         return {
             "is_active": True,
             "product_id": None,
-            "plan_name": admin_grant.get("plan_name") or "BooksBrowser Pro",
+            "plan_name": admin_grant.get("plan_name") or "Books & Vocab Pro",
             "price_display": None,
             "status": "active",
             "is_trial": False,
@@ -164,7 +164,7 @@ def write_subscription_snapshot(
         {
             "is_active": normalized_status in {"active", "trial", "grace_period"},
             "product_id": product_id.strip(),
-            "plan_name": "BooksBrowser Pro",
+            "plan_name": "Books & Vocab Pro",
             "price_display": price_display.strip() if isinstance(price_display, str) and price_display.strip() else subscription.get("price_display"),
             "status": normalized_status,
             "is_trial": is_trial,

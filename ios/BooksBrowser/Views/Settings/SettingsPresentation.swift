@@ -104,6 +104,7 @@ struct SettingsPresenterActions {
     let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
     let openPrivacyPolicy: () -> Void
+    let openTermsOfService: () -> Void
     let openSupport: () -> Void
     let requestAppRating: () -> Void
 }

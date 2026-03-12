@@ -211,6 +211,13 @@ def get_terms():
         return HTMLResponse("<h1>Terms of Service Not Found</h1>", status_code=404)
     return FileResponse(terms_path)
 
+def get_guide():
+    """Serve the guide HTML."""
+    guide_path = Path(__file__).resolve().parent.parent.parent / "guide.html"
+    if not guide_path.exists():
+        return HTMLResponse("<h1>Guide Not Found</h1>", status_code=404)
+    return FileResponse(guide_path)
+
 # ---------------------------------------------------------------------------
 # Data directory & Multi-User
 # ---------------------------------------------------------------------------
@@ -320,6 +327,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         get_privacy_policy=get_privacy_policy,
         get_support=get_support,
         get_terms=get_terms,
+        get_guide=get_guide,
         get_user_config=get_user_config,
         get_user_entitlements=get_user_entitlements,
         get_user_quota=get_user_quota,
