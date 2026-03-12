@@ -106,14 +106,14 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
     )
 
 
-def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> list[CardResponse]:
+def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> list[CardResponse]:
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
         cards = cards_store.get_modified_since(parsed_since)
     else:
-        cards = list(cards_store.all())
+        cards = cards_store.all_limited(limit=limit)
 
     cards_by_id = cards_store.all_as_dict(include_deleted=True)
     return [card_response_builder(card, graph, cards_by_id) for card in cards]

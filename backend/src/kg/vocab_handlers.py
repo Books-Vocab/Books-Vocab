@@ -32,6 +32,7 @@ from .vocab_service import (
 
 def list_vocab_response(
     since: str | None,
+    limit: int,
     user: dict[str, Any],
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
@@ -44,6 +45,7 @@ def list_vocab_response(
     graph = graph_store_factory(user["dir"])
     return list_vocab_cards(
         since=since,
+        limit=limit,
         cards_store=cards_store,
         graph=graph,
         card_response_builder=card_response_builder,
