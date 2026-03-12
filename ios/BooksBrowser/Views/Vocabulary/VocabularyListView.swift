@@ -11,18 +11,18 @@ import UniformTypeIdentifiers
 
 /// 生詞庫列表
 struct VocabularyListView: View {
-    @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) private var allEntries: [VocabularyEntry]
-    @Environment(\.modelContext) private var modelContext
+    @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) var allEntries: [VocabularyEntry]
+    @Environment(\.modelContext) var modelContext
 
-    @State private var searchText = ""
-    @Environment(\.kgService) private var kgService
-    @Environment(\.authManager) private var authManager
-    @Environment(\.subscriptionManager) private var subscriptionManager
-    @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.appTheme) private var appTheme
-    @State private var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
-    @State private var showArchiveList = false
-    @State private var coordinator = VocabularyListCoordinator()
+    @State var searchText = ""
+    @Environment(\.kgService) var kgService
+    @Environment(\.authManager) var authManager
+    @Environment(\.subscriptionManager) var subscriptionManager
+    @Environment(\.horizontalSizeClass) var sizeClass
+    @Environment(\.appTheme) var appTheme
+    @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
+    @State var showArchiveList = false
+    @State var coordinator = VocabularyListCoordinator()
 
     var body: some View {
         NavigationStack {
@@ -54,226 +54,21 @@ struct VocabularyListView: View {
                 knowledgeDueEntriesCount: knowledgeDueEntries.count,
                 knowledgeUnlearnedEntriesCount: knowledgeUnlearnedEntries.count
             ))
-            .sheet(isPresented: $coordinator.showSyncView) {
-                SyncView()
-            }
-            .sheet(isPresented: $coordinator.showSettings) {
-                SettingsView()
-            }
-            .sheet(isPresented: $showArchiveList) {
-                ArchivedVocabSheet()
-            }
-            .sheet(item: $coordinator.exportURL) { url in
-                ShareSheet(url: url)
-            }
-            .sheet(item: $coordinator.selectedEntry) { entry in
-                WordDetailSheet(entry: entry, allEntries: allEntries)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationContentInteraction(.scrolls)
-            }
-            .fullScreenCover(item: Binding(
-                get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
-                set: { coordinator.activeReviewSession = $0 }
-            )) { session in
-                TodayReviewView(
-                    entries: session.entries,
-                    allEntries: allEntries,
-                    onClose: { coordinator.activeReviewSession = nil }
-                )
-            }
-            .sheet(item: Binding(
-                get: { sizeClass == .regular ? coordinator.activeReviewSession : nil },
-                set: { coordinator.activeReviewSession = $0 }
-            )) { session in
-                TodayReviewView(
-                    entries: session.entries,
-                    allEntries: allEntries,
-                    onClose: { coordinator.activeReviewSession = nil }
-                )
-                .presentationDetents([.large])
-            }
+            .modifier(VocabularyListSheets(
+                coordinator: coordinator,
+                showArchiveList: $showArchiveList,
+                allEntries: allEntries,
+                sizeClass: sizeClass
+            ))
             .task {
                 guard !authManager.isDemoMode else { return }
                 await kgService.healthCheck()
             }
             .onChange(of: selectedTab) { _, _ in
-                searchText = ""  // 清空搜尋
+                searchText = ""
             }
         }
     }
-
-    // MARK: - Local Vocab Content
-
-    private var presenterState: VocabularyListPresenterState {
-        .init(
-            tabOptions: tabOptions,
-            showsSearchField: showsSearchField,
-            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字".localized : "搜尋知識庫".localized
-        )
-    }
-
-    @ViewBuilder
-    private var routedContent: some View {
-        if selectedTab == 0 {
-            PendingVocabPresenter(
-                state: pendingPresenterState,
-                onRowTapped: handlePendingRowTap,
-                onActionTapped: handlePendingActionTap
-            )
-        } else if !authManager.isLoggedIn {
-            loggedOutState
-        } else if selectedTab == 1 {
-            KGVocabView(searchText: $searchText)
-        } else if selectedTab == 2 {
-            KnowledgeGraphView(allEntries: allEntries)
-        } else {
-            StatsPresenter()
-        }
-    }
-
-    // MARK: - Computed
-
-    private var pendingPresenterState: PendingVocabPresenterState {
-        PendingVocabPresenterState(
-            pendingCount: filteredPendingEntries.count,
-            rows: filteredPendingEntries.map { entry in
-                .init(
-                    id: entry.id,
-                    row: entry.wordRowViewData(),
-                    actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
-                    actionTone: entry.syncAction == .delete ? .secondary : .tertiary
-                )
-            }
-        )
-    }
-
-    /// Entries not yet synced to KG (待收錄)
-    private var pendingEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.pendingEntries(in: allEntries)
-    }
-
-    private var pendingCount: Int {
-        pendingEntries.count
-    }
-
-    private var showsSearchField: Bool {
-        selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
-        // Tab 2 (關聯圖) and 3 (統計) don't need search
-    }
-
-    private var syncedKnowledgeEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.syncedKnowledgeEntries(in: allEntries)
-    }
-
-    private var knowledgeReviewEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeReviewEntries(in: allEntries)
-    }
-
-    private var knowledgeReviewCount: Int {
-        knowledgeReviewEntries.count
-    }
-
-    private var knowledgeDueEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeDueEntries(in: allEntries)
-    }
-
-    private var knowledgeDueCount: Int {
-        knowledgeDueEntries.count
-    }
-
-    private var knowledgeUnlearnedEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeUnlearnedEntries(in: allEntries)
-    }
-
-    private var tabOptions: [VocabTabOption<Int>] {
-        [
-            .init(id: 0, title: "待收錄".localized, count: pendingCount, systemImage: "tray"),
-            .init(
-                id: 1,
-                title: "知識庫".localized,
-                count: authManager.isDemoMode
-                    ? syncedKnowledgeEntries.count
-                    : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
-                systemImage: "books.vertical"
-            ),
-            .init(id: 2, title: "關聯圖".localized, systemImage: "point.3.connected.trianglepath.dotted"),
-            .init(id: 3, title: "統計".localized, systemImage: "chart.bar")
-        ]
-    }
-
-    private var archivedCount: Int {
-        VocabularyEntryPresentation.archivedEntries(in: allEntries).count
-    }
-
-    private var filteredPendingEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredPendingEntries(
-            in: allEntries,
-            searchText: searchText
-        )
-    }
-
-    private func handlePendingRowTap(_ entryID: UUID) {
-        coordinator.handlePendingRowTap(entryID, pendingEntries: pendingEntries)
-    }
-
-    private func handlePendingActionTap(_ entryID: UUID) {
-        coordinator.handlePendingActionTap(
-            entryID,
-            pendingEntries: pendingEntries,
-            modelContext: modelContext
-        )
-    }
-
-    @ViewBuilder
-    private var loggedOutState: some View {
-        ScrollView {
-            VStack(spacing: AppShellMetrics.sectionSpacing) {
-                AppEmptyStateCard(
-                    title: "需登入帳號".localized,
-                    systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。".localized
-                )
-
-                Button("前往設定登入".localized) {
-                    coordinator.presentSettings()
-                }
-                .buttonStyle(.appAction(.primary))
-
-                Button(action: {
-                    authManager.enterDemoMode(modelContainer: modelContext.container)
-                }) {
-                    HStack(spacing: 6) {
-                        Image(systemName: "play.circle")
-                        Text("先體驗看看".localized)
-                    }
-                    .font(AppFonts.body(weight: .medium))
-                    .foregroundStyle(appTheme.palette.accent)
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppMetrics.spacingMedium)
-        }
-    }
-}
-
-// MARK: - 分享表
-
-struct ShareSheet: UIViewControllerRepresentable {
-    let url: URL
-
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        UIActivityViewController(activityItems: [url], applicationActivities: nil)
-    }
-
-    func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
-}
-
-// MARK: - URL Identifiable
-
-extension URL: @retroactive Identifiable {
-    public var id: String { absoluteString }
 }
 
 #Preview {
