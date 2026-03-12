@@ -119,6 +119,41 @@ struct SettingsStatusBadge: View {
     }
 }
 
+extension SubscriptionBadgeTone {
+    func color(in skin: VocabSkin) -> Color {
+        switch self {
+        case .neutral:
+            skin.palette.secondaryText
+        case .accent:
+            skin.palette.accent
+        case .success:
+            skin.palette.success
+        }
+    }
+}
+
+struct SettingsFeaturePanel<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let borderTone: Color
+    let content: Content
+
+    init(borderTone: Color, @ViewBuilder content: () -> Content) {
+        self.borderTone = borderTone
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(vocabSkin.palette.cardBackground)
+            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .stroke(borderTone, lineWidth: 1)
+            )
+    }
+}
+
 struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
