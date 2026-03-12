@@ -239,12 +239,12 @@ struct AppSettingsDivider: View {
 struct AppSectionBlock<Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let title: String
-    let eyebrow: String
+    let eyebrow: String?
     @ViewBuilder let content: Content
 
     init(
         title: String,
-        eyebrow: String,
+        eyebrow: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
@@ -255,10 +255,12 @@ struct AppSectionBlock<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(eyebrow)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .tracking(1.0)
+                if let eyebrow, !eyebrow.isEmpty {
+                    Text(eyebrow)
+                        .font(vocabSkin.typography.monoLabel)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .tracking(1.0)
+                }
                 Text(title.localized)
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
