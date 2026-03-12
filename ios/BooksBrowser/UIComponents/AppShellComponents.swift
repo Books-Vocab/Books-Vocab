@@ -231,7 +231,7 @@ struct AppSettingsDivider: View {
     var body: some View {
         Rectangle()
             .fill(vocabSkin.palette.divider)
-            .frame(height: 1)
+            .frame(height: AppMetrics.dividerStandard)
             .padding(.leading, leadingInset)
     }
 }
@@ -587,7 +587,7 @@ private struct AppShellPreview: View {
 
                     Rectangle()
                         .fill(vocabSkin.palette.divider)
-                        .frame(height: 1)
+                        .frame(height: AppMetrics.dividerStandard)
                         .padding(.leading, 50)
 
                     AppKeyValueRow(

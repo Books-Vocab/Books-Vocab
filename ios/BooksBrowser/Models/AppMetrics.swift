@@ -9,8 +9,14 @@ import SwiftUI
 
 enum AppMetrics {
     // ── Spacing (留白與呼吸感) ────────────────────────────────────────────────────
+    static let spacingMicro: CGFloat = 2
+    static let spacingTiny: CGFloat = 3
     static let spacingExtraSmall: CGFloat = 4
     static let spacingSmall: CGFloat = 8
+
+    // ── Divider / Separator ───────────────────────────────────────────────────
+    static let dividerThin: CGFloat = 0.5
+    static let dividerStandard: CGFloat = 1
     static let spacingMedium: CGFloat = 16
     static let spacingLarge: CGFloat = 24
     static let spacingExtraLarge: CGFloat = 32
