@@ -2,12 +2,16 @@
 
 import logging
 
+import requests as _requests
 from fastapi import HTTPException
 from google.auth.exceptions import GoogleAuthError
-from google.auth.transport import requests
+from google.auth.transport import requests as google_requests
 from google.oauth2 import id_token
 
 logger = logging.getLogger(__name__)
+
+_session = _requests.Session()
+_session.timeout = 10
 
 
 async def verify_google_token(token: str, client_id: str) -> str:
@@ -22,7 +26,8 @@ async def verify_google_token(token: str, client_id: str) -> str:
     """
     try:
         # Verify the token using Google's official validation
-        idinfo = id_token.verify_oauth2_token(token, requests.Request(), client_id)
+        request_adapter = google_requests.Request(session=_session)
+        idinfo = id_token.verify_oauth2_token(token, request_adapter, client_id)
 
         # Token is valid, extract user ID
         sub = idinfo.get("sub")

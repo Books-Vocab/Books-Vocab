@@ -39,8 +39,12 @@ def resolve_current_user(
             detail="Token has expired",
             headers={"WWW-Authenticate": "Bearer"},
         ) from exc
-    except jwt.InvalidTokenError:
-        user_id = token
+    except jwt.InvalidTokenError as exc:
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid token",
+            headers={"WWW-Authenticate": "Bearer"},
+        ) from exc
 
     if not user_id:
         raise HTTPException(

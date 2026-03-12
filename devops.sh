@@ -354,7 +354,33 @@ cmd_backup() {
   info "備份 $REMOTE_DIR/data → $dest"
   "${SCP_CMD[@]}" -r "$SERVER:$REMOTE_DIR/data" "$dest"
 
-  ok "備份完成: $dest"
+  # ── 完整性驗證：SQLite integrity_check ──────────────────────────────────
+  section "驗證備份完整性"
+  local integrity_ok=1
+  while IFS= read -r -d '' db; do
+    local result
+    result=$(sqlite3 "$db" "PRAGMA integrity_check;" 2>&1)
+    if [[ "$result" == "ok" ]]; then
+      ok "integrity_check: $(basename "$(dirname "$db")")/$(basename "$db")"
+    else
+      echo "✗ 損毀: $db" >&2
+      echo "  $result" >&2
+      integrity_ok=0
+    fi
+  done < <(find "$dest" -name "*.db" -print0)
+
+  # ── 完整性驗證：sha256 checksum ─────────────────────────────────────────
+  local tar_file="$BACKUP_DIR/data_${date_str}.tar.gz"
+  info "計算備份 checksum → ${tar_file}.sha256"
+  tar -czf "$tar_file" -C "$BACKUP_DIR" "data_$date_str"
+  sha256sum "$tar_file" > "${tar_file}.sha256"
+  ok "checksum: $(cat "${tar_file}.sha256")"
+
+  if [[ "$integrity_ok" -eq 0 ]]; then
+    err "備份完整性驗證失敗，請檢查上方錯誤訊息"
+  fi
+
+  ok "備份完成且驗證通過: $dest"
   ls -lh "$BACKUP_DIR" | tail -5
   cleanup_old_backups
 }
