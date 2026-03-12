@@ -21,9 +21,9 @@ struct ReaderPublicationLoader {
             try await waitForICloudFile(at: url, updatePhase: updatePhase)
         }
 
-        await updatePhase(L10n.string("開啟書本…"))
+        updatePhase(L10n.string("開啟書本…"))
         let publication = try await readiumService.openPublication(at: url)
-        await updatePhase(L10n.string("渲染頁面…"))
+        updatePhase(L10n.string("渲染頁面…"))
 
         let uniqueWordsTask = Task(priority: .utility) {
             await readiumService.extractUniqueWords(from: publication)
@@ -39,12 +39,12 @@ struct ReaderPublicationLoader {
         let fileName = url.lastPathComponent
 
         downloadManager.triggerDownload(for: fileName)
-        await updatePhase(L10n.string("正在從 iCloud 下載…"))
+        updatePhase(L10n.string("正在從 iCloud 下載…"))
 
         let downloadTriggered = (try? fm.startDownloadingUbiquitousItem(at: url)) != nil
         if !downloadTriggered {
             AppLog.readium.info("File not yet known to iCloud, waiting for sync: \(fileName)")
-            await updatePhase(L10n.string("等待 iCloud 同步…"))
+            updatePhase(L10n.string("等待 iCloud 同步…"))
         }
 
         let deadline = Date().addingTimeInterval(120)
@@ -61,7 +61,7 @@ struct ReaderPublicationLoader {
                     try await Task.sleep(nanoseconds: 200_000_000)
                     continue
                 case .downloading(let progress):
-                    await updatePhase(L10n.string("正在從 iCloud 下載… \(Int(progress * 100))%"))
+                    updatePhase(L10n.string("正在從 iCloud 下載… \(Int(progress * 100))%"))
                 case .notDownloaded:
                     break
                 }
@@ -73,7 +73,7 @@ struct ReaderPublicationLoader {
                 if fm.fileExists(atPath: placeholder.path) {
                     try? fm.startDownloadingUbiquitousItem(at: url)
                     retried = true
-                    await updatePhase(L10n.string("正在從 iCloud 下載…"))
+                    updatePhase(L10n.string("正在從 iCloud 下載…"))
                     AppLog.readium.info("Placeholder appeared, download triggered: \(fileName)")
                 }
             }

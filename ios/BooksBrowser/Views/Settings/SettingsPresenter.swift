@@ -5,6 +5,14 @@ struct SettingsPresenter: View {
     @Environment(\.vocabSkin) var vocabSkin
     @Environment(\.quotaStore) var quotaStore
 
+    private struct ExternalActionItem: Identifiable {
+        let icon: String
+        let label: String
+        let action: () -> Void
+
+        var id: String { label }
+    }
+
     let state: SettingsPresenterState
     let optionalIntegrationApiKey: Binding<String>
     let translationSourceLang: Binding<TranslationLanguage>
@@ -18,6 +26,15 @@ struct SettingsPresenter: View {
     @State private var showSubscriptionDetail = false
     @State private var showTranslationLanguage = false
     @State private var showReviewSection = false
+
+    private var externalActionItems: [ExternalActionItem] {
+        [
+            .init(icon: "hand.raised", label: "隱私政策", action: actions.openPrivacyPolicy),
+            .init(icon: "doc.text", label: "服務條款", action: actions.openTermsOfService),
+            .init(icon: "questionmark.circle", label: "支援", action: actions.openSupport),
+            .init(icon: "star", label: "為 App 評分", action: actions.requestAppRating)
+        ]
+    }
 
     var body: some View {
         NavigationStack {
@@ -139,51 +156,13 @@ struct SettingsPresenter: View {
                     SettingsDivider()
                 }
 
-                // 隱私政策
-                Button(action: actions.openPrivacyPolicy) {
-                    SettingsRow(icon: "hand.raised", label: "隱私政策".localized) {
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                ForEach(Array(externalActionItems.enumerated()), id: \.element.id) { index, item in
+                    externalActionRow(item)
+
+                    if index < externalActionItems.count - 1 {
+                        SettingsDivider()
                     }
                 }
-                .buttonStyle(.plain)
-
-                SettingsDivider()
-
-                // 服務條款
-                Button(action: actions.openTermsOfService) {
-                    SettingsRow(icon: "doc.text", label: "服務條款".localized) {
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                SettingsDivider()
-
-                // 支援
-                Button(action: actions.openSupport) {
-                    SettingsRow(icon: "questionmark.circle", label: "支援".localized) {
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-                }
-                .buttonStyle(.plain)
-
-                SettingsDivider()
-
-                // 為 App 評分
-                Button(action: actions.requestAppRating) {
-                    SettingsRow(icon: "star", label: "為 App 評分".localized) {
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-                }
-                .buttonStyle(.plain)
             }
             .settingsCard()
 
@@ -200,15 +179,18 @@ struct SettingsPresenter: View {
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
         SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized) {
-            HStack(spacing: 6) {
-                Circle()
-                    .fill(summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning)
-                    .frame(width: 8, height: 8)
-                Text(summary.summaryText)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .lineLimit(1)
-            }
+            SettingsStatusSummaryValue(
+                text: summary.summaryText,
+                color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
+            )
         }
+    }
+
+    private func externalActionRow(_ item: ExternalActionItem) -> some View {
+        SettingsNavigationRow(
+            icon: item.icon,
+            label: item.label.localized,
+            action: item.action
+        )
     }
 }

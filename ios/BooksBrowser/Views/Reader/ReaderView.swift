@@ -195,12 +195,27 @@ struct ReaderView: View {
                 Color.clear.frame(height: 0)
             }
         } else if let error = readerState.errorMessage {
-            ContentUnavailableView(
-                "無法開啟書籍".localized,
-                systemImage: "exclamationmark.triangle",
-                description: Text(error)
-            )
+            readerErrorState(error)
         }
+    }
+
+    private func readerErrorState(_ error: String) -> some View {
+        ScrollView {
+            VStack {
+                Spacer(minLength: ReaderPresentationMetrics.Preview.topInset)
+
+                AppEmptyStateCard(
+                    title: "無法開啟書籍".localized,
+                    systemImage: "exclamationmark.triangle",
+                    description: error
+                )
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+
+                Spacer(minLength: ReaderPresentationMetrics.Preview.bottomInset)
+            }
+            .frame(maxWidth: .infinity)
+        }
+        .background(viewConfiguration.paperColor.ignoresSafeArea())
     }
 
     @ViewBuilder

@@ -27,14 +27,7 @@ struct SettingsPreferencesSection: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Text(state.selectedAppearance.localized)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
+                        SettingsMenuValue(text: state.selectedAppearance.localized)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\("選擇外觀".localized)：\(state.selectedAppearance.localized)")
@@ -43,19 +36,16 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 翻譯語言
-                Button(action: onShowTranslationLanguage) {
-                    SettingsRow(icon: "textformat.abc", label: "翻譯語言") {
-                        HStack(spacing: 6) {
-                            Text("\(state.translationSource) → \(state.translationTarget)")
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Image(systemName: "chevron.right")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-                    }
+                SettingsNavigationRow(
+                    icon: "textformat.abc",
+                    label: "翻譯語言",
+                    action: onShowTranslationLanguage
+                ) {
+                    SettingsStatusValue(
+                        text: "\(state.translationSource) → \(state.translationTarget)",
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
-                .buttonStyle(.plain)
 
                 SettingsDivider()
 
@@ -74,14 +64,7 @@ struct SettingsPreferencesSection: View {
                             }
                         }
                     } label: {
-                        HStack(spacing: 6) {
-                            Text(state.selectedLanguage)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Image(systemName: "chevron.up.chevron.down")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
+                        SettingsMenuValue(text: state.selectedLanguage)
                     }
                     .buttonStyle(.plain)
                     .accessibilityLabel("\("選擇語言".localized)：\(state.selectedLanguage)")
@@ -90,19 +73,16 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 複習節奏
-                Button(action: onShowReviewSettings) {
-                    SettingsRow(icon: "timer", label: "複習節奏") {
-                        HStack(spacing: 6) {
-                            Text(state.selectedReviewMode)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                            Image(systemName: "chevron.right")
-                                .font(vocabSkin.typography.iconTiny)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-                    }
+                SettingsNavigationRow(
+                    icon: "timer",
+                    label: "複習節奏",
+                    action: onShowReviewSettings
+                ) {
+                    SettingsStatusValue(
+                        text: state.selectedReviewMode,
+                        color: vocabSkin.palette.secondaryText
+                    )
                 }
-                .buttonStyle(.plain)
             }
             .settingsCard()
 
