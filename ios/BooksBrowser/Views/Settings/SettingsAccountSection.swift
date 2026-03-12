@@ -131,63 +131,13 @@ struct SettingsAccountSection: View {
     private var loggedInView: some View {
         VStack(spacing: 0) {
             // Account info — tappable to show account detail
-            Button {
-                onShowAccountDetail?()
-            } label: {
-                HStack {
-                    SettingsAuthSummary(state: state)
-                    SettingsTrailingChevronIcon()
-                }
-                .padding(vocabSkin.spacing.cardPadding)
-            }
-            .buttonStyle(.plain)
+            accountSummaryRow()
 
             // Subscription summary row
             if let subscription {
                 SettingsDivider(leadingInset: 0)
 
-                Button {
-                    if subscription.isActive {
-                        onShowSubscriptionDetail?()
-                    } else {
-                        actions.showSubscriptionPaywall()
-                    }
-                } label: {
-                    HStack(spacing: vocabSkin.spacing.controlGap) {
-                        Image(systemName: subscription.isActive
-                              ? "checkmark.seal.fill"
-                              : "sparkles.rectangle.stack")
-                            .font(vocabSkin.typography.iconMedium)
-                            .foregroundStyle(subscription.isActive
-                                             ? vocabSkin.palette.success
-                                             : vocabSkin.palette.accent)
-
-                        SettingsTitleSubtitleStack(
-                            title: subscriptionRowTitle(for: subscription),
-                            subtitle: subscriptionRowSubtitle(for: subscription),
-                            titleFont: vocabSkin.typography.body.weight(.medium),
-                            titleColor: vocabSkin.palette.primaryText,
-                            subtitleColor: vocabSkin.palette.secondaryText,
-                            subtitleLineLimit: 2
-                        )
-
-                        Spacer()
-
-                        if subscription.isActive {
-                            subscriptionBadge(subscription)
-                        } else {
-                            SettingsStatusBadge(
-                                text: "升級".localized,
-                                tone: vocabSkin.palette.accent
-                            )
-                        }
-
-                        SettingsTrailingChevronIcon()
-                    }
-                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(.plain)
+                subscriptionSummaryRow(subscription)
             }
 
             SettingsDivider(leadingInset: 0)
@@ -201,6 +151,54 @@ struct SettingsAccountSection: View {
             .buttonStyle(.appAction(.destructive))
             .padding(vocabSkin.spacing.cardPadding)
             .accessibilityLabel("登出帳號".localized)
+        }
+    }
+
+    private func accountSummaryRow() -> some View {
+        SettingsCardNavigationRow(
+            action: { onShowAccountDetail?() }
+        ) {
+            SettingsAuthSummary(state: state)
+        }
+    }
+
+    private func subscriptionSummaryRow(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
+        SettingsCardNavigationRow(
+            action: {
+                if subscription.isActive {
+                    onShowSubscriptionDetail?()
+                } else {
+                    actions.showSubscriptionPaywall()
+                }
+            }
+        ) {
+            HStack(spacing: vocabSkin.spacing.controlGap) {
+                Image(systemName: subscription.isActive
+                      ? "checkmark.seal.fill"
+                      : "sparkles.rectangle.stack")
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(subscription.isActive
+                                     ? vocabSkin.palette.success
+                                     : vocabSkin.palette.accent)
+
+                SettingsTitleSubtitleStack(
+                    title: subscriptionRowTitle(for: subscription),
+                    subtitle: subscriptionRowSubtitle(for: subscription),
+                    titleFont: vocabSkin.typography.body.weight(.medium),
+                    titleColor: vocabSkin.palette.primaryText,
+                    subtitleColor: vocabSkin.palette.secondaryText,
+                    subtitleLineLimit: 2
+                )
+            }
+        } trailing: {
+            if subscription.isActive {
+                subscriptionBadge(subscription)
+            } else {
+                SettingsStatusBadge(
+                    text: "升級".localized,
+                    tone: vocabSkin.palette.accent
+                )
+            }
         }
     }
 
