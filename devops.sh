@@ -228,6 +228,8 @@ cmd_deploy() {
     "$LOCAL_DIR/" "$SERVER:$REMOTE_DIR/"
 
   section "Step 2/3: 重新編譯並啟動容器"
+  # 確保 data/ 目錄權限匹配容器內 appuser (UID 1000)
+  run_remote "sudo chown -R 1000:1000 $REMOTE_DIR/data 2>/dev/null || true"
   run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
 
   section "Step 3/3: DB Migration"
