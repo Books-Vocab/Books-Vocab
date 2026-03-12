@@ -95,13 +95,13 @@ struct SettingsAccountSection: View {
 
                     HStack(spacing: 8) {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
-                            .font(vocabSkin.typography.monoLabel)
-                            .autocorrectionDisabled()
-                            .textInputAutocapitalization(.never)
+                            .appSettingsTextInputStyle(alignment: .leading)
 
-                        Button("登入".localized, action: actions.manualLogin)
-                            .buttonStyle(.bordered)
-                            .controlSize(.small)
+                        SettingsCompactActionButton(
+                            title: "登入".localized,
+                            isEnabled: !manualLoginUserId.wrappedValue.isEmpty,
+                            action: actions.manualLogin
+                        )
                             .accessibilityLabel("開發者登入".localized)
                     }
 
@@ -115,12 +115,12 @@ struct SettingsAccountSection: View {
 #endif
 
                 if let error = state.authError {
-                    Text(error)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.destructive)
-                        .multilineTextAlignment(.center)
-                        .padding(.horizontal, vocabSkin.spacing.inlineGap)
-                        .padding(.bottom, vocabSkin.spacing.tinyGap)
+                    VocabStateMessageCard(
+                        title: "登入暫時失敗".localized,
+                        systemImage: "exclamationmark.triangle.fill",
+                        description: error
+                    )
+                    .padding(.top, vocabSkin.spacing.microGap)
                 }
             }
             .padding(.horizontal, AccountMetrics.authBlockPadding)
@@ -131,75 +131,13 @@ struct SettingsAccountSection: View {
     private var loggedInView: some View {
         VStack(spacing: 0) {
             // Account info — tappable to show account detail
-            Button {
-                onShowAccountDetail?()
-            } label: {
-                HStack {
-                    SettingsAuthSummary(state: state)
-                    Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconTiny)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
-                .padding(vocabSkin.spacing.cardPadding)
-            }
-            .buttonStyle(.plain)
+            accountSummaryRow()
 
             // Subscription summary row
             if let subscription {
                 SettingsDivider(leadingInset: 0)
 
-                Button {
-                    if subscription.isActive {
-                        onShowSubscriptionDetail?()
-                    } else {
-                        actions.showSubscriptionPaywall()
-                    }
-                } label: {
-                    HStack(spacing: vocabSkin.spacing.controlGap) {
-                        Image(systemName: subscription.isActive
-                              ? "checkmark.seal.fill"
-                              : "sparkles.rectangle.stack")
-                            .font(vocabSkin.typography.iconMedium)
-                            .foregroundStyle(subscription.isActive
-                                             ? vocabSkin.palette.success
-                                             : vocabSkin.palette.accent)
-
-                        VStack(alignment: .leading, spacing: 2) {
-                            Text(subscription.isActive
-                                 ? "Pro 已啟用".localized
-                                 : subscription.planName)
-                                .font(vocabSkin.typography.body.weight(.medium))
-                                .foregroundStyle(vocabSkin.palette.primaryText)
-                            Text(subscription.isActive
-                                 ? subscription.detail
-                                 : "升級解鎖完整功能".localized)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
-                                .lineLimit(1)
-                        }
-
-                        Spacer()
-
-                        if subscription.isActive {
-                            subscriptionBadge(subscription)
-                        } else {
-                            Text("升級".localized)
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.accent)
-                                .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-                                .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-                                .background(vocabSkin.palette.accent.opacity(0.12))
-                                .clipShape(Capsule())
-                        }
-
-                        Image(systemName: "chevron.right")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
-                    }
-                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
-                    .padding(.vertical, 13)
-                }
-                .buttonStyle(.plain)
+                subscriptionSummaryRow(subscription)
             }
 
             SettingsDivider(leadingInset: 0)
@@ -216,22 +154,70 @@ struct SettingsAccountSection: View {
         }
     }
 
-    private func subscriptionBadge(_ sub: SettingsPresenterState.SubscriptionSection) -> some View {
-        let tone: Color = {
-            switch sub.badgeTone {
-            case .neutral: return vocabSkin.palette.secondaryText
-            case .accent: return vocabSkin.palette.accent
-            case .success: return vocabSkin.palette.success
-            }
-        }()
+    private func accountSummaryRow() -> some View {
+        SettingsCardNavigationRow(
+            action: { onShowAccountDetail?() }
+        ) {
+            SettingsAuthSummary(state: state)
+        }
+    }
 
-        return Text(sub.badgeText)
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-            .background(tone.opacity(0.12))
-            .clipShape(Capsule())
+    private func subscriptionSummaryRow(_ subscription: SettingsPresenterState.SubscriptionSection) -> some View {
+        SettingsCardNavigationRow(
+            action: {
+                if subscription.isActive {
+                    onShowSubscriptionDetail?()
+                } else {
+                    actions.showSubscriptionPaywall()
+                }
+            }
+        ) {
+            HStack(spacing: vocabSkin.spacing.controlGap) {
+                Image(systemName: subscription.isActive
+                      ? "checkmark.seal.fill"
+                      : "sparkles.rectangle.stack")
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(subscription.isActive
+                                     ? vocabSkin.palette.success
+                                     : vocabSkin.palette.accent)
+
+                SettingsTitleSubtitleStack(
+                    title: subscriptionRowTitle(for: subscription),
+                    subtitle: subscriptionRowSubtitle(for: subscription),
+                    titleFont: vocabSkin.typography.body.weight(.medium),
+                    titleColor: vocabSkin.palette.primaryText,
+                    subtitleColor: vocabSkin.palette.secondaryText,
+                    subtitleLineLimit: 2
+                )
+            }
+        } trailing: {
+            if subscription.isActive {
+                subscriptionBadge(subscription)
+            } else {
+                SettingsStatusBadge(
+                    text: "升級".localized,
+                    tone: vocabSkin.palette.accent
+                )
+            }
+        }
+    }
+
+    private func subscriptionBadge(_ sub: SettingsPresenterState.SubscriptionSection) -> some View {
+        SettingsStatusBadge(text: sub.badgeText, tone: sub.badgeTone.color(in: vocabSkin))
+    }
+
+    private func subscriptionRowTitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
+        subscription.isActive ? "Pro 已啟用".localized : subscription.planName
+    }
+
+    private func subscriptionRowSubtitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
+        if subscription.isActive {
+            return subscription.summary.isEmpty ? subscription.detail : subscription.summary
+        }
+        if let pricingUnavailableMessage = subscription.pricingUnavailableMessage, !pricingUnavailableMessage.isEmpty {
+            return pricingUnavailableMessage
+        }
+        return subscription.summary
     }
 }
 
@@ -323,9 +309,7 @@ private struct SettingsAuthButton<Leading: View>: View {
 
             Spacer()
 
-            Image(systemName: "chevron.right")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+            SettingsTrailingChevronIcon()
         }
     }
 }
@@ -338,28 +322,20 @@ struct SettingsAuthSummary: View {
         HStack(spacing: AccountMetrics.authRowSpacing) {
             avatar
 
-            VStack(alignment: .leading, spacing: 3) {
-                Text(state.displayName)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(1)
-
-                if let email = state.email {
-                    Text(email)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .lineLimit(1)
-                }
-            }
+            SettingsTitleSubtitleStack(
+                title: state.displayName,
+                subtitle: state.email,
+                titleFont: vocabSkin.typography.sectionTitle,
+                titleColor: vocabSkin.palette.primaryText,
+                subtitleColor: vocabSkin.palette.secondaryText
+            )
 
             Spacer()
 
-            VStack(alignment: .trailing, spacing: AccountMetrics.authStatusSpacing) {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(vocabSkin.typography.symbolLarge)
-                    .foregroundStyle(vocabSkin.palette.success)
-                    .symbolEffect(.bounce, value: state.isLoggedIn)
-            }
+            Image(systemName: "checkmark.circle.fill")
+                .font(vocabSkin.typography.symbolLarge)
+                .foregroundStyle(vocabSkin.palette.success)
+                .symbolEffect(.bounce, value: state.isLoggedIn)
         }
     }
 
@@ -396,26 +372,5 @@ struct SettingsAuthSummary: View {
                     .foregroundStyle(vocabSkin.palette.secondaryText)
             }
         }
-    }
-}
-
-private struct SettingsButtonChromeModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
-
-    func body(content: Content) -> some View {
-        content
-            .padding(AccountMetrics.authBlockPadding)
-            .background(vocabSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
-            .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-            )
-    }
-}
-
-private extension View {
-    func appSettingsButtonChrome() -> some View {
-        modifier(SettingsButtonChromeModifier())
     }
 }
