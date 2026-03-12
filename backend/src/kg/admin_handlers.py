@@ -16,15 +16,25 @@ from .api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEn
 from .user_store import resolve_mochi_api_key_from_config
 
 
-def require_admin(token: str | None, *, admin_token: str) -> None:
+def _resolve_admin_token(token: str | None, authorization: str | None) -> str | None:
+    if token:
+        return token
+    if authorization and authorization.startswith("Bearer "):
+        return authorization[7:]
+    return None
+
+
+def require_admin(token: str | None, *, admin_token: str, authorization: str | None = None) -> None:
+    resolved = _resolve_admin_token(token, authorization)
     if not admin_token:
         raise HTTPException(403, "ADMIN_TOKEN not configured")
-    if token != admin_token:
+    if resolved != admin_token:
         raise HTTPException(403, "Forbidden")
 
 
-def admin_ui_response(token: str | None, *, admin_token: str, admin_html: str) -> HTMLResponse:
-    require_admin(token, admin_token=admin_token)
+def admin_ui_response(token: str | None, *, admin_token: str, admin_html: str, authorization: str | None = None) -> HTMLResponse:
+    # HTML shell pages are served without auth — all data requires authenticated API calls.
+    # The token is passed via URL on initial visit and stored in sessionStorage by the JS.
     return HTMLResponse(admin_html)
 
 
@@ -38,8 +48,9 @@ def admin_stats_response(
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
+    authorization: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
 
     from .quota_service import get_all_quota_usage
 
@@ -108,8 +119,9 @@ def admin_logs_response(
     log_getter: Callable[..., list[dict[str, Any]]],
     n: int,
     level: str | None,
+    authorization: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     return {"logs": log_getter(n=n, level=level or None)}
 
 
@@ -120,8 +132,9 @@ def admin_run_tests_response(
     req: Any,
     run_pytest_matrix: Callable[..., dict[str, Any]],
     store_last_test_run: Callable[[dict[str, Any]], dict[str, Any]],
+    authorization: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     selected = req.itemIds if req else []
     return store_last_test_run(run_pytest_matrix(selected_items=selected))
 
@@ -131,8 +144,9 @@ def admin_last_test_run_response(
     *,
     admin_token: str,
     get_last_test_run: Callable[[], dict[str, Any] | None],
+    authorization: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     last_run = get_last_test_run()
     if last_run is None:
         return {"status": "idle"}
@@ -144,13 +158,13 @@ def admin_test_catalog_response(
     *,
     admin_token: str,
     build_test_catalog: Callable[[], dict[str, Any]],
+    authorization: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     return build_test_catalog()
 
 
-def admin_tests_ui_response(token: str | None, *, admin_token: str, admin_tests_html: str) -> HTMLResponse:
-    require_admin(token, admin_token=admin_token)
+def admin_tests_ui_response(token: str | None, *, admin_token: str, admin_tests_html: str, authorization: str | None = None) -> HTMLResponse:
     return HTMLResponse(admin_tests_html)
 
 
@@ -162,8 +176,9 @@ def admin_user_entitlement_response(
     load_users: Callable[[], dict[str, dict[str, Any]]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
+    authorization: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     users = load_users()
     record = users.get(user_id)
     if not isinstance(record, dict) or user_id.startswith("_"):
@@ -186,8 +201,9 @@ def admin_grant_pro_access_response(
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    authorization: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     now_iso = datetime.now(tz=UTC).isoformat()
 
     with FileLock(str(users_lock_file)):
@@ -230,8 +246,9 @@ def admin_revoke_pro_access_response(
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    authorization: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token)
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     now_iso = datetime.now(tz=UTC).isoformat()
 
     with FileLock(str(users_lock_file)):
