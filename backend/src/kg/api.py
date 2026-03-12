@@ -13,12 +13,12 @@ import asyncio
 import logging
 from datetime import datetime
 from pathlib import Path
-from typing import Any
+from typing import Any, Callable
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logging.basicConfig(
@@ -126,6 +126,7 @@ from .service_factories import (
     create_gemini_client,
     create_graph_store,
 )
+from .rate_limit import api_limiter, translate_limiter
 from .settings import KGSettings, load_settings
 from .translate_handlers import (
     translate_explain_response,
@@ -204,7 +205,7 @@ APP_STORE_NOTIFICATIONS_FILE = Path()
 # JWT / auth / admin configuration
 JWT_SECRET = ""
 JWT_ALGORITHM = "HS256"
-JWT_EXPIRY_MINUTES = 60 * 24 * 365 # 1 year
+JWT_EXPIRY_MINUTES = 60 * 24 * 30  # 30 days
 GOOGLE_CLIENT_ID = ""
 APPLE_BUNDLE_ID = "com.Max0228.BooksBrowser"
 APP_STORE_ALLOW_UNSIGNED_SYNC = False
@@ -289,6 +290,43 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type"],
     )
 
+    @app.middleware("http")
+    async def limit_request_body(request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
+    _RATE_LIMIT_EXEMPT = {
+        "/docs",
+        "/openapi.json",
+        "/privacy",
+        "/support",
+        "/terms",
+        "/guide",
+        "/api/billing/app-store/notifications",
+        "/admin",
+    }
+
+    @app.middleware("http")
+    async def rate_limit_middleware(request: Request, call_next):
+        path = request.url.path
+        if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
+            return await call_next(request)
+
+        auth = request.headers.get("authorization", "")
+        key = auth[-16:] if len(auth) > 16 else (request.client.host if request.client else "unknown")
+
+        limiter = translate_limiter if "/api/translate" in path else api_limiter
+
+        if not await limiter.is_allowed(key):
+            return JSONResponse(
+                {"detail": "Too many requests"},
+                status_code=429,
+                headers={"Retry-After": str(limiter.window_seconds)},
+            )
+        return await call_next(request)
+
     admin_handlers = create_admin_handlers(
         runtime_settings_fn=_runtime_settings,
         runtime_users_lock_file_fn=_runtime_users_lock_file,
@@ -336,7 +374,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 security = HTTPBearer()
 
 # Global lock per user to prevent concurrent pipeline executions
-_USER_LOCKS: dict[str, asyncio.Lock] = {}
+_USER_LOCKS: collections.OrderedDict[str, asyncio.Lock] = collections.OrderedDict()
+_MAX_USER_LOCKS = 500
 _USER_LOCKS_MUTEX: asyncio.Lock | None = None  # initialized lazily after event loop starts
 
 def _get_locks_mutex() -> asyncio.Lock:
@@ -347,9 +386,14 @@ def _get_locks_mutex() -> asyncio.Lock:
 
 async def get_user_lock(user_id: str) -> asyncio.Lock:
     async with _get_locks_mutex():
-        if user_id not in _USER_LOCKS:
-            _USER_LOCKS[user_id] = asyncio.Lock()
-        return _USER_LOCKS[user_id]
+        if user_id in _USER_LOCKS:
+            _USER_LOCKS.move_to_end(user_id)
+            return _USER_LOCKS[user_id]
+        lock = asyncio.Lock()
+        _USER_LOCKS[user_id] = lock
+        while len(_USER_LOCKS) > _MAX_USER_LOCKS:
+            _USER_LOCKS.popitem(last=False)
+        return lock
 
 
 def _load_users() -> dict[str, dict[str, Any]]:
@@ -363,7 +407,10 @@ save_users = _save_users
 
 
 def _normalize_users_payload(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
-    return normalize_users_payload(users, _default_subscription_payload)
+    from .secret_store import encrypt_value
+    jwt_secret = _runtime_settings().jwt_secret
+    encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
+    return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
 
 def _parse_datetime(raw: Any) -> datetime | None:
     return parse_datetime(raw)
@@ -518,7 +565,7 @@ def _decode_notification_payload(req: AppStoreNotificationRequest) -> tuple[dict
 # ---------------------------------------------------------------------------
 def get_user_config(user: dict = Depends(get_current_user)):
     """Get user configuration."""
-    return get_user_config_response(user)
+    return get_user_config_response(user, jwt_secret=_runtime_settings().jwt_secret)
 
 
 # ---------------------------------------------------------------------------
@@ -596,13 +643,14 @@ async def reconcile_app_store_subscription(req: AppStoreReconcileRequest, user: 
 # ---------------------------------------------------------------------------
 def update_user_config(req: UserConfigRequest, user: dict = Depends(get_current_user)):
     """Update user configuration."""
-    _runtime_settings()
+    settings = _runtime_settings()
     return update_user_config_response(
         req,
         user,
         users_lock_file=_runtime_users_lock_file(),
         load_users=_load_users,
         save_users=_save_users,
+        jwt_secret=settings.jwt_secret,
     )
 
 
@@ -771,6 +819,7 @@ async def _run_pipeline_background(user: dict):
         gemini_client_factory=_gemini_client,
         logger=logger,
         link_kind_enum=LinkKind,
+        jwt_secret=_runtime_settings().jwt_secret,
     )
 
 
@@ -793,75 +842,46 @@ def _is_pro(user: dict) -> bool:
     from .billing import current_pro_entitlement_record
     return bool(current_pro_entitlement_record(user.get("record")).get("is_active"))
 
-def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
-    """Perform a quick UI translation via Gemini API (proxy)."""
+def _with_quota_check(
+    user: dict,
+    call_type: str,
+    response: Response | None,
+    handler: Callable[[], Any],
+) -> Any:
+    """共用 quota 檢查 + header 注入邏輯。"""
     from .quota_service import check_quota, get_quota_state
     pro = _is_pro(user)
-    quota = check_quota(user["id"], "translate_quick", is_pro=pro)
+    quota = check_quota(user["id"], call_type, is_pro=pro)
     if quota["exceeded"]:
         raise HTTPException(
             429,
             detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
             headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
         )
-    result = translate_quick_response(
-        req,
-        user,
-        require_pro_access=_require_pro_access,
-        gemini_client_factory=_gemini_client,
-        logger=logger,
-    )
+    result = handler()
     state = get_quota_state(user["id"], is_pro=pro)
     if response is not None:
         response.headers["X-Quota-Fraction"] = str(state["fraction"])
         response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
     return result
+
+def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+    """Perform a quick UI translation via Gemini API (proxy)."""
+    return _with_quota_check(user, "translate_quick", response, lambda: translate_quick_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client, logger=logger,
+    ))
 
 def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Translate a multi-word phrase or expression. Returns translation only."""
-    from .quota_service import check_quota, get_quota_state
-    pro = _is_pro(user)
-    quota = check_quota(user["id"], "translate_phrase", is_pro=pro)
-    if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
-            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
-        )
-    result = translate_phrase_response(
-        req,
-        user,
-        require_pro_access=_require_pro_access,
-        gemini_client_factory=_gemini_client,
-    )
-    state = get_quota_state(user["id"], is_pro=pro)
-    if response is not None:
-        response.headers["X-Quota-Fraction"] = str(state["fraction"])
-        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
-    return result
+    return _with_quota_check(user, "translate_phrase", response, lambda: translate_phrase_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client,
+    ))
 
 def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
-    from .quota_service import check_quota, get_quota_state
-    pro = _is_pro(user)
-    quota = check_quota(user["id"], "translate_explain", is_pro=pro)
-    if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
-            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
-        )
-    result = translate_explain_response(
-        req,
-        user,
-        require_pro_access=_require_pro_access,
-        gemini_client_factory=_gemini_client,
-    )
-    state = get_quota_state(user["id"], is_pro=pro)
-    if response is not None:
-        response.headers["X-Quota-Fraction"] = str(state["fraction"])
-        response.headers["X-Quota-Reset"] = str(state["reset_seconds"])
-    return result
+    return _with_quota_check(user, "translate_explain", response, lambda: translate_explain_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client,
+    ))
 
 
 # ---------------------------------------------------------------------------

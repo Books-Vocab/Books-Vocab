@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -9,8 +10,11 @@ from pathlib import Path
 from typing import Literal
 
 from sqlalchemy import JSON, Column
+from sqlalchemy.exc import OperationalError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
+
+logger = logging.getLogger(__name__)
 
 CardMode = Literal["recognition", "production"]
 
@@ -64,6 +68,14 @@ class CardStore:
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         SQLModel.metadata.create_all(self.engine, checkfirst=True)
         self._migrate_review_columns()
+        with self.engine.connect() as conn:
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_card_updated_at ON card (updated_at)"
+            )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_card_content ON card (content)"
+            )
+            conn.commit()
 
     def _migrate_review_columns(self) -> None:
         """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
@@ -85,8 +97,12 @@ class CardStore:
                 if col_name not in existing:
                     try:
                         conn.exec_driver_sql(f"ALTER TABLE card ADD COLUMN {col_name} {col_type}")
-                    except Exception:
-                        pass
+                    except OperationalError as exc:
+                        if "duplicate column" in str(exc).lower():
+                            pass  # column already added by concurrent process
+                        else:
+                            logger.error("Migration failed for column %s: %s", col_name, exc)
+                            raise
             conn.commit()
 
     def add(
@@ -130,6 +146,13 @@ class CardStore:
                 statement = statement.where(Card.is_deleted.is_(False))
             results = session.exec(statement).all()
             yield from results
+
+    def all_as_dict(self, include_deleted: bool = False) -> dict[str, "Card"]:
+        with Session(self.engine) as session:
+            statement = select(Card)
+            if not include_deleted:
+                statement = statement.where(Card.is_deleted.is_(False))
+            return {card.id: card for card in session.exec(statement).all()}
 
     def get_modified_since(self, since: datetime) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""

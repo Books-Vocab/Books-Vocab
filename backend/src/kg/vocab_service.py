@@ -115,7 +115,7 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
     else:
         cards = list(cards_store.all())
 
-    cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
+    cards_by_id = cards_store.all_as_dict(include_deleted=True)
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 

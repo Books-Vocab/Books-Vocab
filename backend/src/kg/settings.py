@@ -13,7 +13,7 @@ class KGSettings:
     data_dir: Path
     jwt_secret: str
     jwt_algorithm: str = "HS256"
-    jwt_expiry_minutes: int = 60 * 24 * 365
+    jwt_expiry_minutes: int = 60 * 24 * 30
     google_client_id: str = ""
     apple_bundle_id: str = "com.Max0228.BooksBrowser"
     app_store_allow_unsigned_sync: bool = False
