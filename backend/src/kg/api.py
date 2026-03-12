@@ -11,19 +11,20 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import uuid as _uuid
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from dotenv import load_dotenv
-from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logging.basicConfig(
     level=logging.INFO,
-    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    format='{"ts":"%(asctime)s","level":"%(levelname)s","logger":"%(name)s","msg":"%(message)s"}',
 )
 logger = logging.getLogger(__name__)
 
@@ -39,11 +40,13 @@ class _MemoryLogHandler(logging.Handler):
     def emit(self, record: logging.LogRecord) -> None:
         try:
             from datetime import datetime as _dt
+            from .request_context import request_id_var
             self._buf.append({
                 "ts": _dt.fromtimestamp(record.created).strftime("%H:%M:%S"),
                 "level": record.levelname,
                 "name": record.name,
                 "msg": record.getMessage(),
+                "request_id": request_id_var.get("-"),
             })
         except Exception:
             pass  # handler must never crash the application
@@ -288,6 +291,20 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
+
+    from .request_context import request_id_var
+
+    @app.middleware("http")
+    async def request_id_middleware(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:16]
+        request.state.request_id = request_id
+        token = request_id_var.set(request_id)
+        try:
+            response = await call_next(request)
+        finally:
+            request_id_var.reset(token)
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     admin_handlers = create_admin_handlers(
         runtime_settings_fn=_runtime_settings,
