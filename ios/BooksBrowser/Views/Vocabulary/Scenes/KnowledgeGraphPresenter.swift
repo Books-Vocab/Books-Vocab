@@ -51,7 +51,7 @@ struct KnowledgeGraphPresenter: View {
                     }
                 }
                 .animation(AppMotion.standardSpring, value: state.showsSettings)
-                .transition(.opacity)
+                .transition(.contentSwap)
                 .animation(AppMotion.contentFade, value: state.emptyState == nil)
             .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {

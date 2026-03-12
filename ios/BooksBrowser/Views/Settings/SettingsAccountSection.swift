@@ -36,7 +36,7 @@ struct SettingsAccountSection: View {
                                 .foregroundStyle(vocabSkin.palette.secondaryText)
                         }
                     }
-                    .transition(.opacity)
+                    .transition(.contentSwap)
                 }
             }
             .animation(AppMotion.phaseChange, value: state.isAuthenticating)

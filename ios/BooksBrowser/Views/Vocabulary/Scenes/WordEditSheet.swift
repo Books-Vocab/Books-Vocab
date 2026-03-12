@@ -19,7 +19,7 @@ struct WordEditSheet: View {
 
                 Section(header: Text("音標".localized)) {
                     TextField("e.g. ˈwɜːrd", text: $draftPronunciation)
-                        .font(.system(.body, design: .monospaced))
+                        .font(AppFonts.mono())
                         .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
                 }
