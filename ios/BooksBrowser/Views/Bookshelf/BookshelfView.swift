@@ -180,6 +180,11 @@ struct BookshelfView: View {
                 .padding(.top, AppMetrics.spacingLarge)
                 .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
+        .refreshable {
+            // CloudKit 自動同步無法直接觸發，短暫等待讓 pending 操作完成
+            // @Query 會自動反映 CloudKit 傳入的變更
+            try? await Task.sleep(for: .seconds(1.5))
+        }
         .navigationDestination(for: Book.self) { book in
             ReaderView(book: book)
         }
