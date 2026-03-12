@@ -206,6 +206,9 @@ final class KGService: KGServing, LocalDataClearing {
     @ObservationIgnored
     private let sessionInvalidator: any SessionInvalidating
 
+    @ObservationIgnored
+    private let userConfigClient: any KGUserConfigRemoteHandling
+
     var serverURL: String {
         get { Self.getServerURL() }
         set { Self.setServerURL(newValue) }
@@ -226,22 +229,24 @@ final class KGService: KGServing, LocalDataClearing {
 
     init(
         authSession: any AuthSessionProviding = MainActor.assumeIsolated({ AuthManager.shared }),
-        sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared })
+        sessionInvalidator: any SessionInvalidating = MainActor.assumeIsolated({ AuthManager.shared }),
+        userConfigClient: any KGUserConfigRemoteHandling = KGUserConfigClient()
     ) {
         self.authSession = authSession
         self.sessionInvalidator = sessionInvalidator
+        self.userConfigClient = userConfigClient
     }
 
     // MARK: - Auth Helper
 
-    private func currentAuthToken() async throws -> String {
+    func currentAuthToken() async throws -> String {
         guard let token = await authSession.token else {
             throw KGError.unauthorized
         }
         return token
     }
 
-    private func applyAuth(to request: inout URLRequest, token: String) {
+    func applyAuth(to request: inout URLRequest, token: String) {
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
@@ -458,23 +463,9 @@ final class KGService: KGServing, LocalDataClearing {
 
     func fetchUserConfig() async throws -> KGUserConfig {
         let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/user/config")
-        var request = URLRequest(url: url)
-        applyAuth(to: &request, token: token)
-
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to fetch config (HTTP \(httpResponse.statusCode))")
-        }
-
+        let config = try await userConfigClient.fetchUserConfig(baseURL: baseURL, token: token)
         AppLog.kg.info("Fetched config successfully")
-        return try JSONDecoder().decode(KGUserConfig.self, from: data)
+        return config
     }
 
     func fetchEntitlements() async throws -> KGEntitlements {
@@ -522,30 +513,26 @@ final class KGService: KGServing, LocalDataClearing {
         return try JSONDecoder().decode(KGEntitlements.self, from: data)
     }
 
-    func updateUserConfig(optionalIntegrationKey: String?, translationConfig: KGTranslationConfig? = nil) async throws -> KGUserConfig {
+    func updateOptionalIntegrationKey(_ apiKey: String) async throws -> KGUserConfig {
         let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/user/config")
-        var request = URLRequest(url: url)
-        request.httpMethod = "PUT"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, token: token)
-
-        let payload = KGUserConfig(optionalIntegrationKey: optionalIntegrationKey, translation: translationConfig)
-        request.httpBody = try JSONEncoder().encode(payload)
-
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to update config (HTTP \(httpResponse.statusCode))")
-        }
-
+        let config = try await userConfigClient.updateOptionalIntegrationKey(
+            baseURL: baseURL,
+            token: token,
+            apiKey: apiKey
+        )
         AppLog.kg.info("Updated config successfully")
-        return try JSONDecoder().decode(KGUserConfig.self, from: data)
+        return config
+    }
+
+    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig {
+        let token = try await currentAuthToken()
+        let config = try await userConfigClient.updateTranslationConfig(
+            baseURL: baseURL,
+            token: token,
+            translation: translationConfig
+        )
+        AppLog.kg.info("Updated translation config successfully")
+        return config
     }
 
     func deleteAccount() async throws {

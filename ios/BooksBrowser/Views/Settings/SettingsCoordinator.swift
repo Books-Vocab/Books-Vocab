@@ -74,14 +74,13 @@ final class SettingsCoordinator {
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
                 do {
-                    _ = try await kgService.updateUserConfig(
-                        optionalIntegrationKey: optionalIntegrationApiKey.isEmpty ? nil : optionalIntegrationApiKey,
-                        translationConfig: nil
-                    )
+                    let config = try await kgService.updateOptionalIntegrationKey(optionalIntegrationApiKey)
+                    fetchedKey = config.optionalIntegrationApiKey ?? ""
+                    optionalIntegrationApiKey = fetchedKey
                 } catch {
                     AppLog.kg.error("updateUserConfig (API key) failed: \(error.localizedDescription)")
+                    return
                 }
-                fetchedKey = optionalIntegrationApiKey
             }
         }
     }
@@ -129,9 +128,8 @@ final class SettingsCoordinator {
         guard authManager.isLoggedIn else { return }
         Task { @MainActor in
             do {
-                _ = try await kgService.updateUserConfig(
-                    optionalIntegrationKey: nil,
-                    translationConfig: KGTranslationConfig(
+                _ = try await kgService.updateTranslationConfig(
+                    KGTranslationConfig(
                         source_lang: source.rawValue,
                         target_lang: target.rawValue
                     )

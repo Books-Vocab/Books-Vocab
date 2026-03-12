@@ -16,7 +16,8 @@ protocol KGServing: AnyObject {
     func fetchUserConfig() async throws -> KGUserConfig
     func fetchEntitlements() async throws -> KGEntitlements
     func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements
-    func updateUserConfig(optionalIntegrationKey: String?, translationConfig: KGTranslationConfig?) async throws -> KGUserConfig
+    func updateOptionalIntegrationKey(_ apiKey: String) async throws -> KGUserConfig
+    func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig
     func deleteAccount() async throws
     func pullGraphLinks() async throws -> [KGGraphLink]
     func deleteCard(word: String) async throws
