@@ -154,6 +154,7 @@ struct VocabularyListView: View {
             )) { session in
                 TodayReviewView(
                     entries: session.entries,
+                    allEntries: allEntries,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
             }
@@ -163,6 +164,7 @@ struct VocabularyListView: View {
             )) { session in
                 TodayReviewView(
                     entries: session.entries,
+                    allEntries: allEntries,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
                 .presentationDetents([.large])
