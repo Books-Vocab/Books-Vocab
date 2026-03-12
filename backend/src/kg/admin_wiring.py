@@ -69,6 +69,7 @@ def create_admin_handlers(
             data_dir=settings.data_dir,
             card_store_factory=card_store_factory,
             authorization=authorization,
+            jwt_secret=settings.jwt_secret,
         )
 
     def admin_logs(token: str | None = None, n: int = 200, level: str | None = None, authorization: str | None = Header(None)):
