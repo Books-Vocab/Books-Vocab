@@ -132,7 +132,7 @@ struct SettingsReviewSection: View {
                 }
                 .settingsCard()
             }
-            .transition(.opacity.combined(with: .move(edge: .top)))
+            .transition(.statusRowReveal)
             .animation(AppMotion.phaseChange, value: reviewSettingsStore.settings.mode)
         }
     }
