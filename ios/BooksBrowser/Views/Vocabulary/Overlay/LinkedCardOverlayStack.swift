@@ -16,6 +16,7 @@ private enum LinkedCardStackMetrics {
 struct LinkedCardOverlayStack: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var stack: [VocabularyEntry]
+    var allEntries: [VocabularyEntry] = []
 
     var body: some View {
         if !stack.isEmpty {
@@ -52,6 +53,7 @@ struct LinkedCardOverlayStack: View {
 
             WordDetailSheet(
                 entry: entry,
+                allEntries: allEntries,
                 wrapInNavigation: false,
                 linkedCardStack: $stack
             )
