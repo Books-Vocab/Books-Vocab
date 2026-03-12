@@ -28,6 +28,9 @@ class HealthResponse(BaseModel):
     links: int
     pendingCandidates: int
     lastModified: str | None
+    db_ok: bool = True
+    disk_free_mb: int | None = None
+    data_dir_exists: bool = True
 
 
 class CardResponse(BaseModel):
