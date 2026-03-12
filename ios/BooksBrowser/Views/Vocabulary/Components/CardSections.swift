@@ -18,7 +18,7 @@ struct CardSectionDivider: View {
     var body: some View {
         Rectangle()
             .fill(vocabSkin.palette.divider)
-            .frame(height: 0.5)
+            .frame(height: AppMetrics.dividerThin)
             .padding(.horizontal, horizontalPadding)
     }
 }
