@@ -124,46 +124,7 @@ struct TranslationVocabPresenter: View {
 
     private var explanationOnlyBody: some View {
         VStack(alignment: .leading, spacing: 0) {
-            CardSectionDivider(horizontalPadding: 0)
-                .padding(.vertical, 2)
-
-            Label("語境解釋".localized, systemImage: "text.bubble")
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
-
-            if state.isLoadingExplanation {
-                VocabStateMessageCard(
-                    title: state.statusMessage ?? "載入解釋...".localized,
-                    systemImage: "text.bubble"
-                ) {
-                    HStack {
-                        ProgressView().scaleEffect(0.7)
-                        Spacer()
-                        if let timerText = state.activeTimerText {
-                            Text(timerText)
-                                .font(vocabSkin.typography.monoLabel)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
-                        }
-                    }
-                }
-                .padding(.vertical, vocabSkin.spacing.tinyGap)
-            } else if let errorMessage = state.explanationErrorMessage {
-                VocabStateMessageCard(
-                    title: "語境解釋暫時無法載入".localized,
-                    systemImage: "exclamationmark.triangle.fill",
-                    description: errorMessage
-                )
-                .padding(.vertical, vocabSkin.spacing.tinyGap)
-            } else if let explanation = state.explanation {
-                Text(explanation)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .lineSpacing(3)
-            } else {
-                emptyExplainStateCard
-                    .padding(.vertical, vocabSkin.spacing.tinyGap)
-            }
+            explanationSection
 
             footerToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
@@ -176,46 +137,7 @@ struct TranslationVocabPresenter: View {
                 .foregroundStyle(vocabSkin.palette.translationText)
 
             if state.isExpanded {
-                CardSectionDivider(horizontalPadding: 0)
-                    .padding(.vertical, 2)
-
-                Label("語境解釋".localized, systemImage: "text.bubble")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-
-                if state.isLoadingExplanation {
-                    VocabStateMessageCard(
-                        title: state.statusMessage ?? "載入解釋...".localized,
-                        systemImage: "text.bubble"
-                    ) {
-                        HStack {
-                            ProgressView().scaleEffect(0.7)
-                            Spacer()
-                            if let timerText = state.activeTimerText {
-                                Text(timerText)
-                                    .font(vocabSkin.typography.monoLabel)
-                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                            }
-                        }
-                    }
-                    .padding(.vertical, vocabSkin.spacing.tinyGap)
-                } else if let errorMessage = state.explanationErrorMessage {
-                    VocabStateMessageCard(
-                        title: "語境解釋暫時無法載入".localized,
-                        systemImage: "exclamationmark.triangle.fill",
-                        description: errorMessage
-                    )
-                    .padding(.vertical, vocabSkin.spacing.tinyGap)
-                } else if let explanation = state.explanation {
-                    Text(explanation)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .fixedSize(horizontal: false, vertical: true)
-                        .lineSpacing(3)
-                } else {
-                    emptyExplainStateCard
-                        .padding(.vertical, vocabSkin.spacing.tinyGap)
-                }
+                explanationSection
             }
 
             footerToolbar(showChevron: state.showsExpandAction, timerValue: state.statusTimerText)
@@ -252,6 +174,56 @@ struct TranslationVocabPresenter: View {
             systemImage: "text.bubble",
             description: "展開後會在這裡顯示上下文說明。".localized
         )
+    }
+
+    private var explanationSection: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            CardSectionDivider(horizontalPadding: 0)
+                .padding(.vertical, 2)
+
+            Label("語境解釋".localized, systemImage: "text.bubble")
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+
+            explanationContent
+        }
+    }
+
+    @ViewBuilder
+    private var explanationContent: some View {
+        if state.isLoadingExplanation {
+            VocabStateMessageCard(
+                title: state.statusMessage ?? "載入解釋...".localized,
+                systemImage: "text.bubble"
+            ) {
+                HStack {
+                    ProgressView().scaleEffect(0.7)
+                    Spacer()
+                    if let timerText = state.activeTimerText {
+                        Text(timerText)
+                            .font(vocabSkin.typography.monoLabel)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    }
+                }
+            }
+            .padding(.vertical, vocabSkin.spacing.tinyGap)
+        } else if let errorMessage = state.explanationErrorMessage {
+            VocabStateMessageCard(
+                title: "語境解釋暫時無法載入".localized,
+                systemImage: "exclamationmark.triangle.fill",
+                description: errorMessage
+            )
+            .padding(.vertical, vocabSkin.spacing.tinyGap)
+        } else if let explanation = state.explanation {
+            Text(explanation)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .lineSpacing(3)
+        } else {
+            emptyExplainStateCard
+                .padding(.vertical, vocabSkin.spacing.tinyGap)
+        }
     }
 
     @ViewBuilder
