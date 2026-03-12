@@ -1,0 +1,128 @@
+import SwiftUI
+
+private struct ReaderChromePreviewScene: View {
+    let state: ReaderViewPresenterState
+
+    var body: some View {
+        ReaderViewPresenter(
+            state: state,
+            onDismiss: {},
+            onShowTableOfContents: {},
+            onShowReaderSettings: {},
+            onExpandHeader: {},
+            onCollapseHeader: {}
+        ) {
+            ZStack {
+                LinearGradient(
+                    colors: [
+                        state.paperColor.opacity(ReaderPresentationMetrics.Preview.paperOpacityTop),
+                        state.paperColor.opacity(ReaderPresentationMetrics.Preview.paperOpacityMid),
+                        AppColors.warmNeutral.opacity(ReaderPresentationMetrics.Preview.paperOpacityFloor)
+                    ],
+                    startPoint: .top,
+                    endPoint: .bottom
+                )
+
+                VStack(alignment: .leading, spacing: ReaderPresentationMetrics.Preview.blockSpacing) {
+                    ForEach(0..<8, id: \.self) { index in
+                        RoundedRectangle(cornerRadius: ReaderPresentationMetrics.Preview.blockCornerRadius, style: .continuous)
+                            .fill(Color.primary.opacity(index == 2 ? ReaderPresentationMetrics.Preview.textBlockEmphasisOpacity : ReaderPresentationMetrics.Preview.textBlockBaseOpacity))
+                            .frame(height: index.isMultiple(of: 3) ? 12 : 10)
+                            .padding(.trailing, CGFloat(index % 3) * ReaderPresentationMetrics.Preview.trailingStep)
+                    }
+                    Spacer()
+                }
+                .padding(.top, ReaderPresentationMetrics.Preview.topInset)
+                .padding(.horizontal, ReaderPresentationMetrics.Preview.horizontalInset)
+                .padding(.bottom, ReaderPresentationMetrics.Preview.bottomInset)
+            }
+            .ignoresSafeArea()
+        } translationPanel: {
+            TranslationPanel(
+                word: "resilient",
+                result: TranslationResult(
+                    translation: "有韌性的；能快速恢復的",
+                    partOfSpeech: "adj.",
+                    pronunciation: nil,
+                    explanation: nil
+                ),
+                pronunciation: "/rɪˈzɪljənt/",
+                isLoading: false,
+                isSaved: true,
+                isLoggedIn: true,
+                isExpanded: true,
+                explanation: "在這段語境中指角色面對壓力後仍能迅速回到穩定狀態。",
+                isLoadingExplanation: false,
+                statusMessage: nil,
+                isExplanationOnly: false,
+                translationErrorMessage: nil,
+                explanationErrorMessage: nil,
+                onExpand: {},
+                onDelete: {},
+                onDismiss: {}
+            )
+        } settingsPanel: {
+            EmptyView()
+        }
+    }
+}
+
+#Preview("Reader Chrome / Loading") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepiaDeep,
+            isWebViewReady: false,
+            loadingPhase: "渲染頁面…",
+            underlineProgress: 0.42,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.18,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
+        )
+    )
+}
+
+#Preview("Reader Chrome / Compact") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepia,
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .compact, overlay: .none),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
+        )
+    )
+}
+
+#Preview("Reader Chrome / Expanded") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepia,
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .expanded, overlay: .none),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
+        )
+    )
+}
+
+#Preview("Reader Chrome / Translation") {
+    ReaderChromePreviewScene(
+        state: .init(
+            paperColor: AppColors.paperSepiaDeep,
+            isWebViewReady: true,
+            loadingPhase: "開啟書本…",
+            underlineProgress: nil,
+            chrome: .init(header: .compact, overlay: .translation),
+            totalProgression: 0.37,
+            bookTitle: "The Left Hand of Darkness",
+            panelMode: .glass
+        )
+    )
+}
