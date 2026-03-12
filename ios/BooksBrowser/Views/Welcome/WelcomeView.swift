@@ -120,8 +120,15 @@ private enum WelcomeMetrics {
     static let bottomPadding: CGFloat = 40
 }
 
-#Preview {
+#Preview("Welcome / Light") {
     AppThemeContainer {
         WelcomeView(onStart: {}, onTryDemo: {})
     }
+}
+
+#Preview("Welcome / Dark") {
+    AppThemeContainer {
+        WelcomeView(onStart: {}, onTryDemo: {})
+    }
+    .preferredColorScheme(.dark)
 }

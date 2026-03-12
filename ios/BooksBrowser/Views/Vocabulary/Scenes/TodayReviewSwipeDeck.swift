@@ -56,7 +56,7 @@ extension TodayReviewPresenter {
     }
 
     var swipeEnabled: Bool {
-        state.revealStage.showsAnswer && dismissPhase == .idle && !state.isAutoPlaying
+        dismissPhase == .idle && !state.isAutoPlaying
     }
 
     var swipeDragGesture: some Gesture {
