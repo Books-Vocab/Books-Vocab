@@ -541,6 +541,10 @@ extension View {
     func appSettingsButtonChrome() -> some View {
         modifier(SettingsButtonChromeModifier())
     }
+
+    func appSettingsTextInputStyle(alignment: TextAlignment = .trailing) -> some View {
+        modifier(SettingsTextInputModifier(alignment: alignment))
+    }
 }
 
 struct SettingsButtonChromeModifier: ViewModifier {
@@ -555,5 +559,18 @@ struct SettingsButtonChromeModifier: ViewModifier {
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
             )
+    }
+}
+
+struct SettingsTextInputModifier: ViewModifier {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let alignment: TextAlignment
+
+    func body(content: Content) -> some View {
+        content
+            .font(vocabSkin.typography.monoLabel)
+            .multilineTextAlignment(alignment)
+            .autocorrectionDisabled()
+            .textInputAutocapitalization(.never)
     }
 }

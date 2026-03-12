@@ -8,10 +8,7 @@ extension SettingsPresenter {
         SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
             HStack(spacing: 6) {
                 SecureField("可選".localized, text: optionalIntegrationApiKey)
-                    .font(vocabSkin.typography.monoLabel)
-                    .multilineTextAlignment(.trailing)
-                    .autocorrectionDisabled()
-                    .textInputAutocapitalization(.never)
+                    .appSettingsTextInputStyle()
                     .disabled(!optionalIntegration.isEnabled)
 
                 SettingsInlineInfoButton(action: actions.showOptionalIntegrationInfo)
@@ -51,9 +48,7 @@ extension SettingsPresenter {
                                 .foregroundStyle(vocabSkin.palette.tertiaryText)
 
                             TextField("本地伺服器 URL".localized, text: debugLocalServerURL)
-                                .font(vocabSkin.typography.monoLabel)
-                                .textInputAutocapitalization(.never)
-                                .autocorrectionDisabled()
+                                .appSettingsTextInputStyle(alignment: .leading)
                                 .submitLabel(.done)
                         }
                         .padding(vocabSkin.spacing.cardPadding)
