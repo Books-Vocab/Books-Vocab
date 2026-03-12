@@ -29,6 +29,7 @@ def save_users_to(
 def normalize_users_payload(
     users: dict[str, Any],
     default_subscription_payload: Callable[[], dict[str, Any]],
+    encrypt_fn: Callable[[str], str] | None = None,
 ) -> tuple[dict[str, Any], bool]:
     changed = False
     normalized: dict[str, Any] = {}
@@ -81,6 +82,9 @@ def normalize_users_payload(
 
         resolved_mochi_key = nested_mochi_key or flat_mochi_key or legacy_mochi_key
         if resolved_mochi_key:
+            from .secret_store import is_encrypted
+            if encrypt_fn and not is_encrypted(resolved_mochi_key):
+                resolved_mochi_key = encrypt_fn(resolved_mochi_key)
             if mochi_integration.get("api_key") != resolved_mochi_key:
                 changed = True
             mochi_integration["api_key"] = resolved_mochi_key
@@ -143,7 +147,7 @@ def parse_datetime(raw: Any) -> datetime | None:
     return None
 
 
-def resolve_mochi_api_key_from_config(config: dict[str, Any]) -> str | None:
+def resolve_mochi_api_key_from_config(config: dict[str, Any], jwt_secret: str = "") -> str | None:
     integrations = config.get("integrations", {})
     if isinstance(integrations, dict):
         mochi = integrations.get("mochi", {})
@@ -152,7 +156,8 @@ def resolve_mochi_api_key_from_config(config: dict[str, Any]) -> str | None:
             if isinstance(nested, str):
                 nested = nested.strip()
                 if nested:
-                    return nested
+                    from .secret_store import decrypt_value
+                    return decrypt_value(nested, jwt_secret) if jwt_secret else nested
 
     return None
 
