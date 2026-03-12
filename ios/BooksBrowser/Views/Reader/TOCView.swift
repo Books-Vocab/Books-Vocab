@@ -100,3 +100,104 @@ struct TOCView: View {
         }
     }
 }
+
+private enum TOCPreviewLoadState {
+    case loading
+    case loaded
+    case empty
+    case failed(String)
+}
+
+private struct TOCViewPreviewScene: View {
+    let loadState: TOCPreviewLoadState
+    let tocTitles: [String]
+
+    var body: some View {
+        NavigationStack {
+            Group {
+                switch loadState {
+                case .loading:
+                    VStack {
+                        Spacer()
+                        AppStateMessageCard(
+                            title: "載入目錄中",
+                            systemImage: "text.book.closed",
+                            description: "正在整理這本書的章節結構。"
+                        ) {
+                            ProgressView()
+                                .controlSize(.small)
+                        }
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        Spacer()
+                    }
+                case .loaded:
+                    List {
+                        ForEach(tocTitles.indices, id: \.self) { index in
+                            Text(tocTitles[index])
+                                .font(AppFonts.body())
+                        }
+                    }
+                case .empty:
+                    VStack {
+                        Spacer()
+                        AppEmptyStateCard(
+                            title: "這本書沒有目錄",
+                            systemImage: "list.bullet.rectangle",
+                            description: "出版內容沒有提供可導覽的章節列表。"
+                        )
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        Spacer()
+                    }
+                case .failed(let message):
+                    VStack {
+                        Spacer()
+                        AppStateMessageCard(
+                            title: "目錄載入失敗",
+                            systemImage: "exclamationmark.triangle.fill",
+                            description: message
+                        )
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        Spacer()
+                    }
+                }
+            }
+            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+            .navigationTitle("目錄")
+            .navigationBarTitleDisplayMode(.inline)
+        }
+    }
+}
+
+#Preview("TOC / Loading") {
+    AppThemeContainer {
+        TOCViewPreviewScene(loadState: .loading, tocTitles: [])
+    }
+}
+
+#Preview("TOC / Loaded") {
+    AppThemeContainer {
+        TOCViewPreviewScene(
+            loadState: .loaded,
+            tocTitles: [
+                "第一章",
+                "第二章",
+                "第三章"
+            ]
+        )
+    }
+}
+
+#Preview("TOC / Empty") {
+    AppThemeContainer {
+        TOCViewPreviewScene(loadState: .empty, tocTitles: [])
+    }
+}
+
+#Preview("TOC / Failed") {
+    AppThemeContainer {
+        TOCViewPreviewScene(
+            loadState: .failed("Publication manifest 解析失敗。"),
+            tocTitles: []
+        )
+    }
+}
