@@ -23,16 +23,28 @@ def create_graph_store(user_dir: Path) -> GraphStore:
     return GraphStore(user_dir / "graph.json", user_dir / "candidates.json")
 
 
+_gemini_client = None
+
+
 def create_gemini_client():
+    global _gemini_client
     from openai import OpenAI
 
+    if _gemini_client is not None:
+        return _gemini_client
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
         raise HTTPException(500, "GEMINI_API_KEY not configured on server")
-    return OpenAI(
+    _gemini_client = OpenAI(
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
+    return _gemini_client
+
+
+def reset_gemini_client() -> None:
+    global _gemini_client
+    _gemini_client = None
 
 
 def create_embedding_store(
