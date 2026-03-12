@@ -127,7 +127,7 @@ class CardStore:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
-                statement = statement.where(not Card.is_deleted)
+                statement = statement.where(Card.is_deleted.is_(False))
             results = session.exec(statement).all()
             yield from results
 
@@ -141,7 +141,7 @@ class CardStore:
         from sqlalchemy import func
         with Session(self.engine) as session:
             return session.scalar(
-                select(func.count()).select_from(Card).where(not Card.is_deleted)
+                select(func.count()).select_from(Card).where(Card.is_deleted.is_(False))
             ) or 0
 
     def delete(self, card_id: str) -> bool:
