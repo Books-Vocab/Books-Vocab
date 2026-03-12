@@ -8,9 +8,9 @@ from pydantic import BaseModel, Field
 class VocabEntry(BaseModel):
     """A vocabulary entry from BooksBrowser."""
 
-    word: str
-    translation: str
-    context: str = ""
+    word: str = Field(max_length=200)
+    translation: str = Field(max_length=1000)
+    context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
     pronunciation: str | None = None  # IPA phonetic transcription
 
@@ -75,8 +75,8 @@ class TranslationLanguageConfig(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    word: str
-    context: str
+    word: str = Field(max_length=500)
+    context: str = Field(max_length=5000)
     source_lang: str | None = None
     target_lang: str | None = None
 
@@ -102,7 +102,7 @@ class ExplainResponse(BaseModel):
 
 class AuthVerifyRequest(BaseModel):
     provider: str  # "apple" or "google"
-    token: str
+    token: str = Field(max_length=10000)
     email: str | None = None  # Optional: email from provider
 
 

@@ -19,7 +19,7 @@ from typing import Any
 from dotenv import load_dotenv
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 logging.basicConfig(
@@ -306,6 +306,13 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         response.headers["X-Request-ID"] = request_id
         return response
 
+    @app.middleware("http")
+    async def limit_request_body(request, call_next):
+        content_length = request.headers.get("content-length")
+        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
+            return JSONResponse({"detail": "Request body too large"}, status_code=413)
+        return await call_next(request)
+
     admin_handlers = create_admin_handlers(
         runtime_settings_fn=_runtime_settings,
         runtime_users_lock_file_fn=_runtime_users_lock_file,
@@ -353,7 +360,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 security = HTTPBearer()
 
 # Global lock per user to prevent concurrent pipeline executions
-_USER_LOCKS: dict[str, asyncio.Lock] = {}
+_USER_LOCKS: collections.OrderedDict[str, asyncio.Lock] = collections.OrderedDict()
+_MAX_USER_LOCKS = 500
 _USER_LOCKS_MUTEX: asyncio.Lock | None = None  # initialized lazily after event loop starts
 
 def _get_locks_mutex() -> asyncio.Lock:
@@ -364,9 +372,14 @@ def _get_locks_mutex() -> asyncio.Lock:
 
 async def get_user_lock(user_id: str) -> asyncio.Lock:
     async with _get_locks_mutex():
-        if user_id not in _USER_LOCKS:
-            _USER_LOCKS[user_id] = asyncio.Lock()
-        return _USER_LOCKS[user_id]
+        if user_id in _USER_LOCKS:
+            _USER_LOCKS.move_to_end(user_id)
+            return _USER_LOCKS[user_id]
+        lock = asyncio.Lock()
+        _USER_LOCKS[user_id] = lock
+        while len(_USER_LOCKS) > _MAX_USER_LOCKS:
+            _USER_LOCKS.popitem(last=False)
+        return lock
 
 
 def _load_users() -> dict[str, dict[str, Any]]:
