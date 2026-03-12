@@ -296,6 +296,61 @@ struct SettingsSelectableRow<Leading: View>: View {
     }
 }
 
+struct SettingsSelectionTile<Content: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let isSelected: Bool
+    let content: Content
+
+    init(isSelected: Bool, @ViewBuilder content: () -> Content) {
+        self.isSelected = isSelected
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .fill(isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    .stroke(
+                        isSelected ? vocabSkin.palette.cardBorder : vocabSkin.palette.divider.opacity(0.4),
+                        lineWidth: 1
+                    )
+            )
+    }
+}
+
+struct SettingsStepperIconButton: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let systemImage: String
+    let enabled: Bool
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(vocabSkin.typography.iconMedium.weight(.medium))
+                .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                .frame(width: 52, height: 52)
+                .background(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .fill(vocabSkin.palette.pageBackground)
+                )
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(!enabled)
+    }
+}
+
 struct SettingsCardModifier: ViewModifier {
     @Environment(\.vocabSkin) private var vocabSkin
 
