@@ -161,12 +161,19 @@ struct BooksBrowserApp: App {
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
                     case .active:
+                        AppAnalytics.track(.appSessionStarted)
                         Task {
                             await subscriptionManager.refresh(using: kgService, authManager: authManager)
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
+                            AppAnalytics.track(.backgroundSyncTriggered)
+                            let syncStart = Date()
                             await kgService.backgroundSync(container: modelContainer)
+                            let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
+                            AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: true))
                         }
                     case .background:
+                        SessionMetrics.shared.snapshot().logSummary()
+                        AppAnalytics.track(.appEnteredBackground)
                         Task {
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
                             await kgService.pushReviewQuietly(container: modelContainer)

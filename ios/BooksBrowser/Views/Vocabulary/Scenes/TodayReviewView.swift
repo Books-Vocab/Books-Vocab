@@ -64,6 +64,15 @@ struct TodayReviewView: View {
             LinkedCardOverlayStack(stack: $state.linkedCardStack)
         }
         .onDisappear {
+            if state.currentIndex < state.queue.count {
+                let durationMs = Int(Date().timeIntervalSince(state.sessionStartTime) * 1000)
+                AppAnalytics.track(.reviewSessionEnded(
+                    remembered: state.rememberedCount,
+                    forgot: state.forgotCount,
+                    completed: false,
+                    durationMs: durationMs
+                ))
+            }
             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
             Task {
                 await kgService.pushReviewQuietly(container: modelContext.container)

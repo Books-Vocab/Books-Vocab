@@ -87,6 +87,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         if let existing = self.userId, existing != userIdStr {
             AppLog.auth.info("Account switch detected, clearing sync timestamp")
             UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
+            AppAnalytics.track(.accountSwitchDetected)
         }
 
         self.userId = userIdStr
@@ -106,6 +107,7 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     }
 
     func logout(modelContainer: ModelContainer? = nil, reason: String = "user_logout") {
+        AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
         Task {
             if let container {
