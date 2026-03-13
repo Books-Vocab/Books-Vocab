@@ -118,15 +118,7 @@ struct ReviewCalendarPresenter: View {
                 selectedDay: $selectedDay
             )
         }
-        .padding(vocabSkin.spacing.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
-        )
+        .vocabCardBackground()
     }
 
     // MARK: - Day Detail
@@ -164,15 +156,7 @@ struct ReviewCalendarPresenter: View {
                 }
             }
         }
-        .padding(vocabSkin.spacing.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
-        )
+        .vocabCardBackground()
         .animation(AppMotion.contentFade, value: selectedDay)
     }
 

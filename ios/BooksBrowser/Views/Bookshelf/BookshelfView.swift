@@ -46,11 +46,13 @@ struct BookshelfView: View {
 
                 if coordinator.isLoading {
                     loadingOverlay
+                        .transition(.opacity)
                 }
             }
             .navigationTitle("書庫".localized)
             .navigationBarTitleDisplayMode(.large)
             .animation(AppMotion.phaseChange, value: books.isEmpty)
+            .animation(AppMotion.contentFade, value: coordinator.isLoading)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: coordinator.presentSettings) {

@@ -115,20 +115,23 @@ extension VocabularyListView {
 
     @ViewBuilder
     var routedContent: some View {
-        if selectedTab == 0 {
-            PendingVocabPresenter(
-                state: pendingPresenterState,
-                onRowTapped: handlePendingRowTap,
-                onActionTapped: handlePendingActionTap,
-                onSwitchToKnowledge: switchToKnowledgeTab
-            )
-        } else if !authManager.isLoggedIn {
-            loggedOutState
-        } else if selectedTab == 1 {
-            KGVocabView(searchText: $searchText)
-        } else {
-            StatsPresenter(allEntries: allEntries)
+        Group {
+            if selectedTab == 0 {
+                PendingVocabPresenter(
+                    state: pendingPresenterState,
+                    onRowTapped: handlePendingRowTap,
+                    onActionTapped: handlePendingActionTap,
+                    onSwitchToKnowledge: switchToKnowledgeTab
+                )
+            } else if !authManager.isLoggedIn {
+                loggedOutState
+            } else if selectedTab == 1 {
+                KGVocabView(searchText: $searchText)
+            } else {
+                StatsPresenter(allEntries: allEntries)
+            }
         }
+        .transition(.contentSwap)
     }
 
     // MARK: - Logged Out
