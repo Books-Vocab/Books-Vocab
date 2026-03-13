@@ -89,7 +89,7 @@ enum KnowledgeGraphPresentation {
                 "orange": cssHex(skin.palette.tierAdvanced),
                 "red": cssHex(skin.palette.destructive),
                 "purple": cssHex(skin.palette.overdue),
-                "gray": cssHex(skin.palette.secondaryText),
+                "gray": cssHex(skin.palette.quaternaryText),
                 "archived": cssHex(skin.palette.quaternaryText)
             ],
             edgeHexes: [

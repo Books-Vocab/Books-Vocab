@@ -80,8 +80,7 @@ extension VocabularyListView {
                     : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
                 systemImage: "books.vertical"
             ),
-            .init(id: 2, title: "關聯圖".localized, systemImage: "point.3.connected.trianglepath.dotted"),
-            .init(id: 3, title: "統計".localized, systemImage: "chart.bar")
+            .init(id: 2, title: "總覽".localized, systemImage: "chart.bar")
         ]
     }
 
@@ -127,10 +126,8 @@ extension VocabularyListView {
             loggedOutState
         } else if selectedTab == 1 {
             KGVocabView(searchText: $searchText)
-        } else if selectedTab == 2 {
-            KnowledgeGraphView(allEntries: allEntries)
         } else {
-            StatsPresenter()
+            StatsPresenter(allEntries: allEntries)
         }
     }
 
@@ -143,7 +140,7 @@ extension VocabularyListView {
                 AppEmptyStateCard(
                     title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: "知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。".localized
+                    description: "知識庫與總覽功能需要登入帳號後才能存取您的雲端資料。".localized
                 )
 
                 Button("前往設定登入".localized) {
