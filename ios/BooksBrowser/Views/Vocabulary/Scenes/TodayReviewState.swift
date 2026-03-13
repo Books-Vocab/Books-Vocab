@@ -30,6 +30,10 @@ final class TodayReviewState {
     var persistenceFailureTrigger = 0
     var persistenceErrorMessage: String?
 
+    // MARK: - Analytics
+
+    let sessionStartTime = Date()
+
     // MARK: - Immutable Lookup
 
     let linkedEntryLookup: [String: VocabularyEntry]
@@ -41,6 +45,7 @@ final class TodayReviewState {
         queue = ordered
         preparedCardCache = Self.buildPreparedCardCache(from: ordered)
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
+        AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
     }
 
     // MARK: - Computed (State Projection)
@@ -225,11 +230,24 @@ final class TodayReviewState {
             forgotCount += 1
         }
 
+        AppAnalytics.track(.reviewCardSubmitted(
+            feedback: feedback == .remembered ? "remembered" : "forgot",
+            cardIndex: currentIndex,
+            totalCards: queue.count
+        ))
+
         revealStage = .front
         currentIndex += 1
 
         if currentIndex >= queue.count {
             ReviewSessionStore.clear()
+            let durationMs = Int(Date().timeIntervalSince(sessionStartTime) * 1000)
+            AppAnalytics.track(.reviewSessionEnded(
+                remembered: rememberedCount,
+                forgot: forgotCount,
+                completed: true,
+                durationMs: durationMs
+            ))
         }
 
         let entryToUpdate = current
