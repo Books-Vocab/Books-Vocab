@@ -144,8 +144,9 @@ struct ReviewCalendarPresenter: View {
             }
 
             if !selectedDayRecords.isEmpty {
+                let (local, syncCount) = partitionedRecords
                 VStack(spacing: 0) {
-                    ForEach(Array(selectedDayRecords.enumerated()), id: \.element.id) { index, record in
+                    ForEach(Array(local.enumerated()), id: \.element.id) { index, record in
                         if index > 0 {
                             Divider()
                                 .foregroundStyle(vocabSkin.palette.divider)
@@ -153,11 +154,49 @@ struct ReviewCalendarPresenter: View {
                         }
                         recordRow(record)
                     }
+
+                    if syncCount > 0 {
+                        if !local.isEmpty {
+                            Divider()
+                                .foregroundStyle(vocabSkin.palette.divider)
+                                .padding(.leading, 28)
+                        }
+                        syncPlaceholderRow(count: syncCount)
+                    }
                 }
             }
         }
         .vocabCardBackground()
         .animation(AppMotion.contentFade, value: selectedDay)
+    }
+
+    private var partitionedRecords: (local: [ReviewRecord], syncCount: Int) {
+        var local: [ReviewRecord] = []
+        var syncCount = 0
+        for record in selectedDayRecords {
+            if record.entryID == nil {
+                syncCount += 1
+            } else {
+                local.append(record)
+            }
+        }
+        return (local, syncCount)
+    }
+
+    private func syncPlaceholderRow(count: Int) -> some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            Image(systemName: "arrow.triangle.2.circlepath")
+                .font(vocabSkin.typography.iconSmall)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .frame(width: 20)
+
+            Text(L10n.format("另有 %@ 筆來自其他裝置", "\(count)"))
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+
+            Spacer()
+        }
+        .padding(.vertical, vocabSkin.spacing.microGap)
     }
 
     private func recordRow(_ record: ReviewRecord) -> some View {
