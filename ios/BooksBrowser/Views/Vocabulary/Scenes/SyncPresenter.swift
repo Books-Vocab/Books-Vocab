@@ -60,6 +60,7 @@ struct SyncPresenter: View {
                 .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
         }
         .vocabCanvasBackground()
+        .animation(AppMotion.phaseChange, value: state.summaryText.isEmpty)
         .navigationTitle("同步".localized)
         .navigationBarTitleDisplayMode(.inline)
         .sensoryFeedback(.success, trigger: state.phase == .completed)
