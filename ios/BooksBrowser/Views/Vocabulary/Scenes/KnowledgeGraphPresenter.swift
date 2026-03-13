@@ -8,6 +8,7 @@ struct KnowledgeGraphPresenter: View {
         let linkDistance: Binding<Double>
         let nodeSize: Binding<Double>
         let linkThickness: Binding<Double>
+        let showsIsolatedNodes: Binding<Bool>
     }
 
     struct State {
@@ -126,6 +127,15 @@ struct KnowledgeGraphPresenter: View {
                             .padding(.bottom, vocabSkin.spacing.microGap)
                         VocabSliderRow(label: "節點大小".localized, value: bindings.nodeSize, range: 1...10, format: "%.1f")
                         VocabSliderRow(label: "連結粗細".localized, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
+
+                        Toggle(isOn: bindings.showsIsolatedNodes) {
+                            Text("孤立節點".localized)
+                                .font(vocabSkin.typography.caption)
+                                .foregroundStyle(vocabSkin.palette.primaryText)
+                        }
+                        .toggleStyle(.switch)
+                        .tint(vocabSkin.palette.accent)
+                        .padding(.top, vocabSkin.spacing.microGap)
                     }
                 }
                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
@@ -157,6 +167,7 @@ private struct KnowledgeGraphPresenterPreviewHarness: View {
     @State private var linkDistance = 120.0
     @State private var nodeSize = 4.2
     @State private var linkThickness = 1.1
+    @State private var showsIsolatedNodes = false
 
     let state: KnowledgeGraphPresenter.State
 
@@ -167,7 +178,8 @@ private struct KnowledgeGraphPresenterPreviewHarness: View {
             linkForce: $linkForce,
             linkDistance: $linkDistance,
             nodeSize: $nodeSize,
-            linkThickness: $linkThickness
+            linkThickness: $linkThickness,
+            showsIsolatedNodes: $showsIsolatedNodes
         )
     }
 

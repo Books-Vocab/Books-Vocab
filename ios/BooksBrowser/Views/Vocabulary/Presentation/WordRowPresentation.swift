@@ -96,13 +96,13 @@ extension VocabularyEntry {
         case .due, .reviewed:
             let interval = max(nextReviewAt.timeIntervalSince(reviewProgressStartDate), 60)
             let elapsed = max(0, now.timeIntervalSince(reviewProgressStartDate))
-            let fraction = min(max(elapsed / interval, 0), 1)
+            let ratio = max(elapsed / interval, 0)
 
             return .init(
                 statusLabel: reviewProgressStatusLabel,
                 detailLabel: "\(elapsed.compactReviewProgressLabel) / \(interval.compactReviewProgressLabel)",
-                fraction: fraction,
-                tone: reviewProgressTone(for: fraction)
+                fraction: ratio,
+                tone: VocabReviewProgress.tone(for: ratio)
             )
         }
     }
@@ -116,19 +116,6 @@ extension VocabularyEntry {
         case .reviewed:
             return L10n.string("已複習")
         }
-    }
-
-    private func reviewProgressTone(for fraction: Double) -> VocabReviewProgress.Tone {
-        if fraction >= 1 {
-            return .red
-        }
-        if fraction >= 0.72 {
-            return .orange
-        }
-        if fraction >= 0.4 {
-            return .yellow
-        }
-        return .green
     }
 
     private var reviewProgressStartDate: Date {
