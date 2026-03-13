@@ -17,6 +17,7 @@ extension AuthManager {
         GIDSignIn.sharedInstance.signIn(withPresenting: presentingViewController) { [weak self] result, error in
             if let error = error {
                 AppLog.auth.error("Google Sign-In error: \(error.localizedDescription)")
+                AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
                 return
             }
 
@@ -47,9 +48,11 @@ extension AuthManager {
                         accountSwitchReason: "account_switch_google",
                         modelContainer: modelContainer
                     )
+                    AppAnalytics.track(.loginCompleted(provider: "google"))
                 } catch {
                     AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                     self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
+                    AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
                 }
             }
         }
