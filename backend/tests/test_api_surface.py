@@ -31,7 +31,7 @@ def make_jwt(user_id: str) -> str:
 
 def _swap_settings(new_settings):
     """Replace app.state.kg_settings and rebuild load/save closures."""
-    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
+    from kg.user_store import CachedUserStore, load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
 
     app.state.kg_settings = new_settings
@@ -42,8 +42,10 @@ def _swap_settings(new_settings):
         encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
         return normalize_users_payload(users, default_subscription_payload, encrypt_fn=encrypt_fn)
 
-    app.state.load_users = lambda: load_users_from(app.state.kg_settings.users_file, _normalize)
-    app.state.save_users = lambda users: save_users_to(app.state.kg_settings.users_file, users, _normalize)
+    user_store = CachedUserStore(new_settings.users_file, _normalize)
+    app.state.user_store = user_store
+    app.state.load_users = lambda: user_store.load()
+    app.state.save_users = lambda users: user_store.save(users)
     app.state.normalize_users_payload = _normalize
 
 
@@ -253,11 +255,11 @@ def test_translate_endpoints_success_and_error(isolated_api):
     headers = isolated_api.headers
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create.return_value = SimpleNamespace(
+    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
-    )
-    with patch.object(api_mod, "_gemini_client", return_value=fake_client):
+    ))
+    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -267,11 +269,11 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json() == {"t": "喚起", "p": "v.", "r": "evoke"}
 
     fake_client_phrase = MagicMock()
-    fake_client_phrase.chat.completions.create.return_value = SimpleNamespace(
+    fake_client_phrase.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
         usage=None,
-    )
-    with patch.object(api_mod, "_gemini_client", return_value=fake_client_phrase):
+    ))
+    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client_phrase):
         r = client.post(
             "/api/translate/phrase",
             json={"word": "on trial", "context": "He was on trial for fraud."},
@@ -281,11 +283,11 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json()["t"] == "試探性地"
 
     fake_client_explain = MagicMock()
-    fake_client_explain.chat.completions.create.return_value = SimpleNamespace(
+    fake_client_explain.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
         usage=None,
-    )
-    with patch.object(api_mod, "_gemini_client", return_value=fake_client_explain):
+    ))
+    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client_explain):
         r = client.post(
             "/api/translate/explain",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -295,8 +297,8 @@ def test_translate_endpoints_success_and_error(isolated_api):
         assert r.json()["e"] == "在此語境表示引發回憶。"
 
     failing_client = MagicMock()
-    failing_client.chat.completions.create.side_effect = RuntimeError("LLM down")
-    with patch.object(api_mod, "_gemini_client", return_value=failing_client):
+    failing_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("LLM down"))
+    with patch.object(api_mod, "_gemini_async_client", return_value=failing_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -321,11 +323,11 @@ def test_translate_works_without_pro_subscription(isolated_api):
     isolated_api.users_file.write_text(json.dumps(users_data))
 
     fake_client = MagicMock()
-    fake_client.chat.completions.create.return_value = SimpleNamespace(
+    fake_client.chat.completions.create = AsyncMock(return_value=SimpleNamespace(
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
-    )
-    with patch.object(api_mod, "_gemini_client", return_value=fake_client):
+    ))
+    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
