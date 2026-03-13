@@ -27,6 +27,7 @@ enum KnowledgeGraphPresentation {
     static func nodes(
         from entries: [VocabularyEntry],
         links: [KGGraphLink],
+        showIsolatedNodes: Bool = false,
         now: Date = Date()
     ) -> [KnowledgeGraphNode] {
         var degreeMap: [String: Int] = [:]
@@ -38,7 +39,7 @@ enum KnowledgeGraphPresentation {
         return entries.compactMap { entry in
             guard entry.isSynced, entry.syncAction != .delete, let kgId = entry.kgCardId else { return nil }
             let degree = degreeMap[kgId] ?? 0
-            guard degree > 0 else { return nil }
+            guard showIsolatedNodes || degree > 0 else { return nil }
             let tier = entry.isArchived ? "archived" : reviewTone(for: entry, now: now)
             return KnowledgeGraphNode(
                 id: kgId,
@@ -54,10 +55,11 @@ enum KnowledgeGraphPresentation {
         let startDate = entry.lastReviewedAt ?? entry.dateAdded
         let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
         let elapsed = max(0, now.timeIntervalSince(startDate))
-        let fraction = min(max(elapsed / interval, 0), 1)
-        if fraction >= 1 { return "red" }
-        if fraction >= 0.72 { return "orange" }
-        if fraction >= 0.4 { return "yellow" }
+        let ratio = max(elapsed / interval, 0)
+        if ratio >= 2.5 { return "purple" }
+        if ratio >= 1.5 { return "red" }
+        if ratio >= 1.0 { return "orange" }
+        if ratio >= 0.5 { return "yellow" }
         return "green"
     }
 
@@ -86,6 +88,7 @@ enum KnowledgeGraphPresentation {
                 "yellow": cssHex(skin.palette.tierIntermediate),
                 "orange": cssHex(skin.palette.tierAdvanced),
                 "red": cssHex(skin.palette.destructive),
+                "purple": cssHex(skin.palette.overdue),
                 "gray": cssHex(skin.palette.secondaryText),
                 "archived": cssHex(skin.palette.quaternaryText)
             ],

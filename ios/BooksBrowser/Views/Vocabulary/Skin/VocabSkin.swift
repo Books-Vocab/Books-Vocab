@@ -41,6 +41,7 @@ struct VocabSkin {
         let retry: Color
         let info: Color
         let destructive: Color
+        let overdue: Color
         let highlightMark: Color
         let mutedFill: Color
         let link: Color
@@ -491,6 +492,9 @@ extension VocabSkin {
                     : Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
                 info: link,
                 destructive: theme.palette.destructive,
+                overdue: theme.colorScheme == .dark
+                    ? Color(red: 0.62, green: 0.48, blue: 0.72)
+                    : Color(red: 0.56, green: 0.40, blue: 0.66),
                 highlightMark: theme.colorScheme == .dark
                     ? Color(red: 0.73, green: 0.66, blue: 0.33)
                     : Color(red: 0.90, green: 0.84, blue: 0.57),
@@ -548,6 +552,7 @@ extension VocabSkin {
             retry: Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
             info: Color(red: 0.47, green: 0.56, blue: 0.67),
             destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
+            overdue: Color(red: 0.56, green: 0.40, blue: 0.66),
             highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
             mutedFill: Color.black.opacity(0.035),
             link: Color(red: 0.47, green: 0.56, blue: 0.67),

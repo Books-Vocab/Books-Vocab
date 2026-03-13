@@ -137,12 +137,21 @@ struct VocabReviewProgress: Hashable {
         case yellow
         case orange
         case red
+        case purple
     }
 
     let statusLabel: String
     let detailLabel: String?
     let fraction: Double?
     let tone: Tone
+
+    static func tone(for ratio: Double) -> Tone {
+        if ratio >= 2.5 { return .purple }
+        if ratio >= 1.5 { return .red }
+        if ratio >= 1.0 { return .orange }
+        if ratio >= 0.5 { return .yellow }
+        return .green
+    }
 }
 
 struct VocabReviewProgressBar: View {
@@ -161,17 +170,18 @@ struct VocabReviewProgressBar: View {
                 }
 
                 GeometryReader { proxy in
+                    let clampedFraction = min(fraction, 1.0)
                     ZStack(alignment: .leading) {
                         Capsule(style: .continuous)
                             .fill(vocabSkin.palette.progressBarBackground)
 
                         Capsule(style: .continuous)
                             .fill(resolveTone(progress.tone))
-                            .frame(width: max(6, proxy.size.width * fraction))
+                            .frame(width: max(6, proxy.size.width * clampedFraction))
                             .animation(AppMotion.controlEaseOut, value: fraction)
                     }
                     .accessibilityLabel("複習進度".localized)
-                    .accessibilityValue("\(Int(fraction * 100))%")
+                    .accessibilityValue("\(Int(min(fraction, 1.0) * 100))%")
                 }
                 .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledBarHeight)
             }
@@ -192,6 +202,8 @@ struct VocabReviewProgressBar: View {
             return vocabSkin.palette.tierAdvanced
         case .red:
             return vocabSkin.palette.destructive
+        case .purple:
+            return vocabSkin.palette.overdue
         }
     }
 }
