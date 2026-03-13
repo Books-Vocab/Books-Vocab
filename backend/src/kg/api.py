@@ -119,6 +119,7 @@ from .pipeline_service import run_pipeline_background
 from .route_registration import register_routes
 from .service_factories import (
     clear_store_cache,
+    create_async_gemini_client,
     create_card_store,
     create_daily_stats_store,
     create_embedding_store,
@@ -128,6 +129,9 @@ from .service_factories import (
 from .rate_limit import api_limiter, translate_limiter
 from .settings import KGSettings, load_settings
 from .translate_handlers import (
+    async_translate_explain_response,
+    async_translate_phrase_response,
+    async_translate_quick_response,
     translate_explain_response,
     translate_phrase_response,
     translate_quick_response,
@@ -428,6 +432,10 @@ def _graph_store(user_dir: Path) -> GraphStore:
 
 def _gemini_client():
     return create_gemini_client()
+
+
+def _gemini_async_client():
+    return create_async_gemini_client()
 
 
 def _embedding_store(user_dir: Path, user_id: str | None = None):
@@ -887,23 +895,51 @@ def _with_quota_check(
         response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
     return result
 
-def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+
+def _check_quota(user: dict, call_type: str, response: Response | None) -> dict:
+    from .quota_service import check_and_get_quota
+    pro = _is_pro(user)
+    quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
+    if quota["exceeded"]:
+        raise HTTPException(
+            429,
+            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
+        )
+    return quota
+
+
+def _apply_quota_headers(response: Response | None, quota: dict) -> None:
+    if response is not None:
+        response.headers["X-Quota-Fraction"] = str(quota["fraction"])
+        response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
+
+async def translate_quick(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Perform a quick UI translation via Gemini API (proxy)."""
-    return _with_quota_check(user, "translate_quick", response, lambda: translate_quick_response(
-        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client, logger=logger,
-    ))
+    quota = _check_quota(user, "translate_quick", response)
+    result = await async_translate_quick_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_async_client, logger=logger,
+    )
+    _apply_quota_headers(response, quota)
+    return result
 
-def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+async def translate_phrase(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Translate a multi-word phrase or expression. Returns translation only."""
-    return _with_quota_check(user, "translate_phrase", response, lambda: translate_phrase_response(
-        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client,
-    ))
+    quota = _check_quota(user, "translate_phrase", response)
+    result = await async_translate_phrase_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_async_client,
+    )
+    _apply_quota_headers(response, quota)
+    return result
 
-def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
+async def translate_explain(req: TranslateRequest, user: dict = Depends(get_current_user), response: Response = None):
     """Generate a 1-2 sentence context explanation via Gemini API (proxy)."""
-    return _with_quota_check(user, "translate_explain", response, lambda: translate_explain_response(
-        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_client,
-    ))
+    quota = _check_quota(user, "translate_explain", response)
+    result = await async_translate_explain_response(
+        req, user, require_pro_access=_require_pro_access, gemini_client_factory=_gemini_async_client,
+    )
+    _apply_quota_headers(response, quota)
+    return result
 
 
 # ---------------------------------------------------------------------------
