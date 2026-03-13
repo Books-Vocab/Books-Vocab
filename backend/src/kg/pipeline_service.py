@@ -97,7 +97,7 @@ async def _step_embed(
         return
 
     logger.info("[%s] Backfilling embeddings for %d cards", uid, len(missing))
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     backfilled = await loop.run_in_executor(
         None, _sync_embed_loop, missing, embeddings, graph, uid, logger
     )
@@ -137,7 +137,7 @@ async def _step_link(
             if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted:
                 continue
 
-            loop = asyncio.get_event_loop()
+            loop = asyncio.get_running_loop()
             result = await loop.run_in_executor(
                 None,
                 lambda a=card_a, b=card_b: judge.evaluate(
