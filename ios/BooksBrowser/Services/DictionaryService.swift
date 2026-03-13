@@ -13,6 +13,8 @@ struct DictionaryService {
 
     /// 取得單字的 IPA 音標
     static func fetchPronunciation(word: String) async -> String? {
+        guard NetworkMonitor.shared.isConnected else { return nil }
+
         // 只處理單字，不處理片語
         let trimmed = word.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.contains(" ") else { return nil }

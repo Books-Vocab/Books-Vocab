@@ -174,6 +174,10 @@ final class TranslationService: Translating {
     // MARK: - Backend Translation API 呼叫
 
     private func callBackend(endpoint: String, word: String, context: String) async throws -> Data {
+        guard NetworkMonitor.shared.isConnected else {
+            throw TranslationError.apiError(L10n.string("目前沒有網路連線"))
+        }
+
         let baseURL = backendURL.trimmingCharacters(in: .whitespacesAndNewlines)
         var cleanURL = baseURL
         if !cleanURL.hasPrefix("http://") && !cleanURL.hasPrefix("https://") {
@@ -191,6 +195,9 @@ final class TranslationService: Translating {
         // 帶上授權 Header (因為 /api/translate 是受保護的端點)
         guard let token = await authSession.token else {
             throw TranslationError.apiError(L10n.string("未登入，無法調用翻譯 API"))
+        }
+        if JWTExpiry.isExpired(token) {
+            throw TranslationError.apiError(L10n.string("登入已過期，請重新登入"))
         }
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 

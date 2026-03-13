@@ -143,29 +143,53 @@ extension KGService {
     // MARK: - Background Sync (輕量：push review + pull)
 
     func backgroundSync(container: ModelContainer) async {
+        // 離線時跳過整個背景同步，不產生無意義的錯誤日誌
+        guard NetworkMonitor.shared.isConnected else {
+            AppLog.kg.info("backgroundSync skipped: offline")
+            lastBackgroundSyncError = L10n.string("目前沒有網路連線，背景同步已跳過")
+            return
+        }
+
+        var failures: [String] = []
+
         do {
             _ = try await pushReviewStates(container: container)
         } catch {
             AppLog.kg.warning("backgroundSync pushReview failed: \(error.localizedDescription)")
+            failures.append("pushReview")
         }
         do {
             _ = try await pushDailyStats(container: container)
         } catch {
             AppLog.kg.warning("backgroundSync pushDailyStats failed: \(error.localizedDescription)")
+            failures.append("pushDailyStats")
         }
         do {
             try await pullCardsToLocal(container: container, progress: nil)
         } catch {
             AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
+            failures.append("pull")
         }
         do {
             try await pullDailyStats(container: container)
         } catch {
             AppLog.kg.warning("backgroundSync pullDailyStats failed: \(error.localizedDescription)")
+            failures.append("pullDailyStats")
+        }
+
+        if failures.isEmpty {
+            lastBackgroundSyncError = nil
+        } else {
+            lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failures.joined(separator: ", "))
         }
     }
 
     func pushReviewQuietly(container: ModelContainer) async {
+        guard NetworkMonitor.shared.isConnected else {
+            AppLog.kg.info("pushReviewQuietly skipped: offline")
+            return
+        }
+
         do {
             _ = try await pushReviewStates(container: container)
         } catch {

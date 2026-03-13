@@ -57,6 +57,7 @@ extension EnvironmentValues {
         get { self[KGServiceEnvironmentKey.self] }
         set { self[KGServiceEnvironmentKey.self] = newValue }
     }
+    @Entry var networkMonitor: NetworkMonitor = .shared
     @Entry var bookFileManager: any BookFileManaging = LocalBookFileManager()
     @Entry var quotaStore: any QuotaProviding = QuotaStore.shared
     @Entry var speechService: any Speaking = SpeechService.shared
