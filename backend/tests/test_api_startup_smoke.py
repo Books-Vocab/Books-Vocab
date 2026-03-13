@@ -12,6 +12,7 @@ from fastapi.testclient import TestClient
 
 import kg.admin_test_matrix as admin_test_matrix_mod
 import kg.api as api_mod
+import kg.endpoints as endpoints_mod
 from kg.api import app
 from kg.settings import KGSettings
 
@@ -85,7 +86,7 @@ def startup_env(tmp_path):
 
     try:
         api_mod._USER_LOCKS.clear()
-        api_mod._USER_LOCKS_MUTEX = None
+        endpoints_mod._USER_LOCKS_MUTEX = None
         admin_test_matrix_mod.LAST_TEST_RUN = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(

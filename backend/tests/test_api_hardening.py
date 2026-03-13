@@ -11,6 +11,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
+import kg.endpoints as endpoints_mod
 from kg.api import app
 from kg.settings import KGSettings
 
@@ -103,7 +104,7 @@ class TestUserLocksLRU:
     def test_locks_capped_at_max(self):
         async def run():
             api_mod._USER_LOCKS.clear()
-            api_mod._USER_LOCKS_MUTEX = None
+            endpoints_mod._USER_LOCKS_MUTEX = None
             for i in range(api_mod._MAX_USER_LOCKS + 50):
                 await api_mod.get_user_lock(f"user_{i}")
             return len(api_mod._USER_LOCKS)
@@ -116,7 +117,7 @@ class TestUserLocksLRU:
     def test_recent_user_kept_after_eviction(self):
         async def run():
             api_mod._USER_LOCKS.clear()
-            api_mod._USER_LOCKS_MUTEX = None
+            endpoints_mod._USER_LOCKS_MUTEX = None
             # Fill to max
             for i in range(api_mod._MAX_USER_LOCKS):
                 await api_mod.get_user_lock(f"old_user_{i}")
@@ -132,7 +133,7 @@ class TestUserLocksLRU:
     def test_same_user_returns_same_lock_after_reaccess(self):
         async def run():
             api_mod._USER_LOCKS.clear()
-            api_mod._USER_LOCKS_MUTEX = None
+            endpoints_mod._USER_LOCKS_MUTEX = None
             l1 = await api_mod.get_user_lock("stable_user")
             # Access many other users to push eviction pressure
             for i in range(api_mod._MAX_USER_LOCKS - 1):
