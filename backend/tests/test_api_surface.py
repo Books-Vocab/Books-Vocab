@@ -12,6 +12,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
+import kg.endpoints as endpoints_mod
 from kg.api import app
 from kg.graph import LinkKind
 from kg.settings import KGSettings
@@ -96,7 +97,7 @@ def isolated_api(tmp_path):
 
     try:
         api_mod._USER_LOCKS.clear()
-        api_mod._USER_LOCKS_MUTEX = None
+        endpoints_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client,
@@ -144,7 +145,7 @@ def test_vocab_lifecycle_and_since_sync(isolated_api):
         {"word": "evoke", "translation": "喚起", "context": "The story can evoke deep memories."},
         {"word": "lucid", "translation": "清晰的", "context": "Her explanation was lucid and direct."},
     ]
-    with patch.object(api_mod, "_embedding_store", return_value=emb):
+    with patch.object(endpoints_mod, "_embedding_store", return_value=emb):
         r = client.post("/api/vocab", json=entries, headers=headers)
         assert r.status_code == 200, r.text
         body = r.json()
@@ -259,7 +260,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
     ))
-    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client):
+    with patch.object(endpoints_mod, "_gemini_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -273,7 +274,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
         usage=None,
     ))
-    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client_phrase):
+    with patch.object(endpoints_mod, "_gemini_async_client", return_value=fake_client_phrase):
         r = client.post(
             "/api/translate/phrase",
             json={"word": "on trial", "context": "He was on trial for fraud."},
@@ -287,7 +288,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
         usage=None,
     ))
-    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client_explain):
+    with patch.object(endpoints_mod, "_gemini_async_client", return_value=fake_client_explain):
         r = client.post(
             "/api/translate/explain",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -298,7 +299,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
 
     failing_client = MagicMock()
     failing_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("LLM down"))
-    with patch.object(api_mod, "_gemini_async_client", return_value=failing_client):
+    with patch.object(endpoints_mod, "_gemini_async_client", return_value=failing_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -327,7 +328,7 @@ def test_translate_works_without_pro_subscription(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
     ))
-    with patch.object(api_mod, "_gemini_async_client", return_value=fake_client):
+    with patch.object(endpoints_mod, "_gemini_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -361,8 +362,8 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
     _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
     try:
         with (
-            patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="google-sub")),
-            patch.object(api_mod, "verify_apple_token", return_value="apple-sub"),
+            patch.object(endpoints_mod, "verify_google_token", new=AsyncMock(return_value="google-sub")),
+            patch.object(endpoints_mod, "verify_apple_token", return_value="apple-sub"),
         ):
             r_google = client.post(
                 "/auth/verify",
@@ -695,7 +696,7 @@ def test_auth_verify_response_contract(isolated_api):
     original_settings = app.state.kg_settings
     _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
     try:
-        with patch.object(api_mod, "verify_google_token", new=AsyncMock(return_value="contract-user-id")):
+        with patch.object(endpoints_mod, "verify_google_token", new=AsyncMock(return_value="contract-user-id")):
             r = client.post(
                 "/auth/verify",
                 json={"provider": "google", "token": "g-tok", "email": "contract@test.com"},
