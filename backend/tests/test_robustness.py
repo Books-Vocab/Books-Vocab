@@ -34,7 +34,7 @@ os.environ["GEMINI_API_KEY"] = "fake-key"
 from datetime import UTC
 
 import kg.api as api_mod
-import kg.endpoints as endpoints_mod
+import kg.deps as deps_mod
 import kg.embeddings as emb_mod
 import kg.judge as judge_mod
 import kg.mochi as mochi_mod
@@ -406,7 +406,7 @@ class TestBatchA_NoPrintInModules:
         client, user_id, headers, data_dir = user_env
 
         # _embedding_store calls _gemini_client internally; force Step 1b to blow up
-        with patch.object(endpoints_mod, "_gemini_client", side_effect=Exception("API down")):
+        with patch.object(deps_mod, "_gemini_client", side_effect=Exception("API down")):
             with caplog.at_level(logging.ERROR, logger="kg.api"):
                 r = client.post("/api/pipeline", headers=headers)
                 assert r.status_code == 200  # always returns "queued"
@@ -656,7 +656,7 @@ class TestBatchD_UserLockAtomic:
     def test_same_user_returns_same_lock_object(self):
         async def run():
             api_mod._USER_LOCKS.clear()
-            endpoints_mod._USER_LOCKS_MUTEX = None
+            deps_mod._USER_LOCKS_MUTEX = None
             l1 = await api_mod.get_user_lock("alice")
             l2 = await api_mod.get_user_lock("alice")
             return l1 is l2
@@ -666,7 +666,7 @@ class TestBatchD_UserLockAtomic:
     def test_different_users_return_different_locks(self):
         async def run():
             api_mod._USER_LOCKS.clear()
-            endpoints_mod._USER_LOCKS_MUTEX = None
+            deps_mod._USER_LOCKS_MUTEX = None
             la = await api_mod.get_user_lock("alice")
             lb = await api_mod.get_user_lock("bob")
             return la is not lb
@@ -678,7 +678,7 @@ class TestBatchD_UserLockAtomic:
         all receive the exact same Lock object (no race-created duplicates)."""
         async def run():
             api_mod._USER_LOCKS.clear()
-            endpoints_mod._USER_LOCKS_MUTEX = None
+            deps_mod._USER_LOCKS_MUTEX = None
             locks = await asyncio.gather(*[
                 api_mod.get_user_lock("race_user") for _ in range(50)
             ])
@@ -694,7 +694,7 @@ class TestBatchD_UserLockAtomic:
         # Pre-acquire the user's lock so the pipeline sees it as locked
         async def grab_lock():
             api_mod._USER_LOCKS.clear()
-            endpoints_mod._USER_LOCKS_MUTEX = None
+            deps_mod._USER_LOCKS_MUTEX = None
             lk = await api_mod.get_user_lock(user_id)
             await lk.acquire()
             return lk

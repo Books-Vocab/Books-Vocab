@@ -12,7 +12,8 @@ import pytest
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
-import kg.endpoints as endpoints_mod
+import kg.deps as deps_mod
+import kg.routers.user as user_router_mod
 from kg.api import app, _mem_log
 from kg.request_context import request_id_var
 from kg.settings import KGSettings
@@ -70,7 +71,7 @@ def isolated_api(tmp_path):
 
     try:
         api_mod._USER_LOCKS.clear()
-        endpoints_mod._USER_LOCKS_MUTEX = None
+        deps_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client,
@@ -145,8 +146,8 @@ class TestHealthDeepCheck:
         graph_mock.candidate_count.return_value = 0
 
         with (
-            patch.object(endpoints_mod, "_card_store", return_value=cards_mock),
-            patch.object(endpoints_mod, "_graph_store", return_value=graph_mock),
+            patch.object(user_router_mod, "_card_store", return_value=cards_mock),
+            patch.object(user_router_mod, "_graph_store", return_value=graph_mock),
         ):
             r = isolated_api.client.get("/api/health", headers=isolated_api.headers)
 
@@ -168,8 +169,8 @@ class TestHealthDeepCheck:
         graph_mock.candidate_count.return_value = 0
 
         with (
-            patch.object(endpoints_mod, "_card_store", return_value=cards_mock),
-            patch.object(endpoints_mod, "_graph_store", return_value=graph_mock),
+            patch.object(user_router_mod, "_card_store", return_value=cards_mock),
+            patch.object(user_router_mod, "_graph_store", return_value=graph_mock),
         ):
             r = isolated_api.client.get("/api/health", headers=isolated_api.headers)
 
@@ -190,8 +191,8 @@ class TestHealthDeepCheck:
         graph_mock.candidate_count.return_value = 0
 
         with (
-            patch.object(endpoints_mod, "_card_store", return_value=cards_mock),
-            patch.object(endpoints_mod, "_graph_store", return_value=graph_mock),
+            patch.object(user_router_mod, "_card_store", return_value=cards_mock),
+            patch.object(user_router_mod, "_graph_store", return_value=graph_mock),
         ):
             r = isolated_api.client.get("/api/health", headers=isolated_api.headers)
 
