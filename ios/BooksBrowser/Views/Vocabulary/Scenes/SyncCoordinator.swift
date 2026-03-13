@@ -81,6 +81,8 @@ final class SyncCoordinator: SyncCoordinating {
         phase = .running
         summaryText = ""
         failureKind = nil
+        AppAnalytics.track(.syncStarted)
+        let syncStartTime = Date()
 
         pipelineTask = Task {
             defer { pipelineTask = nil }
@@ -197,17 +199,22 @@ final class SyncCoordinator: SyncCoordinating {
                 try? await kgService.pullDailyStats(container: modelContext.container)
 
                 updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
+                let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
                 if encounteredFailure {
                     summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
                     failureKind = .partial
                     phase = .failed
+                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .partial))
                 } else {
                     phase = .completed
+                    AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .success))
                 }
             } catch {
+                let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
                 summaryText = error.localizedDescription
                 failureKind = .full
                 phase = .failed
+                AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .failed))
             }
         }
     }
@@ -217,6 +224,7 @@ final class SyncCoordinator: SyncCoordinating {
         phase = .failed
         failureKind = .cancelled
         summaryText = L10n.string("同步已取消")
+        AppAnalytics.track(.syncCompleted(durationMs: 0, outcome: .cancelled))
     }
 
     func resetForRetry(deleteCount: Int, addCount: Int) {
@@ -249,6 +257,14 @@ final class SyncCoordinator: SyncCoordinating {
             if status == .done || status == .skipped || status == .error {
                 if steps[idx].endTime == nil {
                     steps[idx].endTime = Date()
+                    let durationMs = steps[idx].startTime.map {
+                        Int(Date().timeIntervalSince($0) * 1000)
+                    } ?? 0
+                    AppAnalytics.track(.syncStepCompleted(
+                        step: id,
+                        durationMs: durationMs,
+                        success: status == .done || status == .skipped
+                    ))
                 }
             }
         }
