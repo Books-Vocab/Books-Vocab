@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import copy
 import json
 import threading
 import time
@@ -27,11 +28,11 @@ class CachedUserStore:
         with self._lock:
             now = time.monotonic()
             if self._cache is not None and (now - self._cache_time) < self._ttl:
-                return dict(self._cache)
+                return copy.deepcopy(self._cache)
             data = load_users_from(self._users_file, self._normalize_fn)
             self._cache = data
             self._cache_time = now
-            return dict(data)
+            return copy.deepcopy(data)
 
     def save(self, users: dict[str, dict[str, Any]]) -> None:
         save_users_to(self._users_file, users, self._normalize_fn)
