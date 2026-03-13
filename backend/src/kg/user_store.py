@@ -1,10 +1,49 @@
 from __future__ import annotations
 
 import json
+import threading
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
+
+
+class CachedUserStore:
+    def __init__(
+        self,
+        users_file: Path,
+        normalize_fn: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]],
+        ttl: float = 2.0,
+    ) -> None:
+        self._users_file = users_file
+        self._normalize_fn = normalize_fn
+        self._ttl = ttl
+        self._cache: dict[str, Any] | None = None
+        self._cache_time: float = 0.0
+        self._lock = threading.Lock()
+
+    def load(self) -> dict[str, dict[str, Any]]:
+        with self._lock:
+            now = time.monotonic()
+            if self._cache is not None and (now - self._cache_time) < self._ttl:
+                return dict(self._cache)
+            data = load_users_from(self._users_file, self._normalize_fn)
+            self._cache = data
+            self._cache_time = now
+            return dict(data)
+
+    def save(self, users: dict[str, dict[str, Any]]) -> None:
+        save_users_to(self._users_file, users, self._normalize_fn)
+        normalized, _ = self._normalize_fn(users)
+        with self._lock:
+            self._cache = normalized
+            self._cache_time = time.monotonic()
+
+    def invalidate(self) -> None:
+        with self._lock:
+            self._cache = None
+            self._cache_time = 0.0
 
 
 def load_users_from(users_file: Path, normalize_users_payload: Callable[[dict[str, Any]], tuple[dict[str, Any], bool]]) -> dict[str, dict[str, Any]]:
