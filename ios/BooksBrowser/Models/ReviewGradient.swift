@@ -31,17 +31,17 @@ enum ReviewGradient {
     }
 
     private static let stops: [Stop] = [
-        Stop(at: 0.00, c: HSL(h: 160, s: 68, l: 36)),   // 鮮翠
-        Stop(at: 0.15, c: HSL(h: 150, s: 64, l: 38)),
-        Stop(at: 0.30, c: HSL(h: 138, s: 60, l: 40)),
-        Stop(at: 0.45, c: HSL(h: 122, s: 56, l: 42)),
-        Stop(at: 0.60, c: HSL(h: 105, s: 54, l: 44)),
-        Stop(at: 0.72, c: HSL(h:  85, s: 56, l: 45)),   // 萊姆
-        Stop(at: 0.85, c: HSL(h:  60, s: 66, l: 45)),   // 琥珀
-        Stop(at: 1.00, c: HSL(h:  45, s: 75, l: 47)),   // 到期黃
-        Stop(at: 1.30, c: HSL(h:  28, s: 88, l: 44)),   // 深橘
-        Stop(at: 2.00, c: HSL(h:   4, s: 78, l: 38)),   // 暗紅
-        Stop(at: 3.00, c: HSL(h: 278, s: 70, l: 32)),   // 暗紫
+        Stop(at: 0.00, c: HSL(h: 160, s: 48, l: 38)),   // 翠綠
+        Stop(at: 0.15, c: HSL(h: 150, s: 44, l: 40)),
+        Stop(at: 0.30, c: HSL(h: 138, s: 42, l: 42)),
+        Stop(at: 0.45, c: HSL(h: 122, s: 38, l: 44)),
+        Stop(at: 0.60, c: HSL(h: 105, s: 38, l: 45)),
+        Stop(at: 0.72, c: HSL(h:  85, s: 40, l: 46)),   // 萊姆
+        Stop(at: 0.85, c: HSL(h:  60, s: 48, l: 46)),   // 琥珀
+        Stop(at: 1.00, c: HSL(h:  45, s: 55, l: 48)),   // 到期黃
+        Stop(at: 1.30, c: HSL(h:  28, s: 65, l: 44)),   // 深橘
+        Stop(at: 2.00, c: HSL(h:   4, s: 58, l: 40)),   // 暗紅
+        Stop(at: 3.00, c: HSL(h: 278, s: 50, l: 34)),   // 暗紫
     ]
 
     // MARK: - Interpolation
