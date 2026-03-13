@@ -17,6 +17,7 @@ from cryptography.x509.oid import NameOID
 from fastapi.testclient import TestClient
 
 import kg.api as api_mod
+import kg.endpoints as endpoints_mod
 from kg.api import app
 from kg.settings import KGSettings
 
@@ -134,7 +135,7 @@ def signed_app_store_env(tmp_path, monkeypatch):
 
     try:
         api_mod._USER_LOCKS.clear()
-        api_mod._USER_LOCKS_MUTEX = None
+        endpoints_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client,
@@ -265,7 +266,7 @@ def test_reconcile_uses_app_store_server_lookup_and_updates_subscription(signed_
     )
 
     with patch.object(
-        api_mod,
+        endpoints_mod,
         "fetch_transaction_info",
         new=AsyncMock(return_value={"signedTransactionInfo": signed_transaction}),
     ):
