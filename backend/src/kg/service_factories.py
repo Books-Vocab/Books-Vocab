@@ -73,6 +73,30 @@ def reset_gemini_client() -> None:
     _gemini_client = None
 
 
+_async_gemini_client = None
+
+
+def create_async_gemini_client():
+    global _async_gemini_client
+    from openai import AsyncOpenAI
+
+    if _async_gemini_client is not None:
+        return _async_gemini_client
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
+    _async_gemini_client = AsyncOpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+    return _async_gemini_client
+
+
+def reset_async_gemini_client() -> None:
+    global _async_gemini_client
+    _async_gemini_client = None
+
+
 def create_embedding_store(
     user_dir: Path,
     *,
