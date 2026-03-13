@@ -58,21 +58,15 @@ enum WordDetailPresentation {
             let startDate = entry.lastReviewedAt ?? entry.dateAdded
             let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
             let elapsed = max(0, now.timeIntervalSince(startDate))
-            let fraction = min(max(elapsed / interval, 0), 1)
+            let ratio = max(elapsed / interval, 0)
 
             let detailLabel = "\(elapsed.detailCompactLabel) / \(interval.detailCompactLabel)"
-
-            let tone: VocabReviewProgress.Tone
-            if fraction >= 1 { tone = .red }
-            else if fraction >= 0.72 { tone = .orange }
-            else if fraction >= 0.4 { tone = .yellow }
-            else { tone = .green }
 
             return VocabReviewProgress(
                 statusLabel: state == .due ? L10n.string("待複習") : L10n.string("已複習"),
                 detailLabel: detailLabel,
-                fraction: fraction,
-                tone: tone
+                fraction: ratio,
+                tone: VocabReviewProgress.tone(for: ratio)
             )
         }
     }

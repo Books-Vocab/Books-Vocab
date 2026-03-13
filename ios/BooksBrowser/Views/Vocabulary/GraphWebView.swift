@@ -91,7 +91,7 @@ struct GraphWebView: UIViewRepresentable {
         let mode = colorScheme == .dark ? "dark" : "light"
         let bg = backgroundHex
 
-        let tierNames = ["green", "yellow", "orange", "red", "gray"]
+        let tierNames = ["green", "yellow", "orange", "red", "purple", "gray"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
             let hex = tierHexes[tierName] ?? "#888888"
