@@ -11,6 +11,10 @@ protocol AuthVerifying: AnyObject {
 
 final class AuthBackendVerifier: AuthVerifying {
     func verify(provider: String, token: String, email: String?) async throws -> AuthVerificationResult {
+        guard NetworkMonitor.shared.isConnected else {
+            throw AuthVerificationError.offline
+        }
+
         let serverURL = KGService.getServerURL()
 
         guard let url = URL(string: "\(serverURL)/auth/verify") else {
@@ -54,6 +58,7 @@ enum AuthVerificationError: LocalizedError {
     case emptyResponse
     case invalidResponse
     case missingCredentials(keys: [String])
+    case offline
 
     var errorDescription: String? {
         switch self {
@@ -65,6 +70,8 @@ enum AuthVerificationError: LocalizedError {
             return "Invalid JSON response format"
         case .missingCredentials(let keys):
             return "Missing access_token or user_id. Keys: \(keys.joined(separator: ", "))"
+        case .offline:
+            return L10n.string("目前沒有網路連線，無法登入")
         }
     }
 }
