@@ -38,6 +38,13 @@ class _FakeCardsStore:
             return list(self._cards)
         return [c for c in self._cards if not c.is_deleted]
 
+    def find_by_content(self, content: str):
+        norm = content.strip().lower()
+        for c in self._cards:
+            if c.content.strip().lower() == norm and not c.is_deleted:
+                return c
+        return None
+
     def delete(self, card_id: str):
         self.deleted = card_id
 
