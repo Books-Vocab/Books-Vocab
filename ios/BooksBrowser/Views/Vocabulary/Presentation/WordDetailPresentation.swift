@@ -51,8 +51,7 @@ enum WordDetailPresentation {
             return VocabReviewProgress(
                 statusLabel: L10n.string("未學習"),
                 detailLabel: L10n.format("首輪 %@", entry.reviewIntervalHours.detailCompactHourLabel),
-                fraction: nil,
-                tone: .yellow
+                ratio: nil
             )
         case .due, .reviewed:
             let startDate = entry.lastReviewedAt ?? entry.dateAdded
@@ -60,13 +59,10 @@ enum WordDetailPresentation {
             let elapsed = max(0, now.timeIntervalSince(startDate))
             let ratio = max(elapsed / interval, 0)
 
-            let detailLabel = "\(elapsed.detailCompactLabel) / \(interval.detailCompactLabel)"
-
             return VocabReviewProgress(
                 statusLabel: state == .due ? L10n.string("待複習") : L10n.string("已複習"),
-                detailLabel: detailLabel,
-                fraction: ratio,
-                tone: VocabReviewProgress.tone(for: ratio)
+                detailLabel: "\(elapsed.detailCompactLabel) / \(interval.detailCompactLabel)",
+                ratio: ratio
             )
         }
     }

@@ -58,6 +58,7 @@ function nodeRadius(d) {
 }
 
 function nodeColor(d) {
+    if (d.color) return d.color;
     const palette = TIER_COLORS[currentMode] || {};
     return palette[d.tier] || '#888888';
 }

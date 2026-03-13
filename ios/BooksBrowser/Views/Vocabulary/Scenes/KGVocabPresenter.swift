@@ -148,8 +148,7 @@ private enum KGVocabPresenterPreviewData {
                 reviewProgress: .init(
                     statusLabel: "待複習",
                     detailLabel: "18h / 24h",
-                    fraction: 0.75,
-                    tone: .orange
+                    ratio: 0.75
                 ),
                 leadingSystemImage: nil,
                 leadingTone: nil,
@@ -174,8 +173,7 @@ private enum KGVocabPresenterPreviewData {
                 reviewProgress: .init(
                     statusLabel: "已複習",
                     detailLabel: "3d / 7d",
-                    fraction: 0.43,
-                    tone: .yellow
+                    ratio: 0.43
                 ),
                 leadingSystemImage: nil,
                 leadingTone: nil,
