@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import os
+import threading
+from collections import OrderedDict
 from pathlib import Path
 
 from fastapi import HTTPException
@@ -10,17 +12,41 @@ from .daily_stats import DailyReviewStatsStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
 
+_STORE_CACHE: OrderedDict[str, object] = OrderedDict()
+_STORE_CACHE_LOCK = threading.Lock()
+_STORE_CACHE_MAX = 100
+
+
+def _get_cached(key: str, factory):
+    with _STORE_CACHE_LOCK:
+        if key in _STORE_CACHE:
+            _STORE_CACHE.move_to_end(key)
+            return _STORE_CACHE[key]
+        instance = factory()
+        _STORE_CACHE[key] = instance
+        while len(_STORE_CACHE) > _STORE_CACHE_MAX:
+            _STORE_CACHE.popitem(last=False)
+        return instance
+
+
+def clear_store_cache() -> None:
+    with _STORE_CACHE_LOCK:
+        _STORE_CACHE.clear()
+
 
 def create_card_store(user_dir: Path) -> CardStore:
-    return CardStore(user_dir / "cards.db")
+    key = f"card:{user_dir}"
+    return _get_cached(key, lambda: CardStore(user_dir / "cards.db"))
 
 
 def create_daily_stats_store(user_dir: Path) -> DailyReviewStatsStore:
-    return DailyReviewStatsStore(user_dir / "daily_review_stats.db")
+    key = f"stats:{user_dir}"
+    return _get_cached(key, lambda: DailyReviewStatsStore(user_dir / "daily_review_stats.db"))
 
 
 def create_graph_store(user_dir: Path) -> GraphStore:
-    return GraphStore(user_dir / "graph.json", user_dir / "candidates.json")
+    key = f"graph:{user_dir}"
+    return _get_cached(key, lambda: GraphStore(user_dir / "graph.json", user_dir / "candidates.json"))
 
 
 _gemini_client = None
