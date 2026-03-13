@@ -23,6 +23,33 @@ struct VocabCard<Content: View>: View {
     }
 }
 
+// MARK: - Card Background Modifier
+
+/// 為已有 padding 的內容套用 VocabSkin 標準卡片背景（fill + border stroke）
+/// 用於不需要 VocabCard 容器的情境（例如 calendarSection 自行管理 padding）
+private struct VocabCardBackgroundModifier: ViewModifier {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    func body(content: Content) -> some View {
+        content
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .fill(vocabSkin.palette.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    )
+            )
+    }
+}
+
+extension View {
+    func vocabCardBackground() -> some View {
+        modifier(VocabCardBackgroundModifier())
+    }
+}
+
 struct VocabToneChip: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let text: String
