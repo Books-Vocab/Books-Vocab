@@ -12,6 +12,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import uuid as _uuid
+from contextlib import asynccontextmanager
 from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
@@ -202,7 +203,15 @@ def _get_settings(request: Request) -> KGSettings:
 def create_app(settings: KGSettings | None = None) -> FastAPI:
     settings = settings or load_settings()
 
-    app = FastAPI(title="Knowledge Graph API", version="0.1.0")
+    @asynccontextmanager
+    async def lifespan(app: FastAPI):
+        logger.info("KG API starting up")
+        yield
+        logger.info("KG API shutting down")
+        from .service_factories import reset_gemini_client
+        reset_gemini_client()
+
+    app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
     app.state.kg_settings = settings
 
     # --- user store helpers (closures capturing app reference) ---
@@ -295,6 +304,15 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         if request.url.scheme == "https":
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
+
+    @app.exception_handler(Exception)
+    async def unhandled_exception_handler(request: Request, exc: Exception):
+        request_id = getattr(request.state, "request_id", "unknown")
+        logger.error("Unhandled exception [%s]: %s", request_id, exc, exc_info=True)
+        return JSONResponse(
+            status_code=500,
+            content={"detail": "Internal server error", "request_id": request_id},
+        )
 
     def _settings_fn() -> KGSettings:
         return app.state.kg_settings
