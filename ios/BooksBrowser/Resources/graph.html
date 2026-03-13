@@ -63,6 +63,12 @@ function nodeColor(d) {
     return palette[d.tier] || '#888888';
 }
 
+function baseOpacityForNode(d) {
+    if (d.ratio == null) return 0.4;
+    if (d.ratio >= 1.0) return 1.0;
+    return 0.25 + d.ratio * 0.55;
+}
+
 function opacityForNode(id) {
     if (!hoveredId && !selectedId) return 1.0;
     const focusId = selectedId || hoveredId;
@@ -109,7 +115,9 @@ function draw() {
     for (const d of nodes) {
         const r = nodeRadius(d);
         const color = nodeColor(d);
-        const opacity = opacityForNode(d.id);
+        const interactOpacity = opacityForNode(d.id);
+        const baseOp = baseOpacityForNode(d);
+        const opacity = interactOpacity * baseOp;
 
         // Glow halo
         ctx.beginPath();

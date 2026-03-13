@@ -6,6 +6,7 @@ struct KnowledgeGraphNode: Identifiable, Equatable {
     let word: String
     let tier: String?
     let colorHex: String?
+    let ratio: Double?
     let degree: Int
 }
 
@@ -44,16 +45,20 @@ enum KnowledgeGraphPresentation {
 
             let tier: String
             let colorHex: String?
+            let nodeRatio: Double?
             if entry.isArchived {
                 tier = "archived"
                 colorHex = nil
+                nodeRatio = nil
             } else if entry.reviewCount == 0 {
                 tier = "gray"
                 colorHex = nil
+                nodeRatio = nil
             } else {
                 tier = "gradient"
-                let ratio = reviewRatio(for: entry, now: now)
-                colorHex = ReviewGradient.cssHex(for: ratio)
+                let r = reviewRatio(for: entry, now: now)
+                colorHex = ReviewGradient.cssHex(for: r)
+                nodeRatio = r
             }
 
             return KnowledgeGraphNode(
@@ -61,6 +66,7 @@ enum KnowledgeGraphPresentation {
                 word: entry.word,
                 tier: tier,
                 colorHex: colorHex,
+                ratio: nodeRatio,
                 degree: degree
             )
         }
