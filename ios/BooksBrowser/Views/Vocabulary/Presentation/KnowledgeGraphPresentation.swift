@@ -5,6 +5,7 @@ struct KnowledgeGraphNode: Identifiable, Equatable {
     let id: String
     let word: String
     let tier: String?
+    let colorHex: String?
     let degree: Int
 }
 
@@ -40,27 +41,36 @@ enum KnowledgeGraphPresentation {
             guard entry.isSynced, entry.syncAction != .delete, let kgId = entry.kgCardId else { return nil }
             let degree = degreeMap[kgId] ?? 0
             guard showIsolatedNodes || degree > 0 else { return nil }
-            let tier = entry.isArchived ? "archived" : reviewTone(for: entry, now: now)
+
+            let tier: String
+            let colorHex: String?
+            if entry.isArchived {
+                tier = "archived"
+                colorHex = nil
+            } else if entry.reviewCount == 0 {
+                tier = "gray"
+                colorHex = nil
+            } else {
+                tier = "gradient"
+                let ratio = reviewRatio(for: entry, now: now)
+                colorHex = ReviewGradient.cssHex(for: ratio)
+            }
+
             return KnowledgeGraphNode(
                 id: kgId,
                 word: entry.word,
                 tier: tier,
+                colorHex: colorHex,
                 degree: degree
             )
         }
     }
 
-    private static func reviewTone(for entry: VocabularyEntry, now: Date) -> String {
-        guard entry.reviewCount > 0 else { return "gray" }
+    private static func reviewRatio(for entry: VocabularyEntry, now: Date) -> Double {
         let startDate = entry.lastReviewedAt ?? entry.dateAdded
         let interval = max(entry.nextReviewAt.timeIntervalSince(startDate), 60)
         let elapsed = max(0, now.timeIntervalSince(startDate))
-        let ratio = max(elapsed / interval, 0)
-        if ratio >= 2.5 { return "purple" }
-        if ratio >= 1.5 { return "red" }
-        if ratio >= 1.0 { return "orange" }
-        if ratio >= 0.5 { return "yellow" }
-        return "green"
+        return max(elapsed / interval, 0)
     }
 
     static func edges(
@@ -84,11 +94,6 @@ enum KnowledgeGraphPresentation {
         KnowledgeGraphTheme(
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [
-                "green": cssHex(skin.palette.success),
-                "yellow": cssHex(skin.palette.tierIntermediate),
-                "orange": cssHex(skin.palette.tierAdvanced),
-                "red": cssHex(skin.palette.destructive),
-                "purple": cssHex(skin.palette.overdue),
                 "gray": cssHex(skin.palette.quaternaryText),
                 "archived": cssHex(skin.palette.quaternaryText)
             ],

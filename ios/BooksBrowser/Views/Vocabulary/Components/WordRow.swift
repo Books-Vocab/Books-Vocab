@@ -49,8 +49,8 @@ struct WordRow: View {
     private var accessibilityProgressDescription: String {
         guard let progress = viewData.reviewProgress else { return "" }
         var parts = [progress.statusLabel]
-        if let fraction = progress.fraction {
-            parts.append("進度 \(Int(fraction * 100))%")
+        if let ratio = progress.ratio {
+            parts.append("進度 \(Int(min(ratio, 1.0) * 100))%")
         }
         if let detail = progress.detailLabel {
             parts.append(detail)

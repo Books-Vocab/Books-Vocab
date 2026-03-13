@@ -90,8 +90,7 @@ extension VocabularyEntry {
             return .init(
                 statusLabel: reviewProgressStatusLabel,
                 detailLabel: L10n.format("首輪 %@", reviewIntervalHours.compactHourLabel),
-                fraction: nil,
-                tone: .yellow
+                ratio: nil
             )
         case .due, .reviewed:
             let interval = max(nextReviewAt.timeIntervalSince(reviewProgressStartDate), 60)
@@ -101,8 +100,7 @@ extension VocabularyEntry {
             return .init(
                 statusLabel: reviewProgressStatusLabel,
                 detailLabel: "\(elapsed.compactReviewProgressLabel) / \(interval.compactReviewProgressLabel)",
-                fraction: ratio,
-                tone: VocabReviewProgress.tone(for: ratio)
+                ratio: ratio
             )
         }
     }

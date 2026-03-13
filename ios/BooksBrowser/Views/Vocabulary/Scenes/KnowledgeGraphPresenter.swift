@@ -46,6 +46,16 @@ struct KnowledgeGraphPresenter: View {
                 ZStack(alignment: .bottom) {
                     graphView
 
+                    VStack {
+                        HStack {
+                            Spacer()
+                            graphLegend
+                                .padding(.trailing, vocabSkin.metrics.overlayDrawerHorizontalInset)
+                                .padding(.top, vocabSkin.spacing.microGap)
+                        }
+                        Spacer()
+                    }
+
                     if state.showsSettings {
                         settingsOverlay
                             .transition(.readerPanelReveal)
@@ -147,6 +157,46 @@ struct KnowledgeGraphPresenter: View {
         .padding(.bottom, vocabSkin.metrics.overlayDrawerBottomInset)
     }
 
+    private var graphLegend: some View {
+        VStack(alignment: .trailing, spacing: vocabSkin.spacing.tinyGap) {
+            ReviewGradientBar()
+                .frame(width: 100, height: 5)
+                .clipShape(Capsule(style: .continuous))
+
+            HStack(spacing: 0) {
+                Text("安全".localized)
+                    .foregroundStyle(ReviewGradient.color(for: 0))
+                Spacer()
+                Text("到期".localized)
+                    .foregroundStyle(ReviewGradient.color(for: 1.0))
+                Spacer()
+                Text("逾期".localized)
+                    .foregroundStyle(ReviewGradient.color(for: 2.5))
+            }
+            .font(vocabSkin.typography.monoLabel)
+            .frame(width: 100)
+
+            HStack(spacing: vocabSkin.spacing.tinyGap) {
+                Circle()
+                    .fill(vocabSkin.palette.quaternaryText.opacity(0.5))
+                    .frame(width: 6, height: 6)
+                Text("未學習 / 封存".localized)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+        }
+        .padding(.horizontal, vocabSkin.spacing.inlineGap)
+        .padding(.vertical, vocabSkin.spacing.microGap)
+        .background(
+            RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
+                .fill(vocabSkin.palette.cardBackground.opacity(0.85))
+                .overlay(
+                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
+                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                )
+        )
+    }
+
     private func centeredStateCard(_ state: State.EmptyState) -> some View {
         VStack {
             VocabEmptyStateCard(
@@ -198,9 +248,9 @@ private struct KnowledgeGraphPresenterPreviewHarness: View {
 
 private enum KnowledgeGraphPresenterPreviewData {
     static let sampleNodes = [
-        KnowledgeGraphNode(id: "1", word: "subtle", tier: "green", degree: 3),
-        KnowledgeGraphNode(id: "2", word: "nuance", tier: "red", degree: 2),
-        KnowledgeGraphNode(id: "3", word: "precise", tier: "yellow", degree: 2)
+        KnowledgeGraphNode(id: "1", word: "subtle", tier: "gradient", colorHex: ReviewGradient.cssHex(for: 0.2), degree: 3),
+        KnowledgeGraphNode(id: "2", word: "nuance", tier: "gradient", colorHex: ReviewGradient.cssHex(for: 2.0), degree: 2),
+        KnowledgeGraphNode(id: "3", word: "precise", tier: "gradient", colorHex: ReviewGradient.cssHex(for: 0.7), degree: 2)
     ]
 
     static let sampleEdges = [
