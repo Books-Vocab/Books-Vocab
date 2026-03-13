@@ -17,7 +17,8 @@ struct KnowledgeGraphView: View {
                 linkForce: $coordinator.linkForce,
                 linkDistance: $coordinator.linkDistance,
                 nodeSize: $coordinator.nodeSize,
-                linkThickness: $coordinator.linkThickness
+                linkThickness: $coordinator.linkThickness,
+                showsIsolatedNodes: $coordinator.showsIsolatedNodes
             ),
             onToggleSettings: coordinator.toggleSettings,
             onResetForces: coordinator.resetForces,
@@ -33,7 +34,11 @@ struct KnowledgeGraphView: View {
     }
 
     private var presenterState: KnowledgeGraphPresenter.State {
-        let nodes = KnowledgeGraphPresentation.nodes(from: allEntries, links: coordinator.links)
+        let nodes = KnowledgeGraphPresentation.nodes(
+            from: allEntries,
+            links: coordinator.links,
+            showIsolatedNodes: coordinator.showsIsolatedNodes
+        )
         let edges = KnowledgeGraphPresentation.edges(
             from: coordinator.links,
             validNodeIDs: Set(nodes.map(\.id))
