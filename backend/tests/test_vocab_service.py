@@ -56,6 +56,14 @@ class _FakeCardsStore:
     def get_modified_since(self, parsed_since):
         return list(self._cards)
 
+    def find_by_content(self, content: str):
+        import unicodedata
+        norm = unicodedata.normalize("NFC", content).strip().lower()
+        for card in self._cards:
+            if unicodedata.normalize("NFC", card.content).strip().lower() == norm and not card.is_deleted:
+                return card
+        return None
+
     def delete(self, card_id: str):
         self.deleted = card_id
 

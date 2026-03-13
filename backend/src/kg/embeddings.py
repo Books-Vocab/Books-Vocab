@@ -25,12 +25,22 @@ class EmbeddingStore:
         self.user_id = user_id
         self._embeddings: np.ndarray | None = None
         self._ids: list[str] = []
+        self._norms: np.ndarray | None = None  # cached L2 norms
         self._load()
 
     def _load(self) -> None:
         if self.embeddings_path.exists() and self.ids_path.exists():
             self._embeddings = np.load(self.embeddings_path)
             self._ids = json.loads(self.ids_path.read_text())
+            self._invalidate_norms()
+
+    def _invalidate_norms(self) -> None:
+        self._norms = None
+
+    def _get_norms(self) -> np.ndarray:
+        if self._norms is None and self._embeddings is not None:
+            self._norms = np.linalg.norm(self._embeddings, axis=1)
+        return self._norms
 
     def _save(self) -> None:
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
@@ -78,6 +88,7 @@ class EmbeddingStore:
         else:
             self._embeddings = np.vstack([self._embeddings, vec])
         self._ids.append(card_id)
+        self._invalidate_norms()
         self._save()
 
     def update(self, card_id: str, text: str) -> None:
@@ -89,6 +100,7 @@ class EmbeddingStore:
         idx = self._ids.index(card_id)
         vec = self._embed(text)
         self._embeddings[idx] = vec
+        self._invalidate_norms()
         self._save()
 
     def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
@@ -102,9 +114,9 @@ class EmbeddingStore:
         idx = self._ids.index(card_id)
         query_vec = self._embeddings[idx]
 
-        # Cosine similarity
-        norms = np.linalg.norm(self._embeddings, axis=1)
-        query_norm = np.linalg.norm(query_vec)
+        # Cosine similarity with cached norms
+        norms = self._get_norms()
+        query_norm = norms[idx]
         similarities = (self._embeddings @ query_vec) / (norms * query_norm + 1e-9)
 
         # Get top k+1 (including self), then filter
