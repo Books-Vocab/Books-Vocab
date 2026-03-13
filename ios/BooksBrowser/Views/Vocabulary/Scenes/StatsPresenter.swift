@@ -11,6 +11,8 @@ import SwiftData
 struct StatsPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
+    let allEntries: [VocabularyEntry]
+
     @Query(filter: #Predicate<VocabularyEntry> {
         $0.syncStatus == 1 &&
         $0.actionType != "delete"
@@ -24,7 +26,8 @@ struct StatsPresenter: View {
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
-    init() {
+    init(allEntries: [VocabularyEntry]) {
+        self.allEntries = allEntries
         let cutoff = Self.sixMonthsAgo
         _reviewRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
@@ -37,6 +40,7 @@ struct StatsPresenter: View {
         ScrollView {
             if let summary {
                 VStack(spacing: vocabSkin.spacing.sectionGap) {
+                    graphEntrySection
                     streakSection(summary)
                     heatmapSection(summary)
                     forecastSection(summary)
@@ -80,6 +84,37 @@ struct StatsPresenter: View {
             from: syncedEntries,
             reviewRecords: reviewRecords
         )
+    }
+
+    // MARK: - Graph Entry
+
+    private var graphEntrySection: some View {
+        NavigationLink {
+            KnowledgeGraphView(allEntries: allEntries)
+        } label: {
+            HStack(spacing: vocabSkin.spacing.inlineGap) {
+                Image(systemName: "point.3.connected.trianglepath.dotted")
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(vocabSkin.palette.accent)
+                Text("關聯圖".localized)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                Spacer()
+                Image(systemName: "chevron.right")
+                    .font(vocabSkin.typography.iconSmall)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+            .padding(vocabSkin.spacing.cardPadding)
+            .background(
+                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                    .fill(vocabSkin.palette.cardBackground)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
+                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    )
+            )
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Sections
