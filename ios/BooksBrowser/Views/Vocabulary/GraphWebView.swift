@@ -91,7 +91,7 @@ struct GraphWebView: UIViewRepresentable {
         let mode = colorScheme == .dark ? "dark" : "light"
         let bg = backgroundHex
 
-        let tierNames = ["green", "yellow", "orange", "red", "purple", "gray"]
+        let tierNames = ["gray", "archived"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
             let hex = tierHexes[tierName] ?? "#888888"
@@ -104,6 +104,7 @@ struct GraphWebView: UIViewRepresentable {
         struct NodePayload: Encodable {
             let id, word: String
             let tier: String
+            let color: String?
             let degree: Int
         }
         struct LinkPayload: Encodable {
@@ -127,7 +128,7 @@ struct GraphWebView: UIViewRepresentable {
         }
 
         let nodePayloads = nodes.map {
-            NodePayload(id: $0.id, word: $0.word, tier: $0.tier ?? "unknown", degree: $0.degree)
+            NodePayload(id: $0.id, word: $0.word, tier: $0.tier ?? "unknown", color: $0.colorHex, degree: $0.degree)
         }
         let linkPayloads = edges.map {
             LinkPayload(id: $0.id, source: $0.from, target: $0.to, kind: $0.kind)
