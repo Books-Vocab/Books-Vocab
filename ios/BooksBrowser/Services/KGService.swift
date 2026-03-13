@@ -115,6 +115,9 @@ final class KGService: KGServing, LocalDataClearing {
     var serverCardCount: Int = 0
     var sessionExpiredReason: String?
 
+    /// 最近一次背景同步失敗訊息（UI 可觀測）
+    var lastBackgroundSyncError: String?
+
     var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
@@ -139,8 +142,17 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Auth Helper
 
     func currentAuthToken() async throws -> String {
+        guard NetworkMonitor.shared.isConnected else {
+            throw KGError.offline
+        }
         guard let token = await authSession.token else {
             throw KGError.unauthorized
+        }
+        if JWTExpiry.isExpired(token) {
+            AppLog.kg.warning("Token expired (pre-check), triggering session invalidation")
+            sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
+            await sessionInvalidator.logout(modelContainer: nil, reason: "token_expired_precheck")
+            throw KGError.tokenExpired
         }
         return token
     }
@@ -152,6 +164,10 @@ final class KGService: KGServing, LocalDataClearing {
     // MARK: - Health Check
 
     func healthCheck() async {
+        guard NetworkMonitor.shared.isConnected else {
+            isConnected = false
+            return
+        }
         guard await authSession.isLoggedIn else {
             isConnected = false
             return
@@ -263,12 +279,24 @@ enum KGError: LocalizedError {
     case serverError(String)
     case notConnected
     case unauthorized
+    case offline
+    case tokenExpired
 
     var errorDescription: String? {
         switch self {
         case .serverError(let msg): return L10n.format("KG 伺服器錯誤：%@", msg)
         case .notConnected: return L10n.string("KG 伺服器未連線")
         case .unauthorized: return L10n.string("未登入帳號或身份已過期")
+        case .offline: return L10n.string("目前沒有網路連線")
+        case .tokenExpired: return L10n.string("登入已過期，請重新登入")
+        }
+    }
+
+    /// 是否為網路/離線相關錯誤（UI 可據此顯示不同提示）
+    var isNetworkRelated: Bool {
+        switch self {
+        case .offline, .notConnected: return true
+        default: return false
         }
     }
 }
