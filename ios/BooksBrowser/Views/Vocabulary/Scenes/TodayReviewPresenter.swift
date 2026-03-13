@@ -103,6 +103,7 @@ struct TodayReviewPresenter: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
+                        .scrollDisabled(!state.revealStage.showsAnswer)
                     }
 
                     bottomToolbar

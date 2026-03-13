@@ -25,7 +25,11 @@ extension VocabularyListView {
                     actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
                     actionTone: entry.syncAction == .delete ? .secondary : .tertiary
                 )
-            }
+            },
+            knowledgeCount: authManager.isDemoMode
+                ? syncedKnowledgeEntries.count
+                : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
+            dueCount: knowledgeDueCount
         )
     }
 
@@ -92,6 +96,10 @@ extension VocabularyListView {
         )
     }
 
+    func switchToKnowledgeTab() {
+        selectedTab = 1
+    }
+
     func handlePendingRowTap(_ entryID: UUID) {
         coordinator.handlePendingRowTap(entryID, pendingEntries: pendingEntries)
     }
@@ -112,7 +120,8 @@ extension VocabularyListView {
             PendingVocabPresenter(
                 state: pendingPresenterState,
                 onRowTapped: handlePendingRowTap,
-                onActionTapped: handlePendingActionTap
+                onActionTapped: handlePendingActionTap,
+                onSwitchToKnowledge: switchToKnowledgeTab
             )
         } else if !authManager.isLoggedIn {
             loggedOutState
