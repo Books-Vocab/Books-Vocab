@@ -72,6 +72,7 @@ struct TOCView: View {
                     }
                 }
             }
+            .animation(AppMotion.phaseChange, value: tocLinks.isEmpty)
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("目錄".localized)
             .navigationBarTitleDisplayMode(.inline)
