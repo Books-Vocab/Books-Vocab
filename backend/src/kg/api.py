@@ -141,6 +141,7 @@ from .user_handlers import (
     update_user_config_response,
 )
 from .user_store import (
+    CachedUserStore,
     collect_account_ids_for_deletion,
     load_users_from,
     normalize_users_payload,
@@ -225,11 +226,14 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         encrypt_fn = (lambda v: encrypt_value(v, jwt_secret)) if jwt_secret else None
         return normalize_users_payload(users, _default_subscription_payload, encrypt_fn=encrypt_fn)
 
+    user_store = CachedUserStore(app.state.kg_settings.users_file, _normalize_users_payload_fn)
+    app.state.user_store = user_store
+
     def _load_users_fn() -> dict[str, dict[str, Any]]:
-        return load_users_from(app.state.kg_settings.users_file, _normalize_users_payload_fn)
+        return app.state.user_store.load()
 
     def _save_users_fn(users: dict[str, dict[str, Any]]) -> None:
-        save_users_to(app.state.kg_settings.users_file, users, _normalize_users_payload_fn)
+        app.state.user_store.save(users)
 
     app.state.load_users = _load_users_fn
     app.state.save_users = _save_users_fn
