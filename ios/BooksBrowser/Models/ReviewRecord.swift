@@ -10,6 +10,11 @@ import SwiftData
 
 @Model
 final class ReviewRecord {
+    #Index<ReviewRecord>(
+        [\.dayKey],
+        [\.reviewedAt]
+    )
+
     var id: UUID
     var word: String
     var entryID: UUID?
