@@ -43,37 +43,51 @@ final class TranslationService: Translating {
     // MARK: - Phase 1: 精簡翻譯（~10 output tokens）
     
     func translateQuick(
-        word: String, 
-        context: String, 
+        word: String,
+        context: String,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> TranslationResult {
         let startTime = Date()
-        
-        var result = try await withRetry(onRetry: onRetry) {
-            AppLog.translation.debug("Quick翻譯請求: \(word)")
-            let data = try await self.callBackend(endpoint: "/api/translate/quick", word: word, context: context)
+        AppAnalytics.track(.translationRequested(word: word, type: .quick))
+        let signpostState = AppAnalytics.beginInterval("TranslateQuick")
 
-            struct QuickResult: Codable {
-                let t: String
-                let p: String?
-                let r: String?
+        var result: TranslationResult
+        do {
+            result = try await withRetry(onRetry: onRetry) {
+                AppLog.translation.debug("Quick翻譯請求: \(word)")
+                let data = try await self.callBackend(endpoint: "/api/translate/quick", word: word, context: context)
+
+                struct QuickResult: Codable {
+                    let t: String
+                    let p: String?
+                    let r: String?
+                }
+
+                let quick = try JSONDecoder().decode(QuickResult.self, from: data)
+                AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
+
+                return TranslationResult(
+                    translation: quick.t,
+                    partOfSpeech: quick.p,
+                    pronunciation: nil,
+                    explanation: nil,
+                    rootForm: quick.r,
+                    latency: nil
+                )
             }
-
-            let quick = try JSONDecoder().decode(QuickResult.self, from: data)
-            AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
-
-            return TranslationResult(
-                translation: quick.t,
-                partOfSpeech: quick.p,
-                pronunciation: nil,
-                explanation: nil,
-                rootForm: quick.r,
-                latency: nil // 後續統一填入
-            )
+        } catch {
+            AppAnalytics.endInterval("TranslateQuick", signpostState)
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            AppAnalytics.track(.translationFailed(word: word, type: .quick, error: error.localizedDescription))
+            _ = latencyMs
+            throw error
         }
-        
+
         let endTime = Date()
         result.latency = endTime.timeIntervalSince(startTime)
+        AppAnalytics.endInterval("TranslateQuick", signpostState)
+        let latencyMs = Int(result.latency! * 1000)
+        AppAnalytics.track(.translationCompleted(word: word, type: .quick, latencyMs: latencyMs))
         return result
     }
 
@@ -84,44 +98,70 @@ final class TranslationService: Translating {
         context: String,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> String {
-        return try await withRetry(onRetry: onRetry) {
-            AppLog.translation.debug("短語翻譯請求: \(phrase)")
-            let data = try await self.callBackend(endpoint: "/api/translate/phrase", word: phrase, context: context)
+        let startTime = Date()
+        AppAnalytics.track(.translationRequested(word: phrase, type: .phrase))
 
-            struct PhraseResult: Codable {
-                let t: String
+        do {
+            let translated = try await withRetry(onRetry: onRetry) {
+                AppLog.translation.debug("短語翻譯請求: \(phrase)")
+                let data = try await self.callBackend(endpoint: "/api/translate/phrase", word: phrase, context: context)
+
+                struct PhraseResult: Codable {
+                    let t: String
+                }
+
+                let result = try JSONDecoder().decode(PhraseResult.self, from: data)
+                AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
+                return result.t
             }
-
-            let result = try JSONDecoder().decode(PhraseResult.self, from: data)
-            AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
-            return result.t
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            AppAnalytics.track(.translationCompleted(word: phrase, type: .phrase, latencyMs: latencyMs))
+            return translated
+        } catch {
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            AppAnalytics.track(.translationFailed(word: phrase, type: .phrase, error: error.localizedDescription))
+            _ = latencyMs
+            throw error
         }
     }
 
     // MARK: - Phase 2: 語境解釋（使用者按需觸發）
 
     func fetchExplanation(
-        word: String, 
-        context: String, 
+        word: String,
+        context: String,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> (explanation: String, latency: TimeInterval) {
         let startTime = Date()
-        
-        let explanation = try await withRetry(onRetry: onRetry) {
-            AppLog.translation.debug("解釋請求: \(word)")
-            let data = try await self.callBackend(endpoint: "/api/translate/explain", word: word, context: context)
+        AppAnalytics.track(.translationRequested(word: word, type: .explanation))
+        let signpostState = AppAnalytics.beginInterval("FetchExplanation")
 
-            struct ExplanationResult: Codable {
-                let e: String
+        do {
+            let explanation = try await withRetry(onRetry: onRetry) {
+                AppLog.translation.debug("解釋請求: \(word)")
+                let data = try await self.callBackend(endpoint: "/api/translate/explain", word: word, context: context)
+
+                struct ExplanationResult: Codable {
+                    let e: String
+                }
+
+                let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
+                AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
+                return result.e
             }
 
-            let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
-            AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
-            return result.e
+            let endTime = Date()
+            let latency = endTime.timeIntervalSince(startTime)
+            AppAnalytics.endInterval("FetchExplanation", signpostState)
+            AppAnalytics.track(.translationCompleted(word: word, type: .explanation, latencyMs: Int(latency * 1000)))
+            return (explanation, latency)
+        } catch {
+            AppAnalytics.endInterval("FetchExplanation", signpostState)
+            let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
+            AppAnalytics.track(.translationFailed(word: word, type: .explanation, error: error.localizedDescription))
+            _ = latencyMs
+            throw error
         }
-        
-        let endTime = Date()
-        return (explanation, endTime.timeIntervalSince(startTime))
     }
 
     // MARK: - API Error Model
