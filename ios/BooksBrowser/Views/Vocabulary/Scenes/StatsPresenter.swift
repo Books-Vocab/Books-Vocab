@@ -65,6 +65,7 @@ struct StatsPresenter: View {
             }
         }
         .vocabCanvasBackground()
+        .animation(AppMotion.phaseChange, value: summary != nil)
         .task {
             recompute()
         }
@@ -92,27 +93,20 @@ struct StatsPresenter: View {
         NavigationLink {
             KnowledgeGraphView(allEntries: allEntries)
         } label: {
-            HStack(spacing: vocabSkin.spacing.inlineGap) {
-                Image(systemName: "point.3.connected.trianglepath.dotted")
-                    .font(vocabSkin.typography.iconMedium)
-                    .foregroundStyle(vocabSkin.palette.accent)
-                Text("關聯圖".localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                Spacer()
-                Image(systemName: "chevron.right")
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            VocabCard {
+                HStack(spacing: vocabSkin.spacing.inlineGap) {
+                    Image(systemName: "point.3.connected.trianglepath.dotted")
+                        .font(vocabSkin.typography.iconMedium)
+                        .foregroundStyle(vocabSkin.palette.accent)
+                    Text("關聯圖".localized)
+                        .font(vocabSkin.typography.captionStrong)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                    Spacer()
+                    Image(systemName: "chevron.right")
+                        .font(vocabSkin.typography.iconSmall)
+                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                }
             }
-            .padding(vocabSkin.spacing.cardPadding)
-            .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .fill(vocabSkin.palette.cardBackground)
-                    .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                    )
-            )
         }
         .buttonStyle(.plain)
     }
@@ -142,34 +136,28 @@ struct StatsPresenter: View {
         unit: String,
         systemImage: String
     ) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-            HStack(spacing: vocabSkin.spacing.microGap) {
-                Image(systemName: systemImage)
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-                Text(title)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+        VocabCard {
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                HStack(spacing: vocabSkin.spacing.microGap) {
+                    Image(systemName: systemImage)
+                        .font(vocabSkin.typography.iconSmall)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    Text(title)
+                        .font(vocabSkin.typography.captionStrong)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
+                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                    Text(value)
+                        .font(vocabSkin.typography.numericHero)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .contentTransition(.numericText())
+                    Text(unit)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
             }
-            HStack(alignment: .firstTextBaseline, spacing: 2) {
-                Text(value)
-                    .font(vocabSkin.typography.numericHero)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                Text(unit)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(vocabSkin.spacing.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
-        )
     }
 
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
@@ -186,16 +174,9 @@ struct StatsPresenter: View {
             .buttonStyle(.plain)
 
             Button { showCalendar = true } label: {
-                VocabActivityHeatmap(activity: summary.activity, weeks: 20)
-                    .padding(vocabSkin.spacing.cardPadding)
-                    .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                            .fill(vocabSkin.palette.cardBackground)
-                            .overlay(
-                                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                            )
-                    )
+                VocabCard {
+                    VocabActivityHeatmap(activity: summary.activity, weeks: 20)
+                }
             }
             .buttonStyle(.plain)
         }
@@ -205,35 +186,21 @@ struct StatsPresenter: View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
             sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
 
-            VocabForecastChart(buckets: summary.forecast)
-                .frame(height: 160)
-                .padding(vocabSkin.spacing.cardPadding)
-                .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .fill(vocabSkin.palette.cardBackground)
-                        .overlay(
-                            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                        )
-                )
+            VocabCard {
+                VocabForecastChart(buckets: summary.forecast)
+                    .frame(height: 160)
+            }
         }
     }
 
     private func totalsSection(_ summary: StatsPresentation.Summary) -> some View {
-        HStack(spacing: vocabSkin.spacing.sectionGap) {
-            miniStat(label: "總卡片數".localized, value: "\(summary.totalCards)")
-            miniStat(label: "今天到期".localized, value: "\(summary.dueToday)")
-            miniStat(label: "今天已複習".localized, value: "\(summary.reviewedToday)")
+        VocabCard {
+            HStack(spacing: vocabSkin.spacing.sectionGap) {
+                miniStat(label: "總卡片數".localized, value: "\(summary.totalCards)")
+                miniStat(label: "今天到期".localized, value: "\(summary.dueToday)")
+                miniStat(label: "今天已複習".localized, value: "\(summary.reviewedToday)")
+            }
         }
-        .padding(vocabSkin.spacing.cardPadding)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
-                .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
-                )
-        )
     }
 
     private func miniStat(label: String, value: String) -> some View {
