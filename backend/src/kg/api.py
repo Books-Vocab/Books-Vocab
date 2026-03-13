@@ -118,6 +118,7 @@ from .pipeline_handlers import queue_pipeline_response
 from .pipeline_service import run_pipeline_background
 from .route_registration import register_routes
 from .service_factories import (
+    clear_store_cache,
     create_card_store,
     create_daily_stats_store,
     create_embedding_store,
@@ -201,6 +202,9 @@ def _get_settings(request: Request) -> KGSettings:
 
 
 def create_app(settings: KGSettings | None = None) -> FastAPI:
+    import atexit
+    atexit.register(clear_store_cache)
+
     settings = settings or load_settings()
 
     @asynccontextmanager
