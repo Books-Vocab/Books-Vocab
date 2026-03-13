@@ -23,6 +23,7 @@ struct BooksBrowserApp: App {
     let bookshelfImportService: any BookshelfImporting
     let bookFileManager: any BookFileManaging
     let iCloudDownloadManager = ICloudDownloadManager()
+    let networkMonitor = NetworkMonitor.shared
     let startupFailure: AppStartupFailure?
 
     init() {
@@ -169,7 +170,8 @@ struct BooksBrowserApp: App {
                             let syncStart = Date()
                             await kgService.backgroundSync(container: modelContainer)
                             let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
-                            AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: true))
+                            let success = kgService.lastBackgroundSyncError == nil
+                            AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: success))
                         }
                     case .background:
                         SessionMetrics.shared.snapshot().logSummary()

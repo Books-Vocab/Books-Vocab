@@ -50,8 +50,14 @@ func withRetry<T>(
         } catch let error as URLError {
             lastError = error
             switch error.code {
-            case .timedOut, .notConnectedToInternet, .networkConnectionLost:
+            case .timedOut, .networkConnectionLost:
+                // 離線時不重試，直接 fail fast
+                if !NetworkMonitor.shared.isConnected {
+                    throw error
+                }
                 continue
+            case .notConnectedToInternet:
+                throw error
             default:
                 throw error
             }
