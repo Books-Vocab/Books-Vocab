@@ -75,6 +75,9 @@ class CardStore:
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_content ON card (content)"
             )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_card_content_nocase ON card (content COLLATE NOCASE)"
+            )
             conn.commit()
 
     def _migrate_review_columns(self) -> None:
@@ -138,6 +141,45 @@ class CardStore:
     def get(self, card_id: str) -> Card | None:
         with Session(self.engine) as session:
             return session.get(Card, card_id)
+
+    def get_by_content(self, content: str) -> Card | None:
+        """Lookup by content using the ix_card_content index. Case-sensitive."""
+        with Session(self.engine) as session:
+            statement = select(Card).where(
+                Card.content == content, Card.is_deleted.is_(False)
+            )
+            return session.exec(statement).first()
+
+    def find_by_content(self, content: str) -> Card | None:
+        """Case-insensitive lookup with Unicode NFC normalization.
+
+        1. Exact match (uses ix_card_content index)
+        2. Case-insensitive via raw SQL COLLATE NOCASE
+        3. Fallback: Python-side NFC normalization for decomposed Unicode
+        """
+        import unicodedata
+        norm = unicodedata.normalize("NFC", content).strip()
+        with Session(self.engine) as session:
+            # 1. Exact match — uses index
+            result = session.exec(
+                select(Card).where(Card.content == norm, Card.is_deleted.is_(False))
+            ).first()
+            if result:
+                return result
+            # 2. Case-insensitive via raw SQL
+            conn = session.connection()
+            row = conn.exec_driver_sql(
+                "SELECT id FROM card WHERE content = ? COLLATE NOCASE AND is_deleted = 0 LIMIT 1",
+                (norm,),
+            ).first()
+            if row:
+                return session.get(Card, row[0])
+            # 3. NFC normalization fallback (handles decomposed Unicode like café)
+            norm_lower = norm.lower()
+            for card in session.exec(select(Card).where(Card.is_deleted.is_(False))).all():
+                if unicodedata.normalize("NFC", card.content).strip().lower() == norm_lower:
+                    return card
+            return None
 
     def all(self, include_deleted: bool = False) -> Iterator[Card]:
         with Session(self.engine) as session:
