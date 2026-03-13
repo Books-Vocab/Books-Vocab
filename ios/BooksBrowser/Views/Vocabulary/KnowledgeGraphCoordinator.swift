@@ -13,6 +13,7 @@ import SwiftUI
     var linkDistance: Double { get set }
     var nodeSize: Double { get set }
     var linkThickness: Double { get set }
+    var showsIsolatedNodes: Bool { get set }
     func toggleSettings()
     func resetForces()
     func handleNodeTap(_ nodeID: String, allEntries: [VocabularyEntry])
@@ -33,6 +34,7 @@ final class KnowledgeGraphCoordinator: KnowledgeGraphCoordinating {
     var linkDistance: Double = 50
     var nodeSize: Double = 5.0
     var linkThickness: Double = 1.0
+    var showsIsolatedNodes: Bool = false
 
     func toggleSettings() {
         withAnimation(AppMotion.panelState) {
