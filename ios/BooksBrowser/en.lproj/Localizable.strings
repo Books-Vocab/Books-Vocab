@@ -172,6 +172,9 @@
 "重試" = "Retry";
 "重設" = "Reset";
 "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。" = "Words tapped while reading appear here and move to the knowledge base after sync.";
+"知識庫有 %d 個單字，其中 %d 個待複習。" = "Your knowledge base has %d words, %d due for review.";
+"知識庫已有 %d 個單字，去複習鞏固記憶吧。" = "You have %d words in your knowledge base. Review to reinforce your memory.";
+"前往知識庫" = "Go to Knowledge Base";
 "閱讀設定" = "Reading Settings";
 "關聯圖需 Pro" = "Graph Requires Pro";
 "關於" = "About";
