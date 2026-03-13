@@ -1,7 +1,8 @@
 """FastAPI server for Knowledge Graph — lightweight bridge for BooksBrowser.
 
 App factory, middleware stack, and route wiring.
-Endpoint definitions live in endpoints.py.
+Endpoint functions live in their respective routers/*.py files.
+Shared dependencies live in deps.py.
 
 Usage:
     uvicorn kg.api:app --reload --port 8000
@@ -70,7 +71,16 @@ _attach_memory_log_handler("uvicorn.access")
 
 from .admin_wiring import create_admin_handlers
 from .rate_limit import api_limiter, translate_limiter
-from .route_registration import register_routes
+from .routers import (
+    auth_router,
+    billing_router,
+    build_admin_router,
+    pipeline_router,
+    static_pages_router,
+    translate_router,
+    user_router,
+    vocab_router,
+)
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
 from .user_store import (
@@ -78,9 +88,8 @@ from .user_store import (
     normalize_users_payload,
 )
 
-# Re-export endpoints module symbols so existing tests (import kg.api as api_mod)
-# and external code continue to work without changes.
-from .endpoints import (  # noqa: F401
+# Re-export deps symbols so existing tests (import kg.api as api_mod) continue to work.
+from .deps import (  # noqa: F401
     _apply_quota_headers,
     _build_entitlements_response,
     _build_links_by_kind,
@@ -105,42 +114,43 @@ from .endpoints import (  # noqa: F401
     _require_pro_access,
     _resolve_and_link_user,
     _resolve_user_id_from_subscription_index,
-    _run_pipeline_background,
     _with_quota_check,
     _write_subscription_snapshot,
-    add_vocab,
-    app_store_notifications,
-    archive_word,
-    auth_verify,
-    delete_user_account,
-    delete_word,
     get_current_user,
-    get_graph_links,
-    get_guide,
-    get_privacy_policy,
-    get_support,
-    get_terms,
+    get_user_lock,
+    security,
+)
+from .deps import _USER_LOCKS, _USER_LOCKS_MUTEX  # noqa: F401
+
+# Re-export endpoint functions from routers for backward compatibility.
+from .routers.auth import auth_verify  # noqa: F401
+from .routers.billing import (  # noqa: F401
+    app_store_notifications,
+    reconcile_app_store_subscription,
+    sync_app_store_subscription,
+)
+from .routers.pipeline import _run_pipeline_background, run_pipeline  # noqa: F401
+from .routers.static_pages import get_guide, get_privacy_policy, get_support, get_terms  # noqa: F401
+from .routers.translate import translate_explain, translate_phrase, translate_quick  # noqa: F401
+from .routers.user import (  # noqa: F401
+    delete_user_account,
     get_user_config,
     get_user_entitlements,
-    get_user_lock,
     get_user_quota,
     health,
+    update_user_config,
+)
+from .routers.vocab import (  # noqa: F401
+    add_vocab,
+    archive_word,
+    delete_word,
+    get_graph_links,
     list_vocab,
     lookup_word,
     pull_daily_stats,
     push_daily_stats,
     push_review,
-    reconcile_app_store_subscription,
-    run_pipeline,
-    security,
-    sync_app_store_subscription,
-    translate_explain,
-    translate_phrase,
-    translate_quick,
-    update_user_config,
 )
-# Re-export mutable globals that tests manipulate directly
-from .endpoints import _USER_LOCKS, _USER_LOCKS_MUTEX  # noqa: F401
 
 load_dotenv()
 
@@ -161,7 +171,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
     app.state.kg_settings = settings
 
-    # --- user store helpers (closures capturing app reference) ---
+    # --- user store helpers ---
     def _normalize_users_payload_fn(users: dict[str, Any]) -> tuple[dict[str, Any], bool]:
         from .secret_store import encrypt_value
         jwt_secret = app.state.kg_settings.jwt_secret
@@ -184,11 +194,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # --- middleware stack ---
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=[
-            "https://wordnexus.lol",
-            "http://localhost:8000",
-            "http://127.0.0.1:8000",
-        ],
+        allow_origins=["https://wordnexus.lol", "http://localhost:8000", "http://127.0.0.1:8000"],
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
@@ -210,19 +216,13 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     @app.middleware("http")
     async def limit_request_body(request, call_next):
         content_length = request.headers.get("content-length")
-        if content_length and int(content_length) > 10 * 1024 * 1024:  # 10MB
+        if content_length and int(content_length) > 10 * 1024 * 1024:
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
         return await call_next(request)
 
     _RATE_LIMIT_EXEMPT = {
-        "/docs",
-        "/openapi.json",
-        "/privacy",
-        "/support",
-        "/terms",
-        "/guide",
-        "/api/billing/app-store/notifications",
-        "/admin",
+        "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
+        "/api/billing/app-store/notifications", "/admin",
     }
 
     @app.middleware("http")
@@ -230,16 +230,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         path = request.url.path
         if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
             return await call_next(request)
-
         auth = request.headers.get("authorization", "")
         key = auth[-16:] if len(auth) > 16 else (request.client.host if request.client else "unknown")
-
         limiter = translate_limiter if "/api/translate" in path else api_limiter
-
         if not await limiter.is_allowed(key):
             return JSONResponse(
-                {"detail": "Too many requests"},
-                status_code=429,
+                {"detail": "Too many requests"}, status_code=429,
                 headers={"Retry-After": str(limiter.window_seconds)},
             )
         return await call_next(request)
@@ -260,12 +256,18 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     async def unhandled_exception_handler(request: Request, exc: Exception):
         request_id = getattr(request.state, "request_id", "unknown")
         logger.error("Unhandled exception [%s]: %s", request_id, exc, exc_info=True)
-        return JSONResponse(
-            status_code=500,
-            content={"detail": "Internal server error", "request_id": request_id},
-        )
+        return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
 
-    # --- admin + route wiring ---
+    # --- routers ---
+    app.include_router(static_pages_router)
+    app.include_router(user_router)
+    app.include_router(billing_router)
+    app.include_router(vocab_router)
+    app.include_router(pipeline_router)
+    app.include_router(translate_router)
+    app.include_router(auth_router)
+
+    # Admin router uses builder pattern (runtime closures)
     def _settings_fn() -> KGSettings:
         return app.state.kg_settings
 
@@ -282,38 +284,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         build_entitlements_response_fn=_build_entitlements_response,
         current_admin_grant_record_fn=_current_admin_grant_record,
     )
+    app.include_router(build_admin_router(**admin_handlers))
 
-    register_routes(
-        app,
-        get_privacy_policy=get_privacy_policy,
-        get_support=get_support,
-        get_terms=get_terms,
-        get_guide=get_guide,
-        get_user_config=get_user_config,
-        get_user_entitlements=get_user_entitlements,
-        get_user_quota=get_user_quota,
-        update_user_config=update_user_config,
-        delete_user_account=delete_user_account,
-        health=health,
-        sync_app_store_subscription=sync_app_store_subscription,
-        app_store_notifications=app_store_notifications,
-        reconcile_app_store_subscription=reconcile_app_store_subscription,
-        list_vocab=list_vocab,
-        lookup_word=lookup_word,
-        archive_word=archive_word,
-        delete_word=delete_word,
-        get_graph_links=get_graph_links,
-        add_vocab=add_vocab,
-        push_review=push_review,
-        push_daily_stats=push_daily_stats,
-        pull_daily_stats=pull_daily_stats,
-        run_pipeline=run_pipeline,
-        translate_quick=translate_quick,
-        translate_phrase=translate_phrase,
-        translate_explain=translate_explain,
-        auth_verify=auth_verify,
-        **admin_handlers,
-    )
     return app
 
 

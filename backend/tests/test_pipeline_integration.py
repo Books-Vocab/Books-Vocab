@@ -26,7 +26,8 @@ os.environ.setdefault("JWT_SECRET", "test-secret-key-for-ci-at-least-32-bytes")
 os.environ.setdefault("GEMINI_API_KEY", "fake-key")
 
 import kg.api as api_mod  # noqa: E402
-import kg.endpoints as endpoints_mod  # noqa: E402
+import kg.deps as deps_mod  # noqa: E402
+import kg.routers.pipeline as pipeline_router_mod  # noqa: E402
 from kg.api import app  # noqa: E402
 from kg.settings import KGSettings
 
@@ -95,7 +96,7 @@ def pipeline_api(tmp_path):
 
     try:
         api_mod._USER_LOCKS.clear()
-        endpoints_mod._USER_LOCKS_MUTEX = None
+        deps_mod._USER_LOCKS_MUTEX = None
         client = TestClient(app, raise_server_exceptions=False)
         yield SimpleNamespace(
             client=client, user_id=user_id, headers=headers, data_dir=tmp_path,
@@ -129,7 +130,7 @@ class TestPipelineIntegration:
         emb = _DummyEmbeddingStore()
 
         # Add a card (no pos/note -> enrich step will have work to do)
-        with patch.object(endpoints_mod, "_embedding_store", return_value=emb):
+        with patch.object(pipeline_router_mod, "_embedding_store", return_value=emb):
             r = client.post(
                 "/api/vocab",
                 json=[{"word": "serendipity", "translation": "意外之喜"}],
@@ -146,7 +147,7 @@ class TestPipelineIntegration:
                 }
 
         with (
-            patch.object(endpoints_mod, "_embedding_store", return_value=emb),
+            patch.object(pipeline_router_mod, "_embedding_store", return_value=emb),
             patch("kg.enrich.enrich_cards_stream", _fake_enrich),
             caplog.at_level(logging.INFO, logger="kg.api"),
         ):
@@ -166,7 +167,7 @@ class TestPipelineIntegration:
     def test_pipeline_response_schema(self, pipeline_api):
         """POST /api/pipeline must immediately return {status, message} with HTTP 200."""
         emb = _DummyEmbeddingStore()
-        with patch.object(endpoints_mod, "_embedding_store", return_value=emb):
+        with patch.object(pipeline_router_mod, "_embedding_store", return_value=emb):
             r = pipeline_api.client.post("/api/pipeline", headers=pipeline_api.headers)
         assert r.status_code == 200
         body = r.json()
