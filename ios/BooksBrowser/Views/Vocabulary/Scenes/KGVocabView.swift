@@ -93,6 +93,8 @@ struct KGVocabView: View {
                 content
             }
         }
+        .animation(AppMotion.phaseChange, value: coordinator.isLoading)
+        .animation(AppMotion.phaseChange, value: coordinator.errorMessage == nil)
         .sheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
                 .presentationDetents([.large])
