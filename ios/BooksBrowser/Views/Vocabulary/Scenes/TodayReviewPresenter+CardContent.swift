@@ -139,7 +139,7 @@ extension TodayReviewPresenter {
             let backDoc = reviewBackDocument(for: card)
             if !backDoc.blocks.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: backDoc, truncateRadius: 5, targetWord: card.word)
+                CardDocumentView(document: backDoc, targetWord: card.word)
             }
 
             if !currentCard.linkGroups.isEmpty {
