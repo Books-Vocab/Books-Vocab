@@ -1,42 +1,111 @@
 from __future__ import annotations
 
-from collections.abc import Callable
-from typing import Any
-
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 
 from ..api_models import (
+    ArchiveWordRequest,
     CardResponse,
+    DailyReviewStatsPushRequest,
     DailyReviewStatsPushResponse,
     DailyReviewStatsResponse,
     DeleteWordResponse,
     GraphLinkResponse,
+    ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
+    VocabEntry,
+)
+from ..deps import (
+    _card_response,
+    _card_store,
+    _daily_stats_store,
+    _embedding_store,
+    _graph_store,
+    _require_pro_access,
+    get_current_user,
+    logger,
+)
+from ..vocab_handlers import (
+    add_vocab_response,
+    archive_word_response,
+    delete_word_response,
+    get_graph_links_response,
+    list_vocab_response,
+    lookup_word_response,
+    pull_daily_stats_response,
+    push_daily_stats_response,
+    push_review_response,
 )
 
+router = APIRouter()
 
-def build_vocab_router(
-    *,
-    list_vocab: Callable[..., Any],
-    lookup_word: Callable[..., Any],
-    archive_word: Callable[..., Any],
-    delete_word: Callable[..., Any],
-    get_graph_links: Callable[..., Any],
-    add_vocab: Callable[..., Any],
-    push_review: Callable[..., Any],
-    push_daily_stats: Callable[..., Any],
-    pull_daily_stats: Callable[..., Any],
-) -> APIRouter:
-    router = APIRouter()
-    router.get("/api/vocab", response_model=list[CardResponse])(list_vocab)
-    # Static paths MUST be registered before {word} path parameter
-    router.get("/api/vocab/daily-stats", response_model=DailyReviewStatsResponse)(pull_daily_stats)
-    router.patch("/api/vocab/daily-stats", response_model=DailyReviewStatsPushResponse)(push_daily_stats)
-    router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)(push_review)
-    router.get("/api/vocab/{word}", response_model=CardResponse)(lookup_word)
-    router.patch("/api/vocab/{word}/archive")(archive_word)
-    router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)(delete_word)
-    router.get("/api/graph/links", response_model=list[GraphLinkResponse])(get_graph_links)
-    router.post("/api/vocab", response_model=VocabAddResponse)(add_vocab)
-    return router
+
+@router.get("/api/vocab", response_model=list[CardResponse])
+def list_vocab(since: str | None = None, limit: int = 5000, user: dict = Depends(get_current_user)):
+    return list_vocab_response(
+        since=since, limit=limit, user=user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+    )
+
+
+# Static paths MUST be registered before {word} path parameter
+@router.get("/api/vocab/daily-stats", response_model=DailyReviewStatsResponse)
+def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_user)):
+    return pull_daily_stats_response(
+        since, user, require_pro_access=_require_pro_access,
+        daily_stats_store_factory=_daily_stats_store,
+    )
+
+
+@router.patch("/api/vocab/daily-stats", response_model=DailyReviewStatsPushResponse)
+def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_current_user)):
+    return push_daily_stats_response(
+        req, user, require_pro_access=_require_pro_access,
+        daily_stats_store_factory=_daily_stats_store, logger=logger,
+    )
+
+
+@router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)
+def push_review(req: ReviewStatePushRequest, user: dict = Depends(get_current_user)):
+    return push_review_response(
+        req, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, logger=logger,
+    )
+
+
+@router.get("/api/vocab/{word}", response_model=CardResponse)
+def lookup_word(word: str, user: dict = Depends(get_current_user)):
+    return lookup_word_response(
+        word, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+    )
+
+
+@router.patch("/api/vocab/{word}/archive")
+def archive_word(word: str, req: ArchiveWordRequest, user: dict = Depends(get_current_user)):
+    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store)
+
+
+@router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
+def delete_word(word: str, user: dict = Depends(get_current_user)):
+    return delete_word_response(
+        word, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+    )
+
+
+@router.get("/api/graph/links", response_model=list[GraphLinkResponse])
+def get_graph_links(user: dict = Depends(get_current_user)):
+    return get_graph_links_response(user, require_pro_access=_require_pro_access, graph_store_factory=_graph_store)
+
+
+@router.post("/api/vocab", response_model=VocabAddResponse)
+def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
+    return add_vocab_response(
+        entries, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, embedding_store_factory=_embedding_store,
+        graph_store_factory=_graph_store, logger=logger,
+    )
