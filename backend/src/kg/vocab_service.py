@@ -180,37 +180,33 @@ def push_review_states(
 def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> CardResponse:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    cards_by_id = {card.id: card for card in cards_store.all(include_deleted=True)}
-    norm = _normalize_word(word)
-    for card in cards_store.all():
-        if _normalize_word(card.content) == norm:
-            return card_response_builder(card, graph, cards_by_id)
-    raise HTTPException(404, f"Word '{word}' not found")
+    card = cards_store.find_by_content(word)
+    if not card:
+        raise HTTPException(404, f"Word '{word}' not found")
+    cards_by_id = cards_store.all_as_dict(include_deleted=True)
+    return card_response_builder(card, graph, cards_by_id)
 
 
 def archive_vocab_word(word: str, *, archived: bool, cards_store: Any) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    norm = _normalize_word(word)
-    for card in cards_store.all():
-        if _normalize_word(card.content) == norm:
-            cards_store.update(card.id, is_archived=archived)
-            return {"word": word, "id": card.id, "archived": archived}
-    raise HTTPException(404, f"Word '{word}' not found")
+    card = cards_store.find_by_content(word)
+    if not card:
+        raise HTTPException(404, f"Word '{word}' not found")
+    cards_store.update(card.id, is_archived=archived)
+    return {"word": word, "id": card.id, "archived": archived}
 
 
 def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    norm = _normalize_word(word)
-    for card in cards_store.all():
-        if _normalize_word(card.content) == norm:
-            card_id = card.id
-            cards_store.delete(card_id)
-            if graph is not None:
-                graph.deprecate_links_for(card_id)
-            return {"deleted": word, "id": card_id}
-    raise HTTPException(404, f"Word '{word}' not found")
+    card = cards_store.find_by_content(word)
+    if not card:
+        raise HTTPException(404, f"Word '{word}' not found")
+    cards_store.delete(card.id)
+    if graph is not None:
+        graph.deprecate_links_for(card.id)
+    return {"deleted": word, "id": card.id}
 
 
 def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
@@ -297,11 +293,9 @@ def add_vocab_entries(
         if _normalize_word(word) in existing:
             skipped += 1
             duplicates.append(word)
-            norm = _normalize_word(word)
-            for card in cards.all():
-                if _normalize_word(card.content) == norm:
-                    card_ids[word] = card.id
-                    break
+            existing_card = cards.find_by_content(word)
+            if existing_card:
+                card_ids[word] = existing_card.id
             continue
 
         example = _build_example(word, entry.context)
