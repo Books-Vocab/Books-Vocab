@@ -86,7 +86,7 @@ struct TodayReviewPresenter: View {
                     GeometryReader { geo in
                         ScrollView {
                             VStack(spacing: 0) {
-                                reviewCard(currentCard)
+                                reviewCard(currentCard, availableHeight: geo.size.height)
                                     .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
                                     .padding(.top, vocabSkin.metrics.reviewCardTopInset)
                                     .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
@@ -103,7 +103,6 @@ struct TodayReviewPresenter: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
-                        .scrollDisabled(!state.revealStage.showsAnswer)
                     }
 
                     bottomToolbar
@@ -127,7 +126,7 @@ struct TodayReviewPresenter: View {
 
     // MARK: - Card
 
-    func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+    func reviewCard(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
         let cardIdentity = card.word + "-" + String(card.dateAdded.timeIntervalSinceReferenceDate)
 
@@ -156,7 +155,7 @@ struct TodayReviewPresenter: View {
                     }
 
                 if state.revealStage.showsAnswer {
-                    answerFoldSurface(currentCard)
+                    answerFoldSurface(currentCard, availableHeight: availableHeight)
                         .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
                         .transition(.paperFoldFromTop)
                 }
