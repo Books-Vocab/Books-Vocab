@@ -104,15 +104,11 @@ final class TodayReviewState {
     }
 
     func advanceReveal() {
-        withAnimation(AppMotion.reviewRevealSpring) {
-            revealStage.advance()
-        }
+        revealStage.advance()
     }
 
     func retractReveal() {
-        withAnimation(AppMotion.reviewRevealSpring) {
-            revealStage.retract()
-        }
+        revealStage.retract()
     }
 
     func shuffleQueue() {

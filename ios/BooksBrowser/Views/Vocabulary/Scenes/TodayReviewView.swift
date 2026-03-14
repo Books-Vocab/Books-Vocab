@@ -48,8 +48,16 @@ struct TodayReviewView: View {
         TodayReviewPresenter(
             state: state.presenterState,
             onClose: onClose,
-            onAdvanceReveal: state.advanceReveal,
-            onCollapseReveal: state.retractReveal,
+            onAdvanceReveal: {
+                withAnimation(AppMotion.reviewRevealSpring) {
+                    state.advanceReveal()
+                }
+            },
+            onCollapseReveal: {
+                withAnimation(AppMotion.reviewRevealSpring) {
+                    state.retractReveal()
+                }
+            },
             onShuffle: state.shuffleQueue,
             onPrevious: state.goPrevious,
             onNext: state.goNext,
