@@ -117,10 +117,6 @@ enum CardRichTextRenderer {
 
     nonisolated(unsafe) private static var truncationCache: [TruncationCacheKey: String] = [:]
 
-    static func clearTruncationCache() {
-        truncationCache.removeAll()
-    }
-
     private static func cachedTruncate(_ raw: String, radius: Int, targetWord: String?) -> String {
         let key = TruncationCacheKey(raw: raw, radius: radius, targetWord: targetWord)
         if let cached = truncationCache[key] {
