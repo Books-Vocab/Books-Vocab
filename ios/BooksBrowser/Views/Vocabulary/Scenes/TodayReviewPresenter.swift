@@ -48,6 +48,9 @@ struct TodayReviewPresenter: View {
     @State var dismissPhase: DismissPhase = .idle
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
+    /// scrollDisabled 延遲解除，避免與 paperFoldFromTop transition 競態
+    @State var scrollUnlocked = false
+    @State private var scrollUnlockTask: Task<Void, Never>?
     @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -103,6 +106,19 @@ struct TodayReviewPresenter: View {
                             }
                             .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
+                        .scrollDisabled(!scrollUnlocked)
+                    }
+                    .onChange(of: state.revealStage.showsAnswer) { _, shows in
+                        scrollUnlockTask?.cancel()
+                        if shows {
+                            scrollUnlockTask = Task {
+                                try? await Task.sleep(for: AppMotion.paperFoldScrollUnlockDelay)
+                                guard !Task.isCancelled else { return }
+                                scrollUnlocked = true
+                            }
+                        } else {
+                            scrollUnlocked = false
+                        }
                     }
 
                     bottomToolbar
@@ -117,6 +133,8 @@ struct TodayReviewPresenter: View {
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { newWidth in
+                // 動畫進行中不更新，避免 truncateRadius 變化導致 view rebuild 中斷 transition
+                guard dismissPhase == .idle, !state.revealStage.showsAnswer else { return }
                 containerWidth = newWidth
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)

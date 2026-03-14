@@ -123,6 +123,10 @@ enum AppMotion {
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
     static let swipeTrackingSpring = Animation.interactiveSpring(response: 0.14, dampingFraction: 0.86)
 
+    // MARK: - Timing Delays
+    /// paperFoldFromTop transition 完成首幀後才解鎖 scroll 的等待時間
+    static let paperFoldScrollUnlockDelay: Duration = .milliseconds(450)
+
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
     static let panelSnapBack = standardSpring
