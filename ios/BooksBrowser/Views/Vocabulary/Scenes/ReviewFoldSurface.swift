@@ -90,10 +90,18 @@ struct ReviewFoldChevronPill: View {
     }
 }
 
-// MARK: - Paper Fold Transition
+// MARK: - Paper Fold Modifier (Animatable)
 
-private struct PaperFoldModifier: ViewModifier {
-    let progress: CGFloat
+/// 摺疊動畫 — progress 0=完全摺疊 1=完全展開。
+/// 實作 Animatable 使 SwiftUI 逐幀插值 progress，
+/// 確保 scaleEffect / rotation3D / opacity / offset 完美同步。
+struct PaperFoldModifier: ViewModifier, Animatable {
+    var progress: CGFloat
+
+    var animatableData: CGFloat {
+        get { progress }
+        set { progress = newValue }
+    }
 
     func body(content: Content) -> some View {
         content
@@ -106,14 +114,5 @@ private struct PaperFoldModifier: ViewModifier {
             )
             .opacity(progress)
             .offset(y: (1 - progress) * -TodayReviewMetrics.paperFoldOffsetY)
-    }
-}
-
-extension AnyTransition {
-    static var paperFoldFromTop: AnyTransition {
-        .modifier(
-            active: PaperFoldModifier(progress: 0),
-            identity: PaperFoldModifier(progress: 1)
-        )
     }
 }
