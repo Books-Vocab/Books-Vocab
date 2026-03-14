@@ -48,7 +48,7 @@ struct TodayReviewPresenter: View {
     @State var dismissPhase: DismissPhase = .idle
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
-    /// scrollDisabled 延遲解除，避免與 paperFoldFromTop transition 競態
+    /// scrollDisabled 延遲解除，避免答案卡動畫進行中的滾動干擾
     @State var scrollUnlocked = false
     @State private var scrollUnlockTask: Task<Void, Never>?
     @State var stackRotations: [Double] = [
@@ -172,12 +172,20 @@ struct TodayReviewPresenter: View {
                         .padding(reviewCardPadding)
                     }
 
-                if state.revealStage.showsAnswer {
-                    answerFoldSurface(currentCard, availableHeight: availableHeight)
-                        .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
-                        .transition(.paperFoldFromTop)
-                }
+                // 永遠存在於 view tree — 繞過 .id() + conditional insertion
+                // 首次渲染不走 .transition() 的 SwiftUI 結構性限制。
+                // PaperFoldModifier(Animatable) 直接驅動摺疊動畫。
+                // frame(height:0) 使摺疊時不佔 layout 空間，
+                // 但 minHeight 內部約束使 view 仍以完整尺寸渲染（fold 視覺正確）。
+                answerFoldSurface(currentCard, availableHeight: availableHeight)
+                    .padding(.top, TodayReviewMetrics.stackLayerMicroOffset)
+                    .modifier(PaperFoldModifier(progress: state.revealStage.showsAnswer ? 1 : 0))
+                    .frame(height: state.revealStage.showsAnswer ? nil : 0, alignment: .top)
+                    .allowsHitTesting(state.revealStage.showsAnswer)
             }
+            .geometryGroup()
+            .animation(dismissPhase == .idle ? AppMotion.reviewRevealSpring : nil,
+                       value: state.revealStage.showsAnswer)
             .id(cardIdentity)
             .transition(suppressTransition ? .identity : .asymmetric(
                 insertion: .scale(scale: TodayReviewMetrics.promoteScale)
