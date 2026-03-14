@@ -103,6 +103,34 @@ enum CardRichTextRenderer {
         return result
     }
 
+    // MARK: - Truncation Cache
+    //
+    // 避免每次 SwiftUI body 求值都重跑 regex 截斷。
+    // 同一 (markdown, radius, targetWord) 組合的結果不變，可安全快取。
+    // 只在 MainActor (SwiftUI body) 呼叫，無需同步保護。
+
+    private struct TruncationCacheKey: Hashable {
+        let raw: String
+        let radius: Int
+        let targetWord: String?
+    }
+
+    nonisolated(unsafe) private static var truncationCache: [TruncationCacheKey: String] = [:]
+
+    static func clearTruncationCache() {
+        truncationCache.removeAll()
+    }
+
+    private static func cachedTruncate(_ raw: String, radius: Int, targetWord: String?) -> String {
+        let key = TruncationCacheKey(raw: raw, radius: radius, targetWord: targetWord)
+        if let cached = truncationCache[key] {
+            return cached
+        }
+        let result = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
+        truncationCache[key] = result
+        return result
+    }
+
     private static func preparedRaw(
         from raw: String,
         mode: CardRichTextMode,
@@ -111,7 +139,7 @@ enum CardRichTextRenderer {
     ) -> String {
         let truncated: String
         if let radius = truncateAroundMarkedWordRadius, radius >= 0 {
-            truncated = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
+            truncated = cachedTruncate(raw, radius: radius, targetWord: targetWord)
         } else {
             truncated = raw
         }

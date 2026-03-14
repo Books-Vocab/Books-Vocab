@@ -290,9 +290,55 @@ final class TodayReviewState {
                     overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
                 )
             }
-            cache[entry.id] = .init(card: card, linkGroups: compactGroups)
+            let backDoc = Self.buildReviewBackDocument(for: card)
+            let meanings = Self.extractMeaningParagraphs(from: card)
+            cache[entry.id] = .init(
+                card: card,
+                linkGroups: compactGroups,
+                backDocument: backDoc,
+                meaningParagraphs: meanings
+            )
         }
         return cache
+    }
+
+    // MARK: - Precomputation Helpers
+
+    private static func buildReviewBackDocument(for card: CardPresentation) -> CardDocument {
+        var blocks: [CardDocumentBlock] = []
+        var pendingDivider = false
+        var exampleCount = 0
+        var sourceCount = 0
+        for block in card.document.blocks {
+            switch block {
+            case .hero, .meaning:
+                pendingDivider = false
+            case .divider:
+                pendingDivider = true
+            case .example:
+                guard exampleCount < 1 else { continue }
+                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
+                blocks.append(block)
+                pendingDivider = false
+                exampleCount += 1
+            case .source:
+                guard sourceCount < 1 else { continue }
+                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
+                blocks.append(block)
+                pendingDivider = false
+                sourceCount += 1
+            }
+        }
+        return CardDocument(blocks: blocks)
+    }
+
+    private static func extractMeaningParagraphs(from card: CardPresentation) -> [CardDocumentParagraph] {
+        for block in card.document.blocks {
+            if case .meaning(let meaning) = block {
+                return meaning.paragraphs
+            }
+        }
+        return []
     }
 
     private static func buildLinkedEntryLookup(

@@ -29,9 +29,8 @@ enum TodayReviewPresenterPreviewData {
         return entry.cardPresentation
     }()
 
-    static let currentCard = TodayReviewPresenterState.CurrentCard(
-        card: baseCard,
-        linkGroups: [
+    static let currentCard: TodayReviewPresenterState.CurrentCard = {
+        let groups: [TodayReviewPresenterState.LinkGroup] = [
             .init(
                 id: "confusable",
                 label: "易混",
@@ -42,10 +41,16 @@ enum TodayReviewPresenterPreviewData {
                 overflowCount: 1
             )
         ]
-    )
+        return .init(
+            card: baseCard,
+            linkGroups: groups,
+            backDocument: previewBackDocument(baseCard),
+            meaningParagraphs: previewMeaningParagraphs(baseCard)
+        )
+    }()
 
-    static let nextCard = TodayReviewPresenterState.CurrentCard(
-        card: {
+    static let nextCard: TodayReviewPresenterState.CurrentCard = {
+        let card: CardPresentation = {
             let entry = VocabularyEntry(
                 word: "ephemeral",
                 translation: "短暫的；轉瞬即逝的",
@@ -59,9 +64,43 @@ enum TodayReviewPresenterPreviewData {
             entry.dateAdded = Date(timeIntervalSince1970: 1_736_001_000)
             entry.reviewMode = .recognition
             return entry.cardPresentation
-        }(),
-        linkGroups: []
-    )
+        }()
+        return .init(
+            card: card,
+            linkGroups: [],
+            backDocument: previewBackDocument(card),
+            meaningParagraphs: previewMeaningParagraphs(card)
+        )
+    }()
+
+    private static func previewBackDocument(_ card: CardPresentation) -> CardDocument {
+        var blocks: [CardDocumentBlock] = []
+        var pendingDivider = false
+        var exampleCount = 0
+        var sourceCount = 0
+        for block in card.document.blocks {
+            switch block {
+            case .hero, .meaning: pendingDivider = false
+            case .divider: pendingDivider = true
+            case .example:
+                guard exampleCount < 1 else { continue }
+                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
+                blocks.append(block); pendingDivider = false; exampleCount += 1
+            case .source:
+                guard sourceCount < 1 else { continue }
+                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
+                blocks.append(block); pendingDivider = false; sourceCount += 1
+            }
+        }
+        return CardDocument(blocks: blocks)
+    }
+
+    private static func previewMeaningParagraphs(_ card: CardPresentation) -> [CardDocumentParagraph] {
+        for block in card.document.blocks {
+            if case .meaning(let meaning) = block { return meaning.paragraphs }
+        }
+        return []
+    }
 
     static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
         .init(
