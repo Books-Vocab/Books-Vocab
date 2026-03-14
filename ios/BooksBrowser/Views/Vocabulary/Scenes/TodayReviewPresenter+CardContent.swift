@@ -82,11 +82,11 @@ extension TodayReviewPresenter {
 
     // MARK: Combined Answer Surface
 
-    func answerFoldSurface(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+    func answerFoldSurface(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
         let answerText = card.reviewMode == .production ? card.word : card.translation
         return ReviewFoldSurface(position: .bottom) {
-            combinedAnswerContent(currentCard)
+            combinedAnswerContent(currentCard, availableHeight: availableHeight)
                 .accessibilityLabel(L10n.format("翻譯：%@", answerText))
         }
         .overlay(alignment: .top) {
@@ -95,8 +95,14 @@ extension TodayReviewPresenter {
         }
     }
 
-    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard) -> some View {
+    func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
+        let hasLinks = !currentCard.linkGroups.isEmpty
+        let exampleRadius = answerExampleRadius(
+            containerHeight: availableHeight,
+            card: card,
+            hasLinks: hasLinks
+        )
         return VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
             HStack(spacing: 6) {
                 Spacer()
@@ -139,10 +145,10 @@ extension TodayReviewPresenter {
             let backDoc = reviewBackDocument(for: card)
             if !backDoc.blocks.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: backDoc, targetWord: card.word)
+                CardDocumentView(document: backDoc, truncateRadius: exampleRadius, targetWord: card.word)
             }
 
-            if !currentCard.linkGroups.isEmpty {
+            if hasLinks {
                 CardSectionDivider(horizontalPadding: 0)
                 reviewLinkStrip(currentCard.linkGroups)
             }
@@ -150,7 +156,6 @@ extension TodayReviewPresenter {
         .padding(reviewCardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: answerCardHeight, alignment: .topLeading)
-        .minimumScaleFactor(0.85)
     }
 
     func answerMeaningParagraphs(for card: CardPresentation) -> [CardDocumentParagraph] {
@@ -203,6 +208,65 @@ extension TodayReviewPresenter {
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    // MARK: - Dynamic Example Budget
+    //
+    // 演算法：「中心展開填充」
+    // 1. 從容器可用高度扣除 front card + padding → 得到答案卡上限
+    // 2. 估算核心內容（word、pronunciation、meaning、links、padding）的佔用高度
+    // 3. 剩餘空間扣除來源區塊預留 → 例句可用高度
+    // 4. 可用高度 ÷ 行高 × 每行詞數 → 總詞預算 → truncateRadius
+    //    radius 越大，以單字為中心向前後展開越多上下文
+    //    空間不足時自動收縮，空間充裕時自然展開更多內容
+
+    func answerExampleRadius(
+        containerHeight: CGFloat,
+        card: CardPresentation,
+        hasLinks: Bool
+    ) -> Int {
+        // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
+        let answerBudget = containerHeight
+            - vocabSkin.metrics.reviewCardTopInset
+            - vocabSkin.metrics.reviewCardBottomInset
+            - frontCardHeight
+
+        // ② 核心內容估算高度
+        let gap = vocabSkin.spacing.sectionGap
+        var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
+            + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
+            + 20 + gap                                                          // tier label row
+            + 36 + gap                                                          // word / translation
+
+        if let p = card.pronunciation, !p.isEmpty {
+            coreHeight += 20 + gap                                              // pronunciation
+        }
+
+        let meaningCount = answerMeaningParagraphs(for: card).count
+        if meaningCount > 0 {
+            // divider(17) + 每段最多 3 行（lineLimit）× 行高 22
+            coreHeight += 17 + CGFloat(min(meaningCount, 3)) * 22 + gap
+        }
+
+        if hasLinks {
+            coreHeight += 17 + 24 + gap                                         // divider + link strip
+        }
+
+        // ③ 來源區塊固定預留 + divider
+        let sourceReserve: CGFloat = 80
+        let exampleBudget = max(answerBudget - coreHeight - sourceReserve - 17, 0)
+
+        // ④ 高度 → 行數 → 詞數 → radius
+        let lineHeight: CGFloat = 22
+        let textWidth = containerWidth
+            - vocabSkin.metrics.reviewCardHorizontalInset * 2
+            - reviewCardPadding * 2
+        let wordsPerLine = max(Int(textWidth / 52), 4)
+        let lines = Int(exampleBudget / lineHeight)
+        let totalWords = lines * wordsPerLine
+
+        // 半徑 = 總預算的一半（前後各 radius 個詞），最小 3 保證可讀性
+        return max(totalWords / 2, 3)
     }
 
     // MARK: Fonts
