@@ -3,6 +3,7 @@ import SwiftUI
 enum AppAppearanceMode: String, CaseIterable, Identifiable {
     case system
     case light
+    case sepia
     case dark
 
     var id: String { rawValue }
@@ -11,6 +12,7 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
         switch self {
         case .system: return "跟隨系統"
         case .light: return "淺色"
+        case .sepia: return "暖紙"
         case .dark: return "深色"
         }
     }
@@ -18,8 +20,32 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
     var colorScheme: ColorScheme? {
         switch self {
         case .system: return nil
-        case .light: return .light
+        case .light, .sepia: return .light
         case .dark: return .dark
+        }
+    }
+
+    var icon: String {
+        if self == .system { return "circle.lefthalf.filled" }
+        return readerTheme.icon
+    }
+
+    /// 對應的 ReaderTheme（供 Readium 使用）；system 時 fallback light，實際由 resolved 決定
+    var readerTheme: ReaderTheme {
+        switch self {
+        case .system: return .light
+        case .light: return .light
+        case .sepia: return .sepia
+        case .dark: return .dark
+        }
+    }
+
+    /// 從 ReaderTheme 反向映射（Reader 設定面板用）
+    init(from readerTheme: ReaderTheme) {
+        switch readerTheme {
+        case .light: self = .light
+        case .sepia: self = .sepia
+        case .dark: self = .dark
         }
     }
 }
@@ -68,6 +94,14 @@ final class AppAppearanceStore: ObservableObject {
 
     var resolvedColorScheme: ColorScheme? {
         selection.colorScheme
+    }
+
+    /// 解析最終的 ReaderTheme — system 模式依賴外部提供的 systemColorScheme
+    func resolvedReaderTheme(systemColorScheme: ColorScheme) -> ReaderTheme {
+        if selection == .system {
+            return systemColorScheme == .dark ? .dark : .light
+        }
+        return selection.readerTheme
     }
 
     func setAppearance(_ mode: AppAppearanceMode) {
