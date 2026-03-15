@@ -9,6 +9,7 @@ import SwiftUI
 
 struct ReaderSettingsPanel: View {
     @Bindable var settings: ReaderSettings
+    @EnvironmentObject private var appearanceStore: AppAppearanceStore
     let onDismiss: () -> Void
 
     private var presenterState: ReaderSettingsPanelPresenter.State {
@@ -18,7 +19,15 @@ struct ReaderSettingsPanel: View {
             canIncreaseFontSize: settings.fontSize < 2.0
         )
     }
-    
+
+    /// 將 AppAppearanceMode 映射到 ReaderTheme 用於 UI 顯示
+    private var themeBinding: Binding<ReaderTheme> {
+        Binding(
+            get: { appearanceStore.selection.readerTheme },
+            set: { selectTheme($0) }
+        )
+    }
+
     var body: some View {
         panelPresenter
     }
@@ -53,7 +62,7 @@ struct ReaderSettingsPanel: View {
         .init(
             lineHeight: $settings.lineHeight,
             font: $settings.font,
-            theme: $settings.theme,
+            theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
             showHitTestingDebug: $settings.showHitTestingDebug,
             translationPanelMode: $settings.translationPanelMode
@@ -70,7 +79,7 @@ struct ReaderSettingsPanel: View {
 
     private func selectTheme(_ theme: ReaderTheme) {
         withAnimation(AppMotion.panelState) {
-            settings.theme = theme
+            appearanceStore.setAppearance(AppAppearanceMode(from: theme))
         }
     }
 

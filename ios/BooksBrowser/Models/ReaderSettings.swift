@@ -95,7 +95,6 @@ final class ReaderSettings {
     private let kFont = "reader_settings_font"
     private let kFontSize = "reader_settings_fontSize"
     private let kLineHeight = "reader_settings_lineHeight"
-    private let kTheme = "reader_settings_theme"
     private let kUnderlineOpacity = "reader_settings_underlineOpacity"
     private let kShowHitTestingDebug = "reader_settings_showHitTestingDebug"
     private let kTranslationPanelMode = "reader_settings_translationPanelMode"
@@ -122,11 +121,10 @@ final class ReaderSettings {
         }
     }
 
-    var theme: ReaderTheme = .sepia {
-        didSet {
-            defaults.set(theme.rawValue, forKey: kTheme)
-            cloud.set(theme.rawValue, forKey: kTheme)
-        }
+    /// 閱讀器主題 — 由全域 AppAppearanceStore 驅動，不再獨立儲存。
+    /// 需要 systemColorScheme 以正確解析 `.system` 模式。
+    func resolvedTheme(systemColorScheme: ColorScheme) -> ReaderTheme {
+        AppAppearanceStore.shared.resolvedReaderTheme(systemColorScheme: systemColorScheme)
     }
 
     var underlineOpacity: Double = 0.22 {
@@ -166,11 +164,6 @@ final class ReaderSettings {
         } else {
             let saved = defaults.double(forKey: kLineHeight)
             if saved > 0 { self.lineHeight = saved }
-        }
-
-        if let raw = cloud.string(forKey: kTheme) ?? defaults.string(forKey: kTheme),
-           let value = ReaderTheme(rawValue: raw) {
-            self.theme = value
         }
 
         if let cloudOpacity = cloud.double(forKey: kUnderlineOpacity) {
@@ -214,8 +207,6 @@ final class ReaderSettings {
                 if let value = cloud.double(forKey: key) { fontSize = value }
             case kLineHeight:
                 if let value = cloud.double(forKey: key) { lineHeight = value }
-            case kTheme:
-                if let raw = cloud.string(forKey: key), let value = ReaderTheme(rawValue: raw) { theme = value }
             case kUnderlineOpacity:
                 if let value = cloud.double(forKey: key) { underlineOpacity = value }
             case kTranslationPanelMode:
@@ -227,46 +218,31 @@ final class ReaderSettings {
     }
     
     // MARK: - Readium 轉換
-    
-    var paperColor: SwiftUI.Color {
+
+    private static func paperColor(for theme: ReaderTheme) -> SwiftUI.Color {
         switch theme {
         case .light: return AppColors.paperLight
         case .sepia: return AppColors.paperSepia
         case .dark:  return AppColors.paperDark
         }
     }
-    
-    private var readiumColor: ReadiumNavigator.Color? {
-        // 從 SwiftUI.Color 轉換為 UIColor 再轉換為 ReadiumNavigator.Color
-        ReadiumNavigator.Color(color: paperColor)
-    }
-    
-    var epubPreferences: EPUBPreferences {
-        EPUBPreferences(
-            backgroundColor: readiumColor,
-            fontFamily: font.family,
-            fontSize: fontSize,
-            lineHeight: lineHeight,
-            publisherStyles: false,
-            theme: theme.theme
-        )
-    }
-    
-    /// SwiftUI 全域 color scheme
-    var swiftUIColorScheme: ColorScheme {
-        switch theme {
-        case .light, .sepia: return .light
-        case .dark: return .dark
-        }
-    }
 
-    var viewConfiguration: ReaderViewConfiguration {
-        ReaderViewConfiguration(
-            paperColor: paperColor,
-            epubPreferences: epubPreferences,
+    func viewConfiguration(systemColorScheme: ColorScheme) -> ReaderViewConfiguration {
+        let theme = resolvedTheme(systemColorScheme: systemColorScheme)
+        let paper = Self.paperColor(for: theme)
+        return ReaderViewConfiguration(
+            paperColor: paper,
+            epubPreferences: EPUBPreferences(
+                backgroundColor: ReadiumNavigator.Color(color: paper),
+                fontFamily: font.family,
+                fontSize: fontSize,
+                lineHeight: lineHeight,
+                publisherStyles: false,
+                theme: theme.theme
+            ),
             underlineOpacity: underlineOpacity,
             showHitTestingDebug: showHitTestingDebug,
-            swiftUIColorScheme: swiftUIColorScheme,
+            swiftUIColorScheme: theme == .dark ? .dark : .light,
             translationPanelMode: translationPanelMode
         )
     }
