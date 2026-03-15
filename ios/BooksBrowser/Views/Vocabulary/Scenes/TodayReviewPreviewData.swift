@@ -29,9 +29,8 @@ enum TodayReviewPresenterPreviewData {
         return entry.cardPresentation
     }()
 
-    static let currentCard = TodayReviewPresenterState.CurrentCard(
-        card: baseCard,
-        linkGroups: [
+    static let currentCard: TodayReviewPresenterState.CurrentCard = {
+        let groups: [TodayReviewPresenterState.LinkGroup] = [
             .init(
                 id: "confusable",
                 label: "易混",
@@ -42,10 +41,16 @@ enum TodayReviewPresenterPreviewData {
                 overflowCount: 1
             )
         ]
-    )
+        return .init(
+            card: baseCard,
+            linkGroups: groups,
+            backDocument: baseCard.document.reviewBackSubset(),
+            meaningParagraphs: baseCard.document.meaningParagraphs()
+        )
+    }()
 
-    static let nextCard = TodayReviewPresenterState.CurrentCard(
-        card: {
+    static let nextCard: TodayReviewPresenterState.CurrentCard = {
+        let card: CardPresentation = {
             let entry = VocabularyEntry(
                 word: "ephemeral",
                 translation: "短暫的；轉瞬即逝的",
@@ -59,9 +64,14 @@ enum TodayReviewPresenterPreviewData {
             entry.dateAdded = Date(timeIntervalSince1970: 1_736_001_000)
             entry.reviewMode = .recognition
             return entry.cardPresentation
-        }(),
-        linkGroups: []
-    )
+        }()
+        return .init(
+            card: card,
+            linkGroups: [],
+            backDocument: card.document.reviewBackSubset(),
+            meaningParagraphs: card.document.meaningParagraphs()
+        )
+    }()
 
     static func state(stage: TodayReviewRevealStage) -> TodayReviewPresenterState {
         .init(
