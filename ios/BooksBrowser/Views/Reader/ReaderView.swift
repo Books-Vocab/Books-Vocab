@@ -45,12 +45,10 @@ struct ReaderView: View {
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.readerSettings) var settings
 
-    var viewConfiguration: ReaderViewConfiguration {
-        settings.viewConfiguration
-    }
+    @Environment(\.colorScheme) private var colorScheme
 
-    var appTheme: AppTheme {
-        AppTheme.resolve(for: viewConfiguration.swiftUIColorScheme)
+    var viewConfiguration: ReaderViewConfiguration {
+        settings.viewConfiguration(systemColorScheme: colorScheme)
     }
 
     init(book: Book) {
@@ -72,8 +70,6 @@ struct ReaderView: View {
         } settingsPanel: {
             settingsPanelContent
         }
-        .vocabSkin(VocabSkin.themed(appTheme))
-        .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
@@ -120,7 +116,6 @@ struct ReaderView: View {
             .presentationDetents([.medium, .large])
             .presentationDragIndicator(.visible)
             .presentationBackground(.ultraThinMaterial)
-            .preferredColorScheme(viewConfiguration.swiftUIColorScheme)
         }
         .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
             SubscriptionPaywallSheet()
