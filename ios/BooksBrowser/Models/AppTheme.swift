@@ -73,8 +73,41 @@ struct AppTheme: Equatable {
         )
     )
 
+    static let sepia = AppTheme(
+        colorScheme: .light,
+        palette: .init(
+            pageBackground: Color(red: 0.96, green: 0.945, blue: 0.92),
+            stageBackground: Color(red: 0.97, green: 0.958, blue: 0.935),
+            cardBackground: Color(red: 0.985, green: 0.975, blue: 0.955),
+            elevatedCardBackground: Color(red: 0.99, green: 0.98, blue: 0.96),
+            cardBorder: Color(red: 0.42, green: 0.38, blue: 0.32).opacity(0.12),
+            divider: Color(red: 0.42, green: 0.38, blue: 0.32).opacity(0.08),
+            shadow: Color(red: 0.30, green: 0.26, blue: 0.20).opacity(0.06),
+            primaryText: Color(red: 0.22, green: 0.20, blue: 0.17),
+            secondaryText: Color(red: 0.46, green: 0.43, blue: 0.38),
+            tertiaryText: Color(red: 0.50, green: 0.47, blue: 0.42),
+            quaternaryText: Color(red: 0.60, green: 0.57, blue: 0.52),
+            accent: AppColors.accentLight,
+            success: AppColors.savedLight,
+            warning: AppColors.warning(.light),
+            destructive: AppColors.destructiveLight,
+            mutedFill: Color(red: 0.42, green: 0.38, blue: 0.32).opacity(0.06),
+            scrim: Color(red: 0.30, green: 0.26, blue: 0.20).opacity(0.20),
+            tint: AppColors.tint
+        )
+    )
+
     static func resolve(for colorScheme: ColorScheme) -> AppTheme {
         colorScheme == .dark ? .dark : .light
+    }
+
+    static func resolve(for mode: AppAppearanceMode, systemColorScheme: ColorScheme) -> AppTheme {
+        switch mode {
+        case .system: return systemColorScheme == .dark ? .dark : .light
+        case .light: return .light
+        case .sepia: return .sepia
+        case .dark: return .dark
+        }
     }
 }
 
@@ -97,10 +130,11 @@ extension View {
 
 struct AppThemeContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
+    @EnvironmentObject private var appearanceStore: AppAppearanceStore
     @ViewBuilder let content: () -> Content
 
     var body: some View {
-        let theme = AppTheme.resolve(for: colorScheme)
+        let theme = AppTheme.resolve(for: appearanceStore.selection, systemColorScheme: colorScheme)
         content()
             .appTheme(theme)
             .vocabSkin(.themed(theme))
