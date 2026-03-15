@@ -70,6 +70,49 @@ struct CardDocumentParagraph: Identifiable {
     }
 }
 
+// MARK: - Review Helpers
+
+extension CardDocument {
+    /// 從完整文件中擷取複習用背面內容（最多 1 例句 + 1 來源）
+    func reviewBackSubset() -> CardDocument {
+        var result: [CardDocumentBlock] = []
+        var pendingDivider = false
+        var exampleCount = 0
+        var sourceCount = 0
+        for block in blocks {
+            switch block {
+            case .hero, .meaning:
+                pendingDivider = false
+            case .divider:
+                pendingDivider = true
+            case .example:
+                guard exampleCount < 1 else { continue }
+                if pendingDivider && !result.isEmpty { result.append(.divider) }
+                result.append(block)
+                pendingDivider = false
+                exampleCount += 1
+            case .source:
+                guard sourceCount < 1 else { continue }
+                if pendingDivider && !result.isEmpty { result.append(.divider) }
+                result.append(block)
+                pendingDivider = false
+                sourceCount += 1
+            }
+        }
+        return CardDocument(blocks: result)
+    }
+
+    /// 擷取第一個 meaning block 的段落
+    func meaningParagraphs() -> [CardDocumentParagraph] {
+        for block in blocks {
+            if case .meaning(let meaning) = block {
+                return meaning.paragraphs
+            }
+        }
+        return []
+    }
+}
+
 enum CardDocumentInline: Identifiable {
     case text(String)
     case mark(String)
