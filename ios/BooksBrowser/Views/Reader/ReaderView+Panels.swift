@@ -78,7 +78,6 @@ extension ReaderView {
                     closeOverlay(.settings)
                 }
             )
-            .vocabSkin(VocabSkin.themed(appTheme))
         }
     }
 
