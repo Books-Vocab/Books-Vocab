@@ -100,6 +100,7 @@ extension TodayReviewPresenter {
         let hasLinks = !currentCard.linkGroups.isEmpty
         let exampleRadius = answerExampleRadius(
             containerHeight: availableHeight,
+            meaningCount: currentCard.meaningParagraphs.count,
             card: card,
             hasLinks: hasLinks
         )
@@ -130,11 +131,10 @@ extension TodayReviewPresenter {
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
 
-            let meaningParagraphs = answerMeaningParagraphs(for: card)
-            if !meaningParagraphs.isEmpty {
+            if !currentCard.meaningParagraphs.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
                 VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-                    ForEach(meaningParagraphs) { paragraph in
+                    ForEach(currentCard.meaningParagraphs) { paragraph in
                         CardInlineText(paragraph: paragraph, style: .body)
                             .lineSpacing(5)
                             .lineLimit(3)
@@ -142,10 +142,9 @@ extension TodayReviewPresenter {
                 }
             }
 
-            let backDoc = reviewBackDocument(for: card)
-            if !backDoc.blocks.isEmpty {
+            if !currentCard.backDocument.blocks.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: backDoc, truncateRadius: exampleRadius, targetWord: card.word)
+                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word)
             }
 
             if hasLinks {
@@ -156,15 +155,6 @@ extension TodayReviewPresenter {
         .padding(reviewCardPadding)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: answerCardHeight, alignment: .topLeading)
-    }
-
-    func answerMeaningParagraphs(for card: CardPresentation) -> [CardDocumentParagraph] {
-        for block in card.document.blocks {
-            if case .meaning(let meaning) = block {
-                return meaning.paragraphs
-            }
-        }
-        return []
     }
 
     // MARK: Link Strip
@@ -222,6 +212,7 @@ extension TodayReviewPresenter {
 
     func answerExampleRadius(
         containerHeight: CGFloat,
+        meaningCount: Int,
         card: CardPresentation,
         hasLinks: Bool
     ) -> Int {
@@ -242,7 +233,6 @@ extension TodayReviewPresenter {
             coreHeight += 20 + gap                                              // pronunciation
         }
 
-        let meaningCount = answerMeaningParagraphs(for: card).count
         if meaningCount > 0 {
             // divider(17) + 每段最多 3 行（lineLimit）× 行高 22
             coreHeight += 17 + CGFloat(min(meaningCount, 3)) * 22 + gap
@@ -285,31 +275,4 @@ extension TodayReviewPresenter {
         return vocabSkin.typography.reviewWord
     }
 
-    func reviewBackDocument(for card: CardPresentation) -> CardDocument {
-        var blocks: [CardDocumentBlock] = []
-        var pendingDivider = false
-        var exampleCount = 0
-        var sourceCount = 0
-        for block in card.document.blocks {
-            switch block {
-            case .hero, .meaning:
-                pendingDivider = false
-            case .divider:
-                pendingDivider = true
-            case .example:
-                guard exampleCount < 1 else { continue }
-                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
-                blocks.append(block)
-                pendingDivider = false
-                exampleCount += 1
-            case .source:
-                guard sourceCount < 1 else { continue }
-                if pendingDivider && !blocks.isEmpty { blocks.append(.divider) }
-                blocks.append(block)
-                pendingDivider = false
-                sourceCount += 1
-            }
-        }
-        return CardDocument(blocks: blocks)
-    }
 }

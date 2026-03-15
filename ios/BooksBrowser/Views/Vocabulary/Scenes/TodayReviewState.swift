@@ -290,7 +290,14 @@ final class TodayReviewState {
                     overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
                 )
             }
-            cache[entry.id] = .init(card: card, linkGroups: compactGroups)
+            let backDoc = card.document.reviewBackSubset()
+            let meanings = card.document.meaningParagraphs()
+            cache[entry.id] = .init(
+                card: card,
+                linkGroups: compactGroups,
+                backDocument: backDoc,
+                meaningParagraphs: meanings
+            )
         }
         return cache
     }
