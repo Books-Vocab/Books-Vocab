@@ -41,6 +41,7 @@ class CardResponse(BaseModel):
     difficulty: float | None
     difficultyTier: str | None
     note: str | None
+    collocations: list[str] = []
     examples: list[str]
     mode: str
     isDeleted: bool
