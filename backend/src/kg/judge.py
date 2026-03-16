@@ -11,16 +11,17 @@ from .graph import LinkKind
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """You are a vocabulary relationship judge. Given two words with their meanings, determine if they have a learning-relevant relationship.
+SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
+- confusable: Meanings or usage easily confused (NOT just similar spelling)
+  YES: affect/effect, lay/lie, compliment/complement
+  NO: snagged/gagged, perverted/gnarled (spelling similar but meanings unrelated)
+- contrasts_with: Genuinely opposite or contrasting meanings
+  YES: unkempt/primped, hunkered/loped
+  NO: bust/midriff (different body parts, not opposites)
+- shares_usage: Used in similar contexts or fill similar grammatical roles
+- not_applicable: No meaningful learning relationship
 
-Choose EXACTLY ONE relationship type:
-- confusable: Words that learners often mix up (similar spelling, pronunciation, or meaning)
-- contrasts_with: Words with opposite or contrasting meanings worth studying together
-- shares_usage: Words used in similar contexts or grammatical patterns
-- not_applicable: No significant learning relationship
-
-Respond with JSON in this exact format:
-{"link": "<type>", "confidence": <0.0-1.0>, "reason": "<brief explanation>"}"""
+Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<brief>"}"""
 
 USER_TEMPLATE = """Word A: {word_a}
 Meaning A: {meaning_a}

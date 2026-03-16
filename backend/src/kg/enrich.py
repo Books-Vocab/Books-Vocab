@@ -13,44 +13,42 @@ from openai import OpenAI
 from .cards import Card
 from .languages import LANGUAGE_NAMES
 
-# Legacy constant kept for backward compatibility
-SYSTEM_PROMPT = """你是英語教學專家。針對每個英文詞彙，提供：
-1. pos：英文詞性縮寫 (n. / v. / adj. / adv. / phr. / conj.)
-2. note：一段精煉中文教學筆記（80 字內），包含：
-   - 常見搭配 (用 `code` 格式)
-   - 用法語境
-   - 易混詞區辨（如有）
-
-回傳嚴格 JSON array，每個元素含 word, pos, note。"""
+SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
+- word: 原詞
+- pos: 詞性 (n. / v. / adj. / adv. / phr. / conj.)
+- note: 繁體中文教學筆記（50 字內），只寫一個最有價值的洞察。禁止重複翻譯。選擇以下其中一種：
+  · 易混詞辨析（何時用 A 不用 B）
+  · 語域/語感提示（正式/口語/文學）
+  · 構詞記憶線索（詞根、意象）
+  · 用法陷阱（常見錯誤搭配）
+- collocations: 2-3 個常見搭配詞組（字串陣列）
+- meaning_fix: 修正後的繁體中文翻譯，須滿足：
+  · adj. 結尾加「的」、adv. 結尾加「地」
+  · 必須是繁體中文（不可簡體、不可英文）
+  · 翻譯要能看出詞性
+  · 如原翻譯已正確，回傳 null"""
 
 
 def build_enrich_system_prompt(target_lang: str = "zh-Hant") -> str:
-    tgt_name = LANGUAGE_NAMES.get(target_lang, "Traditional Chinese")
-    return f"""You are a language teaching expert. For each vocabulary word, provide:
-1. pos: POS abbreviation in English (n. / v. / adj. / adv. / phr. / conj.)
-2. note: A concise teaching note in {tgt_name} (80 characters or fewer), including:
-   - Common collocations (use `code` format)
-   - Usage context
-   - Easily confused words (if any)
+    return SYSTEM_PROMPT
 
-Return a strict JSON array, each element containing word, pos, note."""
 
-USER_TEMPLATE = """請分析以下單字：
+USER_TEMPLATE = """分析以下單字（含現有翻譯和例句上下文）：
 {words_json}
-
-每個單字的例句上下文：
-{contexts_json}
 
 回傳 JSON array。"""
 
 
 def _build_prompt(cards: list[Card]) -> str:
     """Build the user prompt from a batch of cards."""
-    words = [c.content for c in cards]
-    contexts = {c.content: c.examples[0] if c.examples else "" for c in cards}
+    items = []
+    for c in cards:
+        item = {"word": c.content, "meaning": c.meaning}
+        if c.examples:
+            item["context"] = c.examples[0][:200]
+        items.append(item)
     return USER_TEMPLATE.format(
-        words_json=json.dumps(words, ensure_ascii=False),
-        contexts_json=json.dumps(contexts, ensure_ascii=False, indent=2),
+        words_json=json.dumps(items, ensure_ascii=False, indent=2),
     )
 
 
