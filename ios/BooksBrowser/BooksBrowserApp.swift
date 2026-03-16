@@ -111,7 +111,6 @@ struct BooksBrowserApp: App {
             AppThemeContainer {
                 rootView
                     .environmentObject(appLanguage)
-                    .environmentObject(appearanceStore)
                     .environment(\.reviewSettingsStore, ReviewSettingsStore.shared)
                     .preferredColorScheme(appearanceStore.resolvedColorScheme)
                     .environment(\.authManager, authManager)
@@ -127,6 +126,7 @@ struct BooksBrowserApp: App {
                     .environment(\.speechService, SpeechService.shared)
                     .environment(\.readerSettings, .shared)
             }
+            .environmentObject(appearanceStore)
         }
         .modelContainer(modelContainer)
     }
