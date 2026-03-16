@@ -31,30 +31,29 @@ extension TodayReviewPresenter {
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            HStack(spacing: 6) {
-                if let pos = card.partOfSpeech {
-                    Text(pos)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
-                }
-                Spacer()
-            }
-
             Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
 
-            switch card.reviewMode {
-            case .recognition:
-                Text(card.word)
-                    .font(reviewFrontWordFont(for: card.word))
-                    .foregroundStyle(vocabSkin.palette.primaryText)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.7)
-                    .fixedSize(horizontal: false, vertical: true)
-            case .production:
-                Text(card.translation)
-                    .font(vocabSkin.typography.body.weight(.semibold))
-                    .foregroundStyle(vocabSkin.palette.primaryTextMuted)
-                    .minimumScaleFactor(0.75)
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                switch card.reviewMode {
+                case .recognition:
+                    Text(card.word)
+                        .font(reviewFrontWordFont(for: card.word))
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.7)
+                        .fixedSize(horizontal: false, vertical: true)
+                case .production:
+                    Text(card.translation)
+                        .font(vocabSkin.typography.body.weight(.semibold))
+                        .foregroundStyle(vocabSkin.palette.primaryTextMuted)
+                        .minimumScaleFactor(0.75)
+                }
+
+                if let pos = card.partOfSpeech {
+                    Text(pos)
+                        .font(vocabSkin.typography.body)
+                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                }
             }
 
             if card.reviewMode == .production, let example = card.examples.first {
