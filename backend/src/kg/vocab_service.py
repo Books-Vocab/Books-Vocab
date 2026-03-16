@@ -28,6 +28,25 @@ def _normalize_word(word: str) -> str:
     return unicodedata.normalize("NFC", word).strip().lower()
 
 
+def _clean_content(word: str) -> str:
+    """Clean up word content for storage: strip trailing punctuation, lowercase first char."""
+    word = word.strip().rstrip(".,;:!?")
+    # Lowercase first char unless it's an acronym (all caps) or proper noun in a phrase
+    if word and word[0].isupper() and not word.isupper() and " " not in word:
+        word = word[0].lower() + word[1:]
+    return word
+
+
+_POS_CANONICAL = {"n": "n.", "v": "v.", "adj": "adj.", "adv": "adv.", "phr": "phr.", "conj": "conj.", "prep": "prep."}
+
+
+def _normalize_pos(pos: str | None) -> str | None:
+    if not pos:
+        return pos
+    p = pos.strip()
+    return _POS_CANONICAL.get(p, p)
+
+
 def _dt_to_iso(dt: datetime | None) -> str | None:
     if dt is None:
         return None
@@ -289,7 +308,7 @@ def add_vocab_entries(
     card_ids: dict[str, str] = {}
 
     for entry in entries:
-        word = entry.word.strip()
+        word = _clean_content(entry.word)
         if _normalize_word(word) in existing:
             skipped += 1
             duplicates.append(word)
