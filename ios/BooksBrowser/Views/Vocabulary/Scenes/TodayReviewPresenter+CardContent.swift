@@ -142,14 +142,14 @@ extension TodayReviewPresenter {
                 }
             }
 
-            if !currentCard.backDocument.blocks.isEmpty {
-                CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word)
-            }
-
             if hasLinks {
                 CardSectionDivider(horizontalPadding: 0)
                 reviewLinkStrip(currentCard.linkGroups)
+            }
+
+            if !currentCard.backDocument.blocks.isEmpty {
+                CardSectionDivider(horizontalPadding: 0)
+                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word)
             }
         }
         .padding(reviewCardPadding)
@@ -242,9 +242,8 @@ extension TodayReviewPresenter {
             coreHeight += 17 + 24 + gap                                         // divider + link strip
         }
 
-        // ③ 來源區塊固定預留 + divider
-        let sourceReserve: CGFloat = 80
-        let exampleBudget = max(answerBudget - coreHeight - sourceReserve - 17, 0)
+        // ③ 例句在最後，佔用全部剩餘空間（含 divider）
+        let exampleBudget = max(answerBudget - coreHeight - 17, 0)
 
         // ④ 高度 → 行數 → 詞數 → radius
         let lineHeight: CGFloat = 22
