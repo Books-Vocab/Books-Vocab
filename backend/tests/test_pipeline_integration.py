@@ -28,6 +28,7 @@ os.environ.setdefault("GEMINI_API_KEY", "fake-key")
 import kg.api as api_mod  # noqa: E402
 import kg.deps as deps_mod  # noqa: E402
 import kg.routers.pipeline as pipeline_router_mod  # noqa: E402
+import kg.routers.vocab as vocab_router_mod  # noqa: E402
 from kg.api import app  # noqa: E402
 from kg.settings import KGSettings
 
@@ -130,7 +131,7 @@ class TestPipelineIntegration:
         emb = _DummyEmbeddingStore()
 
         # Add a card (no pos/note -> enrich step will have work to do)
-        with patch.object(pipeline_router_mod, "_embedding_store", return_value=emb):
+        with patch.object(vocab_router_mod, "_embedding_store", return_value=emb):
             r = client.post(
                 "/api/vocab",
                 json=[{"word": "serendipity", "translation": "意外之喜"}],
