@@ -128,6 +128,8 @@ xcodebuild \
 - status: `./ops/devops_kg_safe.sh status`
 - logs: `./ops/devops_kg_safe.sh logs 120`
 - deploy: `./ops/devops_kg_safe.sh deploy`
+- data inspect: `python3 ops/data_inspect.py [command]` — 觀測本地 DB 卡片/graph 品質
+  - `overview` (default) / `sample N` / `gaps` / `graph` / `notes` / `search <keyword>` / `card <id>` / `sql "..."`
 
 ## Git
 - Monorepo root (`.git`) covers iOS app, backend API, ops/docs
