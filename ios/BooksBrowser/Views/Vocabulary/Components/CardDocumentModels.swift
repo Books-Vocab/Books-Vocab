@@ -9,6 +9,7 @@ enum CardDocumentBlock: Identifiable {
     case example(CardDocumentParagraph)
     case divider
     case meaning(CardDocumentMeaning)
+    case collocations([String])
     case source(CardDocumentSource)
 
     var id: String {
@@ -21,6 +22,8 @@ enum CardDocumentBlock: Identifiable {
             return "divider-\(UUID().uuidString)"
         case .meaning:
             return "meaning"
+        case .collocations:
+            return "collocations"
         case .source:
             return "source"
         }
@@ -81,7 +84,7 @@ extension CardDocument {
         var sourceCount = 0
         for block in blocks {
             switch block {
-            case .hero, .meaning:
+            case .hero, .meaning, .collocations:
                 pendingDivider = false
             case .divider:
                 pendingDivider = true
