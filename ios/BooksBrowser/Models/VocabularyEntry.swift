@@ -52,6 +52,7 @@ final class VocabularyEntry {
     var actionType: String = "add"  // "add" | "delete" | "edit"
     var reviewModeRaw: String = VocabularyCardMode.recognition.rawValue
     var reviewExamples: [String] = []
+    var collocations: [String] = []
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
 

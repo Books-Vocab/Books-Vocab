@@ -26,6 +26,10 @@ struct CardDocumentView: View {
                     CardDocumentMeaningBlock(meaning: meaning)
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
+                case .collocations(let items):
+                    CardDocumentCollocationsBlock(items: items)
+                        .padding(vocabSkin.metrics.cardBlockPadding)
+
                 case .source(let source):
                     CardDocumentSourceBlock(source: source)
                         .padding(vocabSkin.metrics.cardBlockPadding)
@@ -211,6 +215,39 @@ private struct CardDocumentSourceBlock: View {
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
+                copyTrigger.toggle()
+            }
+        }
+        .sensoryFeedback(.success, trigger: copyTrigger)
+    }
+}
+
+private struct CardDocumentCollocationsBlock: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @State private var copyTrigger = false
+    let items: [String]
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+            CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
+
+            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                ForEach(Array(items.enumerated()), id: \.offset) { _, item in
+                    Text(item)
+                        .font(vocabSkin.typography.monoBody)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 4)
+                        .background(
+                            RoundedRectangle(cornerRadius: 6)
+                                .fill(vocabSkin.palette.divider.opacity(0.5))
+                        )
+                }
+            }
+        }
+        .contextMenu {
+            Button("複製".localized, systemImage: "doc.on.doc") {
+                UIPasteboard.general.string = items.joined(separator: ", ")
                 copyTrigger.toggle()
             }
         }

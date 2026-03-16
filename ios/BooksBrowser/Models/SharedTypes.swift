@@ -36,6 +36,7 @@ struct KGCard: Codable, Identifiable {
     let difficulty: Double?
     let difficultyTier: String?
     let note: String?
+    let collocations: [String]?
     let examples: [String]
     let mode: String
     let isDeleted: Bool?

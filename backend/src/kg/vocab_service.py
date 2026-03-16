@@ -107,6 +107,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         difficulty=card.difficulty,
         difficultyTier=tier.tag,
         note=card.note,
+        collocations=card.collocations or [],
         examples=card.examples,
         mode=card.mode,
         isDeleted=card.is_deleted,

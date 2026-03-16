@@ -32,6 +32,7 @@ struct CardPresentation {
     let bookTitle: String
     let chapterTitle: String?
     let explanation: String?
+    let collocations: [String]
     let forms: [String]
     let syncStatus: Int
     let dateAdded: Date
@@ -50,6 +51,7 @@ struct CardPresentation {
         bookTitle = entry.bookTitle
         chapterTitle = entry.chapterTitle
         explanation = entry.explanation
+        collocations = entry.collocations
         syncStatus = entry.syncStatus
         dateAdded = entry.dateAdded
 
@@ -90,6 +92,7 @@ struct CardPresentation {
             bookTitle: bookTitle,
             chapterTitle: chapterTitle,
             explanation: explanation,
+            collocations: collocations,
             showsSourceContext: computedShowsSourceContext
         )
     }

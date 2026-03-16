@@ -13,6 +13,7 @@ enum CardDocumentBuilder {
         bookTitle: String,
         chapterTitle: String?,
         explanation: String?,
+        collocations: [String] = [],
         showsSourceContext: Bool
     ) -> CardDocument {
         var blocks: [CardDocumentBlock] = [
@@ -45,6 +46,11 @@ enum CardDocumentBuilder {
                     )
                 )
             )
+        }
+
+        if !collocations.isEmpty {
+            blocks.append(.divider)
+            blocks.append(.collocations(collocations))
         }
 
         if showsSourceContext {
