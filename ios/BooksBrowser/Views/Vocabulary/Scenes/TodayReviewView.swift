@@ -71,6 +71,11 @@ struct TodayReviewView: View {
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack)
         }
+        .sheet(item: $state.tappedLink) { link in
+            LinkReasonSheet(link: link, onNavigate: state.navigateToLinkedCard)
+                .presentationDetents([.medium])
+                .presentationDragIndicator(.visible)
+        }
         .onDisappear {
             if state.currentIndex < state.queue.count {
                 let durationMs = Int(Date().timeIntervalSince(state.sessionStartTime) * 1000)
