@@ -104,10 +104,10 @@ extension TodayReviewPresenter {
                 swipeOffset = 0
                 stackRotations = [.random(in: -1...1), .random(in: -1...1)]
                 callback()
+                dismissPhase = .idle
             }
             DispatchQueue.main.async {
                 suppressTransition = false
-                dismissPhase = .idle
             }
         }
     }

@@ -50,9 +50,6 @@ struct TodayReviewPresenter: View {
     @State var dismissPhase: DismissPhase = .idle
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
-    /// scrollDisabled 延遲解除，避免答案卡動畫進行中的滾動干擾
-    @State var scrollUnlocked = false
-    @State private var scrollUnlockTask: Task<Void, Never>?
     @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -89,38 +86,22 @@ struct TodayReviewPresenter: View {
                     topBar
 
                     GeometryReader { geo in
-                        ScrollView {
-                            VStack(spacing: 0) {
-                                reviewCard(currentCard, availableHeight: geo.size.height)
-                                    .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
-                                    .padding(.top, vocabSkin.metrics.reviewCardTopInset)
-                                    .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
+                        VStack(spacing: 0) {
+                            reviewCard(currentCard, availableHeight: geo.size.height)
+                                .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
+                                .padding(.top, vocabSkin.metrics.reviewCardTopInset)
+                                .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
 
-                                if state.revealStage == .front {
-                                    revealExpandZone(
-                                        title: "點一下展開".localized,
-                                        minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
-                                        action: onAdvanceReveal
-                                    )
-                                } else if state.revealStage.showsAnswer {
-                                    Spacer(minLength: 0)
-                                }
+                            if state.revealStage == .front {
+                                revealExpandZone(
+                                    title: "點一下展開".localized,
+                                    minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
+                                    action: onAdvanceReveal
+                                )
+                                .allowsHitTesting(isCardInteractive)
                             }
-                            .frame(maxWidth: .infinity, minHeight: geo.size.height, alignment: .top)
                         }
-                        .scrollDisabled(!scrollUnlocked)
-                    }
-                    .onChange(of: state.revealStage.showsAnswer) { _, shows in
-                        scrollUnlockTask?.cancel()
-                        if shows {
-                            scrollUnlockTask = Task {
-                                try? await Task.sleep(for: AppMotion.paperFoldScrollUnlockDelay)
-                                guard !Task.isCancelled else { return }
-                                scrollUnlocked = true
-                            }
-                        } else {
-                            scrollUnlocked = false
-                        }
+                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
                     }
 
                     bottomToolbar
