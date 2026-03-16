@@ -8,6 +8,7 @@ from fastapi import HTTPException
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
+from .vocab_service import _normalize_pos
 
 
 def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tuple[str, str]:
@@ -113,7 +114,7 @@ def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: 
     data = _parse_json_payload(response.choices[0].message.content)
     return QuickTranslateResponse(
         t=data.get("t", ""),
-        p=data.get("p"),
+        p=_normalize_pos(data.get("p")),
         r=data.get("r"),
     )
 
@@ -160,7 +161,7 @@ async def async_run_quick_translate(req: TranslateRequest, user: dict[str, Any],
     data = _parse_json_payload(response.choices[0].message.content)
     return QuickTranslateResponse(
         t=data.get("t", ""),
-        p=data.get("p"),
+        p=_normalize_pos(data.get("p")),
         r=data.get("r"),
     )
 
