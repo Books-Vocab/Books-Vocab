@@ -18,10 +18,14 @@ async def _step_enrich(
     card_store_factory: Callable[[Any], Any],
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
+    force: bool = False,
 ) -> None:
-    logger.info("[%s] Step 1: Enrich", uid)
+    logger.info("[%s] Step 1: Enrich (force=%s)", uid, force)
     cards = card_store_factory(user["dir"])
-    targets = [card for card in cards.all() if not card.pos or not card.note]
+    if force:
+        targets = list(cards.all(include_deleted=False))
+    else:
+        targets = [card for card in cards.all() if not card.pos or not card.note]
 
     if not targets:
         logger.info("[%s] All cards already enriched", uid)
@@ -43,16 +47,20 @@ async def _step_enrich(
                 enrichment = result_map.get(card.content.lower())
                 if not enrichment:
                     continue
-                kwargs = {}
-                if enrichment.get("pos") and not card.pos:
-                    kwargs["pos"] = enrichment["pos"]
-                if enrichment.get("note") and not card.note:
-                    kwargs["note"] = enrichment["note"]
+                kwargs: dict[str, Any] = {}
+                if enrichment.get("pos"):
+                    if force or not card.pos:
+                        kwargs["pos"] = enrichment["pos"]
+                if enrichment.get("note"):
+                    if force or not card.note:
+                        kwargs["note"] = enrichment["note"]
+                if enrichment.get("collocations"):
+                    kwargs["collocations"] = enrichment["collocations"]
+                if enrichment.get("meaning_fix"):
+                    kwargs["meaning"] = enrichment["meaning_fix"]
                 if kwargs:
                     updated_card = cards.update(card.id, **kwargs)
                     if updated_card:
-                        card.pos = updated_card.pos
-                        card.note = updated_card.note
                         updated += 1
 
     logger.info("[%s] Enriched %d cards", uid, updated)
@@ -228,6 +236,7 @@ async def run_pipeline_background(
     logger: logging.Logger,
     link_kind_enum: Any,
     jwt_secret: str = "",
+    force_enrich: bool = False,
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -249,6 +258,7 @@ async def run_pipeline_background(
                     card_store_factory=card_store_factory,
                     gemini_client_factory=gemini_client_factory,
                     logger=logger,
+                    force=force_enrich,
                     max_attempts=2,
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Enrich", uid=uid,
