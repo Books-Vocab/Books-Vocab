@@ -39,6 +39,11 @@ POS options: n. / v. / adj. / adv. / conj. / prep.
 Word: "{req.word}"
 Context: "{req.context[:300]}"
 
+Translation (t) rules:
+- Must be {tgt_name} (use 繁體中文 characters, never 简体)
+- adj. translation must end with「的」(e.g. 輝煌的, 虔誠的)
+- adv. translation must end with「地」(e.g. 沉思地, 端莊地)
+
 Lemma (r) rules:
 - Must be a valid {src_name} dictionary word
 - No cross-POS derivation (adjective lemma stays adjective, not its derived noun)
@@ -53,7 +58,7 @@ Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "..." }}'''
 def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
-    return f'''Translate the following {src_name} phrase/expression into {tgt_name}. Provide the most precise translation.
+    return f'''Translate the following {src_name} phrase/expression into {tgt_name} (use 繁體中文, never 简体).
 Phrase: "{req.word}"
 Context: "{req.context[:300]}"
 Output pure JSON (no Markdown): {{ "t": "..." }}'''
