@@ -9,6 +9,7 @@ final class TodayReviewState {
     var currentIndex = 0
     var revealStage: TodayReviewRevealStage = .front
     var linkedCardStack: [VocabularyEntry] = []
+    var tappedLink: KGCardLinkSummary?
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
 
     // MARK: - Scoring
@@ -94,7 +95,13 @@ final class TodayReviewState {
     // MARK: - Actions
 
     func handleLinkTap(_ link: KGCardLinkSummary) {
-        guard let target = linkedEntryLookup[link.cardId] else { return }
+        tappedLink = link
+    }
+
+    func navigateToLinkedCard() {
+        guard let link = tappedLink,
+              let target = linkedEntryLookup[link.cardId] else { return }
+        tappedLink = nil
         linkedCardStack.append(target)
     }
 
