@@ -29,13 +29,15 @@ enum ReviewActivityLog {
         word: String,
         entryID: UUID?,
         feedback: ReviewFeedback,
-        context: ModelContext
+        context: ModelContext,
+        notebookId: String = "default"
     ) {
         let record = ReviewRecord(
             word: word,
             entryID: entryID,
             feedback: feedback == .remembered ? 1 : 0
         )
+        record.notebookId = notebookId
         context.insert(record)
     }
 
