@@ -43,8 +43,7 @@ enum TodayReviewPresenterPreviewData {
         return .init(
             card: baseCard,
             linkGroups: groups,
-            backDocument: baseCard.document.reviewBackSubset(),
-            meaningParagraphs: baseCard.document.meaningParagraphs()
+            backDocument: baseCard.document.reviewBackSubset()
         )
     }()
 
@@ -66,8 +65,7 @@ enum TodayReviewPresenterPreviewData {
         return .init(
             card: card,
             linkGroups: [],
-            backDocument: card.document.reviewBackSubset(),
-            meaningParagraphs: card.document.meaningParagraphs()
+            backDocument: card.document.reviewBackSubset()
         )
     }()
 
