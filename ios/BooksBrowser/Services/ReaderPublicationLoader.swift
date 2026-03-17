@@ -41,7 +41,13 @@ struct ReaderPublicationLoader {
         downloadManager.triggerDownload(for: fileName)
         updatePhase(L10n.string("正在從 iCloud 下載…"))
 
-        let downloadTriggered = (try? fm.startDownloadingUbiquitousItem(at: url)) != nil
+        var downloadTriggered = false
+        do {
+            try fm.startDownloadingUbiquitousItem(at: url)
+            downloadTriggered = true
+        } catch {
+            AppLog.readium.warning("startDownloadingUbiquitousItem failed for \(fileName): \(error.localizedDescription)")
+        }
         if !downloadTriggered {
             AppLog.readium.info("File not yet known to iCloud, waiting for sync: \(fileName)")
             updatePhase(L10n.string("等待 iCloud 同步…"))
