@@ -8,32 +8,38 @@ struct CardDocumentView: View {
     var targetWord: String? = nil
     var compact: Bool = false
 
+    private var blockPadding: CGFloat { compact ? 0 : vocabSkin.metrics.cardBlockPadding }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .hero(let hero):
                     CardDocumentHeroBlock(hero: hero)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(blockPadding)
 
                 case .example(let paragraph):
                     CardDocumentExampleBlock(paragraph: paragraph, truncateRadius: truncateRadius, targetWord: targetWord)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(blockPadding)
 
                 case .divider:
-                    CardSectionDivider()
+                    if compact {
+                        CardSectionDivider(horizontalPadding: 0)
+                    } else {
+                        CardSectionDivider()
+                    }
 
                 case .meaning(let meaning):
                     CardDocumentMeaningBlock(meaning: meaning, compact: compact)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(blockPadding)
 
                 case .collocations(let items):
                     CardDocumentCollocationsBlock(items: items)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(blockPadding)
 
                 case .source(let source):
                     CardDocumentSourceBlock(source: source)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(blockPadding)
                 }
             }
         }
