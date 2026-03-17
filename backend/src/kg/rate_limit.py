@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import collections
+import os
 import time
 
 
@@ -29,8 +30,12 @@ class RateLimiter:
             return True
 
 
-# 全域 limiter 實例
-# 一般 API：每用戶 60 req/min
-api_limiter = RateLimiter(max_requests=60, window_seconds=60)
-# 翻譯 API：每用戶 20 req/min（較貴的 LLM 呼叫）
-translate_limiter = RateLimiter(max_requests=20, window_seconds=60)
+# 全域 limiter 實例（可透過環境變數覆蓋）
+api_limiter = RateLimiter(
+    max_requests=int(os.getenv("API_RATE_LIMIT", "60")),
+    window_seconds=60,
+)
+translate_limiter = RateLimiter(
+    max_requests=int(os.getenv("TRANSLATE_RATE_LIMIT", "20")),
+    window_seconds=60,
+)
