@@ -260,7 +260,7 @@ struct ReaderSettingsVocabPresenter: View {
                 Text(label)
                     .font(font)
                     .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                    .frame(width: 52, height: 52)
+                    .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
             }
         }
         .buttonStyle(.plain)
