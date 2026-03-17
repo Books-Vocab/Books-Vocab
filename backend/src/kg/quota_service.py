@@ -11,9 +11,9 @@ from datetime import UTC, datetime
 from .token_tracker import _get_conn, _lock
 
 # Gemini pricing (USD per 1M tokens)
-_INPUT_PER_M = 0.10
-_OUTPUT_PER_M = 0.40
-_EMBED_PER_M = 0.00025
+INPUT_PER_M = 0.10
+OUTPUT_PER_M = 0.40
+EMBED_PER_M = 0.00025
 
 PRO_DAILY_LIMIT_USD = 0.30
 FREE_DAILY_LIMIT_USD = 0.03
@@ -24,10 +24,10 @@ def _daily_limit(is_pro: bool) -> float:
     return PRO_DAILY_LIMIT_USD if is_pro else FREE_DAILY_LIMIT_USD
 
 
-def _token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
+def token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
     if call_type == "embed":
-        return (input_tokens / 1_000_000) * _EMBED_PER_M
-    return (input_tokens / 1_000_000) * _INPUT_PER_M + (output_tokens / 1_000_000) * _OUTPUT_PER_M
+        return (input_tokens / 1_000_000) * EMBED_PER_M
+    return (input_tokens / 1_000_000) * INPUT_PER_M + (output_tokens / 1_000_000) * OUTPUT_PER_M
 
 
 def _used_usd(user_id: str) -> float:
@@ -49,7 +49,7 @@ def _used_usd(user_id: str) -> float:
 
     total = 0.0
     for call_type, total_in, total_out in rows:
-        total += _token_cost_usd(call_type, total_in or 0, total_out or 0)
+        total += token_cost_usd(call_type, total_in or 0, total_out or 0)
     return total
 
 
@@ -91,7 +91,7 @@ def get_all_quota_usage() -> dict[str, dict]:
     for user_id, call_type, cnt, total_in, total_out in rows:
         if user_id not in result:
             result[user_id] = {"used_usd": 0.0, "limit_usd": PRO_DAILY_LIMIT_USD, "calls": {}}
-        cost = _token_cost_usd(call_type, total_in or 0, total_out or 0)
+        cost = token_cost_usd(call_type, total_in or 0, total_out or 0)
         result[user_id]["used_usd"] += cost
         result[user_id]["calls"][call_type] = {"count": cnt, "cost_usd": round(cost, 6)}
 
