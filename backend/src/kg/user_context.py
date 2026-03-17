@@ -8,6 +8,7 @@ import jwt
 from fastapi import HTTPException
 
 from .settings import KGSettings
+from .types import UserRecord
 
 
 def resolve_current_user(
@@ -16,7 +17,7 @@ def resolve_current_user(
     settings: KGSettings,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     parse_datetime: Callable[[Any], datetime | None],
-) -> dict[str, Any]:
+) -> UserRecord:
     token = token.strip()
     token_iat: datetime | None = None
 
