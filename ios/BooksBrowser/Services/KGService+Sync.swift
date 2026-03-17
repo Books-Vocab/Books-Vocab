@@ -48,7 +48,7 @@ extension KGService {
     // MARK: - Offline KG Sync logic
 
     @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws -> Bool {
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String = "default") async throws -> Bool {
         let token = try await currentAuthToken()
         progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
@@ -66,16 +66,18 @@ extension KGService {
         let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
         let isIncremental = lastSyncMillis > 0
 
+        var queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
         if isIncremental {
             let lastSyncDate = Date(timeIntervalSince1970: lastSyncMillis)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
             let dateString = formatter.string(from: lastSyncDate)
-            urlComponents.queryItems = [URLQueryItem(name: "since", value: dateString)]
+            queryItems.append(URLQueryItem(name: "since", value: dateString))
             AppLog.kg.info("Performing incremental sync since: \(dateString)")
         } else {
             AppLog.kg.info("Performing full sync")
         }
+        urlComponents.queryItems = queryItems
 
         guard let url = urlComponents.url else {
             throw KGError.serverError("Invalid URL")
@@ -114,7 +116,8 @@ extension KGService {
             isIncremental: isIncremental,
             progress: { detail, current, total in
                 progress?(detail, current, total)
-            }
+            },
+            notebookId: notebookId
         )
 
         // 使用 pull 開始前的時間戳作為邊界，確保不遺漏 pull 期間的變更
@@ -163,7 +166,7 @@ extension KGService {
             failures.append("pushDailyStats")
         }
         do {
-            try await pullCardsToLocal(container: container, progress: nil)
+            try await pullCardsToLocal(container: container, progress: nil, notebookId: "default")
         } catch {
             AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
             failures.append("pull")

@@ -35,7 +35,7 @@ struct BooksBrowserApp: App {
 
         let localConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self]),
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self]),
             cloudKitDatabase: .none
         )
 
@@ -47,7 +47,7 @@ struct BooksBrowserApp: App {
 
         do {
             modelContainer = try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self,
+                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
                 configurations: localConfig, cloudConfig
             )
             startupFailure = nil
@@ -218,7 +218,7 @@ struct BooksBrowserApp: App {
     private static func makeFallbackModelContainer() -> ModelContainer {
         do {
             return try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self,
+                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true)
             )
         } catch {
