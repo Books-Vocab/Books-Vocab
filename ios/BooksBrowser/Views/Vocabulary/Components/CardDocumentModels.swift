@@ -75,17 +75,21 @@ struct CardDocumentParagraph: Identifiable {
 // MARK: - Review Helpers
 
 extension CardDocument {
-    /// 從完整文件中擷取複習用背面內容（最多 1 例句）
+    /// 從完整文件中擷取複習用背面內容（meaning + collocations + 最多 1 例句，排除 hero/source）
     func reviewBackSubset() -> CardDocument {
         var result: [CardDocumentBlock] = []
         var pendingDivider = false
         var exampleCount = 0
         for block in blocks {
             switch block {
-            case .hero, .meaning, .collocations:
+            case .hero:
                 pendingDivider = false
             case .divider:
                 pendingDivider = true
+            case .meaning, .collocations:
+                if pendingDivider && !result.isEmpty { result.append(.divider) }
+                result.append(block)
+                pendingDivider = false
             case .example:
                 guard exampleCount < 1 else { continue }
                 if pendingDivider && !result.isEmpty { result.append(.divider) }
