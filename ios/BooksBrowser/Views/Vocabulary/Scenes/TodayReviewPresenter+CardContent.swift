@@ -17,11 +17,11 @@ extension TodayReviewPresenter {
             Button(action: onAdvanceReveal) {
                 reviewCardFront(card)
                     .frame(maxWidth: .infinity, alignment: .topLeading)
-                    .frame(height: frontCardHeight, alignment: .topLeading)
+                    .frame(minHeight: frontCardHeight, alignment: .topLeading)
             }
             .buttonStyle(.plain)
             .frame(maxWidth: .infinity, alignment: .topLeading)
-            .frame(height: frontCardHeight, alignment: .topLeading)
+            .frame(minHeight: frontCardHeight, alignment: .topLeading)
             .contentShape(Rectangle())
             .disabled(state.revealStage.showsAnswer || !isCardInteractive)
             .accessibilityLabel(L10n.format("複習卡片正面：%@", card.word))
@@ -31,8 +31,6 @@ extension TodayReviewPresenter {
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-            Spacer(minLength: vocabSkin.metrics.reviewFoldHintBottomInset)
-
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 switch card.reviewMode {
                 case .recognition:
@@ -71,12 +69,11 @@ extension TodayReviewPresenter {
                 )
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
             }
-
-            Spacer(minLength: vocabSkin.metrics.reviewTopBarTopInset)
         }
         .padding(reviewCardPadding)
+        .padding(.top, vocabSkin.metrics.reviewFoldHintBottomInset)
         .frame(maxWidth: .infinity, alignment: .topLeading)
-        .frame(height: frontCardHeight, alignment: .topLeading)
+        .frame(minHeight: frontCardHeight, alignment: .topLeading)
     }
 
     // MARK: Combined Answer Surface
@@ -212,8 +209,9 @@ extension TodayReviewPresenter {
             + 36 + gap                                                          // word / translation
 
         if hasMeaning {
-            // divider(17) + translation title(28) + 最多 3 行 explanation(22×3) + collocations 估算(30)
-            coreHeight += 17 + 28 + 66 + 30 + gap
+            // divider(17) + 最多 3 行 explanation(22×3) + collocations 估算(30)
+            // reviewBackSubset 已去除 meaning title，不再計入 title 高度
+            coreHeight += 17 + 66 + 30 + gap
         }
 
         if hasLinks {
