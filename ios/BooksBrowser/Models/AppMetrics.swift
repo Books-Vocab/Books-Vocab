@@ -34,6 +34,10 @@ enum AppMetrics {
     // ── Control Dimensions ──────────────────────────────────────────────────────
     static let iconButtonSize: CGFloat = 52
 
+    // ── Loading Indicator ─────────────────────────────────────────────────
+    static let loadingIndicatorScaleMedium: CGFloat = 0.8
+    static let loadingIndicatorScaleSmall: CGFloat = 0.7
+
     // ── Card Dimensions ─────────────────────────────────────────────────────────
     static let cardMinHeight: CGFloat = 420
     static let heroCardPadding: CGFloat = 34
