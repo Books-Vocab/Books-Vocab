@@ -36,7 +36,7 @@ class DailyReviewStatsStore:
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
-        SQLModel.metadata.create_all(self.engine, checkfirst=True)
+        DailyReviewStat.metadata.create_all(self.engine, tables=[DailyReviewStat.__table__], checkfirst=True)
 
     def upsert(self, day_key: str, total: int, remembered: int, forgot: int) -> DailyReviewStat:
         """Insert or update a day's stats. Client-wins: always takes the higher total."""
