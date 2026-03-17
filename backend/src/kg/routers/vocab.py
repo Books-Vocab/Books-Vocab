@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from fastapi import APIRouter, Depends
+from fastapi.responses import Response
 
 from ..api_models import (
     ArchiveWordRequest,
@@ -41,13 +42,17 @@ router = APIRouter()
 
 
 @router.get("/api/vocab", response_model=list[CardResponse])
-def list_vocab(since: str | None = None, limit: int = 5000, user: dict = Depends(get_current_user)):
-    return list_vocab_response(
+def list_vocab(response: Response, since: str | None = None, limit: int = 5000, user: dict = Depends(get_current_user)):
+    from ..pipeline_service import is_pipeline_running
+
+    result = list_vocab_response(
         since=since, limit=limit, user=user,
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
     )
+    response.headers["X-Pipeline-Pending"] = "true" if is_pipeline_running(user["id"]) else "false"
+    return result
 
 
 # Static paths MUST be registered before {word} path parameter
