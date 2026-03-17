@@ -298,12 +298,10 @@ final class TodayReviewState {
                 )
             }
             let backDoc = card.document.reviewBackSubset()
-            let meanings = card.document.meaningParagraphs()
             cache[entry.id] = .init(
                 card: card,
                 linkGroups: compactGroups,
-                backDocument: backDoc,
-                meaningParagraphs: meanings
+                backDocument: backDoc
             )
         }
         return cache

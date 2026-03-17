@@ -6,6 +6,7 @@ struct CardDocumentView: View {
     let document: CardDocument
     var truncateRadius: Int? = nil
     var targetWord: String? = nil
+    var compact: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -23,7 +24,7 @@ struct CardDocumentView: View {
                     CardSectionDivider()
 
                 case .meaning(let meaning):
-                    CardDocumentMeaningBlock(meaning: meaning)
+                    CardDocumentMeaningBlock(meaning: meaning, compact: compact)
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                 case .collocations(let items):
@@ -139,6 +140,7 @@ private struct CardDocumentMeaningBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @State private var copyTrigger = false
     let meaning: CardDocumentMeaning
+    var compact: Bool = false
 
     private var copyText: String {
         let parts = [meaning.title] + meaning.paragraphs.map(\.plainText)
@@ -158,7 +160,8 @@ private struct CardDocumentMeaningBlock: View {
                         paragraph: paragraph,
                         style: .body
                     )
-                    .lineSpacing(vocabSkin.metrics.detailLineSpacing)
+                    .lineSpacing(compact ? 5 : vocabSkin.metrics.detailLineSpacing)
+                    .lineLimit(compact ? 3 : nil)
                 }
             }
         }
