@@ -16,6 +16,7 @@ struct TranslationVocabPresenter: View {
     let onSpeak: () -> Void
     let onExpand: () -> Void
     let onDelete: () -> Void
+    let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
 
     var body: some View {
@@ -241,6 +242,13 @@ struct TranslationVocabPresenter: View {
 
             Spacer()
 
+            if let onShowDetail {
+                VocabChromeIconButton(
+                    systemImage: "rectangle.portrait.on.rectangle.portrait",
+                    action: onShowDetail
+                )
+            }
+
             if showChevron {
                 VocabChromeIconButton(
                     systemImage: state.isExpanded ? "chevron.up" : "chevron.down",
@@ -268,7 +276,7 @@ struct TranslationVocabPresenter: View {
             Spacer()
             TranslationVocabPresenter(
                 state: TranslationPanelPreviewData.fullTranslation,
-                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+                onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
             )
             .padding()
         }
@@ -281,7 +289,7 @@ struct TranslationVocabPresenter: View {
             Spacer()
             TranslationVocabPresenter(
                 state: TranslationPanelPreviewData.explanationError,
-                onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+                onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
             )
             .padding()
         }

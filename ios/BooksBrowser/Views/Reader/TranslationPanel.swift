@@ -38,6 +38,7 @@ struct TranslationPanel: View {
     let explanationErrorMessage: String?
     let onExpand: () -> Void
     let onDelete: () -> Void
+    let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
 
     @Environment(\.speechService) private var speechService
@@ -115,6 +116,7 @@ struct TranslationPanel: View {
                 onSpeak: { speechService.speak(word); isSpeaking.toggle() },
                 onExpand: onExpand,
                 onDelete: onDelete,
+                onShowDetail: onShowDetail,
                 onDismiss: onDismiss
             )
         case .vocab:
@@ -123,6 +125,7 @@ struct TranslationPanel: View {
                 onSpeak: { speechService.speak(word); isSpeaking.toggle() },
                 onExpand: onExpand,
                 onDelete: onDelete,
+                onShowDetail: onShowDetail,
                 onDismiss: onDismiss
             )
         }
@@ -171,6 +174,7 @@ private struct TranslationPanelPreviewScene: View {
                     explanationErrorMessage: explanationErrorMessage,
                     onExpand: {},
                     onDelete: {},
+                    onShowDetail: nil,
                     onDismiss: {}
                 )
                 .environment(\.readerPanelMode, mode)
