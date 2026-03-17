@@ -95,6 +95,7 @@ class QuickTranslateResponse(BaseModel):
     t: str
     p: str | None = None
     r: str | None = None  # root form (lemma)
+    ipa: str | None = None
 
 
 class ExplainResponse(BaseModel):
