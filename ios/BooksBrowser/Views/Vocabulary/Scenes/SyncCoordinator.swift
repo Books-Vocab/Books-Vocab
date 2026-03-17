@@ -136,41 +136,58 @@ final class SyncCoordinator: SyncCoordinating {
                 if !adds.isEmpty {
                     updateStep("upload_add", status: .running, total: adds.count)
 
-                    do {
-                        adds.forEach { $0.prepareForRetryAttempt() }
-                        let response = try await kgService.batchAdd(entries: adds, notebookId: "default")
+                    let grouped = Dictionary(grouping: adds, by: \.notebookId)
+                    var totalCreated = 0
+                    var totalSkipped = 0
+                    var batchFailed = false
 
-                        for entry in adds {
-                            if let cardId = response.cardIds[entry.word] {
-                                entry.kgCardId = cardId
+                    for (nbId, entries) in grouped {
+                        do {
+                            entries.forEach { $0.prepareForRetryAttempt() }
+                            let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
+
+                            for entry in entries {
+                                if let cardId = response.cardIds[entry.word] {
+                                    entry.kgCardId = cardId
+                                }
                             }
+                            totalCreated += response.created
+                            totalSkipped += response.skipped
+                        } catch {
+                            entries.forEach { $0.markSyncFailed() }
+                            encounteredFailure = true
+                            batchFailed = true
                         }
-                        modelContext.safeSave()
+                    }
+                    modelContext.safeSave()
 
+                    if batchFailed {
+                        let failedCount = adds.filter(\.isFailed).count
+                        updateStep(
+                            "upload_add",
+                            status: .error,
+                            current: adds.count - failedCount,
+                            total: adds.count,
+                            detail: L10n.format("部分上傳失敗（%@ 筆）", "\(failedCount)")
+                        )
+                    } else {
                         updateStep(
                             "upload_add",
                             status: .done,
                             current: adds.count,
                             total: adds.count,
-                            detail: L10n.format("%@ 新增, %@ 已存在", "\(response.created)", "\(response.skipped)")
-                        )
-                    } catch {
-                        adds.forEach { $0.markSyncFailed() }
-                        encounteredFailure = true
-                        modelContext.safeSave()
-                        updateStep(
-                            "upload_add",
-                            status: .error,
-                            current: 0,
-                            total: adds.count,
-                            detail: error.localizedDescription
+                            detail: L10n.format("%@ 新增, %@ 已存在", "\(totalCreated)", "\(totalSkipped)")
                         )
                     }
                 }
 
                 updateStep("trigger", status: .running)
                 do {
-                    try await kgService.triggerPipeline(notebookId: "default")
+                    let uploadedNotebooks = Set(adds.map(\.notebookId))
+                    let notebooksToTrigger = uploadedNotebooks.isEmpty ? ["default"] : Array(uploadedNotebooks)
+                    for nbId in notebooksToTrigger {
+                        try await kgService.triggerPipeline(notebookId: nbId)
+                    }
                     updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
                     encounteredFailure = true
@@ -189,11 +206,21 @@ final class SyncCoordinator: SyncCoordinating {
                 }
 
                 updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
-                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
-                    Task { @MainActor in
-                        self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
-                    }
-                }, notebookId: "default")
+
+                // 收集所有本地有資料的 notebook（用 distinctNotebookIds 確保涵蓋所有本）
+                let syncActor = BackgroundSyncActor(modelContainer: modelContext.container)
+                let distinctIds = (try? await syncActor.distinctNotebookIds()) ?? []
+                let allLocalNotebooks = distinctIds.isEmpty ? ["default"] : distinctIds
+
+                var pipelinePending = false
+                for nbId in allLocalNotebooks {
+                    let pending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
+                        Task { @MainActor in
+                            self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
+                        }
+                    }, notebookId: nbId)
+                    if pending { pipelinePending = true }
+                }
 
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
@@ -201,7 +228,11 @@ final class SyncCoordinator: SyncCoordinating {
                     updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
-                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: "default")
+                    pipelinePending = false
+                    for nbId in allLocalNotebooks {
+                        let pending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nbId)
+                        if pending { pipelinePending = true }
+                    }
                 }
 
                 // Also pull daily stats from server
