@@ -50,6 +50,28 @@ class HealthResponse(BaseModel):
     data_dir_exists: bool = True
 
 
+class NotebookResponse(BaseModel):
+    id: str
+    name: str
+    color: str | None = None
+    sortOrder: int = 0
+    isDefault: bool = False
+    isDeleted: bool = False
+    cardCount: int = 0
+    updatedAt: str | None = None
+
+
+class NotebookCreateRequest(BaseModel):
+    name: str = Field(max_length=100)
+    color: str | None = None
+
+
+class NotebookUpdateRequest(BaseModel):
+    name: str | None = Field(default=None, max_length=100)
+    color: str | None = None
+    sort_order: int | None = None
+
+
 class CardResponse(BaseModel):
     id: str
     content: str
@@ -65,6 +87,7 @@ class CardResponse(BaseModel):
     isArchived: bool = False
     inflections: list[str] = []
     linksByKind: dict[str, list[CardLinkSummaryResponse]] = Field(default_factory=dict)
+    notebookId: str = "default"
     updatedAt: str | None = None
     # Review state
     reviewIntervalHours: float = 12.0

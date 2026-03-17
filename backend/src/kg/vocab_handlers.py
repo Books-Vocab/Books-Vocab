@@ -37,18 +37,20 @@ def list_vocab_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    notebook_id: str = "default",
 ) -> list[Any]:
     require_pro_access(user, "knowledge_sync")
     cards_store = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     return list_vocab_cards(
         since=since,
         limit=limit,
         cards_store=cards_store,
         graph=graph,
         card_response_builder=card_response_builder,
+        notebook_id=notebook_id,
     )
 
 
@@ -58,12 +60,13 @@ def lookup_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
+    notebook_id: str = "default",
 ) -> CardResponse:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     return lookup_vocab_word(
         word,
         cards_store=cards,
@@ -91,11 +94,12 @@ def delete_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[[Path], Any] | None = None,
+    graph_store_factory: Callable[..., Any] | None = None,
+    notebook_id: str = "default",
 ) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"]) if graph_store_factory is not None else None
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
     return delete_vocab_word(word, cards_store=cards, graph=graph)
 
 
@@ -103,10 +107,11 @@ def get_graph_links_response(
     user: dict[str, Any],
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
-    graph_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    notebook_id: str = "default",
 ) -> list[GraphLinkResponse]:
     require_pro_access(user, "knowledge_graph")
-    graph = graph_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     return graph_links_payload(graph=graph)
 
 
@@ -117,8 +122,9 @@ def add_vocab_response(
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     embedding_store_factory: Callable[..., Any],
-    graph_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
     logger: Logger,
+    notebook_id: str = "default",
 ) -> VocabAddResponse:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
@@ -126,9 +132,10 @@ def add_vocab_response(
         entries,
         user=user,
         cards=cards,
-        embeddings=embedding_store_factory(user["dir"], user_id=user["id"]),
-        graph=graph_store_factory(user["dir"]),
+        embeddings=embedding_store_factory(user["dir"], user_id=user["id"], notebook_id=notebook_id),
+        graph=graph_store_factory(user["dir"], notebook_id=notebook_id),
         logger=logger,
+        notebook_id=notebook_id,
     )
 
 

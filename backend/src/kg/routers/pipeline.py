@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
 
 from ..api_models import PipelineQueueResponse
 from ..deps import (
@@ -21,14 +21,14 @@ from ..settings import KGSettings
 router = APIRouter()
 
 
-async def _run_pipeline_background(user: dict, *, settings: KGSettings, force_enrich: bool = False):
+async def _run_pipeline_background(user: dict, *, settings: KGSettings, force_enrich: bool = False, notebook_id: str = "default"):
     await _run_pipeline_bg(
         user,
         get_user_lock_fn=get_user_lock,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         embedding_store_factory=_embedding_store, gemini_client_factory=_gemini_client,
         logger=logger, link_kind_enum=LinkKind, jwt_secret=settings.jwt_secret,
-        force_enrich=force_enrich,
+        force_enrich=force_enrich, notebook_id=notebook_id,
     )
 
 
@@ -38,11 +38,12 @@ async def run_pipeline(
     request: Request,
     user: dict = Depends(get_current_user),
     force_enrich: bool = False,
+    notebook_id: str = Query("default"),
 ):
     settings = request.app.state.kg_settings
 
     async def _bg(u: dict) -> None:
-        await _run_pipeline_background(u, settings=settings, force_enrich=force_enrich)
+        await _run_pipeline_background(u, settings=settings, force_enrich=force_enrich, notebook_id=notebook_id)
 
     return queue_pipeline_response(
         background_tasks, user,

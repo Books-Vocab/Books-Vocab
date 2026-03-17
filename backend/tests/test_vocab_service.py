@@ -41,19 +41,19 @@ class _FakeCardsStore:
         self._cards = list(cards)
         self.deleted = None
 
-    def all(self, include_deleted: bool = False):
+    def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         if include_deleted:
             return list(self._cards)
         return [card for card in self._cards if not card.is_deleted]
 
-    def all_limited(self, limit: int = 5000, include_deleted: bool = False):
+    def all_limited(self, limit: int = 5000, include_deleted: bool = False, notebook_id: str | None = None):
         cards = self.all(include_deleted=include_deleted)
         return cards[:limit]
 
-    def all_as_dict(self, include_deleted: bool = False):
+    def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None):
         return {card.id: card for card in self.all(include_deleted=include_deleted)}
 
-    def get_modified_since(self, parsed_since):
+    def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
 
     def find_by_content(self, content: str):
