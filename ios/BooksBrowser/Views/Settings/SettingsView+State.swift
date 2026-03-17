@@ -128,21 +128,9 @@ extension SettingsView {
             },
             showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount,
-            openPrivacyPolicy: {
-                if let url = URL(string: "https://wordnexus.lol/privacy.html") {
-                    openURL(url)
-                }
-            },
-            openTermsOfService: {
-                if let url = URL(string: "https://wordnexus.lol/terms.html") {
-                    openURL(url)
-                }
-            },
-            openSupport: {
-                if let url = URL(string: "https://wordnexus.lol/support.html") {
-                    openURL(url)
-                }
-            },
+            openPrivacyPolicy: { openURL(AppURLs.privacy) },
+            openTermsOfService: { openURL(AppURLs.terms) },
+            openSupport: { openURL(AppURLs.support) },
             requestAppRating: {
                 requestReview()
             }

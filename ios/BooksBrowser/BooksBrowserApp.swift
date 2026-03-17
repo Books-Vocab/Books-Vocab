@@ -70,10 +70,14 @@ struct BooksBrowserApp: App {
             return
         }
 
-        guard let files = try? FileManager.default.contentsOfDirectory(
-            at: localEpubsDir,
-            includingPropertiesForKeys: nil
-        ) else {
+        let files: [URL]
+        do {
+            files = try FileManager.default.contentsOfDirectory(
+                at: localEpubsDir,
+                includingPropertiesForKeys: nil
+            )
+        } catch {
+            AppLog.app.warning("Cannot list local EPUBs for migration: \(error.localizedDescription)")
             UserDefaults.standard.set(true, forKey: migrationKey)
             return
         }
