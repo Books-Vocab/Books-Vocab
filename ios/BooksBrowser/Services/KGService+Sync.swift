@@ -47,7 +47,8 @@ extension KGService {
 
     // MARK: - Offline KG Sync logic
 
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws {
+    @discardableResult
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil) async throws -> Bool {
         let token = try await currentAuthToken()
         progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
@@ -124,6 +125,8 @@ extension KGService {
         Task.detached(priority: .utility) {
             try? await actor.backfillPronunciations()
         }
+
+        return httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true"
     }
 
     func clearLocalData(container: ModelContainer, reason: String = "unspecified") async {
