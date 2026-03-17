@@ -97,9 +97,10 @@ extension TodayReviewPresenter {
     func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
         let hasLinks = !currentCard.linkGroups.isEmpty
+        let hasMeaning = currentCard.backDocument.blocks.contains { if case .meaning = $0 { return true }; return false }
         let exampleRadius = answerExampleRadius(
             containerHeight: availableHeight,
-            meaningCount: currentCard.meaningParagraphs.count,
+            hasMeaning: hasMeaning,
             card: card,
             hasLinks: hasLinks
         )
@@ -124,25 +125,13 @@ extension TodayReviewPresenter {
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
 
-            if !currentCard.meaningParagraphs.isEmpty {
-                CardSectionDivider(horizontalPadding: 0)
-                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-                    ForEach(currentCard.meaningParagraphs) { paragraph in
-                        CardInlineText(paragraph: paragraph, style: .body)
-                            .lineSpacing(5)
-                            .lineLimit(3)
-                    }
-                }
-            }
-
             if hasLinks {
                 CardSectionDivider(horizontalPadding: 0)
                 reviewLinkStrip(currentCard.linkGroups)
             }
 
             if !currentCard.backDocument.blocks.isEmpty {
-                CardSectionDivider(horizontalPadding: 0)
-                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word)
+                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word, compact: true)
             }
         }
         .padding(reviewCardPadding)
@@ -205,7 +194,7 @@ extension TodayReviewPresenter {
 
     func answerExampleRadius(
         containerHeight: CGFloat,
-        meaningCount: Int,
+        hasMeaning: Bool,
         card: CardPresentation,
         hasLinks: Bool
     ) -> Int {
@@ -222,9 +211,9 @@ extension TodayReviewPresenter {
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
 
-        if meaningCount > 0 {
-            // divider(17) + 每段最多 3 行（lineLimit）× 行高 22
-            coreHeight += 17 + CGFloat(min(meaningCount, 3)) * 22 + gap
+        if hasMeaning {
+            // divider(17) + translation title(28) + 最多 3 行 explanation(22×3) + collocations 估算(30)
+            coreHeight += 17 + 28 + 66 + 30 + gap
         }
 
         if hasLinks {
