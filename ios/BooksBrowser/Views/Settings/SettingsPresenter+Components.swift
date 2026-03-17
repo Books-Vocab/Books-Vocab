@@ -549,7 +549,7 @@ struct SettingsStepperIconButton: View {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconMedium.weight(.medium))
                 .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                .frame(width: 52, height: 52)
+                .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
                 .background(
                     RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                         .fill(vocabSkin.palette.pageBackground)
