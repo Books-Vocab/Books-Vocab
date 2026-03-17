@@ -14,6 +14,7 @@ struct WordDetailPresenter: View {
         let metadataItems: [MetadataItem]
         let navigableLinkCardIDs: Set<String>
         let reviewProgress: VocabReviewProgress?
+        let isExcludedFromReader: Bool
     }
 
     @Environment(\.colorScheme) private var colorScheme
@@ -24,6 +25,7 @@ struct WordDetailPresenter: View {
     let onClose: (() -> Void)?
     let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
+    let onToggleExcludeFromReader: (() -> Void)?
 
     var body: some View {
         Group {
@@ -83,7 +85,15 @@ struct WordDetailPresenter: View {
                 }
             }
             .padding(vocabSkin.metrics.cardBlockPadding)
-            .padding(.bottom, vocabSkin.metrics.cardBlockPadding * 2)
+
+            if let onToggleExcludeFromReader {
+                excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
+                    .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+                    .padding(.top, vocabSkin.metrics.cardBlockInnerGap)
+            }
+
+            Spacer()
+                .frame(height: vocabSkin.metrics.cardBlockPadding * 2)
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
@@ -137,5 +147,25 @@ struct WordDetailPresenter: View {
         }
         .font(vocabSkin.typography.caption)
         .foregroundStyle(vocabSkin.palette.quaternaryText)
+    }
+
+    private func excludeFromReaderToggle(onToggle: @escaping () -> Void) -> some View {
+        Button(action: onToggle) {
+            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                Image(systemName: state.isExcludedFromReader ? "checkmark.square.fill" : "square")
+                    .font(vocabSkin.typography.body)
+                    .foregroundStyle(
+                        state.isExcludedFromReader
+                            ? vocabSkin.palette.secondaryText
+                            : vocabSkin.palette.tertiaryText
+                    )
+
+                Text("閱讀時不標記此單字".localized)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+        }
+        .buttonStyle(.plain)
+        .animation(AppMotion.contentFade, value: state.isExcludedFromReader)
     }
 }
