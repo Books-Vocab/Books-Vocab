@@ -261,7 +261,12 @@ enum CardRichTextRenderer {
             let fullTokenIndex = validBefore[validBefore.count - radiusWords]
             let cutStart = beforeTokens[fullTokenIndex].range.location
             trimmedBefore = (beforeText as NSString).substring(from: cutStart)
-            prefix = "..."
+            // Strip leading punctuation/whitespace after truncation
+            let punctuationAndWhitespace = CharacterSet.punctuationCharacters.union(.whitespaces)
+            trimmedBefore = String(trimmedBefore.drop(while: { char in
+                char.unicodeScalars.allSatisfy { punctuationAndWhitespace.contains($0) }
+            }))
+            prefix = "…"
         }
 
         var suffix = ""
