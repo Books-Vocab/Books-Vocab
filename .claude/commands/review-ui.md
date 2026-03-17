@@ -69,7 +69,7 @@ git diff --cached --name-only -- 'ios/**/*.swift'
 報告輸出後，**直接修復所有違規**：
 1. 用 Edit 工具修正 Swift 檔案中的違規
 2. 將缺失的 L10n key 補入所有 5 個 .strings 檔（按字母序插入正確位置）
-3. 修復完成後跑一次 xcodebuild 驗證編譯
+3. 修復完成後跑一次 `./ops/ios_build.sh` 驗證編譯
 
 ### 階段三：摘要
 
