@@ -19,9 +19,16 @@ struct KGVocabEntry: Codable {
 
 extension KGService {
 
-    func deleteCard(word: String) async throws {
+    func deleteCard(word: String, notebookId: String = "default") async throws {
         let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/vocab/\(word)")
+        let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab/\(encoded)"), resolvingAgainstBaseURL: false) else {
+            throw KGError.serverError("Invalid URL for delete")
+        }
+        components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for delete")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "DELETE"
         applyAuth(to: &request, token: token)
@@ -38,10 +45,16 @@ extension KGService {
         }
     }
 
-    func archiveCard(word: String, archived: Bool) async throws {
+    func archiveCard(word: String, archived: Bool, notebookId: String = "default") async throws {
         let token = try await currentAuthToken()
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
-        let url = baseURL.appendingPathComponent("api/vocab/\(encoded)/archive")
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab/\(encoded)/archive"), resolvingAgainstBaseURL: false) else {
+            throw KGError.serverError("Invalid URL for archive")
+        }
+        components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for archive")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "PATCH"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")

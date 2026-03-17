@@ -126,7 +126,7 @@ extension VocabularyListView {
             } else if !authManager.isLoggedIn {
                 loggedOutState
             } else if selectedTab == 1 {
-                KGVocabView(searchText: $searchText)
+                KGVocabView(searchText: $searchText, notebookId: notebookId)
             } else {
                 StatsPresenter(allEntries: allEntries)
             }
