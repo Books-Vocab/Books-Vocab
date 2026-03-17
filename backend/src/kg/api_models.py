@@ -1,8 +1,21 @@
 from __future__ import annotations
 
+import re
+import unicodedata
 from typing import Any
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
+
+
+def _normalize_context(v: str) -> str:
+    """Normalize EPUB-sourced context: collapse whitespace, strip NBSP, etc."""
+    if not v:
+        return ""
+    v = unicodedata.normalize("NFC", v)
+    v = re.sub(r"[\u00a0\u2000-\u200b\t\r]+", " ", v)
+    v = re.sub(r"\n+", " ", v)
+    v = re.sub(r" {2,}", " ", v)
+    return v.strip()
 
 
 class VocabEntry(BaseModel):
@@ -12,6 +25,11 @@ class VocabEntry(BaseModel):
     translation: str = Field(max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def normalize_context(cls, v: str) -> str:
+        return _normalize_context(v) if isinstance(v, str) else v
 
 
 class VocabAddResponse(BaseModel):
@@ -78,6 +96,11 @@ class TranslateRequest(BaseModel):
     context: str = Field(max_length=5000)
     source_lang: str | None = None
     target_lang: str | None = None
+
+    @field_validator("context", mode="before")
+    @classmethod
+    def normalize_context(cls, v: str) -> str:
+        return _normalize_context(v) if isinstance(v, str) else v
 
 
 class GraphLinkResponse(BaseModel):
