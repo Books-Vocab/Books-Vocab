@@ -86,7 +86,13 @@ extension CardDocument {
                 pendingDivider = false
             case .divider:
                 pendingDivider = true
-            case .meaning, .collocations:
+            case .meaning(let meaning):
+                if pendingDivider && !result.isEmpty { result.append(.divider) }
+                // Review 背面已自行渲染 translation，meaning 只保留 explanation paragraphs
+                let stripped = CardDocumentMeaning(title: "", paragraphs: meaning.paragraphs)
+                result.append(.meaning(stripped))
+                pendingDivider = false
+            case .collocations:
                 if pendingDivider && !result.isEmpty { result.append(.divider) }
                 result.append(block)
                 pendingDivider = false

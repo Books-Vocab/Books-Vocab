@@ -155,10 +155,12 @@ private struct CardDocumentMeaningBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            Text(meaning.title)
-                .font(vocabSkin.typography.translationTitle)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-                .fixedSize(horizontal: false, vertical: true)
+            if !meaning.title.isEmpty {
+                Text(meaning.title)
+                    .font(vocabSkin.typography.translationTitle)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
 
             VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
                 ForEach(meaning.paragraphs) { paragraph in
@@ -234,7 +236,7 @@ private struct CardDocumentCollocationsBlock: View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
 
-            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+            CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     Text(item)
                         .font(vocabSkin.typography.monoBody)
@@ -255,6 +257,70 @@ private struct CardDocumentCollocationsBlock: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+    }
+}
+
+// MARK: - Flow Layout
+
+/// 自動折行佈局 — 子視圖超出容器寬度時換行
+private struct CollocationFlowLayout: Layout {
+    var spacing: CGFloat
+
+    func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        guard !rows.isEmpty else { return .zero }
+        let height = rows.reduce(CGFloat(0)) { sum, row in
+            sum + row.height
+        } + CGFloat(max(rows.count - 1, 0)) * spacing
+        return CGSize(width: proposal.width ?? 0, height: height)
+    }
+
+    func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
+        let rows = computeRows(proposal: proposal, subviews: subviews)
+        var y = bounds.minY
+        var subviewIndex = 0
+        for row in rows {
+            var x = bounds.minX
+            for _ in 0..<row.count {
+                let size = subviews[subviewIndex].sizeThatFits(.unspecified)
+                subviews[subviewIndex].place(at: CGPoint(x: x, y: y), proposal: .unspecified)
+                x += size.width + spacing
+                subviewIndex += 1
+            }
+            y += row.height + spacing
+        }
+    }
+
+    private struct Row {
+        var count: Int
+        var height: CGFloat
+    }
+
+    private func computeRows(proposal: ProposedViewSize, subviews: Subviews) -> [Row] {
+        let maxWidth = proposal.width ?? .infinity
+        var rows: [Row] = []
+        var currentRowWidth: CGFloat = 0
+        var currentRowHeight: CGFloat = 0
+        var currentRowCount = 0
+
+        for subview in subviews {
+            let size = subview.sizeThatFits(.unspecified)
+            let needed = currentRowCount > 0 ? size.width + spacing : size.width
+            if currentRowCount > 0 && currentRowWidth + needed > maxWidth {
+                rows.append(Row(count: currentRowCount, height: currentRowHeight))
+                currentRowWidth = size.width
+                currentRowHeight = size.height
+                currentRowCount = 1
+            } else {
+                currentRowWidth += needed
+                currentRowHeight = max(currentRowHeight, size.height)
+                currentRowCount += 1
+            }
+        }
+        if currentRowCount > 0 {
+            rows.append(Row(count: currentRowCount, height: currentRowHeight))
+        }
+        return rows
     }
 }
 
