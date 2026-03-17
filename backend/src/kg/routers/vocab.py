@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Query
 from fastapi.responses import Response
 
 from ..api_models import (
@@ -42,7 +42,13 @@ router = APIRouter()
 
 
 @router.get("/api/vocab", response_model=list[CardResponse])
-def list_vocab(response: Response, since: str | None = None, limit: int = 5000, user: dict = Depends(get_current_user)):
+def list_vocab(
+    response: Response,
+    since: str | None = None,
+    limit: int = 5000,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
     from ..pipeline_service import is_pipeline_running
 
     result = list_vocab_response(
@@ -50,6 +56,7 @@ def list_vocab(response: Response, since: str | None = None, limit: int = 5000, 
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        notebook_id=notebook_id,
     )
     response.headers["X-Pipeline-Pending"] = "true" if is_pipeline_running(user["id"]) else "false"
     return result
@@ -73,7 +80,11 @@ def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_
 
 
 @router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)
-def push_review(req: ReviewStatePushRequest, user: dict = Depends(get_current_user)):
+def push_review(
+    req: ReviewStatePushRequest,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
     return push_review_response(
         req, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, logger=logger,
@@ -81,11 +92,16 @@ def push_review(req: ReviewStatePushRequest, user: dict = Depends(get_current_us
 
 
 @router.get("/api/vocab/{word}", response_model=CardResponse)
-def lookup_word(word: str, user: dict = Depends(get_current_user)):
+def lookup_word(
+    word: str,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
     return lookup_word_response(
         word, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        notebook_id=notebook_id,
     )
 
 
@@ -95,22 +111,38 @@ def archive_word(word: str, req: ArchiveWordRequest, user: dict = Depends(get_cu
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
-def delete_word(word: str, user: dict = Depends(get_current_user)):
+def delete_word(
+    word: str,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
     return delete_word_response(
         word, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
+        notebook_id=notebook_id,
     )
 
 
 @router.get("/api/graph/links", response_model=list[GraphLinkResponse])
-def get_graph_links(user: dict = Depends(get_current_user)):
-    return get_graph_links_response(user, require_pro_access=_require_pro_access, graph_store_factory=_graph_store)
+def get_graph_links(
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    return get_graph_links_response(
+        user, require_pro_access=_require_pro_access,
+        graph_store_factory=_graph_store, notebook_id=notebook_id,
+    )
 
 
 @router.post("/api/vocab", response_model=VocabAddResponse)
-def add_vocab(entries: list[VocabEntry], user: dict = Depends(get_current_user)):
+def add_vocab(
+    entries: list[VocabEntry],
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
     return add_vocab_response(
         entries, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
         graph_store_factory=_graph_store, logger=logger,
+        notebook_id=notebook_id,
     )

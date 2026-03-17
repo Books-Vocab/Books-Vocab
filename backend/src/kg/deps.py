@@ -36,6 +36,7 @@ from .service_factories import (
     create_embedding_store,
     create_gemini_client,
     create_graph_store,
+    create_notebook_store,
 )
 from .settings import KGSettings
 from .user_context import resolve_current_user
@@ -108,8 +109,12 @@ def _daily_stats_store(user_dir: Path):
     return create_daily_stats_store(user_dir)
 
 
-def _graph_store(user_dir: Path) -> GraphStore:
-    return create_graph_store(user_dir)
+def _graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
+    return create_graph_store(user_dir, notebook_id=notebook_id)
+
+
+def _notebook_store(user_dir: Path):
+    return create_notebook_store(user_dir)
 
 
 def _gemini_client():
@@ -120,8 +125,8 @@ def _gemini_async_client():
     return create_async_gemini_client()
 
 
-def _embedding_store(user_dir: Path, user_id: str | None = None):
-    return create_embedding_store(user_dir, gemini_client_factory=_gemini_client, user_id=user_id)
+def _embedding_store(user_dir: Path, user_id: str | None = None, notebook_id: str = "default"):
+    return create_embedding_store(user_dir, gemini_client_factory=_gemini_client, user_id=user_id, notebook_id=notebook_id)
 
 
 def _build_links_by_kind(

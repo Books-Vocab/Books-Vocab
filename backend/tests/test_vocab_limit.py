@@ -36,14 +36,14 @@ class _FakeCardsStore:
     def __init__(self, cards):
         self._cards = list(cards)
 
-    def all_limited(self, limit: int = 5000, include_deleted: bool = False):
+    def all_limited(self, limit: int = 5000, include_deleted: bool = False, notebook_id: str | None = None):
         cards = [c for c in self._cards if include_deleted or not c.is_deleted]
         return cards[:limit]
 
-    def get_modified_since(self, parsed_since):
+    def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
 
-    def all_as_dict(self, include_deleted: bool = False):
+    def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None):
         cards = [c for c in self._cards if include_deleted or not c.is_deleted]
         return {c.id: c for c in cards}
 

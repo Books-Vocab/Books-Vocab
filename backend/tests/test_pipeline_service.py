@@ -24,7 +24,7 @@ class _FakeLogger:
 
 
 class _CardsOk:
-    def all(self, include_deleted: bool = False):
+    def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         return [
             SimpleNamespace(
                 id="c1",
@@ -33,6 +33,7 @@ class _CardsOk:
                 note="note",
                 difficulty=None,
                 is_deleted=False,
+                notebook_id="default",
             )
         ]
 
@@ -72,8 +73,8 @@ def test_pipeline_service_skips_when_lock_is_held():
             user,
             get_user_lock_fn=get_user_lock_fn,
             card_store_factory=lambda user_dir: _CardsOk(),
-            graph_store_factory=lambda user_dir: _GraphOk(),
-            embedding_store_factory=lambda user_dir, user_id=None: _EmbeddingsBoom(),
+            graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
+            embedding_store_factory=lambda user_dir, user_id=None, notebook_id="default": _EmbeddingsBoom(),
             gemini_client_factory=lambda: None,
             logger=logger,
             link_kind_enum=lambda value: value,
@@ -95,8 +96,8 @@ def test_pipeline_service_logs_error_when_step_fails():
             user,
             get_user_lock_fn=get_user_lock_fn,
             card_store_factory=lambda user_dir: _CardsOk(),
-            graph_store_factory=lambda user_dir: _GraphOk(),
-            embedding_store_factory=lambda user_dir, user_id=None: _EmbeddingsBoom(),
+            graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
+            embedding_store_factory=lambda user_dir, user_id=None, notebook_id="default": _EmbeddingsBoom(),
             gemini_client_factory=lambda: None,
             logger=logger,
             link_kind_enum=lambda value: value,
