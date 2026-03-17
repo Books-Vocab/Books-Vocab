@@ -12,6 +12,7 @@ from openai import OpenAI
 
 from .cards import Card
 from .languages import LANGUAGE_NAMES
+from .retry import sync_retry
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
 - word: 原詞
@@ -52,6 +53,43 @@ def _build_prompt(cards: list[Card]) -> str:
     )
 
 
+def _parse_enrich_response(raw_content: str) -> list[dict]:
+    """Parse LLM response into enrichment results list."""
+    data = json.loads(raw_content or "{}")
+    if isinstance(data, list):
+        return data
+    if isinstance(data, dict) and "results" in data:
+        return data["results"]
+    for v in data.values():
+        if isinstance(v, list):
+            return v
+    return []
+
+
+def _call_enrich_llm(client: OpenAI, batch: list[Card]):
+    """Single LLM call for enrichment. Returns the raw response object."""
+    return client.chat.completions.create(
+        model="gemini-2.5-flash-lite",
+        messages=[
+            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "user", "content": _build_prompt(batch)},
+        ],
+        temperature=0.3,
+        response_format={"type": "json_object"},
+    )
+
+
+_ENRICH_RETRYABLE: tuple[type[Exception], ...] = ()
+
+
+def _get_enrich_retryable() -> tuple[type[Exception], ...]:
+    global _ENRICH_RETRYABLE
+    if not _ENRICH_RETRYABLE:
+        from openai import APIError, InternalServerError, RateLimitError
+        _ENRICH_RETRYABLE = (RateLimitError, APIError, InternalServerError)
+    return _ENRICH_RETRYABLE
+
+
 def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) -> list[dict]:
     """Enrich a batch of cards via a single LLM call.
 
@@ -60,27 +98,13 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) 
     if not cards:
         return []
 
-    import time
-
-    from openai import APIError, InternalServerError, RateLimitError
-
-    for attempt in range(4):
-        try:
-            response = client.chat.completions.create(
-                model="gemini-2.5-flash-lite",
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": _build_prompt(cards)},
-                ],
-                temperature=0.3,
-                response_format={"type": "json_object"},
-            )
-            break
-        except (RateLimitError, APIError, InternalServerError) as e:
-            if attempt < 3:
-                time.sleep(2 ** (attempt + 1))
-            else:
-                raise e
+    response = sync_retry(
+        _call_enrich_llm, client, cards,
+        max_attempts=4,
+        base_delay=2.0,
+        retryable_exceptions=_get_enrich_retryable(),
+        step_name="Enrich LLM",
+    )
 
     if user_id and response.usage:
         from .token_tracker import record
@@ -88,19 +112,7 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None) 
                getattr(response.usage, "prompt_tokens", 0) or 0,
                getattr(response.usage, "completion_tokens", 0) or 0)
 
-    raw = response.choices[0].message.content or "{}"
-    data = json.loads(raw)
-
-    # Handle both {"results": [...]} and [...] formats
-    if isinstance(data, list):
-        return data
-    if isinstance(data, dict) and "results" in data:
-        return data["results"]
-    # Try to find any list value in the dict
-    for v in data.values():
-        if isinstance(v, list):
-            return v
-    return []
+    return _parse_enrich_response(response.choices[0].message.content)
 
 
 import asyncio
@@ -126,63 +138,37 @@ async def enrich_cards_stream(
     total_cards = len(cards)
     completed_cards = 0
 
-    import time
-
-    from openai import APIError, InternalServerError, OpenAIError, RateLimitError
+    from openai import OpenAIError
 
     def _process_batch_with_retry(batch: list[Card], loop: asyncio.AbstractEventLoop, queue: asyncio.Queue):
         """Worker function that handles retries and pushes progress to the async queue."""
-        for attempt in range(4):
-            try:
-                response = client.chat.completions.create(
-                    model="gemini-2.5-flash-lite",
-                    messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
-                        {"role": "user", "content": _build_prompt(batch)},
-                    ],
-                    temperature=0.3,
-                    response_format={"type": "json_object"},
-                )
+        def _delay_fn(attempt: int, exc: BaseException) -> float | None:
+            wait_time = 2 ** (attempt + 1)
+            loop.call_soon_threadsafe(queue.put_nowait, {
+                "type": "retry",
+                "detail": f"Gemini API rate limit, retrying in {wait_time}s..."
+            })
+            return float(wait_time)
 
-                raw = response.choices[0].message.content or "{}"
-                data = json.loads(raw)
-
-                results = []
-                if isinstance(data, list):
-                    results = data
-                elif isinstance(data, dict) and "results" in data:
-                    results = data["results"]
-                else:
-                    for v in data.values():
-                        if isinstance(v, list):
-                            results = v
-                            break
-
-                usage_data = None
-                if response.usage:
-                    usage_data = {
-                        "input": getattr(response.usage, "prompt_tokens", 0) or 0,
-                        "output": getattr(response.usage, "completion_tokens", 0) or 0,
-                    }
-
-                # Push success to queue
-                loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch), "usage": usage_data})
-                return
-
-            except (RateLimitError, APIError, InternalServerError) as e:
-                if attempt < 3:
-                    wait_time = 2 ** (attempt + 1)
-                    loop.call_soon_threadsafe(queue.put_nowait, {
-                        "type": "retry",
-                        "detail": f"Gemini API rate limit, retrying in {wait_time}s..."
-                    })
-                    time.sleep(wait_time)
-                else:
-                    loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
-                    return
-            except (OpenAIError, json.JSONDecodeError, KeyError, TypeError) as e:  # noqa: B904
-                loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
-                return
+        try:
+            response = sync_retry(
+                _call_enrich_llm, client, batch,
+                max_attempts=4,
+                base_delay=2.0,
+                retryable_exceptions=_get_enrich_retryable(),
+                delay_fn=_delay_fn,
+                step_name="Enrich stream",
+            )
+            results = _parse_enrich_response(response.choices[0].message.content)
+            usage_data = None
+            if response.usage:
+                usage_data = {
+                    "input": getattr(response.usage, "prompt_tokens", 0) or 0,
+                    "output": getattr(response.usage, "completion_tokens", 0) or 0,
+                }
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch), "usage": usage_data})
+        except (OpenAIError, json.JSONDecodeError, KeyError, TypeError, OSError) as e:
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
 
     queue = asyncio.Queue()
     loop = asyncio.get_running_loop()
