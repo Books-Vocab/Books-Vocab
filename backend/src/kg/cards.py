@@ -31,7 +31,6 @@ class Card(SQLModel, table=True):
     note: str | None = None  # LLM-generated teacher note (markdown)
     difficulty: float | None = None  # Zipf frequency score (higher = more common)
     mode: str = "recognition"  # recognition: 英→中, production: 中→英
-    pronunciation: str | None = None  # IPA phonetic transcription
     root_form: str | None = None  # lemma (e.g. "laid" → "lay")
     inflections: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # all inflected forms from dictionary
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -83,7 +82,6 @@ class CardStore:
     def _migrate_review_columns(self) -> None:
         """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
         review_columns = {
-            "pronunciation": "TEXT",
             "is_archived": "INTEGER DEFAULT 0",
             "review_interval_hours": "REAL DEFAULT 12.0",
             "next_review_at": "TIMESTAMP",
@@ -118,7 +116,6 @@ class CardStore:
         mode: str = "recognition",
         root_form: str | None = None,
         inflections: list[str] | None = None,
-        pronunciation: str | None = None,
     ) -> Card:
         """Create and store a new card."""
         card = Card(
@@ -130,7 +127,6 @@ class CardStore:
             mode=mode,
             root_form=root_form,
             inflections=inflections or [],
-            pronunciation=pronunciation,
         )
         with Session(self.engine) as session:
             session.add(card)

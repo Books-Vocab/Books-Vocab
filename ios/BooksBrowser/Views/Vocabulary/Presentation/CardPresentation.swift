@@ -23,7 +23,6 @@ struct CardLinkGroupPresentation: Identifiable {
 struct CardPresentation {
     let word: String
     let translation: String
-    let pronunciation: String?
     let partOfSpeech: String?
     let difficultyTier: String?
     let reviewMode: VocabularyCardMode
@@ -42,7 +41,6 @@ struct CardPresentation {
     init(entry: VocabularyEntry, linkOrdering: [String] = Self.defaultLinkOrdering) {
         word = entry.word
         translation = entry.translation
-        pronunciation = entry.pronunciation
         partOfSpeech = entry.partOfSpeech
         difficultyTier = entry.difficultyTier
         reviewMode = entry.reviewMode
@@ -83,7 +81,6 @@ struct CardPresentation {
         document = CardDocumentBuilder.build(
             word: word,
             translation: translation,
-            pronunciation: pronunciation,
             partOfSpeech: partOfSpeech,
             difficultyTier: difficultyTier,
             reviewModeTitle: reviewMode.localizedTitle,

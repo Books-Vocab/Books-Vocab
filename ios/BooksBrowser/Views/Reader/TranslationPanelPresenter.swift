@@ -2,7 +2,6 @@ import SwiftUI
 
 struct TranslationPanelPresenterState {
     let word: String
-    let pronunciation: String?
     let partOfSpeech: String?
     let translation: String?
     let isLoading: Bool
@@ -131,12 +130,6 @@ struct TranslationPanelPresenter: View {
                     HStack(alignment: .firstTextBaseline, spacing: 8) {
                         Text(state.word)
                             .font(ReaderGlassTypography.word)
-
-                        if let pronunciation = state.pronunciation {
-                            Text(pronunciation)
-                                .font(ReaderGlassTypography.pronunciation)
-                                .foregroundStyle(appTheme.palette.secondaryText)
-                        }
 
                         Button(action: onSpeak) {
                             Image(systemName: "speaker.wave.2.fill")
@@ -433,7 +426,7 @@ struct TranslationPanelPresenter: View {
 
 enum TranslationPanelPreviewData {
     static let loading = TranslationPanelPresenterState(
-        word: "ephemeral", pronunciation: nil, partOfSpeech: nil,
+        word: "ephemeral", partOfSpeech: nil,
         translation: nil, isLoading: true, isSaved: false,
         isLoggedIn: true, isExpanded: false, explanation: nil,
         isLoadingExplanation: false, statusMessage: nil,
@@ -442,7 +435,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let guest = TranslationPanelPresenterState(
-        word: "serendipity", pronunciation: "/ˌsɛr.ənˈdɪp.ɪ.ti/", partOfSpeech: "noun",
+        word: "serendipity", partOfSpeech: "noun",
         translation: "意外發現美好事物的能力", isLoading: false, isSaved: true,
         isLoggedIn: false, isExpanded: false, explanation: nil,
         isLoadingExplanation: false, statusMessage: "登入以同步詞彙",
@@ -451,7 +444,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let fullTranslation = TranslationPanelPresenterState(
-        word: "ubiquitous", pronunciation: "/juːˈbɪk.wɪ.təs/", partOfSpeech: "adjective",
+        word: "ubiquitous", partOfSpeech: "adjective",
         translation: "無處不在的", isLoading: false, isSaved: true,
         isLoggedIn: true, isExpanded: true,
         explanation: "Something that is ubiquitous seems to be everywhere at the same time. For example, smartphones have become ubiquitous in modern life.",
@@ -461,7 +454,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let explanationOnlyLoading = TranslationPanelPresenterState(
-        word: "ameliorate", pronunciation: nil, partOfSpeech: nil,
+        word: "ameliorate", partOfSpeech: nil,
         translation: nil, isLoading: false, isSaved: false,
         isLoggedIn: true, isExpanded: true, explanation: nil,
         isLoadingExplanation: true, statusMessage: nil,
@@ -470,7 +463,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let translationError = TranslationPanelPresenterState(
-        word: "oblique", pronunciation: "/əˈbliːk/", partOfSpeech: "adjective",
+        word: "oblique", partOfSpeech: "adjective",
         translation: nil, isLoading: false, isSaved: false,
         isLoggedIn: true, isExpanded: false, explanation: nil,
         isLoadingExplanation: false, statusMessage: nil,
@@ -479,7 +472,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let explanationError = TranslationPanelPresenterState(
-        word: "lucid", pronunciation: "/ˈluː.sɪd/", partOfSpeech: "adjective",
+        word: "lucid", partOfSpeech: "adjective",
         translation: "清晰的", isLoading: false, isSaved: true,
         isLoggedIn: true, isExpanded: true, explanation: nil,
         isLoadingExplanation: false, statusMessage: nil,
@@ -488,7 +481,7 @@ enum TranslationPanelPreviewData {
     )
 
     static let empty = TranslationPanelPresenterState(
-        word: "quixotic", pronunciation: nil, partOfSpeech: nil,
+        word: "quixotic", partOfSpeech: nil,
         translation: nil, isLoading: false, isSaved: false,
         isLoggedIn: true, isExpanded: false, explanation: nil,
         isLoadingExplanation: false, statusMessage: nil,

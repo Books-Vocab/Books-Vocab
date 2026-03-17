@@ -14,13 +14,12 @@ enum VocabularyExporter {
 
     /// 匯出為 CSV 格式
     static func exportAsCSV(entries: [VocabularyEntry]) -> URL? {
-        var csv = "Word,Translation,Part of Speech,Pronunciation,Context,Book,Chapter,Date\n"
+        var csv = "Word,Translation,Part of Speech,Context,Book,Chapter,Date\n"
         for entry in entries {
             let fields = [
                 escapeCSV(entry.word),
                 escapeCSV(entry.translation),
                 escapeCSV(""),
-                escapeCSV(entry.pronunciation ?? ""),
                 escapeCSV(entry.context),
                 escapeCSV(entry.bookTitle),
                 escapeCSV(entry.chapterTitle ?? ""),
@@ -42,7 +41,6 @@ enum VocabularyExporter {
                 "dateAdded": entry.dateAdded.formatted(.iso8601)
             ]
 
-            if let pron = entry.pronunciation { dict["pronunciation"] = pron }
             if let exp = entry.explanation { dict["explanation"] = exp }
             if let ch = entry.chapterTitle { dict["chapterTitle"] = ch }
             return dict
@@ -63,7 +61,6 @@ enum VocabularyExporter {
             let front = "\(entry.word)\n<small>\(entry.context)</small>"
             var back = entry.translation
 
-            if let pron = entry.pronunciation { back += "\n\(pron)" }
             if let exp = entry.explanation { back += "\n\(exp)" }
 
             tsv += "\(escapeTab(front))\t\(escapeTab(back))\n"
