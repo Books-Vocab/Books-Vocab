@@ -9,9 +9,10 @@ struct CardDocumentView: View {
     var compact: Bool = false
 
     private var blockPadding: CGFloat { compact ? 0 : vocabSkin.metrics.cardBlockPadding }
+    private var blockSpacing: CGFloat { compact ? vocabSkin.metrics.reviewFoldSectionSpacing : 0 }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .leading, spacing: blockSpacing) {
             ForEach(Array(document.blocks.enumerated()), id: \.offset) { _, block in
                 switch block {
                 case .hero(let hero):
