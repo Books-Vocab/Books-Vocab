@@ -118,8 +118,16 @@ class _FakeCards:
     def __init__(self):
         self._cards = []
 
-    def all(self, include_deleted=False):
+    def all(self, include_deleted=False, notebook_id=None):
         return list(self._cards)
+
+    def find_by_content(self, content, notebook_id=None):
+        import unicodedata
+        norm = unicodedata.normalize("NFC", content).strip().lower()
+        for card in self._cards:
+            if card.content.strip().lower() == norm:
+                return card
+        return None
 
     def add(self, content, meaning, **kwargs):
         from types import SimpleNamespace
