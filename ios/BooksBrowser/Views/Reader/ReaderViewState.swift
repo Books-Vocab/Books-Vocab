@@ -16,4 +16,5 @@ final class ReaderViewState {
     // Navigation
     var showTableOfContents = false
     var showSubscriptionPaywall = false
+    var detailEntry: VocabularyEntry?
 }

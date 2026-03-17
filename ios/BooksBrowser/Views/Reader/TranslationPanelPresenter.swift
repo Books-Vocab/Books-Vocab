@@ -112,6 +112,7 @@ struct TranslationPanelPresenter: View {
     let onSpeak: () -> Void
     let onExpand: () -> Void
     let onDelete: () -> Void
+    let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
 
     var body: some View {
@@ -377,6 +378,14 @@ struct TranslationPanelPresenter: View {
 
             Spacer()
 
+            if let onShowDetail {
+                panelIconButton(
+                    systemImage: "rectangle.portrait.on.rectangle.portrait",
+                    tone: appTheme.palette.secondaryText,
+                    action: onShowDetail
+                )
+            }
+
             if showChevron {
                 panelIconButton(
                     systemImage: state.isExpanded ? "chevron.up" : "chevron.down",
@@ -514,7 +523,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.loading,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -523,7 +532,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.guest,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -532,7 +541,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.fullTranslation,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -541,7 +550,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.explanationOnlyLoading,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -550,7 +559,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.translationError,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -559,7 +568,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.explanationError,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }
@@ -568,7 +577,7 @@ private struct TranslationPanelPreviewSurface<Content: View>: View {
     TranslationPanelPreviewSurface {
         TranslationPanelPresenter(
             state: TranslationPanelPreviewData.empty,
-            onSpeak: {}, onExpand: {}, onDelete: {}, onDismiss: {}
+            onSpeak: {}, onExpand: {}, onDelete: {}, onShowDetail: nil, onDismiss: {}
         )
     }
 }

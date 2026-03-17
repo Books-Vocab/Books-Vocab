@@ -120,6 +120,9 @@ struct ReaderView: View {
         .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
             SubscriptionPaywallSheet()
         }
+        .sheet(item: Binding(get: { readerState.detailEntry }, set: { readerState.detailEntry = $0 })) { entry in
+            WordDetailSheet(entry: entry, allEntries: allVocabulary)
+        }
     }
 
     private var presenterState: ReaderViewPresenterState {
