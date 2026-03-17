@@ -57,7 +57,11 @@ final class Book {
             forUbiquityContainerIdentifier: nil
         ) else { return nil }
         let dir = containerURL.appendingPathComponent("Documents/EPUBs")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            AppLog.book.warning("Failed to create iCloud EPUBs directory: \(error.localizedDescription)")
+        }
         _cachedICloudDir = dir
         AppLog.book.info("EPUBs directory: iCloud (\(dir.path))")
         return dir
@@ -70,7 +74,11 @@ final class Book {
         if let cached = _cachedLocalDir { return cached }
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0]
             .appendingPathComponent("EPUBs")
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        } catch {
+            AppLog.book.warning("Failed to create local EPUBs directory: \(error.localizedDescription)")
+        }
         _cachedLocalDir = dir
         return dir
     }

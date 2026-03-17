@@ -8,10 +8,10 @@ struct SubscriptionPaywallSheet: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.kgService) private var kgService
 
-    private var windowScene: UIWindowScene {
+    private var windowScene: UIWindowScene? {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
-            .first!
+            .first
     }
 
     private var activeFeatures: [SettingsSubscriptionFeatureItem] {
@@ -126,7 +126,8 @@ struct SubscriptionPaywallSheet: View {
                 if !isAdminGranted {
                     Button {
                         Task {
-                            try? await AppStore.showManageSubscriptions(in: windowScene)
+                            guard let scene = windowScene else { return }
+                            try? await AppStore.showManageSubscriptions(in: scene)
                             await subscriptionManager.resyncAfterManagement(using: kgService, authManager: authManager)
                         }
                     } label: {
@@ -294,13 +295,13 @@ struct SubscriptionPaywallSheet: View {
 
     private var legalLinksFooter: some View {
         HStack(spacing: vocabSkin.spacing.controlGap) {
-            Link(L10n.string("隱私政策"), destination: URL(string: "https://wordnexus.lol/privacy.html")!)
+            Link(L10n.string("隱私政策"), destination: AppURLs.privacy)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             Text("·")
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
-            Link(L10n.string("服務條款"), destination: URL(string: "https://wordnexus.lol/terms.html")!)
+            Link(L10n.string("服務條款"), destination: AppURLs.terms)
                 .font(vocabSkin.typography.caption)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             Spacer()
