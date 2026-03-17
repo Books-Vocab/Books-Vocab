@@ -38,7 +38,7 @@ struct ContentView: View {
                     BookshelfView()
                 }
                 Tab("生詞庫".localized, systemImage: "character.book.closed") {
-                    VocabularyListView()
+                    NotebookListView()
                 }
             }
             .tabViewStyle(.tabBarOnly)
@@ -51,5 +51,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
+        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self], inMemory: true)
 }

@@ -27,7 +27,8 @@ final class VocabularyEntry {
         [\.syncStatus, \.actionType],
         [\.word],
         [\.isArchived],
-        [\.nextReviewAt]
+        [\.nextReviewAt],
+        [\.notebookId]
     )
 
     var id: UUID
@@ -65,6 +66,7 @@ final class VocabularyEntry {
     var reviewStreak: Int = 0
     var lastReviewFeedbackRaw: Int = -1
 
+    var notebookId: String = "default"
     var bookId: UUID?
     var isDemoEntry: Bool = false
 

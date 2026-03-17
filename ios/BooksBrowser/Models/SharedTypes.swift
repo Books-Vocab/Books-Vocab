@@ -43,6 +43,7 @@ struct KGCard: Codable, Identifiable {
     let isArchived: Bool?
     let inflections: [String]?
     let linksByKind: [String: [KGCardLinkSummary]]?
+    let notebookId: String?
     let updatedAt: String?
     // Review state (from backend)
     let reviewIntervalHours: Double?
@@ -52,4 +53,15 @@ struct KGCard: Codable, Identifiable {
     let lapseCount: Int?
     let reviewStreak: Int?
     let lastReviewFeedback: Int?
+}
+
+struct KGNotebook: Codable, Identifiable {
+    let id: String
+    let name: String
+    let color: String?
+    let sortOrder: Int
+    let isDefault: Bool
+    let isDeleted: Bool
+    let cardCount: Int
+    let updatedAt: String?
 }
