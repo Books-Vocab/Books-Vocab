@@ -13,7 +13,7 @@ import os
 struct TranslationResult: Codable {
     let translation: String
     let partOfSpeech: String?
-    let pronunciation: String?   // 從字典 API 填入，非 LLM
+    let pronunciation: String?   // API 回傳 IPA，字典 API 作為 fallback
     let explanation: String?     // Phase 2 填入
     var rootForm: String? = nil  // AI 判斷的詞根原形（e.g. "laid" → "lay"）
     var latency: TimeInterval?   // 耗時（秒）
@@ -61,6 +61,7 @@ final class TranslationService: Translating {
                     let t: String
                     let p: String?
                     let r: String?
+                    let ipa: String?
                 }
 
                 let quick = try JSONDecoder().decode(QuickResult.self, from: data)
@@ -69,7 +70,7 @@ final class TranslationService: Translating {
                 return TranslationResult(
                     translation: quick.t,
                     partOfSpeech: quick.p,
-                    pronunciation: nil,
+                    pronunciation: quick.ipa,
                     explanation: nil,
                     rootForm: quick.r,
                     latency: nil
