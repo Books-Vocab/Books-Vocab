@@ -44,7 +44,7 @@ def _card_select(conn: sqlite3.Connection) -> str:
     """Build SELECT with only columns that exist in the DB."""
     cols = _cols(conn)
     want = ["id", "content", "meaning", "pos", "note", "difficulty",
-            "examples", "collocations", "mode", "pronunciation", "root_form",
+            "examples", "collocations", "mode", "root_form",
             "inflections", "is_deleted", "is_archived", "created_at", "updated_at",
             "review_interval_hours", "next_review_at", "last_reviewed_at",
             "review_count", "lapse_count", "review_streak", "last_review_feedback"]
@@ -100,7 +100,7 @@ def _print_card(row, verbose: bool = False):
     if colls:
         print(f"  collocations: {colls[:4]}")
     if verbose:
-        for extra in ["mode", "pronunciation", "root_form", "review_count",
+        for extra in ["mode", "root_form", "review_count",
                        "lapse_count", "review_streak", "created_at"]:
             if extra in cols and row[extra] is not None:
                 print(f"  {extra}: {row[extra]}")

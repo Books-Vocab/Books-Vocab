@@ -8,7 +8,6 @@ enum TodayReviewPresenterPreviewData {
             context: "The editor was meticulous about every line break and caption.",
             explanation: "描述做事非常細心、注意細節，通常帶有正面稱讚意味。",
             partOfSpeech: "adj.",
-            pronunciation: "məˈtɪkjələs",
             bookTitle: "Designing Interfaces",
             chapterTitle: "Writing Tone"
         )
@@ -57,7 +56,6 @@ enum TodayReviewPresenterPreviewData {
                 context: "Social media posts are ephemeral by nature.",
                 explanation: "形容事物存在時間極短。",
                 partOfSpeech: "adj.",
-                pronunciation: "ɪˈfemərəl",
                 bookTitle: "Designing Interfaces",
                 chapterTitle: "Writing Tone"
             )

@@ -15,7 +15,6 @@ final class ReaderTranslationHandler {
     // MARK: - 翻譯狀態
     var wordSelection: WordSelection?
     var translationResult: TranslationResult?
-    var pronunciation: String?
     var isTranslating = false
     var isSaved = false
     var isExpanded = false

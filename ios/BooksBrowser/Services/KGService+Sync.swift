@@ -121,11 +121,6 @@ extension KGService {
         defaults.set(pullBoundary, forKey: SyncKeys.incrementalBoundary)
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
-        // Back-fill pronunciations for entries that are missing them (non-blocking)
-        Task.detached(priority: .utility) {
-            try? await actor.backfillPronunciations()
-        }
-
         return httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true"
     }
 

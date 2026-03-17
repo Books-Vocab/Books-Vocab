@@ -481,7 +481,6 @@
 "目前生效：初始 %@・記得 %@・忘記 %@・最短 %@・最長 %@" = "Active: initial %@・remembered %@・forgot %@・min %@・max %@";
 "編輯" = "Edit";
 "儲存" = "Save";
-"音標" = "Phonetics";
 "翻譯結果" = "Translation";
 
 // Review Mode Picker
