@@ -145,14 +145,6 @@ class CardStore:
         with Session(self.engine) as session:
             return session.get(Card, card_id)
 
-    def get_by_content(self, content: str) -> Card | None:
-        """Lookup by content using the ix_card_content index. Case-sensitive."""
-        with Session(self.engine) as session:
-            statement = select(Card).where(
-                Card.content == content, Card.is_deleted.is_(False)
-            )
-            return session.exec(statement).first()
-
     def find_by_content(self, content: str, notebook_id: str | None = None) -> Card | None:
         """Case-insensitive lookup with Unicode NFC normalization.
 

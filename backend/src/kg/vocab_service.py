@@ -311,7 +311,7 @@ def add_vocab_entries(
             status_code=422,
             detail=f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}",
         )
-    existing = {_normalize_word(card.content) for card in cards.all()}
+    existing = {_normalize_word(card.content) for card in cards.all(notebook_id=notebook_id)}
 
     created = 0
     skipped = 0
@@ -323,7 +323,7 @@ def add_vocab_entries(
         if _normalize_word(word) in existing:
             skipped += 1
             duplicates.append(word)
-            existing_card = cards.find_by_content(word)
+            existing_card = cards.find_by_content(word, notebook_id=notebook_id)
             if existing_card:
                 card_ids[word] = existing_card.id
             continue
