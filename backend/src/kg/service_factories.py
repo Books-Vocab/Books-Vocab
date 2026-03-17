@@ -48,49 +48,42 @@ def create_daily_stats_store(user_dir: Path) -> DailyReviewStatsStore:
     return _get_cached(key, lambda: DailyReviewStatsStore(user_dir / "daily_review_stats.db"))
 
 
-def _migrate_graph_files(user_dir: Path, notebook_id: str) -> tuple[Path, Path]:
-    """Resolve graph file paths with lazy migration from legacy names."""
-    links_path = user_dir / f"graph_{notebook_id}.json"
-    candidates_path = user_dir / f"candidates_{notebook_id}.json"
-
-    if notebook_id == "default":
-        legacy_links = user_dir / "graph.json"
-        legacy_candidates = user_dir / "candidates.json"
-        if not links_path.exists() and legacy_links.exists():
-            logger.info("Migrating %s -> %s", legacy_links, links_path)
-            legacy_links.rename(links_path)
-            bak = legacy_links.with_suffix(".json.bak")
+def _migrate_legacy_file(legacy: Path, target: Path) -> None:
+    """Rename a legacy file to its notebook-scoped path. Race-safe."""
+    if not target.exists() and legacy.exists():
+        try:
+            logger.info("Migrating %s -> %s", legacy, target)
+            legacy.rename(target)
+            bak = legacy.with_suffix(legacy.suffix + ".bak")
             if bak.exists():
-                bak.rename(links_path.with_suffix(".json.bak"))
-        if not candidates_path.exists() and legacy_candidates.exists():
-            logger.info("Migrating %s -> %s", legacy_candidates, candidates_path)
-            legacy_candidates.rename(candidates_path)
+                bak.rename(target.with_suffix(target.suffix + ".bak"))
+        except FileNotFoundError:
+            pass  # already migrated by concurrent request
 
-    return links_path, candidates_path
+
+def _resolve_notebook_paths(
+    user_dir: Path,
+    notebook_id: str,
+    file_specs: list[tuple[str, str]],
+) -> list[Path]:
+    """Resolve per-notebook file paths with lazy migration from legacy names.
+
+    file_specs: list of (template, legacy_name) — template uses {nb} placeholder.
+    """
+    paths = [user_dir / tmpl.format(nb=notebook_id) for tmpl, _ in file_specs]
+    if notebook_id == "default":
+        for (_, legacy_name), target in zip(file_specs, paths):
+            _migrate_legacy_file(user_dir / legacy_name, target)
+    return paths
 
 
 def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
     key = f"graph:{user_dir}:{notebook_id}"
-    links_path, candidates_path = _migrate_graph_files(user_dir, notebook_id)
+    links_path, candidates_path = _resolve_notebook_paths(user_dir, notebook_id, [
+        ("graph_{nb}.json", "graph.json"),
+        ("candidates_{nb}.json", "candidates.json"),
+    ])
     return _get_cached(key, lambda: GraphStore(links_path, candidates_path))
-
-
-def _migrate_embedding_files(user_dir: Path, notebook_id: str) -> tuple[Path, Path]:
-    """Resolve embedding file paths with lazy migration from legacy names."""
-    emb_path = user_dir / f"embeddings_{notebook_id}.npy"
-    ids_path = user_dir / f"card_ids_{notebook_id}.json"
-
-    if notebook_id == "default":
-        legacy_emb = user_dir / "embeddings.npy"
-        legacy_ids = user_dir / "card_ids.json"
-        if not emb_path.exists() and legacy_emb.exists():
-            logger.info("Migrating %s -> %s", legacy_emb, emb_path)
-            legacy_emb.rename(emb_path)
-        if not ids_path.exists() and legacy_ids.exists():
-            logger.info("Migrating %s -> %s", legacy_ids, ids_path)
-            legacy_ids.rename(ids_path)
-
-    return emb_path, ids_path
 
 
 def create_notebook_store(user_dir: Path) -> NotebookStore:
@@ -153,7 +146,10 @@ def create_embedding_store(
     user_id: str | None = None,
     notebook_id: str = "default",
 ) -> EmbeddingStore:
-    emb_path, ids_path = _migrate_embedding_files(user_dir, notebook_id)
+    emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
+        ("embeddings_{nb}.npy", "embeddings.npy"),
+        ("card_ids_{nb}.json", "card_ids.json"),
+    ])
     return EmbeddingStore(
         emb_path,
         ids_path,

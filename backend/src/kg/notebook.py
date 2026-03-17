@@ -42,7 +42,7 @@ class NotebookStore:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
-        SQLModel.metadata.create_all(self.engine, checkfirst=True)
+        Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
 
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""

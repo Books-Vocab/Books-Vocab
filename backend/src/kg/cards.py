@@ -66,7 +66,7 @@ class CardStore:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
-        SQLModel.metadata.create_all(self.engine, checkfirst=True)
+        Card.metadata.create_all(self.engine, tables=[Card.__table__], checkfirst=True)
         self._migrate_review_columns()
         with self.engine.connect() as conn:
             conn.exec_driver_sql(
@@ -228,6 +228,17 @@ class CardStore:
             if notebook_id is not None:
                 statement = statement.where(Card.notebook_id == notebook_id)
             return session.scalar(statement) or 0
+
+    def count_by_notebook(self) -> dict[str, int]:
+        """Single GROUP BY query returning {notebook_id: count}."""
+        from sqlalchemy import func
+        with Session(self.engine) as session:
+            rows = session.exec(
+                select(Card.notebook_id, func.count())
+                .where(Card.is_deleted.is_(False))
+                .group_by(Card.notebook_id)
+            ).all()
+            return {nb_id: cnt for nb_id, cnt in rows}
 
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""
