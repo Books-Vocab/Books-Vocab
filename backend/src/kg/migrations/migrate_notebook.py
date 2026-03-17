@@ -9,6 +9,7 @@ Default data_dir: ./data
 from __future__ import annotations
 
 import logging
+import sqlite3
 import sys
 from pathlib import Path
 
@@ -63,7 +64,7 @@ def main() -> None:
         logger.info("Migrating %s ...", user_dir.name)
         try:
             migrate_user(user_dir)
-        except Exception as exc:
+        except (OSError, sqlite3.DatabaseError, ValueError) as exc:
             logger.error("  FAILED: %s", exc, exc_info=True)
 
     logger.info("Migration complete.")

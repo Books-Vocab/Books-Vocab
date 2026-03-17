@@ -36,8 +36,15 @@ class _CardsBothFields:
             SimpleNamespace(
                 id="c1", content="evoke", pos="v.", note="note",
                 difficulty=None, is_deleted=False, notebook_id="default",
+                embed_text=lambda: "evoke",
             )
         ]
+
+    def update(self, card_id, **kwargs):
+        return None
+
+    def get(self, card_id):
+        return None
 
 
 class _CardsNeedEnrich:
