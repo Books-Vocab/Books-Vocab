@@ -31,6 +31,9 @@ enum AppMetrics {
     static let cornerRadiusExtraLarge: CGFloat = 24
     static let cornerRadiusGlass: CGFloat = 30
 
+    // ── Control Dimensions ──────────────────────────────────────────────────────
+    static let iconButtonSize: CGFloat = 52
+
     // ── Card Dimensions ─────────────────────────────────────────────────────────
     static let cardMinHeight: CGFloat = 420
     static let heroCardPadding: CGFloat = 34
