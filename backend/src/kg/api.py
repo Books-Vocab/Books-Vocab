@@ -75,6 +75,7 @@ from .routers import (
     auth_router,
     billing_router,
     build_admin_router,
+    notebook_router,
     pipeline_router,
     static_pages_router,
     translate_router,
@@ -263,6 +264,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(user_router)
     app.include_router(billing_router)
     app.include_router(vocab_router)
+    app.include_router(notebook_router)
     app.include_router(pipeline_router)
     app.include_router(translate_router)
     app.include_router(auth_router)
