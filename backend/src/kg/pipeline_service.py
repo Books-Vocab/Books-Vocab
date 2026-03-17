@@ -172,7 +172,7 @@ async def _step_link(
                     result.reason,
                 )
                 created_links += 1
-    except Exception:  # broad catch: must requeue candidates before propagating
+    except (OpenAIError, OSError, ValueError, RuntimeError):
         graph.requeue_candidates(candidates[index:])
         raise
 
@@ -262,9 +262,11 @@ async def run_pipeline_background(
         try:
             logger.info("[%s] Pipeline started.", uid)
 
-            # Step isolation: each step logs its error (with traceback) and lets
-            # subsequent steps run.  Broad catch is intentional here — a single
-            # step failure must never abort the whole pipeline.
+            # Step isolation: each step catches its own errors so one failure
+            # never aborts subsequent steps.  The union covers LLM calls
+            # (OpenAIError), file/DB I/O (OSError), and data issues (ValueError,
+            # RuntimeError).
+            _step_errors = (OpenAIError, OSError, ValueError, RuntimeError)
 
             try:
                 await async_retry(
@@ -278,7 +280,7 @@ async def run_pipeline_background(
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Enrich", uid=uid,
                 )
-            except Exception as exc:
+            except _step_errors as exc:
                 logger.error("[%s] Step 1 (Enrich) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
@@ -293,7 +295,7 @@ async def run_pipeline_background(
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Embed", uid=uid,
                 )
-            except Exception as exc:
+            except _step_errors as exc:
                 logger.error("[%s] Step 1b (Embedding backfill) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
@@ -309,22 +311,22 @@ async def run_pipeline_background(
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Link", uid=uid,
                 )
-            except Exception as exc:
+            except _step_errors as exc:
                 logger.error("[%s] Step 2 (Link) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
                 await _step_difficulty(uid, user, card_store_factory=card_store_factory, logger=logger, notebook_id=notebook_id)
-            except Exception as exc:
+            except _step_errors as exc:
                 logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
 
             try:
                 await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret, notebook_id=notebook_id)
-            except Exception as exc:
+            except _step_errors as exc:
                 logger.error("[%s] Step 4 (Optional External Sync) failed: %s", uid, exc, exc_info=True)
 
             logger.info("[%s] Pipeline completed.", uid)
 
-        except Exception as exc:
+        except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
             logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
         finally:
             _PIPELINE_RUNNING[uid] = False
