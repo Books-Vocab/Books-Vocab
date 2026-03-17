@@ -10,6 +10,12 @@ from openai import OpenAIError
 from .retry import async_retry
 from .user_store import resolve_mochi_api_key_from_config
 
+_PIPELINE_RUNNING: dict[str, bool] = {}
+
+
+def is_pipeline_running(user_id: str) -> bool:
+    return _PIPELINE_RUNNING.get(user_id, False)
+
 
 async def _step_enrich(
     uid: str,
@@ -246,6 +252,7 @@ async def run_pipeline_background(
         return
 
     async with lock:
+        _PIPELINE_RUNNING[uid] = True
         try:
             logger.info("[%s] Pipeline started.", uid)
 
@@ -310,3 +317,5 @@ async def run_pipeline_background(
 
         except Exception as exc:
             logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
+        finally:
+            _PIPELINE_RUNNING[uid] = False
