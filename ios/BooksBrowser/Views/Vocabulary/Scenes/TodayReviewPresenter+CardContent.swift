@@ -30,7 +30,7 @@ extension TodayReviewPresenter {
     }
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 switch card.reviewMode {
                 case .recognition:
@@ -101,7 +101,7 @@ extension TodayReviewPresenter {
             card: card,
             hasLinks: hasLinks
         )
-        return VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        return VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
             HStack(spacing: 6) {
                 Spacer()
                 if let tier = card.difficultyTier {
@@ -202,7 +202,7 @@ extension TodayReviewPresenter {
             - frontCardHeight
 
         // ② 核心內容估算高度
-        let gap = vocabSkin.spacing.sectionGap
+        let gap = vocabSkin.metrics.reviewFoldSectionSpacing
         var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
             + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
