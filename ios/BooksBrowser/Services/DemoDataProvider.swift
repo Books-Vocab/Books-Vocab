@@ -13,7 +13,6 @@ enum DemoDataProvider {
                 context: spec.context,
                 explanation: spec.explanation,
                 partOfSpeech: spec.pos,
-                pronunciation: spec.pronunciation,
                 bookTitle: demoBookTitle,
                 chapterTitle: spec.chapter
             )
@@ -76,7 +75,6 @@ private extension DemoDataProvider {
         let context: String
         let explanation: String
         let pos: String
-        let pronunciation: String
         let chapter: String
         let tier: String
         let examples: [String]
@@ -128,7 +126,6 @@ private extension DemoDataProvider {
             context: "The new policy will significantly affect employee morale across the company.",
             explanation: "作為動詞，affect 表示「對⋯產生影響」。注意與名詞 effect（效果）的區別。",
             pos: "verb",
-            pronunciation: "/əˈfɛkt/",
             chapter: "Chapter 3: Workplace Dynamics",
             tier: "core",
             examples: [
@@ -149,7 +146,6 @@ private extension DemoDataProvider {
             context: "The effect of the medication was almost immediate.",
             explanation: "最常見用法是名詞「效果、影響」。少見動詞用法意為「實施、促成」(effect change)。",
             pos: "noun",
-            pronunciation: "/ɪˈfɛkt/",
             chapter: "Chapter 5: Health & Medicine",
             tier: "core",
             examples: [
@@ -172,7 +168,6 @@ private extension DemoDataProvider {
             context: "The wine was chosen to complement the flavors of the main course.",
             explanation: "complement 強調「互補、使完整」。與 compliment（讚美）拼寫僅差一個字母。",
             pos: "verb",
-            pronunciation: "/ˈkɒmplɪmɛnt/",
             chapter: "Chapter 7: Culinary Arts",
             tier: "intermediate",
             examples: [
@@ -193,7 +188,6 @@ private extension DemoDataProvider {
             context: "She received a genuine compliment on her presentation skills.",
             explanation: "compliment 是「讚美、恭維」。記法：compliment 裡有 'i'，I like to give compliments。",
             pos: "noun",
-            pronunciation: "/ˈkɒmplɪmənt/",
             chapter: "Chapter 2: Social Interactions",
             tier: "intermediate",
             examples: [
@@ -216,7 +210,6 @@ private extension DemoDataProvider {
             context: "Are you trying to imply that I'm not qualified for this role?",
             explanation: "imply 是說話者「暗示」某事，方向是從說者到聽者。與 infer（推斷）相對。",
             pos: "verb",
-            pronunciation: "/ɪmˈplaɪ/",
             chapter: "Chapter 4: Communication",
             tier: "intermediate",
             examples: [
@@ -237,7 +230,6 @@ private extension DemoDataProvider {
             context: "From the data, we can infer that the trend will continue upward.",
             explanation: "infer 是聽者/讀者「推斷」出的結論。Speaker implies, listener infers。",
             pos: "verb",
-            pronunciation: "/ɪnˈfɜːr/",
             chapter: "Chapter 6: Research Methods",
             tier: "intermediate",
             examples: [
@@ -260,7 +252,6 @@ private extension DemoDataProvider {
             context: "The comedian's joke elicited roars of laughter from the audience.",
             explanation: "elicit 是動詞，意為「引出（反應、資訊）」。注意與 illicit（非法的）的區別。",
             pos: "verb",
-            pronunciation: "/ɪˈlɪsɪt/",
             chapter: "Chapter 8: Public Speaking",
             tier: "advanced",
             examples: [
@@ -281,7 +272,6 @@ private extension DemoDataProvider {
             context: "The investigation uncovered an illicit trade network spanning three countries.",
             explanation: "illicit 是形容詞，表示「非法的、不正當的」。與 elicit（引出）發音相近但意思完全不同。",
             pos: "adjective",
-            pronunciation: "/ɪˈlɪsɪt/",
             chapter: "Chapter 10: Law & Ethics",
             tier: "advanced",
             examples: [
@@ -304,7 +294,6 @@ private extension DemoDataProvider {
             context: "A brief introduction will precede the keynote speech.",
             explanation: "precede = pre（前）+ cede（走）→「走在前面」。注意與 proceed（繼續進行）區分。",
             pos: "verb",
-            pronunciation: "/prɪˈsiːd/",
             chapter: "Chapter 1: Conference Planning",
             tier: "intermediate",
             examples: [
@@ -325,7 +314,6 @@ private extension DemoDataProvider {
             context: "After the safety briefing, passengers may proceed to the boarding gate.",
             explanation: "proceed = pro（向前）+ ceed（走）→「向前走、繼續」。名詞形式 procedure / proceedings。",
             pos: "verb",
-            pronunciation: "/prəˈsiːd/",
             chapter: "Chapter 1: Conference Planning",
             tier: "core",
             examples: [
@@ -348,7 +336,6 @@ private extension DemoDataProvider {
             context: "The contract language was deliberately ambiguous, leaving room for interpretation.",
             explanation: "ambi-（兩邊）+ -iguous → 可以往兩邊解讀的，即「模稜兩可」。",
             pos: "adjective",
-            pronunciation: "/æmˈbɪɡjuəs/",
             chapter: "Chapter 9: Legal Writing",
             tier: "intermediate",
             examples: [
@@ -365,7 +352,6 @@ private extension DemoDataProvider {
             context: "Smartphones have become ubiquitous in modern society.",
             explanation: "ubique（拉丁文：到處）→ ubiquitous「無所不在的」。形容極度普遍的事物。",
             pos: "adjective",
-            pronunciation: "/juːˈbɪkwɪtəs/",
             chapter: "Chapter 11: Technology & Society",
             tier: "advanced",
             examples: [
@@ -382,7 +368,6 @@ private extension DemoDataProvider {
             context: "Fame on social media is often ephemeral, lasting only a few days.",
             explanation: "epi-（在⋯之上）+ hemera（一天）→ 只存在一天的 → 「短暫的」。常用於文學與哲學語境。",
             pos: "adjective",
-            pronunciation: "/ɪˈfɛmərəl/",
             chapter: "Chapter 12: Philosophy of Time",
             tier: "advanced",
             examples: [
@@ -399,7 +384,6 @@ private extension DemoDataProvider {
             context: "She delivered an eloquent speech that moved the entire audience to tears.",
             explanation: "e-（出）+ loqui（說）→ 說得出色的 → 「雄辯的、有說服力的」。",
             pos: "adjective",
-            pronunciation: "/ˈɛləkwənt/",
             chapter: "Chapter 8: Public Speaking",
             tier: "intermediate",
             examples: [
@@ -416,7 +400,6 @@ private extension DemoDataProvider {
             context: "Children are remarkably resilient and can adapt to new environments quickly.",
             explanation: "re-（回）+ silire（跳）→ 能彈回來的 → 「有韌性的、適應力強的」。",
             pos: "adjective",
-            pronunciation: "/rɪˈzɪliənt/",
             chapter: "Chapter 13: Psychology",
             tier: "core",
             examples: [

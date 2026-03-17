@@ -33,7 +33,6 @@ enum CardDocumentBlock: Identifiable {
 struct CardDocumentHero {
     let word: String
     let partOfSpeech: String?
-    let pronunciation: String?
     let difficultyTier: String?
     let reviewModeTitle: String
 }

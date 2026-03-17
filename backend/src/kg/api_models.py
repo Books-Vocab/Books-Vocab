@@ -12,7 +12,6 @@ class VocabEntry(BaseModel):
     translation: str = Field(max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
-    pronunciation: str | None = None  # IPA phonetic transcription
 
 
 class VocabAddResponse(BaseModel):
@@ -46,7 +45,6 @@ class CardResponse(BaseModel):
     mode: str
     isDeleted: bool
     isArchived: bool = False
-    pronunciation: str | None = None
     inflections: list[str] = []
     linksByKind: dict[str, list[CardLinkSummaryResponse]] = Field(default_factory=dict)
     updatedAt: str | None = None
@@ -95,7 +93,6 @@ class QuickTranslateResponse(BaseModel):
     t: str
     p: str | None = None
     r: str | None = None  # root form (lemma)
-    ipa: str | None = None
 
 
 class ExplainResponse(BaseModel):
