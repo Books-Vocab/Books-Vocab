@@ -161,6 +161,10 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     settings = settings or load_settings()
 
+    # Sync quota limits with settings
+    from .quota_service import configure_limits
+    configure_limits(pro=settings.pro_daily_limit_usd, free=settings.free_daily_limit_usd)
+
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("KG API starting up")
@@ -195,7 +199,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     # --- middleware stack ---
     app.add_middleware(
         CORSMiddleware,
-        allow_origins=["https://wordnexus.lol", "http://localhost:8000", "http://127.0.0.1:8000"],
+        allow_origins=list(settings.cors_origins),
         allow_methods=["GET", "POST", "PUT", "DELETE"],
         allow_headers=["Authorization", "Content-Type"],
     )
