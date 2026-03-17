@@ -8,9 +8,9 @@ import pytest
 
 from kg.api_models import TranslateRequest
 from kg.translate_service import (
-    async_run_explain_translate,
-    async_run_phrase_translate,
-    async_run_quick_translate,
+    run_explain_translate,
+    run_phrase_translate,
+    run_quick_translate,
 )
 
 
@@ -28,10 +28,10 @@ def _fake_async_client(content: str):
 
 
 @pytest.mark.asyncio
-async def test_async_run_quick_translate_returns_expected_shape():
+async def test_run_quick_translate_returns_expected_shape():
     req = TranslateRequest(word="evoke", context="The story can evoke deep memories.")
     client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
-    result = await async_run_quick_translate(
+    result = await run_quick_translate(
         req,
         {"id": "u_test"},
         client=client,
@@ -43,23 +43,23 @@ async def test_async_run_quick_translate_returns_expected_shape():
 
 
 @pytest.mark.asyncio
-async def test_async_run_phrase_translate_returns_expected_shape():
+async def test_run_phrase_translate_returns_expected_shape():
     req = TranslateRequest(word="on trial", context="He was on trial for fraud.")
     client = _fake_async_client('{"t":"受審"}')
-    result = await async_run_phrase_translate(req, {"id": "u_test"}, client=client)
+    result = await run_phrase_translate(req, {"id": "u_test"}, client=client)
     assert result == {"t": "受審"}
 
 
 @pytest.mark.asyncio
-async def test_async_run_explain_translate_returns_expected_shape():
+async def test_run_explain_translate_returns_expected_shape():
     req = TranslateRequest(word="on trial", context="He was on trial for fraud.")
     client = _fake_async_client('{"e":"這裡表示因案件而受審。"}')
-    result = await async_run_explain_translate(req, {"id": "u_test"}, client=client)
+    result = await run_explain_translate(req, {"id": "u_test"}, client=client)
     assert result.e == "這裡表示因案件而受審。"
 
 
 @pytest.mark.asyncio
-async def test_async_run_quick_translate_raises_on_empty_choices():
+async def test_run_quick_translate_raises_on_empty_choices():
     from fastapi import HTTPException
 
     req = TranslateRequest(word="evoke", context="context")
@@ -70,7 +70,7 @@ async def test_async_run_quick_translate_raises_on_empty_choices():
     )
     logger = MagicMock()
     with pytest.raises(HTTPException) as exc_info:
-        await async_run_quick_translate(req, {"id": "u_test"}, client=client, logger=logger)
+        await run_quick_translate(req, {"id": "u_test"}, client=client, logger=logger)
     assert exc_info.value.status_code == 500
     logger.error.assert_called_once()
 
@@ -80,7 +80,7 @@ async def test_async_translate_quota_check_blocks_exceeded():
     """quota check 仍正常運作（exceeded 時 raise 429）"""
     from fastapi import HTTPException
 
-    from kg.translate_handlers import async_translate_quick_response
+    from kg.translate_handlers import translate_quick_response
 
     req = TranslateRequest(word="evoke", context="context")
     user = {"id": "u_test", "config": {}, "record": None}

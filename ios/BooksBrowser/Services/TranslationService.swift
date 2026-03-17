@@ -84,7 +84,8 @@ final class TranslationService: Translating {
         let endTime = Date()
         result.latency = endTime.timeIntervalSince(startTime)
         AppAnalytics.endInterval("TranslateQuick", signpostState)
-        let latencyMs = Int(result.latency! * 1000)
+        let latency = result.latency ?? endTime.timeIntervalSince(startTime)
+        let latencyMs = Int(latency * 1000)
         AppAnalytics.track(.translationCompleted(word: word, type: .quick, latencyMs: latencyMs))
         return result
     }

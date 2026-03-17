@@ -8,16 +8,38 @@ from fastapi import HTTPException
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .translate_service import (
-    async_run_explain_translate,
-    async_run_phrase_translate,
-    async_run_quick_translate,
     run_explain_translate,
     run_phrase_translate,
     run_quick_translate,
 )
 
 
-def translate_quick_response(
+async def _safe_translate(
+    coro,
+    req: TranslateRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    gemini_client_factory: Callable[[], Any],
+    label: str,
+    logger: Logger | None = None,
+):
+    require_pro_access(user, "reader_ai")
+    client = gemini_client_factory()
+    try:
+        kw: dict[str, Any] = {"client": client}
+        if logger:
+            kw["logger"] = logger
+        return await coro(req, user, **kw)
+    except HTTPException:
+        raise
+    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
+        if logger:
+            logger.error("%s failed: %s", label, exc, exc_info=True)
+        raise HTTPException(500, f"{label} failed: {exc}") from exc
+
+
+async def translate_quick_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
@@ -25,99 +47,39 @@ def translate_quick_response(
     gemini_client_factory: Callable[[], Any],
     logger: Logger,
 ) -> QuickTranslateResponse:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return run_quick_translate(req, user, client=client, logger=logger)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        logger.error("translate/quick failed: %s", exc, exc_info=True)
-        raise HTTPException(500, f"Quick translation failed: {exc}") from exc
+    return await _safe_translate(
+        run_quick_translate, req, user,
+        require_pro_access=require_pro_access,
+        gemini_client_factory=gemini_client_factory,
+        label="translate/quick", logger=logger,
+    )
 
 
-def translate_phrase_response(
+async def translate_phrase_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
 ) -> dict[str, str]:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return run_phrase_translate(req, user, client=client)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        raise HTTPException(500, f"Phrase translation failed: {exc}") from exc
+    return await _safe_translate(
+        run_phrase_translate, req, user,
+        require_pro_access=require_pro_access,
+        gemini_client_factory=gemini_client_factory,
+        label="translate/phrase",
+    )
 
 
-def translate_explain_response(
+async def translate_explain_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
 ) -> ExplainResponse:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return run_explain_translate(req, user, client=client)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        raise HTTPException(500, f"Explanation failed: {exc}") from exc
-
-
-async def async_translate_quick_response(
-    req: TranslateRequest,
-    user: dict[str, Any],
-    *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
-    gemini_client_factory: Callable[[], Any],
-    logger: Logger,
-) -> QuickTranslateResponse:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return await async_run_quick_translate(req, user, client=client, logger=logger)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        logger.error("translate/quick failed: %s", exc, exc_info=True)
-        raise HTTPException(500, f"Quick translation failed: {exc}") from exc
-
-
-async def async_translate_phrase_response(
-    req: TranslateRequest,
-    user: dict[str, Any],
-    *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
-    gemini_client_factory: Callable[[], Any],
-) -> dict[str, str]:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return await async_run_phrase_translate(req, user, client=client)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        raise HTTPException(500, f"Phrase translation failed: {exc}") from exc
-
-
-async def async_translate_explain_response(
-    req: TranslateRequest,
-    user: dict[str, Any],
-    *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
-    gemini_client_factory: Callable[[], Any],
-) -> ExplainResponse:
-    require_pro_access(user, "reader_ai")
-    client = gemini_client_factory()
-    try:
-        return await async_run_explain_translate(req, user, client=client)
-    except HTTPException:
-        raise
-    except (ValueError, KeyError, TypeError, RuntimeError) as exc:
-        raise HTTPException(500, f"Explanation failed: {exc}") from exc
+    return await _safe_translate(
+        run_explain_translate, req, user,
+        require_pro_access=require_pro_access,
+        gemini_client_factory=gemini_client_factory,
+        label="translate/explain",
+    )

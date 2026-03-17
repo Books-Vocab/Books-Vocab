@@ -309,7 +309,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
             headers=headers,
         )
         assert r.status_code == 500
-        assert "Quick translation failed" in r.text
+        assert "translate/quick failed" in r.text
 
 
 def test_translate_works_without_pro_subscription(isolated_api):

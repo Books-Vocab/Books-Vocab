@@ -1,6 +1,9 @@
 from __future__ import annotations
 
 from types import SimpleNamespace
+from unittest.mock import AsyncMock
+
+import pytest
 
 from kg.api_models import TranslateRequest
 from kg.translate_service import (
@@ -13,15 +16,15 @@ from kg.translate_service import (
 )
 
 
-def _fake_client(content: str):
+def _fake_async_client(content: str):
+    response = SimpleNamespace(
+        choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
+        usage=None,
+    )
+    mock_create = AsyncMock(return_value=response)
     return SimpleNamespace(
         chat=SimpleNamespace(
-            completions=SimpleNamespace(
-                create=lambda **kwargs: SimpleNamespace(
-                    choices=[SimpleNamespace(message=SimpleNamespace(content=content))],
-                    usage=None,
-                )
-            )
+            completions=SimpleNamespace(create=mock_create)
         )
     )
 
@@ -55,12 +58,13 @@ def test_parse_json_payload_non_dict_returns_empty():
     assert parse_json_payload("42") == {}
 
 
-def test_run_quick_translate_returns_expected_shape():
+@pytest.mark.asyncio
+async def test_run_quick_translate_returns_expected_shape():
     req = TranslateRequest(word="evoke", context="The story can evoke deep memories.")
-    result = run_quick_translate(
+    result = await run_quick_translate(
         req,
         {"id": "u_test"},
-        client=_fake_client('{"t":"喚起","p":"v.","r":"evoke"}'),
+        client=_fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}'),
         logger=SimpleNamespace(error=lambda *args, **kwargs: None),
     )
     assert result.t == "喚起"
@@ -68,19 +72,20 @@ def test_run_quick_translate_returns_expected_shape():
     assert result.r == "evoke"
 
 
-def test_run_phrase_and_explain_translate_return_expected_shapes():
+@pytest.mark.asyncio
+async def test_run_phrase_and_explain_translate_return_expected_shapes():
     req = TranslateRequest(word="on trial", context="He was on trial for fraud.")
 
-    phrase = run_phrase_translate(
+    phrase = await run_phrase_translate(
         req,
         {"id": "u_test"},
-        client=_fake_client('{"t":"受審"}'),
+        client=_fake_async_client('{"t":"受審"}'),
     )
     assert phrase == {"t": "受審"}
 
-    explain = run_explain_translate(
+    explain = await run_explain_translate(
         req,
         {"id": "u_test"},
-        client=_fake_client('{"e":"這裡表示因案件而受審。"}'),
+        client=_fake_async_client('{"e":"這裡表示因案件而受審。"}'),
     )
     assert explain.e == "這裡表示因案件而受審。"

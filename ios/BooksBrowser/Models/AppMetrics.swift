@@ -13,6 +13,7 @@ enum AppMetrics {
     static let spacingTiny: CGFloat = 3
     static let spacingExtraSmall: CGFloat = 4
     static let spacingSmall: CGFloat = 8
+    static let spacingCompact: CGFloat = 12
 
     // ── Divider / Separator ───────────────────────────────────────────────────
     static let dividerThin: CGFloat = 0.5
@@ -26,6 +27,7 @@ enum AppMetrics {
     static let cornerRadiusSmall: CGFloat = 8
     static let cornerRadiusMedium: CGFloat = 12
     static let cornerRadiusLarge: CGFloat = 16
+    static let cornerRadiusXLarge: CGFloat = 18
     static let cornerRadiusExtraLarge: CGFloat = 24
     static let cornerRadiusGlass: CGFloat = 30
 

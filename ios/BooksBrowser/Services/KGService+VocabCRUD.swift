@@ -62,9 +62,14 @@ extension KGService {
 
     func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
         let token = try await currentAuthToken()
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false) else {
+            throw KGError.serverError("Invalid URL components for api/vocab")
+        }
         components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
-        var request = URLRequest(url: components.url!)
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for api/vocab")
+        }
+        var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAuth(to: &request, token: token)
@@ -96,9 +101,13 @@ extension KGService {
 
     func triggerPipeline(notebookId: String = "default") async throws {
         let token = try await currentAuthToken()
-        var components = URLComponents(url: baseURL.appendingPathComponent("api/pipeline"), resolvingAgainstBaseURL: false)!
+        guard var components = URLComponents(url: baseURL.appendingPathComponent("api/pipeline"), resolvingAgainstBaseURL: false) else {
+            throw KGError.serverError("Invalid URL components for api/pipeline")
+        }
         components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
-        let url = components.url!
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for api/pipeline")
+        }
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyAuth(to: &request, token: token)

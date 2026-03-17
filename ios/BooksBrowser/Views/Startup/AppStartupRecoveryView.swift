@@ -28,29 +28,29 @@ struct AppStartupRecoveryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: 24) {
-                    VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+                    VStack(alignment: .leading, spacing: AppMetrics.spacingCompact) {
                         Label(failure.title, systemImage: "externaldrive.badge.exclamationmark")
-                            .font(.title2.weight(.semibold))
+                            .font(AppFonts.h2(weight: .semibold))
                             .foregroundStyle(appTheme.palette.primaryText)
 
                         Text(failure.message)
-                            .font(.body)
+                            .font(AppFonts.body())
                             .foregroundStyle(appTheme.palette.secondaryText)
                     }
 
-                    VStack(alignment: .leading, spacing: 12) {
+                    VStack(alignment: .leading, spacing: AppMetrics.spacingCompact) {
                         Text(L10n.string("建議處理方式"))
-                            .font(.headline)
+                            .font(AppFonts.subhead(weight: .semibold))
                             .foregroundStyle(appTheme.palette.primaryText)
 
                         ForEach(Array(failure.recoverySteps.enumerated()), id: \.offset) { index, step in
-                            HStack(alignment: .top, spacing: 12) {
+                            HStack(alignment: .top, spacing: AppMetrics.spacingCompact) {
                                 Text("\(index + 1).")
-                                    .font(.body.monospacedDigit())
+                                    .font(AppFonts.monoNumbers(size: 17))
                                     .foregroundStyle(appTheme.palette.accent)
                                 Text(step)
-                                    .font(.body)
+                                    .font(AppFonts.body())
                                     .foregroundStyle(appTheme.palette.secondaryText)
                             }
                         }
@@ -58,18 +58,18 @@ struct AppStartupRecoveryView: View {
 
                     VStack(alignment: .leading, spacing: 10) {
                         Text(L10n.string("技術細節"))
-                            .font(.headline)
+                            .font(AppFonts.subhead(weight: .semibold))
                             .foregroundStyle(appTheme.palette.primaryText)
 
                         Text(failure.technicalDetails)
-                            .font(.footnote.monospaced())
+                            .font(AppFonts.monoNumbers(size: 12))
                             .foregroundStyle(appTheme.palette.tertiaryText)
                             .textSelection(.enabled)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .padding(AppMetrics.spacingMedium)
-                            .background(appTheme.palette.cardBackground, in: RoundedRectangle(cornerRadius: 18, style: .continuous))
+                            .background(appTheme.palette.cardBackground, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous))
                             .overlay {
-                                RoundedRectangle(cornerRadius: 18, style: .continuous)
+                                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous)
                                     .stroke(appTheme.palette.cardBorder, lineWidth: 1)
                             }
                     }
