@@ -12,6 +12,7 @@ import UniformTypeIdentifiers
 /// 生詞庫列表
 struct VocabularyListView: View {
     @Query var allEntries: [VocabularyEntry]
+    @Query private var notebooks: [Notebook]
     @Environment(\.modelContext) var modelContext
 
     let notebookId: String
@@ -26,6 +27,10 @@ struct VocabularyListView: View {
     @State var showArchiveList = false
     @State var coordinator = VocabularyListCoordinator()
 
+    var notebookName: String {
+        notebooks.first(where: { $0.remoteId == notebookId })?.name ?? "生詞庫".localized
+    }
+
     init(notebookId: String = "default") {
         self.notebookId = notebookId
         let nbId = notebookId
@@ -34,6 +39,7 @@ struct VocabularyListView: View {
             sort: \.dateAdded,
             order: .reverse
         )
+        _notebooks = Query(sort: \Notebook.sortOrder)
     }
 
     var body: some View {
@@ -44,7 +50,7 @@ struct VocabularyListView: View {
         ) {
             routedContent
         }
-        .navigationTitle("生詞庫".localized)
+        .navigationTitle(notebookName)
         .navigationBarTitleDisplayMode(.large)
         .modifier(VocabularyListToolbar(
             selectedTab: selectedTab,
