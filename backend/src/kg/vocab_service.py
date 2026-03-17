@@ -13,12 +13,13 @@ from .api_models import (
     CardLinkSummaryResponse,
     CardResponse,
     DailyReviewStatEntry,
-    GraphLinkResponse,
     ReviewStateEntry,
     VocabAddResponse,
     VocabEntry,
 )
 from .user_store import parse_datetime
+from .vocab_graph import embed_and_link_new_cards
+from .vocab_graph import graph_links_payload as graph_links_payload  # re-export
 
 MAX_BATCH_SIZE = 500
 MAX_WORD_LENGTH = 200
@@ -231,24 +232,6 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
     return {"deleted": word, "id": card.id}
 
 
-def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
-    links = []
-    for link in graph._links.values():
-        if link.status != "active":
-            continue
-        links.append(
-            GraphLinkResponse(
-                id=link.id,
-                fromId=link.from_id,
-                toId=link.to_id,
-                kind=link.kind.value,
-                confidence=link.confidence,
-                reason=link.reason,
-            )
-        )
-    return links
-
-
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
@@ -345,20 +328,10 @@ def add_vocab_entries(
         created += 1
 
     if created > 0:
-        for entry in entries:
-            word = entry.word.strip()
-            card_id = card_ids.get(word)
-            card = cards.get(card_id) if card_id else None
-            if card and not embeddings.has(card.id):
-                try:
-                    embeddings.add(card.id, card.embed_text())
-                    similar = embeddings.find_similar(card.id, k=3)
-                    for other_id, score in similar:
-                        if score > 0.655:
-                            graph.add_candidate(card.id, other_id, score)
-                except (OSError, ValueError) as exc:
-                    logger.warning("Failed to generate embedding for '%s': %s", word, exc)
-                    continue
+        embed_and_link_new_cards(
+            cards=cards, embeddings=embeddings, graph=graph,
+            card_ids=card_ids, entries=entries, logger=logger,
+        )
 
     return VocabAddResponse(
         created=created,

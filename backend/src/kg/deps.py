@@ -39,6 +39,7 @@ from .service_factories import (
     create_notebook_store,
 )
 from .settings import KGSettings
+from .types import UserRecord
 from .user_context import resolve_current_user
 from .user_store import collect_account_ids_for_deletion, parse_datetime
 from .vocab_service import build_links_by_kind, card_response
@@ -86,7 +87,7 @@ def _parse_datetime(raw: Any) -> datetime | None:
 def get_current_user(
     request: Request,
     credentials: HTTPAuthorizationCredentials = Depends(security),
-) -> dict[str, Any]:
+) -> UserRecord:
     settings = request.app.state.kg_settings
     load_users_fn = request.app.state.load_users
     return resolve_current_user(
