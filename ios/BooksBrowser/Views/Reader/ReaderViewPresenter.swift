@@ -8,6 +8,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
     let onDismiss: () -> Void
     let onShowTableOfContents: () -> Void
     let onShowReaderSettings: () -> Void
+    let onShowNotebookPicker: () -> Void
     let onExpandHeader: () -> Void
     let onCollapseHeader: () -> Void
     @ViewBuilder let mainContent: MainContent
@@ -19,6 +20,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         onDismiss: @escaping () -> Void,
         onShowTableOfContents: @escaping () -> Void,
         onShowReaderSettings: @escaping () -> Void,
+        onShowNotebookPicker: @escaping () -> Void,
         onExpandHeader: @escaping () -> Void,
         onCollapseHeader: @escaping () -> Void,
         @ViewBuilder mainContent: () -> MainContent,
@@ -29,6 +31,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         self.onDismiss = onDismiss
         self.onShowTableOfContents = onShowTableOfContents
         self.onShowReaderSettings = onShowReaderSettings
+        self.onShowNotebookPicker = onShowNotebookPicker
         self.onExpandHeader = onExpandHeader
         self.onCollapseHeader = onCollapseHeader
         self.mainContent = mainContent()

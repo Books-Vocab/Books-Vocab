@@ -10,6 +10,7 @@ private struct ReaderChromePreviewScene: View {
             onDismiss: {},
             onShowTableOfContents: {},
             onShowReaderSettings: {},
+            onShowNotebookPicker: {},
             onExpandHeader: {},
             onCollapseHeader: {}
         ) {

@@ -40,6 +40,9 @@ struct ReaderView: View {
     // 閱讀殼層狀態：集中 header / overlay / blocker 的控制面
     @State var chromeState = ReaderChromeState()
 
+    // 單字本選擇
+    @State private var showNotebookPicker = false
+
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
@@ -61,6 +64,7 @@ struct ReaderView: View {
             onDismiss: { dismiss() },
             onShowTableOfContents: { readerState.showTableOfContents = true },
             onShowReaderSettings: showReaderSettingsPanel,
+            onShowNotebookPicker: { showNotebookPicker = true },
             onExpandHeader: expandHeader,
             onCollapseHeader: collapseHeader
         ) {
@@ -122,6 +126,11 @@ struct ReaderView: View {
         }
         .sheet(item: Binding(get: { readerState.detailEntry }, set: { readerState.detailEntry = $0 })) { entry in
             WordDetailSheet(entry: entry, allEntries: allVocabulary)
+        }
+        .sheet(isPresented: $showNotebookPicker) {
+            ReaderNotebookPicker(book: book)
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 
