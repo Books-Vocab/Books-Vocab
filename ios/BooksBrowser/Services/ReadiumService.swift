@@ -179,7 +179,6 @@ fileprivate extension URL {
         if let fileURL = FileURL(url: self) {
             return fileURL
         }
-        // 回退：強制轉換
-        return FileURL(url: self)!
+        preconditionFailure("URL cannot be converted to FileURL: \(self)")
     }
 }

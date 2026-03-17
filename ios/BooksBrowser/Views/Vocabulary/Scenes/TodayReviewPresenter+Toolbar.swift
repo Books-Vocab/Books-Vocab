@@ -124,7 +124,7 @@ extension TodayReviewPresenter {
             Button(action: onToggleAutoPlayPause) {
                 Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
                     .font(AppFonts.h1())
-                    .frame(width: 52, height: 52)
+                    .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
                     .background(
                         Circle()
                             .fill(vocabSkin.palette.mutedFill)
