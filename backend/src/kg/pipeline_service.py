@@ -2,24 +2,28 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import threading
 from collections.abc import Callable
 from typing import Any
 
 from openai import OpenAIError
 
 from .retry import async_retry
+from .types import UserRecord
 from .user_store import resolve_mochi_api_key_from_config
 
 _PIPELINE_RUNNING: dict[str, bool] = {}
+_PIPELINE_RUNNING_LOCK = threading.Lock()
 
 
 def is_pipeline_running(user_id: str) -> bool:
-    return _PIPELINE_RUNNING.get(user_id, False)
+    with _PIPELINE_RUNNING_LOCK:
+        return _PIPELINE_RUNNING.get(user_id, False)
 
 
 async def _step_enrich(
     uid: str,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
     gemini_client_factory: Callable[[], Any],
@@ -97,7 +101,7 @@ def _sync_embed_loop(
 
 async def _step_embed(
     uid: str,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
@@ -123,7 +127,7 @@ async def _step_embed(
 
 async def _step_link(
     uid: str,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
@@ -181,7 +185,7 @@ async def _step_link(
 
 async def _step_difficulty(
     uid: str,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
     logger: logging.Logger,
@@ -202,7 +206,7 @@ async def _step_difficulty(
 
 async def _step_external_sync(
     uid: str,
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
@@ -238,7 +242,7 @@ async def _step_external_sync(
 
 
 async def run_pipeline_background(
-    user: dict[str, Any],
+    user: UserRecord,
     *,
     get_user_lock_fn: Callable[[str], Any],
     card_store_factory: Callable[[Any], Any],
@@ -258,7 +262,8 @@ async def run_pipeline_background(
         return
 
     async with lock:
-        _PIPELINE_RUNNING[uid] = True
+        with _PIPELINE_RUNNING_LOCK:
+            _PIPELINE_RUNNING[uid] = True
         try:
             logger.info("[%s] Pipeline started.", uid)
 
@@ -329,4 +334,5 @@ async def run_pipeline_background(
         except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
             logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
         finally:
-            _PIPELINE_RUNNING[uid] = False
+            with _PIPELINE_RUNNING_LOCK:
+                _PIPELINE_RUNNING[uid] = False
