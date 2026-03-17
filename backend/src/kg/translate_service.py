@@ -98,54 +98,7 @@ def track_usage(user_id: str, operation: str, response: Any) -> None:
     )
 
 
-def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger) -> QuickTranslateResponse:
-    source_lang, target_lang = resolve_translation_langs(req, user)
-    response = client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": quick_translate_prompt(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    if not response.choices:
-        logger.error("translate/quick: Gemini returned empty choices. Full response: %s", response)
-        raise HTTPException(500, "Gemini returned empty response")
-
-    track_usage(user["id"], "translate_quick", response)
-    data = _parse_json_payload(response.choices[0].message.content)
-    return QuickTranslateResponse(
-        t=data.get("t", ""),
-        p=_normalize_pos(data.get("p")),
-        r=data.get("r"),
-    )
-
-
-def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> dict[str, str]:
-    source_lang, target_lang = resolve_translation_langs(req, user)
-    response = client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": phrase_translate_prompt(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    track_usage(user["id"], "translate_phrase", response)
-    data = _parse_json_payload(response.choices[0].message.content)
-    return {"t": data.get("t", "")}
-
-
-def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> ExplainResponse:
-    source_lang, target_lang = resolve_translation_langs(req, user)
-    response = client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
-        messages=[{"role": "user", "content": explain_translate_prompt(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    track_usage(user["id"], "translate_explain", response)
-    data = _parse_json_payload(response.choices[0].message.content)
-    return ExplainResponse(e=data.get("e", ""))
-
-
-async def async_run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger) -> QuickTranslateResponse:
+async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger) -> QuickTranslateResponse:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
         model="gemini-2.5-flash-lite",
@@ -166,7 +119,7 @@ async def async_run_quick_translate(req: TranslateRequest, user: dict[str, Any],
     )
 
 
-async def async_run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> dict[str, str]:
+async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None) -> dict[str, str]:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
         model="gemini-2.5-flash-lite",
@@ -174,12 +127,17 @@ async def async_run_phrase_translate(req: TranslateRequest, user: dict[str, Any]
         temperature=0.3,
         response_format={"type": "json_object"},
     )
+    if not response.choices:
+        if logger:
+            logger.error("translate/phrase: Gemini returned empty choices. Full response: %s", response)
+        raise HTTPException(500, "Gemini returned empty response")
+
     track_usage(user["id"], "translate_phrase", response)
     data = _parse_json_payload(response.choices[0].message.content)
     return {"t": data.get("t", "")}
 
 
-async def async_run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any) -> ExplainResponse:
+async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None) -> ExplainResponse:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
         model="gemini-2.5-flash-lite",
@@ -187,6 +145,11 @@ async def async_run_explain_translate(req: TranslateRequest, user: dict[str, Any
         temperature=0.3,
         response_format={"type": "json_object"},
     )
+    if not response.choices:
+        if logger:
+            logger.error("translate/explain: Gemini returned empty choices. Full response: %s", response)
+        raise HTTPException(500, "Gemini returned empty response")
+
     track_usage(user["id"], "translate_explain", response)
     data = _parse_json_payload(response.choices[0].message.content)
     return ExplainResponse(e=data.get("e", ""))

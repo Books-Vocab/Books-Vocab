@@ -55,15 +55,11 @@ def admin_stats_response(
 ) -> dict[str, Any]:
     require_admin(token, admin_token=admin_token, authorization=authorization)
 
-    from .quota_service import get_all_quota_usage
+    from .quota_service import get_all_quota_usage, token_cost_usd
 
     users_data = load_users()
     token_stats = get_all_stats()
     quota_usage = get_all_quota_usage()
-
-    in_per_m = 0.10
-    out_per_m = 0.40
-    emb_per_m = 0.00025
 
     result = []
     for uid, info in users_data.items():
@@ -82,13 +78,10 @@ def admin_stats_response(
         total_input = sum(d["input_tokens"] for d in utoken.values())
         total_output = sum(d["output_tokens"] for d in utoken.values())
 
-        est_cost = 0.0
-        for call_type, data in utoken.items():
-            if call_type == "embed":
-                est_cost += (data["input_tokens"] / 1_000_000) * emb_per_m
-            else:
-                est_cost += (data["input_tokens"] / 1_000_000) * in_per_m
-                est_cost += (data["output_tokens"] / 1_000_000) * out_per_m
+        est_cost = sum(
+            token_cost_usd(call_type, data["input_tokens"], data["output_tokens"])
+            for call_type, data in utoken.items()
+        )
 
         config = info.get("config", {}) if isinstance(info, dict) else {}
         entitlements = build_entitlements_response(info if isinstance(info, dict) else None)
