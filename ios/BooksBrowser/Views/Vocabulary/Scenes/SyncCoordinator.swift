@@ -189,10 +189,19 @@ final class SyncCoordinator: SyncCoordinating {
                 }
 
                 updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
-                try await kgService.pullCardsToLocal(container: modelContext.container) { [weak self] detail, current, total in
+                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container) { [weak self] detail, current, total in
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
+                }
+
+                var retryCount = 0
+                while pipelinePending && retryCount < 3 {
+                    retryCount += 1
+                    updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
+                    try await Task.sleep(for: .seconds(10))
+                    if Task.isCancelled { break }
+                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
                 }
 
                 // Also pull daily stats from server
