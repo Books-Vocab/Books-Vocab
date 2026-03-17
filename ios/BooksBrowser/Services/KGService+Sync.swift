@@ -165,8 +165,15 @@ extension KGService {
             AppLog.kg.warning("backgroundSync pushDailyStats failed: \(error.localizedDescription)")
             failures.append("pushDailyStats")
         }
+        // 取得所有本地存在的 notebookId（從 VocabularyEntry）
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let localNotebookIds = try? await actor.distinctNotebookIds()
+        let notebooksToPull = (localNotebookIds ?? []).isEmpty ? ["default"] : (localNotebookIds ?? [])
+
         do {
-            try await pullCardsToLocal(container: container, progress: nil, notebookId: "default")
+            for nbId in notebooksToPull {
+                try await pullCardsToLocal(container: container, progress: nil, notebookId: nbId)
+            }
         } catch {
             AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
             failures.append("pull")
