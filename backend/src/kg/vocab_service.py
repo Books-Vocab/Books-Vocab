@@ -248,12 +248,19 @@ def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
     return links
 
 
-def _build_example(word: str, context: str) -> str:
+def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
     pattern = re.compile(re.escape(word), re.IGNORECASE)
     if pattern.search(context):
         return pattern.sub(f"**{word}**", context, count=1)
+    if alternatives:
+        for alt in alternatives:
+            alt_pattern = re.compile(re.escape(alt), re.IGNORECASE)
+            match = alt_pattern.search(context)
+            if match:
+                actual = match.group()
+                return alt_pattern.sub(f"**{actual}**", context, count=1)
     return context
 
 
@@ -319,8 +326,9 @@ def add_vocab_entries(
                 card_ids[word] = existing_card.id
             continue
 
-        example = _build_example(word, entry.context)
         root, inflections = _derive_inflections(word, entry.root_form, logger=logger)
+        alternatives = inflections + ([root] if root else [])
+        example = _build_example(word, entry.context, alternatives=alternatives)
 
         card = cards.add(
             content=word,
