@@ -47,8 +47,11 @@ enum ReviewGradient {
     // MARK: - Interpolation
 
     private static func interpolate(ratio: Double) -> HSL {
-        if ratio <= stops.first!.at { return stops.first!.c }
-        if ratio >= stops.last!.at { return stops.last!.c }
+        guard let firstStop = stops.first, let lastStop = stops.last else {
+            return HSL(h: 0, s: 0, l: 50)
+        }
+        if ratio <= firstStop.at { return firstStop.c }
+        if ratio >= lastStop.at { return lastStop.c }
 
         for i in 0 ..< stops.count - 1 {
             let s0 = stops[i], s1 = stops[i + 1]
@@ -57,7 +60,7 @@ enum ReviewGradient {
                 return lerpHSL(s0.c, s1.c, t: t)
             }
         }
-        return stops.last!.c
+        return lastStop.c
     }
 
     private static func lerpHSL(_ a: HSL, _ b: HSL, t: Double) -> HSL {

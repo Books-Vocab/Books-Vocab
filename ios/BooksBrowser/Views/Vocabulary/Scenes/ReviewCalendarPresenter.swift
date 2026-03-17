@@ -238,7 +238,9 @@ struct ReviewCalendarPresenter: View {
         let nextMonth = cal.date(byAdding: .month, value: 1, to: displayedMonth) ?? displayedMonth
         let nowComps = cal.dateComponents([.year, .month], from: Date())
         let nextComps = cal.dateComponents([.year, .month], from: nextMonth)
-        return (nextComps.year!, nextComps.month!) <= (nowComps.year!, nowComps.month!)
+        guard let nextYear = nextComps.year, let nextMonth = nextComps.month,
+              let nowYear = nowComps.year, let nowMonth = nowComps.month else { return false }
+        return (nextYear, nextMonth) <= (nowYear, nowMonth)
     }
 
     private func changeMonth(by offset: Int) {
