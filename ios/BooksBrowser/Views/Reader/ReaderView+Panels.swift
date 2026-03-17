@@ -87,7 +87,6 @@ extension ReaderView {
             TranslationPanel(
                 word: selection.word,
                 result: handler.translationResult,
-                pronunciation: handler.pronunciation,
                 isLoading: handler.isTranslating,
                 isSaved: handler.isSaved,
                 isLoggedIn: authManager.isLoggedIn,

@@ -36,7 +36,6 @@ final class VocabularyEntry {
     var context: String             // 來源句子（上下文）
     var explanation: String?        // AI 語境解釋
     var partOfSpeech: String?       // 詞性
-    var pronunciation: String?      // 音標
     var bookTitle: String           // 來源書名
     var chapterTitle: String?       // 來源章節
     var dateAdded: Date
@@ -97,7 +96,6 @@ final class VocabularyEntry {
         context: String,
         explanation: String? = nil,
         partOfSpeech: String? = nil,
-        pronunciation: String? = nil,
         bookTitle: String,
         chapterTitle: String? = nil
     ) {
@@ -107,7 +105,6 @@ final class VocabularyEntry {
         self.context = context
         self.explanation = explanation
         self.partOfSpeech = partOfSpeech
-        self.pronunciation = pronunciation
         self.bookTitle = bookTitle
         self.chapterTitle = chapterTitle
         self.dateAdded = Date()

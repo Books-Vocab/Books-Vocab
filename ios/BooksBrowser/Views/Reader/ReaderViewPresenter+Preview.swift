@@ -27,10 +27,8 @@ private struct ReaderChromePreviewScene: View {
                 result: TranslationResult(
                     translation: "有韌性的；能快速恢復的",
                     partOfSpeech: "adj.",
-                    pronunciation: nil,
                     explanation: nil
                 ),
-                pronunciation: "/rɪˈzɪljənt/",
                 isLoading: false,
                 isSaved: true,
                 isLoggedIn: true,

@@ -13,7 +13,6 @@ struct KGVocabEntry: Codable {
     let translation: String
     let context: String
     let root_form: String?
-    let pronunciation: String?
 }
 
 // MARK: - Vocabulary CRUD
@@ -74,8 +73,7 @@ extension KGService {
                 word: entry.word,
                 translation: entry.translation,
                 context: entry.context,
-                root_form: entry.rootForm,
-                pronunciation: entry.pronunciation
+                root_form: entry.rootForm
             )
         }
 

@@ -63,12 +63,6 @@ private struct CardDocumentHeroBlock: View {
                     }
 
                     HStack(spacing: vocabSkin.spacing.heroBaselineGap) {
-                        if let pronunciation = hero.pronunciation, !pronunciation.isEmpty {
-                            Text("/\(pronunciation)/")
-                                .font(vocabSkin.typography.monoBody)
-                                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                        }
-
                         Button {
                             speechService.speak(hero.word)
                             copyTrigger.toggle()

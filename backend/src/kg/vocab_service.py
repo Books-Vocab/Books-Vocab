@@ -112,7 +112,6 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         mode=card.mode,
         isDeleted=card.is_deleted,
         isArchived=card.is_archived,
-        pronunciation=card.pronunciation,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
         updatedAt=_dt_to_iso(card.updated_at),
@@ -336,7 +335,6 @@ def add_vocab_entries(
             examples=[example] if example else [],
             root_form=root,
             inflections=inflections,
-            pronunciation=entry.pronunciation,
         )
         card_ids[word] = card.id
         existing.add(_normalize_word(word))

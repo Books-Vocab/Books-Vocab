@@ -124,12 +124,6 @@ extension TodayReviewPresenter {
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
 
-            if let pronunciation = card.pronunciation, !pronunciation.isEmpty {
-                Text("/\(pronunciation)/")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-            }
-
             if !currentCard.meaningParagraphs.isEmpty {
                 CardSectionDivider(horizontalPadding: 0)
                 VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
@@ -203,7 +197,7 @@ extension TodayReviewPresenter {
     //
     // 演算法：「中心展開填充」
     // 1. 從容器可用高度扣除 front card + padding → 得到答案卡上限
-    // 2. 估算核心內容（word、pronunciation、meaning、links、padding）的佔用高度
+    // 2. 估算核心內容（word、meaning、links、padding）的佔用高度
     // 3. 剩餘空間扣除來源區塊預留 → 例句可用高度
     // 4. 可用高度 ÷ 行高 × 每行詞數 → 總詞預算 → truncateRadius
     //    radius 越大，以單字為中心向前後展開越多上下文
@@ -227,10 +221,6 @@ extension TodayReviewPresenter {
             + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
-
-        if let p = card.pronunciation, !p.isEmpty {
-            coreHeight += 20 + gap                                              // pronunciation
-        }
 
         if meaningCount > 0 {
             // divider(17) + 每段最多 3 行（lineLimit）× 行高 22

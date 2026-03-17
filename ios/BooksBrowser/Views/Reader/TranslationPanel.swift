@@ -23,7 +23,6 @@ extension EnvironmentValues {
 struct TranslationPanel: View {
     let word: String
     let result: TranslationResult?
-    let pronunciation: String?
     let isLoading: Bool
     let isSaved: Bool
     let isLoggedIn: Bool
@@ -52,7 +51,6 @@ struct TranslationPanel: View {
     private var presenterState: TranslationPanelPresenterState {
         .init(
             word: word,
-            pronunciation: pronunciation,
             partOfSpeech: result?.partOfSpeech,
             translation: result?.translation,
             isLoading: isLoading,
@@ -156,11 +154,9 @@ private struct TranslationPanelPreviewScene: View {
                         TranslationResult(
                             translation: $0,
                             partOfSpeech: "adj.",
-                            pronunciation: nil,
                             explanation: nil
                         )
                     },
-                    pronunciation: "/ɡɔːrˈdʒəs/",
                     isLoading: isLoading,
                     isSaved: true,
                     isLoggedIn: true,
