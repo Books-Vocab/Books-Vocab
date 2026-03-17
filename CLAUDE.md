@@ -133,6 +133,7 @@ Use this section as the "what already exists" checklist before proposing or chan
 ## Git
 - Monorepo root (`.git`) covers iOS app, backend API, ops/docs
 - Commit prefix: `ios:` / `api:` / `ops:` / `docs:`
+- **Worktree 強制規則**：任何程式碼修改一律在隔離 worktree 中進行，完成後 commit + 開 PR。**禁止**直接在本地 main 上修改，除非使用者明確指示「直接改 main」。
 
 ## Reference Docs (read on demand)
 - backend development: `docs/backend-dev.md`
