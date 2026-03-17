@@ -144,10 +144,11 @@ def push_review_states(
     *,
     cards_store: Any,
     logger: logging.Logger,
+    notebook_id: str | None = None,
 ) -> dict[str, int]:
     """Merge client review states into server cards. Returns {updated, skipped}."""
     card_by_word: dict[str, Any] = {}
-    for card in cards_store.all():
+    for card in cards_store.all(notebook_id=notebook_id):
         card_by_word[_normalize_word(card.content)] = card
 
     updated = 0
@@ -197,30 +198,30 @@ def push_review_states(
     return {"updated": updated, "skipped": skipped}
 
 
-def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> CardResponse:
+def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    card = cards_store.find_by_content(word)
+    card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise HTTPException(404, f"Word '{word}' not found")
-    cards_by_id = cards_store.all_as_dict(include_deleted=True)
+    cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
     return card_response_builder(card, graph, cards_by_id)
 
 
-def archive_vocab_word(word: str, *, archived: bool, cards_store: Any) -> dict[str, str]:
+def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, notebook_id: str | None = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    card = cards_store.find_by_content(word)
+    card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise HTTPException(404, f"Word '{word}' not found")
     cards_store.update(card.id, is_archived=archived)
     return {"word": word, "id": card.id, "archived": archived}
 
 
-def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None) -> dict[str, str]:
+def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
-    card = cards_store.find_by_content(word)
+    card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise HTTPException(404, f"Word '{word}' not found")
     cards_store.delete(card.id)

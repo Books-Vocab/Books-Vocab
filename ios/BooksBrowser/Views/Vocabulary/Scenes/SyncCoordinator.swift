@@ -100,7 +100,7 @@ final class SyncCoordinator: SyncCoordinating {
                         if Task.isCancelled { break }
                         entry.prepareForRetryAttempt()
                         do {
-                            try await kgService.deleteCard(word: entry.word)
+                            try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
                             if Task.isCancelled { break }
                             modelContext.delete(entry)
                             deleted += 1
