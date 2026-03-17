@@ -138,7 +138,7 @@ final class SyncCoordinator: SyncCoordinating {
 
                     do {
                         adds.forEach { $0.prepareForRetryAttempt() }
-                        let response = try await kgService.batchAdd(entries: adds)
+                        let response = try await kgService.batchAdd(entries: adds, notebookId: "default")
 
                         for entry in adds {
                             if let cardId = response.cardIds[entry.word] {
@@ -170,7 +170,7 @@ final class SyncCoordinator: SyncCoordinating {
 
                 updateStep("trigger", status: .running)
                 do {
-                    try await kgService.triggerPipeline()
+                    try await kgService.triggerPipeline(notebookId: "default")
                     updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
                     encounteredFailure = true
@@ -189,11 +189,11 @@ final class SyncCoordinator: SyncCoordinating {
                 }
 
                 updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
-                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container) { [weak self] detail, current, total in
+                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
-                }
+                }, notebookId: "default")
 
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
@@ -201,7 +201,7 @@ final class SyncCoordinator: SyncCoordinating {
                     updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
-                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: "default")
                 }
 
                 // Also pull daily stats from server

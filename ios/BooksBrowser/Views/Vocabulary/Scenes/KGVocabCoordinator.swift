@@ -60,7 +60,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         defer { isLoading = false }
 
         do {
-            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: "default")
             errorMessage = nil
             if dueEntries.isEmpty && !unlearnedEntries.isEmpty {
                 selectedReviewState.wrappedValue = .unlearned
@@ -76,7 +76,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     ) async {
         async let health: Void = kgService.healthCheck()
         do {
-            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil)
+            try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: "default")
             errorMessage = nil
         } catch {
             errorMessage = error.localizedDescription

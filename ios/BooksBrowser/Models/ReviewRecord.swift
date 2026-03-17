@@ -21,6 +21,7 @@ final class ReviewRecord {
     var feedback: Int          // 0=forgot, 1=remembered
     var reviewedAt: Date
     var dayKey: String         // "yyyy-MM-dd" 冗餘索引，加速按日查詢
+    var notebookId: String = "default"
 
     init(word: String, entryID: UUID?, feedback: Int, reviewedAt: Date = Date()) {
         self.id = UUID()
