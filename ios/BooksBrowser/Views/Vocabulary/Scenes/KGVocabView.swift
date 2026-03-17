@@ -16,6 +16,8 @@ struct KGVocabView: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var searchText: String
 
+    let notebookId: String
+
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
 
@@ -24,16 +26,23 @@ struct KGVocabView: View {
     @State private var sortOption: KGVocabSortOption = .default
     @State private var showArchiveList = false
 
-    @Query(filter: #Predicate<VocabularyEntry> { $0.actionType == "delete" })
-    private var pendingDeletes: [VocabularyEntry]
+    @Query private var pendingDeletes: [VocabularyEntry]
 
-    init(searchText: Binding<String>) {
+    init(searchText: Binding<String>, notebookId: String = "default") {
         self._searchText = searchText
-        let filter = #Predicate<VocabularyEntry> {
+        self.notebookId = notebookId
+        let nbId = notebookId
+        let syncedFilter = #Predicate<VocabularyEntry> {
             $0.syncStatus == 1 &&
-            $0.actionType != "delete"
+            $0.actionType != "delete" &&
+            $0.notebookId == nbId
         }
-        self._syncedEntries = Query(filter: filter)
+        self._syncedEntries = Query(filter: syncedFilter)
+        let deleteFilter = #Predicate<VocabularyEntry> {
+            $0.actionType == "delete" &&
+            $0.notebookId == nbId
+        }
+        self._pendingDeletes = Query(filter: deleteFilter)
     }
 
     var body: some View {
@@ -284,7 +293,7 @@ struct KGVocabView: View {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
         Task {
             do {
-                try await kgService.archiveCard(word: entry.word, archived: true)
+                try await kgService.archiveCard(word: entry.word, archived: true, notebookId: entry.notebookId)
                 entry.isArchived = true
                 modelContext.safeSave()
             } catch {
