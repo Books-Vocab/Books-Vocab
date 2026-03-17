@@ -196,3 +196,15 @@ class GraphStore:
         if count:
             self._save_links()
         return count
+
+    def remove_candidates_for(self, card_id: str) -> int:
+        """Remove all pending candidates involving a card. Returns count removed."""
+        before = len(self._candidates)
+        self._candidates = [
+            c for c in self._candidates
+            if c.from_id != card_id and c.to_id != card_id
+        ]
+        removed = before - len(self._candidates)
+        if removed:
+            self._save_candidates()
+        return removed
