@@ -34,8 +34,15 @@ class _CardsOk:
                 difficulty=None,
                 is_deleted=False,
                 notebook_id="default",
+                embed_text=lambda: "evoke",
             )
         ]
+
+    def update(self, card_id, **kwargs):
+        return None
+
+    def get(self, card_id):
+        return None
 
 
 class _GraphOk:

@@ -6,6 +6,7 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 
 from .token_tracker import _get_conn, _lock
@@ -15,9 +16,17 @@ INPUT_PER_M = 0.10
 OUTPUT_PER_M = 0.40
 EMBED_PER_M = 0.00025
 
-PRO_DAILY_LIMIT_USD = 0.30
-FREE_DAILY_LIMIT_USD = 0.03
+# Defaults; overridden at runtime via configure_limits() from app startup.
+PRO_DAILY_LIMIT_USD: float = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
+FREE_DAILY_LIMIT_USD: float = float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03"))
 _ROLLING_WINDOW_SECONDS = 86400  # 24 h
+
+
+def configure_limits(*, pro: float, free: float) -> None:
+    """Called from app startup to sync limits with KGSettings."""
+    global PRO_DAILY_LIMIT_USD, FREE_DAILY_LIMIT_USD
+    PRO_DAILY_LIMIT_USD = pro
+    FREE_DAILY_LIMIT_USD = free
 
 
 def _daily_limit(is_pro: bool) -> float:

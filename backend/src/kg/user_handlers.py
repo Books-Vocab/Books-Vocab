@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import shutil
+import sqlite3
 from collections.abc import Callable
 from datetime import UTC, datetime
 from logging import Logger
@@ -186,7 +187,7 @@ def health_response(
     db_ok = True
     try:
         cards.count()
-    except Exception:
+    except (OSError, sqlite3.DatabaseError):
         db_ok = False
 
     data_dir_exists = user_dir.exists()
@@ -194,7 +195,7 @@ def health_response(
     disk_free_mb: int | None = None
     try:
         disk_free_mb = shutil.disk_usage(user_dir).free // (1024 * 1024)
-    except Exception:
+    except OSError:
         pass
 
     return HealthResponse(
