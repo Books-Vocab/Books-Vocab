@@ -39,11 +39,11 @@ def list_vocab_response(
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
-    notebook_id: str = "default",
+    notebook_id: str | None = None,
 ) -> list[Any]:
     require_pro_access(user, "knowledge_sync")
     cards_store = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default")
     return list_vocab_cards(
         since=since,
         limit=limit,

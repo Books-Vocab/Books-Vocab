@@ -21,6 +21,7 @@ struct NotebookListView: View {
     @State private var activeNotebookId: String = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
     @State private var reviewFilter = NotebookFilter.load()
     @State private var activeReviewSession: TodayReviewSession?
+    @State private var notebookToDelete: Notebook?
 
     var body: some View {
         NavigationStack {
@@ -32,10 +33,11 @@ struct NotebookListView: View {
                             .padding(.bottom, skin.spacing.sectionGap)
                     }
 
-                    if notebooks.isEmpty {
+                    let visible = notebooks.filter { !$0.isDeleted }
+                    if visible.isEmpty {
                         emptyState
                     } else {
-                        ForEach(notebooks.filter { !$0.isDeleted }) { notebook in
+                        ForEach(visible) { notebook in
                             NavigationLink(value: notebook.remoteId) {
                                 NotebookRow(
                                     name: notebook.name,
@@ -62,14 +64,14 @@ struct NotebookListView: View {
                                 if !notebook.isDefault {
                                     Divider()
                                     Button(role: .destructive) {
-                                        deleteNotebook(notebook)
+                                        notebookToDelete = notebook
                                     } label: {
                                         Label("刪除".localized, systemImage: "trash")
                                     }
                                 }
                             }
 
-                            if notebook.id != notebooks.filter({ !$0.isDeleted }).last?.id {
+                            if notebook.id != visible.last?.id {
                                 Divider()
                                     .padding(.leading, skin.metrics.listRowHorizontalInset)
                             }
@@ -113,6 +115,23 @@ struct NotebookListView: View {
             }
             .task {
                 await ensureDefaultNotebook()
+            }
+            .confirmationDialog(
+                "確定要刪除此單字本？".localized,
+                isPresented: Binding(
+                    get: { notebookToDelete != nil },
+                    set: { if !$0 { notebookToDelete = nil } }
+                ),
+                titleVisibility: .visible
+            ) {
+                Button("刪除".localized, role: .destructive) {
+                    if let notebook = notebookToDelete {
+                        deleteNotebook(notebook)
+                        notebookToDelete = nil
+                    }
+                }
+            } message: {
+                Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
             }
         }
     }
