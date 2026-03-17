@@ -21,13 +21,8 @@ struct NotebookEditSheet: View {
     @State private var name: String = ""
     @State private var selectedColor: String?
 
-    private let colorOptions: [(String, Color)] = [
-        ("#5B8C5A", .green),
-        ("#4A90D9", .blue),
-        ("#D4A843", .orange),
-        ("#A855C7", .purple),
-        ("#D9534F", .red),
-        ("#6B7280", .gray),
+    private let colorOptions: [String] = [
+        "#5B8C5A", "#4A90D9", "#D4A843", "#A855C7", "#D9534F", "#6B7280",
     ]
 
     init(mode: Mode, onSave: @escaping (String, String?) -> Void) {
@@ -52,14 +47,14 @@ struct NotebookEditSheet: View {
 
                 Section("顏色".localized) {
                     HStack(spacing: skin.spacing.inlineGap) {
-                        ForEach(colorOptions, id: \.0) { hex, color in
+                        ForEach(colorOptions, id: \.self) { hex in
                             Circle()
-                                .fill(color)
-                                .frame(width: 32, height: 32)
+                                .fill(Color(hex: hex) ?? skin.palette.accent)
+                                .frame(width: AppMetrics.spacingExtraLarge, height: AppMetrics.spacingExtraLarge)
                                 .overlay {
                                     if selectedColor == hex {
                                         Image(systemName: "checkmark")
-                                            .font(.caption.bold())
+                                            .font(skin.typography.captionStrong)
                                             .foregroundStyle(.white)
                                     }
                                 }
