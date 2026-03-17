@@ -25,13 +25,14 @@ async def _step_enrich(
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     force: bool = False,
+    notebook_id: str = "default",
 ) -> None:
-    logger.info("[%s] Step 1: Enrich (force=%s)", uid, force)
+    logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
     if force:
-        targets = list(cards.all(include_deleted=False))
+        targets = list(cards.all(include_deleted=False, notebook_id=notebook_id))
     else:
-        targets = [card for card in cards.all() if not card.pos or not card.note]
+        targets = [card for card in cards.all(notebook_id=notebook_id) if not card.pos or not card.note]
 
     if not targets:
         logger.info("[%s] All cards already enriched", uid)
@@ -99,14 +100,15 @@ async def _step_embed(
     user: dict[str, Any],
     *,
     card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[[Any], Any],
+    graph_store_factory: Callable[..., Any],
     embedding_store_factory: Callable[..., Any],
     logger: logging.Logger,
+    notebook_id: str = "default",
 ) -> None:
     cards = card_store_factory(user["dir"])
-    embeddings = embedding_store_factory(user["dir"], user_id=uid)
-    graph = graph_store_factory(user["dir"])
-    missing = [card for card in cards.all() if not embeddings.has(card.id)]
+    embeddings = embedding_store_factory(user["dir"], user_id=uid, notebook_id=notebook_id)
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    missing = [card for card in cards.all(notebook_id=notebook_id) if not embeddings.has(card.id)]
 
     if not missing:
         return
@@ -124,13 +126,14 @@ async def _step_link(
     user: dict[str, Any],
     *,
     card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[[Any], Any],
+    graph_store_factory: Callable[..., Any],
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     link_kind_enum: Any,
+    notebook_id: str = "default",
 ) -> None:
-    logger.info("[%s] Step 2: Link", uid)
-    graph = graph_store_factory(user["dir"])
+    logger.info("[%s] Step 2: Link (notebook=%s)", uid, notebook_id)
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     candidates = graph.pop_candidates()
 
     if not candidates:
@@ -182,13 +185,14 @@ async def _step_difficulty(
     *,
     card_store_factory: Callable[[Any], Any],
     logger: logging.Logger,
+    notebook_id: str = "default",
 ) -> None:
-    logger.info("[%s] Step 3: Difficulty", uid)
+    logger.info("[%s] Step 3: Difficulty (notebook=%s)", uid, notebook_id)
     from .difficulty import get_zipf
 
     cards = card_store_factory(user["dir"])
     scored = 0
-    for card in cards.all(include_deleted=False):
+    for card in cards.all(include_deleted=False, notebook_id=notebook_id):
         difficulty = round(get_zipf(card.content), 2)
         if card.difficulty != difficulty:
             cards.update(card.id, difficulty=difficulty)
@@ -201,11 +205,12 @@ async def _step_external_sync(
     user: dict[str, Any],
     *,
     card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[[Any], Any],
+    graph_store_factory: Callable[..., Any],
     logger: logging.Logger,
     jwt_secret: str = "",
+    notebook_id: str = "default",
 ) -> None:
-    logger.info("[%s] Step 4: Optional External Sync", uid)
+    logger.info("[%s] Step 4: Optional External Sync (notebook=%s)", uid, notebook_id)
     mochi_key = resolve_mochi_api_key_from_config(user["config"], jwt_secret)
     if not mochi_key:
         logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
@@ -215,7 +220,7 @@ async def _step_external_sync(
     from .renderer import RenderIntent
 
     cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     mochi_client = MochiClient(mochi_key)
     syncer = MochiSync(
         mochi_client,
@@ -237,13 +242,14 @@ async def run_pipeline_background(
     *,
     get_user_lock_fn: Callable[[str], Any],
     card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[[Any], Any],
+    graph_store_factory: Callable[..., Any],
     embedding_store_factory: Callable[..., Any],
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     link_kind_enum: Any,
     jwt_secret: str = "",
     force_enrich: bool = False,
+    notebook_id: str = "default",
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -267,6 +273,7 @@ async def run_pipeline_background(
                     gemini_client_factory=gemini_client_factory,
                     logger=logger,
                     force=force_enrich,
+                    notebook_id=notebook_id,
                     max_attempts=2,
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Enrich", uid=uid,
@@ -281,6 +288,7 @@ async def run_pipeline_background(
                     graph_store_factory=graph_store_factory,
                     embedding_store_factory=embedding_store_factory,
                     logger=logger,
+                    notebook_id=notebook_id,
                     max_attempts=2,
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Embed", uid=uid,
@@ -296,6 +304,7 @@ async def run_pipeline_background(
                     gemini_client_factory=gemini_client_factory,
                     logger=logger,
                     link_kind_enum=link_kind_enum,
+                    notebook_id=notebook_id,
                     max_attempts=2,
                     retryable_exceptions=(OpenAIError, OSError),
                     step_name="Link", uid=uid,
@@ -304,12 +313,12 @@ async def run_pipeline_background(
                 logger.error("[%s] Step 2 (Link) failed after retries: %s", uid, exc, exc_info=True)
 
             try:
-                await _step_difficulty(uid, user, card_store_factory=card_store_factory, logger=logger)
+                await _step_difficulty(uid, user, card_store_factory=card_store_factory, logger=logger, notebook_id=notebook_id)
             except Exception as exc:
                 logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
 
             try:
-                await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret)
+                await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret, notebook_id=notebook_id)
             except Exception as exc:
                 logger.error("[%s] Step 4 (Optional External Sync) failed: %s", uid, exc, exc_info=True)
 
