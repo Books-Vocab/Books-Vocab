@@ -153,33 +153,41 @@ class CardStore:
             )
             return session.exec(statement).first()
 
-    def find_by_content(self, content: str) -> Card | None:
+    def find_by_content(self, content: str, notebook_id: str | None = None) -> Card | None:
         """Case-insensitive lookup with Unicode NFC normalization.
 
         1. Exact match (uses ix_card_content index)
         2. Case-insensitive via raw SQL COLLATE NOCASE
         3. Fallback: Python-side NFC normalization for decomposed Unicode
+
+        When notebook_id is given, results are scoped to that notebook.
         """
         import unicodedata
         norm = unicodedata.normalize("NFC", content).strip()
         with Session(self.engine) as session:
             # 1. Exact match — uses index
-            result = session.exec(
-                select(Card).where(Card.content == norm, Card.is_deleted.is_(False))
-            ).first()
+            stmt = select(Card).where(Card.content == norm, Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                stmt = stmt.where(Card.notebook_id == notebook_id)
+            result = session.exec(stmt).first()
             if result:
                 return result
             # 2. Case-insensitive via raw SQL
             conn = session.connection()
+            nb_clause = " AND notebook_id = ?" if notebook_id is not None else ""
+            params = (norm, notebook_id) if notebook_id is not None else (norm,)
             row = conn.exec_driver_sql(
-                "SELECT id FROM card WHERE content = ? COLLATE NOCASE AND is_deleted = 0 LIMIT 1",
-                (norm,),
+                f"SELECT id FROM card WHERE content = ? COLLATE NOCASE AND is_deleted = 0{nb_clause} LIMIT 1",
+                params,
             ).first()
             if row:
                 return session.get(Card, row[0])
             # 3. NFC normalization fallback (handles decomposed Unicode like café)
+            fallback_stmt = select(Card).where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                fallback_stmt = fallback_stmt.where(Card.notebook_id == notebook_id)
             norm_lower = norm.lower()
-            for card in session.exec(select(Card).where(Card.is_deleted.is_(False))).all():
+            for card in session.exec(fallback_stmt).all():
                 if unicodedata.normalize("NFC", card.content).strip().lower() == norm_lower:
                     return card
             return None

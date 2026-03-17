@@ -92,11 +92,11 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         var failedCount = 0
         for entry in pendingDeletes {
             do {
-                try await kgService.deleteCard(word: entry.word)
+                try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
                 modelContext.delete(entry)
             } catch {
                 failedCount += 1
-                AppLog.kg.error("Failed to delete '\(entry.word)': \(error.localizedDescription)")
+                AppLog.kg.error("deleteCard retry failed '\(entry.word)': \(error.localizedDescription)")
             }
         }
 

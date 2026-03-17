@@ -56,7 +56,7 @@ class _FakeCardsStore:
     def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
 
-    def find_by_content(self, content: str):
+    def find_by_content(self, content: str, notebook_id: str | None = None):
         import unicodedata
         norm = unicodedata.normalize("NFC", content).strip().lower()
         for card in self._cards:
