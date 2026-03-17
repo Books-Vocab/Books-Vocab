@@ -41,6 +41,7 @@ private struct ReaderChromePreviewScene: View {
                 explanationErrorMessage: nil,
                 onExpand: {},
                 onDelete: {},
+                onShowDetail: nil,
                 onDismiss: {}
             )
         } settingsPanel: {
