@@ -22,9 +22,10 @@ struct NotebookListView: View {
     @State private var reviewFilter = NotebookFilter.load()
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
+    @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        NavigationStack {
+        NavigationStack(path: $navigationPath) {
             ScrollView {
                 LazyVStack(spacing: 0) {
                     // Cross-notebook review section
