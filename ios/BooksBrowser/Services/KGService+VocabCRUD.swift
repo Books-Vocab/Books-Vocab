@@ -19,7 +19,7 @@ struct KGVocabEntry: Codable {
 
 extension KGService {
 
-    func deleteCard(word: String, notebookId: String = "default") async throws {
+    func deleteCard(word: String, notebookId: String) async throws {
         let token = try await currentAuthToken()
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab/\(encoded)"), resolvingAgainstBaseURL: false) else {
@@ -45,7 +45,7 @@ extension KGService {
         }
     }
 
-    func archiveCard(word: String, archived: Bool, notebookId: String = "default") async throws {
+    func archiveCard(word: String, archived: Bool, notebookId: String) async throws {
         let token = try await currentAuthToken()
         let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab/\(encoded)/archive"), resolvingAgainstBaseURL: false) else {

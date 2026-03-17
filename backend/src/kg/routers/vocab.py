@@ -82,13 +82,14 @@ def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_
 @router.patch("/api/vocab/review", response_model=ReviewStatePushResponse)
 def push_review(
     req: ReviewStatePushRequest,
-    notebook_id: str = Query("default"),
     user: dict = Depends(get_current_user),
 ):
+    # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
+    # 後端需在全域卡片中查找匹配。
     return push_review_response(
         req, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, logger=logger,
-        notebook_id=notebook_id,
+        notebook_id=None,
     )
 
 
