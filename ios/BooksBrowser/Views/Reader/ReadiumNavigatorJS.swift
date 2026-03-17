@@ -124,13 +124,14 @@ enum ReadiumNavigatorJS {
             var textNodes = [];
             while (walker.nextNode()) textNodes.push(walker.currentNode);
 
+            var escaped = word.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
+
             textNodes.forEach(function(node) {
                 var parent = node.parentElement;
                 if (!parent) return;
                 if (parent.classList.contains('vocab-word')) return;
                 if (parent.tagName === 'SCRIPT' || parent.tagName === 'STYLE') return;
 
-                var escaped = word.replace(/[.*+?^${}()|[\\]\\\\]/g, '\\\\$&');
                 var regex = new RegExp('\\\\b(' + escaped + ')\\\\b', 'gi');
                 if (!regex.test(node.textContent)) return;
                 regex.lastIndex = 0;
@@ -151,6 +152,37 @@ enum ReadiumNavigatorJS {
                     parent.replaceChild(fragment, node);
                 }
             });
+
+            // 跨節點 fallback：處理連字號詞可能被拆成多個 text node 的情況
+            if (word.indexOf('-') === -1) return;
+            if (document.querySelector('.vocab-word') &&
+                Array.from(document.querySelectorAll('.vocab-word')).some(
+                    function(el) { return el.textContent.toLowerCase() === lowerWord; }
+                )) return;
+
+            var walker2 = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null, false);
+            var nodes2 = [];
+            while (walker2.nextNode()) nodes2.push(walker2.currentNode);
+
+            for (var i = 0; i < nodes2.length; i++) {
+                var combined = '';
+                var span = 0;
+                while (span < 10 && i + span < nodes2.length) {
+                    combined += nodes2[i + span].textContent;
+                    span++;
+                    var testRegex = new RegExp(escaped, 'i');
+                    if (testRegex.test(combined)) {
+                        var wrapper = document.createElement('span');
+                        wrapper.className = 'vocab-word';
+                        var firstNode = nodes2[i];
+                        firstNode.parentNode.insertBefore(wrapper, firstNode);
+                        for (var j = 0; j < span; j++) {
+                            wrapper.appendChild(nodes2[i + j]);
+                        }
+                        return;
+                    }
+                }
+            }
         };
 
         // 批量標記生字（分批 DOM 遍歷，並向 Swift 回報進度）
@@ -209,6 +241,19 @@ enum ReadiumNavigatorJS {
                 window.webkit.messageHandlers.markingProgress.postMessage(JSON.stringify({done:processed,total:total}));
                 if (processed < total) {
                     setTimeout(processBatch, 0);
+                } else {
+                    // 跨節點 fallback for hyphenated words
+                    var hyphenatedWords = words.filter(function(w) { return w.indexOf('-') !== -1; });
+                    if (hyphenatedWords.length > 0) {
+                        var marked = {};
+                        document.querySelectorAll('.vocab-word').forEach(function(el) {
+                            marked[el.textContent.toLowerCase()] = true;
+                        });
+                        hyphenatedWords.forEach(function(hw) {
+                            if (marked[hw.toLowerCase()]) return;
+                            window.__markVocabWord(hw);
+                        });
+                    }
                 }
             }
             processBatch();
