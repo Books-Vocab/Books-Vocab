@@ -20,11 +20,7 @@
 ### Step 1：靜默編譯，直擊錯誤
 
 ```bash
-xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -quiet build
+./ops/ios_build.sh
 ```
 
 - Exit Code `0` → 完成，停止

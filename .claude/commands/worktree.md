@@ -43,7 +43,7 @@ EnterWorktree(branch: "worktree-<名稱>")
 依照專案慣例跑驗證：
 
 - Backend：`python -m pytest backend/tests/ -x -q`
-- iOS：依 CLAUDE.md 的 xcodebuild 指令
+- iOS：`./ops/ios_build.sh`
 - 有錯就修，修完重跑
 
 ### 5. 提交 + PR
