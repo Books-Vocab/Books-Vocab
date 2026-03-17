@@ -220,7 +220,7 @@ struct NotebookListView: View {
     // MARK: - Card Count Helpers
 
     private func cardCount(for notebookId: String) -> Int {
-        allEntries.filter { $0.notebookId == notebookId && $0.syncAction != .delete && !$0.isArchived }.count
+        allEntries.filter { $0.shouldAppearInKnowledgeList && $0.notebookId == notebookId }.count
     }
 
     private func dueCount(for notebookId: String) -> Int {
