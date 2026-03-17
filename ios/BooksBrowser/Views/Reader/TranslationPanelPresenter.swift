@@ -75,7 +75,7 @@ struct TranslationPanelPresenter: View {
                 systemImage: "translate"
             ) {
                 HStack {
-                    ProgressView().scaleEffect(0.8)
+                    ProgressView().scaleEffect(AppMetrics.loadingIndicatorScaleMedium)
                     Spacer()
                     if let timerText = state.activeTimerText {
                         Text(timerText)
@@ -199,7 +199,7 @@ struct TranslationPanelPresenter: View {
                 systemImage: "text.bubble"
             ) {
                 HStack {
-                    ProgressView().scaleEffect(0.7)
+                    ProgressView().scaleEffect(AppMetrics.loadingIndicatorScaleSmall)
                     Spacer()
                     if let timerText = state.activeTimerText {
                         Text(timerText)

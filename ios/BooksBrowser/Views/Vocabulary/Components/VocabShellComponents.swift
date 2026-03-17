@@ -24,46 +24,6 @@ struct VocabTabSelector<ID: Hashable>: View {
     }
 }
 
-struct VocabChromePill: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let title: String
-    let systemImage: String
-    var count: Int? = nil
-    var emphasized: Bool = false
-
-    var body: some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
-            Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconSmall)
-
-            Text(title.localized)
-                .font(vocabSkin.typography.captionStrong)
-
-            if let count {
-                Text("\(count)")
-                    .font(vocabSkin.typography.monoLabel)
-                    .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
-                    .padding(.vertical, vocabSkin.spacing.compactRowAccessoryTopInset)
-                    .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                            .fill((emphasized ? vocabSkin.palette.overlayFill : vocabSkin.palette.mutedFill))
-                    )
-            }
-        }
-        .foregroundStyle(emphasized ? vocabSkin.palette.pageBackground : vocabSkin.palette.secondaryText)
-        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPaddingOuter)
-        .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
-        .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                .fill(emphasized ? vocabSkin.palette.primaryText : vocabSkin.palette.cardBackground)
-        )
-        .overlay(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                .stroke(emphasized ? vocabSkin.palette.primaryText : vocabSkin.palette.cardBorder, lineWidth: 1)
-        )
-    }
-}
-
 struct VocabSearchField: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var text: String
