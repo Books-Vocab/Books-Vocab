@@ -38,8 +38,9 @@ def list_notebooks(since: str | None = None, user: dict = Depends(get_current_us
     else:
         notebooks = store.all(include_deleted=True)
 
+    counts = cards.count_by_notebook()
     return [
-        _notebook_response(nb, card_count=cards.count(notebook_id=nb.id))
+        _notebook_response(nb, card_count=counts.get(nb.id, 0))
         for nb in notebooks
     ]
 
