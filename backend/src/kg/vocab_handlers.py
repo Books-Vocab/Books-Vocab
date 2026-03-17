@@ -72,6 +72,7 @@ def lookup_word_response(
         cards_store=cards,
         graph=graph,
         card_response_builder=card_response_builder,
+        notebook_id=notebook_id,
     )
 
 
@@ -82,10 +83,11 @@ def archive_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
+    notebook_id: str | None = None,
 ) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    return archive_vocab_word(word, archived=req.archived, cards_store=cards)
+    return archive_vocab_word(word, archived=req.archived, cards_store=cards, notebook_id=notebook_id)
 
 
 def delete_word_response(
@@ -100,7 +102,7 @@ def delete_word_response(
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
-    return delete_vocab_word(word, cards_store=cards, graph=graph)
+    return delete_vocab_word(word, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
 def get_graph_links_response(
@@ -146,10 +148,11 @@ def push_review_response(
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     logger: Logger,
+    notebook_id: str | None = None,
 ) -> ReviewStatePushResponse:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    result = push_review_states(req.entries, cards_store=cards, logger=logger)
+    result = push_review_states(req.entries, cards_store=cards, logger=logger, notebook_id=notebook_id)
     return ReviewStatePushResponse(**result)
 
 

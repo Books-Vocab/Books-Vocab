@@ -26,8 +26,8 @@ protocol KGServing: AnyObject {
     func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig
     func deleteAccount() async throws
     func pullGraphLinks() async throws -> [KGGraphLink]
-    func deleteCard(word: String) async throws
-    func archiveCard(word: String, archived: Bool) async throws
+    func deleteCard(word: String, notebookId: String) async throws
+    func archiveCard(word: String, archived: Bool, notebookId: String) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func pushDailyStats(container: ModelContainer) async throws -> Int
     func pullDailyStats(container: ModelContainer) async throws
