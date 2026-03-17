@@ -138,12 +138,18 @@ final class SyncCoordinator: SyncCoordinating {
 
                     do {
                         adds.forEach { $0.prepareForRetryAttempt() }
-                        let response = try await kgService.batchAdd(entries: adds, notebookId: "default")
-
-                        for entry in adds {
-                            if let cardId = response.cardIds[entry.word] {
-                                entry.kgCardId = cardId
+                        let grouped = Dictionary(grouping: adds, by: { $0.notebookId })
+                        var totalCreated = 0
+                        var totalSkipped = 0
+                        for (nbId, batch) in grouped {
+                            let response = try await kgService.batchAdd(entries: batch, notebookId: nbId)
+                            for entry in batch {
+                                if let cardId = response.cardIds[entry.word] {
+                                    entry.kgCardId = cardId
+                                }
                             }
+                            totalCreated += response.created
+                            totalSkipped += response.skipped
                         }
                         modelContext.safeSave()
 
@@ -152,7 +158,7 @@ final class SyncCoordinator: SyncCoordinating {
                             status: .done,
                             current: adds.count,
                             total: adds.count,
-                            detail: L10n.format("%@ 新增, %@ 已存在", "\(response.created)", "\(response.skipped)")
+                            detail: L10n.format("%@ 新增, %@ 已存在", "\(totalCreated)", "\(totalSkipped)")
                         )
                     } catch {
                         adds.forEach { $0.markSyncFailed() }
@@ -170,7 +176,11 @@ final class SyncCoordinator: SyncCoordinating {
 
                 updateStep("trigger", status: .running)
                 do {
-                    try await kgService.triggerPipeline(notebookId: "default")
+                    let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
+                    let notebookIds = affectedNotebookIds.isEmpty ? ["default"] : Array(affectedNotebookIds)
+                    for nbId in notebookIds {
+                        try await kgService.triggerPipeline(notebookId: nbId)
+                    }
                     updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
                     encounteredFailure = true
@@ -193,7 +203,7 @@ final class SyncCoordinator: SyncCoordinating {
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
                     }
-                }, notebookId: "default")
+                }, notebookId: nil)
 
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
@@ -201,7 +211,7 @@ final class SyncCoordinator: SyncCoordinating {
                     updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
-                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: "default")
+                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
                 }
 
                 // Also pull daily stats from server

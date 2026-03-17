@@ -145,7 +145,7 @@ actor BackgroundSyncActor {
     /// Deletes all vocabulary entries and review records from local SwiftData storage.
     /// Used during logout or account switch for data isolation.
     func clearVocabularyData(reason: String) throws {
-        AppLog.sync.info("Clearing all local vocabulary + review data... reason=\(reason)")
+        AppLog.sync.info("Clearing all local vocabulary + review + notebook data... reason=\(reason)")
         let entries = try modelContext.fetch(FetchDescriptor<VocabularyEntry>())
         for entry in entries {
             modelContext.delete(entry)
@@ -154,8 +154,12 @@ actor BackgroundSyncActor {
         for record in reviews {
             modelContext.delete(record)
         }
+        let notebooks = try modelContext.fetch(FetchDescriptor<Notebook>())
+        for notebook in notebooks {
+            modelContext.delete(notebook)
+        }
         try modelContext.save()
-        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review records. reason=\(reason)")
+        AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks. reason=\(reason)")
     }
 
     /// Deletes only server-synced entries (syncStatus == 1).

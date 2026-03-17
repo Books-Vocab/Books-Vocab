@@ -85,8 +85,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         }
 
         if let existing = self.userId, existing != userIdStr {
-            AppLog.auth.info("Account switch detected, clearing sync timestamp")
-            UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
+            AppLog.auth.info("Account switch detected, clearing sync + notebook state")
+            let defaults = UserDefaults.standard
+            defaults.removeObject(forKey: "kg_last_incremental_sync")
+            defaults.removeObject(forKey: "kg_review_payload_version")
+            defaults.removeObject(forKey: "activeNotebookId")
+            defaults.removeObject(forKey: NotebookFilter.storageKey)
             AppAnalytics.track(.accountSwitchDetected)
         }
 
