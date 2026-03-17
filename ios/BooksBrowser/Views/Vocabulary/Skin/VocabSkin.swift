@@ -386,7 +386,7 @@ extension VocabSkin {
         reviewToolbarHorizontalInset: 20,
         reviewToolbarVerticalInset: 12,
         reviewFoldPadding: 28,
-        reviewFoldSectionSpacing: 20,
+        reviewFoldSectionSpacing: 24,
         reviewFoldHintBottomInset: 22,
         reviewFoldHintTopInset: 22,
         reviewFrontMinHeight: 120,
