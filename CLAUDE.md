@@ -72,20 +72,19 @@ Use this section as the "what already exists" checklist before proposing or chan
 
 ## iOS 編譯 SOP（強制）
 
-**唯一合法的 xcodebuild 指令**（從 `projects/kg/` 執行）：
+**唯一合法的編譯方式**（從 `projects/kg/` 或任何 worktree 執行）：
 
 ```bash
-xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -quiet build
+./ops/ios_build.sh
 ```
+
+`ios_build.sh` 內建 `shlock` 排隊鎖，多個 worktree agent 可同時呼叫，
+自動排隊共用 DerivedData 快取（增量 ~15s vs cold ~3min）。
 
 規則：
 - Exit 0 → 成功，停止
 - Exit 非 0 → 讀錯誤上下文 ±20 行，修正後重跑
-- **禁止**：改機型、拿掉 `-quiet`、加 `2>&1 | grep`、加 `cd ios &&`
+- **禁止**：直接呼叫 `xcodebuild`、改機型、拿掉 `-quiet`、加 `2>&1 | grep`、加 `cd ios &&`
 
 ## iOS UI Design System（強制）
 

@@ -75,9 +75,8 @@ git stash pop
 ## 7. 測試驗證（平行執行）
 
 ```bash
-# iOS 編譯
-xcodebuild -project ios/BooksBrowser.xcodeproj -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' -quiet build
+# iOS 編譯（自動排隊鎖）
+./ops/ios_build.sh
 
 # Backend 測試
 python -m pytest backend/tests/ -x -q

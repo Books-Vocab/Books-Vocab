@@ -88,11 +88,7 @@ gh pr merge $PR_NUM --merge
 
 ```bash
 git pull origin main
-xcodebuild \
-  -project ios/BooksBrowser.xcodeproj \
-  -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  -quiet build
+./ops/ios_build.sh
 ```
 
 - Exit code 0 → 成功
