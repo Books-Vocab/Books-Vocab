@@ -11,6 +11,10 @@ final class LocalDataCleanerService: LocalDataClearing {
         } catch {
             AppLog.sync.error("clearVocabularyData failed: \(error.localizedDescription)")
         }
-        UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: "kg_last_incremental_sync")
+        defaults.removeObject(forKey: "kg_review_payload_version")
+        defaults.removeObject(forKey: "activeNotebookId")
+        defaults.removeObject(forKey: NotebookFilter.storageKey)
     }
 }
