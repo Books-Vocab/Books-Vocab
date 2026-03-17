@@ -262,7 +262,8 @@ final class TodayReviewState {
                 word: entryToUpdate.word,
                 entryID: entryToUpdate.id,
                 feedback: feedback,
-                context: modelContext
+                context: modelContext,
+                notebookId: entryToUpdate.notebookId
             )
         }
 

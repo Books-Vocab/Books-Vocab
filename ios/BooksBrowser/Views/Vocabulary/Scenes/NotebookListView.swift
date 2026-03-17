@@ -14,15 +14,24 @@ struct NotebookListView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.vocabSkin) private var skin
+    @Environment(\.horizontalSizeClass) private var sizeClass
 
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
     @State private var activeNotebookId: String = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+    @State private var reviewFilter = NotebookFilter.load()
+    @State private var activeReviewSession: TodayReviewSession?
 
     var body: some View {
         NavigationStack {
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    // Cross-notebook review section
+                    if totalDueCount > 0 {
+                        reviewBanner
+                            .padding(.bottom, skin.spacing.sectionGap)
+                    }
+
                     if notebooks.isEmpty {
                         emptyState
                     } else {
@@ -95,10 +104,52 @@ struct NotebookListView: View {
                     Task { await updateNotebook(notebook, name: name, color: color) }
                 }
             }
+            .fullScreenCover(item: $activeReviewSession) { session in
+                TodayReviewView(
+                    entries: session.entries,
+                    allEntries: allEntries,
+                    onClose: { activeReviewSession = nil }
+                )
+            }
             .task {
                 await ensureDefaultNotebook()
             }
         }
+    }
+
+    // MARK: - Review Banner
+
+    @ViewBuilder
+    private var reviewBanner: some View {
+        VStack(spacing: skin.spacing.inlineGap) {
+            HStack {
+                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                    Text("今日複習".localized)
+                        .font(skin.typography.captionStrong)
+                        .foregroundStyle(skin.palette.primaryText)
+
+                    Text(L10n.format("%@ 張卡片到期", "\(filteredDueCount)"))
+                        .font(skin.typography.caption)
+                        .foregroundStyle(skin.palette.secondaryText)
+                }
+
+                Spacer()
+
+                NotebookFilterChip(filter: $reviewFilter)
+
+                Button {
+                    startFilteredReview()
+                } label: {
+                    Label("開始".localized, systemImage: "play.fill")
+                        .font(skin.typography.captionStrong)
+                }
+                .buttonStyle(.borderedProminent)
+                .controlSize(.small)
+                .disabled(filteredDueEntries.isEmpty)
+            }
+        }
+        .padding(skin.spacing.cardPadding)
+        .background(skin.palette.cardBackground, in: RoundedRectangle(cornerRadius: skin.radii.card))
     }
 
     // MARK: - Empty State
@@ -113,7 +164,31 @@ struct NotebookListView: View {
         .padding(.top, skin.spacing.sectionGap)
     }
 
-    // MARK: - Helpers
+    // MARK: - Review Helpers
+
+    private var totalDueCount: Int {
+        let now = Date()
+        return allEntries.filter { $0.shouldAppearInKnowledgeList && $0.nextReviewAt <= now }.count
+    }
+
+    private var filteredDueEntries: [VocabularyEntry] {
+        let now = Date()
+        return allEntries.filter {
+            $0.shouldAppearInKnowledgeList &&
+            $0.nextReviewAt <= now &&
+            reviewFilter.matches($0.notebookId)
+        }
+    }
+
+    private var filteredDueCount: Int { filteredDueEntries.count }
+
+    private func startFilteredReview() {
+        let entries = filteredDueEntries
+        guard !entries.isEmpty else { return }
+        activeReviewSession = TodayReviewSession(entries: entries)
+    }
+
+    // MARK: - Card Count Helpers
 
     private func cardCount(for notebookId: String) -> Int {
         allEntries.filter { $0.notebookId == notebookId && $0.syncAction != .delete && !$0.isArchived }.count
