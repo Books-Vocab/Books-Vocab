@@ -14,7 +14,6 @@ struct TodayReviewPresenterState {
         let card: CardPresentation
         let linkGroups: [LinkGroup]
         let backDocument: CardDocument
-        let meaningParagraphs: [CardDocumentParagraph]
     }
 
     let progressText: String
