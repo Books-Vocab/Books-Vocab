@@ -136,40 +136,47 @@ final class SyncCoordinator: SyncCoordinating {
                 if !adds.isEmpty {
                     updateStep("upload_add", status: .running, total: adds.count)
 
-                    do {
-                        adds.forEach { $0.prepareForRetryAttempt() }
-                        let grouped = Dictionary(grouping: adds, by: { $0.notebookId })
-                        var totalCreated = 0
-                        var totalSkipped = 0
-                        for (nbId, batch) in grouped {
-                            let response = try await kgService.batchAdd(entries: batch, notebookId: nbId)
-                            for entry in batch {
+                    let grouped = Dictionary(grouping: adds, by: \.notebookId)
+                    var totalCreated = 0
+                    var totalSkipped = 0
+                    var batchFailed = false
+
+                    for (nbId, entries) in grouped {
+                        do {
+                            entries.forEach { $0.prepareForRetryAttempt() }
+                            let response = try await kgService.batchAdd(entries: entries, notebookId: nbId)
+
+                            for entry in entries {
                                 if let cardId = response.cardIds[entry.word] {
                                     entry.kgCardId = cardId
                                 }
                             }
                             totalCreated += response.created
                             totalSkipped += response.skipped
+                        } catch {
+                            entries.forEach { $0.markSyncFailed() }
+                            encounteredFailure = true
+                            batchFailed = true
                         }
-                        modelContext.safeSave()
+                    }
+                    modelContext.safeSave()
 
+                    if batchFailed {
+                        let failedCount = adds.filter(\.isFailed).count
+                        updateStep(
+                            "upload_add",
+                            status: .error,
+                            current: adds.count - failedCount,
+                            total: adds.count,
+                            detail: L10n.format("部分上傳失敗（%@ 筆）", "\(failedCount)")
+                        )
+                    } else {
                         updateStep(
                             "upload_add",
                             status: .done,
                             current: adds.count,
                             total: adds.count,
                             detail: L10n.format("%@ 新增, %@ 已存在", "\(totalCreated)", "\(totalSkipped)")
-                        )
-                    } catch {
-                        adds.forEach { $0.markSyncFailed() }
-                        encounteredFailure = true
-                        modelContext.safeSave()
-                        updateStep(
-                            "upload_add",
-                            status: .error,
-                            current: 0,
-                            total: adds.count,
-                            detail: error.localizedDescription
                         )
                     }
                 }

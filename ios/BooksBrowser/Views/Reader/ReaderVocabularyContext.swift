@@ -9,6 +9,7 @@ struct ReaderVocabularyContext {
     let modelContext: ModelContext
     let book: Book
     let currentLocator: Locator?
+    let notebookId: String
 
     func existingEntry(matching word: String) -> VocabularyEntry? {
         let wordLower = word.lowercased()
@@ -53,6 +54,7 @@ struct ReaderVocabularyContext {
         )
         entry.rootForm = rootForm
         entry.bookId = book.id
+        entry.notebookId = notebookId
         modelContext.insert(entry)
         modelContext.safeSave()
         return true

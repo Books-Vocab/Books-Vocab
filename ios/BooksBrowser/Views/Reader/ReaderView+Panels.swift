@@ -7,7 +7,8 @@ extension ReaderView {
             vocabulary: allVocabulary,
             modelContext: modelContext,
             book: book,
-            currentLocator: currentLocator
+            currentLocator: currentLocator,
+            notebookId: book.resolvedNotebookId
         )
     }
 

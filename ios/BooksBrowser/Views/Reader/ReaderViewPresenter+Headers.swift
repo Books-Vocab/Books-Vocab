@@ -71,6 +71,18 @@ extension ReaderViewPresenter {
                     }
                     .accessibilityLabel("閱讀設定".localized)
 
+                    Button(action: onShowNotebookPicker) {
+                        Image(systemName: "notebook")
+                            .font(ReaderGlassTypography.headerAction)
+                            .foregroundStyle(vocabSkin.palette.primaryText)
+                            .frame(
+                                width: ReaderPresentationMetrics.Header.buttonSize,
+                                height: ReaderPresentationMetrics.Header.buttonSize
+                            )
+                            .contentShape(Rectangle())
+                    }
+                    .accessibilityLabel("選擇單字本".localized)
+
                     Button(action: onCollapseHeader) {
                         Image(systemName: "chevron.up")
                             .font(ReaderGlassTypography.headerCollapse)
@@ -166,6 +178,7 @@ extension ReaderViewPresenter {
                 HStack(spacing: 6) {
                     VocabChromeIconButton(systemImage: "list.bullet", label: "目錄".localized, action: onShowTableOfContents)
                     VocabChromeIconButton(systemImage: "textformat.size", label: "閱讀設定".localized, action: onShowReaderSettings)
+                    VocabChromeIconButton(systemImage: "notebook", label: "選擇單字本".localized, action: onShowNotebookPicker)
                     VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列".localized, action: onCollapseHeader)
                 }
             }
