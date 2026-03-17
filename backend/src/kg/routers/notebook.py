@@ -77,6 +77,9 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: dict = Depends
 def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     _require_pro_access(user, "knowledge_sync")
     store = _notebook_store(user["dir"])
+    cards = _card_store(user["dir"])
+    # 刪除前先把卡片移到 default notebook，避免孤兒化
+    reassigned = cards.reassign_notebook(nb_id, "default")
     if not store.delete(nb_id):
         raise HTTPException(400, "Cannot delete: notebook not found, already deleted, or is default")
-    return {"deleted": nb_id}
+    return {"deleted": nb_id, "cardsReassigned": reassigned}
