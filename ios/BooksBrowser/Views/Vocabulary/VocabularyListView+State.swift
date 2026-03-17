@@ -26,9 +26,7 @@ extension VocabularyListView {
                     actionTone: entry.syncAction == .delete ? .secondary : .tertiary
                 )
             },
-            knowledgeCount: authManager.isDemoMode
-                ? syncedKnowledgeEntries.count
-                : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
+            knowledgeCount: syncedKnowledgeEntries.count,
             dueCount: knowledgeDueCount
         )
     }
@@ -75,9 +73,7 @@ extension VocabularyListView {
             .init(
                 id: 1,
                 title: "知識庫".localized,
-                count: authManager.isDemoMode
-                    ? syncedKnowledgeEntries.count
-                    : (authManager.isLoggedIn ? kgService.serverCardCount : 0),
+                count: syncedKnowledgeEntries.count,
                 systemImage: "books.vertical"
             ),
             .init(id: 2, title: "總覽".localized, systemImage: "chart.bar")
