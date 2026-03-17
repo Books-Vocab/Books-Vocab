@@ -70,7 +70,7 @@ struct ReaderSettingsVocabPresenter: View {
         settingsSection(title: "排版".localized) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 0) {
-                    stepControlButton(
+                    ReaderStepControlButton(
                         label: "A",
                         font: vocabSkin.typography.settingsAdjustSmall,
                         enabled: state.canDecreaseFontSize,
@@ -82,7 +82,7 @@ struct ReaderSettingsVocabPresenter: View {
                         .foregroundStyle(vocabSkin.palette.primaryText)
                         .frame(maxWidth: .infinity)
 
-                    stepControlButton(
+                    ReaderStepControlButton(
                         label: "A",
                         font: vocabSkin.typography.settingsAdjustLarge,
                         enabled: state.canIncreaseFontSize,
@@ -161,7 +161,7 @@ struct ReaderSettingsVocabPresenter: View {
                     Button {
                         onSelectUnderlineOpacity(option.value)
                     } label: {
-                        selectionTile(isSelected: isSelected) {
+                        ReaderSelectionTile(isSelected: isSelected) {
                             Text(option.label.localized)
                                 .font(vocabSkin.typography.captionStrong)
                                 .frame(maxWidth: .infinity)
@@ -183,7 +183,7 @@ struct ReaderSettingsVocabPresenter: View {
                     Button {
                         bindings.translationPanelMode.wrappedValue = mode
                     } label: {
-                        selectionTile(isSelected: isSelected) {
+                        ReaderSelectionTile(isSelected: isSelected) {
                             HStack(spacing: 10) {
                                 Image(systemName: icon)
                                     .font(vocabSkin.typography.iconToolbar)
@@ -246,27 +246,6 @@ struct ReaderSettingsVocabPresenter: View {
         )
     }
 
-    private func stepControlButton(
-        label: String,
-        font: Font,
-        enabled: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            VocabChromeSurface(
-                fill: vocabSkin.palette.pageBackground,
-                border: vocabSkin.palette.cardBorder
-            ) {
-                Text(label)
-                    .font(font)
-                    .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
-                    .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
-            }
-        }
-        .buttonStyle(.plain)
-        .disabled(!enabled)
-    }
-
     private func controlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VocabChromeSurface(
             fill: vocabSkin.palette.pageBackground,
@@ -279,27 +258,12 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private func selectionTile<Content: View>(
-        isSelected: Bool,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        VocabChromeSurface(
-            fill: isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground,
-            border: isSelected
-                ? vocabSkin.palette.cardBorder
-                : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity)
-        ) {
-            content()
-                .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
-        }
-    }
-
     private func themeTile(_ theme: ReaderTheme) -> some View {
         let isSelected = bindings.theme.wrappedValue == theme
         return Button {
             onSelectTheme(theme)
         } label: {
-            selectionTile(isSelected: isSelected) {
+            ReaderSelectionTile(isSelected: isSelected) {
                 VStack(alignment: .leading, spacing: 12) {
                     Image(systemName: theme.icon)
                         .font(vocabSkin.typography.iconToolbar)
