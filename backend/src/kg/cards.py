@@ -35,6 +35,7 @@ class Card(SQLModel, table=True):
     inflections: list[str] = SQLField(default_factory=list, sa_column=Column(JSON))  # all inflected forms from dictionary
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
     updated_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
+    notebook_id: str = SQLField(default="default")
     is_deleted: bool = SQLField(default=False)
     is_archived: bool = SQLField(default=False)
 
@@ -77,11 +78,15 @@ class CardStore:
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_content_nocase ON card (content COLLATE NOCASE)"
             )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_card_notebook_id ON card (notebook_id)"
+            )
             conn.commit()
 
     def _migrate_review_columns(self) -> None:
         """Add review state columns to existing card tables (SQLModel create_all won't ALTER)."""
         review_columns = {
+            "notebook_id": "TEXT DEFAULT 'default'",
             "is_archived": "INTEGER DEFAULT 0",
             "review_interval_hours": "REAL DEFAULT 12.0",
             "next_review_at": "TIMESTAMP",
@@ -116,6 +121,7 @@ class CardStore:
         mode: str = "recognition",
         root_form: str | None = None,
         inflections: list[str] | None = None,
+        notebook_id: str = "default",
     ) -> Card:
         """Create and store a new card."""
         card = Card(
@@ -127,6 +133,7 @@ class CardStore:
             mode=mode,
             root_form=root_form,
             inflections=inflections or [],
+            notebook_id=notebook_id,
         )
         with Session(self.engine) as session:
             session.add(card)
@@ -177,41 +184,50 @@ class CardStore:
                     return card
             return None
 
-    def all(self, include_deleted: bool = False) -> Iterator[Card]:
+    def all(self, include_deleted: bool = False, notebook_id: str | None = None) -> Iterator[Card]:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
                 statement = statement.where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
             results = session.exec(statement).all()
             yield from results
 
-    def all_as_dict(self, include_deleted: bool = False) -> dict[str, "Card"]:
+    def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None) -> dict[str, "Card"]:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
                 statement = statement.where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
             return {card.id: card for card in session.exec(statement).all()}
 
-    def all_limited(self, limit: int = 5000, include_deleted: bool = False) -> list[Card]:
+    def all_limited(self, limit: int = 5000, include_deleted: bool = False, notebook_id: str | None = None) -> list[Card]:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
                 statement = statement.where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
             statement = statement.order_by(Card.updated_at.desc()).limit(limit)
             return list(session.exec(statement).all())
 
-    def get_modified_since(self, since: datetime) -> list[Card]:
+    def get_modified_since(self, since: datetime, notebook_id: str | None = None) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
         with Session(self.engine) as session:
             statement = select(Card).where(Card.updated_at > since)
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
             return list(session.exec(statement).all())
 
-    def count(self) -> int:
+    def count(self, notebook_id: str | None = None) -> int:
         from sqlalchemy import func
         with Session(self.engine) as session:
-            return session.scalar(
-                select(func.count()).select_from(Card).where(Card.is_deleted.is_(False))
-            ) or 0
+            statement = select(func.count()).select_from(Card).where(Card.is_deleted.is_(False))
+            if notebook_id is not None:
+                statement = statement.where(Card.notebook_id == notebook_id)
+            return session.scalar(statement) or 0
 
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""

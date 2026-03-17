@@ -31,11 +31,11 @@ class _FakeLogger:
 class _CardsBothFields:
     """Cards that already have pos+note — enrich step should be skipped."""
 
-    def all(self, include_deleted: bool = False):
+    def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         return [
             SimpleNamespace(
                 id="c1", content="evoke", pos="v.", note="note",
-                difficulty=None, is_deleted=False,
+                difficulty=None, is_deleted=False, notebook_id="default",
             )
         ]
 
@@ -47,11 +47,11 @@ class _CardsNeedEnrich:
         self.calls = 0
         self.fail_count = fail_count
 
-    def all(self, include_deleted: bool = False):
+    def all(self, include_deleted: bool = False, notebook_id: str | None = None):
         return [
             SimpleNamespace(
                 id="c1", content="evoke", pos=None, note=None,
-                difficulty=None, is_deleted=False,
+                difficulty=None, is_deleted=False, notebook_id="default",
             )
         ]
 
@@ -132,8 +132,8 @@ def test_enrich_step_retries_on_transient_failure():
                 user,
                 get_user_lock_fn=lambda uid: _async_lock(),
                 card_store_factory=lambda d: _CardsNeedEnrich(),
-                graph_store_factory=lambda d: _GraphOk(),
-                embedding_store_factory=lambda d, user_id=None: _EmbeddingsOk(),
+                graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
+                embedding_store_factory=lambda d, user_id=None, notebook_id="default": _EmbeddingsOk(),
                 gemini_client_factory=lambda: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
@@ -162,8 +162,8 @@ def test_embed_step_runs_in_executor_thread():
             user,
             get_user_lock_fn=lambda uid: _async_lock(),
             card_store_factory=lambda d: _CardsBothFields(),
-            graph_store_factory=lambda d: _GraphOk(),
-            embedding_store_factory=lambda d, user_id=None: embeddings,
+            graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
+            embedding_store_factory=lambda d, user_id=None, notebook_id="default": embeddings,
             gemini_client_factory=lambda: None,
             logger=logger,
             link_kind_enum=lambda v: v,

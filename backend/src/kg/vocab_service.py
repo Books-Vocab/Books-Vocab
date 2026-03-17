@@ -114,6 +114,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         isArchived=card.is_archived,
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
+        notebookId=getattr(card, "notebook_id", "default"),
         updatedAt=_dt_to_iso(card.updated_at),
         reviewIntervalHours=card.review_interval_hours,
         nextReviewAt=_dt_to_iso(card.next_review_at),
@@ -125,16 +126,16 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
     )
 
 
-def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse]) -> list[CardResponse]:
+def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
-        cards = cards_store.get_modified_since(parsed_since)
+        cards = cards_store.get_modified_since(parsed_since, notebook_id=notebook_id)
     else:
-        cards = cards_store.all_limited(limit=limit)
+        cards = cards_store.all_limited(limit=limit, notebook_id=notebook_id)
 
-    cards_by_id = cards_store.all_as_dict(include_deleted=True)
+    cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 
@@ -302,6 +303,7 @@ def add_vocab_entries(
     embeddings: Any,
     graph: Any,
     logger: logging.Logger,
+    notebook_id: str = "default",
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
         raise HTTPException(
@@ -335,6 +337,7 @@ def add_vocab_entries(
             examples=[example] if example else [],
             root_form=root,
             inflections=inflections,
+            notebook_id=notebook_id,
         )
         card_ids[word] = card.id
         existing.add(_normalize_word(word))
