@@ -56,7 +56,7 @@ struct AppStartupRecoveryView: View {
                         }
                     }
 
-                    VStack(alignment: .leading, spacing: 10) {
+                    VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
                         Text(L10n.string("技術細節"))
                             .font(AppFonts.subhead(weight: .semibold))
                             .foregroundStyle(appTheme.palette.primaryText)

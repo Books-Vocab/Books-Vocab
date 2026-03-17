@@ -182,7 +182,7 @@ struct BookshelfView: View {
     // MARK: - EPUB 取得提示
 
     private var epubGuideHint: some View {
-        Link(destination: URL(string: "https://wordnexus.lol/guide.html")!) {
+        Link(destination: AppURLs.guide) {
             Text("了解更多".localized)
                 .font(AppFonts.caption2())
                 .foregroundStyle(appTheme.palette.quaternaryText)
