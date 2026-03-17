@@ -93,7 +93,6 @@ enum ReaderGlassTypography {
     // Reader-only：rounded 24pt bold，維持 rounded 與正文區隔
     static let word = Font.system(size: 24, weight: .bold, design: .rounded)
     // Mono (ElmsSans)
-    static let pronunciation = AppFonts.monoNumbers(size: 13)
     static let numericMono = AppFonts.monoNumbers(size: 10)
     static let progressText = AppFonts.monoProgress()
     static let settingsValue = AppFonts.mono(size: 13)

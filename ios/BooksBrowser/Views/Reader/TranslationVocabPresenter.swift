@@ -53,12 +53,6 @@ struct TranslationVocabPresenter: View {
                       : vocabSkin.typography.detailWord)
                 .foregroundStyle(vocabSkin.palette.primaryText)
 
-            if let pronunciation = state.pronunciation {
-                Text(pronunciation)
-                    .font(vocabSkin.typography.monoBody)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
-            }
-
             Button(action: onSpeak) {
                 Image(systemName: "speaker.wave.2")
                     .font(vocabSkin.typography.iconTiny)

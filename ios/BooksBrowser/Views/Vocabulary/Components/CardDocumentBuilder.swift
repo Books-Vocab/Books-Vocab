@@ -4,7 +4,6 @@ enum CardDocumentBuilder {
     static func build(
         word: String,
         translation: String,
-        pronunciation: String?,
         partOfSpeech: String?,
         difficultyTier: String?,
         reviewModeTitle: String,
@@ -21,7 +20,6 @@ enum CardDocumentBuilder {
                 CardDocumentHero(
                     word: word,
                     partOfSpeech: partOfSpeech,
-                    pronunciation: pronunciation,
                     difficultyTier: difficultyTier,
                     reviewModeTitle: reviewModeTitle
                 )

@@ -53,11 +53,7 @@ Lemma (r) rules:
 - If adjective/adverb is already base form, r = original word
 - When uncertain, r = original word; never invent non-existent words
 
-IPA (ipa) rules:
-- Provide IPA phonetic transcription (e.g. /ɪnˈɔːdəbl/)
-- Use standard IPA notation with slashes
-
-Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "...", "ipa": "..." }}'''
+Output pure JSON (no Markdown): {{ "t": "...", "p": "...", "r": "..." }}'''
 
 
 def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
@@ -120,7 +116,6 @@ def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: 
         t=data.get("t", ""),
         p=_normalize_pos(data.get("p")),
         r=data.get("r"),
-        ipa=data.get("ipa"),
     )
 
 
@@ -168,7 +163,6 @@ async def async_run_quick_translate(req: TranslateRequest, user: dict[str, Any],
         t=data.get("t", ""),
         p=_normalize_pos(data.get("p")),
         r=data.get("r"),
-        ipa=data.get("ipa"),
     )
 
 

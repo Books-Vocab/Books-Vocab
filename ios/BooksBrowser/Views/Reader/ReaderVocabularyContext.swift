@@ -36,7 +36,6 @@ struct ReaderVocabularyContext {
     func saveEntry(
         selection: WordSelection,
         translation: String,
-        pronunciation: String?,
         rootForm: String? = nil
     ) -> Bool {
         let wordLower = selection.word.lowercased()
@@ -49,7 +48,6 @@ struct ReaderVocabularyContext {
             context: selection.context,
             explanation: nil,
             partOfSpeech: nil,
-            pronunciation: pronunciation,
             bookTitle: book.title,
             chapterTitle: currentLocator?.title
         )

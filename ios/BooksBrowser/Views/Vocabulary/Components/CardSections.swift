@@ -83,11 +83,6 @@ struct CardHeroSection: View {
                         .buttonStyle(.plain)
                     }
 
-                    if let pron = card.pronunciation, !pron.isEmpty {
-                        Text("/\(pron)/")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    }
                 }
 
                 Spacer(minLength: vocabSkin.spacing.blockGap)

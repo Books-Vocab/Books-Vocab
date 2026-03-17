@@ -16,7 +16,6 @@ extension ReaderTranslationHandler {
         withAnimation(AppMotion.panelState) {
             wordSelection = nil
             translationResult = nil
-            pronunciation = nil
             isSaved = false
             isExpanded = false
             explanationText = nil
@@ -29,7 +28,6 @@ extension ReaderTranslationHandler {
     func autoSaveToVocabulary(
         selection: WordSelection,
         result: TranslationResult,
-        pronunciation: String?,
         context: ReaderVocabularyContext
     ) {
         if context.existingEntry(matching: selection.word) != nil {
@@ -41,7 +39,6 @@ extension ReaderTranslationHandler {
         let inserted = context.saveEntry(
             selection: selection,
             translation: result.translation,
-            pronunciation: pronunciation,
             rootForm: result.rootForm
         )
         if inserted {
@@ -53,7 +50,6 @@ extension ReaderTranslationHandler {
 
     func guestSaveToVocabulary(
         selection: WordSelection,
-        pronunciation: String?,
         context: ReaderVocabularyContext
     ) {
         if context.existingEntry(matching: selection.word) != nil {
@@ -64,8 +60,7 @@ extension ReaderTranslationHandler {
 
         let inserted = context.saveEntry(
             selection: selection,
-            translation: "",
-            pronunciation: pronunciation
+            translation: ""
         )
         if inserted {
             AppLog.reader.info("Guest saved: \(selection.word)")

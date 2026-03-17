@@ -17,10 +17,8 @@ extension ReaderTranslationHandler {
                 translationResult = TranslationResult(
                     translation: existing.translation,
                     partOfSpeech: nil,
-                    pronunciation: nil,
                     explanation: nil
                 )
-                pronunciation = existing.pronunciation
                 isSaved = true
                 isTranslating = false
                 isExpanded = false
@@ -42,24 +40,16 @@ extension ReaderTranslationHandler {
                 translationErrorMessage = nil
                 explanationErrorMessage = nil
             }
-            let task = Task { @MainActor in
-                let fetchedPron = await DictionaryService.fetchPronunciation(word: word)
-                guard !Task.isCancelled, wordSelection?.word == selection.word else { return }
-                pronunciation = fetchedPron
-                guestSaveToVocabulary(
-                    selection: selection,
-                    pronunciation: fetchedPron,
-                    context: vocabularyContext
-                )
-            }
-            replaceCurrentTranslationTask(with: task)
+            guestSaveToVocabulary(
+                selection: selection,
+                context: vocabularyContext
+            )
             return
         }
 
         withAnimation(AppMotion.panelState) {
             isTranslating = true
             translationResult = nil
-            pronunciation = nil
             isSaved = false
             isExpanded = false
             explanationText = nil
@@ -86,10 +76,6 @@ extension ReaderTranslationHandler {
                 )
             }
 
-            let pronTask = Task {
-                await DictionaryService.fetchPronunciation(word: word)
-            }
-
             do {
                 let result = try await translationTask.value
                 guard !Task.isCancelled else { return }
@@ -99,26 +85,17 @@ extension ReaderTranslationHandler {
                     translationStatus = nil
                     translationErrorMessage = nil
                 }
-
-                let fetchedPron = await pronTask.value
-                guard !Task.isCancelled else { return }
-                withAnimation(AppMotion.feedbackPulse) {
-                    pronunciation = fetchedPron
-                }
                 if let selection = wordSelection {
                     autoSaveToVocabulary(
                         selection: selection,
                         result: result,
-                        pronunciation: fetchedPron,
                         context: vocabularyContext
                     )
                 }
             } catch {
                 guard !(error is CancellationError), !Task.isCancelled else { return }
                 AppLog.reader.error("翻譯錯誤: \(error.localizedDescription)")
-                let fetchedPron = await pronTask.value
                 translationResult = nil
-                pronunciation = fetchedPron
                 isTranslating = false
                 translationStatus = nil
                 translationErrorMessage = L10n.format("翻譯失敗：%@", error.localizedDescription)
@@ -139,7 +116,6 @@ extension ReaderTranslationHandler {
         withAnimation(AppMotion.panelState) {
             isTranslating = true
             translationResult = nil
-            pronunciation = nil
             isSaved = false
             isExpanded = false
             explanationText = nil
@@ -165,7 +141,6 @@ extension ReaderTranslationHandler {
                 let result = TranslationResult(
                     translation: translation,
                     partOfSpeech: nil,
-                    pronunciation: nil,
                     explanation: nil
                 )
                 withAnimation(AppMotion.feedbackPulse) {
@@ -177,7 +152,6 @@ extension ReaderTranslationHandler {
                 autoSaveToVocabulary(
                     selection: selection,
                     result: result,
-                    pronunciation: nil,
                     context: vocabularyContext
                 )
             } catch {
@@ -198,7 +172,6 @@ extension ReaderTranslationHandler {
         withAnimation(AppMotion.panelState) {
             isTranslating = false
             translationResult = nil
-            pronunciation = nil
             isSaved = false
             isExpanded = true
             isLoadingExplanation = true

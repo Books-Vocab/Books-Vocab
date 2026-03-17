@@ -5,7 +5,6 @@ struct WordEditSheet: View {
     @Bindable var entry: VocabularyEntry
 
     @State private var draftTranslation = ""
-    @State private var draftPronunciation = ""
     @State private var draftExplanation = ""
 
     var body: some View {
@@ -15,13 +14,6 @@ struct WordEditSheet: View {
                     TextEditor(text: $draftTranslation)
                         .frame(minHeight: 80)
                         .scrollContentBackground(.hidden)
-                }
-
-                Section(header: Text("音標".localized)) {
-                    TextField("e.g. ˈwɜːrd", text: $draftPronunciation)
-                        .font(AppFonts.mono())
-                        .autocorrectionDisabled()
-                        .textInputAutocapitalization(.never)
                 }
 
                 Section(header: Text("教學筆記".localized)) {
@@ -44,17 +36,14 @@ struct WordEditSheet: View {
         }
         .onAppear {
             draftTranslation = entry.translation
-            draftPronunciation = entry.pronunciation ?? ""
             draftExplanation = entry.explanation ?? ""
         }
     }
 
     private func save() {
-        let trimmedPronunciation = draftPronunciation.trimmingCharacters(in: .whitespacesAndNewlines)
         let trimmedExplanation = draftExplanation.trimmingCharacters(in: .whitespacesAndNewlines)
 
         entry.translation = draftTranslation.trimmingCharacters(in: .whitespacesAndNewlines)
-        entry.pronunciation = trimmedPronunciation.isEmpty ? nil : trimmedPronunciation
         entry.explanation = trimmedExplanation.isEmpty ? nil : trimmedExplanation
 
         if entry.isSynced {
