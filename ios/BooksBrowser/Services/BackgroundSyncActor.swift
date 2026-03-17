@@ -287,6 +287,12 @@ actor BackgroundSyncActor {
         }
     }
 
+    func distinctNotebookIds() throws -> [String] {
+        let descriptor = FetchDescriptor<VocabularyEntry>()
+        let entries = try modelContext.fetch(descriptor)
+        return Array(Set(entries.map(\.notebookId)))
+    }
+
     private static let dayFormatter: DateFormatter = {
         let f = DateFormatter()
         f.dateFormat = "yyyy-MM-dd"
