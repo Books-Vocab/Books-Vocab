@@ -20,6 +20,17 @@ class KGSettings:
     app_store_allow_unsigned_notifications: bool = False
     admin_token: str = ""
 
+    # Quota (USD)
+    pro_daily_limit_usd: float = 0.30
+    free_daily_limit_usd: float = 0.03
+
+    # CORS
+    cors_origins: tuple[str, ...] = (
+        "https://wordnexus.lol",
+        "http://localhost:8000",
+        "http://127.0.0.1:8000",
+    )
+
     @property
     def users_file(self) -> Path:
         return self.data_dir / "users.json"
@@ -62,4 +73,9 @@ def load_settings() -> KGSettings:
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,
         admin_token=os.getenv("ADMIN_TOKEN", ""),
+        pro_daily_limit_usd=float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30")),
+        free_daily_limit_usd=float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03")),
+        cors_origins=tuple(
+            os.getenv("CORS_ORIGINS", "https://wordnexus.lol,http://localhost:8000,http://127.0.0.1:8000").split(",")
+        ),
     )
