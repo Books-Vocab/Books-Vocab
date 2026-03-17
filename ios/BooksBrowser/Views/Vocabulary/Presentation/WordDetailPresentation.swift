@@ -20,7 +20,8 @@ enum WordDetailPresentation {
                         entry.linkedEntry(for: link, in: allEntries) == nil ? nil : link.cardId
                     }
             ),
-            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil
+            reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil,
+            isExcludedFromReader: entry.isExcludedFromReader
         )
     }
 

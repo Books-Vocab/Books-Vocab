@@ -29,7 +29,8 @@ struct WordDetailSheet: View {
             wrapInNavigation: wrapInNavigation,
             onClose: wrapInNavigation ? { dismiss() } : nil,
             onEdit: wrapInNavigation ? { isEditing = true } : nil,
-            onLinkTapped: handleLinkTap
+            onLinkTapped: handleLinkTap,
+            onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() }
         )
         .overlay {
             if wrapInNavigation {
