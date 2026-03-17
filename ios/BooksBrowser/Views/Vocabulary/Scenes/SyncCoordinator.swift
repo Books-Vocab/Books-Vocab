@@ -183,9 +183,9 @@ final class SyncCoordinator: SyncCoordinating {
 
                 updateStep("trigger", status: .running)
                 do {
-                    let uploadedNotebooks = Set(adds.map(\.notebookId))
-                    let notebooksToTrigger = uploadedNotebooks.isEmpty ? ["default"] : Array(uploadedNotebooks)
-                    for nbId in notebooksToTrigger {
+                    let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
+                    let notebookIds = affectedNotebookIds.isEmpty ? ["default"] : Array(affectedNotebookIds)
+                    for nbId in notebookIds {
                         try await kgService.triggerPipeline(notebookId: nbId)
                     }
                     updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
@@ -206,21 +206,11 @@ final class SyncCoordinator: SyncCoordinating {
                 }
 
                 updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
-
-                // 收集所有本地有資料的 notebook（用 distinctNotebookIds 確保涵蓋所有本）
-                let syncActor = BackgroundSyncActor(modelContainer: modelContext.container)
-                let distinctIds = (try? await syncActor.distinctNotebookIds()) ?? []
-                let allLocalNotebooks = distinctIds.isEmpty ? ["default"] : distinctIds
-
-                var pipelinePending = false
-                for nbId in allLocalNotebooks {
-                    let pending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
-                        Task { @MainActor in
-                            self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
-                        }
-                    }, notebookId: nbId)
-                    if pending { pipelinePending = true }
-                }
+                var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
+                    Task { @MainActor in
+                        self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
+                    }
+                }, notebookId: nil)
 
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
@@ -228,11 +218,7 @@ final class SyncCoordinator: SyncCoordinating {
                     updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
-                    pipelinePending = false
-                    for nbId in allLocalNotebooks {
-                        let pending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nbId)
-                        if pending { pipelinePending = true }
-                    }
+                    pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
                 }
 
                 // Also pull daily stats from server

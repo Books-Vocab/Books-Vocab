@@ -46,7 +46,7 @@ def list_vocab(
     response: Response,
     since: str | None = None,
     limit: int = 5000,
-    notebook_id: str = Query("default"),
+    notebook_id: str | None = Query(None),
     user: dict = Depends(get_current_user),
 ):
     from ..pipeline_service import is_pipeline_running

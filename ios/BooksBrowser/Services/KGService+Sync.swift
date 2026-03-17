@@ -48,7 +48,7 @@ extension KGService {
     // MARK: - Offline KG Sync logic
 
     @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String = "default") async throws -> Bool {
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> Bool {
         let token = try await currentAuthToken()
         progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
@@ -66,7 +66,10 @@ extension KGService {
         let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
         let isIncremental = lastSyncMillis > 0
 
-        var queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
+        var queryItems: [URLQueryItem] = []
+        if let notebookId {
+            queryItems.append(URLQueryItem(name: "notebook_id", value: notebookId))
+        }
         if isIncremental {
             let lastSyncDate = Date(timeIntervalSince1970: lastSyncMillis)
             let formatter = ISO8601DateFormatter()
@@ -117,7 +120,7 @@ extension KGService {
             progress: { detail, current, total in
                 progress?(detail, current, total)
             },
-            notebookId: notebookId
+            notebookId: notebookId ?? "default"
         )
 
         // 使用 pull 開始前的時間戳作為邊界，確保不遺漏 pull 期間的變更
@@ -136,7 +139,11 @@ extension KGService {
             AppLog.kg.error("clearVocabularyData failed: \(error.localizedDescription)")
         }
 
-        UserDefaults.standard.removeObject(forKey: SyncKeys.incrementalBoundary)
+        let defaults = UserDefaults.standard
+        defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+        defaults.removeObject(forKey: SyncKeys.payloadVersion)
+        defaults.removeObject(forKey: "activeNotebookId")
+        defaults.removeObject(forKey: NotebookFilter.storageKey)
         lastSyncDate = nil
         serverCardCount = 0
     }
@@ -165,15 +172,8 @@ extension KGService {
             AppLog.kg.warning("backgroundSync pushDailyStats failed: \(error.localizedDescription)")
             failures.append("pushDailyStats")
         }
-        // 取得所有本地存在的 notebookId（從 VocabularyEntry）
-        let actor = BackgroundSyncActor(modelContainer: container)
-        let localNotebookIds = try? await actor.distinctNotebookIds()
-        let notebooksToPull = (localNotebookIds ?? []).isEmpty ? ["default"] : (localNotebookIds ?? [])
-
         do {
-            for nbId in notebooksToPull {
-                try await pullCardsToLocal(container: container, progress: nil, notebookId: nbId)
-            }
+            try await pullCardsToLocal(container: container, progress: nil)
         } catch {
             AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
             failures.append("pull")
