@@ -226,6 +226,7 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None) -> dict
     cards_store.delete(card.id)
     if graph is not None:
         graph.deprecate_links_for(card.id)
+        graph.remove_candidates_for(card.id)
     return {"deleted": word, "id": card.id}
 
 
