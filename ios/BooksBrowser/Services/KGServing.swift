@@ -13,7 +13,8 @@ protocol KGServing: AnyObject {
     func healthCheck() async
     func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse
     func triggerPipeline() async throws
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?) async throws
+    @discardableResult
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?) async throws -> Bool
     func fetchUserConfig() async throws -> KGUserConfig
     func fetchEntitlements() async throws -> KGEntitlements
     func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements
