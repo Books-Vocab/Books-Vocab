@@ -89,7 +89,7 @@ struct ArchivedVocabSheet: View {
     private func handleUnarchive(_ entry: VocabularyEntry) {
         Task {
             do {
-                try await kgService.archiveCard(word: entry.word, archived: false)
+                try await kgService.archiveCard(word: entry.word, archived: false, notebookId: entry.notebookId)
                 entry.isArchived = false
                 modelContext.safeSave()
             } catch {
