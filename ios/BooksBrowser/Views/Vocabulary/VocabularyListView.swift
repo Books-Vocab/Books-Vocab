@@ -11,8 +11,10 @@ import UniformTypeIdentifiers
 
 /// 生詞庫列表
 struct VocabularyListView: View {
-    @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) var allEntries: [VocabularyEntry]
+    @Query var allEntries: [VocabularyEntry]
     @Environment(\.modelContext) var modelContext
+
+    let notebookId: String
 
     @State var searchText = ""
     @Environment(\.kgService) var kgService
@@ -23,6 +25,16 @@ struct VocabularyListView: View {
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var showArchiveList = false
     @State var coordinator = VocabularyListCoordinator()
+
+    init(notebookId: String = "default") {
+        self.notebookId = notebookId
+        let nbId = notebookId
+        _allEntries = Query(
+            filter: #Predicate<VocabularyEntry> { $0.notebookId == nbId },
+            sort: \.dateAdded,
+            order: .reverse
+        )
+    }
 
     var body: some View {
         NavigationStack {
@@ -72,6 +84,6 @@ struct VocabularyListView: View {
 }
 
 #Preview {
-    VocabularyListView()
+    VocabularyListView(notebookId: "default")
         .modelContainer(for: [VocabularyEntry.self], inMemory: true)
 }

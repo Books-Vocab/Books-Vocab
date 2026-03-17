@@ -35,7 +35,8 @@ actor BackgroundSyncActor {
     func pullCardsToLocal(
         fetchedCards: [KGCard],
         isIncremental: Bool,
-        progress: @Sendable @escaping (String, Int, Int) -> Void
+        progress: @Sendable @escaping (String, Int, Int) -> Void,
+        notebookId: String = "default"
     ) throws {
         // Fetch all current local entries
         let descriptor = FetchDescriptor<VocabularyEntry>()
@@ -82,6 +83,9 @@ actor BackgroundSyncActor {
                     existingEntry.reviewExamples = card.examples
                     existingEntry.graphLinksByKind = card.linksByKind ?? [:]
                     existingEntry.isArchived = card.isArchived ?? false
+                    if let cardNotebookId = card.notebookId {
+                        existingEntry.notebookId = cardNotebookId
+                    }
                     existingEntry.markSynced()
 
                     // Merge review state from server (server newer wins)
@@ -108,6 +112,7 @@ actor BackgroundSyncActor {
                 newEntry.reviewExamples = card.examples
                 newEntry.graphLinksByKind = card.linksByKind ?? [:]
                 newEntry.isArchived = card.isArchived ?? false
+                newEntry.notebookId = card.notebookId ?? notebookId
                 newEntry.markSynced()
 
                 // Apply server review state to new entry

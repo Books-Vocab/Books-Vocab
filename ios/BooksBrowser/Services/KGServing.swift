@@ -11,10 +11,14 @@ protocol KGServing: AnyObject {
     var lastBackgroundSyncError: String? { get set }
 
     func healthCheck() async
-    func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse
-    func triggerPipeline() async throws
+    func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
+    func triggerPipeline(notebookId: String) async throws
     @discardableResult
-    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?) async throws -> Bool
+    func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String) async throws -> Bool
+    func fetchNotebooks() async throws -> [KGNotebook]
+    func createNotebook(name: String, color: String?) async throws -> KGNotebook
+    func updateNotebook(id: String, name: String?, color: String?) async throws -> KGNotebook
+    func deleteNotebook(id: String) async throws
     func fetchUserConfig() async throws -> KGUserConfig
     func fetchEntitlements() async throws -> KGEntitlements
     func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements

@@ -60,10 +60,11 @@ extension KGService {
         }
     }
 
-    func batchAdd(entries: [VocabularyEntry]) async throws -> KGAddResponse {
+    func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
         let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/vocab")
-        var request = URLRequest(url: url)
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
+        var request = URLRequest(url: components.url!)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         applyAuth(to: &request, token: token)
@@ -93,9 +94,11 @@ extension KGService {
         return try JSONDecoder().decode(KGAddResponse.self, from: data)
     }
 
-    func triggerPipeline() async throws {
+    func triggerPipeline(notebookId: String = "default") async throws {
         let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/pipeline")
+        var components = URLComponents(url: baseURL.appendingPathComponent("api/pipeline"), resolvingAgainstBaseURL: false)!
+        components.queryItems = [URLQueryItem(name: "notebook_id", value: notebookId)]
+        let url = components.url!
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         applyAuth(to: &request, token: token)
