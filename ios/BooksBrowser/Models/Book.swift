@@ -21,6 +21,7 @@ final class Book {
     var dateAdded: Date = Date()
     var dateLastRead: Date?
     var progression: Double?          // 閱讀進度 (0.0 ~ 1.0)
+    var preferredNotebookId: String?   // 綁定的單字本 remoteId（nil = 跟隨全域設定）
 
     init(
         title: String,
@@ -117,5 +118,15 @@ final class Book {
     /// 是否需要從 iCloud 下載（metadata 已到、檔案未到）
     var needsICloudDownload: Bool {
         !isEpubFileLocal
+    }
+
+    /// 此書的目標單字本 ID（優先序：書本綁定 → 全域使用中 → 預設）
+    ///
+    /// 注意：不在此處驗證 notebook 是否已刪除，因為 @Model computed property
+    /// 無法存取 ModelContext。已刪除 notebook 的防護由 ReaderNotebookPicker
+    /// 在 UI 層處理（選擇時過濾 isDeleted，若綁定的本被刪則自動清除綁定）。
+    var resolvedNotebookId: String {
+        if let bound = preferredNotebookId { return bound }
+        return UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
     }
 }
