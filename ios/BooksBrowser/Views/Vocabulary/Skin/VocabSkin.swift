@@ -238,11 +238,29 @@ struct VocabSkin {
         let graphDrawerBottomInset: CGFloat
     }
 
+    /// 統一的字詞高光樣式配置（例句中 `**word**` 的視覺呈現）
+    struct HighlightConfig {
+        let backgroundOpacity: Double
+        let underlineOpacity: Double
+        let showBackground: Bool
+        let showUnderline: Bool
+        let fontWeight: Font.Weight
+
+        static let `default` = HighlightConfig(
+            backgroundOpacity: 0.22,
+            underlineOpacity: 0.0,
+            showBackground: true,
+            showUnderline: false,
+            fontWeight: .semibold
+        )
+    }
+
     let palette: Palette
     let typography: Typography
     let radii: Radii
     let spacing: Spacing
     let metrics: Metrics
+    let highlight: HighlightConfig
 
     func tierColor(for tier: String?) -> Color {
         switch tier {
@@ -525,7 +543,8 @@ extension VocabSkin {
             typography: baseTypography,
             radii: baseRadii,
             spacing: baseSpacing,
-            metrics: baseMetrics
+            metrics: baseMetrics,
+            highlight: .default
         )
     }
 
@@ -571,7 +590,8 @@ extension VocabSkin {
         typography: baseTypography,
         radii: baseRadii,
         spacing: baseSpacing,
-        metrics: baseMetrics
+        metrics: baseMetrics,
+        highlight: .default
     )
 }
 

@@ -134,7 +134,12 @@ struct CardExamplesSection: View {
                         font: vocabSkin.typography.detailExampleSerif,
                         textColor: vocabSkin.palette.primaryText,
                         highlightColor: vocabSkin.palette.highlightMark,
-                        italic: true
+                        italic: true,
+                        underlineHighlights: vocabSkin.highlight.showUnderline,
+                        useBackgroundMark: vocabSkin.highlight.showBackground,
+                        highlightWeight: vocabSkin.highlight.fontWeight,
+                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
+                        underlineOpacity: vocabSkin.highlight.underlineOpacity
                     ),
                     truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
                 )
@@ -224,7 +229,12 @@ struct CardExplanationSection: View {
                     font: vocabSkin.typography.body,
                     textColor: vocabSkin.palette.primaryText,
                     highlightColor: vocabSkin.palette.accent,
-                    italic: false
+                    italic: false,
+                    underlineHighlights: vocabSkin.highlight.showUnderline,
+                    useBackgroundMark: vocabSkin.highlight.showBackground,
+                    highlightWeight: vocabSkin.highlight.fontWeight,
+                    backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
+                    underlineOpacity: vocabSkin.highlight.underlineOpacity
                 )
             )
             .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
