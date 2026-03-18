@@ -70,7 +70,7 @@ def lookup_word_response(
     notebook_id: str = "default",
 ) -> CardResponse:
     require_pro_access(user, "knowledge_sync")
-    if notebook_store_factory is not None:
+    if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
@@ -111,7 +111,7 @@ def delete_word_response(
     notebook_id: str = "default",
 ) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
-    if notebook_store_factory is not None:
+    if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
@@ -127,7 +127,7 @@ def get_graph_links_response(
     notebook_id: str = "default",
 ) -> list[GraphLinkResponse]:
     require_pro_access(user, "knowledge_graph")
-    if notebook_store_factory is not None:
+    if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     return graph_links_payload(graph=graph)
@@ -146,7 +146,7 @@ def add_vocab_response(
     notebook_id: str = "default",
 ) -> VocabAddResponse:
     require_pro_access(user, "knowledge_sync")
-    if notebook_store_factory is not None:
+    if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
     return add_vocab_entries(

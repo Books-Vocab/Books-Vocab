@@ -180,6 +180,18 @@ class TestNotebookOwnershipValidation:
             )
         assert r.status_code == 403, r.text
 
+    def test_add_vocab_default_notebook_is_allowed(self, isolated_api):
+        """POST /api/vocab with default notebook should succeed (not 403)."""
+        emb = _DummyEmbeddingStore()
+        with patch.object(vocab_router_mod, "_embedding_store", return_value=emb):
+            r = isolated_api.client.post(
+                "/api/vocab",
+                json=[{"word": "test", "translation": "測試", "context": "A test sentence."}],
+                params={"notebook_id": "default"},
+                headers=isolated_api.headers,
+            )
+        assert r.status_code != 403, r.text
+
     def test_get_vocab_default_notebook_is_allowed(self, isolated_api):
         """The 'default' notebook always exists — must NOT be blocked."""
         r = isolated_api.client.get(
