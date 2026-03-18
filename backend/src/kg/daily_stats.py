@@ -82,3 +82,9 @@ class DailyReviewStatsStore:
                 .where(DailyReviewStat.day_key >= since_day)
                 .order_by(DailyReviewStat.day_key)
             ).all())
+
+    def close(self) -> None:
+        """Dispose the SQLAlchemy engine and release connections."""
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None
