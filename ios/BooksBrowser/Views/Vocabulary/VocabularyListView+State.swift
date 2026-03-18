@@ -79,9 +79,6 @@ extension VocabularyListView {
         ]
     }
 
-    var archivedCount: Int {
-        VocabularyEntryPresentation.archivedEntries(in: allEntries).count
-    }
 
     var filteredPendingEntries: [VocabularyEntry] {
         VocabularyEntryPresentation.filteredPendingEntries(

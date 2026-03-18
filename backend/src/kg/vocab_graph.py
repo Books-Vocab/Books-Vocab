@@ -32,7 +32,9 @@ def embed_and_link_new_cards(
                 similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
                 for other_id, score in similar:
                     if score > SIMILARITY_THRESHOLD:
-                        graph.add_candidate(card.id, other_id, score)
+                        other_card = cards.get(other_id)
+                        if other_card and not other_card.is_archived:
+                            graph.add_candidate(card.id, other_id, score)
             except (OSError, ValueError) as exc:
                 logger.warning("Failed to generate embedding for '%s': %s", word, exc)
                 continue

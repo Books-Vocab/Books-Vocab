@@ -63,7 +63,7 @@ def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any]
     for link in graph.get_links_for(card_id):
         other_id = link.to_id if link.from_id == card_id else link.from_id
         other_card = cards_by_id.get(other_id)
-        if not other_card or other_card.is_deleted:
+        if not other_card or other_card.is_deleted or other_card.is_archived:
             continue
 
         kind_key = link.kind.value
@@ -209,13 +209,19 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
     return card_response_builder(card, graph, cards_by_id)
 
 
-def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, notebook_id: str | None = None) -> dict[str, str]:
+def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise HTTPException(status_code=422, detail="Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise HTTPException(404, f"Word '{word}' not found")
     cards_store.update(card.id, is_archived=archived)
+    if graph is not None:
+        if archived:
+            graph.deprecate_links_for(card.id)
+            graph.remove_candidates_for(card.id)
+        else:
+            graph.restore_links_for(card.id, cards_store)
     return {"word": word, "id": card.id, "archived": archived}
 
 
