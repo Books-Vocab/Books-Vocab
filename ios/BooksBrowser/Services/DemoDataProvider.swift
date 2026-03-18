@@ -118,7 +118,7 @@ private extension DemoDataProvider {
     // MARK: - Entry Specs
 
     static let specs: [EntrySpec] = [
-        // ── Contrasting pair: affect / effect ──
+        // ── Confusable pair: affect / effect ──
         EntrySpec(
             word: "affect",
             cardId: ids["affect"]!,
@@ -134,8 +134,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 48, nextReviewOffsetHours: -2, reviewCount: 3, streak: 2, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ae-1", cardId: ids["effect"]!, word: "effect", kind: "contrasts_with", label: "對比", confidence: 0.95, reason: "affect (v.) vs effect (n.) — 拼寫相近但詞性不同")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ae-1", cardId: ids["effect"]!, word: "effect", kind: "shares_usage", label: "相關", confidence: 0.95, reason: "affect (v.) vs effect (n.) — 拼寫相近但詞性不同")
                 ]
             ]
         ),
@@ -154,13 +154,13 @@ private extension DemoDataProvider {
             ],
             intervalHours: 72, nextReviewOffsetHours: 12, reviewCount: 4, streak: 3, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ea-1", cardId: ids["affect"]!, word: "affect", kind: "contrasts_with", label: "對比", confidence: 0.95, reason: "effect (n.) vs affect (v.) — 拼寫相近但詞性不同")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ea-1", cardId: ids["affect"]!, word: "affect", kind: "shares_usage", label: "相關", confidence: 0.95, reason: "effect (n.) vs affect (v.) — 拼寫相近但詞性不同")
                 ]
             ]
         ),
 
-        // ── Contrasting pair: complement / compliment ──
+        // ── Confusable pair: complement / compliment ──
         EntrySpec(
             word: "complement",
             cardId: ids["complement"]!,
@@ -176,8 +176,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 24, nextReviewOffsetHours: -6, reviewCount: 2, streak: 1, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-cc-1", cardId: ids["compliment"]!, word: "compliment", kind: "contrasts_with", label: "對比", confidence: 0.92, reason: "complement（補充）vs compliment（讚美）— 一字之差")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-cc-1", cardId: ids["compliment"]!, word: "compliment", kind: "shares_usage", label: "相關", confidence: 0.92, reason: "complement（補充）vs compliment（讚美）— 一字之差")
                 ]
             ]
         ),
@@ -196,13 +196,13 @@ private extension DemoDataProvider {
             ],
             intervalHours: 12, nextReviewOffsetHours: -1, reviewCount: 1, streak: 0, lastFeedback: 0,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-cc-2", cardId: ids["complement"]!, word: "complement", kind: "contrasts_with", label: "對比", confidence: 0.92, reason: "compliment（讚美）vs complement（補充）— 一字之差")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-cc-2", cardId: ids["complement"]!, word: "complement", kind: "shares_usage", label: "相關", confidence: 0.92, reason: "compliment（讚美）vs complement（補充）— 一字之差")
                 ]
             ]
         ),
 
-        // ── Contrasting pair: imply / infer ──
+        // ── Confusable pair: imply / infer ──
         EntrySpec(
             word: "imply",
             cardId: ids["imply"]!,
@@ -218,8 +218,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 36, nextReviewOffsetHours: -8, reviewCount: 2, streak: 2, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ii-1", cardId: ids["infer"]!, word: "infer", kind: "contrasts_with", label: "對比", confidence: 0.90, reason: "imply（說者暗示）vs infer（聽者推斷）— 方向相反")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ii-1", cardId: ids["infer"]!, word: "infer", kind: "shares_usage", label: "相關", confidence: 0.90, reason: "imply（說者暗示）vs infer（聽者推斷）— 方向相反")
                 ]
             ]
         ),
@@ -238,13 +238,13 @@ private extension DemoDataProvider {
             ],
             intervalHours: 36, nextReviewOffsetHours: 2, reviewCount: 3, streak: 1, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ii-2", cardId: ids["imply"]!, word: "imply", kind: "contrasts_with", label: "對比", confidence: 0.90, reason: "infer（聽者推斷）vs imply（說者暗示）— 方向相反")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ii-2", cardId: ids["imply"]!, word: "imply", kind: "shares_usage", label: "相關", confidence: 0.90, reason: "infer（聽者推斷）vs imply（說者暗示）— 方向相反")
                 ]
             ]
         ),
 
-        // ── Contrasting pair: elicit / illicit ──
+        // ── Confusable pair: elicit / illicit ──
         EntrySpec(
             word: "elicit",
             cardId: ids["elicit"]!,
@@ -260,8 +260,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 12, nextReviewOffsetHours: -3, reviewCount: 1, streak: 0, lastFeedback: 0,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ei-1", cardId: ids["illicit"]!, word: "illicit", kind: "contrasts_with", label: "對比", confidence: 0.88, reason: "elicit（引出，動詞）vs illicit（非法的，形容詞）")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ei-1", cardId: ids["illicit"]!, word: "illicit", kind: "shares_usage", label: "相關", confidence: 0.88, reason: "elicit（引出，動詞）vs illicit（非法的，形容詞）")
                 ]
             ]
         ),
@@ -280,13 +280,13 @@ private extension DemoDataProvider {
             ],
             intervalHours: 12, nextReviewOffsetHours: -5, reviewCount: 0, streak: 0, lastFeedback: -1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-ei-2", cardId: ids["elicit"]!, word: "elicit", kind: "contrasts_with", label: "對比", confidence: 0.88, reason: "illicit（非法的，形容詞）vs elicit（引出，動詞）")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-ei-2", cardId: ids["elicit"]!, word: "elicit", kind: "shares_usage", label: "相關", confidence: 0.88, reason: "illicit（非法的，形容詞）vs elicit（引出，動詞）")
                 ]
             ]
         ),
 
-        // ── Contrasting pair: precede / proceed ──
+        // ── Confusable pair: precede / proceed ──
         EntrySpec(
             word: "precede",
             cardId: ids["precede"]!,
@@ -302,8 +302,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 48, nextReviewOffsetHours: 24, reviewCount: 3, streak: 3, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-pp-1", cardId: ids["proceed"]!, word: "proceed", kind: "contrasts_with", label: "對比", confidence: 0.85, reason: "precede（先於）vs proceed（繼續）— 字根不同但拼寫相近")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-pp-1", cardId: ids["proceed"]!, word: "proceed", kind: "shares_usage", label: "相關", confidence: 0.85, reason: "precede（先於）vs proceed（繼續）— 字根不同但拼寫相近")
                 ]
             ]
         ),
@@ -322,8 +322,8 @@ private extension DemoDataProvider {
             ],
             intervalHours: 96, nextReviewOffsetHours: 48, reviewCount: 5, streak: 4, lastFeedback: 1,
             links: [
-                "contrasts_with": [
-                    KGCardLinkSummary(id: "l-pp-2", cardId: ids["precede"]!, word: "precede", kind: "contrasts_with", label: "對比", confidence: 0.85, reason: "proceed（繼續）vs precede（先於）— 字根不同但拼寫相近")
+                "shares_usage": [
+                    KGCardLinkSummary(id: "l-pp-2", cardId: ids["precede"]!, word: "precede", kind: "shares_usage", label: "相關", confidence: 0.85, reason: "proceed（繼續）vs precede（先於）— 字根不同但拼寫相近")
                 ]
             ]
         ),
@@ -415,15 +415,15 @@ private extension DemoDataProvider {
 
     static let linkSpecs: [LinkSpec] = [
         // affect ↔ effect
-        LinkSpec(id: "gl-1", from: ids["affect"]!, to: ids["effect"]!, kind: "contrasts_with", confidence: 0.95, reason: "affect (v.) vs effect (n.)"),
+        LinkSpec(id: "gl-1", from: ids["affect"]!, to: ids["effect"]!, kind: "shares_usage", confidence: 0.95, reason: "affect (v.) vs effect (n.)"),
         // complement ↔ compliment
-        LinkSpec(id: "gl-2", from: ids["complement"]!, to: ids["compliment"]!, kind: "contrasts_with", confidence: 0.92, reason: "complement vs compliment"),
+        LinkSpec(id: "gl-2", from: ids["complement"]!, to: ids["compliment"]!, kind: "shares_usage", confidence: 0.92, reason: "complement vs compliment"),
         // imply ↔ infer
-        LinkSpec(id: "gl-3", from: ids["imply"]!, to: ids["infer"]!, kind: "contrasts_with", confidence: 0.90, reason: "imply vs infer"),
+        LinkSpec(id: "gl-3", from: ids["imply"]!, to: ids["infer"]!, kind: "shares_usage", confidence: 0.90, reason: "imply vs infer"),
         // elicit ↔ illicit
-        LinkSpec(id: "gl-4", from: ids["elicit"]!, to: ids["illicit"]!, kind: "contrasts_with", confidence: 0.88, reason: "elicit vs illicit"),
+        LinkSpec(id: "gl-4", from: ids["elicit"]!, to: ids["illicit"]!, kind: "shares_usage", confidence: 0.88, reason: "elicit vs illicit"),
         // precede ↔ proceed
-        LinkSpec(id: "gl-5", from: ids["precede"]!, to: ids["proceed"]!, kind: "contrasts_with", confidence: 0.85, reason: "precede vs proceed"),
+        LinkSpec(id: "gl-5", from: ids["precede"]!, to: ids["proceed"]!, kind: "shares_usage", confidence: 0.85, reason: "precede vs proceed"),
         // eloquent → elicit (derivational proximity)
         LinkSpec(id: "gl-6", from: ids["eloquent"]!, to: ids["elicit"]!, kind: "related", confidence: 0.60, reason: "Both from Latin loqui/lacere roots"),
         // ephemeral → resilient (antonym-ish)

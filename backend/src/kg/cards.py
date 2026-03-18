@@ -3,14 +3,15 @@
 from __future__ import annotations
 
 import logging
+import unicodedata
 import uuid
 from collections.abc import Iterator
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from typing import Literal
 
 from sqlalchemy import JSON, Column
-from sqlalchemy.exc import OperationalError
+from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
@@ -81,6 +82,13 @@ class CardStore:
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_notebook_id ON card (notebook_id)"
             )
+            # Unique constraint to prevent duplicate active cards.
+            # Uses partial index (is_deleted=0) so soft-deleted duplicates
+            # don't block re-creation.
+            conn.exec_driver_sql(
+                "CREATE UNIQUE INDEX IF NOT EXISTS uq_card_content_notebook "
+                "ON card (content COLLATE NOCASE, notebook_id) WHERE is_deleted = 0"
+            )
             conn.commit()
 
     def _migrate_review_columns(self) -> None:
@@ -125,18 +133,15 @@ class CardStore:
     ) -> Card:
         """Create and store a new card.
 
-        Uses a single transaction to check-then-insert, preventing
-        duplicates even under concurrent requests (SQLite single-writer
-        guarantee serialises the transaction).
+        SQLite WAL mode with busy_timeout serialises writers, so the
+        check-then-insert within a single Session is safe against most
+        races.  The UNIQUE partial index on (content, notebook_id) is the
+        true safety net — if a duplicate slips through, IntegrityError
+        catches it and we return the existing card.
         """
-        import unicodedata
-
         norm = unicodedata.normalize("NFC", content).strip()
         with Session(self.engine) as session:
-            # Check within the same transaction — SQLite write lock
-            # ensures no other writer can insert between SELECT and INSERT.
-            conn = session.connection()
-            row = conn.exec_driver_sql(
+            row = session.connection().exec_driver_sql(
                 "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
                 "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
                 (norm, notebook_id),
@@ -156,7 +161,18 @@ class CardStore:
                 notebook_id=notebook_id,
             )
             session.add(card)
-            session.commit()
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                row = session.connection().exec_driver_sql(
+                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                    (norm, notebook_id),
+                ).first()
+                if row:
+                    return session.get(Card, row[0])  # type: ignore[return-value]
+                raise
             session.refresh(card)
         return card
 
@@ -169,8 +185,6 @@ class CardStore:
         soft-deleted duplicate, preventing order-dependent client-side
         mis-deletion.  Returns the number of duplicates removed.
         """
-        import unicodedata
-
         removed = 0
         cards = list(self.all(include_deleted=False, notebook_id=notebook_id))
         seen: dict[str, Card] = {}
@@ -211,7 +225,6 @@ class CardStore:
                 # Bump keepers' updated_at AFTER the deletes so that
                 # incremental sync always sees: delete first, then
                 # the valid card — ensuring correct convergence.
-                from datetime import timedelta
                 bump_time = now + timedelta(milliseconds=1)
                 for keeper_id in keepers_to_bump:
                     keeper = session.get(Card, keeper_id)
