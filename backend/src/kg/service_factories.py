@@ -21,6 +21,16 @@ _STORE_CACHE_LOCK = threading.Lock()
 _STORE_CACHE_MAX = 100
 
 
+def _close_store(store: object) -> None:
+    """Best-effort close for evicted stores."""
+    close_fn = getattr(store, "close", None)
+    if callable(close_fn):
+        try:
+            close_fn()
+        except Exception:
+            logger.debug("Failed to close evicted store %s", type(store).__name__, exc_info=True)
+
+
 def _get_cached(key: str, factory):
     with _STORE_CACHE_LOCK:
         if key in _STORE_CACHE:
@@ -29,12 +39,15 @@ def _get_cached(key: str, factory):
         instance = factory()
         _STORE_CACHE[key] = instance
         while len(_STORE_CACHE) > _STORE_CACHE_MAX:
-            _STORE_CACHE.popitem(last=False)
+            _, evicted = _STORE_CACHE.popitem(last=False)
+            _close_store(evicted)
         return instance
 
 
 def clear_store_cache() -> None:
     with _STORE_CACHE_LOCK:
+        for store in _STORE_CACHE.values():
+            _close_store(store)
         _STORE_CACHE.clear()
 
 

@@ -186,6 +186,41 @@ def admin_user_entitlement_response(
     )
 
 
+def _mutate_admin_grant(
+    token: str | None,
+    user_id: str,
+    *,
+    admin_token: str,
+    users_lock_file: Path,
+    load_users: Callable[[], dict[str, dict[str, Any]]],
+    save_users: Callable[[dict[str, dict[str, Any]]], None],
+    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
+    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    authorization: str | None = None,
+    grant_updates: dict[str, Any] | None = None,
+) -> AdminUserEntitlementResponse:
+    """Shared logic for granting/revoking admin Pro access."""
+    require_admin(token, admin_token=admin_token, authorization=authorization)
+
+    with FileLock(str(users_lock_file)):
+        users = load_users()
+        record = users.get(user_id)
+        if not isinstance(record, dict) or user_id.startswith("_"):
+            raise HTTPException(status_code=404, detail="User not found")
+
+        admin_grant = current_admin_grant_record(record)
+        if grant_updates:
+            admin_grant.update(grant_updates)
+        record["admin_grant"] = admin_grant
+        save_users(users)
+
+    return AdminUserEntitlementResponse(
+        user_id=user_id,
+        pro=build_entitlements_response(record).pro,
+        admin_grant=AdminGrantStatusResponse(**admin_grant),
+    )
+
+
 def admin_grant_pro_access_response(
     token: str | None,
     user_id: str,
@@ -199,36 +234,25 @@ def admin_grant_pro_access_response(
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
     authorization: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token, authorization=authorization)
     now_iso = datetime.now(tz=UTC).isoformat()
-
-    with FileLock(str(users_lock_file)):
-        users = load_users()
-        record = users.get(user_id)
-        if not isinstance(record, dict) or user_id.startswith("_"):
-            raise HTTPException(status_code=404, detail="User not found")
-
-        admin_grant = current_admin_grant_record(record)
-        admin_grant.update(
-            {
-                "is_active": True,
-                "plan_name": admin_grant.get("plan_name") or "Books & Vocab Pro",
-                "status": "active",
-                "source": "admin",
-                "expires_at": req.expires_at,
-                "granted_at": now_iso,
-                "granted_by": (req.granted_by or "admin").strip() or "admin",
-                "reason": req.reason.strip() if isinstance(req.reason, str) and req.reason.strip() else None,
-                "last_synced_at": now_iso,
-            }
-        )
-        record["admin_grant"] = admin_grant
-        save_users(users)
-
-    return AdminUserEntitlementResponse(
-        user_id=user_id,
-        pro=build_entitlements_response(record).pro,
-        admin_grant=AdminGrantStatusResponse(**admin_grant),
+    return _mutate_admin_grant(
+        token, user_id,
+        admin_token=admin_token, users_lock_file=users_lock_file,
+        load_users=load_users, save_users=save_users,
+        current_admin_grant_record=current_admin_grant_record,
+        build_entitlements_response=build_entitlements_response,
+        authorization=authorization,
+        grant_updates={
+            "is_active": True,
+            "plan_name": "Books & Vocab Pro",
+            "status": "active",
+            "source": "admin",
+            "expires_at": req.expires_at,
+            "granted_at": now_iso,
+            "granted_by": (req.granted_by or "admin").strip() or "admin",
+            "reason": req.reason.strip() if isinstance(req.reason, str) and req.reason.strip() else None,
+            "last_synced_at": now_iso,
+        },
     )
 
 
@@ -244,29 +268,18 @@ def admin_revoke_pro_access_response(
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
     authorization: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token, authorization=authorization)
     now_iso = datetime.now(tz=UTC).isoformat()
-
-    with FileLock(str(users_lock_file)):
-        users = load_users()
-        record = users.get(user_id)
-        if not isinstance(record, dict) or user_id.startswith("_"):
-            raise HTTPException(status_code=404, detail="User not found")
-
-        admin_grant = current_admin_grant_record(record)
-        admin_grant.update(
-            {
-                "is_active": False,
-                "status": "inactive",
-                "source": "admin",
-                "last_synced_at": now_iso,
-            }
-        )
-        record["admin_grant"] = admin_grant
-        save_users(users)
-
-    return AdminUserEntitlementResponse(
-        user_id=user_id,
-        pro=build_entitlements_response(record).pro,
-        admin_grant=AdminGrantStatusResponse(**admin_grant),
+    return _mutate_admin_grant(
+        token, user_id,
+        admin_token=admin_token, users_lock_file=users_lock_file,
+        load_users=load_users, save_users=save_users,
+        current_admin_grant_record=current_admin_grant_record,
+        build_entitlements_response=build_entitlements_response,
+        authorization=authorization,
+        grant_updates={
+            "is_active": False,
+            "status": "inactive",
+            "source": "admin",
+            "last_synced_at": now_iso,
+        },
     )

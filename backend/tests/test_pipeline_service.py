@@ -111,5 +111,5 @@ def test_pipeline_service_logs_error_when_step_fails():
         )
     )
 
-    assert any("Step 1b" in message for message in logger.error_messages)
+    assert any("Embed" in message for message in logger.error_messages)
     assert any("Pipeline completed." in message for message in logger.info_messages)
