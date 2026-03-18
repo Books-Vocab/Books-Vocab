@@ -42,14 +42,16 @@ actor BackgroundSyncActor {
         let descriptor = FetchDescriptor<VocabularyEntry>()
         let localEntries = try modelContext.fetch(descriptor)
 
-        // Create a fast lookup dictionary (lowercase word -> entry)
+        // Create a fast lookup dictionary keyed by (word, notebookId) to
+        // correctly handle same word in different notebooks.
         var localDict = [String: VocabularyEntry]()
         for entry in localEntries {
-            localDict[entry.word.lowercased()] = entry
+            let key = "\(entry.word.lowercased())|\(entry.notebookId)"
+            localDict[key] = entry
         }
 
-        // Keep track of fetched card words to detect orphans later
-        var fetchedCardWords = Set<String>()
+        // Keep track of fetched card keys to detect orphans later
+        var fetchedCardKeys = Set<String>()
 
         // 1. Merge into local DB
         let totalCards = fetchedCards.count
@@ -57,10 +59,11 @@ actor BackgroundSyncActor {
             if index % 50 == 0 {
                 progress(L10n.string("同步最新卡片..."), index, totalCards)
             }
-            let lowerContent = card.content.lowercased()
-            fetchedCardWords.insert(lowerContent)
+            let cardNotebookId = card.notebookId ?? notebookId
+            let mergeKey = "\(card.content.lowercased())|\(cardNotebookId)"
+            fetchedCardKeys.insert(mergeKey)
 
-            if let existingEntry = localDict[lowerContent] {
+            if let existingEntry = localDict[mergeKey] {
                 // Delete if marked as soft-deleted
                 if card.isDeleted == true {
                     AppLog.sync.info("Remote soft-delete received: \(existingEntry.word)")
@@ -119,7 +122,7 @@ actor BackgroundSyncActor {
                 Self.mergeReviewState(from: card, into: newEntry)
 
                 modelContext.insert(newEntry)
-                localDict[lowerContent] = newEntry
+                localDict[mergeKey] = newEntry
             }
         }
 
@@ -130,7 +133,8 @@ actor BackgroundSyncActor {
             progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
             for entry in localEntries {
                 if entry.shouldAppearInKnowledgeList {
-                    if !fetchedCardWords.contains(entry.word.lowercased()) {
+                    let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
+                    if !fetchedCardKeys.contains(orphanKey) {
                         AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
                         modelContext.delete(entry)
                     }

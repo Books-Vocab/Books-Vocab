@@ -23,11 +23,18 @@ extension SettingsView {
 #endif
     }
 
+    /// Local count (same source as notebook list) with server fallback for first login.
+    var displayCardCount: Int {
+        let local = allEntries.filter(\.shouldAppearInKnowledgeList).count
+        if local > 0 { return local }
+        return kgService.serverCardCount
+    }
+
     var syncSummaryText: String {
         if !kgService.isConnected { return "離線".localized }
         var parts: [String] = ["已連線".localized]
-        if kgService.serverCardCount > 0 {
-            parts.append(L10n.format("%@ 張", "\(kgService.serverCardCount)"))
+        if displayCardCount > 0 {
+            parts.append(L10n.format("%@ 張", "\(displayCardCount)"))
         }
         if let lastSync = kgService.lastSyncDate?.formatted(.relative(presentation: .named)) {
             parts.append(lastSync)
@@ -61,7 +68,7 @@ extension SettingsView {
                     serverURL: KGService.getServerURL(),
                     isConnected: kgService.isConnected,
                     connectionPulse: coordinator.connectionPulse,
-                    serverCardCount: kgService.serverCardCount,
+                    serverCardCount: displayCardCount,
                     lastSyncDescription: kgService.lastSyncDate?.formatted(.relative(presentation: .named)),
                     debug: kgDebugState
                 )
