@@ -297,7 +297,4 @@ struct KGVocabView: View {
         }
     }
 
-    var archiveCount: Int {
-        VocabularyEntryPresentation.archivedEntries(in: syncedEntries).count
-    }
 }
