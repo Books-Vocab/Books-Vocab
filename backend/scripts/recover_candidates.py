@@ -28,9 +28,9 @@ def main():
     count = 0
     print("Regenerating candidates for 25 newest cards...")
     for c in new_cards:
-        sims = embeddings.find_similar(c["id"], k=3)
+        sims = embeddings.find_similar(c["id"], k=20)
         for other_id, score in sims:
-            if score > 0.655:
+            if score > 0.70:
                 # Add candidate handles deduplication
                 graph.add_candidate(c["id"], other_id, score)
                 count += 1

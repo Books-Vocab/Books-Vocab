@@ -104,7 +104,6 @@ enum KnowledgeGraphPresentation {
                 "archived": cssHex(skin.palette.quaternaryText)
             ],
             edgeHexes: [
-                "confusable": cssHex(skin.palette.tierAdvanced),
                 "contrasts_with": cssHex(skin.palette.link),
                 "shares_usage": cssHex(skin.palette.success)
             ],

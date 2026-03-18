@@ -12,13 +12,11 @@ from .graph import LinkKind
 logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
-- confusable: Meanings or usage easily confused (NOT just similar spelling)
-  YES: affect/effect, lay/lie, compliment/complement
-  NO: snagged/gagged, perverted/gnarled (spelling similar but meanings unrelated)
 - contrasts_with: Genuinely opposite or contrasting meanings
-  YES: unkempt/primped, hunkered/loped
+  YES: unkempt/primped, hunkered/loped, erratic/capricious
   NO: bust/midriff (different body parts, not opposites)
 - shares_usage: Used in similar contexts or fill similar grammatical roles
+  YES: luster/resplendent, haggling/extorting, cacophony/clang
 - not_applicable: No meaningful learning relationship
 
 Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<brief>"}"""

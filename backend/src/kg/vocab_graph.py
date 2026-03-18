@@ -8,7 +8,7 @@ from typing import Any
 from .api_models import GraphLinkResponse
 
 
-SIMILARITY_THRESHOLD = 0.655
+SIMILARITY_THRESHOLD = 0.70
 
 
 def embed_and_link_new_cards(
@@ -28,7 +28,7 @@ def embed_and_link_new_cards(
         if card and not embeddings.has(card.id):
             try:
                 embeddings.add(card.id, card.embed_text())
-                similar = embeddings.find_similar(card.id, k=3)
+                similar = embeddings.find_similar(card.id, k=20)
                 for other_id, score in similar:
                     if score > SIMILARITY_THRESHOLD:
                         graph.add_candidate(card.id, other_id, score)

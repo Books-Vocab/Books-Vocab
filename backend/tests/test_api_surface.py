@@ -189,7 +189,7 @@ def test_graph_links_returns_active_only(isolated_api):
     user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
     graph = api_mod._graph_store(user_dir)
 
-    active = graph.add_link("c1", "c2", LinkKind.CONFUSABLE, 0.91, "similar spelling")
+    active = graph.add_link("c1", "c2", LinkKind.CONTRASTS_WITH, 0.91, "opposite meanings")
     deprecated = graph.add_link("c2", "c3", LinkKind.SHARES_USAGE, 0.80, "same pattern")
     deprecated.status = "deprecated"
     graph._save_links()
@@ -198,7 +198,7 @@ def test_graph_links_returns_active_only(isolated_api):
     assert r.status_code == 200, r.text
     data = r.json()
     assert [x["id"] for x in data] == [active.id]
-    assert data[0]["kind"] == LinkKind.CONFUSABLE.value
+    assert data[0]["kind"] == LinkKind.CONTRASTS_WITH.value
 
 
 def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
@@ -219,7 +219,7 @@ def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
     obsolete = cards.add(content="obsolete", meaning="過時")
     cards.delete(obsolete.id)
 
-    graph.add_link(evoke.id, invoke.id, LinkKind.CONFUSABLE, 0.92, "similar spelling")
+    graph.add_link(evoke.id, invoke.id, LinkKind.SHARES_USAGE, 0.92, "similar contexts")
     graph.add_link(evoke.id, suppress.id, LinkKind.CONTRASTS_WITH, 0.74, "opposite direction")
     graph.add_link(evoke.id, obsolete.id, LinkKind.SHARES_USAGE, 0.50, "should be hidden")
 
@@ -229,15 +229,15 @@ def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
 
     assert body["mode"] == "production"
     assert body["examples"] == ["The story can **evoke** old memories."]
-    assert body["linksByKind"]["confusable"] == [
+    assert body["linksByKind"]["shares_usage"] == [
         {
-            "id": body["linksByKind"]["confusable"][0]["id"],
+            "id": body["linksByKind"]["shares_usage"][0]["id"],
             "cardId": invoke.id,
             "word": "invoke",
-            "kind": "confusable",
-            "label": "易混",
+            "kind": "shares_usage",
+            "label": "相關",
             "confidence": 0.92,
-            "reason": "similar spelling",
+            "reason": "similar contexts",
         }
     ]
     assert body["linksByKind"]["contrasts_with"] == [
@@ -251,7 +251,6 @@ def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
             "reason": "opposite direction",
         }
     ]
-    assert "shares_usage" not in body["linksByKind"]
 
 
 def test_translate_endpoints_success_and_error(isolated_api):

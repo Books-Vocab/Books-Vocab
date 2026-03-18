@@ -104,7 +104,7 @@ struct CardPresentation {
         return examples.first != trimmedContext || bookTitle != "Knowledge Graph"
     }
 
-    static let defaultLinkOrdering = ["contrasts_with", "confusable", "shares_usage"]
+    static let defaultLinkOrdering = ["contrasts_with", "shares_usage"]
 }
 
 extension VocabularyEntry {
