@@ -22,6 +22,7 @@ from ..deps import (
     _daily_stats_store,
     _embedding_store,
     _graph_store,
+    _notebook_store,
     _require_pro_access,
     get_current_user,
     logger,
@@ -56,6 +57,7 @@ def list_vocab(
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
     response.headers["X-Pipeline-Pending"] = "true" if is_pipeline_running(user["id"]) else "false"
@@ -103,13 +105,14 @@ def lookup_word(
         word, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
 
 
 @router.patch("/api/vocab/{word}/archive")
 def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default"), user: dict = Depends(get_current_user)):
-    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_id=notebook_id)
+    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
@@ -121,6 +124,7 @@ def delete_word(
     return delete_word_response(
         word, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
 
@@ -132,7 +136,8 @@ def get_graph_links(
 ):
     return get_graph_links_response(
         user, require_pro_access=_require_pro_access,
-        graph_store_factory=_graph_store, notebook_id=notebook_id,
+        graph_store_factory=_graph_store, notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
     )
 
 
@@ -146,5 +151,6 @@ def add_vocab(
         entries, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
         graph_store_factory=_graph_store, logger=logger,
+        notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )

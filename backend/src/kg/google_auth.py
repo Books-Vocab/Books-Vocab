@@ -38,7 +38,8 @@ async def verify_google_token(token: str, client_id: str) -> str:
 
     except ValueError as e:
         # Invalid token signature or claims
-        raise HTTPException(status_code=401, detail=f"Invalid Google token: {e}")  # noqa: B904
+        logger.warning("Google token validation failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid token")  # noqa: B904
     except (GoogleAuthError, OSError) as e:
         logger.error("Google token verification error: %s", e)
         raise HTTPException(status_code=401, detail="Google authentication failed")  # noqa: B904

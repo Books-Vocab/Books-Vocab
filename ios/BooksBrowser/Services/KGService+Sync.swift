@@ -162,24 +162,40 @@ extension KGService {
 
         do {
             _ = try await pushReviewStates(container: container)
+        } catch KGError.unauthorized {
+            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+            lastBackgroundSyncError = "Session expired"
+            return
         } catch {
             AppLog.kg.warning("backgroundSync pushReview failed: \(error.localizedDescription)")
             failures.append("pushReview")
         }
         do {
             _ = try await pushDailyStats(container: container)
+        } catch KGError.unauthorized {
+            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+            lastBackgroundSyncError = "Session expired"
+            return
         } catch {
             AppLog.kg.warning("backgroundSync pushDailyStats failed: \(error.localizedDescription)")
             failures.append("pushDailyStats")
         }
         do {
             try await pullCardsToLocal(container: container, progress: nil)
+        } catch KGError.unauthorized {
+            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+            lastBackgroundSyncError = "Session expired"
+            return
         } catch {
             AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
             failures.append("pull")
         }
         do {
             try await pullDailyStats(container: container)
+        } catch KGError.unauthorized {
+            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+            lastBackgroundSyncError = "Session expired"
+            return
         } catch {
             AppLog.kg.warning("backgroundSync pullDailyStats failed: \(error.localizedDescription)")
             failures.append("pullDailyStats")

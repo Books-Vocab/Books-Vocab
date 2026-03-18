@@ -36,7 +36,8 @@ def _fetch_apple_public_keys() -> None:
     except (httpx.HTTPError, ValueError, KeyError) as e:
         # If cache exists and request fails, keeping old cache is safer
         if not _apple_public_keys:
-            raise HTTPException(status_code=500, detail=f"Failed to fetch Apple public keys: {e}")  # noqa: B904
+            logger.error("Failed to fetch Apple public keys: %s", e)
+            raise HTTPException(status_code=500, detail="Authentication service unavailable")  # noqa: B904
 
 
 def _get_rsa_public_key(kid: str) -> str | bytes:
@@ -116,7 +117,8 @@ def verify_apple_token(token: str, audience: str) -> str:
     except jwt.InvalidIssuerError:
         raise HTTPException(status_code=401, detail="Invalid issuer")  # noqa: B904
     except jwt.PyJWTError as e:
-        raise HTTPException(status_code=401, detail=f"Invalid token: {e}")  # noqa: B904
+        logger.warning("Apple JWT validation failed: %s", e)
+        raise HTTPException(status_code=401, detail="Invalid token")  # noqa: B904
     except HTTPException:
         raise
     except (KeyError, ValueError, httpx.HTTPError) as e:

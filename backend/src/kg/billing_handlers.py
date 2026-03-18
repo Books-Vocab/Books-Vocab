@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -8,6 +9,8 @@ from typing import Any
 import httpx
 from fastapi import HTTPException
 from filelock import FileLock
+
+logger = logging.getLogger(__name__)
 
 from .api_models import (
     AppStoreNotificationRequest,
@@ -52,9 +55,11 @@ def sync_app_store_subscription_response(
                 "price_display": req.price_display,
             }
     except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.error("App Store configuration error: %s", exc)
+        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
     except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("App Store transaction verification failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Transaction verification failed") from exc
 
     with FileLock(str(users_lock_file)):
         users = load_users()
@@ -92,9 +97,11 @@ def app_store_notifications_response(
     try:
         snapshot, decoded_payload = decode_notification_payload(req)
     except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.error("App Store configuration error: %s", exc)
+        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
     except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("App Store notification verification failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Transaction verification failed") from exc
 
     event = {
         "received_at": datetime.now(tz=UTC).isoformat(),
@@ -171,13 +178,16 @@ async def reconcile_app_store_subscription_response(
             raise HTTPException(status_code=502, detail="App Store transaction lookup did not return signedTransactionInfo")
         snapshot = decode_signed_transaction_info(signed_transaction_info)
     except AppStoreConfigurationError as exc:
-        raise HTTPException(status_code=500, detail=str(exc)) from exc
+        logger.error("App Store configuration error: %s", exc)
+        raise HTTPException(status_code=500, detail="App Store configuration error") from exc
     except AppStoreVerificationError as exc:
-        raise HTTPException(status_code=400, detail=str(exc)) from exc
+        logger.warning("App Store transaction decode failed: %s", exc)
+        raise HTTPException(status_code=400, detail="Invalid transaction response") from exc
     except httpx.HTTPStatusError as exc:
         raise HTTPException(status_code=502, detail=f"App Store API lookup failed: HTTP {exc.response.status_code}") from exc
     except httpx.HTTPError as exc:
-        raise HTTPException(status_code=502, detail=f"App Store API lookup failed: {exc}") from exc
+        logger.warning("App Store API network error: %s", exc)
+        raise HTTPException(status_code=502, detail="App Store service unavailable") from exc
 
     with FileLock(str(users_lock_file)):
         users = load_users()

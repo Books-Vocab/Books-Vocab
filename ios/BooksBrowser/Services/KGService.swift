@@ -161,6 +161,13 @@ final class KGService: KGServing, LocalDataClearing {
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
     }
 
+    // MARK: - Session Invalidation (internal for extensions)
+
+    func handleUnauthorized(modelContainer: ModelContainer?, reason: String) async {
+        sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
+        await sessionInvalidator.logout(modelContainer: modelContainer, reason: reason)
+    }
+
     // MARK: - Health Check
 
     func healthCheck() async {
