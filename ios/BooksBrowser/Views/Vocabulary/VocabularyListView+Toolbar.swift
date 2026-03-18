@@ -11,12 +11,10 @@ struct VocabularyListToolbar: ViewModifier {
     let pendingCount: Int
     let knowledgeReviewCount: Int
     let knowledgeDueCount: Int
-    let archivedCount: Int
     let onSync: () -> Void
     let onStartDueReview: () -> Void
     let onStartUnlearnedReview: () -> Void
     let onStartAllReview: () -> Void
-    let onShowArchive: () -> Void
     let onExportCSV: () -> Void
     let onExportJSON: () -> Void
     let onExportAnki: () -> Void
@@ -84,14 +82,6 @@ struct VocabularyListToolbar: ViewModifier {
                         }
                     }
 
-                    ToolbarItem(placement: .topBarTrailing) {
-                        Button(action: onShowArchive) {
-                            VocabToolbarGlyph(
-                                systemImage: "archivebox",
-                                badge: archivedCount > 0 ? "\(archivedCount)" : nil
-                            )
-                        }
-                    }
                 }
 
                 // Export menu (only for local vocab tab)

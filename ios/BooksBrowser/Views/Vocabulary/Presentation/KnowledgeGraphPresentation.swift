@@ -47,9 +47,7 @@ enum KnowledgeGraphPresentation {
             let colorHex: String?
             let nodeRatio: Double?
             if entry.isArchived {
-                tier = "archived"
-                colorHex = nil
-                nodeRatio = nil
+                return nil
             } else if entry.reviewCount == 0 {
                 tier = "gray"
                 colorHex = nil

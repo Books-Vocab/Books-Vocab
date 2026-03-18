@@ -109,7 +109,7 @@ def lookup_word(
 
 @router.patch("/api/vocab/{word}/archive")
 def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default"), user: dict = Depends(get_current_user)):
-    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, notebook_id=notebook_id)
+    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_id=notebook_id)
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)

@@ -24,7 +24,6 @@ struct VocabularyListView: View {
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.appTheme) var appTheme
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
-    @State var showArchiveList = false
     @State var coordinator = VocabularyListCoordinator()
 
     var notebookName: String {
@@ -58,12 +57,10 @@ struct VocabularyListView: View {
             pendingCount: pendingCount,
             knowledgeReviewCount: knowledgeReviewCount,
             knowledgeDueCount: knowledgeDueCount,
-            archivedCount: archivedCount,
             onSync: coordinator.presentSyncView,
             onStartDueReview: { coordinator.startKnowledgeReview(entries: knowledgeDueEntries) },
             onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: knowledgeUnlearnedEntries) },
             onStartAllReview: { coordinator.startKnowledgeReview(entries: knowledgeReviewEntries) },
-            onShowArchive: { showArchiveList = true },
             onExportCSV: { coordinator.exportCSV(entries: pendingEntries) },
             onExportJSON: { coordinator.exportJSON(entries: pendingEntries) },
             onExportAnki: { coordinator.exportAnki(entries: pendingEntries) },
@@ -73,7 +70,6 @@ struct VocabularyListView: View {
         ))
         .modifier(VocabularyListSheets(
             coordinator: coordinator,
-            showArchiveList: $showArchiveList,
             allEntries: allEntries,
             sizeClass: sizeClass
         ))

@@ -23,6 +23,7 @@ struct NotebookListView: View {
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
     @State private var deleteError: String?
+    @State private var showArchiveList = false
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
@@ -88,6 +89,14 @@ struct NotebookListView: View {
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {
                     Button {
+                        showArchiveList = true
+                    } label: {
+                        Image(systemName: "archivebox")
+                    }
+                }
+
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
                         showCreateSheet = true
                     } label: {
                         Image(systemName: "plus")
@@ -114,6 +123,9 @@ struct NotebookListView: View {
                     allEntries: allEntries,
                     onClose: { activeReviewSession = nil }
                 )
+            }
+            .sheet(isPresented: $showArchiveList) {
+                ArchivedVocabSheet()
             }
             .task {
                 await ensureDefaultNotebook()
