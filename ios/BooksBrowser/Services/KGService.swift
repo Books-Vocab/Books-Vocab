@@ -157,15 +157,96 @@ final class KGService: KGServing, LocalDataClearing {
         return token
     }
 
-    func applyAuth(to request: inout URLRequest, token: String) {
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
-
     // MARK: - Session Invalidation (internal for extensions)
 
     func handleUnauthorized(modelContainer: ModelContainer?, reason: String) async {
         sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
         await sessionInvalidator.logout(modelContainer: modelContainer, reason: reason)
+    }
+
+    // MARK: - Authenticated Request Middleware
+
+    func authenticatedRequest(
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil,
+        onRetry: ((Int, Int) -> Void)? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
+        let token = try await currentAuthToken()
+
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent(path),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw KGError.serverError("Invalid URL for \(path)")
+        }
+        if let queryItems, !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for \(path)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        request.httpBody = body
+
+        let (data, response) = try await withRetry(onRetry: onRetry) {
+            try await sharedURLSession.data(for: request)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response from \(path)")
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw KGError.unauthorized
+        }
+
+        return (data, httpResponse)
+    }
+
+    func authenticatedDecode<T: Decodable>(
+        _ type: T.Type,
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil,
+        onRetry: ((Int, Int) -> Void)? = nil
+    ) async throws -> T {
+        let (data, httpResponse) = try await authenticatedRequest(
+            path: path, method: method, queryItems: queryItems,
+            body: body, onRetry: onRetry
+        )
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.httpError(
+                statusCode: httpResponse.statusCode,
+                detail: "\(method) \(path) failed"
+            )
+        }
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    func authenticatedVoid(
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil
+    ) async throws {
+        let (_, httpResponse) = try await authenticatedRequest(
+            path: path, method: method, queryItems: queryItems, body: body
+        )
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.httpError(
+                statusCode: httpResponse.statusCode,
+                detail: "\(method) \(path) failed"
+            )
+        }
     }
 
     // MARK: - Health Check
@@ -180,25 +261,7 @@ final class KGService: KGServing, LocalDataClearing {
             return
         }
         do {
-            let token = try await currentAuthToken()
-            let url = baseURL.appendingPathComponent("api/health")
-            var request = URLRequest(url: url)
-            applyAuth(to: &request, token: token)
-
-            let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                isConnected = false
-                return
-            }
-
-            if httpResponse.statusCode == 401 {
-                AppLog.kg.error("Health check failed: 401 Unauthorized")
-                sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
-                await sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
-                isConnected = false
-                return
-            }
+            let (data, httpResponse) = try await authenticatedRequest(path: "api/health")
 
             if httpResponse.statusCode != 200 {
                 isConnected = false
@@ -214,6 +277,10 @@ final class KGService: KGServing, LocalDataClearing {
                 formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 lastSyncDate = formatter.date(from: lastModStr)
             }
+        } catch KGError.unauthorized {
+            AppLog.kg.error("Health check failed: 401 Unauthorized")
+            await handleUnauthorized(modelContainer: nil, reason: "healthcheck_401")
+            isConnected = false
         } catch {
             isConnected = false
             AppLog.kg.error("Health check failed: \(error.localizedDescription)")
@@ -284,6 +351,7 @@ final class KGService: KGServing, LocalDataClearing {
 
 enum KGError: LocalizedError {
     case serverError(String)
+    case httpError(statusCode: Int, detail: String)
     case notConnected
     case unauthorized
     case offline
@@ -292,6 +360,7 @@ enum KGError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .serverError(let msg): return L10n.format("KG 伺服器錯誤：%@", msg)
+        case .httpError(let code, let detail): return L10n.format("HTTP %d：%@", code, detail)
         case .notConnected: return L10n.string("KG 伺服器未連線")
         case .unauthorized: return L10n.string("未登入帳號或身份已過期")
         case .offline: return L10n.string("目前沒有網路連線")
@@ -299,9 +368,16 @@ enum KGError: LocalizedError {
         }
     }
 
-    /// 是否為網路/離線相關錯誤（UI 可據此顯示不同提示）
     var isNetworkRelated: Bool {
         switch self {
+        case .offline, .notConnected: return true
+        default: return false
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .httpError(let code, _): return (500...599).contains(code)
         case .offline, .notConnected: return true
         default: return false
         }
