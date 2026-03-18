@@ -63,3 +63,46 @@ class TestHasLink:
         lk.status = "deprecated"
         store._links[lk.id] = lk
         assert store.has_link("card_a", "card_b") is False
+
+
+class TestRestoreLinksFor:
+    def test_restores_deprecated_links(self, store):
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.deprecate_links_for("card_a")
+        assert store.get_links_for("card_a") == []
+
+        cards_store = type("S", (), {"get": lambda self, cid: type("C", (), {"is_deleted": False, "is_archived": False})()})()
+        count = store.restore_links_for("card_a", cards_store)
+        assert count == 1
+        assert len(store.get_links_for("card_a")) == 1
+
+    def test_skips_deleted_other_end(self, store):
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.deprecate_links_for("card_a")
+
+        cards_store = type("S", (), {"get": lambda self, cid: type("C", (), {"is_deleted": True, "is_archived": False})()})()
+        count = store.restore_links_for("card_a", cards_store)
+        assert count == 0
+        assert store.get_links_for("card_a") == []
+
+    def test_skips_archived_other_end(self, store):
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.deprecate_links_for("card_a")
+
+        cards_store = type("S", (), {"get": lambda self, cid: type("C", (), {"is_deleted": False, "is_archived": True})()})()
+        count = store.restore_links_for("card_a", cards_store)
+        assert count == 0
+
+    def test_skips_missing_other_card(self, store):
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.deprecate_links_for("card_a")
+
+        cards_store = type("S", (), {"get": lambda self, cid: None})()
+        count = store.restore_links_for("card_a", cards_store)
+        assert count == 0
+
+    def test_no_deprecated_links_returns_zero(self, store):
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards_store = type("S", (), {"get": lambda self, cid: type("C", (), {"is_deleted": False, "is_archived": False})()})()
+        count = store.restore_links_for("card_a", cards_store)
+        assert count == 0
