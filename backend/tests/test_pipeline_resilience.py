@@ -35,7 +35,7 @@ class _CardsBothFields:
         return [
             SimpleNamespace(
                 id="c1", content="evoke", pos="v.", note="note",
-                difficulty=None, is_deleted=False, notebook_id="default",
+                difficulty=None, is_deleted=False, is_archived=False, notebook_id="default",
                 embed_text=lambda: "evoke",
             )
         ]

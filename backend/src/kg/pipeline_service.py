@@ -113,7 +113,7 @@ async def _step_embed(
     cards = card_store_factory(user["dir"])
     embeddings = embedding_store_factory(user["dir"], user_id=uid, notebook_id=notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
-    missing = [card for card in cards.all(notebook_id=notebook_id) if not embeddings.has(card.id)]
+    missing = [card for card in cards.all(notebook_id=notebook_id) if not embeddings.has(card.id) and not card.is_archived]
 
     if not missing:
         return
@@ -157,7 +157,7 @@ async def _step_link(
         for index, candidate in enumerate(candidates):  # noqa: B007
             card_a = cards.get(candidate.from_id)
             card_b = cards.get(candidate.to_id)
-            if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted:
+            if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted or card_a.is_archived or card_b.is_archived:
                 continue
 
             loop = asyncio.get_running_loop()
