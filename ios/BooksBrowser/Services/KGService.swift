@@ -168,6 +168,91 @@ final class KGService: KGServing, LocalDataClearing {
         await sessionInvalidator.logout(modelContainer: modelContainer, reason: reason)
     }
 
+    // MARK: - Authenticated Request Middleware
+
+    func authenticatedRequest(
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil,
+        onRetry: ((Int, Int) -> Void)? = nil
+    ) async throws -> (Data, HTTPURLResponse) {
+        let token = try await currentAuthToken()
+
+        guard var components = URLComponents(
+            url: baseURL.appendingPathComponent(path),
+            resolvingAgainstBaseURL: false
+        ) else {
+            throw KGError.serverError("Invalid URL for \(path)")
+        }
+        if let queryItems, !queryItems.isEmpty {
+            components.queryItems = queryItems
+        }
+        guard let url = components.url else {
+            throw KGError.serverError("Invalid URL for \(path)")
+        }
+
+        var request = URLRequest(url: url)
+        request.httpMethod = method
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        if body != nil {
+            request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        }
+        request.httpBody = body
+
+        let (data, response) = try await withRetry(onRetry: onRetry) {
+            try await sharedURLSession.data(for: request)
+        }
+
+        guard let httpResponse = response as? HTTPURLResponse else {
+            throw KGError.serverError("Invalid response from \(path)")
+        }
+
+        if httpResponse.statusCode == 401 {
+            throw KGError.unauthorized
+        }
+
+        return (data, httpResponse)
+    }
+
+    func authenticatedDecode<T: Decodable>(
+        _ type: T.Type,
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil,
+        onRetry: ((Int, Int) -> Void)? = nil
+    ) async throws -> T {
+        let (data, httpResponse) = try await authenticatedRequest(
+            path: path, method: method, queryItems: queryItems,
+            body: body, onRetry: onRetry
+        )
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.httpError(
+                statusCode: httpResponse.statusCode,
+                detail: "\(method) \(path) failed"
+            )
+        }
+        return try JSONDecoder().decode(type, from: data)
+    }
+
+    func authenticatedVoid(
+        path: String,
+        method: String = "GET",
+        queryItems: [URLQueryItem]? = nil,
+        body: Data? = nil
+    ) async throws {
+        let (_, httpResponse) = try await authenticatedRequest(
+            path: path, method: method, queryItems: queryItems, body: body
+        )
+        guard (200...299).contains(httpResponse.statusCode) else {
+            throw KGError.httpError(
+                statusCode: httpResponse.statusCode,
+                detail: "\(method) \(path) failed"
+            )
+        }
+    }
+
     // MARK: - Health Check
 
     func healthCheck() async {
