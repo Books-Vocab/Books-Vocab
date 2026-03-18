@@ -33,7 +33,7 @@ struct NotebookFilterChip: View {
             )
         }
         .sheet(isPresented: $showPicker) {
-            NotebookPickerSheet(
+            NotebookFilterPickerSheet(
                 filter: $filter,
                 notebooks: notebooks.filter { !$0.isDeleted }
             )
@@ -55,7 +55,7 @@ struct NotebookFilterChip: View {
 
 // MARK: - Picker Sheet
 
-struct NotebookPickerSheet: View {
+struct NotebookFilterPickerSheet: View {
     @Binding var filter: NotebookFilter
     let notebooks: [Notebook]
 
