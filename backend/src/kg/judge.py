@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 
 SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
 - contrasts_with: Genuinely opposite or contrasting meanings
-  YES: unkempt/primped, hunkered/loped, erratic/capricious
+  YES: unkempt/primped, hunkered/loped, meticulous/sloppy
   NO: bust/midriff (different body parts, not opposites)
 - shares_usage: Used in similar contexts or fill similar grammatical roles
   YES: luster/resplendent, haggling/extorting, cacophony/clang

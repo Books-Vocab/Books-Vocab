@@ -11,6 +11,7 @@ from openai import OpenAIError
 from .retry import async_retry
 from .types import UserRecord
 from .user_store import resolve_mochi_api_key_from_config
+from .vocab_graph import CANDIDATE_K, SIMILARITY_THRESHOLD
 
 _PIPELINE_RUNNING: dict[str, bool] = {}
 _PIPELINE_RUNNING_LOCK = threading.Lock()
@@ -89,9 +90,9 @@ def _sync_embed_loop(
     for card in missing:
         try:
             embeddings.add(card.id, card.embed_text())
-            similar = embeddings.find_similar(card.id, k=20)
+            similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
             for other_id, score in similar:
-                if score > 0.70:
+                if score > SIMILARITY_THRESHOLD:
                     graph.add_candidate(card.id, other_id, score)
             backfilled += 1
         except (OpenAIError, OSError, ValueError) as exc:

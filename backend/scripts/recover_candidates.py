@@ -3,6 +3,7 @@ import numpy as np
 from pathlib import Path
 from kg.graph import GraphStore
 from kg.embeddings import EmbeddingStore
+from kg.vocab_graph import CANDIDATE_K, SIMILARITY_THRESHOLD
 import os
 from openai import OpenAI
 from dotenv import load_dotenv
@@ -28,9 +29,9 @@ def main():
     count = 0
     print("Regenerating candidates for 25 newest cards...")
     for c in new_cards:
-        sims = embeddings.find_similar(c["id"], k=20)
+        sims = embeddings.find_similar(c["id"], k=CANDIDATE_K)
         for other_id, score in sims:
-            if score > 0.70:
+            if score > SIMILARITY_THRESHOLD:
                 # Add candidate handles deduplication
                 graph.add_candidate(c["id"], other_id, score)
                 count += 1
