@@ -12,6 +12,9 @@ import SwiftUI
     func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext, dueEntries: [VocabularyEntry], unlearnedEntries: [VocabularyEntry], selectedReviewState: Binding<VocabularyReviewState>) async
     func forceRefresh(kgService: any KGServing, modelContext: ModelContext) async
     func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
+    func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
+    func handleBatchArchive(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
+    func handleBatchMove(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], toNotebook: String, fromNotebook: String, kgService: any KGServing, modelContext: ModelContext) async throws
 }
 
 @Observable @MainActor
@@ -107,5 +110,58 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         }
 
         await kgService.healthCheck()
+    }
+
+    func handleBatchDelete(
+        _ entryIDs: Set<UUID>,
+        syncedEntries: [VocabularyEntry],
+        modelContext: ModelContext
+    ) {
+        let entries = syncedEntries.filter { entryIDs.contains($0.id) }
+        for entry in entries {
+            entry.queueDelete()
+        }
+        modelContext.safeSave()
+    }
+
+    func handleBatchArchive(
+        _ entryIDs: Set<UUID>,
+        syncedEntries: [VocabularyEntry],
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async {
+        let entries = syncedEntries.filter { entryIDs.contains($0.id) }
+        var failCount = 0
+        for entry in entries {
+            do {
+                try await kgService.archiveCard(word: entry.word, archived: true, notebookId: entry.notebookId)
+                entry.isArchived = true
+            } catch {
+                failCount += 1
+                AppLog.kg.error("Batch archive failed '\(entry.word)': \(error.localizedDescription)")
+            }
+        }
+        modelContext.safeSave()
+        if failCount > 0 {
+            let successCount = entries.count - failCount
+            errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+        }
+    }
+
+    func handleBatchMove(
+        _ entryIDs: Set<UUID>,
+        syncedEntries: [VocabularyEntry],
+        toNotebook: String,
+        fromNotebook: String,
+        kgService: any KGServing,
+        modelContext: ModelContext
+    ) async throws {
+        let entries = syncedEntries.filter { entryIDs.contains($0.id) }
+        let words = entries.map(\.word)
+        try await kgService.moveCards(words: words, fromNotebook: fromNotebook, toNotebook: toNotebook)
+        for entry in entries {
+            entry.notebookId = toNotebook
+        }
+        modelContext.safeSave()
     }
 }

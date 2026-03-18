@@ -33,11 +33,9 @@ struct KGVocabPresenter: View {
     let onDismissBanner: (() -> Void)?
     let onRetryBanner: (() -> Void)?
     let onRowTapped: (UUID) -> Void
-    let onDeleteTapped: (UUID) -> Void
-    let onArchiveTapped: (UUID) -> Void
+    let selectionState: SelectionModeState
+    let onLongPress: (UUID) -> Void
     var onRefresh: (() async -> Void)?
-
-    @SwiftUI.State private var activeSwipeID: UUID?
 
     var body: some View {
         ScrollView {
@@ -73,32 +71,36 @@ struct KGVocabPresenter: View {
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
-                                VocabSwipeRow(
-                                    itemID: item.id,
-                                    activeSwipeID: $activeSwipeID,
-                                    actionLabel: "封存",
-                                    actionImage: "archivebox",
-                                    actionTint: vocabSkin.palette.quaternaryText,
-                                    onAction: { onArchiveTapped(item.id) }
-                                ) {
+                                HStack(spacing: vocabSkin.spacing.inlineGap) {
+                                    if selectionState.isSelecting {
+                                        Image(systemName: selectionState.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
+                                            .font(vocabSkin.typography.iconMedium)
+                                            .foregroundStyle(
+                                                selectionState.selectedIDs.contains(item.id)
+                                                    ? vocabSkin.palette.accent
+                                                    : vocabSkin.palette.quaternaryText
+                                            )
+                                            .onTapGesture { selectionState.toggle(item.id) }
+                                            .transition(.scale.combined(with: .opacity))
+                                    }
+
                                     WordRow(viewData: item.row)
                                         .contentShape(Rectangle())
                                         .onTapGesture {
-                                            if activeSwipeID != nil {
-                                                activeSwipeID = nil
+                                            if selectionState.isSelecting {
+                                                selectionState.toggle(item.id)
                                             } else {
                                                 onRowTapped(item.id)
                                             }
                                         }
-                                        .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                                        .onLongPressGesture {
+                                            if !selectionState.isSelecting {
+                                                onLongPress(item.id)
+                                            }
+                                        }
                                 }
-                                .contextMenu {
-                                    Button(role: .destructive) {
-                                        onDeleteTapped(item.id)
-                                    } label: {
-                                        Label("刪除卡片".localized, systemImage: "trash")
-                                    }
-                                }
+                                .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                                .animation(AppMotion.standardSpring, value: selectionState.isSelecting)
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
@@ -108,7 +110,6 @@ struct KGVocabPresenter: View {
                                 }
                             }
                         }
-                        .animation(AppMotion.standardSpring, value: selectedReviewState)
                     }
                     }
                     .id(selectedReviewState)
@@ -228,8 +229,8 @@ private enum KGVocabPresenterPreviewData {
             onDismissBanner: {},
             onRetryBanner: {},
             onRowTapped: { _ in },
-            onDeleteTapped: { _ in },
-            onArchiveTapped: { _ in },
+            selectionState: SelectionModeState(),
+            onLongPress: { _ in },
             onRefresh: {}
         )
     }
@@ -244,8 +245,8 @@ private enum KGVocabPresenterPreviewData {
             onDismissBanner: nil,
             onRetryBanner: nil,
             onRowTapped: { _ in },
-            onDeleteTapped: { _ in },
-            onArchiveTapped: { _ in },
+            selectionState: SelectionModeState(),
+            onLongPress: { _ in },
             onRefresh: {}
         )
     }

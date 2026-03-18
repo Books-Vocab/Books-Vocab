@@ -332,3 +332,8 @@ class DailyReviewStatsPushResponse(BaseModel):
 
 class DailyReviewStatsResponse(BaseModel):
     entries: list[DailyReviewStatEntry]
+
+
+class MoveWordsRequest(BaseModel):
+    words: list[str] = Field(min_length=1, max_length=200)
+    to_notebook_id: str

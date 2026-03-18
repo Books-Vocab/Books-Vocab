@@ -247,6 +247,46 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
     return {"deleted": word, "id": card.id}
 
 
+def move_vocab_words(
+    words: list[str],
+    *,
+    from_notebook_id: str,
+    to_notebook_id: str,
+    cards_store: Any,
+    source_graph: Any = None,
+    target_graph: Any = None,
+) -> dict[str, int]:
+    """Move specific cards between notebooks. Deprecates graph links in source, adds candidates in target."""
+    if not words:
+        raise HTTPException(422, "No words provided")
+    if from_notebook_id == to_notebook_id:
+        raise HTTPException(422, "Source and target notebook are the same")
+
+    # Find card IDs before move (for graph cleanup)
+    card_ids = []
+    for word in words:
+        card = cards_store.find_by_content(word, notebook_id=from_notebook_id)
+        if card:
+            card_ids.append(card.id)
+
+    moved = cards_store.move_cards(words, from_notebook_id=from_notebook_id, to_notebook_id=to_notebook_id)
+
+    # Deprecate graph links in source notebook
+    if source_graph is not None:
+        for card_id in card_ids:
+            source_graph.deprecate_links_for(card_id)
+            source_graph.remove_candidates_for(card_id)
+
+    # Add candidates in target notebook so pipeline regenerates links
+    if target_graph is not None:
+        target_ids = [c.id for c in (cards_store.all(notebook_id=to_notebook_id) or []) if c.id not in card_ids and not c.is_deleted and not c.is_archived]
+        for card_id in card_ids:
+            for other_id in target_ids[:20]:  # cap to avoid O(n²) explosion
+                target_graph.add_candidate(card_id, other_id, similarity=0.0)
+
+    return {"moved": moved}
+
+
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
