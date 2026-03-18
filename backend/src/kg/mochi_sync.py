@@ -8,6 +8,7 @@ import logging
 from pathlib import Path
 
 import httpx
+from filelock import FileLock
 
 from .cards import Card, CardStore
 from .graph import GraphStore
@@ -34,6 +35,7 @@ class MochiSync:
         # Unified sync file: {"map": {...}, "state": {...}}
         # map_path kept for backward-compat path resolution; actual file is mochi_sync.json
         self._sync_path = map_path.parent / "mochi_sync.json"
+        self._file_lock = FileLock(str(self._sync_path) + ".lock", timeout=30)
         self._legacy_map_path = map_path
         self._legacy_state_path = map_path.parent / "sync_state.json"
         self.deck_name = deck_name
@@ -44,37 +46,43 @@ class MochiSync:
 
     def _load(self) -> None:
         """Load unified sync file, migrating legacy files if needed."""
-        if self._sync_path.exists():
-            try:
-                data = json.loads(self._sync_path.read_text())
-                self._map = data.get("map", {})
-                self._state = data.get("state", {})
-                return
-            except json.JSONDecodeError:
-                logger.warning("mochi_sync.json corrupted, attempting legacy migration")
+        with self._file_lock:
+            if self._sync_path.exists():
+                try:
+                    data = json.loads(self._sync_path.read_text())
+                    self._map = data.get("map", {})
+                    self._state = data.get("state", {})
+                    return
+                except json.JSONDecodeError:
+                    logger.warning("mochi_sync.json corrupted, attempting legacy migration")
 
-        # Migrate from legacy separate files
-        if self._legacy_map_path.exists():
-            try:
-                self._map = json.loads(self._legacy_map_path.read_text())
-            except json.JSONDecodeError:
-                self._map = {}
-        if self._legacy_state_path.exists():
-            try:
-                self._state = json.loads(self._legacy_state_path.read_text())
-            except json.JSONDecodeError:
-                self._state = {}
+            # Migrate from legacy separate files
+            if self._legacy_map_path.exists():
+                try:
+                    self._map = json.loads(self._legacy_map_path.read_text())
+                except json.JSONDecodeError:
+                    self._map = {}
+            if self._legacy_state_path.exists():
+                try:
+                    self._state = json.loads(self._legacy_state_path.read_text())
+                except json.JSONDecodeError:
+                    self._state = {}
 
-        if self._map or self._state:
-            logger.info("Migrated legacy mochi map+state → mochi_sync.json")
-            self._save()
+            if self._map or self._state:
+                logger.info("Migrated legacy mochi map+state → mochi_sync.json")
+                self._save_locked()
 
-    def _save(self) -> None:
-        """Atomically write map + state as a single JSON file."""
+    def _save_locked(self) -> None:
+        """Write map + state atomically — caller must already hold _file_lock."""
         self._sync_path.parent.mkdir(parents=True, exist_ok=True)
         tmp_path = self._sync_path.with_suffix(".json.tmp")
         tmp_path.write_text(json.dumps({"map": self._map, "state": self._state}, indent=2))
         tmp_path.replace(self._sync_path)
+
+    def _save(self) -> None:
+        """Atomically write map + state as a single JSON file (thread-safe)."""
+        with self._file_lock:
+            self._save_locked()
 
     # Keep legacy property for renderer compatibility
     @property
