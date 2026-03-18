@@ -40,6 +40,9 @@ struct ContentView: View {
                 Tab("生詞庫".localized, systemImage: "character.book.closed") {
                     NotebookListView()
                 }
+                Tab("總覽".localized, systemImage: "chart.bar") {
+                    OverviewTab()
+                }
             }
             .tabViewStyle(.tabBarOnly)
         }
@@ -51,5 +54,5 @@ struct ContentView: View {
 
 #Preview {
     ContentView()
-        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self], inMemory: true)
+        .modelContainer(for: [Book.self, VocabularyEntry.self, Notebook.self, ReviewRecord.self], inMemory: true)
 }
