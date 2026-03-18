@@ -62,6 +62,8 @@ _USER_LOCKS_MUTEX: asyncio.Lock | None = None
 
 
 def _get_locks_mutex() -> asyncio.Lock:
+    """Lazy-init the mutex. Safe because asyncio is single-threaded:
+    no await between the None check and assignment, so no interleaving."""
     global _USER_LOCKS_MUTEX
     if _USER_LOCKS_MUTEX is None:
         _USER_LOCKS_MUTEX = asyncio.Lock()
@@ -196,50 +198,10 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
 
 
 # ---------------------------------------------------------------------------
-# Quota helpers
+# Quota helpers (extracted to deps_quota.py)
 # ---------------------------------------------------------------------------
 
-def _is_pro(user: dict) -> bool:
-    from .billing import current_pro_entitlement_record
-    return bool(current_pro_entitlement_record(user.get("record")).get("is_active"))
-
-
-def _with_quota_check(
-    user: dict, call_type: str, response: Response | None, handler: Callable[[], Any],
-) -> Any:
-    from .quota_service import check_and_get_quota
-    pro = _is_pro(user)
-    quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
-    if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
-            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
-        )
-    result = handler()
-    if response is not None:
-        response.headers["X-Quota-Fraction"] = str(quota["fraction"])
-        response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
-    return result
-
-
-def _check_quota(user: dict, call_type: str, response: Response | None) -> dict:
-    from .quota_service import check_and_get_quota
-    pro = _is_pro(user)
-    quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
-    if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
-            headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
-        )
-    return quota
-
-
-def _apply_quota_headers(response: Response | None, quota: dict) -> None:
-    if response is not None:
-        response.headers["X-Quota-Fraction"] = str(quota["fraction"])
-        response.headers["X-Quota-Reset"] = str(quota["reset_seconds"])
+from .deps_quota import _is_pro, _with_quota_check, _check_quota, _apply_quota_headers  # noqa: F401
 
 
 # ---------------------------------------------------------------------------
