@@ -395,3 +395,9 @@ class CardStore:
     def save(self) -> None:
         """No-op for SQLite. Changes are committed immediately or via explicit sessions."""
         pass
+
+    def close(self) -> None:
+        """Dispose the SQLAlchemy engine and release connections."""
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None

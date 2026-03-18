@@ -126,6 +126,12 @@ class NotebookStore:
             session.commit()
             return True
 
+    def close(self) -> None:
+        """Dispose the SQLAlchemy engine and release connections."""
+        if self.engine is not None:
+            self.engine.dispose()
+            self.engine = None
+
 
 def validate_notebook_access(notebook_store: NotebookStore, notebook_id: str) -> None:
     """Raise 403 if notebook_id does not belong to this user (not found or deleted).

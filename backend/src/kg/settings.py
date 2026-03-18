@@ -24,6 +24,19 @@ class KGSettings:
     pro_daily_limit_usd: float = 0.30
     free_daily_limit_usd: float = 0.03
 
+    # LLM
+    gemini_model: str = "gemini-2.5-flash-lite"
+    gemini_temperature: float = 0.3
+    judge_temperature: float = 0.1
+
+    # Graph
+    similarity_threshold: float = 0.70
+    candidate_k: int = 20
+
+    # Vocab
+    max_batch_size: int = 500
+    max_word_length: int = 200
+
     # CORS
     cors_origins: tuple[str, ...] = (
         "https://wordnexus.lol",
