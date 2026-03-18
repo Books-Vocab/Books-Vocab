@@ -123,23 +123,103 @@ class CardStore:
         inflections: list[str] | None = None,
         notebook_id: str = "default",
     ) -> Card:
-        """Create and store a new card."""
-        card = Card(
-            content=content,
-            meaning=meaning,
-            pos=pos,
-            examples=examples or [],
-            collocations=collocations or [],
-            mode=mode,
-            root_form=root_form,
-            inflections=inflections or [],
-            notebook_id=notebook_id,
-        )
+        """Create and store a new card.
+
+        Uses a single transaction to check-then-insert, preventing
+        duplicates even under concurrent requests (SQLite single-writer
+        guarantee serialises the transaction).
+        """
+        import unicodedata
+
+        norm = unicodedata.normalize("NFC", content).strip()
         with Session(self.engine) as session:
+            # Check within the same transaction — SQLite write lock
+            # ensures no other writer can insert between SELECT and INSERT.
+            conn = session.connection()
+            row = conn.exec_driver_sql(
+                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                (norm, notebook_id),
+            ).first()
+            if row:
+                return session.get(Card, row[0])  # type: ignore[return-value]
+
+            card = Card(
+                content=content,
+                meaning=meaning,
+                pos=pos,
+                examples=examples or [],
+                collocations=collocations or [],
+                mode=mode,
+                root_form=root_form,
+                inflections=inflections or [],
+                notebook_id=notebook_id,
+            )
             session.add(card)
             session.commit()
             session.refresh(card)
         return card
+
+    def deduplicate(self, notebook_id: str | None = None) -> int:
+        """Remove duplicate active cards (same content, case-insensitive).
+
+        Keeps the card with the most review activity (highest review_count),
+        breaking ties by earliest created_at.  The kept card's updated_at
+        is bumped so that incremental sync picks it up *after* the
+        soft-deleted duplicate, preventing order-dependent client-side
+        mis-deletion.  Returns the number of duplicates removed.
+        """
+        import unicodedata
+
+        removed = 0
+        cards = list(self.all(include_deleted=False, notebook_id=notebook_id))
+        seen: dict[str, Card] = {}
+        to_delete: list[Card] = []
+        keepers_to_bump: list[str] = []
+
+        for card in cards:
+            key = unicodedata.normalize("NFC", card.content).strip().lower()
+            if key in seen:
+                keeper = seen[key]
+                if (card.review_count, -card.created_at.timestamp()) > (
+                    keeper.review_count, -keeper.created_at.timestamp()
+                ):
+                    to_delete.append(keeper)
+                    seen[key] = card
+                else:
+                    to_delete.append(card)
+            else:
+                seen[key] = card
+
+        if to_delete:
+            # Collect keeper IDs that have duplicates removed
+            deleted_keys = set()
+            for card in to_delete:
+                key = unicodedata.normalize("NFC", card.content).strip().lower()
+                deleted_keys.add(key)
+            for key in deleted_keys:
+                keepers_to_bump.append(seen[key].id)
+
+            now = datetime.now(UTC)
+            with Session(self.engine) as session:
+                for card in to_delete:
+                    db_card = session.get(Card, card.id)
+                    if db_card:
+                        db_card.is_deleted = True
+                        db_card.updated_at = now
+                        removed += 1
+                # Bump keepers' updated_at AFTER the deletes so that
+                # incremental sync always sees: delete first, then
+                # the valid card — ensuring correct convergence.
+                from datetime import timedelta
+                bump_time = now + timedelta(milliseconds=1)
+                for keeper_id in keepers_to_bump:
+                    keeper = session.get(Card, keeper_id)
+                    if keeper:
+                        keeper.updated_at = bump_time
+                session.commit()
+
+        return removed
 
     def get(self, card_id: str) -> Card | None:
         with Session(self.engine) as session:
