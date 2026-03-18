@@ -257,5 +257,4 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
 
     # Card should NOT be deleted since graph failed
     restored = cards_store.get(card_id)
-    assert restored is not None
     assert not restored.is_deleted
