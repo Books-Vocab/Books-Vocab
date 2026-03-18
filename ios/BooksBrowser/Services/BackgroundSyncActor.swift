@@ -189,7 +189,7 @@ actor BackgroundSyncActor {
 
         var payload: [[String: Any]] = []
         for entry in entries {
-            guard let lastReviewed = entry.lastReviewedAt else { continue }
+            let lastReviewed = entry.lastReviewedAt ?? entry.dateAdded
             payload.append([
                 "word": entry.word,
                 "review_interval_hours": entry.reviewIntervalHours,
