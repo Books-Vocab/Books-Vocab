@@ -26,16 +26,20 @@ final class SelectionModeState {
         selectedIDs.removeAll()
     }
 
-    var isAllSelected: Bool = false
+    private var visibleCount: Int = 0
 
-    func updateAllSelectedState(visibleIDs: [UUID]) {
-        isAllSelected = !visibleIDs.isEmpty && selectedIDs.count == visibleIDs.count
+    var isAllSelected: Bool {
+        visibleCount > 0 && selectedIDs.count == visibleCount
+    }
+
+    func updateVisibleCount(_ count: Int) {
+        visibleCount = count
     }
 
     func exit() {
         isSelecting = false
         selectedIDs.removeAll()
-        isAllSelected = false
+        visibleCount = 0
     }
 
     var selectionCount: Int { selectedIDs.count }

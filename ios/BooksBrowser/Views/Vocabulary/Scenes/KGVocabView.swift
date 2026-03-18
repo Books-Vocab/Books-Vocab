@@ -164,6 +164,9 @@ struct KGVocabView: View {
         .onChange(of: selectedReviewState) { _, _ in
             selectionState.exit()
         }
+        .onChange(of: filteredEntries.count) { _, newCount in
+            selectionState.updateVisibleCount(newCount)
+        }
         .toolbar {
             if selectionState.isSelecting {
                 ToolbarItem(placement: .cancellationAction) {
@@ -176,7 +179,6 @@ struct KGVocabView: View {
                         } else {
                             selectionState.selectAll(filteredEntries.map(\.id))
                         }
-                        selectionState.updateAllSelectedState(visibleIDs: filteredEntries.map(\.id))
                     }
                 }
             }
