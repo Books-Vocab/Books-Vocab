@@ -6,9 +6,11 @@ struct CardRichTextStyle {
     let textColor: Color
     let highlightColor: Color
     let italic: Bool
-    var underlineHighlights: Bool = true
-    var useBackgroundMark: Bool = false
+    var underlineHighlights: Bool = false
+    var useBackgroundMark: Bool = true
     var highlightWeight: Font.Weight = .semibold
+    var backgroundOpacity: Double = VocabSkin.HighlightConfig.default.backgroundOpacity
+    var underlineOpacity: Double = VocabSkin.HighlightConfig.default.underlineOpacity
 }
 
 enum CardRichTextMode {
@@ -170,13 +172,13 @@ enum CardRichTextRenderer {
         part.foregroundColor = style.textColor
 
         if style.useBackgroundMark {
-            part.backgroundColor = style.highlightColor.opacity(0.18)
+            part.backgroundColor = style.highlightColor.opacity(style.backgroundOpacity)
         }
 
         if style.underlineHighlights {
             part.underlineStyle = Text.LineStyle(
                 pattern: .solid,
-                color: style.highlightColor.opacity(0.68)
+                color: style.highlightColor.opacity(style.underlineOpacity)
             )
         }
 
