@@ -125,7 +125,8 @@
 "知識庫" = "Knowledge Base";
 "知識庫需 Pro" = "Knowledge Base Requires Pro";
 "知識庫中尚無單字，或尚未與伺服器同步。" = "There are no words in the knowledge base yet, or it has not been synced.";
-"知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the knowledge base and graph.";
+"知識庫功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the knowledge base.";
+"總覽功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the overview.";
 "知識庫目前是空的" = "Your knowledge base is empty";
 "知識連結" = "Knowledge Links";
 "確定" = "OK";
@@ -238,7 +239,8 @@
 "最後同步" = "Last Sync";
 "正在載入單字庫..." = "Loading vocabulary...";
 "用於校正 reader hit-testing。" = "Used to calibrate reader hit-testing.";
-"知識庫與關聯圖功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the knowledge base and graph.";
+"知識庫功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the knowledge base.";
+"總覽功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the overview.";
 "關於 Mochi 整合（Legacy）" = "About Mochi Integration (Legacy)";
 "遠端正式站" = "Production Server";
 "閱讀介面風格" = "Reader Interface Style";
