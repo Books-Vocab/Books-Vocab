@@ -157,10 +157,6 @@ final class KGService: KGServing, LocalDataClearing {
         return token
     }
 
-    func applyAuth(to request: inout URLRequest, token: String) {
-        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-    }
-
     // MARK: - Session Invalidation (internal for extensions)
 
     func handleUnauthorized(modelContainer: ModelContainer?, reason: String) async {
@@ -265,25 +261,7 @@ final class KGService: KGServing, LocalDataClearing {
             return
         }
         do {
-            let token = try await currentAuthToken()
-            let url = baseURL.appendingPathComponent("api/health")
-            var request = URLRequest(url: url)
-            applyAuth(to: &request, token: token)
-
-            let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-            guard let httpResponse = response as? HTTPURLResponse else {
-                isConnected = false
-                return
-            }
-
-            if httpResponse.statusCode == 401 {
-                AppLog.kg.error("Health check failed: 401 Unauthorized")
-                sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
-                await sessionInvalidator.logout(modelContainer: nil, reason: "healthcheck_401")
-                isConnected = false
-                return
-            }
+            let (data, httpResponse) = try await authenticatedRequest(path: "api/health")
 
             if httpResponse.statusCode != 200 {
                 isConnected = false
@@ -299,6 +277,10 @@ final class KGService: KGServing, LocalDataClearing {
                 formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
                 lastSyncDate = formatter.date(from: lastModStr)
             }
+        } catch KGError.unauthorized {
+            AppLog.kg.error("Health check failed: 401 Unauthorized")
+            await handleUnauthorized(modelContainer: nil, reason: "healthcheck_401")
+            isConnected = false
         } catch {
             isConnected = false
             AppLog.kg.error("Health check failed: \(error.localizedDescription)")
