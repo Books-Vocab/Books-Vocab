@@ -248,7 +248,7 @@ struct VocabSkin {
 
         static let `default` = HighlightConfig(
             backgroundOpacity: 0.22,
-            underlineOpacity: 0.0,
+            underlineOpacity: 0.68,
             showBackground: true,
             showUnderline: false,
             fontWeight: .semibold

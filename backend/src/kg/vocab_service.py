@@ -235,6 +235,8 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
 def _build_example(word: str, context: str, alternatives: list[str] | None = None) -> str:
     if not context:
         return ""
+    # Strip pre-existing markdown bold markers to avoid double-wrapping
+    context = re.sub(r"\*\*(.+?)\*\*", r"\1", context)
     pattern = re.compile(re.escape(word), re.IGNORECASE)
     if pattern.search(context):
         return pattern.sub(f"**{word}**", context, count=1)
