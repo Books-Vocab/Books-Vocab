@@ -105,12 +105,15 @@ class NotebookStore:
                 session.refresh(nb)
             return nb
 
-    def delete(self, notebook_id: str) -> bool:
-        """Soft-delete a notebook. Cannot delete the default notebook."""
+    def delete(self, notebook_id: str) -> bool | None:
+        """Soft-delete a notebook. Returns True if deleted, None if already
+        deleted (idempotent success), False if not found or is default."""
         with Session(self.engine) as session:
             nb = session.get(Notebook, notebook_id)
-            if nb is None or nb.is_deleted or nb.is_default:
+            if nb is None or nb.is_default:
                 return False
+            if nb.is_deleted:
+                return None
             nb.is_deleted = True
             nb.updated_at = datetime.now(UTC)
             session.add(nb)
