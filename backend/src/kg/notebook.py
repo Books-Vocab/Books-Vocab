@@ -7,6 +7,7 @@ import uuid
 from datetime import UTC, datetime
 from pathlib import Path
 
+from fastapi import HTTPException
 from sqlalchemy.exc import OperationalError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
@@ -105,6 +106,11 @@ class NotebookStore:
                 session.refresh(nb)
             return nb
 
+    def exists(self, notebook_id: str) -> bool:
+        """Check if a non-deleted notebook exists."""
+        nb = self.get(notebook_id)
+        return nb is not None and not nb.is_deleted
+
     def delete(self, notebook_id: str) -> bool | None:
         """Soft-delete a notebook. Returns True if deleted, None if already
         deleted (idempotent success), False if not found or is default."""
@@ -119,3 +125,15 @@ class NotebookStore:
             session.add(nb)
             session.commit()
             return True
+
+
+def validate_notebook_access(notebook_store: NotebookStore, notebook_id: str) -> None:
+    """Raise 403 if notebook_id does not belong to this user (not found or deleted).
+
+    The 'default' notebook is auto-created on demand, so it always passes.
+    """
+    if notebook_id == DEFAULT_NOTEBOOK_ID:
+        notebook_store.ensure_default()
+        return
+    if not notebook_store.exists(notebook_id):
+        raise HTTPException(403, "Notebook access denied")

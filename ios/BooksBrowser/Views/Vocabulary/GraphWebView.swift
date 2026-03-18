@@ -85,6 +85,11 @@ struct GraphWebView: UIViewRepresentable {
         }
     }
 
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
+        coordinator.onNodeTap = nil
+    }
+
     // MARK: - Payload builder
 
     private func buildPayload() -> String {
@@ -170,7 +175,7 @@ struct GraphWebView: UIViewRepresentable {
         var graphBridgeReady = false
         var pendingPayload: String? = nil
         weak var webView: WKWebView?
-        var onNodeTap: (String) -> Void
+        var onNodeTap: ((String) -> Void)?
 
         var lastColorScheme: ColorScheme? = nil
         var lastThemeSignature: String? = nil
@@ -180,10 +185,6 @@ struct GraphWebView: UIViewRepresentable {
 
         init(onNodeTap: @escaping (String) -> Void) {
             self.onNodeTap = onNodeTap
-        }
-
-        deinit {
-            webView?.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
         }
 
         func sendInitGraph(_ json: String, webView: WKWebView) {
@@ -216,7 +217,9 @@ struct GraphWebView: UIViewRepresentable {
                 }
             case "nodeClick":
                 if let nodeId = body["nodeId"] as? String {
-                    DispatchQueue.main.async { self.onNodeTap(nodeId) }
+                    DispatchQueue.main.async { [weak self] in
+                        self?.onNodeTap?(nodeId)
+                    }
                 }
             default:
                 break
