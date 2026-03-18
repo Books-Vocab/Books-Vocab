@@ -16,13 +16,11 @@ from pydantic import BaseModel, Field
 class LinkKind(StrEnum):
     """Types of relationships between cards."""
 
-    CONFUSABLE = "confusable"
     CONTRASTS_WITH = "contrasts_with"
     SHARES_USAGE = "shares_usage"
 
 
 LINK_LABELS: dict[LinkKind, str] = {
-    LinkKind.CONFUSABLE: "易混",
     LinkKind.CONTRASTS_WITH: "對比",
     LinkKind.SHARES_USAGE: "相關",
 }
@@ -76,10 +74,21 @@ class GraphStore:
         for link in self._links.values():
             self._index_link(link)
 
+    # Link kinds removed from the enum; silently drop on load.
+    _RETIRED_KINDS: set[str] = {"confusable"}
+
     def _load(self) -> None:
         if self.links_path.exists():
             data = json.loads(self.links_path.read_text())
-            self._links = {lk["id"]: GraphLink.model_validate(lk) for lk in data}
+            dirty = False
+            for lk in data:
+                if lk.get("kind") in self._RETIRED_KINDS:
+                    dirty = True
+                    continue
+                link = GraphLink.model_validate(lk)
+                self._links[link.id] = link
+            if dirty:
+                self._save_links()
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]

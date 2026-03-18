@@ -22,7 +22,7 @@ def _judge_with(content: str | None) -> Judge:
     return Judge(client=_make_client(content))
 
 
-VALID_JSON = '{"link": "confusable", "confidence": 0.9, "reason": "similar spelling"}'
+VALID_JSON = '{"link": "contrasts_with", "confidence": 0.9, "reason": "opposite meanings"}'
 
 
 class TestJudgeEvaluateNormalResponse:
@@ -30,20 +30,20 @@ class TestJudgeEvaluateNormalResponse:
         judge = _judge_with(VALID_JSON)
         result = judge.evaluate("affect", "to influence", "effect", "a result")
         assert isinstance(result, Judgement)
-        assert result.link == "confusable"
+        assert result.link == "contrasts_with"
         assert result.confidence == 0.9
-        assert result.reason == "similar spelling"
+        assert result.reason == "opposite meanings"
 
 
 class TestJudgeLowConfidence:
     def test_confidence_below_07_returns_none(self):
-        content = '{"link": "confusable", "confidence": 0.5, "reason": "some reason"}'
+        content = '{"link": "contrasts_with", "confidence": 0.5, "reason": "some reason"}'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "to influence", "effect", "a result")
         assert result is None
 
     def test_confidence_exactly_07_returns_judgement(self):
-        content = '{"link": "confusable", "confidence": 0.7, "reason": "reason"}'
+        content = '{"link": "contrasts_with", "confidence": 0.7, "reason": "reason"}'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "to influence", "effect", "a result")
         assert isinstance(result, Judgement)
@@ -75,11 +75,11 @@ class TestJudgeRegexFallback:
         assert isinstance(result, Judgement)
 
     def test_json_object_embedded_in_prose(self):
-        content = 'Sure! {"link": "confusable", "confidence": 0.85, "reason": "ok"} done.'
+        content = 'Sure! {"link": "contrasts_with", "confidence": 0.85, "reason": "ok"} done.'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "influence", "effect", "result")
         assert isinstance(result, Judgement)
-        assert result.link == "confusable"
+        assert result.link == "contrasts_with"
 
 
 class TestJudgeMissingFields:
@@ -91,7 +91,7 @@ class TestJudgeMissingFields:
         assert result is None
 
     def test_missing_confidence_returns_none(self):
-        content = '{"link": "confusable", "reason": "reason"}'
+        content = '{"link": "contrasts_with", "reason": "reason"}'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "influence", "effect", "result")
         # confidence defaults to 0.0 < 0.7
@@ -99,7 +99,7 @@ class TestJudgeMissingFields:
 
     def test_missing_reason_returns_none_or_judgement(self):
         # reason defaults to "" which is falsy but not a blocking condition
-        content = '{"link": "confusable", "confidence": 0.9}'
+        content = '{"link": "contrasts_with", "confidence": 0.9}'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "influence", "effect", "result")
         assert isinstance(result, Judgement)

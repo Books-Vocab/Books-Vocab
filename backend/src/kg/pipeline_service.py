@@ -89,9 +89,9 @@ def _sync_embed_loop(
     for card in missing:
         try:
             embeddings.add(card.id, card.embed_text())
-            similar = embeddings.find_similar(card.id, k=3)
+            similar = embeddings.find_similar(card.id, k=20)
             for other_id, score in similar:
-                if score > 0.655:
+                if score > 0.70:
                     graph.add_candidate(card.id, other_id, score)
             backfilled += 1
         except (OpenAIError, OSError, ValueError) as exc:
