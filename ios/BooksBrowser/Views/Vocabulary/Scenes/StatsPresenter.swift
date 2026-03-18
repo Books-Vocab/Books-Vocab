@@ -11,7 +11,7 @@ import SwiftData
 struct StatsPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
-    let allEntries: [VocabularyEntry]
+    let filter: NotebookFilter
 
     @Query(filter: #Predicate<VocabularyEntry> {
         $0.syncStatus == 1 &&
@@ -26,8 +26,8 @@ struct StatsPresenter: View {
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
-    init(allEntries: [VocabularyEntry]) {
-        self.allEntries = allEntries
+    init(filter: NotebookFilter = NotebookFilter()) {
+        self.filter = filter
         let cutoff = Self.sixMonthsAgo
         _reviewRecords = Query(
             filter: #Predicate<ReviewRecord> { $0.reviewedAt > cutoff },
@@ -75,15 +75,32 @@ struct StatsPresenter: View {
         .onChange(of: reviewRecords.count) { _, _ in
             recompute()
         }
+        .onChange(of: filter) { _, _ in
+            recompute()
+        }
         .sheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
         }
     }
 
+    // MARK: - Filtered Data
+
+    private var filteredEntries: [VocabularyEntry] {
+        filter.isFiltered
+            ? syncedEntries.filter { filter.matches($0.notebookId) }
+            : syncedEntries
+    }
+
+    private var filteredReviewRecords: [ReviewRecord] {
+        filter.isFiltered
+            ? reviewRecords.filter { filter.matches($0.notebookId) }
+            : reviewRecords
+    }
+
     private func recompute() {
         summary = StatsPresentation.buildSummary(
-            from: syncedEntries,
-            reviewRecords: reviewRecords
+            from: filteredEntries,
+            reviewRecords: filteredReviewRecords
         )
     }
 
@@ -91,7 +108,7 @@ struct StatsPresenter: View {
 
     private var graphEntrySection: some View {
         NavigationLink {
-            KnowledgeGraphView(allEntries: allEntries)
+            KnowledgeGraphView(allEntries: filteredEntries)
         } label: {
             VocabCard {
                 HStack(spacing: vocabSkin.spacing.inlineGap) {
