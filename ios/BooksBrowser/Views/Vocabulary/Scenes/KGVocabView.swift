@@ -24,8 +24,6 @@ struct KGVocabView: View {
     @State private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
     @State private var sortOption: KGVocabSortOption = .default
-    @State private var showArchiveList = false
-
     @Query private var pendingDeletes: [VocabularyEntry]
 
     init(searchText: Binding<String>, notebookId: String = "default") {
@@ -109,9 +107,6 @@ struct KGVocabView: View {
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
-        }
-        .sheet(isPresented: $showArchiveList) {
-            ArchivedVocabSheet()
         }
         .task {
             await coordinator.loadInitialData(
