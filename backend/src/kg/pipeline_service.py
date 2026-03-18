@@ -325,6 +325,12 @@ async def run_pipeline_background(
             except _step_errors as exc:
                 logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
 
+            # Core steps done — clear pending flag so iOS clients stop polling.
+            # The asyncio lock remains held to prevent concurrent pipeline runs.
+            with _PIPELINE_RUNNING_LOCK:
+                _PIPELINE_RUNNING[uid] = False
+            logger.info("[%s] Core pipeline done, clients unblocked.", uid)
+
             try:
                 await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret, notebook_id=notebook_id)
             except _step_errors as exc:
@@ -336,4 +342,4 @@ async def run_pipeline_background(
             logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
         finally:
             with _PIPELINE_RUNNING_LOCK:
-                _PIPELINE_RUNNING[uid] = False
+                _PIPELINE_RUNNING.pop(uid, None)
