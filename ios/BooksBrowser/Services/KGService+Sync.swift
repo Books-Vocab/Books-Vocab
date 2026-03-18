@@ -17,30 +17,16 @@ extension KGService {
         let payload = try await actor.buildReviewStatePushPayload()
         guard !payload.isEmpty else { return (0, 0) }
 
-        let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/vocab/review")
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, token: token)
-
-        request.httpBody = try JSONSerialization.data(withJSONObject: ["entries": payload])
-
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to push review state (HTTP \(httpResponse.statusCode))")
-        }
-
         struct PushResponse: Decodable {
             let updated: Int
             let skipped: Int
         }
-        let result = try JSONDecoder().decode(PushResponse.self, from: data)
+        let result = try await authenticatedDecode(
+            PushResponse.self,
+            path: "api/vocab/review",
+            method: "PATCH",
+            body: try JSONSerialization.data(withJSONObject: ["entries": payload])
+        )
         AppLog.kg.info("pushReviewStates: updated=\(result.updated), skipped=\(result.skipped)")
         return (result.updated, result.skipped)
     }
@@ -49,7 +35,6 @@ extension KGService {
 
     @discardableResult
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> Bool {
-        let token = try await currentAuthToken()
         progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
 
         let defaults = UserDefaults.standard
@@ -57,10 +42,6 @@ extension KGService {
         if storedPayloadVersion < SyncKeys.currentPayloadVersion {
             defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
             progress?(L10n.string("升級卡片資料格式，重新同步全部卡片..."), 0, 0)
-        }
-
-        guard var urlComponents = URLComponents(url: baseURL.appendingPathComponent("api/vocab"), resolvingAgainstBaseURL: false) else {
-            throw KGError.serverError("Invalid URL")
         }
 
         let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
@@ -71,36 +52,25 @@ extension KGService {
             queryItems.append(URLQueryItem(name: "notebook_id", value: notebookId))
         }
         if isIncremental {
-            let lastSyncDate = Date(timeIntervalSince1970: lastSyncMillis)
             let formatter = ISO8601DateFormatter()
             formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let dateString = formatter.string(from: lastSyncDate)
+            let dateString = formatter.string(from: Date(timeIntervalSince1970: lastSyncMillis))
             queryItems.append(URLQueryItem(name: "since", value: dateString))
             AppLog.kg.info("Performing incremental sync since: \(dateString)")
         } else {
             AppLog.kg.info("Performing full sync")
         }
-        urlComponents.queryItems = queryItems
-
-        guard let url = urlComponents.url else {
-            throw KGError.serverError("Invalid URL")
-        }
 
         // Bug A fix: 記錄邊界在發起請求前，避免 pull 期間新增的卡片被跳過
         let pullBoundary = Date().timeIntervalSince1970
 
-        var request = URLRequest(url: url)
-        applyAuth(to: &request, token: token)
+        let (data, httpResponse) = try await authenticatedRequest(
+            path: "api/vocab",
+            queryItems: queryItems.isEmpty ? nil : queryItems
+        )
 
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
         guard httpResponse.statusCode == 200 else {
-            throw KGError.serverError("Failed to fetch cards, HTTP \(httpResponse.statusCode)")
+            throw KGError.httpError(statusCode: httpResponse.statusCode, detail: "GET api/vocab failed")
         }
 
         progress?(L10n.string("解析資料..."), 0, 0)
@@ -112,7 +82,6 @@ extension KGService {
             throw KGError.serverError("Parse error: \(error.localizedDescription)")
         }
 
-        // Let the new Actor handle SwiftData operations safely off the main thread.
         let actor = BackgroundSyncActor(modelContainer: container)
         try await actor.pullCardsToLocal(
             fetchedCards: fetchedCards,
@@ -123,7 +92,6 @@ extension KGService {
             notebookId: notebookId ?? "default"
         )
 
-        // 使用 pull 開始前的時間戳作為邊界，確保不遺漏 pull 期間的變更
         defaults.set(pullBoundary, forKey: SyncKeys.incrementalBoundary)
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
