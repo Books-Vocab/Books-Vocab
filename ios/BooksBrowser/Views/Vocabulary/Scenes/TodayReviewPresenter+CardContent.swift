@@ -61,7 +61,12 @@ extension TodayReviewPresenter {
                         font: vocabSkin.typography.example,
                         textColor: vocabSkin.palette.secondaryText,
                         highlightColor: vocabSkin.palette.highlightMark,
-                        italic: true
+                        italic: true,
+                        underlineHighlights: vocabSkin.highlight.showUnderline,
+                        useBackgroundMark: vocabSkin.highlight.showBackground,
+                        highlightWeight: vocabSkin.highlight.fontWeight,
+                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
+                        underlineOpacity: vocabSkin.highlight.underlineOpacity
                     ),
                     mode: .cloze,
                     truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius,

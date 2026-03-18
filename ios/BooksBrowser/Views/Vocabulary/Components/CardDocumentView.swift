@@ -119,7 +119,12 @@ private struct CardDocumentExampleBlock: View {
                         font: vocabSkin.typography.detailExampleSerif,
                         textColor: vocabSkin.palette.primaryText,
                         highlightColor: vocabSkin.palette.highlightMark,
-                        italic: false
+                        italic: false,
+                        underlineHighlights: vocabSkin.highlight.showUnderline,
+                        useBackgroundMark: vocabSkin.highlight.showBackground,
+                        highlightWeight: vocabSkin.highlight.fontWeight,
+                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
+                        underlineOpacity: vocabSkin.highlight.underlineOpacity
                     ),
                     truncateAroundMarkedWordRadius: radius,
                     targetWord: targetWord
@@ -370,15 +375,21 @@ struct CardInlineText: View {
     }
 
     private func marked(_ value: String) -> AttributedString {
+        let hl = vocabSkin.highlight
         var part = AttributedString(value)
         part.font = markedFont
         part.foregroundColor = vocabSkin.palette.primaryText
         switch style {
         case .example, .source:
-            part.underlineStyle = Text.LineStyle(
-                pattern: .solid,
-                color: vocabSkin.palette.highlightMarkSubtle
-            )
+            if hl.showBackground {
+                part.backgroundColor = vocabSkin.palette.highlightMark.opacity(hl.backgroundOpacity)
+            }
+            if hl.showUnderline {
+                part.underlineStyle = Text.LineStyle(
+                    pattern: .solid,
+                    color: vocabSkin.palette.highlightMark.opacity(hl.underlineOpacity)
+                )
+            }
         case .body:
             break
         }
