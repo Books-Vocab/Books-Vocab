@@ -39,32 +39,13 @@ extension KGService {
     }
 
     func moveCards(words: [String], fromNotebook: String, toNotebook: String) async throws {
-        let token = try await currentAuthToken()
-        guard var components = URLComponents(url: baseURL.appendingPathComponent("api/vocab/move"), resolvingAgainstBaseURL: false) else {
-            throw KGError.serverError("Invalid URL for move")
-        }
-        components.queryItems = [URLQueryItem(name: "notebook_id", value: fromNotebook)]
-        guard let url = components.url else {
-            throw KGError.serverError("Invalid URL for move")
-        }
-        var request = URLRequest(url: url)
-        request.httpMethod = "PATCH"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, token: token)
-
         let body: [String: Any] = ["words": words, "to_notebook_id": toNotebook]
-        request.httpBody = try JSONSerialization.data(withJSONObject: body)
-
-        let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard httpResponse.statusCode == 200 else {
-            throw KGError.serverError("Failed to move cards")
-        }
+        try await authenticatedVoid(
+            path: "api/vocab/move",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: fromNotebook)],
+            body: try JSONSerialization.data(withJSONObject: body)
+        )
     }
 
     func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
