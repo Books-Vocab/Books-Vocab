@@ -24,6 +24,8 @@ struct KGVocabView: View {
     @State private var coordinator = KGVocabCoordinator()
     @State private var selectedReviewState: VocabularyReviewState = .due
     @State private var sortOption: KGVocabSortOption = .default
+    @State private var selectionState = SelectionModeState()
+    @State private var showNotebookPicker = false
     @Query private var pendingDeletes: [VocabularyEntry]
 
     init(searchText: Binding<String>, notebookId: String = "default") {
@@ -138,12 +140,8 @@ struct KGVocabView: View {
             onRowTapped: { entryID in
                 handleRowTap(entryID)
             },
-            onDeleteTapped: { entryID in
-                handleDeleteTap(entryID)
-            },
-            onArchiveTapped: { entryID in
-                handleArchiveTap(entryID)
-            },
+            selectionState: selectionState,
+            onLongPress: { id in selectionState.enter(with: id) },
             onRefresh: {
                 await coordinator.forceRefresh(
                     kgService: kgService,
@@ -151,6 +149,44 @@ struct KGVocabView: View {
                 )
             }
         )
+        .overlay(alignment: .bottom) {
+            if selectionState.isSelecting {
+                SelectionToolbar(
+                    selectionCount: selectionState.selectionCount,
+                    onMove: { showNotebookPicker = true },
+                    onArchive: { handleBatchArchive() },
+                    onDelete: { handleBatchDelete() }
+                )
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+        }
+        .animation(AppMotion.standardSpring, value: selectionState.isSelecting)
+        .onChange(of: selectedReviewState) { _, _ in
+            selectionState.exit()
+        }
+        .toolbar {
+            if selectionState.isSelecting {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("取消".localized) { selectionState.exit() }
+                }
+                ToolbarItem(placement: .primaryAction) {
+                    Button(selectionState.isAllSelected ? "取消全選".localized : "全選".localized) {
+                        if selectionState.isAllSelected {
+                            selectionState.deselectAll()
+                        } else {
+                            selectionState.selectAll(filteredEntries.map(\.id))
+                        }
+                        selectionState.updateAllSelectedState(visibleIDs: filteredEntries.map(\.id))
+                    }
+                }
+            }
+        }
+        .sheet(isPresented: $showNotebookPicker) {
+            NotebookPickerSheet(excludeNotebookId: notebookId) { notebook in
+                handleBatchMove(to: notebook)
+            }
+            .presentationDetents([.medium])
+        }
     }
 
     private var reviewStateOptions: [VocabTabOption<VocabularyReviewState>] {
@@ -276,23 +312,43 @@ struct KGVocabView: View {
         coordinator.handleRowTap(entryID, syncedEntries: syncedEntries)
     }
 
-    private func handleDeleteTap(_ entryID: UUID) {
-        coordinator.handleDeleteTap(
-            entryID,
+    private func handleBatchDelete() {
+        coordinator.handleBatchDelete(
+            selectionState.selectedIDs,
             syncedEntries: syncedEntries,
             modelContext: modelContext
         )
+        selectionState.exit()
     }
 
-    private func handleArchiveTap(_ entryID: UUID) {
-        guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
+    private func handleBatchArchive() {
+        let ids = selectionState.selectedIDs
+        selectionState.exit()
+        Task {
+            await coordinator.handleBatchArchive(
+                ids,
+                syncedEntries: syncedEntries,
+                kgService: kgService,
+                modelContext: modelContext
+            )
+        }
+    }
+
+    private func handleBatchMove(to notebook: Notebook) {
+        let ids = selectionState.selectedIDs
+        selectionState.exit()
         Task {
             do {
-                try await kgService.archiveCard(word: entry.word, archived: true, notebookId: entry.notebookId)
-                entry.isArchived = true
-                modelContext.safeSave()
+                try await coordinator.handleBatchMove(
+                    ids,
+                    syncedEntries: syncedEntries,
+                    toNotebook: notebook.remoteId,
+                    fromNotebook: notebookId,
+                    kgService: kgService,
+                    modelContext: modelContext
+                )
             } catch {
-                AppLog.kg.error("Archive failed: \(error.localizedDescription)")
+                coordinator.errorMessage = error.localizedDescription
             }
         }
     }
