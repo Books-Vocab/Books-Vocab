@@ -123,7 +123,6 @@ class CardRenderer:
 
     # CSS class per link kind
     _LINK_CSS: dict[LinkKind, str] = {
-        LinkKind.CONFUSABLE: "link-confusable",
         LinkKind.CONTRASTS_WITH: "link-contrast",
         LinkKind.SHARES_USAGE: "link-related",
     }

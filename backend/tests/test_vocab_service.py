@@ -99,7 +99,7 @@ def test_list_vocab_rejects_bad_since():
 def test_graph_links_payload_only_returns_active_links():
     graph = SimpleNamespace(
         _links={
-            "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="confusable"), confidence=0.9, reason="r1", status="active"),
+            "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="contrasts_with"), confidence=0.9, reason="r1", status="active"),
             "l2": SimpleNamespace(id="l2", from_id="c2", to_id="c3", kind=SimpleNamespace(value="shares_usage"), confidence=0.7, reason="r2", status="deprecated"),
         }
     )
@@ -107,7 +107,7 @@ def test_graph_links_payload_only_returns_active_links():
     payload = graph_links_payload(graph=graph)
     assert len(payload) == 1
     assert payload[0].id == "l1"
-    assert payload[0].kind == "confusable"
+    assert payload[0].kind == "contrasts_with"
 
 
 # ---------------------------------------------------------------------------
