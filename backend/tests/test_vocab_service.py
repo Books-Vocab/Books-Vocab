@@ -230,3 +230,32 @@ def test_lookup_vocab_word_unicode_normalized():
     cards = _FakeCardsStore([_FakeCard(id="c1", content=precomposed)])
     result = lookup_vocab_word(decomposed, cards_store=cards, graph=object(), card_response_builder=_card_builder)
     assert result["id"] == "c1"
+
+
+# ---------------------------------------------------------------------------
+# Task: delete_vocab_word rollback on graph failure
+# ---------------------------------------------------------------------------
+
+def test_delete_rolls_back_on_graph_failure(tmp_path):
+    """If graph operations fail, card deletion must be rolled back."""
+    from kg.cards import CardStore
+    from kg.vocab_service import delete_vocab_word
+    import pytest
+
+    cards_store = CardStore(tmp_path / "cards.db")
+    card = cards_store.add("testword", meaning="test meaning", notebook_id="default")
+    card_id = card.id
+
+    class _FailingGraph:
+        def deprecate_links_for(self, cid):
+            raise RuntimeError("graph write failed")
+        def remove_candidates_for(self, cid):
+            pass
+
+    with pytest.raises(RuntimeError):
+        delete_vocab_word("testword", cards_store=cards_store, graph=_FailingGraph())
+
+    # Card should NOT be deleted since graph failed
+    restored = cards_store.get(card_id)
+    assert restored is not None
+    assert not restored.is_deleted

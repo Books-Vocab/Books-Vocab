@@ -362,6 +362,15 @@ class CardStore:
                 return True
         return False
 
+    def restore(self, card_id: str) -> None:
+        """Undo a soft-delete. Used when a dependent operation fails."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card:
+                card.is_deleted = False
+                card.updated_at = datetime.now(UTC)
+                session.commit()
+
     def update(self, card_id: str, **kwargs) -> Card | None:
         """Update specific fields of a card. Automatically sets updated_at."""
         with Session(self.engine) as session:

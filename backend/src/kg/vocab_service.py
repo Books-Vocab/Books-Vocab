@@ -227,8 +227,12 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
         raise HTTPException(404, f"Word '{word}' not found")
     cards_store.delete(card.id)
     if graph is not None:
-        graph.deprecate_links_for(card.id)
-        graph.remove_candidates_for(card.id)
+        try:
+            graph.deprecate_links_for(card.id)
+            graph.remove_candidates_for(card.id)
+        except Exception:
+            cards_store.restore(card.id)
+            raise
     return {"deleted": word, "id": card.id}
 
 
