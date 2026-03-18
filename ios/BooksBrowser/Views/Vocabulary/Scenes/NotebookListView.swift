@@ -8,7 +8,8 @@ import SwiftUI
 import SwiftData
 
 struct NotebookListView: View {
-    @Query(sort: \Notebook.sortOrder) private var notebooks: [Notebook]
+    @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
+    private var notebooks: [Notebook]
     @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) private var allEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
@@ -36,11 +37,10 @@ struct NotebookListView: View {
                             .padding(.bottom, skin.spacing.sectionGap)
                     }
 
-                    let visible = notebooks.filter { !$0.isDeleted }
-                    if visible.isEmpty {
+                    if notebooks.isEmpty {
                         emptyState
                     } else {
-                        ForEach(visible) { notebook in
+                        ForEach(notebooks) { notebook in
                             NavigationLink(value: notebook.remoteId) {
                                 NotebookRow(
                                     name: notebook.name,
@@ -74,7 +74,7 @@ struct NotebookListView: View {
                                 }
                             }
 
-                            if notebook.id != visible.last?.id {
+                            if notebook.id != notebooks.last?.id {
                                 Divider()
                                     .padding(.leading, skin.metrics.listRowHorizontalInset)
                             }
@@ -308,6 +308,9 @@ struct NotebookListView: View {
         Task {
             do {
                 try await kgService.deleteNotebook(id: notebook.remoteId)
+                if activeNotebookId == notebook.remoteId {
+                    setActiveNotebook("default")
+                }
                 notebook.isDeleted = true
                 notebook.updatedAt = Date()
                 modelContext.safeSave()
