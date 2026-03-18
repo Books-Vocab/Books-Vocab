@@ -242,6 +242,32 @@ async def _step_external_sync(
     )
 
 
+_STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError)
+
+
+async def _run_step(
+    uid: str,
+    name: str,
+    coro_fn,
+    *,
+    logger: logging.Logger,
+    retry: bool = False,
+    retryable_exceptions: tuple = (OpenAIError, OSError),
+) -> None:
+    """Execute a pipeline step with uniform error handling."""
+    try:
+        if retry:
+            await async_retry(
+                coro_fn, max_attempts=2,
+                retryable_exceptions=retryable_exceptions,
+                step_name=name, uid=uid,
+            )
+        else:
+            await coro_fn()
+    except _STEP_ERRORS as exc:
+        logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
+
+
 async def run_pipeline_background(
     user: UserRecord,
     *,
@@ -272,58 +298,41 @@ async def run_pipeline_background(
             # never aborts subsequent steps.  The union covers LLM calls
             # (OpenAIError), file/DB I/O (OSError), and data issues (ValueError,
             # RuntimeError).
-            _step_errors = (OpenAIError, OSError, ValueError, RuntimeError)
 
-            try:
-                await async_retry(
-                    _step_enrich, uid, user,
-                    card_store_factory=card_store_factory,
-                    gemini_client_factory=gemini_client_factory,
-                    logger=logger,
-                    force=force_enrich,
-                    notebook_id=notebook_id,
-                    max_attempts=2,
-                    retryable_exceptions=(OpenAIError, OSError),
-                    step_name="Enrich", uid=uid,
-                )
-            except _step_errors as exc:
-                logger.error("[%s] Step 1 (Enrich) failed after retries: %s", uid, exc, exc_info=True)
+            await _run_step(uid, "Enrich", lambda: _step_enrich(
+                uid, user,
+                card_store_factory=card_store_factory,
+                gemini_client_factory=gemini_client_factory,
+                logger=logger,
+                force=force_enrich,
+                notebook_id=notebook_id,
+            ), logger=logger, retry=True)
 
-            try:
-                await async_retry(
-                    _step_embed, uid, user,
-                    card_store_factory=card_store_factory,
-                    graph_store_factory=graph_store_factory,
-                    embedding_store_factory=embedding_store_factory,
-                    logger=logger,
-                    notebook_id=notebook_id,
-                    max_attempts=2,
-                    retryable_exceptions=(OpenAIError, OSError),
-                    step_name="Embed", uid=uid,
-                )
-            except _step_errors as exc:
-                logger.error("[%s] Step 1b (Embedding backfill) failed after retries: %s", uid, exc, exc_info=True)
+            await _run_step(uid, "Embed", lambda: _step_embed(
+                uid, user,
+                card_store_factory=card_store_factory,
+                graph_store_factory=graph_store_factory,
+                embedding_store_factory=embedding_store_factory,
+                logger=logger,
+                notebook_id=notebook_id,
+            ), logger=logger, retry=True)
 
-            try:
-                await async_retry(
-                    _step_link, uid, user,
-                    card_store_factory=card_store_factory,
-                    graph_store_factory=graph_store_factory,
-                    gemini_client_factory=gemini_client_factory,
-                    logger=logger,
-                    link_kind_enum=link_kind_enum,
-                    notebook_id=notebook_id,
-                    max_attempts=2,
-                    retryable_exceptions=(OpenAIError, OSError),
-                    step_name="Link", uid=uid,
-                )
-            except _step_errors as exc:
-                logger.error("[%s] Step 2 (Link) failed after retries: %s", uid, exc, exc_info=True)
+            await _run_step(uid, "Link", lambda: _step_link(
+                uid, user,
+                card_store_factory=card_store_factory,
+                graph_store_factory=graph_store_factory,
+                gemini_client_factory=gemini_client_factory,
+                logger=logger,
+                link_kind_enum=link_kind_enum,
+                notebook_id=notebook_id,
+            ), logger=logger, retry=True)
 
-            try:
-                await _step_difficulty(uid, user, card_store_factory=card_store_factory, logger=logger, notebook_id=notebook_id)
-            except _step_errors as exc:
-                logger.error("[%s] Step 3 (Difficulty) failed: %s", uid, exc, exc_info=True)
+            await _run_step(uid, "Difficulty", lambda: _step_difficulty(
+                uid, user,
+                card_store_factory=card_store_factory,
+                logger=logger,
+                notebook_id=notebook_id,
+            ), logger=logger)
 
             # Core steps done — clear pending flag so iOS clients stop polling.
             # The asyncio lock remains held to prevent concurrent pipeline runs.
@@ -331,10 +340,14 @@ async def run_pipeline_background(
                 _PIPELINE_RUNNING[uid] = False
             logger.info("[%s] Core pipeline done, clients unblocked.", uid)
 
-            try:
-                await _step_external_sync(uid, user, card_store_factory=card_store_factory, graph_store_factory=graph_store_factory, logger=logger, jwt_secret=jwt_secret, notebook_id=notebook_id)
-            except _step_errors as exc:
-                logger.error("[%s] Step 4 (Optional External Sync) failed: %s", uid, exc, exc_info=True)
+            await _run_step(uid, "ExternalSync", lambda: _step_external_sync(
+                uid, user,
+                card_store_factory=card_store_factory,
+                graph_store_factory=graph_store_factory,
+                logger=logger,
+                jwt_secret=jwt_secret,
+                notebook_id=notebook_id,
+            ), logger=logger)
 
             logger.info("[%s] Pipeline completed.", uid)
 
