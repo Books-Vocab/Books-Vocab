@@ -62,6 +62,8 @@ _USER_LOCKS_MUTEX: asyncio.Lock | None = None
 
 
 def _get_locks_mutex() -> asyncio.Lock:
+    """Lazy-init the mutex. Safe because asyncio is single-threaded:
+    no await between the None check and assignment, so no interleaving."""
     global _USER_LOCKS_MUTEX
     if _USER_LOCKS_MUTEX is None:
         _USER_LOCKS_MUTEX = asyncio.Lock()
