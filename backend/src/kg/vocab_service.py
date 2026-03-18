@@ -21,6 +21,8 @@ from .user_store import parse_datetime
 from .vocab_graph import embed_and_link_new_cards
 from .vocab_graph import graph_links_payload as graph_links_payload  # re-export
 
+logger = logging.getLogger(__name__)
+
 MAX_BATCH_SIZE = 500
 MAX_WORD_LENGTH = 200
 
@@ -233,8 +235,15 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
         raise HTTPException(404, f"Word '{word}' not found")
     cards_store.delete(card.id)
     if graph is not None:
-        graph.deprecate_links_for(card.id)
-        graph.remove_candidates_for(card.id)
+        try:
+            graph.deprecate_links_for(card.id)
+            graph.remove_candidates_for(card.id)
+        except Exception:
+            try:
+                cards_store.restore(card.id)
+            except Exception:
+                logger.exception("restore failed for card %s after graph error", card.id)
+            raise
     return {"deleted": word, "id": card.id}
 
 
