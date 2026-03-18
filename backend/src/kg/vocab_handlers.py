@@ -83,11 +83,13 @@ def archive_word_response(
     *,
     require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any] | None = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
     require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
-    return archive_vocab_word(word, archived=req.archived, cards_store=cards, notebook_id=notebook_id)
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default") if graph_store_factory is not None else None
+    return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
 def delete_word_response(

@@ -7,7 +7,6 @@ import SwiftUI
 
 struct VocabularyListSheets: ViewModifier {
     @Bindable var coordinator: VocabularyListCoordinator
-    @Binding var showArchiveList: Bool
     let allEntries: [VocabularyEntry]
     let sizeClass: UserInterfaceSizeClass?
 
@@ -18,9 +17,6 @@ struct VocabularyListSheets: ViewModifier {
             }
             .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
-            }
-            .sheet(isPresented: $showArchiveList) {
-                ArchivedVocabSheet()
             }
             .sheet(item: $coordinator.exportURL) { url in
                 ShareSheet(url: url)
