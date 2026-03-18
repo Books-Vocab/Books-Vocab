@@ -4,6 +4,7 @@
 //
 
 import SwiftUI
+import SwiftData
 import StoreKit
 
 struct SettingsView: View {
@@ -18,6 +19,7 @@ struct SettingsView: View {
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
     @State var coordinator = SettingsCoordinator()
+    @Query var allEntries: [VocabularyEntry]
 
     var body: some View {
         SettingsPresenter(
