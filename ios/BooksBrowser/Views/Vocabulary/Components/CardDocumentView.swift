@@ -204,24 +204,16 @@ private struct CardDocumentSourceBlock: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-            CardSectionLabel(title: "來源".localized, systemImage: "quote.opening")
-
-            CardInlineText(
-                paragraph: source.context,
-                style: .source
-            )
-            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+            CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
 
             HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
-                Image(systemName: "book.closed")
-                    .font(vocabSkin.typography.iconTiny)
                 Text(source.bookTitle)
                 if let chapterTitle = source.chapterTitle {
                     Text("· \(chapterTitle)")
                 }
             }
             .font(vocabSkin.typography.caption)
-            .foregroundStyle(vocabSkin.palette.quaternaryText)
+            .foregroundStyle(vocabSkin.palette.secondaryText)
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
