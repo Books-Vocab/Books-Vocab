@@ -1,147 +1,125 @@
 # KG Workspace Agent Guide
 
-## Scope
-This directory is the project workspace for KG API + iOS app development and maintenance.
-
 ## Identity
-- project key: `kg`
-- local root: `projects/kg`
-- backend root: `projects/kg/backend`
-- ios root: `projects/kg/ios`
-- API remote root: `~/knowledge_graph_api`
-- domain: `wordnexus.lol`
-- API container: `knowledge-graph-api`
-- internal port: `8000`
 
-## First Steps
-1. Confirm this task is project-scoped (not global cross-project).
-2. Run preflight:
-   - `./ops/devops_kg_safe.sh preflight`
-3. For deploy/migration, run backup first:
-   - `./ops/devops_kg_safe.sh backup`
+| key | value |
+|-----|-------|
+| project key | `kg` |
+| local root | `projects/kg` |
+| backend | `projects/kg/backend` |
+| ios | `projects/kg/ios` |
+| remote | `~/knowledge_graph_api` |
+| domain | `wordnexus.lol` |
+| container | `knowledge-graph-api` |
+| port | `8000` |
 
-## Safe Production Entrypoint
-- `./ops/devops_kg_safe.sh`
+## 對話啟動流程（每次對話強制執行）
 
-Allowed commands:
-- `deploy|restart|status|logs|backup|env-check|migrate|users|user-info|run`
+1. **載入 `using-superpowers` skill** — 在回應使用者之前，先 `Skill("using-superpowers")`。
+2. **掃描 skill 觸發條件** — 對照使用者的第一句話，凡符合任何已註冊 skill 的觸發描述，立即載入。「不確定是否符合」= 符合，寧可多載入，不可漏掉。
+3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
+4. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`；deploy/migration 前再加 backup：`./ops/devops_kg_safe.sh backup`。
 
-Blocked by default:
-- `setup|push-env|delete-user|ssh`
-- destructive `run` strings
+## Skill 規則（零例外）
 
-## Implemented Product Surface (Inventory)
-Use this section as the "what already exists" checklist before proposing or changing anything.
+- 觸發條件一旦符合，**立即**透過 Skill tool 調用，不可等使用者要求，不可詢問「要不要載入」。
+- 多個 skill 同時符合則全部載入。
+- Skill 優先序：流程類（brainstorming、systematic-debugging）先於實作類（TDD、writing-plans）。
 
-- iOS app surface (`ios/BooksBrowser`):
-  - authentication and session flows (Apple, Google, manual/developer debug flow)
-  - bookshelf + reader experience (Readium-based navigation, reader settings, reading UI)
-  - translation + explanation interaction in reading flow
-  - vocabulary capture, list/detail, sync, and knowledge-graph views
-  - settings surface, including account deletion entry under danger operations
-  - app-intent/background sync related integration
-  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
-  - UI review checklist (`docs/references/ui_review_checklist.md`)
+## Git
 
-- KG backend surface (`backend/src/kg`):
-  - auth verification and user identity linking logic
-  - user config and account lifecycle APIs (including delete account)
-  - vocabulary lifecycle APIs and graph-link APIs
-  - translate/explain APIs and pipeline processing APIs
-  - card/graph/embedding/difficulty/enrichment and optional Mochi integration modules
-  - static policy/support page serving (`privacy.html`, `support.html`)
+- Monorepo：`.git` 涵蓋 iOS app、backend API、ops/docs
+- Commit prefix：`ios:` / `api:` / `ops:` / `docs:`
+- **Worktree 強制**：程式碼修改一律在隔離 worktree 中進行 → commit → 開 PR。禁止直接在 main 上改，除非使用者明確指示。
 
-- Admin and internal tooling surface:
-  - admin dashboard web UI exists (`/admin`)
-  - admin logs/stats APIs exist (`/api/admin/*`)
-  - admin test-matrix UI and APIs exist (`/admin/tests`, `/api/admin/tests/*`)
-  - in-memory log capture for app + uvicorn channels exists
+## 生產環境操作
 
-- Test surface (`backend/tests`):
-  - API contract/surface tests
-  - robustness tests (locking, storage, account/data integrity)
-  - renderer behavior tests
-  - admin endpoint and test-matrix related tests
+Safe entrypoint：`./ops/devops_kg_safe.sh`
 
-- Ops and deployment surface:
-  - project safe wrapper (`ops/devops_kg_safe.sh`) and workspace wrapper (`devops.sh`)
-  - preflight / backup / deploy / restart / status / logs / migration workflows
-  - backup artifacts and incident/debug docs are part of normal operations context
-  - preview matrix covering key screens (Settings, Sync, Reader, Translation, Today Review)
-  - UI review checklist (`docs/references/ui_review_checklist.md`)
+| 允許 | `deploy` `restart` `status` `logs` `backup` `env-check` `migrate` `users` `user-info` `run` |
+|------|---|
+| **封鎖** | `setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串 |
 
-## iOS 編譯 SOP（強制）
+常用：
+- `./ops/devops_kg_safe.sh status`
+- `./ops/devops_kg_safe.sh logs 120`
+- `./ops/devops_kg_safe.sh deploy`
+- `python3 ops/data_inspect.py [command]` — `overview` / `sample N` / `gaps` / `graph` / `notes` / `search <keyword>` / `card <id>` / `sql "..."`
 
-**唯一合法的編譯方式**（從 `projects/kg/` 或任何 worktree 執行）：
+## iOS 編譯（強制）
+
+唯一合法方式（從 `projects/kg/` 或任何 worktree）：
 
 ```bash
 ./ops/ios_build.sh
 ```
 
-`ios_build.sh` 內建 `shlock` 排隊鎖，多個 worktree agent 可同時呼叫，
-自動排隊共用 DerivedData 快取（增量 ~15s vs cold ~3min）。
+內建 `shlock` 排隊鎖，多 worktree 可同時呼叫，自動排隊共用 DerivedData（增量 ~15s / cold ~3min）。
 
-規則：
 - Exit 0 → 成功，停止
 - Exit 非 0 → 讀錯誤上下文 ±20 行，修正後重跑
-- **禁止**：直接呼叫 `xcodebuild`、改機型、拿掉 `-quiet`、加 `2>&1 | grep`、加 `cd ios &&`
+- **禁止**：直接 `xcodebuild`、改機型、拿掉 `-quiet`、加 `2>&1 | grep`、加 `cd ios &&`
 
 ## iOS UI Design System（強制）
 
-**觸發條件**：任何涉及 iOS View / UI 的新增或修改任務。
+**觸發**：任何涉及 iOS View / UI 的新增或修改。
 
-### 前置讀取（動手前必做）
-1. 讀 `docs/references/ui_component_pattern_inventory.md` — 查現有元件與 pattern
+### 動手前必做
+1. 讀 `docs/references/ui_component_pattern_inventory.md` — 現有元件與 pattern
 2. 讀 `docs/references/ui_review_checklist.md` — 自查清單
 
 ### Token 禁令（零容忍）
-- **禁止** raw color（`Color.red`、`Color(red:...)`、`#colorLiteral`）→ 用 `AppTheme` / `VocabSkin.Palette` / `AppColors`
-- **禁止** raw font（`.font(.system(...))`、`Font.custom(...)`）→ 用 `AppFonts` / `VocabSkin.Typography`
-- **禁止** raw spacing magic number → 用 `AppShellMetrics` / `AppMetrics` / `VocabSkin.Spacing`
-- **禁止** raw animation（`.spring(...)`、`.easeOut(...)`、`.default`）→ 用 `AppMotion` token
-- **禁止** raw transition → 用 `AppTransition` token
 
-### 元件復用（先查後建）
-- 新增 UI 前**必須**查 inventory，確認無現成元件可用
-- 復用優先序：現成 Pattern → 現成 Component → 擴充 Token → 新建元件
-- 新建元件須放入對應層級（App Shell / VocabSkin / Reader / Settings）
+| 禁止 | 替代 |
+|------|------|
+| raw color（`Color.red`、`Color(red:...)`、`#colorLiteral`）| `AppTheme` / `VocabSkin.Palette` / `AppColors` |
+| raw font（`.font(.system(...))`、`Font.custom(...)`）| `AppFonts` / `VocabSkin.Typography` |
+| raw spacing magic number | `AppShellMetrics` / `AppMetrics` / `VocabSkin.Spacing` |
+| raw animation（`.spring(...)`、`.easeOut(...)`、`.default`）| `AppMotion` token |
+| raw transition | `AppTransition` token |
 
-### 狀態覆蓋（不可省略）
+### 元件復用
+- 新增前查 inventory，復用優先序：現成 Pattern → Component → 擴充 Token → 新建
+- 新建元件放入對應層級（App Shell / VocabSkin / Reader / Settings）
+
+### 狀態覆蓋
 - 每個新畫面/元件必須覆蓋：loading、empty、error、success/completed
-- 參照 `docs/references/ui_state_matrix.md` 確認覆蓋範圍
+- 參照 `docs/references/ui_state_matrix.md`
 
 ### Motion 契約
-- 所有動畫走 `AppMotion` 語意 token（定義在 `Models/AppMetrics.swift`）
-- 需要新動畫 → 先在 `AppMotion` 新增 token，再在 feature 中引用
-- 同類互動跨 feature 必須共用同一 token
+- 所有動畫走 `AppMotion` 語意 token（`Models/AppMetrics.swift`）
+- 新動畫先在 `AppMotion` 新增 token，再引用
+- 同類互動跨 feature 共用同一 token
 
 ### 環境注入
-- Theme：`@Environment(\.appTheme)`，不可硬建 `AppTheme()` instance
-- VocabSkin：`@Environment(\.vocabSkin)`，不可硬建 instance
+- Theme：`@Environment(\.appTheme)`
+- VocabSkin：`@Environment(\.vocabSkin)`
+- 不可硬建 instance
 
 ### 完工自查
-- 對照 `docs/references/ui_review_checklist.md` 五大項逐一確認
-- 關鍵畫面須有 `#Preview`，preview 須能固定狀態（不依賴登入/後端）
+- 對照 `docs/references/ui_review_checklist.md` 五大項
+- 關鍵畫面須有 `#Preview`，不依賴登入/後端
 
-## Common Commands
-- status: `./ops/devops_kg_safe.sh status`
-- logs: `./ops/devops_kg_safe.sh logs 120`
-- deploy: `./ops/devops_kg_safe.sh deploy`
-- data inspect: `python3 ops/data_inspect.py [command]` — 觀測本地 DB 卡片/graph 品質
-  - `overview` (default) / `sample N` / `gaps` / `graph` / `notes` / `search <keyword>` / `card <id>` / `sql "..."`
+## Implemented Product Surface
 
-## Git
-- Monorepo root (`.git`) covers iOS app, backend API, ops/docs
-- Commit prefix: `ios:` / `api:` / `ops:` / `docs:`
-- **Worktree 強制規則**：任何程式碼修改一律在隔離 worktree 中進行，完成後 commit + 開 PR。**禁止**直接在本地 main 上修改，除非使用者明確指示「直接改 main」。
+動手前先對照，確認不重複建造。
 
-## Reference Docs (read on demand)
-- backend development: `docs/backend-dev.md`
-- deploy / env / migration: `docs/deploy.md`
-- incidents / 502 / caddy / users: `docs/debug.md`
-- iOS build / xcode: `docs/ios-dev.md`
-- UI design: `docs/ui-design.md`
-- architecture / sync protocol: `docs/architecture.md`
+- **iOS**（`ios/BooksBrowser`）：auth flows、bookshelf + reader、translation/explanation、vocabulary capture/list/detail/sync/graph views、settings + account deletion、app-intent/background sync、preview matrix
+- **Backend**（`backend/src/kg`）：auth/user identity、user config/account lifecycle、vocabulary/graph-link APIs、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、static pages
+- **Admin**：dashboard (`/admin`)、logs/stats APIs (`/api/admin/*`)、test-matrix (`/admin/tests`)、in-memory log capture
+- **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix
+- **Ops**：safe wrapper、preflight/backup/deploy/restart/status/logs/migration workflows
 
-## Cross-Project Note
-If task becomes global (new project, caddy topology, cross-project ops), switch to repository root and follow root `CLAUDE.md`.
+## Reference Docs（按需讀取）
+
+| 主題 | 路徑 |
+|------|------|
+| backend dev | `docs/backend-dev.md` |
+| deploy / env / migration | `docs/deploy.md` |
+| incidents / 502 / caddy | `docs/debug.md` |
+| iOS build / xcode | `docs/ios-dev.md` |
+| UI design | `docs/ui-design.md` |
+| architecture / sync | `docs/architecture.md` |
+| UI component inventory | `docs/references/ui_component_pattern_inventory.md` |
+| UI review checklist | `docs/references/ui_review_checklist.md` |
+| UI state matrix | `docs/references/ui_state_matrix.md` |
