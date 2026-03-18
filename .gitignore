@@ -10,3 +10,4 @@ plan/
 # Python cache in root if any
 __pycache__/
 .pytest_cache/
+.worktrees/
