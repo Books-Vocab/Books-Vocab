@@ -12,6 +12,7 @@ from .api_models import (
     DailyReviewStatsPushResponse,
     DailyReviewStatsResponse,
     GraphLinkResponse,
+    MoveWordsRequest,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
@@ -25,6 +26,7 @@ from .vocab_service import (
     graph_links_payload,
     list_vocab_cards,
     lookup_vocab_word,
+    move_vocab_words,
     pull_daily_review_stats,
     push_daily_review_stats,
     push_review_states,
@@ -100,6 +102,33 @@ def archive_word_response(
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default") if graph_store_factory is not None else None
     return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
+
+
+def move_words_response(
+    req: MoveWordsRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any] | None = None,
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> dict[str, int]:
+    require_pro_access(user, "knowledge_sync")
+    if notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+        validate_notebook_access(notebook_store_factory(user["dir"]), req.to_notebook_id)
+    cards = card_store_factory(user["dir"])
+    source_graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory else None
+    target_graph = graph_store_factory(user["dir"], notebook_id=req.to_notebook_id) if graph_store_factory else None
+    return move_vocab_words(
+        words=req.words,
+        from_notebook_id=notebook_id,
+        to_notebook_id=req.to_notebook_id,
+        cards_store=cards,
+        source_graph=source_graph,
+        target_graph=target_graph,
+    )
 
 
 def delete_word_response(

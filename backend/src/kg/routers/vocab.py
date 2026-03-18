@@ -11,6 +11,7 @@ from ..api_models import (
     DailyReviewStatsResponse,
     DeleteWordResponse,
     GraphLinkResponse,
+    MoveWordsRequest,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
@@ -34,6 +35,7 @@ from ..vocab_handlers import (
     get_graph_links_response,
     list_vocab_response,
     lookup_word_response,
+    move_words_response,
     pull_daily_stats_response,
     push_daily_stats_response,
     push_review_response,
@@ -105,6 +107,22 @@ def lookup_word(
         word, user, require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
+@router.patch("/api/vocab/move")
+def move_words(
+    req: MoveWordsRequest,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    return move_words_response(
+        req, user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
