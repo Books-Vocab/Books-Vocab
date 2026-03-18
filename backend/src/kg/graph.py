@@ -206,6 +206,22 @@ class GraphStore:
             self._save_links()
         return count
 
+    def restore_links_for(self, card_id: str, cards_store) -> int:
+        """Restore deprecated links for a card, only if the other end is alive."""
+        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+        count = 0
+        for lid in list(link_ids):
+            lk = self._links.get(lid)
+            if lk and lk.status == "deprecated":
+                other_id = lk.to_id if lk.from_id == card_id else lk.from_id
+                other_card = cards_store.get(other_id)
+                if other_card and not other_card.is_deleted and not other_card.is_archived:
+                    lk.status = "active"
+                    count += 1
+        if count:
+            self._save_links()
+        return count
+
     def remove_candidates_for(self, card_id: str) -> int:
         """Remove all pending candidates involving a card. Returns count removed."""
         before = len(self._candidates)

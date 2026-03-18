@@ -11,6 +11,7 @@ from kg.vocab_service import (
     MAX_WORD_LENGTH,
     _normalize_word,
     add_vocab_entries,
+    archive_vocab_word,
     delete_vocab_word,
     graph_links_payload,
     list_vocab_cards,
@@ -29,6 +30,7 @@ class _FakeCard:
     examples: list[str] = None
     mode: str = "production"
     is_deleted: bool = False
+    is_archived: bool = False
     inflections: list[str] | None = None
 
     def __post_init__(self):
@@ -63,6 +65,13 @@ class _FakeCardsStore:
             if unicodedata.normalize("NFC", card.content).strip().lower() == norm and not card.is_deleted:
                 return card
         return None
+
+    def update(self, card_id, **kwargs):
+        for card in self._cards:
+            if card.id == card_id:
+                for k, v in kwargs.items():
+                    setattr(card, k, v)
+                return
 
     def delete(self, card_id: str):
         self.deleted = card_id
@@ -230,3 +239,51 @@ def test_lookup_vocab_word_unicode_normalized():
     cards = _FakeCardsStore([_FakeCard(id="c1", content=precomposed)])
     result = lookup_vocab_word(decomposed, cards_store=cards, graph=object(), card_response_builder=_card_builder)
     assert result["id"] == "c1"
+
+
+# ---------------------------------------------------------------------------
+# archive_vocab_word 整合圖譜操作
+# ---------------------------------------------------------------------------
+
+class _FakeArchiveGraph:
+    def __init__(self):
+        self.deprecated_for = []
+        self.removed_candidates_for = []
+        self.restored_for = []
+
+    def deprecate_links_for(self, card_id):
+        self.deprecated_for.append(card_id)
+        return 1
+
+    def remove_candidates_for(self, card_id):
+        self.removed_candidates_for.append(card_id)
+        return 0
+
+    def restore_links_for(self, card_id, cards_store):
+        self.restored_for.append(card_id)
+        return 1
+
+
+class TestArchiveVocabWord:
+    def test_archive_deprecates_graph_links(self):
+        card = _FakeCard(id="c1", content="hello")
+        cards = _FakeCardsStore([card])
+        graph = _FakeArchiveGraph()
+        result = archive_vocab_word("hello", archived=True, cards_store=cards, graph=graph)
+        assert result["archived"] is True
+        assert graph.deprecated_for == ["c1"]
+        assert graph.removed_candidates_for == ["c1"]
+
+    def test_unarchive_restores_graph_links(self):
+        card = _FakeCard(id="c1", content="hello")
+        cards = _FakeCardsStore([card])
+        graph = _FakeArchiveGraph()
+        result = archive_vocab_word("hello", archived=False, cards_store=cards, graph=graph)
+        assert result["archived"] is False
+        assert graph.restored_for == ["c1"]
+
+    def test_archive_without_graph_still_works(self):
+        card = _FakeCard(id="c1", content="hello")
+        cards = _FakeCardsStore([card])
+        result = archive_vocab_word("hello", archived=True, cards_store=cards)
+        assert result["archived"] is True
