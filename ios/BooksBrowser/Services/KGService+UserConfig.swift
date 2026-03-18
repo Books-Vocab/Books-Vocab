@@ -100,48 +100,20 @@ extension KGService {
     }
 
     func fetchEntitlements() async throws -> KGEntitlements {
-        let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/user/entitlements")
-        var request = URLRequest(url: url)
-        applyAuth(to: &request, token: token)
-
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to fetch entitlements (HTTP \(httpResponse.statusCode))")
-        }
-
+        let result = try await authenticatedDecode(KGEntitlements.self, path: "api/user/entitlements")
         AppLog.kg.info("Fetched entitlements successfully")
-        return try JSONDecoder().decode(KGEntitlements.self, from: data)
+        return result
     }
 
     func syncAppStoreSubscription(_ snapshot: KGAppStoreSubscriptionSyncRequest) async throws -> KGEntitlements {
-        let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/billing/app-store/sync")
-        var request = URLRequest(url: url)
-        request.httpMethod = "POST"
-        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
-        applyAuth(to: &request, token: token)
-        request.httpBody = try JSONEncoder().encode(snapshot)
-
-        let (data, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to sync subscription (HTTP \(httpResponse.statusCode))")
-        }
-
+        let result = try await authenticatedDecode(
+            KGEntitlements.self,
+            path: "api/billing/app-store/sync",
+            method: "POST",
+            body: try JSONEncoder().encode(snapshot)
+        )
         AppLog.kg.info("Synced App Store subscription successfully")
-        return try JSONDecoder().decode(KGEntitlements.self, from: data)
+        return result
     }
 
     func updateOptionalIntegrationKey(_ apiKey: String) async throws -> KGUserConfig {
@@ -167,21 +139,6 @@ extension KGService {
     }
 
     func deleteAccount() async throws {
-        let token = try await currentAuthToken()
-        let url = baseURL.appendingPathComponent("api/user/account")
-        var request = URLRequest(url: url)
-        request.httpMethod = "DELETE"
-        applyAuth(to: &request, token: token)
-
-        let (_, response) = try await withRetry { try await sharedURLSession.data(for: request) }
-
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response")
-        }
-
-        if httpResponse.statusCode == 401 { throw KGError.unauthorized }
-        guard (200...299).contains(httpResponse.statusCode) else {
-            throw KGError.serverError("Failed to delete account (HTTP \(httpResponse.statusCode))")
-        }
+        try await authenticatedVoid(path: "api/user/account", method: "DELETE")
     }
 }
