@@ -254,7 +254,7 @@ private enum KnowledgeGraphPresenterPreviewData {
     ]
 
     static let sampleEdges = [
-        KnowledgeGraphEdge(id: "e1", from: "1", to: "2", kind: "confusable"),
+        KnowledgeGraphEdge(id: "e1", from: "1", to: "2", kind: "contrasts_with"),
         KnowledgeGraphEdge(id: "e2", from: "2", to: "3", kind: "shares_usage")
     ]
 

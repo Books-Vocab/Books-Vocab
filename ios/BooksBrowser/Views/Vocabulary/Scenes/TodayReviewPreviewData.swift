@@ -19,10 +19,10 @@ enum TodayReviewPresenterPreviewData {
         entry.rootForm = "meticulous"
         entry.inflections = ["meticulously", "meticulousness"]
         entry.graphLinksByKind = [
-            "confusable": [
-                KGCardLinkSummary(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
-                KGCardLinkSummary(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關"),
-                KGCardLinkSummary(id: "link-3", cardId: "card-3", word: "scrupulous", kind: "confusable", label: "易混", confidence: 0.75, reason: "都與嚴謹相關")
+            "shares_usage": [
+                KGCardLinkSummary(id: "link-1", cardId: "card-1", word: "precise", kind: "shares_usage", label: "相關", confidence: 0.82, reason: "都與精確相關"),
+                KGCardLinkSummary(id: "link-2", cardId: "card-2", word: "thorough", kind: "shares_usage", label: "相關", confidence: 0.79, reason: "都與仔細相關"),
+                KGCardLinkSummary(id: "link-3", cardId: "card-3", word: "scrupulous", kind: "shares_usage", label: "相關", confidence: 0.75, reason: "都與嚴謹相關")
             ]
         ]
         return entry.cardPresentation
@@ -31,11 +31,11 @@ enum TodayReviewPresenterPreviewData {
     static let currentCard: TodayReviewPresenterState.CurrentCard = {
         let groups: [TodayReviewPresenterState.LinkGroup] = [
             .init(
-                id: "confusable",
-                label: "易混",
+                id: "shares_usage",
+                label: "相關",
                 items: [
-                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "confusable", label: "易混", confidence: 0.82, reason: "都與精確相關"),
-                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "confusable", label: "易混", confidence: 0.79, reason: "都與仔細相關")
+                    .init(id: "link-1", cardId: "card-1", word: "precise", kind: "shares_usage", label: "相關", confidence: 0.82, reason: "都與精確相關"),
+                    .init(id: "link-2", cardId: "card-2", word: "thorough", kind: "shares_usage", label: "相關", confidence: 0.79, reason: "都與仔細相關")
                 ],
                 overflowCount: 1
             )
