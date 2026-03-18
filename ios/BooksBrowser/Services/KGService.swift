@@ -284,6 +284,7 @@ final class KGService: KGServing, LocalDataClearing {
 
 enum KGError: LocalizedError {
     case serverError(String)
+    case httpError(statusCode: Int, detail: String)
     case notConnected
     case unauthorized
     case offline
@@ -292,6 +293,7 @@ enum KGError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .serverError(let msg): return L10n.format("KG 伺服器錯誤：%@", msg)
+        case .httpError(let code, let detail): return L10n.format("HTTP %d：%@", code, detail)
         case .notConnected: return L10n.string("KG 伺服器未連線")
         case .unauthorized: return L10n.string("未登入帳號或身份已過期")
         case .offline: return L10n.string("目前沒有網路連線")
@@ -299,9 +301,16 @@ enum KGError: LocalizedError {
         }
     }
 
-    /// 是否為網路/離線相關錯誤（UI 可據此顯示不同提示）
     var isNetworkRelated: Bool {
         switch self {
+        case .offline, .notConnected: return true
+        default: return false
+        }
+    }
+
+    var isRetryable: Bool {
+        switch self {
+        case .httpError(let code, _): return (500...599).contains(code)
         case .offline, .notConnected: return true
         default: return false
         }
