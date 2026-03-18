@@ -59,34 +59,34 @@ class TestDeprecateLinksFor:
         assert count == 0
 
     def test_deprecates_from_side(self, graph_store):
-        graph_store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r")
+        graph_store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         count = graph_store.deprecate_links_for("card_a")
         assert count == 1
         active = graph_store.get_links_for("card_a")
         assert active == []
 
     def test_deprecates_to_side(self, graph_store):
-        graph_store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r")
+        graph_store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         count = graph_store.deprecate_links_for("card_b")
         assert count == 1
         assert graph_store.get_links_for("card_b") == []
 
     def test_deprecates_multiple_links(self, graph_store):
-        graph_store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r1")
+        graph_store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r1")
         graph_store.add_link("card_a", "card_c", LinkKind.CONTRASTS_WITH, 0.8, "r2")
         count = graph_store.deprecate_links_for("card_a")
         assert count == 2
         assert graph_store.get_links_for("card_a") == []
 
     def test_does_not_affect_unrelated_links(self, graph_store):
-        graph_store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r1")
+        graph_store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r1")
         graph_store.add_link("card_c", "card_d", LinkKind.SHARES_USAGE, 0.7, "r2")
         graph_store.deprecate_links_for("card_a")
         assert len(graph_store.get_links_for("card_c")) == 1
         assert len(graph_store.get_links_for("card_d")) == 1
 
     def test_already_deprecated_not_counted(self, graph_store):
-        lk = graph_store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r")
+        lk = graph_store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         lk.status = "deprecated"
         graph_store._links[lk.id] = lk
         count = graph_store.deprecate_links_for("card_a")
@@ -97,7 +97,7 @@ class TestDeprecateLinksFor:
             links_path=tmp_path / "links.json",
             candidates_path=tmp_path / "candidates.json",
         )
-        store.add_link("card_a", "card_b", LinkKind.CONFUSABLE, 0.9, "r")
+        store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         store.deprecate_links_for("card_a")
 
         reloaded = GraphStore(
@@ -114,7 +114,7 @@ class TestDeprecateLinksFor:
 class TestDeleteVocabWordWithGraph:
     def test_deprecates_links_on_delete(self, graph_store):
         cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
-        graph_store.add_link("c1", "c2", LinkKind.CONFUSABLE, 0.9, "r")
+        graph_store.add_link("c1", "c2", LinkKind.CONTRASTS_WITH, 0.9, "r")
 
         result = delete_vocab_word("evoke", cards_store=cards, graph=graph_store)
 
