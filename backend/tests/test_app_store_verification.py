@@ -304,4 +304,4 @@ def test_signed_sync_rejects_bundle_id_mismatch(signed_app_store_env):
         headers=env.headers,
     )
     assert r.status_code == 400, r.text
-    assert "bundleId" in r.text
+    assert r.json()["detail"] == "Transaction verification failed"
