@@ -93,7 +93,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     ) {
         guard optionalIntegrationApiKey != fetchedKey else { return }
         saveTask?.cancel()
-        saveTask = Task { @MainActor in
+        saveTask = Task {
             try? await Task.sleep(for: .milliseconds(600))
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
@@ -154,7 +154,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         TranslationLanguage.currentTarget = target
 
         guard authManager.isLoggedIn else { return }
-        Task { @MainActor in
+        Task {
             do {
                 _ = try await kgService.updateTranslationConfig(
                     KGTranslationConfig(
