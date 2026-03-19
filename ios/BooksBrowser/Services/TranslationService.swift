@@ -40,7 +40,7 @@ final class TranslationService: Translating {
     }
 
     // MARK: - Phase 1: 精簡翻譯（~10 output tokens）
-    
+
     func translateQuick(
         word: String,
         context: String,
@@ -52,27 +52,28 @@ final class TranslationService: Translating {
 
         var result: TranslationResult
         do {
-            result = try await withRetry(onRetry: onRetry) {
-                AppLog.translation.debug("Quick翻譯請求: \(word)")
-                let data = try await self.callBackend(endpoint: "/api/translate/quick", word: word, context: context)
+            AppLog.translation.debug("Quick翻譯請求: \(word)")
+            let data = try await callBackendWithRetry(
+                endpoint: "/api/translate/quick", word: word, context: context,
+                retryPolicy: .default, onRetry: onRetry
+            )
 
-                struct QuickResult: Codable {
-                    let t: String
-                    let p: String?
-                    let r: String?
-                }
-
-                let quick = try JSONDecoder().decode(QuickResult.self, from: data)
-                AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
-
-                return TranslationResult(
-                    translation: quick.t,
-                    partOfSpeech: quick.p,
-                    explanation: nil,
-                    rootForm: quick.r,
-                    latency: nil
-                )
+            struct QuickResult: Codable {
+                let t: String
+                let p: String?
+                let r: String?
             }
+
+            let quick = try JSONDecoder().decode(QuickResult.self, from: data)
+            AppLog.translation.info("Quick翻譯: \(word) → \(quick.t) (root: \(quick.r ?? "nil"))")
+
+            result = TranslationResult(
+                translation: quick.t,
+                partOfSpeech: quick.p,
+                explanation: nil,
+                rootForm: quick.r,
+                latency: nil
+            )
         } catch {
             AppAnalytics.endInterval("TranslateQuick", signpostState)
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
@@ -101,21 +102,21 @@ final class TranslationService: Translating {
         AppAnalytics.track(.translationRequested(word: phrase, type: .phrase))
 
         do {
-            let translated = try await withRetry(onRetry: onRetry) {
-                AppLog.translation.debug("短語翻譯請求: \(phrase)")
-                let data = try await self.callBackend(endpoint: "/api/translate/phrase", word: phrase, context: context)
+            AppLog.translation.debug("短語翻譯請求: \(phrase)")
+            let data = try await callBackendWithRetry(
+                endpoint: "/api/translate/phrase", word: phrase, context: context,
+                retryPolicy: .default, onRetry: onRetry
+            )
 
-                struct PhraseResult: Codable {
-                    let t: String
-                }
-
-                let result = try JSONDecoder().decode(PhraseResult.self, from: data)
-                AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
-                return result.t
+            struct PhraseResult: Codable {
+                let t: String
             }
+
+            let result = try JSONDecoder().decode(PhraseResult.self, from: data)
+            AppLog.translation.info("短語翻譯: \(phrase) → \(result.t)")
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationCompleted(word: phrase, type: .phrase, latencyMs: latencyMs))
-            return translated
+            return result.t
         } catch {
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationFailed(word: phrase, type: .phrase, error: error.localizedDescription))
@@ -136,24 +137,24 @@ final class TranslationService: Translating {
         let signpostState = AppAnalytics.beginInterval("FetchExplanation")
 
         do {
-            let explanation = try await withRetry(onRetry: onRetry) {
-                AppLog.translation.debug("解釋請求: \(word)")
-                let data = try await self.callBackend(endpoint: "/api/translate/explain", word: word, context: context)
+            AppLog.translation.debug("解釋請求: \(word)")
+            let data = try await callBackendWithRetry(
+                endpoint: "/api/translate/explain", word: word, context: context,
+                retryPolicy: .default, onRetry: onRetry
+            )
 
-                struct ExplanationResult: Codable {
-                    let e: String
-                }
-
-                let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
-                AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
-                return result.e
+            struct ExplanationResult: Codable {
+                let e: String
             }
+
+            let result = try JSONDecoder().decode(ExplanationResult.self, from: data)
+            AppLog.translation.info("解釋完成: \(result.e.prefix(50))...")
 
             let endTime = Date()
             let latency = endTime.timeIntervalSince(startTime)
             AppAnalytics.endInterval("FetchExplanation", signpostState)
             AppAnalytics.track(.translationCompleted(word: word, type: .explanation, latencyMs: Int(latency * 1000)))
-            return (explanation, latency)
+            return (result.e, latency)
         } catch {
             AppAnalytics.endInterval("FetchExplanation", signpostState)
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
@@ -168,6 +169,51 @@ final class TranslationService: Translating {
     private struct APIErrorDetail: Decodable {
         let code: String?
         let detail: String?
+    }
+
+    // MARK: - Retry Wrapper
+
+    private func callBackendWithRetry(
+        endpoint: String,
+        word: String,
+        context: String,
+        retryPolicy: RetryPolicy = .default,
+        onRetry: ((Int, Int) -> Void)? = nil
+    ) async throws -> Data {
+        var lastError: Error?
+
+        for attempt in 1...retryPolicy.maxAttempts {
+            do {
+                if attempt > 1 {
+                    onRetry?(attempt - 1, retryPolicy.maxAttempts - 1)
+                    let delay = retryPolicy.baseDelay * pow(2.0, Double(attempt - 2))
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+                return try await callBackend(endpoint: endpoint, word: word, context: context)
+            } catch let error as TranslationError {
+                // quota_exhausted / 401 不重試
+                switch error {
+                case .quotaExhausted, .parseError:
+                    throw error
+                case .apiError:
+                    lastError = error
+                    if attempt < retryPolicy.maxAttempts { continue }
+                }
+            } catch let error as URLError {
+                lastError = error
+                switch error.code {
+                case .timedOut, .networkConnectionLost:
+                    if !NetworkMonitor.shared.isConnected { throw error }
+                    if attempt < retryPolicy.maxAttempts { continue }
+                default:
+                    throw error
+                }
+            } catch {
+                throw error
+            }
+        }
+
+        throw lastError ?? TranslationError.apiError(L10n.string("請求失敗"))
     }
 
     // MARK: - Backend Translation API 呼叫
