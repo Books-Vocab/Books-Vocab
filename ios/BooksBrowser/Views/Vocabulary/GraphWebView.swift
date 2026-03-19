@@ -61,27 +61,24 @@ struct GraphWebView: UIViewRepresentable {
         let coord = context.coordinator
         coord.onNodeTap = onNodeTap
 
-        let themeSignature = themeSignature
+        let sig = themeSignature
+        let themeChanged = coord.lastThemeSignature != sig || coord.lastColorScheme != colorScheme
+        let dataChanged = coord.lastNodeCount != nodes.count || coord.lastLinkCount != edges.count
 
-        // Layer 1: theme change
-        if coord.lastThemeSignature != themeSignature || coord.lastColorScheme != colorScheme {
-            coord.lastThemeSignature = themeSignature
+        // Layer 1 + 3: theme or data change — build payload once and send
+        if themeChanged || dataChanged {
+            coord.lastThemeSignature = sig
             coord.lastColorScheme = colorScheme
+            coord.lastNodeCount = nodes.count
+            coord.lastLinkCount = edges.count
             coord.sendInitGraph(buildPayload(), webView: webView)
         }
 
-        // Layer 2: forces change
+        // Layer 2: forces change (lightweight, separate JS call)
         if coord.lastForces != forces {
             coord.lastForces = forces
             let json = forces.toJSONString()
             webView.evaluateJavaScript("updateForces(\(json))", completionHandler: nil)
-        }
-
-        // Layer 3: graph data change
-        if coord.lastNodeCount != nodes.count || coord.lastLinkCount != edges.count {
-            coord.lastNodeCount = nodes.count
-            coord.lastLinkCount = edges.count
-            coord.sendInitGraph(buildPayload(), webView: webView)
         }
     }
 
