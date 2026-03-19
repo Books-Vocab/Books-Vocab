@@ -28,7 +28,7 @@ struct SettingsSubscriptionSection: View {
                 SettingsDivider()
 
                 // ── 結構化 meta rows ──
-                SettingsRow(icon: "key", label: "權限來源".localized) {
+                AppKeyValueRow(icon: "key", label: "權限來源".localized, style: .settings(vocabSkin)) {
                     SettingsStatusValue(
                         text: state.sourceLabel,
                         color: vocabSkin.palette.secondaryText
@@ -37,7 +37,7 @@ struct SettingsSubscriptionSection: View {
 
                 SettingsDivider()
 
-                SettingsRow(icon: "wrench.and.screwdriver", label: "管理方式".localized) {
+                AppKeyValueRow(icon: "wrench.and.screwdriver", label: "管理方式".localized, style: .settings(vocabSkin)) {
                     SettingsStatusValue(
                         text: state.managementNote,
                         color: vocabSkin.palette.secondaryText,
@@ -48,7 +48,7 @@ struct SettingsSubscriptionSection: View {
                 if state.isRestoreAvailable {
                     SettingsDivider()
 
-                    SettingsRow(icon: "arrow.clockwise", label: state.restoreLabel) {
+                    AppKeyValueRow(icon: "arrow.clockwise", label: state.restoreLabel, style: .settings(vocabSkin)) {
                         SettingsStatusValue(
                             text: state.restoreDescription,
                             color: vocabSkin.palette.accent,
