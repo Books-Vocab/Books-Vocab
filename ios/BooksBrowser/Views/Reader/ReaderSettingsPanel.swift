@@ -12,7 +12,7 @@ struct ReaderSettingsPanel: View {
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
     let onDismiss: () -> Void
 
-    private var presenterState: ReaderSettingsPanelPresenter.State {
+    private var presenterState: ReaderSettingsPresenter.State {
         .init(
             fontSizeText: String(format: "%.2gx", settings.fontSize),
             canDecreaseFontSize: settings.fontSize > 0.75,
@@ -32,33 +32,20 @@ struct ReaderSettingsPanel: View {
         panelPresenter
     }
 
-    @ViewBuilder
     private var panelPresenter: some View {
-        switch settings.translationPanelMode {
-        case .glass:
-            ReaderSettingsPanelPresenter(
-                state: presenterState,
-                bindings: presenterBindings,
-                onDecreaseFontSize: decreaseFontSize,
-                onIncreaseFontSize: increaseFontSize,
-                onSelectTheme: selectTheme,
-                onSelectUnderlineOpacity: selectUnderlineOpacity,
-                onDismiss: onDismiss
-            )
-        case .vocab:
-            ReaderSettingsVocabPresenter(
-                state: presenterState,
-                bindings: presenterBindings,
-                onDecreaseFontSize: decreaseFontSize,
-                onIncreaseFontSize: increaseFontSize,
-                onSelectTheme: selectTheme,
-                onSelectUnderlineOpacity: selectUnderlineOpacity,
-                onDismiss: onDismiss
-            )
-        }
+        ReaderSettingsPresenter(
+            variant: settings.translationPanelMode == .glass ? .glass : .vocab,
+            state: presenterState,
+            bindings: presenterBindings,
+            onDecreaseFontSize: decreaseFontSize,
+            onIncreaseFontSize: increaseFontSize,
+            onSelectTheme: selectTheme,
+            onSelectUnderlineOpacity: selectUnderlineOpacity,
+            onDismiss: onDismiss
+        )
     }
 
-    private var presenterBindings: ReaderSettingsPanelPresenter.Bindings {
+    private var presenterBindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $settings.lineHeight,
             font: $settings.font,
@@ -103,7 +90,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     @State private var showHitTestingDebug = false
     @State private var translationPanelMode: TranslationPanelMode = .glass
 
-    private var state: ReaderSettingsPanelPresenter.State {
+    private var state: ReaderSettingsPresenter.State {
         .init(
             fontSizeText: initialFontSizeText,
             canDecreaseFontSize: canDecreaseFontSize,
@@ -111,7 +98,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
         )
     }
 
-    private var bindings: ReaderSettingsPanelPresenter.Bindings {
+    private var bindings: ReaderSettingsPresenter.Bindings {
         .init(
             lineHeight: $lineHeight,
             font: $font,
@@ -129,30 +116,16 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             VStack {
                 Spacer()
 
-                Group {
-                    switch mode {
-                    case .glass:
-                        ReaderSettingsPanelPresenter(
-                            state: state,
-                            bindings: bindings,
-                            onDecreaseFontSize: {},
-                            onIncreaseFontSize: {},
-                            onSelectTheme: { theme = $0 },
-                            onSelectUnderlineOpacity: { underlineOpacity = $0 },
-                            onDismiss: {}
-                        )
-                    case .vocab:
-                        ReaderSettingsVocabPresenter(
-                            state: state,
-                            bindings: bindings,
-                            onDecreaseFontSize: {},
-                            onIncreaseFontSize: {},
-                            onSelectTheme: { theme = $0 },
-                            onSelectUnderlineOpacity: { underlineOpacity = $0 },
-                            onDismiss: {}
-                        )
-                    }
-                }
+                ReaderSettingsPresenter(
+                    variant: mode == .glass ? .glass : .vocab,
+                    state: state,
+                    bindings: bindings,
+                    onDecreaseFontSize: {},
+                    onIncreaseFontSize: {},
+                    onSelectTheme: { theme = $0 },
+                    onSelectUnderlineOpacity: { underlineOpacity = $0 },
+                    onDismiss: {}
+                )
                 .padding(.horizontal)
             }
         }
