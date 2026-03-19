@@ -24,13 +24,15 @@ struct ContentView: View {
             }
 
             if !networkMonitor.isConnected {
-                OfflineBanner()
+                AppBanner(message: "目前沒有網路連線", systemImage: "wifi.slash")
             }
 
             if let syncError = kgService.lastBackgroundSyncError, networkMonitor.isConnected {
-                SyncErrorBanner(message: syncError) {
-                    kgService.lastBackgroundSyncError = nil
-                }
+                AppBanner(
+                    message: syncError,
+                    systemImage: "arrow.triangle.2.circlepath.circle",
+                    onDismiss: { kgService.lastBackgroundSyncError = nil }
+                )
             }
 
             TabView {
