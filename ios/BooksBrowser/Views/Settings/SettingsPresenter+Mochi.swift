@@ -5,7 +5,7 @@ extension SettingsPresenter {
     // MARK: - Mochi Row
 
     func mochiRow(_ optionalIntegration: SettingsPresenterState.OptionalIntegrationSection) -> some View {
-        SettingsRow(icon: "m.square.fill", label: "Mochi API Key") {
+        AppKeyValueRow(icon: "m.square.fill", label: "Mochi API Key", style: .settings(vocabSkin)) {
             HStack(spacing: 6) {
                 SecureField("可選".localized, text: optionalIntegrationApiKey)
                     .appSettingsTextInputStyle()

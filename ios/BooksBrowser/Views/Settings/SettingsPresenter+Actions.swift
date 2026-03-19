@@ -3,6 +3,7 @@ import SwiftUI
 // MARK: - Navigation Rows, Card Navigation, Buttons, Subscription Components, Selection
 
 struct SettingsNavigationRow<Trailing: View>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
     let icon: String
     let label: String
     let action: () -> Void
@@ -22,7 +23,7 @@ struct SettingsNavigationRow<Trailing: View>: View {
 
     var body: some View {
         Button(action: action) {
-            SettingsRow(icon: icon, label: label) {
+            AppKeyValueRow(icon: icon, label: label, style: .settings(vocabSkin)) {
                 HStack(spacing: 6) {
                     trailing
                     SettingsTrailingChevronIcon()
