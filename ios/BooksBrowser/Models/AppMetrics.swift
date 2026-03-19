@@ -246,3 +246,19 @@ enum AppShadows {
     static let panelRadius: CGFloat = 28
     static let panelY: CGFloat = 14
 }
+
+// MARK: - AppMotion Convenience Modifiers
+extension View {
+    func animatePhaseChange<V: Equatable>(_ value: V) -> some View {
+        animation(AppMotion.phaseChange, value: value)
+    }
+    func animateSpring<V: Equatable>(_ value: V) -> some View {
+        animation(AppMotion.standardSpring, value: value)
+    }
+    func animateContentFade<V: Equatable>(_ value: V) -> some View {
+        animation(AppMotion.contentFade, value: value)
+    }
+    func animateControl<V: Equatable>(_ value: V) -> some View {
+        animation(AppMotion.controlEaseOut, value: value)
+    }
+}

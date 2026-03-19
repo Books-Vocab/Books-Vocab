@@ -48,9 +48,9 @@ struct ContentView: View {
             }
             .tabViewStyle(.tabBarOnly)
         }
-        .animation(AppMotion.phaseChange, value: networkMonitor.isConnected)
-        .animation(AppMotion.phaseChange, value: authManager.isDemoMode)
-        .animation(AppMotion.phaseChange, value: kgService.lastBackgroundSyncError == nil)
+        .animatePhaseChange(networkMonitor.isConnected)
+        .animatePhaseChange(authManager.isDemoMode)
+        .animatePhaseChange(kgService.lastBackgroundSyncError == nil)
     }
 }
 

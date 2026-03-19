@@ -82,7 +82,7 @@ extension TodayReviewPresenter {
                 description: msg
             )
             .transition(.overlayFade)
-            .animation(AppMotion.phaseChange, value: state.persistenceErrorMessage)
+            .animatePhaseChange(state.persistenceErrorMessage)
         }
     }
 
@@ -105,7 +105,7 @@ extension TodayReviewPresenter {
             }
         }
         .animation(AppMotion.reviewNavigationSpring, value: state.revealStage.showsAnswer)
-        .animation(AppMotion.standardSpring, value: state.isAutoPlaying)
+        .animateSpring(state.isAutoPlaying)
     }
 
     // MARK: - Autoplay Controls
