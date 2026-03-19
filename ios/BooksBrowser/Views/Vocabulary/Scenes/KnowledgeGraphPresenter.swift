@@ -36,13 +36,10 @@ struct KnowledgeGraphPresenter: View {
     let onNodeTapped: (String) -> Void
 
     var body: some View {
-        ZStack {
-            vocabSkin.palette.pageBackground.ignoresSafeArea()
+        VocabSceneShell(phase: graphScenePhase) {
+            ZStack {
+                vocabSkin.palette.pageBackground.ignoresSafeArea()
 
-            if let emptyState = state.emptyState {
-                centeredStateCard(emptyState)
-                    .transition(.contentSwap)
-            } else {
                 ZStack(alignment: .bottom) {
                     graphView
 
@@ -62,9 +59,7 @@ struct KnowledgeGraphPresenter: View {
                     }
                 }
                 .animation(AppMotion.standardSpring, value: state.showsSettings)
-                .transition(.contentSwap)
-                .animation(AppMotion.contentFade, value: state.emptyState == nil)
-            .toolbar {
+                .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: onToggleSettings) {
                             VocabToolbarGlyph(
@@ -75,6 +70,18 @@ struct KnowledgeGraphPresenter: View {
                 }
             }
         }
+        .animation(AppMotion.contentFade, value: state.emptyState == nil)
+    }
+
+    private var graphScenePhase: VocabScenePhase {
+        if let emptyState = state.emptyState {
+            return .empty(
+                title: emptyState.title,
+                systemImage: emptyState.systemImage,
+                description: emptyState.description
+            )
+        }
+        return .content
     }
 
     private var graphView: some View {
@@ -197,17 +204,6 @@ struct KnowledgeGraphPresenter: View {
         )
     }
 
-    private func centeredStateCard(_ state: State.EmptyState) -> some View {
-        VStack {
-            VocabEmptyStateCard(
-                title: state.title,
-                systemImage: state.systemImage,
-                description: state.description
-            )
-            Spacer()
-        }
-        .padding(vocabSkin.metrics.emptyStateOuterInset)
-    }
 }
 
 private struct KnowledgeGraphPresenterPreviewHarness: View {
