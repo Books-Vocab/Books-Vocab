@@ -28,7 +28,8 @@ final class VocabularyEntry {
         [\.word],
         [\.isArchived],
         [\.nextReviewAt],
-        [\.notebookId]
+        [\.notebookId],
+        [\.dateAdded]
     )
 
     var id: UUID
