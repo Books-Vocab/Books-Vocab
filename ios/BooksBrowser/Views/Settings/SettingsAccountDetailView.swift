@@ -50,7 +50,7 @@ struct SettingsAccountDetailView: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(accountInfoItems.enumerated()), id: \.element.id) { index, item in
-                    SettingsRow(icon: item.icon, label: item.label) {
+                    AppKeyValueRow(icon: item.icon, label: item.label, style: .settings(vocabSkin)) {
                         SettingsStatusValue(
                             text: item.value,
                             color: vocabSkin.palette.secondaryText
