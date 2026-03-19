@@ -171,6 +171,7 @@ final class KGService: KGServing, LocalDataClearing {
         method: String = "GET",
         queryItems: [URLQueryItem]? = nil,
         body: Data? = nil,
+        retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
         let token = try await currentAuthToken()
@@ -196,19 +197,53 @@ final class KGService: KGServing, LocalDataClearing {
         }
         request.httpBody = body
 
-        let (data, response) = try await withRetry(onRetry: onRetry) {
-            try await sharedURLSession.data(for: request)
+        var lastError: Error?
+
+        for attempt in 1...retryPolicy.maxAttempts {
+            do {
+                if attempt > 1 {
+                    onRetry?(attempt - 1, retryPolicy.maxAttempts - 1)
+                    let delay = retryPolicy.baseDelay * pow(2.0, Double(attempt - 2))
+                    try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
+                }
+
+                let (data, response) = try await sharedURLSession.data(for: request)
+
+                guard let httpResponse = response as? HTTPURLResponse else {
+                    throw KGError.serverError("Invalid response from \(path)")
+                }
+
+                if httpResponse.statusCode == 401 {
+                    throw KGError.unauthorized
+                }
+
+                // Retryable HTTP status — retry if policy allows
+                if retryPolicy.retryableStatusCodes.contains(httpResponse.statusCode) {
+                    lastError = KGError.httpError(
+                        statusCode: httpResponse.statusCode,
+                        detail: String(data: data, encoding: .utf8) ?? "\(method) \(path) failed"
+                    )
+                    if attempt < retryPolicy.maxAttempts { continue }
+                }
+
+                return (data, httpResponse)
+            } catch let error as KGError {
+                throw error // non-retryable KGError propagates immediately
+            } catch let error as URLError {
+                lastError = KGError.networkError(underlying: error)
+                switch error.code {
+                case .timedOut, .networkConnectionLost:
+                    if !NetworkMonitor.shared.isConnected { throw KGError.networkError(underlying: error) }
+                    if attempt < retryPolicy.maxAttempts { continue }
+                default:
+                    throw KGError.networkError(underlying: error)
+                }
+            } catch {
+                throw error
+            }
         }
 
-        guard let httpResponse = response as? HTTPURLResponse else {
-            throw KGError.serverError("Invalid response from \(path)")
-        }
-
-        if httpResponse.statusCode == 401 {
-            throw KGError.unauthorized
-        }
-
-        return (data, httpResponse)
+        throw lastError ?? KGError.serverError("Request failed after \(retryPolicy.maxAttempts) attempts")
     }
 
     func authenticatedDecode<T: Decodable>(
@@ -217,34 +252,41 @@ final class KGService: KGServing, LocalDataClearing {
         method: String = "GET",
         queryItems: [URLQueryItem]? = nil,
         body: Data? = nil,
+        retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> T {
         let (data, httpResponse) = try await authenticatedRequest(
             path: path, method: method, queryItems: queryItems,
-            body: body, onRetry: onRetry
+            body: body, retryPolicy: retryPolicy, onRetry: onRetry
         )
         guard (200...299).contains(httpResponse.statusCode) else {
             throw KGError.httpError(
                 statusCode: httpResponse.statusCode,
-                detail: "\(method) \(path) failed"
+                detail: String(data: data, encoding: .utf8) ?? "\(method) \(path) failed"
             )
         }
-        return try JSONDecoder().decode(type, from: data)
+        do {
+            return try JSONDecoder().decode(type, from: data)
+        } catch {
+            throw KGError.decodingError(underlying: error)
+        }
     }
 
     func authenticatedVoid(
         path: String,
         method: String = "GET",
         queryItems: [URLQueryItem]? = nil,
-        body: Data? = nil
+        body: Data? = nil,
+        retryPolicy: RetryPolicy = .none
     ) async throws {
-        let (_, httpResponse) = try await authenticatedRequest(
-            path: path, method: method, queryItems: queryItems, body: body
+        let (data, httpResponse) = try await authenticatedRequest(
+            path: path, method: method, queryItems: queryItems,
+            body: body, retryPolicy: retryPolicy
         )
         guard (200...299).contains(httpResponse.statusCode) else {
             throw KGError.httpError(
                 statusCode: httpResponse.statusCode,
-                detail: "\(method) \(path) failed"
+                detail: String(data: data, encoding: .utf8) ?? "\(method) \(path) failed"
             )
         }
     }
@@ -347,11 +389,29 @@ final class KGService: KGServing, LocalDataClearing {
     #endif
 }
 
+// MARK: - Retry Policy
+
+struct RetryPolicy: Sendable {
+    let maxAttempts: Int
+    let baseDelay: TimeInterval
+    let retryableStatusCodes: Set<Int>
+
+    static let none = RetryPolicy(maxAttempts: 1, baseDelay: 0, retryableStatusCodes: [])
+    static let `default` = RetryPolicy(maxAttempts: 3, baseDelay: 1.0, retryableStatusCodes: [429, 500, 502, 503])
+    static let aggressive = RetryPolicy(maxAttempts: 5, baseDelay: 0.5, retryableStatusCodes: [429, 500, 502, 503])
+}
+
 // MARK: - Error
 
 enum KGError: LocalizedError {
-    case serverError(String)
+    // Canonical cases (新)
+    case notAuthenticated
     case httpError(statusCode: Int, detail: String)
+    case decodingError(underlying: Error)
+    case networkError(underlying: Error)
+    case serverError(String)
+
+    // Legacy cases（向後相容，逐步淘汰）
     case notConnected
     case unauthorized
     case offline
@@ -359,27 +419,38 @@ enum KGError: LocalizedError {
 
     var errorDescription: String? {
         switch self {
-        case .serverError(let msg): return L10n.format("KG 伺服器錯誤：%@", msg)
-        case .httpError(let code, let detail): return L10n.format("HTTP %d：%@", code, detail)
-        case .notConnected: return L10n.string("KG 伺服器未連線")
-        case .unauthorized: return L10n.string("未登入帳號或身份已過期")
-        case .offline: return L10n.string("目前沒有網路連線")
-        case .tokenExpired: return L10n.string("登入已過期，請重新登入")
+        case .notAuthenticated, .unauthorized, .tokenExpired:
+            return L10n.string("未登入帳號或身份已過期")
+        case .httpError(let code, let detail):
+            return L10n.format("HTTP %d：%@", code, detail)
+        case .decodingError(let err):
+            return L10n.format("解碼錯誤：%@", err.localizedDescription)
+        case .networkError(let err):
+            return L10n.format("網路錯誤：%@", err.localizedDescription)
+        case .serverError(let msg):
+            return L10n.format("KG 伺服器錯誤：%@", msg)
+        case .notConnected:
+            return L10n.string("KG 伺服器未連線")
+        case .offline:
+            return L10n.string("目前沒有網路連線")
         }
     }
 
     var isNetworkRelated: Bool {
         switch self {
-        case .offline, .notConnected: return true
+        case .offline, .notConnected, .networkError: return true
         default: return false
         }
     }
 
     var isRetryable: Bool {
         switch self {
-        case .httpError(let code, _): return (500...599).contains(code)
-        case .offline, .notConnected: return true
+        case .httpError(let code, _): return (500...599).contains(code) || code == 429
+        case .offline, .notConnected, .networkError: return true
         default: return false
         }
     }
 }
+
+/// 向後相容別名
+typealias KGAPIError = KGError
