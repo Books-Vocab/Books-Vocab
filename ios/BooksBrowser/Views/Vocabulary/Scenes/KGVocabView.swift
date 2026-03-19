@@ -49,8 +49,8 @@ struct KGVocabView: View {
         VocabSceneShell(phase: scenePhase) {
             content
         }
-        .animation(AppMotion.phaseChange, value: coordinator.isLoading)
-        .animation(AppMotion.phaseChange, value: coordinator.errorMessage == nil)
+        .animatePhaseChange(coordinator.isLoading)
+        .animatePhaseChange(coordinator.errorMessage == nil)
         .sheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
                 .appSheet(.large)
@@ -105,7 +105,7 @@ struct KGVocabView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
         }
-        .animation(AppMotion.standardSpring, value: selectionState.isSelecting)
+        .animateSpring(selectionState.isSelecting)
         .onChange(of: selectedReviewState) { _, _ in
             selectionState.exit()
         }

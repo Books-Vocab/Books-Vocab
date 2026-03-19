@@ -23,7 +23,7 @@ extension SettingsPresenter {
                     RoundedRectangle(cornerRadius: 1.5, style: .continuous)
                         .fill(quotaBarColor)
                         .frame(width: geo.size.width * quotaStore.fraction)
-                        .animation(AppMotion.standardSpring, value: quotaStore.fraction)
+                        .animateSpring(quotaStore.fraction)
                 }
             }
             .frame(height: 3)
