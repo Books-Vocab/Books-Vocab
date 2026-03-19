@@ -58,7 +58,7 @@ struct ArchivedVocabSheet: View {
                     .listStyle(.plain)
                 }
             }
-            .animation(AppMotion.phaseChange, value: archivedEntries.isEmpty)
+            .animatePhaseChange(archivedEntries.isEmpty)
             .vocabCanvasBackground()
             .navigationTitle("封存".localized)
             .navigationBarTitleDisplayMode(.inline)

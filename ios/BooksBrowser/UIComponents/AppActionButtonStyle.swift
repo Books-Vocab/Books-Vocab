@@ -36,7 +36,7 @@ struct AppActionButtonStyle: ButtonStyle {
             )
             .opacity(configuration.isPressed ? 0.82 : 1)
             .scaleEffect(configuration.isPressed ? 0.992 : 1)
-            .animation(AppMotion.controlEaseOut, value: configuration.isPressed)
+            .animateControl(configuration.isPressed)
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {

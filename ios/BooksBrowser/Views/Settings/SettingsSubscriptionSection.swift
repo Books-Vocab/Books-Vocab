@@ -81,8 +81,8 @@ struct SettingsSubscriptionSection: View {
                 .accessibilityLabel(state.ctaTitle)
             }
             .settingsCard()
-            .animation(AppMotion.phaseChange, value: state.badgeText)
-            .animation(AppMotion.phaseChange, value: state.pricingUnavailableMessage)
+            .animatePhaseChange(state.badgeText)
+            .animatePhaseChange(state.pricingUnavailableMessage)
 
             SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。".localized)
         }

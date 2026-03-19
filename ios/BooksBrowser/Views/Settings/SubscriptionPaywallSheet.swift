@@ -80,8 +80,8 @@ struct SubscriptionPaywallSheet: View {
                     Button("完成".localized) { dismiss() }
                 }
             }
-            .animation(AppMotion.phaseChange, value: subscriptionManager.hasProAccess)
-            .animation(AppMotion.phaseChange, value: subscriptionManager.entitlements.pro.will_renew)
+            .animatePhaseChange(subscriptionManager.hasProAccess)
+            .animatePhaseChange(subscriptionManager.entitlements.pro.will_renew)
         }
     }
 

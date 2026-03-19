@@ -97,7 +97,7 @@ struct WordDetailPresenter: View {
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
-        .animation(AppMotion.contentFade, value: state.title)
+        .animateContentFade(state.title)
     }
 
     private var linksSection: some View {
@@ -166,6 +166,6 @@ struct WordDetailPresenter: View {
             }
         }
         .buttonStyle(.plain)
-        .animation(AppMotion.contentFade, value: state.isExcludedFromReader)
+        .animateContentFade(state.isExcludedFromReader)
     }
 }

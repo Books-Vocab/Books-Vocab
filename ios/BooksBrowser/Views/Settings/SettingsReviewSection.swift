@@ -121,7 +121,7 @@ struct SettingsReviewSection: View {
                 .settingsCard()
             }
             .transition(.statusRowReveal)
-            .animation(AppMotion.phaseChange, value: reviewSettingsStore.settings.mode)
+            .animatePhaseChange(reviewSettingsStore.settings.mode)
         }
     }
 

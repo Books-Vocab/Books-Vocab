@@ -18,7 +18,7 @@ struct LinkedCardOverlayStack: View {
                     linkedCardLayer(entry: entry, index: index)
                         .zIndex(Double(index + 1))
                         .allowsHitTesting(index == stack.count - 1)
-                        .animation(AppMotion.standardSpring, value: stack.count)
+                        .animateSpring(stack.count)
                 }
             }
             .transition(.overlayFade)
