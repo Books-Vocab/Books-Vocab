@@ -41,12 +41,12 @@ struct KGVocabPresenter: View {
         ScrollView {
             VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                 if let banner = state.banner {
-                    ErrorBannerView(
+                    AppBanner(
                         message: banner.message,
-                        onDismiss: banner.canDismiss ? onDismissBanner : nil,
-                        onRetry: banner.canRetry ? onRetryBanner : nil
+                        systemImage: "exclamationmark.triangle.fill",
+                        onRetry: banner.canRetry ? onRetryBanner : nil,
+                        onDismiss: banner.canDismiss ? onDismissBanner : nil
                     )
-                    .transition(.bannerReveal)
                 }
 
 
