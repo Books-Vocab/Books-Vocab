@@ -1,21 +1,23 @@
 //
-//  ErrorBannerView.swift
+//  AppBanner.swift
 //  BooksBrowser
 //
-//  統一錯誤提示條：從頂部滑入，非阻斷式
+//  統一提示條：取代 ErrorBannerView、SyncErrorBanner、OfflineBanner
+//  支援可選 retry / dismiss 按鈕，icon 可自訂
 //
 
 import SwiftUI
 
-struct ErrorBannerView: View {
+struct AppBanner: View {
     @Environment(\.appTheme) private var appTheme
     let message: String
-    var onDismiss: (() -> Void)? = nil
+    var systemImage: String = "wifi.exclamationmark"
     var onRetry: (() -> Void)? = nil
+    var onDismiss: (() -> Void)? = nil
 
     var body: some View {
         HStack(spacing: AppBannerMetrics.spacing) {
-            Image(systemName: "exclamationmark.triangle.fill")
+            Image(systemName: systemImage)
                 .font(AppFonts.caption(weight: .semibold))
                 .foregroundStyle(appTheme.palette.warning)
 
