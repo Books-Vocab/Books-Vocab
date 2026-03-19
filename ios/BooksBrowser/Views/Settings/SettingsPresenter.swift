@@ -178,7 +178,7 @@ struct SettingsPresenter: View {
     // MARK: - Sync Summary Row
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
-        SettingsRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized) {
+        AppKeyValueRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized, style: .settings(vocabSkin)) {
             SettingsStatusSummaryValue(
                 text: summary.summaryText,
                 color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
