@@ -1,10 +1,35 @@
 import SwiftUI
 
-struct ReaderSettingsVocabPresenter: View {
+// MARK: - Variant
+
+enum ReaderSettingsVariant {
+    case glass, vocab
+}
+
+// MARK: - Presenter
+
+struct ReaderSettingsPresenter: View {
+    @Environment(\.appTheme) private var appTheme
     @Environment(\.vocabSkin) private var vocabSkin
 
-    let state: ReaderSettingsPanelPresenter.State
-    let bindings: ReaderSettingsPanelPresenter.Bindings
+    struct State {
+        let fontSizeText: String
+        let canDecreaseFontSize: Bool
+        let canIncreaseFontSize: Bool
+    }
+
+    struct Bindings {
+        let lineHeight: Binding<Double>
+        let font: Binding<ReaderFont>
+        let theme: Binding<ReaderTheme>
+        let underlineOpacity: Binding<Double>
+        let showHitTestingDebug: Binding<Bool>
+        let translationPanelMode: Binding<TranslationPanelMode>
+    }
+
+    let variant: ReaderSettingsVariant
+    let state: State
+    let bindings: Bindings
     let onDecreaseFontSize: () -> Void
     let onIncreaseFontSize: () -> Void
     let onSelectTheme: (ReaderTheme) -> Void
@@ -19,6 +44,172 @@ struct ReaderSettingsVocabPresenter: View {
     ]
 
     var body: some View {
+        switch variant {
+        case .glass:
+            glassLayout
+        case .vocab:
+            vocabLayout
+        }
+    }
+}
+
+// MARK: - Glass Layout
+
+private extension ReaderSettingsPresenter {
+    var glassLayout: some View {
+        NavigationStack {
+            Form {
+                glassTypographySection
+                glassAppearanceSection
+                glassHighlightSection
+                glassDebugSection
+                glassModeSection
+            }
+            .formStyle(.grouped)
+            .navigationTitle("閱讀設定".localized)
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onDismiss) {
+                        Image(systemName: "xmark.circle.fill")
+                            .foregroundStyle(appTheme.palette.tertiaryText)
+                            .font(ReaderGlassTypography.settingsCloseIcon)
+                    }
+                }
+            }
+        }
+    }
+
+    var glassTypographySection: some View {
+        Section {
+            HStack(spacing: 0) {
+                ReaderStepControlButton(
+                    label: "A",
+                    font: ReaderGlassTypography.settingsStepSmall,
+                    enabled: state.canDecreaseFontSize,
+                    action: onDecreaseFontSize
+                )
+
+                Text(state.fontSizeText)
+                    .font(ReaderGlassTypography.settingsValue)
+                    .foregroundStyle(appTheme.palette.secondaryText)
+                    .frame(width: ReaderPresentationMetrics.Settings.centeredValueWidth, alignment: .center)
+
+                ReaderStepControlButton(
+                    label: "A",
+                    font: ReaderGlassTypography.settingsStepLarge,
+                    enabled: state.canIncreaseFontSize,
+                    action: onIncreaseFontSize
+                )
+            }
+
+            HStack(spacing: ReaderPresentationMetrics.Settings.sliderSpacing) {
+                Image(systemName: "text.line.spacing")
+                    .font(ReaderGlassTypography.settingsIcon)
+                    .foregroundStyle(appTheme.palette.secondaryText)
+
+                Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
+                    .tint(appTheme.palette.tint)
+
+                Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
+                    .font(ReaderGlassTypography.settingsValue)
+                    .foregroundStyle(appTheme.palette.secondaryText)
+                    .frame(width: ReaderPresentationMetrics.Settings.sliderValueWidth, alignment: .trailing)
+            }
+            .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
+        } header: {
+            Text("排版".localized)
+        }
+    }
+
+    var glassAppearanceSection: some View {
+        Section {
+            Picker("字體".localized, selection: bindings.font) {
+                ForEach(ReaderFont.allCases) { font in
+                    Text(font.rawValue).tag(font)
+                }
+            }
+            .pickerStyle(.menu)
+
+            HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
+                ForEach(ReaderTheme.allCases) { theme in
+                    glassThemeTile(theme)
+                }
+            }
+            .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
+        } header: {
+            Text("外觀".localized)
+        }
+    }
+
+    var glassHighlightSection: some View {
+        Section {
+            HStack(spacing: ReaderPresentationMetrics.Settings.optionSpacing) {
+                ForEach(opacityOptions, id: \.label) { option in
+                    let isSelected = bindings.underlineOpacity.wrappedValue == option.value
+                    Button { onSelectUnderlineOpacity(option.value) } label: {
+                        ReaderSelectionTile(isSelected: isSelected) {
+                            Text(option.label.localized)
+                                .font(ReaderGlassTypography.body)
+                                .fontWeight(isSelected ? .medium : .regular)
+                                .frame(maxWidth: .infinity)
+                                .padding(.vertical, ReaderPresentationMetrics.Settings.underlineVerticalInset)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
+            .padding(.vertical, ReaderPresentationMetrics.Settings.sectionVerticalInset)
+        } header: {
+            Text("生字底線強度".localized)
+        }
+    }
+
+    var glassDebugSection: some View {
+        Section {
+            Toggle("顯示點擊熱區".localized, isOn: bindings.showHitTestingDebug)
+                .tint(appTheme.palette.tint)
+        } header: {
+            Text("開發者與除錯".localized)
+        }
+    }
+
+    var glassModeSection: some View {
+        Section {
+            Picker("閱讀介面風格".localized, selection: bindings.translationPanelMode) {
+                ForEach(TranslationPanelMode.allCases) { mode in
+                    Label(mode.label, systemImage: mode.icon).tag(mode)
+                }
+            }
+            .pickerStyle(.segmented)
+        } header: {
+            Text("閱讀介面風格".localized)
+        }
+    }
+
+    func glassThemeTile(_ theme: ReaderTheme) -> some View {
+        let isSelected = bindings.theme.wrappedValue == theme
+        return Button { onSelectTheme(theme) } label: {
+            ReaderSelectionTile(isSelected: isSelected) {
+                HStack(spacing: ReaderPresentationMetrics.Settings.optionLabelSpacing) {
+                    Image(systemName: theme.icon)
+                        .font(ReaderGlassTypography.settingsValue)
+                    Text(theme.rawValue)
+                        .font(ReaderGlassTypography.body)
+                        .fontWeight(isSelected ? .medium : .regular)
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.vertical, ReaderPresentationMetrics.Settings.optionVerticalInset)
+            }
+        }
+        .buttonStyle(.plain)
+    }
+}
+
+// MARK: - Vocab Layout
+
+private extension ReaderSettingsPresenter {
+    var vocabLayout: some View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
@@ -30,15 +221,15 @@ struct ReaderSettingsVocabPresenter: View {
                     .padding(.top, vocabSkin.metrics.readerSettingsHandleTopInset)
                     .padding(.bottom, vocabSkin.metrics.readerSettingsHandleBottomInset)
 
-                headerBlock
+                vocabHeaderBlock
 
                 ScrollView {
                     VStack(alignment: .leading, spacing: vocabSkin.metrics.readerSettingsSectionSpacing) {
-                        typographySection
-                        appearanceSection
-                        highlightSection
-                        modeSection
-                        debugSection
+                        vocabTypographySection
+                        vocabAppearanceSection
+                        vocabHighlightSection
+                        vocabModeSection
+                        vocabDebugSection
                     }
                     .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
                     .padding(.bottom, vocabSkin.metrics.readerSettingsBottomInset)
@@ -52,7 +243,7 @@ struct ReaderSettingsVocabPresenter: View {
         )
     }
 
-    private var headerBlock: some View {
+    var vocabHeaderBlock: some View {
         HStack(alignment: .top, spacing: vocabSkin.metrics.readerSettingsHeaderSpacing) {
             Text("閱讀設定")
                 .font(vocabSkin.typography.sectionTitle)
@@ -66,8 +257,8 @@ struct ReaderSettingsVocabPresenter: View {
         .padding(.bottom, vocabSkin.metrics.readerSettingsHeaderBottomInset)
     }
 
-    private var typographySection: some View {
-        settingsSection(title: "排版".localized) {
+    var vocabTypographySection: some View {
+        vocabSettingsSection(title: "排版".localized) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .center, spacing: 0) {
                     ReaderStepControlButton(
@@ -94,7 +285,7 @@ struct ReaderSettingsVocabPresenter: View {
                     .overlay(vocabSkin.palette.divider)
 
                 HStack(alignment: .center, spacing: 12) {
-                    labelChip(title: "行距", systemImage: "text.line.spacing")
+                    vocabLabelChip(title: "行距", systemImage: "text.line.spacing")
 
                     Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
                         .tint(vocabSkin.palette.primaryText)
@@ -108,8 +299,8 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private var appearanceSection: some View {
-        settingsSection(title: "外觀".localized) {
+    var vocabAppearanceSection: some View {
+        vocabSettingsSection(title: "外觀".localized) {
             VStack(alignment: .leading, spacing: 16) {
                 Menu {
                     ForEach(ReaderFont.allCases) { font in
@@ -118,7 +309,7 @@ struct ReaderSettingsVocabPresenter: View {
                         }
                     }
                 } label: {
-                    controlSurface {
+                    vocabControlSurface {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("字體")
@@ -146,15 +337,15 @@ struct ReaderSettingsVocabPresenter: View {
 
                 HStack(spacing: 10) {
                     ForEach(ReaderTheme.allCases) { theme in
-                        themeTile(theme)
+                        vocabThemeTile(theme)
                     }
                 }
             }
         }
     }
 
-    private var highlightSection: some View {
-        settingsSection(title: "生字標記".localized) {
+    var vocabHighlightSection: some View {
+        vocabSettingsSection(title: "生字標記".localized) {
             HStack(spacing: 8) {
                 ForEach(opacityOptions, id: \.label) { option in
                     let isSelected = bindings.underlineOpacity.wrappedValue == option.value
@@ -174,8 +365,8 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private var modeSection: some View {
-        settingsSection(title: "閱讀介面".localized) {
+    var vocabModeSection: some View {
+        vocabSettingsSection(title: "閱讀介面".localized) {
             HStack(spacing: 10) {
                 ForEach(TranslationPanelMode.allCases) { mode in
                     let isSelected = bindings.translationPanelMode.wrappedValue == mode
@@ -200,8 +391,8 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private var debugSection: some View {
-        settingsSection(title: "開發者與除錯".localized) {
+    var vocabDebugSection: some View {
+        vocabSettingsSection(title: "開發者與除錯".localized) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("顯示點擊熱區")
@@ -220,8 +411,12 @@ struct ReaderSettingsVocabPresenter: View {
             }
         }
     }
+}
 
-    private func settingsSection<Content: View>(
+// MARK: - Vocab Helpers
+
+private extension ReaderSettingsPresenter {
+    func vocabSettingsSection<Content: View>(
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
@@ -230,7 +425,7 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private func labelChip(title: String, systemImage: String) -> some View {
+    func vocabLabelChip(title: String, systemImage: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage)
                 .font(vocabSkin.typography.iconTiny)
@@ -246,7 +441,7 @@ struct ReaderSettingsVocabPresenter: View {
         )
     }
 
-    private func controlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+    func vocabControlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VocabChromeSurface(
             fill: vocabSkin.palette.pageBackground,
             border: vocabSkin.palette.cardBorder
@@ -258,7 +453,7 @@ struct ReaderSettingsVocabPresenter: View {
         }
     }
 
-    private func themeTile(_ theme: ReaderTheme) -> some View {
+    func vocabThemeTile(_ theme: ReaderTheme) -> some View {
         let isSelected = bindings.theme.wrappedValue == theme
         return Button {
             onSelectTheme(theme)
@@ -270,7 +465,7 @@ struct ReaderSettingsVocabPresenter: View {
                     Text(theme.rawValue)
                         .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
                     Rectangle()
-                        .fill(themeSwatchColor(theme))
+                        .fill(vocabSkin.readerThemeSwatchColor(theme))
                         .frame(height: 8)
                         .clipShape(Capsule(style: .continuous))
                 }
@@ -282,7 +477,7 @@ struct ReaderSettingsVocabPresenter: View {
         .buttonStyle(.plain)
     }
 
-    private var fontToneLabel: String {
+    var fontToneLabel: String {
         switch bindings.font.wrappedValue {
         case .serif:
             return "classic"
@@ -294,16 +489,38 @@ struct ReaderSettingsVocabPresenter: View {
             return "coded"
         }
     }
-
-    private func themeSwatchColor(_ theme: ReaderTheme) -> Color {
-        vocabSkin.readerThemeSwatchColor(theme)
-    }
-
 }
 
-#Preview("ReaderSettings Vocab / Default") {
+// MARK: - Previews
+
+#Preview("ReaderSettings / Glass") {
+    ReaderSettingsPresenter(
+        variant: .glass,
+        state: .init(
+            fontSizeText: "17pt",
+            canDecreaseFontSize: true,
+            canIncreaseFontSize: true
+        ),
+        bindings: .init(
+            lineHeight: .constant(1.4),
+            font: .constant(.serif),
+            theme: .constant(.light),
+            underlineOpacity: .constant(0.35),
+            showHitTestingDebug: .constant(false),
+            translationPanelMode: .constant(.glass)
+        ),
+        onDecreaseFontSize: {},
+        onIncreaseFontSize: {},
+        onSelectTheme: { _ in },
+        onSelectUnderlineOpacity: { _ in },
+        onDismiss: {}
+    )
+}
+
+#Preview("ReaderSettings / Vocab") {
     AppThemeContainer {
-        ReaderSettingsVocabPresenter(
+        ReaderSettingsPresenter(
+            variant: .vocab,
             state: .init(
                 fontSizeText: "17pt",
                 canDecreaseFontSize: true,
@@ -327,9 +544,10 @@ struct ReaderSettingsVocabPresenter: View {
     }
 }
 
-#Preview("ReaderSettings Vocab / Bounds") {
+#Preview("ReaderSettings / Glass Bounds") {
     AppThemeContainer {
-        ReaderSettingsVocabPresenter(
+        ReaderSettingsPresenter(
+            variant: .glass,
             state: .init(
                 fontSizeText: "0.75x",
                 canDecreaseFontSize: false,
@@ -337,11 +555,11 @@ struct ReaderSettingsVocabPresenter: View {
             ),
             bindings: .init(
                 lineHeight: .constant(2.5),
-                font: .constant(.mono),
+                font: .constant(.sans),
                 theme: .constant(.dark),
                 underlineOpacity: .constant(0.0),
                 showHitTestingDebug: .constant(true),
-                translationPanelMode: .constant(.glass)
+                translationPanelMode: .constant(.vocab)
             ),
             onDecreaseFontSize: {},
             onIncreaseFontSize: {},
@@ -349,7 +567,6 @@ struct ReaderSettingsVocabPresenter: View {
             onSelectUnderlineOpacity: { _ in },
             onDismiss: {}
         )
-        .padding()
     }
     .preferredColorScheme(.dark)
 }
