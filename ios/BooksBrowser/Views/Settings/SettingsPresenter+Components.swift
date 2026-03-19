@@ -40,29 +40,6 @@ struct SettingsSectionFooter: View {
 
 typealias SettingsDivider = AppSettingsDivider
 
-struct SettingsRow<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    let icon: String
-    let label: String
-    let content: Content
-
-    init(icon: String, label: String, @ViewBuilder content: () -> Content) {
-        self.icon = icon
-        self.label = label
-        self.content = content()
-    }
-
-    var body: some View {
-        AppKeyValueRow(
-            icon: icon,
-            label: label,
-            style: .settings(vocabSkin)
-        ) {
-            content
-        }
-    }
-}
-
 struct SettingsTrailingChevronIcon: View {
     @Environment(\.vocabSkin) private var vocabSkin
 

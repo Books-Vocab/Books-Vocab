@@ -6,7 +6,7 @@ extension SettingsPresenter {
 
     var quotaRow: some View {
         VStack(spacing: 0) {
-            SettingsRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized) {
+            AppKeyValueRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized, style: .settings(vocabSkin)) {
                 SettingsStatusValue(
                     text: quotaStore.isExhausted
                         ? quotaStore.resetText
