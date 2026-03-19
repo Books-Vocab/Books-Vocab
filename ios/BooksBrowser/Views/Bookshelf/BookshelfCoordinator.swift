@@ -78,7 +78,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         isLoading = true
         loadingMessage = L10n.string("正在匯入書籍...")
 
-        Task { @MainActor in
+        Task {
             do {
                 AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
                 loadingMessage = L10n.string("正在解析 EPUB...")
