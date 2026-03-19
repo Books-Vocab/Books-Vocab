@@ -51,8 +51,8 @@ struct BookshelfView: View {
             }
             .navigationTitle("書庫".localized)
             .navigationBarTitleDisplayMode(.large)
-            .animation(AppMotion.phaseChange, value: books.isEmpty)
-            .animation(AppMotion.contentFade, value: coordinator.isLoading)
+            .animatePhaseChange(books.isEmpty)
+            .animateContentFade(coordinator.isLoading)
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: coordinator.presentSettings) {
@@ -161,7 +161,7 @@ struct BookshelfView: View {
                     }
                 }
             }
-            .animation(AppMotion.contentFade, value: books.count)
+            .animateContentFade(books.count)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .padding(.top, AppMetrics.spacingSmall)
 

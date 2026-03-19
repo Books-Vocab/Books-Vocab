@@ -70,7 +70,7 @@ struct PendingVocabPresenter: View {
                                 }
                             }
                         }
-                        .animation(AppMotion.standardSpring, value: state.rows.count)
+                        .animateSpring(state.rows.count)
                     }
                 }
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
