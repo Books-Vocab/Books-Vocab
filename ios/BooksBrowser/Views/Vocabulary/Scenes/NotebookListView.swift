@@ -10,12 +10,22 @@ import SwiftData
 struct NotebookListView: View {
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
-    @Query(sort: \VocabularyEntry.dateAdded, order: .reverse) private var allEntries: [VocabularyEntry]
+    /// Predicate 對應 shouldAppearInKnowledgeList：synced + 非 delete + 非 archived
+    @Query private var allEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.vocabSkin) private var skin
     @Environment(\.horizontalSizeClass) private var sizeClass
+
+    init() {
+        let knowledgePredicate = #Predicate<VocabularyEntry> {
+            $0.syncStatus == 1 &&
+            $0.actionType != "delete" &&
+            $0.isArchived == false
+        }
+        _allEntries = Query(filter: knowledgePredicate, sort: \.dateAdded, order: .reverse)
+    }
 
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
@@ -210,13 +220,12 @@ struct NotebookListView: View {
 
     private var totalDueCount: Int {
         let now = Date()
-        return allEntries.filter { $0.shouldAppearInKnowledgeList && $0.nextReviewAt <= now }.count
+        return allEntries.filter { $0.nextReviewAt <= now }.count
     }
 
     private var filteredDueEntries: [VocabularyEntry] {
         let now = Date()
         return allEntries.filter {
-            $0.shouldAppearInKnowledgeList &&
             $0.nextReviewAt <= now &&
             reviewFilter.matches($0.notebookId)
         }
@@ -233,14 +242,13 @@ struct NotebookListView: View {
     // MARK: - Card Count Helpers
 
     private func cardCount(for notebookId: String) -> Int {
-        allEntries.filter { $0.shouldAppearInKnowledgeList && $0.notebookId == notebookId }.count
+        allEntries.filter { $0.notebookId == notebookId }.count
     }
 
     private func dueCount(for notebookId: String) -> Int {
         let now = Date()
         return allEntries.filter {
             $0.notebookId == notebookId &&
-            $0.shouldAppearInKnowledgeList &&
             $0.nextReviewAt <= now
         }.count
     }
