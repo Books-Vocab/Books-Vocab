@@ -109,7 +109,7 @@ struct NotebookFilterPickerSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .appSheet(.medium)
     }
 
     private func toggleNotebook(_ id: String) {
