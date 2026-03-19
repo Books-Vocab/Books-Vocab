@@ -43,7 +43,7 @@ struct VocabularyListPresenter<Content: View>: View {
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animation(AppMotion.phaseChange, value: selectedTab)
+                .animatePhaseChange(selectedTab)
         }
         .vocabCanvasBackground()
         .scrollDismissesKeyboard(.interactively)

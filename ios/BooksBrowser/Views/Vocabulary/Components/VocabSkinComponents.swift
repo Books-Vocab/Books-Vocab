@@ -188,7 +188,7 @@ struct VocabReviewProgressBar: View {
                         Capsule(style: .continuous)
                             .fill(ReviewGradient.color(for: ratio))
                             .frame(width: max(6, proxy.size.width * clampedFraction))
-                            .animation(AppMotion.controlEaseOut, value: ratio)
+                            .animateControl(ratio)
                     }
                     .accessibilityLabel("複習進度".localized)
                     .accessibilityValue("\(Int(min(ratio, 1.0) * 100))%")

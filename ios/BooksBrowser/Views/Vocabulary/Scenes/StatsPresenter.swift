@@ -57,7 +57,7 @@ struct StatsPresenter: View {
                 .vocabCanvasBackground()
             }
         }
-        .animation(AppMotion.phaseChange, value: summary != nil)
+        .animatePhaseChange(summary != nil)
         .task {
             recompute()
         }

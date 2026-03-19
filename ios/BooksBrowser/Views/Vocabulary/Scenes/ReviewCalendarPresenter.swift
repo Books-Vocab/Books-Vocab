@@ -167,7 +167,7 @@ struct ReviewCalendarPresenter: View {
             }
         }
         .vocabCardBackground()
-        .animation(AppMotion.contentFade, value: selectedDay)
+        .animateContentFade(selectedDay)
     }
 
     private var partitionedRecords: (local: [ReviewRecord], syncCount: Int) {

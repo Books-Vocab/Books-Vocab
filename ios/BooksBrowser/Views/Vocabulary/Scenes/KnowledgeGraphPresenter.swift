@@ -58,7 +58,7 @@ struct KnowledgeGraphPresenter: View {
                             .transition(.readerPanelReveal)
                     }
                 }
-                .animation(AppMotion.standardSpring, value: state.showsSettings)
+                .animateSpring(state.showsSettings)
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(action: onToggleSettings) {
