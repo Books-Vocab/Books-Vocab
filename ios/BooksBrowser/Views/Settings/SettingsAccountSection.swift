@@ -39,7 +39,7 @@ struct SettingsAccountSection: View {
                     .transition(.contentSwap)
                 }
             }
-            .animation(AppMotion.phaseChange, value: state.isAuthenticating)
+            .animatePhaseChange(state.isAuthenticating)
             .animation(AppMotion.modalSwapSpring, value: state.isLoggedIn)
         }
     }

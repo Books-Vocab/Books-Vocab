@@ -100,7 +100,7 @@ struct KGVocabPresenter: View {
                                         }
                                 }
                                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                                .animation(AppMotion.standardSpring, value: selectionState.isSelecting)
+                                .animateSpring(selectionState.isSelecting)
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
@@ -124,7 +124,7 @@ struct KGVocabPresenter: View {
         .refreshable { [onRefresh] in
             await onRefresh?()
         }
-        .animation(AppMotion.standardSpring, value: state.banner == nil)
+        .animateSpring(state.banner == nil)
     }
 }
 

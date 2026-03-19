@@ -17,7 +17,7 @@ struct QuotaBar: View {
                     RoundedRectangle(cornerRadius: 1, style: .continuous)
                         .fill(barColor.opacity(barOpacity))
                         .frame(width: geo.size.width * store.fraction)
-                        .animation(AppMotion.standardSpring, value: store.fraction)
+                        .animateSpring(store.fraction)
                 }
             }
             .frame(height: 2)
