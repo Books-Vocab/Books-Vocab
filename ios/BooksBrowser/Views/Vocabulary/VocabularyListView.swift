@@ -18,6 +18,8 @@ struct VocabularyListView: View {
     let notebookId: String
 
     @State var searchText = ""
+    /// debounce 後的搜尋文字，用於實際過濾
+    @State var debouncedSearchText = ""
     @Environment(\.kgService) var kgService
     @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) var subscriptionManager
@@ -79,6 +81,20 @@ struct VocabularyListView: View {
         }
         .onChange(of: selectedTab) { _, _ in
             searchText = ""
+            debouncedSearchText = ""
+        }
+        .task(id: searchText) {
+            // 清空時立即反映；否則 debounce 300ms
+            guard !searchText.isEmpty else {
+                debouncedSearchText = ""
+                return
+            }
+            do {
+                try await Task.sleep(for: .milliseconds(300))
+                debouncedSearchText = searchText
+            } catch {
+                // Task cancelled — 使用者繼續輸入，忽略
+            }
         }
     }
 }

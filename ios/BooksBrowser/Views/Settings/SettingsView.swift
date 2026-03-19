@@ -19,7 +19,12 @@ struct SettingsView: View {
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
     @State var coordinator = SettingsCoordinator()
-    @Query var allEntries: [VocabularyEntry]
+    /// Predicate 對應 shouldAppearInKnowledgeList — 僅用於 displayCardCount
+    @Query(filter: #Predicate<VocabularyEntry> {
+        $0.syncStatus == 1 &&
+        $0.actionType != "delete" &&
+        $0.isArchived == false
+    }) var allEntries: [VocabularyEntry]
 
     var body: some View {
         SettingsPresenter(
