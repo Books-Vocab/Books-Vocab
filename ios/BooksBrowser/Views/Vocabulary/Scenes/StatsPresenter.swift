@@ -37,34 +37,26 @@ struct StatsPresenter: View {
     }
 
     var body: some View {
-        ScrollView {
+        VocabSceneShell(phase: summary == nil
+            ? .loading(title: "計算統計資料...".localized, systemImage: "chart.bar")
+            : .content
+        ) {
             if let summary {
-                VStack(spacing: vocabSkin.spacing.sectionGap) {
-                    graphEntrySection
-                    streakSection(summary)
-                    heatmapSection(summary)
-                    forecastSection(summary)
-                    totalsSection(summary)
-                }
-                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.top, vocabSkin.metrics.pageTopInset)
-                .padding(.bottom, vocabSkin.metrics.pageBottomInset)
-            } else {
-                VStack {
-                    Spacer(minLength: 120)
-                    VocabStateMessageCard(
-                        title: "計算統計資料...".localized,
-                        systemImage: "chart.bar"
-                    ) {
-                        ProgressView()
-                            .controlSize(.small)
+                ScrollView {
+                    VStack(spacing: vocabSkin.spacing.sectionGap) {
+                        graphEntrySection
+                        streakSection(summary)
+                        heatmapSection(summary)
+                        forecastSection(summary)
+                        totalsSection(summary)
                     }
-                    Spacer()
+                    .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+                    .padding(.top, vocabSkin.metrics.pageTopInset)
+                    .padding(.bottom, vocabSkin.metrics.pageBottomInset)
                 }
-                .padding(vocabSkin.metrics.cardBlockPadding)
+                .vocabCanvasBackground()
             }
         }
-        .vocabCanvasBackground()
         .animation(AppMotion.phaseChange, value: summary != nil)
         .task {
             recompute()

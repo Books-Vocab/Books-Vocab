@@ -46,61 +46,8 @@ struct KGVocabView: View {
     }
 
     var body: some View {
-        Group {
-            if !authManager.isLoggedIn {
-                VStack {
-                    Spacer()
-                    VocabEmptyStateCard(
-                        title: "尚未登入".localized,
-                        systemImage: "person.crop.circle.badge.exclamationmark",
-                        description: "登入後，您在閱讀時標記的生詞將會自動整理於此。".localized
-                    )
-                    Spacer()
-                }
-                .padding(vocabSkin.metrics.cardBlockPadding)
-                .vocabCanvasBackground()
-            } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
-                VStack {
-                    Spacer()
-                    VocabStateMessageCard(
-                        title: "無法載入知識庫".localized,
-                        systemImage: "exclamationmark.triangle"
-                    ) {
-                        Button("重試".localized) {
-                            Task {
-                                await coordinator.loadInitialData(
-                                    authManager: authManager,
-                                    kgService: kgService,
-                                    modelContext: modelContext,
-                                    dueEntries: dueEntries,
-                                    unlearnedEntries: unlearnedEntries,
-                                    selectedReviewState: $selectedReviewState
-                                )
-                            }
-                        }
-                        .buttonStyle(.vocabAction())
-                    }
-                    Spacer()
-                }
-                .padding(vocabSkin.metrics.cardBlockPadding)
-                .vocabCanvasBackground()
-            } else if coordinator.isLoading && syncedEntries.isEmpty {
-                VStack {
-                    Spacer()
-                    VocabStateMessageCard(
-                        title: "載入知識庫...".localized,
-                        systemImage: "arrow.clockwise"
-                    ) {
-                        ProgressView()
-                            .controlSize(.small)
-                    }
-                    Spacer()
-                }
-                .padding(vocabSkin.metrics.cardBlockPadding)
-                .vocabCanvasBackground()
-            } else {
-                content
-            }
+        VocabSceneShell(phase: scenePhase) {
+            content
         }
         .animation(AppMotion.phaseChange, value: coordinator.isLoading)
         .animation(AppMotion.phaseChange, value: coordinator.errorMessage == nil)
@@ -202,6 +149,40 @@ struct KGVocabView: View {
     }
 
     // MARK: - Computed
+
+    private var scenePhase: VocabScenePhase {
+        if !authManager.isLoggedIn {
+            return .empty(
+                title: "尚未登入".localized,
+                systemImage: "person.crop.circle.badge.exclamationmark",
+                description: "登入後，您在閱讀時標記的生詞將會自動整理於此。".localized
+            )
+        } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
+            return .error(
+                title: "無法載入知識庫".localized,
+                systemImage: "exclamationmark.triangle",
+                retryAction: {
+                    Task {
+                        await coordinator.loadInitialData(
+                            authManager: authManager,
+                            kgService: kgService,
+                            modelContext: modelContext,
+                            dueEntries: dueEntries,
+                            unlearnedEntries: unlearnedEntries,
+                            selectedReviewState: $selectedReviewState
+                        )
+                    }
+                }
+            )
+        } else if coordinator.isLoading && syncedEntries.isEmpty {
+            return .loading(
+                title: "載入知識庫...".localized,
+                systemImage: "arrow.clockwise"
+            )
+        } else {
+            return .content
+        }
+    }
 
     private var presenterState: KGVocabPresenter.State {
         KGVocabPresenter.State(

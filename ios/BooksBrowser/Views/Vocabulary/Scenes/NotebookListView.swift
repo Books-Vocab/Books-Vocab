@@ -197,12 +197,13 @@ struct NotebookListView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        VocabEmptyStateCard(
+        VocabSceneShell(phase: .empty(
             title: "還沒有單字本".localized,
             systemImage: "books.vertical",
             description: "登入後自動建立預設單字本".localized
-        )
-        .padding(.top, skin.spacing.sectionGap)
+        )) {
+            EmptyView()
+        }
     }
 
     // MARK: - Review Helpers
