@@ -83,7 +83,7 @@ extension VocabularyListView {
     var filteredPendingEntries: [VocabularyEntry] {
         VocabularyEntryPresentation.filteredPendingEntries(
             in: allEntries,
-            searchText: searchText
+            searchText: debouncedSearchText
         )
     }
 
@@ -118,7 +118,7 @@ extension VocabularyListView {
             } else if !authManager.isLoggedIn {
                 loggedOutState
             } else {
-                KGVocabView(searchText: $searchText, notebookId: notebookId)
+                KGVocabView(searchText: $debouncedSearchText, notebookId: notebookId)
             }
         }
         .transition(.contentSwap)

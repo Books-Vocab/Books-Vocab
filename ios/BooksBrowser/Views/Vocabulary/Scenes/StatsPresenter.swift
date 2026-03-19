@@ -19,6 +19,7 @@ struct StatsPresenter: View {
     })
     private var syncedEntries: [VocabularyEntry]
 
+    /// init 覆寫為只載入近 6 個月的紀錄（統計用途不需全量）
     @Query var reviewRecords: [ReviewRecord]
 
     @State private var summary: StatsPresentation.Summary?
