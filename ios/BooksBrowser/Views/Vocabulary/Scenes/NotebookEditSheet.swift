@@ -78,7 +78,7 @@ struct NotebookEditSheet: View {
                 }
             }
         }
-        .presentationDetents([.medium])
+        .appSheet(.medium)
     }
 
     private var isCreating: Bool {
