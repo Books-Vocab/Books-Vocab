@@ -73,8 +73,7 @@ struct TodayReviewView: View {
         }
         .sheet(item: $state.tappedLink) { link in
             LinkReasonSheet(link: link, onNavigate: state.navigateToLinkedCard)
-                .presentationDetents([.medium])
-                .presentationDragIndicator(.visible)
+                .appSheet(.medium)
         }
         .onDisappear {
             if state.currentIndex < state.queue.count {

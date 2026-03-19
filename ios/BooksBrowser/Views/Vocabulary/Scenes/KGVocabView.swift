@@ -106,9 +106,7 @@ struct KGVocabView: View {
         .animation(AppMotion.phaseChange, value: coordinator.errorMessage == nil)
         .sheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationContentInteraction(.scrolls)
+                .appSheet(.large)
         }
         .task {
             await coordinator.loadInitialData(
@@ -187,7 +185,7 @@ struct KGVocabView: View {
             NotebookPickerSheet(excludeNotebookId: notebookId) { notebook in
                 handleBatchMove(to: notebook)
             }
-            .presentationDetents([.medium])
+            .appSheet(.medium)
         }
     }
 
