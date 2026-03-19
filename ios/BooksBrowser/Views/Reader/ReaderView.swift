@@ -117,8 +117,7 @@ struct ReaderView: View {
                     closeOverlay(.settings)
                 }
             )
-            .presentationDetents([.medium, .large])
-            .presentationDragIndicator(.visible)
+            .appSheet(.adaptive)
             .presentationBackground(.ultraThinMaterial)
         }
         .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
@@ -129,8 +128,7 @@ struct ReaderView: View {
         }
         .sheet(isPresented: $showNotebookPicker) {
             ReaderNotebookPicker(book: book)
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+                .appSheet(.adaptive)
         }
     }
 

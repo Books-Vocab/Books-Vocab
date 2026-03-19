@@ -70,9 +70,7 @@ struct ArchivedVocabSheet: View {
             }
             .sheet(item: $selectedEntry) { entry in
                 WordDetailSheet(entry: entry)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationContentInteraction(.scrolls)
+                    .appSheet(.large)
             }
         }
     }
