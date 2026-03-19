@@ -23,9 +23,7 @@ struct VocabularyListSheets: ViewModifier {
             }
             .sheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry, allEntries: allEntries)
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationContentInteraction(.scrolls)
+                    .appSheet(.large)
             }
             .fullScreenCover(item: Binding(
                 get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
@@ -46,7 +44,7 @@ struct VocabularyListSheets: ViewModifier {
                     allEntries: allEntries,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
-                .presentationDetents([.large])
+                .appSheet(.large)
             }
     }
 }
