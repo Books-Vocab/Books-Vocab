@@ -13,7 +13,7 @@ struct SettingsPreferencesSection: View {
 
             VStack(spacing: 0) {
                 // 外觀
-                SettingsRow(icon: "circle.lefthalf.filled", label: "外觀".localized) {
+                AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(vocabSkin)) {
                     Menu {
                         ForEach(AppAppearanceMode.allCases) { mode in
                             Button {
@@ -50,7 +50,7 @@ struct SettingsPreferencesSection: View {
                 SettingsDivider()
 
                 // 語言
-                SettingsRow(icon: "character.bubble", label: "語言".localized) {
+                AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(vocabSkin)) {
                     Menu {
                         ForEach(AppLanguage.allCases) { language in
                             Button {
