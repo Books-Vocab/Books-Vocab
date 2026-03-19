@@ -25,7 +25,7 @@ extension SettingsView {
 
     /// Local count (same source as notebook list) with server fallback for first login.
     var displayCardCount: Int {
-        let local = allEntries.filter(\.shouldAppearInKnowledgeList).count
+        let local = allEntries.count
         if local > 0 { return local }
         return kgService.serverCardCount
     }
