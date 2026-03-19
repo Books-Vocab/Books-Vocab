@@ -24,28 +24,17 @@ struct PendingVocabPresenter: View {
 
     var body: some View {
         if state.rows.isEmpty {
-            ScrollView {
-                if state.knowledgeCount > 0 {
-                    VocabStateMessageCard(
-                        title: "沒有待收錄的生詞".localized,
-                        systemImage: "character.book.closed",
-                        description: state.dueCount > 0
-                            ? L10n.format("知識庫有 %d 個單字，其中 %d 個待複習。", state.knowledgeCount, state.dueCount)
-                            : L10n.format("知識庫已有 %d 個單字，去複習鞏固記憶吧。", state.knowledgeCount)
-                    ) {
-                        Button("前往知識庫".localized, action: onSwitchToKnowledge)
-                            .buttonStyle(.ghost(vocabSkin.palette.primaryText))
-                    }
-                } else {
-                    VocabEmptyStateCard(
-                        title: "沒有待收錄的生詞".localized,
-                        systemImage: "character.book.closed",
-                        description: "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。".localized
-                    )
-                }
+            VocabSceneShell(phase: .empty(
+                title: "沒有待收錄的生詞".localized,
+                systemImage: "character.book.closed",
+                description: state.knowledgeCount > 0
+                    ? (state.dueCount > 0
+                        ? L10n.format("知識庫有 %d 個單字，其中 %d 個待複習。", state.knowledgeCount, state.dueCount)
+                        : L10n.format("知識庫已有 %d 個單字，去複習鞏固記憶吧。", state.knowledgeCount))
+                    : "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。".localized
+            )) {
+                EmptyView()
             }
-            .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-            .padding(.top, vocabSkin.metrics.pageTopInset)
             .transition(.listItemFade)
         } else {
             ScrollView {
