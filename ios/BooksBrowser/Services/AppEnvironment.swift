@@ -43,10 +43,20 @@ private struct ICloudDownloadManagerKey: EnvironmentKey {
     }
 }
 
+private struct SyncCoordinatorKey: EnvironmentKey {
+    static let defaultValue: SyncCoordinator = MainActor.assumeIsolated {
+        SyncCoordinator()
+    }
+}
+
 extension EnvironmentValues {
     var iCloudDownloadManager: ICloudDownloadManager {
         get { self[ICloudDownloadManagerKey.self] }
         set { self[ICloudDownloadManagerKey.self] = newValue }
+    }
+    var syncCoordinator: SyncCoordinator {
+        get { self[SyncCoordinatorKey.self] }
+        set { self[SyncCoordinatorKey.self] = newValue }
     }
     var authManager: any AuthManaging {
         get { self[AuthManagerEnvironmentKey.self] }
