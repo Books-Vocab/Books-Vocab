@@ -148,15 +148,41 @@ extension VocabularyEntry {
 
     var primaryReviewExample: String? {
         reviewExamples.first { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty } ??
-        (context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : context)
+        (context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : markWordInContext(context))
     }
 
     var allReviewExamples: [String] {
         let remoteExamples = reviewExamples.filter { !$0.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty }
         if remoteExamples.isEmpty {
-            return context.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? [] : [context]
+            let trimmed = context.trimmingCharacters(in: .whitespacesAndNewlines)
+            return trimmed.isEmpty ? [] : [markWordInContext(trimmed)]
         }
         return remoteExamples
+    }
+
+    /// 在 context 純文字中為 word 加上 **markdown** 標記（模擬 server 的 _build_example 邏輯）
+    private func markWordInContext(_ text: String) -> String {
+        let escaped = NSRegularExpression.escapedPattern(for: word)
+        if let regex = try? NSRegularExpression(pattern: escaped, options: .caseInsensitive),
+           let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+            let ns = text as NSString
+            let matched = ns.substring(with: match.range)
+            return ns.replacingCharacters(in: match.range, with: "**\(matched)**")
+        }
+        // stem fallback: 前 4-6 字元
+        let firstWord = word.components(separatedBy: " ").first ?? word
+        if firstWord.count >= 4 {
+            let stem = String(firstWord.prefix(min(firstWord.count, 6)))
+            let stemEsc = NSRegularExpression.escapedPattern(for: stem)
+            let stemPat = "(?<![\\w\\p{L}])\(stemEsc)\\w*(?![\\w\\p{L}])"
+            if let stemRegex = try? NSRegularExpression(pattern: stemPat, options: .caseInsensitive),
+               let match = stemRegex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
+                let ns = text as NSString
+                let matched = ns.substring(with: match.range)
+                return ns.replacingCharacters(in: match.range, with: "**\(matched)**")
+            }
+        }
+        return text
     }
 
     var graphLinksByKind: [String: [KGCardLinkSummary]] {
