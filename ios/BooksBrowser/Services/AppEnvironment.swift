@@ -49,6 +49,12 @@ private struct SyncCoordinatorKey: EnvironmentKey {
     }
 }
 
+private struct AppToastCoordinatorKey: EnvironmentKey {
+    nonisolated(unsafe) static let defaultValue: AppToastCoordinator = MainActor.assumeIsolated {
+        AppToastCoordinator()
+    }
+}
+
 extension EnvironmentValues {
     var iCloudDownloadManager: ICloudDownloadManager {
         get { self[ICloudDownloadManagerKey.self] }
@@ -57,6 +63,10 @@ extension EnvironmentValues {
     var syncCoordinator: SyncCoordinator {
         get { self[SyncCoordinatorKey.self] }
         set { self[SyncCoordinatorKey.self] = newValue }
+    }
+    var toastCoordinator: AppToastCoordinator {
+        get { self[AppToastCoordinatorKey.self] }
+        set { self[AppToastCoordinatorKey.self] = newValue }
     }
     var authManager: any AuthManaging {
         get { self[AuthManagerEnvironmentKey.self] }

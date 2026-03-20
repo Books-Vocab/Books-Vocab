@@ -27,14 +27,6 @@ struct ContentView: View {
                 AppBanner(message: "目前沒有網路連線", systemImage: "wifi.slash")
             }
 
-            if let syncError = kgService.lastBackgroundSyncError, networkMonitor.isConnected {
-                AppBanner(
-                    message: syncError,
-                    systemImage: "arrow.triangle.2.circlepath.circle",
-                    onDismiss: { kgService.lastBackgroundSyncError = nil }
-                )
-            }
-
             TabView {
                 Tab("書庫".localized, systemImage: "books.vertical") {
                     BookshelfView()
@@ -50,7 +42,6 @@ struct ContentView: View {
         }
         .animatePhaseChange(networkMonitor.isConnected)
         .animatePhaseChange(authManager.isDemoMode)
-        .animatePhaseChange(kgService.lastBackgroundSyncError == nil)
     }
 }
 
