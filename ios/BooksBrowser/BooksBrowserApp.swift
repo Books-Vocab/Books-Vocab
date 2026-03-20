@@ -24,6 +24,7 @@ struct BooksBrowserApp: App {
     let bookFileManager: any BookFileManaging
     let iCloudDownloadManager = ICloudDownloadManager()
     let networkMonitor = NetworkMonitor.shared
+    let syncCoordinator = SyncCoordinator()
     let startupFailure: AppStartupFailure?
 
     init() {
@@ -139,6 +140,7 @@ struct BooksBrowserApp: App {
                     .environment(\.bookshelfImportService, bookshelfImportService)
                     .environment(\.bookFileManager, bookFileManager)
                     .environment(\.iCloudDownloadManager, iCloudDownloadManager)
+                    .environment(\.syncCoordinator, syncCoordinator)
                     .environment(\.quotaStore, QuotaStore.shared)
                     .environment(\.speechService, SpeechService.shared)
                     .environment(\.readerSettings, .shared)

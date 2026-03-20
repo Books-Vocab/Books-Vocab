@@ -8,6 +8,7 @@ import SwiftUI
 struct VocabularyListToolbar: ViewModifier {
     let selectedTab: Int
     let isLoggedIn: Bool
+    let isSyncing: Bool
     let pendingCount: Int
     let knowledgeReviewCount: Int
     let knowledgeDueCount: Int
@@ -32,6 +33,7 @@ struct VocabularyListToolbar: ViewModifier {
                             systemImage: "arrow.triangle.2.circlepath",
                             badge: pendingCount > 0 ? "\(pendingCount)" : nil
                         )
+                        .symbolEffect(.rotate, options: .repeating, isActive: isSyncing)
                     }
                     .accessibilityLabel("同步詞彙".localized)
                 }

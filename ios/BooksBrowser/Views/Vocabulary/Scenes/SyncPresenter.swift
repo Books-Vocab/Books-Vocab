@@ -68,9 +68,7 @@ struct SyncPresenter: View {
         .sensoryFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
-                if state.phase == .ready || state.phase == .completed || state.phase == .failed {
-                    Button("關閉".localized) { dismiss() }
-                }
+                Button("關閉".localized) { dismiss() }
             }
         }
     }
