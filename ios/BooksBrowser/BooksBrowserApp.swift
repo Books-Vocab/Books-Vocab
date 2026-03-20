@@ -45,6 +45,8 @@ struct BooksBrowserApp: App {
             cloudKitDatabase: .automatic
         )
 
+        let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self]
+
         do {
             modelContainer = try ModelContainer(
                 for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
@@ -53,10 +55,21 @@ struct BooksBrowserApp: App {
             startupFailure = nil
             AuthManager.shared.modelContainer = modelContainer
             Self.runMigrationIfNeeded(container: modelContainer)
+            AppLog.app.info("ModelContainer initialized — models: \(allModels.map { String(describing: $0) }.joined(separator: ", "))")
         } catch {
-            AppLog.app.error("Cannot create persistent ModelContainer: \(error.localizedDescription)")
-            startupFailure = AppStartupFailure.storageInitialization(error: error)
-            modelContainer = Self.makeFallbackModelContainer()
+            AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
+
+            // 嘗試刪除損壞的本機 store 後重試
+            if let retryContainer = Self.retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
+                modelContainer = retryContainer
+                startupFailure = nil
+                AuthManager.shared.modelContainer = retryContainer
+                AppLog.app.warning("ModelContainer recovered after store reset — user data will re-sync from server")
+            } else {
+                AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
+                startupFailure = AppStartupFailure.storageInitialization(error: error)
+                modelContainer = Self.makeFallbackModelContainer()
+            }
         }
     }
 
@@ -217,6 +230,22 @@ struct BooksBrowserApp: App {
                     )
                 }
         }
+    }
+
+    /// 刪除本機 SwiftData store 後重建 ModelContainer（保留 CloudKit store）
+    private static func retryAfterStoreReset(localConfig: ModelConfiguration, cloudConfig: ModelConfiguration) -> ModelContainer? {
+        // 只刪除 LocalStore；CloudKit store 會自動從 iCloud 恢復
+        let storeURL = localConfig.url
+        let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
+        for path in storePaths {
+            try? FileManager.default.removeItem(at: path)
+        }
+        AppLog.app.info("Removed local store files at \(storeURL.lastPathComponent)")
+
+        return try? ModelContainer(
+            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: localConfig, cloudConfig
+        )
     }
 
     private static func makeFallbackModelContainer() -> ModelContainer {
