@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: structural
+scope:
+  - ios/BooksBrowser
+verified_against: 471deda
+-->
 # iOS 26 Liquid Glass 完整 API 參考
 
 > 文檔網絡：
