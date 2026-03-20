@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+  - backend/src/kg
+verified_against: 4eaa92b
+-->
 # iOS Smoke Test Checklist
 
 每次發版前 15 分鐘內跑完一輪。

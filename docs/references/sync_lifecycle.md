@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+  - backend/src/kg
+verified_against: 4eaa92b
+-->
 # Sync Lifecycle
 
 這份文件描述 BooksBrowser 本地生詞與 KG 雲端同步時的最小規則，目的不是講實作細節，而是固定「每種狀態應該怎麼表現」。

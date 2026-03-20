@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+verified_against: 4eaa92b
+-->
 # UI State Matrix
 
 Date: 2026-03-09

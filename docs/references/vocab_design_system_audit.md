@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser/Views/Vocabulary
+verified_against: 4eaa92b
+-->
 # Vocab Design System Audit
 
 Date: 2026-03-09

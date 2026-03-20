@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+verified_against: 4eaa92b
+-->
 # UI Review Checklist
 
 Date: 2026-03-10
