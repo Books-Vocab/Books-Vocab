@@ -105,7 +105,7 @@ extension View {
         } else {
             self.background(
                 shape.fill(.ultraThinMaterial)
-                    .overlay(shape.stroke(Color.primary.opacity(0.12), lineWidth: 1))
+                    .overlay(shape.stroke(Color.primary.opacity(AppMetrics.glassStrokeOpacity), lineWidth: 1))
             )
         }
     }

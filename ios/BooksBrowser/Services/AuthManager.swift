@@ -114,17 +114,19 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         AppAnalytics.track(.logoutPerformed(reason: reason))
         let container = modelContainer ?? self.modelContainer
         Task {
+            defer {
+                GIDSignIn.sharedInstance.signOut()
+                self.userId = nil
+                self.token = nil
+                self.displayName = nil
+                self.userEmail = nil
+                self.avatarURL = nil
+                self.sessionStore.clearSession()
+                self.isLoggedIn = false
+            }
             if let container {
                 await localDataCleaner.clearLocalData(container: container, reason: reason)
             }
-            GIDSignIn.sharedInstance.signOut()
-            self.userId = nil
-            self.token = nil
-            self.displayName = nil
-            self.userEmail = nil
-            self.avatarURL = nil
-            self.sessionStore.clearSession()
-            self.isLoggedIn = false
         }
     }
 

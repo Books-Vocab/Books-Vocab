@@ -34,7 +34,7 @@ struct SelectionToolbar: View {
         .padding(.vertical, AppMetrics.spacingSmall)
         .background(
             vocabSkin.palette.cardBackground
-                .shadow(.drop(color: .black.opacity(0.1), radius: 8, y: -2))
+                .shadow(.drop(color: .black.opacity(AppShadows.toolbarDropOpacity), radius: AppShadows.toolbarDropRadius, y: AppShadows.toolbarDropY))
         )
     }
 

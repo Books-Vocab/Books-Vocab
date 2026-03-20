@@ -89,7 +89,17 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                 httpServer: httpServer
             )
         } catch {
-            fatalError("Failed to create EPUBNavigatorViewController: \(error)")
+            AppLog.reader.error("Failed to create EPUBNavigatorViewController: \(error)")
+            let errorLabel = UILabel()
+            errorLabel.text = "無法開啟此書籍".localized
+            errorLabel.textAlignment = .center
+            errorLabel.translatesAutoresizingMaskIntoConstraints = false
+            host.view.addSubview(errorLabel)
+            NSLayoutConstraint.activate([
+                errorLabel.centerXAnchor.constraint(equalTo: host.view.centerXAnchor),
+                errorLabel.centerYAnchor.constraint(equalTo: host.view.centerYAnchor),
+            ])
+            return host
         }
 
         navigator.delegate = context.coordinator
