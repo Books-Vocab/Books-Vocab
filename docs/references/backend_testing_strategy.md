@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - backend/tests
+verified_against: 4eaa92b
+-->
 # KG Backend Testing Strategy
 
 ## Goal

@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser/UIComponents
+  - ios/BooksBrowser/Views
+verified_against: 4eaa92b
+-->
 # UI Component & Pattern Inventory
 
 Date: 2026-03-09
