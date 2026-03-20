@@ -152,7 +152,7 @@ final class KGService: KGServing, LocalDataClearing {
             AppLog.kg.warning("Token expired (pre-check), triggering session invalidation")
             sessionExpiredReason = L10n.string("您的登入已過期，請重新登入")
             await sessionInvalidator.logout(modelContainer: nil, reason: "token_expired_precheck")
-            throw KGError.tokenExpired
+            throw KGError.unauthorized
         }
         return token
     }
@@ -416,23 +416,20 @@ struct RetryPolicy: Sendable {
 // MARK: - Error
 
 enum KGError: LocalizedError {
-    // Canonical cases (新)
     case notAuthenticated
+    case unauthorized
+    case offline
     case httpError(statusCode: Int, detail: String)
     case decodingError(underlying: Error)
     case networkError(underlying: Error)
     case serverError(String)
 
-    // Legacy cases（向後相容，逐步淘汰）
-    case notConnected
-    case unauthorized
-    case offline
-    case tokenExpired
-
     var errorDescription: String? {
         switch self {
-        case .notAuthenticated, .unauthorized, .tokenExpired:
+        case .notAuthenticated, .unauthorized:
             return L10n.string("未登入帳號或身份已過期")
+        case .offline:
+            return L10n.string("目前沒有網路連線")
         case .httpError(let code, let detail):
             return L10n.format("HTTP %d：%@", code, detail)
         case .decodingError(let err):
@@ -441,16 +438,12 @@ enum KGError: LocalizedError {
             return L10n.format("網路錯誤：%@", err.localizedDescription)
         case .serverError(let msg):
             return L10n.format("KG 伺服器錯誤：%@", msg)
-        case .notConnected:
-            return L10n.string("KG 伺服器未連線")
-        case .offline:
-            return L10n.string("目前沒有網路連線")
         }
     }
 
     var isNetworkRelated: Bool {
         switch self {
-        case .offline, .notConnected, .networkError: return true
+        case .offline, .networkError: return true
         default: return false
         }
     }
@@ -458,11 +451,8 @@ enum KGError: LocalizedError {
     var isRetryable: Bool {
         switch self {
         case .httpError(let code, _): return (500...599).contains(code) || code == 429
-        case .offline, .notConnected, .networkError: return true
+        case .offline, .networkError: return true
         default: return false
         }
     }
 }
-
-/// 向後相容別名
-typealias KGAPIError = KGError
