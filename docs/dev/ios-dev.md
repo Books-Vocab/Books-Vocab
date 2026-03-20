@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: operational
+scope:
+  - ios/BooksBrowser
+  - ops
+verified_against: 471deda
+-->
 # BooksBrowser iOS 開發技能
 
 ## 核心資訊
