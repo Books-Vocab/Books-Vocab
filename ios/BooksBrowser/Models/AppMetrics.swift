@@ -255,6 +255,11 @@ enum AppShadows {
     static let panelOpacity: Double = 0.70
     static let panelRadius: CGFloat = 28
     static let panelY: CGFloat = 14
+
+    // MARK: - Toast 微陰影（頂部浮動膠囊）
+    static let toastOpacity: Double = 0.08
+    static let toastRadius: CGFloat = 8
+    static let toastY: CGFloat = 4
 }
 
 // MARK: - AppMotion Convenience Modifiers
