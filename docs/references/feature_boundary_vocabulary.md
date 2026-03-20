@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser/Views/Vocabulary
+verified_against: 4eaa92b
+-->
 # Vocabulary Feature Boundary
 
 ## 檔案清冊

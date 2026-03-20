@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: snapshot
+scope:
+  - ios/BooksBrowser
+verified_against: 4eaa92b
+-->
 # iOS Frontend Baseline
 
 基線日期: 2026-03-12

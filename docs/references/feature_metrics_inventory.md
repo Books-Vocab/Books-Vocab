@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+verified_against: 4eaa92b
+-->
 # Feature Metrics Inventory
 
 掃描來源：`ios/BooksBrowser/` 所有 `private enum *Metrics` / `private struct *Metrics`

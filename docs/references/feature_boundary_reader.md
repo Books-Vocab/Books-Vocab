@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser/Views/Reader
+verified_against: 4eaa92b
+-->
 # Reader Feature Boundary
 
 ## 檔案清冊

@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser
+  - ops
+verified_against: 4eaa92b
+-->
 # Build 可觀測性
 
 基線日期: 2026-03-12

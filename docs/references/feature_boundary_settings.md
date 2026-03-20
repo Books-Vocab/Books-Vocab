@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - ios/BooksBrowser/Views/Settings
+verified_against: 4eaa92b
+-->
 # Settings Feature Boundary
 
 ## 檔案清冊
