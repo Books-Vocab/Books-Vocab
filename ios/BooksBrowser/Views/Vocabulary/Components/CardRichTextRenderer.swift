@@ -222,6 +222,22 @@ enum CardRichTextRenderer {
                 // 以唯一的 **targetWord** 為中心截斷（不傳 targetWordFallback 避免遞迴）
                 return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
             }
+            // Stem fallback: 取前 4-6 字元做 prefix match（處理屈折變化）
+            let firstWord = fallback.components(separatedBy: " ").first ?? fallback
+            if firstWord.count >= 4 {
+                let stemLen = min(firstWord.count, 6)
+                let stem = String(firstWord.prefix(stemLen))
+                let stemEsc = NSRegularExpression.escapedPattern(for: stem)
+                let stemPat = "(?<![\\w\\p{L}])\(stemEsc)\\w*(?![\\w\\p{L}])"
+                if let stemRegex = try? NSRegularExpression(pattern: stemPat, options: .caseInsensitive),
+                   let stemMatch = stemRegex.firstMatch(in: stripped, range: NSRange(location: 0, length: nsStripped.length)) {
+                    let actualWord = nsStripped.substring(with: stemMatch.range)
+                    let marked = nsStripped.substring(to: stemMatch.range.location)
+                        + "**\(actualWord)**"
+                        + nsStripped.substring(from: stemMatch.range.location + stemMatch.range.length)
+                    return truncateAroundMarkedWord(marked, radiusWords: radiusWords)
+                }
+            }
             // targetWord 不在例句中：顯示前 (2*radius+1) 個詞（stripped 版本，無雜訊標記）
             return truncateLeadingWords(stripped, count: 2 * radiusWords + 1)
         }
