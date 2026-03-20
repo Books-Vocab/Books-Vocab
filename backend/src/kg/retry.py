@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import time
 from collections.abc import Callable
 from typing import Any, TypeVar
@@ -36,6 +37,7 @@ def sync_retry(
                 delay = custom_delay if custom_delay is not None else min(base_delay * (2 ** attempt), max_delay)
             else:
                 delay = min(base_delay * (2 ** attempt), max_delay)
+            delay *= 0.5 + random.random()  # jitter: ×0.5–1.5
             logger.warning("[%s] %s attempt %d failed: %s, retrying in %.1fs", uid, step_name, attempt + 1, exc, delay)
             time.sleep(delay)
     return fn(*args, **kwargs)  # unreachable, satisfies type checker
@@ -60,5 +62,6 @@ async def async_retry(
             if attempt == max_attempts - 1:
                 raise
             delay = min(base_delay * (2 ** attempt), max_delay)
+            delay *= 0.5 + random.random()  # jitter: ×0.5–1.5
             logger.warning("[%s] %s attempt %d failed: %s, retrying in %.1fs", uid, step_name, attempt + 1, exc, delay)
             await asyncio.sleep(delay)
