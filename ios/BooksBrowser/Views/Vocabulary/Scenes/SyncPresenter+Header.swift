@@ -43,7 +43,8 @@ extension SyncPresenter {
                 VocabStatusHero(
                     systemImage: "arrow.triangle.2.circlepath",
                     tone: vocabSkin.palette.accent,
-                    title: "同步中…".localized
+                    title: "同步中…".localized,
+                    description: "離開後同步將繼續在背景執行，可隨時返回查看進度".localized
                 ) {
                     ProgressView()
                         .controlSize(.large)

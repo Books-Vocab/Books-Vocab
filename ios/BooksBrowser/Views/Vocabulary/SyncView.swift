@@ -15,7 +15,7 @@ struct SyncView: View {
     @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     private var pendingEntries: [VocabularyEntry]
 
-    @State private var coordinator = SyncCoordinator()
+    @Environment(\.syncCoordinator) private var coordinator
     @State private var showSettings = false
 
     var body: some View {
@@ -30,7 +30,7 @@ struct SyncView: View {
                 SettingsView()
             }
             .task {
-                refreshStepLayout()
+                refreshStepLayoutIfIdle()
             }
             .onChange(of: pendingEntries.count) { _, _ in
                 refreshStepLayoutIfIdle()
