@@ -23,6 +23,9 @@ enum AppMetrics {
     static let spacingExtraLarge: CGFloat = 32
     static let spacingXXL: CGFloat = 48
     
+    // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
+    static let glassStrokeOpacity: Double = 0.12
+
     // ── Corner Radius (圓角) ───────────────────────────────────────────────────
     static let cornerRadiusSmall: CGFloat = 8
     static let cornerRadiusMedium: CGFloat = 12
@@ -83,6 +86,8 @@ enum AppBookshelfMetrics {
     static let progressBarAccentOpacity: Double = 0.55
     static let progressBarSpacing: CGFloat = 6
     static let loadingOverlayPadding: CGFloat = 28
+    static let badgePadding: CGFloat = 6
+    static let badgeForeground: Color = .white
 }
 
 enum AppSettingsMetrics {
@@ -240,6 +245,11 @@ enum AppShadows {
     static let controlOpacity: Double = 0.18
     static let controlRadius: CGFloat = 2
     static let controlY: CGFloat = 1
+
+    // MARK: - 工具列陰影（SelectionToolbar 等浮動 bar）
+    static let toolbarDropOpacity: Double = 0.10
+    static let toolbarDropRadius: CGFloat = 8
+    static let toolbarDropY: CGFloat = -2
 
     // MARK: - 面板陰影（Reader overlay、大面板）
     static let panelOpacity: Double = 0.70
