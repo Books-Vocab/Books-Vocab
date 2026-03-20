@@ -10,7 +10,6 @@ struct BridgePlanner {
     var lastVocabWordsSet: Set<String> = []
     var lastBookUniqueWordsCount: Int?
     var lastPreferences: EPUBPreferences?
-    var lastPanelMode: TranslationPanelMode?
     var lastUnderlineOpacity: Double?
     var lastHitTestingDebug: Bool?
 
@@ -28,7 +27,6 @@ struct BridgePlanner {
         commands.append(contentsOf: commandsForRemovedWord(trigger: snapshot.removeWordTrigger))
         commands.append(contentsOf: commandsForNavigation(trigger: snapshot.navigateToLocator))
         commands.append(contentsOf: commandsForPreferences(snapshot.viewConfiguration.epubPreferences))
-        commands.append(contentsOf: commandsForContentStyle(snapshot.viewConfiguration.translationPanelMode))
         commands.append(contentsOf: commandsForUnderlineOpacity(snapshot.viewConfiguration.underlineOpacity))
         commands.append(contentsOf: commandsForDebugMode(snapshot.viewConfiguration.showHitTestingDebug))
         return commands
@@ -131,17 +129,6 @@ struct BridgePlanner {
         guard lastPreferences != preferences else { return [] }
         lastPreferences = preferences
         return [.navigator(.applyPreferences(preferences))]
-    }
-
-    private mutating func commandsForContentStyle(_ mode: TranslationPanelMode) -> [BridgeCommand] {
-        if let lastPanelMode, mode != lastPanelMode {
-            self.lastPanelMode = mode
-            let css = ReaderContentStyleFactory.make(mode: mode).css()
-            return [.dom(.setContentStyle(css))]
-        } else if lastPanelMode == nil {
-            lastPanelMode = mode
-        }
-        return []
     }
 
     private mutating func commandsForUnderlineOpacity(_ opacity: Double) -> [BridgeCommand] {

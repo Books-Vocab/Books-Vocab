@@ -23,7 +23,6 @@ extension ReaderSettingsPresenter {
                         vocabTypographySection
                         vocabAppearanceSection
                         vocabHighlightSection
-                        vocabModeSection
                         vocabDebugSection
                     }
                     .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
@@ -142,31 +141,6 @@ extension ReaderSettingsPresenter {
                                 .font(vocabSkin.typography.captionStrong)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
-                        }
-                    }
-                    .buttonStyle(.plain)
-                }
-            }
-        }
-    }
-
-    // MARK: Mode
-
-    var vocabModeSection: some View {
-        vocabSettingsSection(title: "閱讀介面".localized) {
-            HStack(spacing: 10) {
-                ForEach(TranslationPanelMode.allCases) { mode in
-                    let isSelected = bindings.translationPanelMode.wrappedValue == mode
-                    let icon = mode == .glass ? "sparkles.rectangle.stack" : "character.book.closed"
-                    Button { bindings.translationPanelMode.wrappedValue = mode } label: {
-                        ReaderSelectionTile(isSelected: isSelected) {
-                            HStack(spacing: 10) {
-                                Image(systemName: icon).font(vocabSkin.typography.iconToolbar)
-                                Text(mode.label)
-                                    .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
-                            }
-                            .frame(maxWidth: .infinity)
-                            .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
                         }
                     }
                     .buttonStyle(.plain)

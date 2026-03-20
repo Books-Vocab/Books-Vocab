@@ -7,19 +7,6 @@
 
 import SwiftUI
 
-// MARK: - Environment Key
-
-private struct ReaderPanelModeKey: EnvironmentKey {
-    static let defaultValue: TranslationPanelMode = .glass
-}
-
-extension EnvironmentValues {
-    var readerPanelMode: TranslationPanelMode {
-        get { self[ReaderPanelModeKey.self] }
-        set { self[ReaderPanelModeKey.self] = newValue }
-    }
-}
-
 struct TranslationPanel: View {
     let word: String
     let result: TranslationResult?
@@ -70,8 +57,6 @@ struct TranslationPanel: View {
     }
 
     var body: some View {
-        // ⚠️ TranslationPanelPresenterState 若有更動，
-        //    TranslationPanelPresenter 與 TranslationVocabPresenter 需同步確認。
         panelContent
             .offset(y: dragOffset)
             .gesture(
@@ -103,37 +88,19 @@ struct TranslationPanel: View {
             }
     }
 
-    // MARK: - 模式分支
-
-    @Environment(\.readerPanelMode) private var panelMode
-
-    @ViewBuilder
     private var panelContent: some View {
-        switch panelMode {
-        case .glass:
-            TranslationPanelPresenter(
-                state: presenterState,
-                onSpeak: { speechService.speak(word); isSpeaking.toggle() },
-                onExpand: onExpand,
-                onDelete: onDelete,
-                onShowDetail: onShowDetail,
-                onDismiss: onDismiss
-            )
-        case .vocab:
-            TranslationVocabPresenter(
-                state: presenterState,
-                onSpeak: { speechService.speak(word); isSpeaking.toggle() },
-                onExpand: onExpand,
-                onDelete: onDelete,
-                onShowDetail: onShowDetail,
-                onDismiss: onDismiss
-            )
-        }
+        TranslationVocabPresenter(
+            state: presenterState,
+            onSpeak: { speechService.speak(word); isSpeaking.toggle() },
+            onExpand: onExpand,
+            onDelete: onDelete,
+            onShowDetail: onShowDetail,
+            onDismiss: onDismiss
+        )
     }
 }
 
 private struct TranslationPanelPreviewScene: View {
-    let mode: TranslationPanelMode
     var isExpanded: Bool
     var isExplanationOnly: Bool
     var translation: String? = "華麗的；令人驚豔的"
@@ -177,48 +144,33 @@ private struct TranslationPanelPreviewScene: View {
                     onShowDetail: nil,
                     onDismiss: {}
                 )
-                .environment(\.readerPanelMode, mode)
                 .padding(.horizontal)
             }
         }
     }
 }
 
-#Preview("Translation / Glass") {
+#Preview("Translation / Expanded") {
     AppThemeContainer {
-        TranslationPanelPreviewScene(mode: .glass, isExpanded: false, isExplanationOnly: false)
-    }
-}
-
-#Preview("Translation / Vocab Expanded") {
-    AppThemeContainer {
-        TranslationPanelPreviewScene(mode: .vocab, isExpanded: true, isExplanationOnly: false)
+        TranslationPanelPreviewScene(isExpanded: true, isExplanationOnly: false)
     }
 }
 
 #Preview("Translation / Explain Only") {
     AppThemeContainer {
-        TranslationPanelPreviewScene(mode: .vocab, isExpanded: true, isExplanationOnly: true)
+        TranslationPanelPreviewScene(isExpanded: true, isExplanationOnly: true)
     }
 }
 
-#Preview("Translation / Empty") {
+#Preview("Translation / Collapsed") {
     AppThemeContainer {
-        TranslationPanelPreviewScene(
-            mode: .glass,
-            isExpanded: false,
-            isExplanationOnly: false,
-            translation: nil,
-            explanation: nil,
-            statusMessage: nil
-        )
+        TranslationPanelPreviewScene(isExpanded: false, isExplanationOnly: false)
     }
 }
 
 #Preview("Translation / Error") {
     AppThemeContainer {
         TranslationPanelPreviewScene(
-            mode: .vocab,
             isExpanded: false,
             isExplanationOnly: false,
             translation: nil,
@@ -230,7 +182,6 @@ private struct TranslationPanelPreviewScene: View {
 #Preview("Explanation / Error") {
     AppThemeContainer {
         TranslationPanelPreviewScene(
-            mode: .vocab,
             isExpanded: true,
             isExplanationOnly: false,
             explanation: nil,

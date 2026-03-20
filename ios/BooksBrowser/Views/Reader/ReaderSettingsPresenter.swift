@@ -1,11 +1,5 @@
 import SwiftUI
 
-// MARK: - Variant
-
-enum ReaderSettingsVariant {
-    case glass, vocab
-}
-
 // MARK: - Presenter
 
 struct ReaderSettingsPresenter: View {
@@ -24,10 +18,8 @@ struct ReaderSettingsPresenter: View {
         let theme: Binding<ReaderTheme>
         let underlineOpacity: Binding<Double>
         let showHitTestingDebug: Binding<Bool>
-        let translationPanelMode: Binding<TranslationPanelMode>
     }
 
-    let variant: ReaderSettingsVariant
     let state: State
     let bindings: Bindings
     let onDecreaseFontSize: () -> Void
@@ -54,45 +46,15 @@ struct ReaderSettingsPresenter: View {
     }
 
     var body: some View {
-        switch variant {
-        case .glass:
-            glassLayout
-        case .vocab:
-            vocabLayout
-        }
+        vocabLayout
     }
 }
 
 // MARK: - Previews
 
-#Preview("ReaderSettings / Glass") {
-    ReaderSettingsPresenter(
-        variant: .glass,
-        state: .init(
-            fontSizeText: "17pt",
-            canDecreaseFontSize: true,
-            canIncreaseFontSize: true
-        ),
-        bindings: .init(
-            lineHeight: .constant(1.4),
-            font: .constant(.serif),
-            theme: .constant(.light),
-            underlineOpacity: .constant(0.35),
-            showHitTestingDebug: .constant(false),
-            translationPanelMode: .constant(.glass)
-        ),
-        onDecreaseFontSize: {},
-        onIncreaseFontSize: {},
-        onSelectTheme: { _ in },
-        onSelectUnderlineOpacity: { _ in },
-        onDismiss: {}
-    )
-}
-
-#Preview("ReaderSettings / Vocab") {
+#Preview("ReaderSettings / Default") {
     AppThemeContainer {
         ReaderSettingsPresenter(
-            variant: .vocab,
             state: .init(
                 fontSizeText: "17pt",
                 canDecreaseFontSize: true,
@@ -103,8 +65,7 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.serif),
                 theme: .constant(.light),
                 underlineOpacity: .constant(0.35),
-                showHitTestingDebug: .constant(false),
-                translationPanelMode: .constant(.vocab)
+                showHitTestingDebug: .constant(false)
             ),
             onDecreaseFontSize: {},
             onIncreaseFontSize: {},
@@ -116,10 +77,9 @@ struct ReaderSettingsPresenter: View {
     }
 }
 
-#Preview("ReaderSettings / Glass Bounds") {
+#Preview("ReaderSettings / Bounds") {
     AppThemeContainer {
         ReaderSettingsPresenter(
-            variant: .glass,
             state: .init(
                 fontSizeText: "0.75x",
                 canDecreaseFontSize: false,
@@ -130,8 +90,7 @@ struct ReaderSettingsPresenter: View {
                 font: .constant(.sans),
                 theme: .constant(.dark),
                 underlineOpacity: .constant(0.0),
-                showHitTestingDebug: .constant(true),
-                translationPanelMode: .constant(.vocab)
+                showHitTestingDebug: .constant(true)
             ),
             onDecreaseFontSize: {},
             onIncreaseFontSize: {},
