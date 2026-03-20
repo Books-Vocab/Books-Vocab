@@ -32,5 +32,4 @@ struct ReaderViewPresenterState {
     let chrome: ReaderChromeState
     let totalProgression: Double
     let bookTitle: String
-    let panelMode: TranslationPanelMode
 }

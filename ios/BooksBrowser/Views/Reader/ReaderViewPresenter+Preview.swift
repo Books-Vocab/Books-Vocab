@@ -104,7 +104,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.18,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .glass
         ),
         showsErrorCard: false
     )
@@ -120,7 +119,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.18,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .vocab
         ),
         showsErrorCard: false
     )
@@ -136,7 +134,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.37,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .glass
         ),
         showsErrorCard: false
     )
@@ -152,7 +149,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .expanded, overlay: .none),
             totalProgression: 0.37,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .glass
         ),
         showsErrorCard: false
     )
@@ -168,7 +164,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .translation),
             totalProgression: 0.37,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .glass
         ),
         showsErrorCard: false
     )
@@ -184,7 +179,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .glass
         ),
         showsErrorCard: true
     )
@@ -200,7 +194,6 @@ private struct ReaderChromePreviewScene: View {
             chrome: .init(header: .compact, overlay: .none),
             totalProgression: 0.22,
             bookTitle: "The Left Hand of Darkness",
-            panelMode: .vocab
         ),
         showsErrorCard: false
     )

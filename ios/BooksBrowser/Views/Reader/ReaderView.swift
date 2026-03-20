@@ -110,16 +110,6 @@ struct ReaderView: View {
                 handler.clearHighlightTrigger = UUID()
             }
         }
-        .sheet(isPresented: glassReaderSettingsBinding) {
-            ReaderSettingsPanel(
-                settings: settings,
-                onDismiss: {
-                    closeOverlay(.settings)
-                }
-            )
-            .appSheet(.adaptive)
-            .presentationBackground(.ultraThinMaterial)
-        }
         .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
             SubscriptionPaywallSheet()
         }
@@ -140,24 +130,7 @@ struct ReaderView: View {
             underlineProgress: readerState.underlineProgress,
             chrome: chromeState,
             totalProgression: totalProgression,
-            bookTitle: book.title,
-            panelMode: viewConfiguration.translationPanelMode
-        )
-    }
-
-    private var glassReaderSettingsBinding: Binding<Bool> {
-        Binding(
-            get: {
-                chromeState.overlay == .settings && viewConfiguration.translationPanelMode == .glass
-            },
-            set: { isPresented in
-                if isPresented {
-                    chromeState.overlay = .settings
-                    chromeState.header = .compact
-                } else if chromeState.overlay == .settings {
-                    chromeState.overlay = .none
-                }
-            }
+            bookTitle: book.title
         )
     }
 

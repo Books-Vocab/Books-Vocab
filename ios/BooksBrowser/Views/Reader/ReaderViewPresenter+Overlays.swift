@@ -2,63 +2,31 @@ import SwiftUI
 
 extension ReaderViewPresenter {
     var loadingOverlay: some View {
-        Group {
-            if state.panelMode == .vocab {
-                state.paperColor.ignoresSafeArea()
-                    .overlay {
-                        loadingOverlayContent(
-                            progressTint: vocabSkin.palette.primaryText,
-                            textFont: vocabSkin.typography.body.weight(.semibold),
-                            textColor: vocabSkin.palette.primaryText
-                        )
-                        .modifier(VocabLoadingOverlayChrome(vocabSkin: vocabSkin))
-                        .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
-                        .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
-                    }
-            } else {
-                state.paperColor.ignoresSafeArea()
-                    .overlay {
-                        loadingOverlayContent(
-                            progressTint: vocabSkin.palette.primaryText,
-                            textFont: ReaderGlassTypography.body.weight(.medium),
-                            textColor: vocabSkin.palette.primaryText
-                        )
-                        .glassEffect(
-                            .regular,
-                            in: .rect(cornerRadius: ReaderPresentationMetrics.Panel.cornerRadius)
-                        )
-                    }
+        state.paperColor.ignoresSafeArea()
+            .overlay {
+                loadingOverlayContent(
+                    progressTint: vocabSkin.palette.primaryText,
+                    textFont: vocabSkin.typography.body.weight(.semibold),
+                    textColor: vocabSkin.palette.primaryText
+                )
+                .modifier(VocabLoadingOverlayChrome(vocabSkin: vocabSkin))
+                .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
+                .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
             }
-        }
     }
 
     func underlineProgressOverlay(_ progress: Double) -> some View {
         VStack {
-            Group {
-                if state.panelMode == .vocab {
-                    AppSectionCard(style: .vocab(vocabSkin)) {
-                        progressOverlayContent(
-                            progress: progress,
-                            trackColor: vocabSkin.palette.mutedFill,
-                            fillColor: vocabSkin.palette.accent,
-                            textFont: vocabSkin.typography.monoLabel,
-                            textColor: vocabSkin.palette.secondaryText
-                        )
-                        .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
-                        .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
-                    }
-                } else {
-                    progressOverlayContent(
-                        progress: progress,
-                        trackColor: vocabSkin.palette.divider,
-                        fillColor: vocabSkin.palette.accent,
-                        textFont: ReaderGlassTypography.progressText,
-                        textColor: vocabSkin.palette.secondaryText
-                    )
-                    .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
-                    .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
-                    .glassEffect(.regular, in: .capsule)
-                }
+            AppSectionCard(style: .vocab(vocabSkin)) {
+                progressOverlayContent(
+                    progress: progress,
+                    trackColor: vocabSkin.palette.mutedFill,
+                    fillColor: vocabSkin.palette.accent,
+                    textFont: vocabSkin.typography.monoLabel,
+                    textColor: vocabSkin.palette.secondaryText
+                )
+                .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
+                .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
             }
             .padding(.top, ReaderPresentationMetrics.Overlay.topInset)
 
@@ -79,7 +47,7 @@ extension ReaderViewPresenter {
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
                     .transition(.readerPanelReveal)
-            } else if state.chrome.overlay == .settings && state.panelMode == .vocab {
+            } else if state.chrome.overlay == .settings {
                 settingsPanel
                     .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
                     .frame(maxWidth: .infinity)

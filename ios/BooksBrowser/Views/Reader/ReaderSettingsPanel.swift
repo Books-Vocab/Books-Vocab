@@ -34,7 +34,6 @@ struct ReaderSettingsPanel: View {
 
     private var panelPresenter: some View {
         ReaderSettingsPresenter(
-            variant: settings.translationPanelMode == .glass ? .glass : .vocab,
             state: presenterState,
             bindings: presenterBindings,
             onDecreaseFontSize: decreaseFontSize,
@@ -51,8 +50,7 @@ struct ReaderSettingsPanel: View {
             font: $settings.font,
             theme: themeBinding,
             underlineOpacity: $settings.underlineOpacity,
-            showHitTestingDebug: $settings.showHitTestingDebug,
-            translationPanelMode: $settings.translationPanelMode
+            showHitTestingDebug: $settings.showHitTestingDebug
         )
     }
 
@@ -78,7 +76,6 @@ struct ReaderSettingsPanel: View {
 }
 
 private struct ReaderSettingsPanelPreviewHarness: View {
-    let mode: TranslationPanelMode
     let initialFontSizeText: String
     let canDecreaseFontSize: Bool
     let canIncreaseFontSize: Bool
@@ -88,7 +85,6 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     @State private var theme: ReaderTheme = .sepia
     @State private var underlineOpacity: Double = 0.35
     @State private var showHitTestingDebug = false
-    @State private var translationPanelMode: TranslationPanelMode = .glass
 
     private var state: ReaderSettingsPresenter.State {
         .init(
@@ -104,8 +100,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             font: $font,
             theme: $theme,
             underlineOpacity: $underlineOpacity,
-            showHitTestingDebug: $showHitTestingDebug,
-            translationPanelMode: $translationPanelMode
+            showHitTestingDebug: $showHitTestingDebug
         )
     }
 
@@ -117,7 +112,6 @@ private struct ReaderSettingsPanelPreviewHarness: View {
                 Spacer()
 
                 ReaderSettingsPresenter(
-                    variant: mode == .glass ? .glass : .vocab,
                     state: state,
                     bindings: bindings,
                     onDecreaseFontSize: {},
@@ -132,10 +126,9 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     }
 }
 
-#Preview("Reader Settings / Glass") {
+#Preview("Reader Settings") {
     AppThemeContainer {
         ReaderSettingsPanelPreviewHarness(
-            mode: .glass,
             initialFontSizeText: "1.0x",
             canDecreaseFontSize: true,
             canIncreaseFontSize: true
@@ -143,21 +136,9 @@ private struct ReaderSettingsPanelPreviewHarness: View {
     }
 }
 
-#Preview("Reader Settings / Vocab") {
+#Preview("Reader Settings / Bounds") {
     AppThemeContainer {
         ReaderSettingsPanelPreviewHarness(
-            mode: .vocab,
-            initialFontSizeText: "1.0x",
-            canDecreaseFontSize: true,
-            canIncreaseFontSize: true
-        )
-    }
-}
-
-#Preview("Reader Settings / Glass Bounds") {
-    AppThemeContainer {
-        ReaderSettingsPanelPreviewHarness(
-            mode: .glass,
             initialFontSizeText: "0.75x",
             canDecreaseFontSize: false,
             canIncreaseFontSize: true
