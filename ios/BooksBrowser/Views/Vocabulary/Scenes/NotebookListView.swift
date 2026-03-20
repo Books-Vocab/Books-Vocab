@@ -119,12 +119,12 @@ struct NotebookListView: View {
             }
             .sheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { name, color in
-                    Task { await createNotebook(name: name, color: color) }
+                    Task { @MainActor in await createNotebook(name: name, color: color) }
                 }
             }
             .sheet(item: $editingNotebook) { notebook in
                 NotebookEditSheet(mode: .edit(name: notebook.name, color: notebook.color)) { name, color in
-                    Task { await updateNotebook(notebook, name: name, color: color) }
+                    Task { @MainActor in await updateNotebook(notebook, name: name, color: color) }
                 }
             }
             .fullScreenCover(item: $activeReviewSession) { session in
@@ -316,7 +316,7 @@ struct NotebookListView: View {
     }
 
     private func deleteNotebook(_ notebook: Notebook) {
-        Task {
+        Task { @MainActor in
             do {
                 try await kgService.deleteNotebook(id: notebook.remoteId)
                 if activeNotebookId == notebook.remoteId {

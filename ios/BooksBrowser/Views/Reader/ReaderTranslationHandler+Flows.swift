@@ -143,12 +143,14 @@ extension ReaderTranslationHandler {
                     partOfSpeech: nil,
                     explanation: nil
                 )
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.feedbackPulse) {
                     translationResult = result
                     isTranslating = false
                     translationStatus = nil
                     translationErrorMessage = nil
                 }
+                guard !Task.isCancelled else { return }
                 autoSaveToVocabulary(
                     selection: selection,
                     result: result,
