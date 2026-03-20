@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: structural
+scope:
+  - ios/BooksBrowser
+  - backend/src/kg
+verified_against: 471deda
+-->
 # 🏗 BooksBrowser Architecture (Offline-First & Multi-User)
 
 BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝置端的 `SwiftData` 為唯一資訊來源 (Single Source of Truth)，並透過背景同步與遠端 Knowledge Graph (KG) 伺服器保持資料一致。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。

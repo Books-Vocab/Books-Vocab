@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: operational
+scope:
+  - backend/src/kg
+verified_against: 471deda
+-->
 # KG Backend Dev Guide
 
 主入口：
