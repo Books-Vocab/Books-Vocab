@@ -50,6 +50,7 @@ struct CardDocumentView: View {
 private struct CardDocumentHeroBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.speechService) private var speechService
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let hero: CardDocumentHero
 
@@ -97,6 +98,7 @@ private struct CardDocumentHeroBlock: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = hero.word
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -105,6 +107,7 @@ private struct CardDocumentHeroBlock: View {
 
 private struct CardDocumentExampleBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let paragraph: CardDocumentParagraph
     var truncateRadius: Int? = nil
@@ -142,6 +145,7 @@ private struct CardDocumentExampleBlock: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = paragraph.plainText
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -150,6 +154,7 @@ private struct CardDocumentExampleBlock: View {
 
 private struct CardDocumentMeaningBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let meaning: CardDocumentMeaning
     var compact: Bool = false
@@ -183,6 +188,7 @@ private struct CardDocumentMeaningBlock: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -191,6 +197,7 @@ private struct CardDocumentMeaningBlock: View {
 
 private struct CardDocumentSourceBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let source: CardDocumentSource
 
@@ -219,6 +226,7 @@ private struct CardDocumentSourceBlock: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -227,6 +235,7 @@ private struct CardDocumentSourceBlock: View {
 
 private struct CardDocumentCollocationsBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let items: [String]
 
@@ -252,6 +261,7 @@ private struct CardDocumentCollocationsBlock: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = items.joined(separator: ", ")
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
