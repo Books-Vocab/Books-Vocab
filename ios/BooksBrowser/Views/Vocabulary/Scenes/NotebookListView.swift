@@ -54,8 +54,8 @@ struct NotebookListView: View {
                             NavigationLink(value: notebook.remoteId) {
                                 NotebookRow(
                                     name: notebook.name,
-                                    cardCount: cardCount(for: notebook.remoteId),
-                                    dueCount: dueCount(for: notebook.remoteId),
+                                    cardCount: cardCounts[notebook.remoteId] ?? 0,
+                                    dueCount: dueCounts[notebook.remoteId] ?? 0,
                                     isActive: notebook.remoteId == activeNotebookId,
                                     color: notebook.color.flatMap { Color(hex: $0) }
                                 )
@@ -219,8 +219,7 @@ struct NotebookListView: View {
     // MARK: - Review Helpers
 
     private var totalDueCount: Int {
-        let now = Date()
-        return allEntries.filter { $0.nextReviewAt <= now }.count
+        dueCounts.values.reduce(0, +)
     }
 
     private var filteredDueEntries: [VocabularyEntry] {
@@ -239,18 +238,21 @@ struct NotebookListView: View {
         activeReviewSession = TodayReviewSession(entries: entries)
     }
 
-    // MARK: - Card Count Helpers
+    // MARK: - Card Count Helpers (pre-computed dictionaries, O(n) single pass)
 
-    private func cardCount(for notebookId: String) -> Int {
-        allEntries.filter { $0.notebookId == notebookId }.count
+    private var cardCounts: [String: Int] {
+        allEntries.reduce(into: [:]) { dict, entry in
+            dict[entry.notebookId, default: 0] += 1
+        }
     }
 
-    private func dueCount(for notebookId: String) -> Int {
+    private var dueCounts: [String: Int] {
         let now = Date()
-        return allEntries.filter {
-            $0.notebookId == notebookId &&
-            $0.nextReviewAt <= now
-        }.count
+        return allEntries.reduce(into: [:]) { dict, entry in
+            if entry.nextReviewAt <= now {
+                dict[entry.notebookId, default: 0] += 1
+            }
+        }
     }
 
     private func setActiveNotebook(_ id: String) {
