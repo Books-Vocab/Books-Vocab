@@ -98,10 +98,10 @@ def track_usage(user_id: str, operation: str, response: Any) -> None:
     )
 
 
-async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger) -> QuickTranslateResponse:
+async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
+        model=model,
         messages=[{"role": "user", "content": quick_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
@@ -119,10 +119,10 @@ async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, cl
     )
 
 
-async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None) -> dict[str, str]:
+async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
+        model=model,
         messages=[{"role": "user", "content": phrase_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
@@ -137,10 +137,10 @@ async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, c
     return {"t": data.get("t", "")}
 
 
-async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None) -> ExplainResponse:
+async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
-        model="gemini-2.5-flash-lite",
+        model=model,
         messages=[{"role": "user", "content": explain_translate_prompt(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},

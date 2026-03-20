@@ -48,7 +48,7 @@ router = APIRouter()
 def list_vocab(
     response: Response,
     since: str | None = None,
-    limit: int = 5000,
+    limit: int = Query(default=5000, ge=1, le=5000),
     notebook_id: str | None = Query(None),
     user: dict = Depends(get_current_user),
 ):

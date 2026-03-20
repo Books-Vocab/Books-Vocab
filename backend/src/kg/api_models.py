@@ -21,7 +21,7 @@ def _normalize_context(v: str) -> str:
 class VocabEntry(BaseModel):
     """A vocabulary entry from BooksBrowser."""
 
-    word: str = Field(max_length=200)
+    word: str = Field(min_length=1, max_length=200)
     translation: str = Field(max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
@@ -115,7 +115,7 @@ class TranslationLanguageConfig(BaseModel):
 
 
 class TranslateRequest(BaseModel):
-    word: str = Field(max_length=500)
+    word: str = Field(min_length=1, max_length=500)
     context: str = Field(max_length=5000)
     source_lang: str | None = None
     target_lang: str | None = None

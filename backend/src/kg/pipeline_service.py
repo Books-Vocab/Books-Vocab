@@ -31,6 +31,7 @@ async def _step_enrich(
     logger: logging.Logger,
     force: bool = False,
     notebook_id: str = "default",
+    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> None:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
@@ -49,7 +50,7 @@ async def _step_enrich(
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
-    async for msg in enrich_cards_stream(client, targets, user_id=uid, batch_size=20, max_workers=5):
+    async for msg in enrich_cards_stream(client, targets, user_id=uid, batch_size=20, max_workers=5, model=gemini_model):
         if msg.get("status") == "error":
             logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
 
@@ -136,6 +137,7 @@ async def _step_link(
     logger: logging.Logger,
     link_kind_enum: Any,
     notebook_id: str = "default",
+    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> None:
     logger.info("[%s] Step 2: Link (notebook=%s)", uid, notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
@@ -148,7 +150,7 @@ async def _step_link(
     from .judge import Judge
 
     client = gemini_client_factory()
-    judge = Judge(client)
+    judge = Judge(client, model=gemini_model)
     cards = card_store_factory(user["dir"])
     created_links = 0
     index = 0
@@ -281,6 +283,7 @@ async def run_pipeline_background(
     jwt_secret: str = "",
     force_enrich: bool = False,
     notebook_id: str = "default",
+    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -306,6 +309,7 @@ async def run_pipeline_background(
                 logger=logger,
                 force=force_enrich,
                 notebook_id=notebook_id,
+                gemini_model=gemini_model,
             ), logger=logger, retry=True)
 
             await _run_step(uid, "Embed", lambda: _step_embed(
@@ -325,6 +329,7 @@ async def run_pipeline_background(
                 logger=logger,
                 link_kind_enum=link_kind_enum,
                 notebook_id=notebook_id,
+                gemini_model=gemini_model,
             ), logger=logger, retry=True)
 
             await _run_step(uid, "Difficulty", lambda: _step_difficulty(
