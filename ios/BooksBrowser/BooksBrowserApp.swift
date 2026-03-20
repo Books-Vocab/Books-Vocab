@@ -200,6 +200,10 @@ struct BooksBrowserApp: App {
                             let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
                             let success = kgService.lastBackgroundSyncError == nil
                             AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: success))
+                            if let error = kgService.lastBackgroundSyncError {
+                                toastCoordinator.warning(error)
+                                kgService.lastBackgroundSyncError = nil
+                            }
                         }
                     case .background:
                         SessionMetrics.shared.snapshot().logSummary()

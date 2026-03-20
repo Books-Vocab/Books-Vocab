@@ -17,6 +17,7 @@ struct NotebookListView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.vocabSkin) private var skin
     @Environment(\.horizontalSizeClass) private var sizeClass
+    @Environment(\.toastCoordinator) private var toastCoordinator
 
     init() {
         let knowledgePredicate = #Predicate<VocabularyEntry> {
@@ -33,7 +34,6 @@ struct NotebookListView: View {
     @State private var reviewFilter = NotebookFilter.load()
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
-    @State private var deleteError: String?
     @State private var showArchiveList = false
     @State private var navigationPath = NavigationPath()
 
@@ -139,14 +139,6 @@ struct NotebookListView: View {
             }
             .task {
                 await ensureDefaultNotebook()
-            }
-            .alert("刪除失敗".localized, isPresented: Binding(
-                get: { deleteError != nil },
-                set: { if !$0 { deleteError = nil } }
-            )) {
-                Button("確定".localized, role: .cancel) {}
-            } message: {
-                Text(deleteError ?? "")
             }
             .confirmationDialog(
                 "確定要刪除此單字本？".localized,
@@ -326,7 +318,7 @@ struct NotebookListView: View {
                 notebook.updatedAt = Date()
                 modelContext.safeSave()
             } catch {
-                deleteError = error.localizedDescription
+                toastCoordinator.error(error.localizedDescription)
                 AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")
             }
         }
