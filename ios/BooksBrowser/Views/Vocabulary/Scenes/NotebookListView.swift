@@ -318,7 +318,7 @@ struct NotebookListView: View {
                 notebook.updatedAt = Date()
                 modelContext.safeSave()
             } catch {
-                toastCoordinator.error(error.localizedDescription)
+                toastCoordinator.error("刪除失敗")
                 AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")
             }
         }

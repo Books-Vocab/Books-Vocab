@@ -56,7 +56,7 @@ struct AppToast: View {
                     }
                 }
         )
-        .accessibilityAddTraits(.updatesFrequently)
+        .accessibilityElement(children: .combine)
         .padding(.top, AppMetrics.spacingSmall)
     }
 
