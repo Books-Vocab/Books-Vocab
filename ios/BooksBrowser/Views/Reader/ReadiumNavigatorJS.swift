@@ -420,12 +420,41 @@ enum ReadiumNavigatorJS {
         function extractContextFromElement(startEl, word) {
             var container = findContextContainer(startEl);
             var fullText = container ? container.textContent : (startEl ? startEl.textContent : word);
-            if (fullText.length <= 500) return fullText.trim();
-            var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
-            if (wordPos < 0) wordPos = Math.floor(fullText.length / 2);
-            var start = Math.max(0, wordPos - 250);
-            var end = Math.min(fullText.length, wordPos + word.length + 250);
-            return fullText.substring(start, end).trim();
+            fullText = fullText.trim();
+
+            var sentences = fullText.match(/[^.!?]*[.!?]+[ ]?|[^.!?]+$/g);
+            if (!sentences || sentences.length <= 1) {
+                if (fullText.length <= 300) return fullText;
+                var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
+                if (wordPos < 0) wordPos = Math.floor(fullText.length / 2);
+                var start = Math.max(0, wordPos - 150);
+                var end = Math.min(fullText.length, wordPos + word.length + 150);
+                return fullText.substring(start, end).trim();
+            }
+
+            var wordLower = word.toLowerCase();
+            var targetIdx = -1;
+            for (var i = 0; i < sentences.length; i++) {
+                if (sentences[i].toLowerCase().indexOf(wordLower) >= 0) {
+                    targetIdx = i;
+                    break;
+                }
+            }
+            if (targetIdx < 0) return fullText.substring(0, 300).trim();
+
+            var result = sentences[targetIdx].trim();
+            if (result.length < 80) {
+                if (targetIdx > 0 && sentences[targetIdx - 1].trim().length > 15) {
+                    result = sentences[targetIdx - 1].trim() + ' ' + result;
+                } else if (targetIdx < sentences.length - 1) {
+                    result = result + ' ' + sentences[targetIdx + 1].trim();
+                }
+            }
+
+            // Strip leading fragment (short leftover from previous sentence)
+            result = result.replace(/^[A-Za-z,\u{2019}\u{2018}' ]{1,15}[.!?] /, '');
+
+            return result;
         }
 
         function buildWordRangeFromPoint(event) {
