@@ -194,7 +194,7 @@ struct TodayReviewPresenter: View {
                 systemImage: "checkmark.circle",
                 description: "這一輪 session 的卡片都處理完了。".localized
             )
-            Button("返回生詞庫".localized, action: onClose)
+            Button("返回單字本".localized, action: onClose)
                 .buttonStyle(.ghost(vocabSkin.palette.primaryText))
             Spacer()
         }

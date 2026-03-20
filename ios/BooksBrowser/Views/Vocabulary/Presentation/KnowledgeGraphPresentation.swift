@@ -141,7 +141,7 @@ enum KnowledgeGraphPresentation {
             return .init(
                 title: "知識圖譜為空".localized,
                 systemImage: "point.3.connected.trianglepath.dotted",
-                description: "知識庫中尚無單字，或尚未與伺服器同步。".localized
+                description: "尚無已收錄單字，或尚未與伺服器同步。".localized
             )
         }
         return nil

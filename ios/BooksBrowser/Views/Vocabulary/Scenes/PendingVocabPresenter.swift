@@ -29,9 +29,9 @@ struct PendingVocabPresenter: View {
                 systemImage: "character.book.closed",
                 description: state.knowledgeCount > 0
                     ? (state.dueCount > 0
-                        ? L10n.format("知識庫有 %d 個單字，其中 %d 個待複習。", state.knowledgeCount, state.dueCount)
-                        : L10n.format("知識庫已有 %d 個單字，去複習鞏固記憶吧。", state.knowledgeCount))
-                    : "閱讀時點擊的單字會出現在這裡，同步後移入知識庫。".localized
+                        ? L10n.format("已收錄 %d 個單字，其中 %d 個待複習。", state.knowledgeCount, state.dueCount)
+                        : L10n.format("已收錄 %d 個單字，去複習鞏固記憶吧。", state.knowledgeCount))
+                    : "閱讀時點擊的單字會出現在這裡，同步後即為已收錄。".localized
             )) {
                 EmptyView()
             }

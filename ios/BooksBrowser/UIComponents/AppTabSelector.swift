@@ -181,7 +181,7 @@ private struct AppTabSelectorPreview: View {
             AppTabSelector(
                 options: [
                     .init(id: 0, title: "書庫", count: 12, systemImage: "books.vertical"),
-                    .init(id: 1, title: "生詞庫", count: 248, systemImage: "character.book.closed"),
+                    .init(id: 1, title: "單字本", count: 248, systemImage: "character.book.closed"),
                     .init(id: 2, title: "設定", systemImage: "gearshape")
                 ],
                 selection: $selected,
