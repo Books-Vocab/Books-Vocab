@@ -76,9 +76,8 @@ enum CardDocumentBuilder {
     ) -> [CardDocumentParagraph] {
         let trimmedExplanation = explanation?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
         guard !trimmedExplanation.isEmpty else {
-            let fallback = translation.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !fallback.isEmpty else { return [] }
-            return [CardMarkdownInlineParser.parseParagraph(fallback)]
+            // 沒有 explanation 時不 fallback 翻譯（title 已顯示翻譯，避免重複）
+            return []
         }
 
         let normalized = trimmedExplanation.replacingOccurrences(of: "\r\n", with: "\n")
