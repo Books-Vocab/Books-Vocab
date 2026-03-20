@@ -416,11 +416,15 @@ enum ReadiumNavigatorJS {
             return container;
         }
 
-        function extractContextFromElement(startEl, fallbackText) {
+        function extractContextFromElement(startEl, word) {
             var container = findContextContainer(startEl);
-            var context = container ? container.textContent : fallbackText;
-            if (context.length > 500) context = context.substring(0, 500);
-            return context.trim();
+            var fullText = container ? container.textContent : word;
+            if (fullText.length <= 500) return fullText.trim();
+            var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
+            if (wordPos < 0) wordPos = Math.floor(fullText.length / 2);
+            var start = Math.max(0, wordPos - 250);
+            var end = Math.min(fullText.length, wordPos + word.length + 250);
+            return fullText.substring(start, end).trim();
         }
 
         function buildWordRangeFromPoint(event) {
@@ -538,7 +542,7 @@ enum ReadiumNavigatorJS {
             window.webkit.messageHandlers.wordTap.postMessage(
                 JSON.stringify({
                     word: wordData.word,
-                    context: extractContextFromElement(wordData.textNode.parentElement, wordData.text)
+                    context: extractContextFromElement(wordData.textNode.parentElement, wordData.word)
                 })
             );
         }, true);

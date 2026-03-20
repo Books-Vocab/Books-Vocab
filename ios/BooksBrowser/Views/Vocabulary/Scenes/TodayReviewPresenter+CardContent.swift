@@ -231,7 +231,7 @@ extension TodayReviewPresenter {
         let textWidth = containerWidth
             - vocabSkin.metrics.reviewCardHorizontalInset * 2
             - reviewCardPadding * 2
-        let wordsPerLine = max(Int(textWidth / 52), 4)
+        let wordsPerLine = max(Int(textWidth / 62), 4)
         let lines = Int(exampleBudget / lineHeight)
         let totalWords = lines * wordsPerLine
 
