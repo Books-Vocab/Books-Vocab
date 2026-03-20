@@ -199,9 +199,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
 
             // ★ 傳遞除錯模式開關
             let isDebugMode = parent.viewConfiguration.showHitTestingDebug ? "true" : "false"
-            let contentStyleCSS = ReaderContentStyleFactory.make(
-                mode: parent.viewConfiguration.translationPanelMode
-            ).css()
+            let contentStyleCSS = ReaderContentStyleFactory.make().css()
 
             let js = ReadiumNavigatorJS.buildInjectionScript(
                 fontFaceCSS: fontFaceCSS,

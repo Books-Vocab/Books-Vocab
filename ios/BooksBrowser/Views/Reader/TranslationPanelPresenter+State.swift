@@ -106,3 +106,71 @@ extension TranslationPanelPresenterState {
         return .empty
     }
 }
+
+// MARK: - Preview Data
+
+enum TranslationPanelPreviewData {
+    static let loading = TranslationPanelPresenterState(
+        word: "ephemeral", partOfSpeech: nil,
+        translation: nil, isLoading: true, isSaved: false,
+        isLoggedIn: true, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, translationErrorMessage: nil, explanationErrorMessage: nil,
+        timerText: "", isSpeaking: false
+    )
+
+    static let guest = TranslationPanelPresenterState(
+        word: "serendipity", partOfSpeech: "noun",
+        translation: "意外發現美好事物的能力", isLoading: false, isSaved: true,
+        isLoggedIn: false, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: "登入以同步詞彙",
+        isExplanationOnly: false, translationErrorMessage: nil, explanationErrorMessage: nil,
+        timerText: "", isSpeaking: false
+    )
+
+    static let fullTranslation = TranslationPanelPresenterState(
+        word: "ubiquitous", partOfSpeech: "adjective",
+        translation: "無處不在的", isLoading: false, isSaved: true,
+        isLoggedIn: true, isExpanded: true,
+        explanation: "Something that is ubiquitous seems to be everywhere at the same time. For example, smartphones have become ubiquitous in modern life.",
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, translationErrorMessage: nil, explanationErrorMessage: nil,
+        timerText: "3s", isSpeaking: false
+    )
+
+    static let explanationOnlyLoading = TranslationPanelPresenterState(
+        word: "ameliorate", partOfSpeech: nil,
+        translation: nil, isLoading: false, isSaved: false,
+        isLoggedIn: true, isExpanded: true, explanation: nil,
+        isLoadingExplanation: true, statusMessage: nil,
+        isExplanationOnly: true, translationErrorMessage: nil, explanationErrorMessage: nil,
+        timerText: "", isSpeaking: false
+    )
+
+    static let translationError = TranslationPanelPresenterState(
+        word: "oblique", partOfSpeech: "adjective",
+        translation: nil, isLoading: false, isSaved: false,
+        isLoggedIn: true, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, translationErrorMessage: "服務暫時沒有回應，請稍後再試。".localized, explanationErrorMessage: nil,
+        timerText: "", isSpeaking: false
+    )
+
+    static let explanationError = TranslationPanelPresenterState(
+        word: "lucid", partOfSpeech: "adjective",
+        translation: "清晰的", isLoading: false, isSaved: true,
+        isLoggedIn: true, isExpanded: true, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, translationErrorMessage: nil, explanationErrorMessage: "目前無法產生語境解釋。".localized,
+        timerText: "2s", isSpeaking: false
+    )
+
+    static let empty = TranslationPanelPresenterState(
+        word: "quixotic", partOfSpeech: nil,
+        translation: nil, isLoading: false, isSaved: false,
+        isLoggedIn: true, isExpanded: false, explanation: nil,
+        isLoadingExplanation: false, statusMessage: nil,
+        isExplanationOnly: false, translationErrorMessage: nil, explanationErrorMessage: nil,
+        timerText: "", isSpeaking: false
+    )
+}

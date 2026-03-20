@@ -79,87 +79,12 @@ struct ReaderContentStyle: Equatable {
 }
 
 enum ReaderContentStyleFactory {
-    static func make(mode: TranslationPanelMode) -> ReaderContentStyle {
-        switch mode {
-        case .glass:
-            return .glass
-        case .vocab:
-            return .vocab
-        }
+    static func make() -> ReaderContentStyle {
+        return .vocab
     }
-}
-
-enum ReaderGlassTypography {
-    // Reader-only：rounded 24pt bold，維持 rounded 與正文區隔
-    static let word = Font.system(size: 24, weight: .bold, design: .rounded)
-    // Mono (ElmsSans)
-    static let numericMono = AppFonts.monoNumbers(size: 10)
-    static let progressText = AppFonts.monoProgress()
-    static let settingsValue = AppFonts.mono(size: 13)
-    static let settingsStepSmall = AppFonts.mono(size: 14, bold: true)
-    static let settingsStepLarge = AppFonts.mono(size: 22, bold: true)
-    // Serif (Athelas + STSongti-TC)
-    static let partOfSpeech = AppFonts.caption(weight: .medium)
-    static let body = AppFonts.subhead()
-    static let translationTitle = AppFonts.serif(size: 20, bold: true)
-    static let label = AppFonts.caption()
-    static let labelSmall = AppFonts.caption2()
-    static let savedStatus = AppFonts.serif(size: 11, bold: true)
-    static let headerBackLabel = AppFonts.serif(size: 15)
-    static let headerTitle = AppFonts.caption(weight: .medium)
-    static let headerAction = AppFonts.serif(size: 15)
-    // SF Symbols / 圖示 — 維持 system
-    static let iconTiny = Font.system(.caption)
-    static let toolbarIcon = Font.callout
-    static let headerBackIcon = Font.system(size: 15, weight: .semibold)
-    static let headerCollapse = Font.system(size: 14, weight: .semibold)
-    static let compactMenuIcon = Font.system(size: 18, weight: .medium)
-    static let settingsIcon = Font.system(size: 14)
-    static let settingsCloseIcon = Font.system(size: ReaderPresentationMetrics.Settings.closeIconSize)
 }
 
 enum ReaderPresentationMetrics {
-    enum Panel {
-        static let handleWidth: CGFloat = 32
-        static let handleHeight: CGFloat = 4
-        static let handleTopInset: CGFloat = 8
-        static let handleBottomInset: CGFloat = 10
-        static let sectionSpacing: CGFloat = 10
-        static let horizontalInset: CGFloat = 18
-        static let bottomInset: CGFloat = 16
-        static let badgeHorizontalPadding: CGFloat = 7
-        static let badgeVerticalPadding: CGFloat = 3
-        static let messageVerticalInset: CGFloat = 12
-        static let statusInsetVertical: CGFloat = 8
-        static let statusInsetHorizontal: CGFloat = 10
-        static let statusCornerRadius: CGFloat = 10
-        static let dividerInsetVertical: CGFloat = 2
-        static let explanationInsetVertical: CGFloat = 4
-        static let toolbarTopInset: CGFloat = 2
-        static let actionButtonSize: CGFloat = 32
-        static let cornerRadius: CGFloat = 20
-        static let shadowOpacity: Double = 0.06
-        static let shadowRadius: CGFloat = 12
-        static let shadowY: CGFloat = -3
-    }
-
-    enum Settings {
-        static let controlHeight: CGFloat = 44
-        static let centeredValueWidth: CGFloat = 48
-        static let sliderSpacing: CGFloat = 14
-        static let sliderValueWidth: CGFloat = 28
-        static let optionSpacing: CGFloat = 8
-        static let optionLabelSpacing: CGFloat = 6
-        static let optionVerticalInset: CGFloat = 12
-        static let optionCornerRadius: CGFloat = 10
-        static let underlineCornerRadius: CGFloat = 8
-        static let underlineVerticalInset: CGFloat = 10
-        static let sectionVerticalInset: CGFloat = 4
-        static let closeIconSize: CGFloat = 22
-        static let selectedFillOpacity: Double = 0.12
-        static let selectedStrokeOpacity: Double = 0.1
-    }
-
     enum Overlay {
         static let loadingSpacing: CGFloat = 14
         static let loadingHorizontalInset: CGFloat = 28
@@ -213,28 +138,6 @@ enum ReaderPresentationMetrics {
 }
 
 private extension ReaderContentStyle {
-    static let glass = ReaderContentStyle(
-        pageGutterTop: 72,
-        pageGutterBottom: 48,
-        vocabBorderRadius: 2,
-        activeBorderRadius: 3,
-        light: .init(
-            activeOutline: "1px solid rgba(80, 80, 80, 0.40)",
-            activeBackground: "rgba(80, 80, 80, 0.04)",
-            vocabBackground: "linear-gradient(to top, hsla(215, 30%, 58%, var(--vocab-opacity)) 35%, transparent 35%)"
-        ),
-        sepia: .init(
-            activeOutline: "1px solid rgba(90, 70, 50, 0.40)",
-            activeBackground: "rgba(90, 70, 50, 0.05)",
-            vocabBackground: "linear-gradient(to top, hsla(22, 28%, 55%, var(--vocab-opacity)) 35%, transparent 35%)"
-        ),
-        dark: .init(
-            activeOutline: "1px solid rgba(200, 195, 185, 0.35)",
-            activeBackground: "rgba(200, 195, 185, 0.06)",
-            vocabBackground: "linear-gradient(to top, hsla(215, 28%, 70%, clamp(0, calc(var(--vocab-opacity) * 1.6), 1)) 35%, transparent 35%)"
-        )
-    )
-
     static let vocab = ReaderContentStyle(
         pageGutterTop: 76,
         pageGutterBottom: 52,
