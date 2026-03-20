@@ -49,8 +49,13 @@ Design tokens：
 - 圓角：`AppMetrics.cornerRadiusGlass`（30）
 - 字體：`AppFonts.caption(weight: .semibold)`
 - icon：`AppFonts.caption()`
-- 陰影：`appTheme.palette.shadow`，radius 8
+- 陰影：`AppShadows.toast*`（新增，見 Section 6）
 - 內距：H 18, V 10
+
+無障礙：
+- 標記 `.accessibilityAddTraits(.isStatusUpdate)` 觸發 VoiceOver announcement
+- VoiceOver 啟用時暫停 auto-dismiss timer，改為使用者手動關閉
+- 文字 `.minimumScaleFactor(0.8)` + `lineLimit(1)` 處理 Dynamic Type XXL
 
 ### 2. AppToastItem 資料模型
 
@@ -73,6 +78,8 @@ struct AppToastItem: Identifiable, Equatable {
     }
 }
 ```
+
+注意：`Equatable` 自動合成會比較 `id`（UUID），因此同訊息的兩次 show 永遠不等。這是刻意的 — 每次 show 都需要觸發 SwiftUI transition 動畫，即使訊息相同。
 
 ### 3. AppToastCoordinator
 
@@ -99,7 +106,9 @@ final class AppToastCoordinator {
 行為規格：
 - 同時只顯示 1 個 toast，新的取代舊的（cancel 前一個 dismiss task）
 - Auto-dismiss 使用 `Task.sleep`，cancel-safe
-- 上滑手勢 dismiss（`DragGesture` + `AppMotion.swipeDismissSpring`）
+- VoiceOver 啟用時（`UIAccessibility.isVoiceOverRunning`）跳過 auto-dismiss
+- 上滑手勢 dismiss：`DragGesture`，上滑 > 20pt 或速度 > 200pt/s 觸發 dismiss，否則 `AppMotion.swipeDismissSpring` snap back
+- `show()` 內用 `withAnimation(AppMotion.panelState)` 包裹 `current` 的變更，確保 transition 生效
 
 ### 4. 掛載點
 
@@ -111,33 +120,51 @@ final class AppToastCoordinator {
 .overlay(alignment: .top) {
     if let toast = toastCoordinator.current {
         AppToast(item: toast)
-            .transition(.move(edge: .top).combined(with: .opacity))
+            .transition(.bannerReveal)
             .onTapGesture { toastCoordinator.dismiss() }
     }
 }
 .environment(toastCoordinator)
 ```
 
+動畫由 `AppToastCoordinator.show()` / `.dismiss()` 內的 `withAnimation` 驅動。
+
 ### 5. Environment Key
 
-**新增** 於 `AppToastCoordinator.swift`
+**修改** `ios/BooksBrowser/Services/AppEnvironment.swift`
+
+沿用現有 `nonisolated(unsafe)` + `MainActor.assumeIsolated` 模式：
 
 ```swift
 private struct AppToastCoordinatorKey: EnvironmentKey {
-    static let defaultValue = AppToastCoordinator()
+    nonisolated(unsafe) static let defaultValue = MainActor.assumeIsolated {
+        AppToastCoordinator()
+    }
 }
 extension EnvironmentValues {
-    var toastCoordinator: AppToastCoordinator { ... }
+    var toastCoordinator: AppToastCoordinator {
+        get { self[AppToastCoordinatorKey.self] }
+        set { self[AppToastCoordinatorKey.self] = newValue }
+    }
 }
 ```
 
-### 6. AppMotion / AnyTransition Token
+### 6. Design System Token 新增
 
 **修改** `ios/BooksBrowser/Models/AppMetrics.swift`
 
-新增：
-- `AppMotion.toastReveal` — `standardSpring`（與 panelState 一致）
-- `AnyTransition.toastReveal` — `.move(edge: .top).combined(with: .opacity)`
+`AppShadows` 新增 toast 陰影 token：
+```swift
+// MARK: - Toast 微陰影（頂部浮動膠囊）
+static let toastOpacity: Double = 0.08
+static let toastRadius: CGFloat = 8
+static let toastY: CGFloat = 4
+```
+
+不新增 `AppMotion` / `AnyTransition` token — 直接復用既有的：
+- 動畫：`AppMotion.panelState`（= `standardSpring`）
+- Transition：`AnyTransition.bannerReveal`（= `.move(edge: .top).combined(with: .opacity)`）
+- 手勢：`AppMotion.swipeDismissSpring`（上滑 dismiss）、`AppMotion.swipeSnapBackSpring`（回彈）
 
 ### 7. 首批接入場景
 
@@ -159,3 +186,4 @@ extension EnvironmentValues {
 - Toast 內 action button — 那是 Snackbar 的職責，與 Capsule 風格衝突
 - 取代 AppBanner — 兩者職責不同，共存
 - 動態高度 / 多行文字 — 膠囊限制單行，強制訊息精簡
+- 新增 `AppMotion.toastReveal` / `AnyTransition.toastReveal` — 復用現有 `panelState` + `bannerReveal` 即可
