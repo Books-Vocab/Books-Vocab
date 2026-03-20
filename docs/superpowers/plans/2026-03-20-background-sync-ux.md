@@ -4,9 +4,9 @@
 
 **Goal:** Promote `SyncCoordinator` to app-level so sync survives sheet dismissal and navigation, and show a spinning toolbar indicator while sync runs.
 
-**Architecture:** `SyncCoordinator` moves from `@State` in `SyncView` to a `let` property in `BooksBrowserApp`, injected via a new `\.syncCoordinator` EnvironmentKey. `SyncView` reads from environment instead of owning the coordinator. The toolbar receives an `isSyncing` prop. The sheet close button is always visible; a description line tells users sync continues after dismissal.
+**Architecture:** `SyncCoordinator` moves from `@State` in `SyncView` to a `let` property in `BooksBrowserApp`, injected via a new `\.syncCoordinator` EnvironmentKey. `SyncView` reads from environment instead of owning the coordinator. The toolbar receives an `isSyncing` prop and a spinning icon when active. The sheet close button is always visible; a description line tells users sync continues after dismissal.
 
-**Tech Stack:** Swift, SwiftUI, `@Observable`, `EnvironmentKey`, SF Symbols `.symbolEffect(.rotate)`
+**Tech Stack:** Swift, SwiftUI, `@Observable`, `EnvironmentKey`, SF Symbols `.symbolEffect(.rotate, isActive:)`
 
 **Spec:** `docs/superpowers/specs/2026-03-20-background-sync-ux-design.md`
 
@@ -22,7 +22,7 @@
 | `ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter.swift` | Modify | Show "關閉" at all phases |
 | `ios/BooksBrowser/Views/Vocabulary/Scenes/SyncPresenter+Header.swift` | Modify | Add description to `.running` state |
 | `ios/BooksBrowser/Views/Vocabulary/VocabularyListView.swift` | Modify | Add `@Environment(\.syncCoordinator)`, pass `isSyncing` |
-| `ios/BooksBrowser/Views/Vocabulary/VocabularyListView+Toolbar.swift` | Modify | Add `isSyncing: Bool` prop + `.symbolEffect(.rotate)` |
+| `ios/BooksBrowser/Views/Vocabulary/VocabularyListView+Toolbar.swift` | Modify | Add `isSyncing: Bool` prop + `.symbolEffect(.rotate, isActive:)` |
 
 ---
 
@@ -31,9 +31,9 @@
 **Files:**
 - Modify: `ios/BooksBrowser/Services/AppEnvironment.swift`
 
-- [ ] **Step 1: Add EnvironmentKey and EnvironmentValues extension**
+- [ ] **Step 1: Add EnvironmentKey struct**
 
-In `AppEnvironment.swift`, insert after `ICloudDownloadManagerKey` (before `extension EnvironmentValues`):
+In `AppEnvironment.swift`, insert after `ICloudDownloadManagerKey` closing `}` (before `extension EnvironmentValues`):
 
 ```swift
 private struct SyncCoordinatorKey: EnvironmentKey {
@@ -43,7 +43,9 @@ private struct SyncCoordinatorKey: EnvironmentKey {
 }
 ```
 
-Then add inside `extension EnvironmentValues`:
+- [ ] **Step 2: Add `syncCoordinator` accessor inside the existing `extension EnvironmentValues` block**
+
+The file already has `extension EnvironmentValues { ... }` containing all other keys. Add `syncCoordinator` **inside** that existing block (do not create a new extension):
 
 ```swift
 var syncCoordinator: SyncCoordinator {
@@ -52,7 +54,7 @@ var syncCoordinator: SyncCoordinator {
 }
 ```
 
-- [ ] **Step 2: Build to verify**
+- [ ] **Step 3: Build to verify**
 
 ```bash
 cd /Users/chenliangyu/MPSO/projects/kg
@@ -61,7 +63,7 @@ cd /Users/chenliangyu/MPSO/projects/kg
 
 Expected: exit 0, no errors.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add ios/BooksBrowser/Services/AppEnvironment.swift
@@ -75,21 +77,23 @@ git commit -m "ios: add SyncCoordinatorKey to AppEnvironment"
 **Files:**
 - Modify: `ios/BooksBrowser/BooksBrowserApp.swift`
 
-- [ ] **Step 1: Add property and environment injection**
+- [ ] **Step 1: Add property**
 
-Add alongside the other `let` service properties (after `let networkMonitor`):
+Add alongside the other `let` service properties (e.g. after `let networkMonitor`):
 
 ```swift
 let syncCoordinator = SyncCoordinator()
 ```
 
-Add to the `.environment(...)` chain in `body` (after `.environment(\.iCloudDownloadManager, iCloudDownloadManager)`):
+- [ ] **Step 2: Inject into environment**
+
+In `body`, add to the `.environment(...)` chain (e.g. after `.environment(\.iCloudDownloadManager, iCloudDownloadManager)`):
 
 ```swift
 .environment(\.syncCoordinator, syncCoordinator)
 ```
 
-- [ ] **Step 2: Build to verify**
+- [ ] **Step 3: Build to verify**
 
 ```bash
 ./ops/ios_build.sh
@@ -97,7 +101,7 @@ Add to the `.environment(...)` chain in `body` (after `.environment(\.iCloudDown
 
 Expected: exit 0.
 
-- [ ] **Step 3: Commit**
+- [ ] **Step 4: Commit**
 
 ```bash
 git add ios/BooksBrowser/BooksBrowserApp.swift
@@ -123,7 +127,7 @@ Add:
 @Environment(\.syncCoordinator) private var coordinator
 ```
 
-- [ ] **Step 2: Fix `.task` to not reset running sync**
+- [ ] **Step 2: Fix `.task` to not reset a running sync on re-open**
 
 In `body`, change:
 ```swift
@@ -138,7 +142,7 @@ to:
 }
 ```
 
-This prevents re-opening the sheet from calling `resetForRetry()` while sync is running (which would clear `steps` and freeze the UI).
+`refreshStepLayoutIfIdle()` has `guard coordinator.phase != .running` — this prevents re-opening the sheet from calling `resetForRetry()` which would clear `steps` and freeze the UI while the background task still runs.
 
 - [ ] **Step 3: Build to verify**
 
@@ -164,7 +168,7 @@ git commit -m "ios: migrate SyncView coordinator from @State to @Environment"
 
 - [ ] **Step 1: Remove phase guard from toolbar close button**
 
-In `SyncPresenter.swift`, locate the toolbar item:
+Locate the toolbar item (in `body`):
 
 ```swift
 .toolbar {
@@ -185,6 +189,8 @@ Replace with:
     }
 }
 ```
+
+The "取消" button in the action area remains the only way to stop sync. Closing just dismisses the sheet; the coordinator continues running.
 
 - [ ] **Step 2: Build to verify**
 
@@ -264,6 +270,8 @@ git commit -m "ios: add background-continue message to sync running header"
 - Modify: `ios/BooksBrowser/Views/Vocabulary/VocabularyListView.swift`
 - Modify: `ios/BooksBrowser/Views/Vocabulary/VocabularyListView+Toolbar.swift`
 
+These two files must be changed atomically — adding the `isSyncing` prop to the toolbar modifier breaks the call site until both changes are saved. Build only after both steps are done.
+
 - [ ] **Step 1: Add `isSyncing` prop to `VocabularyListToolbar`**
 
 In `VocabularyListView+Toolbar.swift`, add to `VocabularyListToolbar`'s property list (after `let isLoggedIn`):
@@ -281,6 +289,7 @@ Button(action: onSync) {
         badge: pendingCount > 0 ? "\(pendingCount)" : nil
     )
 }
+.accessibilityLabel("同步詞彙".localized)
 ```
 
 With:
@@ -291,22 +300,22 @@ Button(action: onSync) {
         systemImage: "arrow.triangle.2.circlepath",
         badge: pendingCount > 0 ? "\(pendingCount)" : nil
     )
-    .symbolEffect(.rotate, options: isSyncing ? .repeating : .default, value: isSyncing)
+    .symbolEffect(.rotate, options: .repeating, isActive: isSyncing)
 }
-.disabled(isSyncing)
+.accessibilityLabel("同步詞彙".localized)
 ```
 
-Note: `.disabled(isSyncing)` prevents opening the sheet while sync runs — user should tap the toolbar to view progress once it's already open, not trigger a second one.
+Note: Button remains enabled while syncing — the user taps it to reopen the sheet and view live progress.
 
 - [ ] **Step 2: Add `@Environment` and pass `isSyncing` in VocabularyListView**
 
-In `VocabularyListView.swift`, add environment read (alongside other `@Environment` declarations):
+In `VocabularyListView.swift`, add alongside other `@Environment` declarations:
 
 ```swift
 @Environment(\.syncCoordinator) private var syncCoordinator
 ```
 
-In `body`, update the `.modifier(VocabularyListToolbar(...))` call to pass:
+In `body`, update the `.modifier(VocabularyListToolbar(...))` call to include:
 
 ```swift
 isSyncing: syncCoordinator.phase == .running,
@@ -335,9 +344,9 @@ git commit -m "ios: spinning toolbar indicator when sync is running"
 - [ ] **Manual smoke test checklist**
   1. Open sync sheet → tap "開始同步" → swipe sheet down → confirm toolbar icon is spinning
   2. Navigate away from vocab list → navigate back → toolbar still spinning
-  3. Tap toolbar icon while syncing → nothing happens (button disabled)
-  4. Re-open sheet via toolbar after sync completes → sheet shows completed state, not reset
-  5. Open sheet while syncing → shows running state with "離開後同步將繼續" description and "關閉" button visible
+  3. Tap spinning toolbar icon → sheet reopens showing running state with "離開後同步將繼續在背景執行" and "關閉" button visible
+  4. Close sheet again → sync continues, toolbar still spinning
+  5. Re-open sheet after sync completes → shows completed state (not reset to ready)
   6. Tap "取消" in sheet → sync stops, toolbar icon returns to normal
 
 - [ ] **Final build**

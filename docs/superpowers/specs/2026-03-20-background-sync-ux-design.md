@@ -2,6 +2,7 @@
 
 **Date:** 2026-03-20
 **Scope:** iOS — `SyncCoordinator` lifetime promotion + background indicator
+**Deployment Target:** iOS 26+
 
 ---
 
@@ -26,7 +27,7 @@ Additionally, the toolbar "close" button is hidden during `.running`, forcing us
 
 ### SyncCoordinator Lifetime
 
-`SyncCoordinator` is promoted to app-level, created once in `BooksBrowserApp` alongside `kgService` and `authManager`. It is injected via a new `EnvironmentKey` following the exact pattern of `KGServiceEnvironmentKey` in `AppEnvironment.swift`.
+`SyncCoordinator` is promoted to app-level, created once in `BooksBrowserApp` alongside `kgService` and `authManager`. It is injected via a new `EnvironmentKey` following the pattern of `ICloudDownloadManagerKey` in `AppEnvironment.swift` (concrete class, no `nonisolated(unsafe)` needed).
 
 ```
 BooksBrowserApp
@@ -42,11 +43,11 @@ VocabularyListView
 
 ### EnvironmentKey
 
-Added to `Services/AppEnvironment.swift`:
+Added to `Services/AppEnvironment.swift` (follows `ICloudDownloadManagerKey` pattern — concrete class, `MainActor.assumeIsolated`, no protocol):
 
 ```swift
 private struct SyncCoordinatorKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: SyncCoordinator = MainActor.assumeIsolated {
+    static let defaultValue: SyncCoordinator = MainActor.assumeIsolated {
         SyncCoordinator()
     }
 }
@@ -59,6 +60,8 @@ extension EnvironmentValues {
 }
 ```
 
+**Design note:** Uses concrete `SyncCoordinator` (not `any SyncCoordinating` protocol) because the coordinator is not mocked in tests and is always the same class. Aligns with `ICloudDownloadManagerKey`. If mock support is needed later, introduce a protocol at that point (YAGNI).
+
 ---
 
 ## Sheet Close Behavior
@@ -66,11 +69,18 @@ extension EnvironmentValues {
 **Before:** Toolbar "關閉" button hidden during `.running`. User trapped in sheet.
 
 **After:**
-- "關閉" button visible at **all phases** (remove `phase == .ready || .completed || .failed` guard)
+- "關閉" button visible at **all phases** (remove `phase == .ready || .completed || .failed` guard from `SyncPresenter.swift`)
 - No `interactiveDismissDisabled` — coordinator persists through dismissal naturally
 - Running header (`SyncPresenter+Header.swift`) adds a description line:
   `"離開後同步將繼續在背景執行，可隨時返回查看進度"`
 - "取消" button remains the only way to stop sync
+- `SyncPresenter+ActionArea.swift` — `dismiss()` in `.completed` case is correct as-is (closes sheet, does not affect coordinator)
+
+### Sheet Re-open While Sync Running
+
+When the user re-opens the sheet during an active sync, `SyncView` body is re-evaluated and `.task` fires again. The current code calls `refreshStepLayout()` unconditionally, which would call `resetForRetry()` → `phase = .ready` and clear `steps`, breaking the live UI.
+
+**Fix:** Change `SyncView`'s `.task` block from `refreshStepLayout()` to `refreshStepLayoutIfIdle()`, which already has `guard coordinator.phase != .running`.
 
 ---
 
@@ -78,12 +88,11 @@ extension EnvironmentValues {
 
 `VocabularyListToolbar` receives a new `isSyncing: Bool` prop.
 
-When `isSyncing == true`, the sync button icon uses `.symbolEffect(.rotate, options: .repeating)` on the `arrow.triangle.2.circlepath` symbol (SF Symbols rotate effect — consistent with existing `AppMotion` usage).
+When `isSyncing == true`, the sync button icon uses `.symbolEffect(.rotate, options: .repeating)` on `arrow.triangle.2.circlepath` (iOS 17+ API, well within iOS 26 target).
 
-`VocabularyListView` computes:
-```swift
-isSyncing: syncCoordinator.phase == .running
-```
+`VocabularyListView` changes:
+1. Add `@Environment(\.syncCoordinator) private var syncCoordinator`
+2. Pass `isSyncing: syncCoordinator.phase == .running` into `VocabularyListToolbar`
 
 ---
 
@@ -93,11 +102,12 @@ isSyncing: syncCoordinator.phase == .running
 |------|--------|
 | `Services/AppEnvironment.swift` | Add `SyncCoordinatorKey` + `\.syncCoordinator` |
 | `BooksBrowserApp.swift` | Add `let syncCoordinator = SyncCoordinator()`, inject via `.environment` |
-| `Views/Vocabulary/SyncView.swift` | `@State coordinator` → `@Environment(\.syncCoordinator)` |
+| `Views/Vocabulary/SyncView.swift` | `@State coordinator` → `@Environment(\.syncCoordinator)`; `.task` → `refreshStepLayoutIfIdle()` |
 | `Views/Vocabulary/Scenes/SyncPresenter.swift` | Remove phase guard on "關閉" toolbar button |
 | `Views/Vocabulary/Scenes/SyncPresenter+Header.swift` | Add description to `.running` state |
-| `Views/Vocabulary/VocabularyListView.swift` | Read `syncCoordinator`, pass `isSyncing` to toolbar |
-| `Views/Vocabulary/VocabularyListView+Toolbar.swift` | Add `isSyncing` prop + `.symbolEffect(.rotate)` |
+| `Views/Vocabulary/VocabularyListView.swift` | Add `@Environment(\.syncCoordinator)`, pass `isSyncing` to toolbar |
+| `Views/Vocabulary/VocabularyListView+Toolbar.swift` | Add `isSyncing` prop + `.symbolEffect(.rotate, options: .repeating)` |
+| `Views/Vocabulary/Scenes/SyncPresenter+ActionArea.swift` | No change — `dismiss()` in `.completed` is correct |
 
 ---
 
@@ -106,3 +116,4 @@ isSyncing: syncCoordinator.phase == .running
 - App-backgrounding persistence (requires `BGProcessingTask` — separate feature)
 - Global app-wide indicator (only vocab list toolbar)
 - Sync auto-start on app launch
+- Mock/protocol support for `SyncCoordinator` in tests (YAGNI)
