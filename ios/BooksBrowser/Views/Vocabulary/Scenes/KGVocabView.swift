@@ -157,7 +157,7 @@ struct KGVocabView: View {
             )
         } else if coordinator.errorMessage != nil && syncedEntries.isEmpty {
             return .error(
-                title: "無法載入知識庫".localized,
+                title: "無法載入單字".localized,
                 systemImage: "exclamationmark.triangle",
                 retryAction: {
                     Task {
@@ -174,7 +174,7 @@ struct KGVocabView: View {
             )
         } else if coordinator.isLoading && syncedEntries.isEmpty {
             return .loading(
-                title: "載入知識庫...".localized,
+                title: "載入單字...".localized,
                 systemImage: "arrow.clockwise"
             )
         } else {
@@ -257,7 +257,7 @@ struct KGVocabView: View {
     }
 
     private var emptyStateTitle: String {
-        if syncedEntries.isEmpty { return "知識庫目前是空的".localized }
+        if syncedEntries.isEmpty { return "尚無已收錄單字".localized }
         if !searchText.isEmpty { return "沒有符合的單字".localized }
         return selectedReviewState.title
     }

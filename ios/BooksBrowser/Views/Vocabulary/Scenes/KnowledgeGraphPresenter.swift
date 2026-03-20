@@ -278,7 +278,7 @@ private enum KnowledgeGraphPresenterPreviewData {
         emptyState: .init(
             title: "知識圖譜為空",
             systemImage: "point.3.connected.trianglepath.dotted",
-            description: "知識庫中尚無單字，或尚未與伺服器同步。"
+            description: "尚無已收錄單字，或尚未與伺服器同步。"
         ),
         nodes: [],
         edges: [],

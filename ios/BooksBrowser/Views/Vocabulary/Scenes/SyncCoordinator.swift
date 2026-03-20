@@ -67,7 +67,7 @@ final class SyncCoordinator: SyncCoordinating {
 
         list.append(PipelineStep(id: "trigger", label: "觸發背景 AI 處理".localized))
         list.append(PipelineStep(id: "push_review", label: "上傳複習進度".localized))
-        list.append(PipelineStep(id: "pull", label: "下載知識庫至本地".localized))
+        list.append(PipelineStep(id: "pull", label: "下載單字至本地".localized))
 
         steps = list
     }
@@ -205,7 +205,7 @@ final class SyncCoordinator: SyncCoordinating {
                     updateStep("push_review", status: .error, detail: error.localizedDescription)
                 }
 
-                updateStep("pull", status: .running, detail: L10n.string("從遠端下載知識庫..."))
+                updateStep("pull", status: .running, detail: L10n.string("正在下載單字..."))
                 var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
@@ -224,7 +224,7 @@ final class SyncCoordinator: SyncCoordinating {
                 // Also pull daily stats from server
                 try? await kgService.pullDailyStats(container: modelContext.container)
 
-                updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地知識庫已建立完成"))
+                updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
                 if encounteredFailure {
                     summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
