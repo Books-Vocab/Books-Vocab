@@ -49,6 +49,7 @@ struct CardSectionLabel: View {
 struct CardHeroSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.speechService) private var speechService
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let card: CardPresentation
     let colorScheme: ColorScheme
@@ -108,6 +109,7 @@ struct CardHeroSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = card.word
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -119,6 +121,7 @@ struct CardHeroSection: View {
 /// 例句渲染區塊
 struct CardExamplesSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let examples: [String]
     let colorScheme: ColorScheme
@@ -150,6 +153,7 @@ struct CardExamplesSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = examples.joined(separator: "\n")
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -161,6 +165,7 @@ struct CardExamplesSection: View {
 /// 來源上下文 + 書名 + 章節
 struct CardSourceSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let sourceContext: String
     let bookTitle: String
@@ -191,6 +196,7 @@ struct CardSourceSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = copyText
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -202,6 +208,7 @@ struct CardSourceSection: View {
 /// 教學筆記（Rich Text）
 struct CardExplanationSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let explanation: String
     let colorScheme: ColorScheme
@@ -230,6 +237,7 @@ struct CardExplanationSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = explanation
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
@@ -241,6 +249,7 @@ struct CardExplanationSection: View {
 /// 單字變化形列表
 struct CardFormsSection: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let forms: [String]
     let rootForm: String?
@@ -265,6 +274,7 @@ struct CardFormsSection: View {
             Button("複製".localized, systemImage: "doc.on.doc") {
                 UIPasteboard.general.string = forms.joined(separator: ", ")
                 copyTrigger.toggle()
+                toastCoordinator.success("已複製")
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
