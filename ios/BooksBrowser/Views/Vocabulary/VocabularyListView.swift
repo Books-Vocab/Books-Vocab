@@ -25,6 +25,7 @@ struct VocabularyListView: View {
     @Environment(\.subscriptionManager) var subscriptionManager
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.appTheme) var appTheme
+    @Environment(\.syncCoordinator) var syncCoordinator
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var coordinator = VocabularyListCoordinator()
 
@@ -56,6 +57,7 @@ struct VocabularyListView: View {
         .modifier(VocabularyListToolbar(
             selectedTab: selectedTab,
             isLoggedIn: authManager.isLoggedIn,
+            isSyncing: syncCoordinator.phase == .running,
             pendingCount: pendingCount,
             knowledgeReviewCount: knowledgeReviewCount,
             knowledgeDueCount: knowledgeDueCount,
