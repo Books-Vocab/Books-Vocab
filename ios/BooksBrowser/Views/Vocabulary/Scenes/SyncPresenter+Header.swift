@@ -11,7 +11,7 @@ extension SyncPresenter {
                 systemImage: "person.crop.circle.badge.exclamationmark",
                 tone: vocabSkin.palette.tertiaryText,
                 title: "尚未登入帳號".localized,
-                description: "登入後即可將您的生詞庫同步至雲端知識庫。".localized
+                description: "登入後即可將待收錄單字同步至雲端。".localized
             )
         } else {
             switch state.phase {
@@ -20,7 +20,7 @@ extension SyncPresenter {
                     systemImage: "arrow.triangle.2.circlepath",
                     tone: vocabSkin.palette.accent,
                     title: state.pendingCount == 0
-                        ? "強制同步到知識庫".localized
+                        ? "強制同步到雲端".localized
                         : L10n.format("%@ 個待處理動作", "\(state.pendingCount)")
                 ) {
                     HStack(spacing: vocabSkin.spacing.inlineGap) {

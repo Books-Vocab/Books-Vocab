@@ -25,7 +25,7 @@ struct ArchivedVocabSheet: View {
                         VocabEmptyStateCard(
                             title: "沒有封存的卡片".localized,
                             systemImage: "archivebox",
-                            description: "在知識庫中左滑卡片即可封存。".localized
+                            description: "左滑卡片即可封存。".localized
                         )
                         Spacer()
                     }

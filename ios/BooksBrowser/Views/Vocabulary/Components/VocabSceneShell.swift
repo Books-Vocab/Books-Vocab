@@ -91,7 +91,7 @@ struct VocabSceneShell<Content: View>: View {
 #Preview("Empty") {
     AppThemeContainer {
         VocabSceneShell(phase: .empty(
-            title: "知識庫目前是空的",
+            title: "尚無已收錄單字",
             systemImage: "sparkles",
             description: "同步完成後，這裡會顯示你的雲端單字。"
         )) {

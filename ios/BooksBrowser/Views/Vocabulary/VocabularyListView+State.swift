@@ -11,7 +11,7 @@ extension VocabularyListView {
         .init(
             tabOptions: tabOptions,
             showsSearchField: showsSearchField,
-            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字".localized : "搜尋知識庫".localized
+            searchPrompt: selectedTab == 0 ? "搜尋待收錄單字".localized : "搜尋單字".localized
         )
     }
 
@@ -72,7 +72,7 @@ extension VocabularyListView {
             .init(id: 0, title: "待收錄".localized, count: pendingCount, systemImage: "tray"),
             .init(
                 id: 1,
-                title: "知識庫".localized,
+                title: "已收錄".localized,
                 count: syncedKnowledgeEntries.count,
                 systemImage: "books.vertical"
             ),
@@ -133,7 +133,7 @@ extension VocabularyListView {
                 AppEmptyStateCard(
                     title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: "知識庫功能需要登入帳號後才能存取您的雲端資料。".localized
+                    description: "此功能需要登入帳號後才能存取您的雲端資料。".localized
                 )
 
                 Button("前往設定登入".localized) {

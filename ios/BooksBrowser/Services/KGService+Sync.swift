@@ -35,7 +35,7 @@ extension KGService {
 
     @discardableResult
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)? = nil, notebookId: String? = nil) async throws -> Bool {
-        progress?(L10n.string("從遠端下載知識庫..."), 0, 0)
+        progress?(L10n.string("正在下載單字..."), 0, 0)
 
         let defaults = UserDefaults.standard
         let storedPayloadVersion = defaults.integer(forKey: SyncKeys.payloadVersion)

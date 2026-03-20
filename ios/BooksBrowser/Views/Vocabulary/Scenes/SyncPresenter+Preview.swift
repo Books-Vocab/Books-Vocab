@@ -53,7 +53,7 @@ private enum SyncPresenterPreviewData {
         ),
         .init(
             id: "pull",
-            label: "下載知識庫至本地",
+            label: "下載單字至本地",
             status: .waiting,
             current: 0,
             total: 0,
@@ -73,7 +73,7 @@ private enum SyncPresenterPreviewData {
         addCount: 12,
         deleteCount: 2,
         steps: [],
-        summaryText: "這次會把待新增與待刪除的變更同步到雲端知識庫。"
+        summaryText: "這次會把待新增與待刪除的變更同步到雲端。"
     )
 
     static let running = SyncPresenterState(
@@ -86,7 +86,7 @@ private enum SyncPresenterPreviewData {
         addCount: 12,
         deleteCount: 2,
         steps: baseSteps,
-        summaryText: "請保持網路連線，系統會自動更新本地知識庫。"
+        summaryText: "請保持網路連線，系統會自動更新本地單字。"
     )
 
     static let failed = SyncPresenterState(
@@ -155,11 +155,11 @@ private enum SyncPresenterPreviewData {
             ),
             .init(
                 id: "pull",
-                label: "下載知識庫至本地",
+                label: "下載單字至本地",
                 status: .done,
                 current: 1,
                 total: 1,
-                detail: "本地知識庫已建立完成",
+                detail: "本地單字已建立完成",
                 startTime: Date().addingTimeInterval(-6),
                 endTime: Date().addingTimeInterval(-3)
             )
