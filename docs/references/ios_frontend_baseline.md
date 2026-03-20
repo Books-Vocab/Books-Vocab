@@ -2,7 +2,7 @@
 tier: snapshot
 scope:
   - ios/BooksBrowser
-verified_against: 487d305
+verified_against: a21433f
 -->
 
 # iOS Frontend Baseline
@@ -44,5 +44,4 @@ verified_against: 487d305
 | 標記 | 出現次數 |
 |------|------|
 | @MainActor | 60 |
-| async func | 0
-0 |
+| async func | 0 |

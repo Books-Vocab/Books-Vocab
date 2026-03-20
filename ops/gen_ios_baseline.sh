@@ -18,11 +18,11 @@ TOTAL_FILES=$(find "$IOS_DIR" -name "*.swift" | wc -l | tr -d ' ')
 
 # 3. Preview coverage
 VIEWS_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" 2>/dev/null | wc -l | tr -d ' ')
-PREVIEW_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" -exec grep -l "#Preview" {} \; 2>/dev/null | wc -l | tr -d ' ')
+PREVIEW_FILES=$(find "$IOS_DIR/Views" "$IOS_DIR/UIComponents" -name "*.swift" -exec grep -l "#Preview" {} \; 2>/dev/null | wc -l | tr -d ' ') || PREVIEW_FILES=0
 
 # 4. Concurrency stats
-MAIN_ACTOR=$(grep -r "@MainActor" "$IOS_DIR" --include="*.swift" | wc -l | tr -d ' ' || echo 0)
-ASYNC_FUNC=$(grep -r "async func" "$IOS_DIR" --include="*.swift" | wc -l | tr -d ' ' || echo 0)
+MAIN_ACTOR=$(grep -r "@MainActor" "$IOS_DIR" --include="*.swift" 2>/dev/null | wc -l | tr -d ' ') || MAIN_ACTOR=0
+ASYNC_FUNC=$(grep -r "async func" "$IOS_DIR" --include="*.swift" 2>/dev/null | wc -l | tr -d ' ') || ASYNC_FUNC=0
 
 cat > "$OUTPUT" << EOF
 <!-- doc-meta
