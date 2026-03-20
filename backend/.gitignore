@@ -5,7 +5,9 @@ __pycache__/
 .venv/
 .env
 
-# Data (Keep cards.json? User didn't say to ignore it, but usually ignore generated data if large. I'll ignore embeddings and backups)
+# Data — runtime user data, never commit
+data/users/
+data/users.json
 data/*.npy
 data/*.bak
 data/legacy_id_map.json
