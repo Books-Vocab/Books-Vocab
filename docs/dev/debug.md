@@ -1,3 +1,10 @@
+<!-- doc-meta
+tier: operational
+scope:
+  - backend/src/kg
+  - ops
+verified_against: 471deda
+-->
 # 伺服器排障指南
 
 ## 核心資訊
