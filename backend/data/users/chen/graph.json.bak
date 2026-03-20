@@ -1,0 +1,602 @@
+[
+  {
+    "id": "dbeeb322c3ba",
+    "from_id": "9408ee133a91",
+    "to_id": "dd87a1194219",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Maroon and drab brown are both shades of brown but represent different tones, making them contrasting colors worth studying together.",
+    "created_at": "2026-02-12T07:57:45.192487Z",
+    "status": "active"
+  },
+  {
+    "id": "20c683e55121",
+    "from_id": "e346ac1e29cf",
+    "to_id": "b6de36367a05",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to brightness and shine, often used in similar contexts to describe visual qualities.",
+    "created_at": "2026-02-12T07:57:47.140277Z",
+    "status": "active"
+  },
+  {
+    "id": "7c1dd97d3c01",
+    "from_id": "680f52dc8766",
+    "to_id": "03a709d29b70",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to fastening or securing something, making them relevant in similar contexts.",
+    "created_at": "2026-02-12T07:57:48.990657Z",
+    "status": "active"
+  },
+  {
+    "id": "9df25a7037ec",
+    "from_id": "8c0ecf38584b",
+    "to_id": "2d64547d7a77",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to rural or agricultural contexts, with 'pastures' referring to grazing land and 'pastoral' describing a rural or idyllic setting.",
+    "created_at": "2026-02-12T07:57:51.839323Z",
+    "status": "active"
+  },
+  {
+    "id": "cefaa6ba89d0",
+    "from_id": "519c73ffe11a",
+    "to_id": "4f762b90fdc6",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Both words describe unpredictable behavior, but 'erratic' implies instability while 'capricious' suggests whimsicality, making them contrasting in nuance.",
+    "created_at": "2026-02-12T07:57:55.114321Z",
+    "status": "active"
+  },
+  {
+    "id": "5fd2a8d20250",
+    "from_id": "06415909b829",
+    "to_id": "e346ac1e29cf",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to the quality of light and shine, often used in similar contexts to describe visual effects.",
+    "created_at": "2026-02-12T07:57:56.313156Z",
+    "status": "active"
+  },
+  {
+    "id": "ed28040cbdc0",
+    "from_id": "06415909b829",
+    "to_id": "b6de36367a05",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Both words describe brightness but 'shimmering' implies a flickering light while 'resplendent' suggests a more stable, brilliant shine, highlighting their contrasting qualities.",
+    "created_at": "2026-02-12T07:57:57.979877Z",
+    "status": "active"
+  },
+  {
+    "id": "f15f2e18e356",
+    "from_id": "295ea641a676",
+    "to_id": "c9642ce80907",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'tome' and 'tale' can be confused due to their similar spelling and the fact that both relate to written works, but they have distinct meanings.",
+    "created_at": "2026-02-12T07:57:59.388440Z",
+    "status": "active"
+  },
+  {
+    "id": "59eef1051d7e",
+    "from_id": "6ece51de2842",
+    "to_id": "f74c9c2adda5",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words describe facial expressions related to discomfort or pain, and learners might mix them up due to their similar contexts.",
+    "created_at": "2026-02-12T07:58:01.257344Z",
+    "status": "active"
+  },
+  {
+    "id": "83086b613641",
+    "from_id": "bc550ea92968",
+    "to_id": "e4d6f2f2f522",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to showing off or being extravagant in appearance or behavior, making them relevant in similar contexts.",
+    "created_at": "2026-02-12T07:58:02.806295Z",
+    "status": "active"
+  },
+  {
+    "id": "847b9325670a",
+    "from_id": "e4d6f2f2f522",
+    "to_id": "b6de36367a05",
+    "kind": "contrasts_with",
+    "confidence": 0.7,
+    "reason": "Both words describe something visually impressive, but they can imply different nuances in brightness and style, making them worth studying together.",
+    "created_at": "2026-02-12T07:58:05.455450Z",
+    "status": "active"
+  },
+  {
+    "id": "a463abde8c0e",
+    "from_id": "7a77d625c69b",
+    "to_id": "eb631b915970",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words relate to anger or irritability, and learners might confuse their meanings due to their similar emotional connotations.",
+    "created_at": "2026-02-24T10:20:36.762077Z",
+    "status": "active"
+  },
+  {
+    "id": "5aa6f1fced11",
+    "from_id": "7f37f8b5e750",
+    "to_id": "01c38940e5ab",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words describe a quality of softness or flexibility, which may lead learners to mix them up due to their similar meanings.",
+    "created_at": "2026-02-24T10:20:38.190694Z",
+    "status": "active"
+  },
+  {
+    "id": "200ab1582e18",
+    "from_id": "a81d40e3e0fe",
+    "to_id": "e4d6f2f2f522",
+    "kind": "confusable",
+    "confidence": 0.9,
+    "reason": "Both words mean 'showy' or 'extravagant' and can be easily mixed up due to their similar meanings.",
+    "created_at": "2026-02-24T10:20:39.485763Z",
+    "status": "active"
+  },
+  {
+    "id": "26fa69c7e9ef",
+    "from_id": "4e0455eab1ee",
+    "to_id": "c8049256c81d",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words relate to the concept of distortion or twisting, which may lead learners to confuse their meanings.",
+    "created_at": "2026-02-24T10:20:41.605891Z",
+    "status": "active"
+  },
+  {
+    "id": "77f3c2939b9e",
+    "from_id": "d9af60ba9ec4",
+    "to_id": "2d64547d7a77",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words relate to rural or agricultural contexts, making them relevant in discussions about landscapes or environments.",
+    "created_at": "2026-02-24T10:55:34.636489Z",
+    "status": "active"
+  },
+  {
+    "id": "d88c2ae94442",
+    "from_id": "d9af60ba9ec4",
+    "to_id": "8c0ecf38584b",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Fields and pastures both refer to types of land used for agriculture, but they can imply different uses; fields are often associated with crops while pastures are specifically for grazing animals.",
+    "created_at": "2026-02-24T10:55:36.627994Z",
+    "status": "active"
+  },
+  {
+    "id": "96200eaf6b91",
+    "from_id": "6a21b40eaadb",
+    "to_id": "c8049256c81d",
+    "kind": "confusable",
+    "confidence": 0.9,
+    "reason": "Both words have similar meanings related to distortion or twisting, which may lead learners to mix them up.",
+    "created_at": "2026-02-24T10:55:39.874958Z",
+    "status": "active"
+  },
+  {
+    "id": "cd6f405d4e80",
+    "from_id": "6a21b40eaadb",
+    "to_id": "4e0455eab1ee",
+    "kind": "confusable",
+    "confidence": 0.9,
+    "reason": "Both words relate to the concept of distortion, and their meanings are closely aligned, which may lead learners to confuse them.",
+    "created_at": "2026-02-24T10:55:41.083360Z",
+    "status": "active"
+  },
+  {
+    "id": "1766bdae8a16",
+    "from_id": "9dd179ce3928",
+    "to_id": "ff342351a8c2",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words relate to intense states of excitement or enthusiasm, and their similar sounds may lead learners to mix them up.",
+    "created_at": "2026-02-24T10:55:42.422338Z",
+    "status": "active"
+  },
+  {
+    "id": "8edbe51665b8",
+    "from_id": "9dd179ce3928",
+    "to_id": "32a72afcc5d9",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Both words relate to indulgence, but 'revelry' often has a more positive connotation of celebration, while 'debauchery' implies excessive indulgence in immoral behavior.",
+    "created_at": "2026-02-24T10:55:44.880014Z",
+    "status": "active"
+  },
+  {
+    "id": "d428c18416c0",
+    "from_id": "185012bb5f30",
+    "to_id": "156991b02264",
+    "kind": "contrasts_with",
+    "confidence": 0.9,
+    "reason": "The words 'bust' and 'midriff' refer to different parts of the body, with 'bust' relating to the chest area and 'midriff' to the abdominal area, making them contrasting terms.",
+    "created_at": "2026-02-24T10:56:57.483120Z",
+    "status": "active"
+  },
+  {
+    "id": "be50d0ac89f2",
+    "from_id": "42c9cee2baae",
+    "to_id": "bed3d03f31a5",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'lounge on' and 'lounged on' are similar in spelling and pronunciation, and both relate to a state of relaxation, which may lead learners to mix them up.",
+    "created_at": "2026-02-24T10:56:58.902547Z",
+    "status": "active"
+  },
+  {
+    "id": "de4efc6f4cba",
+    "from_id": "b450c5089c31",
+    "to_id": "d35d25662c5e",
+    "kind": "shares_usage",
+    "confidence": 0.9,
+    "reason": "Both words relate to the concept of propriety and are used in contexts discussing behavior and manners.",
+    "created_at": "2026-02-24T10:57:00.040496Z",
+    "status": "active"
+  },
+  {
+    "id": "19131a1193ed",
+    "from_id": "2e887a595dad",
+    "to_id": "4532f19249f7",
+    "kind": "shares_usage",
+    "confidence": 0.9,
+    "reason": "Both words use 'flagrantly' in contexts that imply a bold or conspicuous manner, indicating a shared usage in describing actions.",
+    "created_at": "2026-02-26T01:07:54.234068Z",
+    "status": "active"
+  },
+  {
+    "id": "4ced77d462b5",
+    "from_id": "a287b370017e",
+    "to_id": "cbaa1f7e02ca",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words share similar meanings related to short duration, making them potentially confusable for learners.",
+    "created_at": "2026-02-26T08:09:54.976356Z",
+    "status": "active"
+  },
+  {
+    "id": "0a8412bf3090",
+    "from_id": "9f7666f62b1a",
+    "to_id": "f3b6f1d005ee",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both 'haggling' and 'verbal sparring' describe a type of confrontational or argumentative exchange, often involving back-and-forth communication. While 'haggling' is specific to price negotiation, 'verbal sparring' is broader and can apply to debates or arguments. They share a common theme of linguistic contest.",
+    "created_at": "2026-02-26T08:13:56.464097Z",
+    "status": "active"
+  },
+  {
+    "id": "d4090db673c7",
+    "from_id": "9f7666f62b1a",
+    "to_id": "7dad251c2c3f",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "While both involve negotiation over money, haggling is a legitimate bargaining process, whereas extorting is illegal coercion. They represent opposite approaches to obtaining money.",
+    "created_at": "2026-02-26T08:13:57.761387Z",
+    "status": "active"
+  },
+  {
+    "id": "517d748cb1b9",
+    "from_id": "9f7666f62b1a",
+    "to_id": "dc138b74b8ca",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both 'haggling' and 'sold off' relate to the process of buying and selling, often appearing in contexts discussing transactions and commerce.",
+    "created_at": "2026-02-26T08:14:00.121343Z",
+    "status": "active"
+  },
+  {
+    "id": "120ef8f27ee9",
+    "from_id": "21afaa6f4b03",
+    "to_id": "75c68fa26e52",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Unravel means to untangle or solve something that is complex or confusing, while snarls means to become tangled or knotted. These are opposite actions related to the state of being tangled or orderly.",
+    "created_at": "2026-02-27T02:35:07.762198Z",
+    "status": "active"
+  },
+  {
+    "id": "4f76e404f09a",
+    "from_id": "21afaa6f4b03",
+    "to_id": "eb631b915970",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'unravel' and 'rile' have similar spellings and pronunciations, making them potentially confusable for learners, despite having very different meanings.",
+    "created_at": "2026-02-27T02:35:10.464983Z",
+    "status": "active"
+  },
+  {
+    "id": "97dc89f572c5",
+    "from_id": "1e21e05e5ae4",
+    "to_id": "9b2a794ad8d4",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both words describe a state of being messy or disordered, often applied to appearance or clothing, and can be used in similar contexts.",
+    "created_at": "2026-02-27T02:35:11.941684Z",
+    "status": "active"
+  },
+  {
+    "id": "8ed2dd38d837",
+    "from_id": "1e21e05e5ae4",
+    "to_id": "fe6c5221cda5",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words start with 'un-' and have negative connotations related to appearance or behavior, making them potentially confusable for learners.",
+    "created_at": "2026-02-27T02:35:12.762447Z",
+    "status": "active"
+  },
+  {
+    "id": "3b8a16184a78",
+    "from_id": "1e21e05e5ae4",
+    "to_id": "05470d609c90",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Unkempt means not neat or tidy, while primped means to make oneself look neater or more attractive. These are direct opposites in terms of appearance and grooming.",
+    "created_at": "2026-02-27T02:35:13.350959Z",
+    "status": "active"
+  },
+  {
+    "id": "f264ec807a11",
+    "from_id": "1e21e05e5ae4",
+    "to_id": "22b687f3460d",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "Both words start with 'un-' and have a similar syllable count, making them potentially confusable for learners, despite having unrelated meanings.",
+    "created_at": "2026-02-27T02:35:14.104912Z",
+    "status": "active"
+  },
+  {
+    "id": "399cc3181034",
+    "from_id": "8fc2dd80c6ab",
+    "to_id": "0ea09f76eaf3",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both phrases describe movement around a location, often used in similar descriptive contexts, though the manner of movement differs.",
+    "created_at": "2026-02-27T02:35:18.317702Z",
+    "status": "active"
+  },
+  {
+    "id": "9b17e3223277",
+    "from_id": "d5d0d062e7de",
+    "to_id": "9b2a794ad8d4",
+    "kind": "confusable",
+    "confidence": 0.7,
+    "reason": "Both words describe a state of being uneven or disordered, and their similar sounds and meanings could lead to confusion for learners.",
+    "created_at": "2026-02-27T02:35:26.277161Z",
+    "status": "active"
+  },
+  {
+    "id": "e23d7160c903",
+    "from_id": "d5d0d062e7de",
+    "to_id": "c8049256c81d",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both words describe irregular or uneven surfaces or textures, often used to describe natural objects like trees or terrain.",
+    "created_at": "2026-02-27T02:35:28.222442Z",
+    "status": "active"
+  },
+  {
+    "id": "a074a2fb1f66",
+    "from_id": "dc732e6bb73e",
+    "to_id": "471ea0f0cdd5",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Forthcoming (直言不諱的) implies openness and honesty in communication, while brash (冒失) suggests impulsiveness and a lack of consideration, often leading to blunt or tactless speech. These are contrasting approaches to communication.",
+    "created_at": "2026-02-27T04:07:06.102396Z",
+    "status": "active"
+  },
+  {
+    "id": "7056919cef95",
+    "from_id": "dc732e6bb73e",
+    "to_id": "026f0f82c457",
+    "kind": "contrasts_with",
+    "confidence": 0.7,
+    "reason": "While 'forthcoming' can mean direct and open, 'pointed' often implies a sharp, critical, or even hurtful directness. They can be seen as contrasting ways of being direct.",
+    "created_at": "2026-02-27T04:07:07.029397Z",
+    "status": "active"
+  },
+  {
+    "id": "7b03d8691729",
+    "from_id": "da802b03481f",
+    "to_id": "735302c6acd3",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both words describe sounds, and 'clang' can be a component of a 'cacophony'. They are often used in descriptive contexts related to noise.",
+    "created_at": "2026-02-27T04:07:08.538172Z",
+    "status": "active"
+  },
+  {
+    "id": "ccdcf0e49c3c",
+    "from_id": "63ff383f1b57",
+    "to_id": "d35d25662c5e",
+    "kind": "confusable",
+    "confidence": 0.9,
+    "reason": "The words have very similar spellings and pronunciations, making them easy for learners to confuse.",
+    "created_at": "2026-02-27T04:07:12.027091Z",
+    "status": "active"
+  },
+  {
+    "id": "7c5847f3aa5b",
+    "from_id": "c0f5c0291a77",
+    "to_id": "b450c5089c31",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both words describe a sense of propriety and adherence to social norms, often used in similar contexts related to behavior and appearance.",
+    "created_at": "2026-02-27T04:07:15.833030Z",
+    "status": "active"
+  },
+  {
+    "id": "3eed01179a58",
+    "from_id": "c0f5c0291a77",
+    "to_id": "d35d25662c5e",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words describe a manner of behavior that is proper, restrained, and in accordance with social norms. They are often used in similar descriptive contexts related to etiquette and behavior.",
+    "created_at": "2026-02-27T04:07:16.489380Z",
+    "status": "active"
+  },
+  {
+    "id": "7500a4de5c86",
+    "from_id": "1061030358ed",
+    "to_id": "0d46cef8dbb1",
+    "kind": "contrasts_with",
+    "confidence": 0.7,
+    "reason": "While both relate to preventing speech, 'bit off' implies voluntary restraint, whereas 'gagged' implies an external force preventing speech, creating a contrast.",
+    "created_at": "2026-02-27T04:07:17.388550Z",
+    "status": "active"
+  },
+  {
+    "id": "5e966f019b8b",
+    "from_id": "29c402510d51",
+    "to_id": "bed3d03f31a5",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "The words describe opposite physical postures: 'hunkered' implies crouching low, while 'lounged on' implies relaxing in a reclined or stretched-out position.",
+    "created_at": "2026-02-27T04:07:20.126380Z",
+    "status": "active"
+  },
+  {
+    "id": "1cd7abaed3c2",
+    "from_id": "29c402510d51",
+    "to_id": "7a5e2cdc2461",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "Hunkered implies staying low and still, while scuttled forward implies quick, low movement. They describe contrasting actions, one of stillness and the other of rapid movement, making them useful to compare.",
+    "created_at": "2026-02-27T04:07:22.421743Z",
+    "status": "active"
+  },
+  {
+    "id": "ae7ba8868318",
+    "from_id": "b6486ab16afc",
+    "to_id": "d82aaecbf694",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words describe a leisurely or unhurried manner of movement, often implying a relaxed pace or attitude. They can be used in similar descriptive contexts.",
+    "created_at": "2026-02-27T04:07:23.228374Z",
+    "status": "active"
+  },
+  {
+    "id": "28a36de5b7dd",
+    "from_id": "b6486ab16afc",
+    "to_id": "7a5e2cdc2461",
+    "kind": "contrasts_with",
+    "confidence": 0.8,
+    "reason": "The words describe contrasting gaits: 'loped' implies a relaxed, bounding movement, while 'scuttled' implies a quick, hurried, and often awkward movement.",
+    "created_at": "2026-02-27T04:07:24.187161Z",
+    "status": "active"
+  },
+  {
+    "id": "5f0430d20b3b",
+    "from_id": "b6486ab16afc",
+    "to_id": "0ea09f76eaf3",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words describe a type of movement, specifically walking or moving around in a leisurely or informal manner. They can often be used in similar contexts to describe how someone or something is moving.",
+    "created_at": "2026-02-27T04:07:25.022014Z",
+    "status": "active"
+  },
+  {
+    "id": "cebb6d79c6f1",
+    "from_id": "300fff7ac671",
+    "to_id": "1f4e01ed6ec4",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both words are related to the context of a robbery or theft. A 'heist' is the robbery itself, and 'fencing' is the act of selling stolen goods, often a subsequent step in the criminal activity initiated by a heist.",
+    "created_at": "2026-02-27T04:07:25.713058Z",
+    "status": "active"
+  },
+  {
+    "id": "d5823d65a4d4",
+    "from_id": "5498ebda7737",
+    "to_id": "dc138b74b8ca",
+    "kind": "shares_usage",
+    "confidence": 0.7,
+    "reason": "Both phrases are past tense phrasal verbs indicating a completed action, often used in similar narrative contexts.",
+    "created_at": "2026-02-27T04:07:29.428775Z",
+    "status": "active"
+  },
+  {
+    "id": "21613d5a4ce0",
+    "from_id": "fbfe4b60f9e3",
+    "to_id": "026f0f82c457",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'pungent' and 'pointed' have similar spellings and pronunciations, which can lead to confusion for learners, especially when considering their meanings related to sharpness or intensity.",
+    "created_at": "2026-02-27T04:07:37.659864Z",
+    "status": "active"
+  },
+  {
+    "id": "08161784aa1c",
+    "from_id": "e4d7b95e8a17",
+    "to_id": "a1b2869da719",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'minions' and 'minstrels' have very similar spellings and pronunciations, making them easy for learners to confuse. While their meanings are distinct ('servants' vs. 'singers/musicians'), the phonetic similarity is the primary learning concern.",
+    "created_at": "2026-02-27T04:07:41.074178Z",
+    "status": "active"
+  },
+  {
+    "id": "f5b719d9a634",
+    "from_id": "be76e8a2af45",
+    "to_id": "03a709d29b70",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'clips' and 'clasp' have very similar spellings and pronunciations, making them easy for learners to confuse. While their meanings are distinct (small change vs. a fastener), the phonetic similarity is the primary learning concern.",
+    "created_at": "2026-02-27T04:07:41.993573Z",
+    "status": "active"
+  },
+  {
+    "id": "13041887dfab",
+    "from_id": "bdc57edd6c96",
+    "to_id": "c8049256c81d",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'snagged' and 'gnarled' have similar spellings and pronunciations, making them potentially confusable for learners, despite having different meanings.",
+    "created_at": "2026-02-27T04:07:43.569240Z",
+    "status": "active"
+  },
+  {
+    "id": "59363bbd9d2d",
+    "from_id": "bdc57edd6c96",
+    "to_id": "75c68fa26e52",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'snagged' and 'snarls' have similar spellings and pronunciations, making them potentially confusable for learners, especially given their distinct meanings related to catching/getting stuck and tangling, respectively.",
+    "created_at": "2026-02-27T04:07:44.474600Z",
+    "status": "active"
+  },
+  {
+    "id": "2ebf6e006156",
+    "from_id": "bdc57edd6c96",
+    "to_id": "0d46cef8dbb1",
+    "kind": "confusable",
+    "confidence": 0.9,
+    "reason": "The words 'snagged' and 'gagged' have very similar spellings and pronunciations, making them easy for learners to confuse. While their meanings are distinct, the phonetic similarity is a strong indicator for a learning relationship.",
+    "created_at": "2026-02-27T04:07:45.291285Z",
+    "status": "active"
+  },
+  {
+    "id": "4d67964beb0e",
+    "from_id": "3be375c3e1ea",
+    "to_id": "17ecb8b82414",
+    "kind": "shares_usage",
+    "confidence": 0.8,
+    "reason": "Both 'fawn over' and 'gush over' are phrasal verbs used to describe expressing strong admiration or affection towards someone, often in a public or demonstrative way. They share a similar grammatical structure and are often used in similar contexts when describing someone's enthusiastic praise or attention.",
+    "created_at": "2026-02-27T04:07:47.332593Z",
+    "status": "active"
+  },
+  {
+    "id": "2164b00f2f27",
+    "from_id": "282923f75e20",
+    "to_id": "8f408f93353f",
+    "kind": "confusable",
+    "confidence": 0.8,
+    "reason": "The words 'infatuated' and 'saturated' have similar spellings and pronunciations, making them potentially confusable for learners, despite having different meanings.",
+    "created_at": "2026-02-27T04:07:50.049823Z",
+    "status": "active"
+  }
+]
