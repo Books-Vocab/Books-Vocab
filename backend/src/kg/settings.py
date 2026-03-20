@@ -81,6 +81,7 @@ def load_settings() -> KGSettings:
     return KGSettings(
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
+        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
