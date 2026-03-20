@@ -25,6 +25,7 @@ struct BooksBrowserApp: App {
     let iCloudDownloadManager = ICloudDownloadManager()
     let networkMonitor = NetworkMonitor.shared
     let syncCoordinator = SyncCoordinator()
+    let toastCoordinator = AppToastCoordinator()
     let startupFailure: AppStartupFailure?
 
     init() {
@@ -144,6 +145,14 @@ struct BooksBrowserApp: App {
                     .environment(\.quotaStore, QuotaStore.shared)
                     .environment(\.speechService, SpeechService.shared)
                     .environment(\.readerSettings, .shared)
+                    .environment(\.toastCoordinator, toastCoordinator)
+                    .overlay(alignment: .top) {
+                        if let toast = toastCoordinator.current {
+                            AppToast(item: toast, onDismiss: { toastCoordinator.dismiss() })
+                                .transition(.bannerReveal)
+                                .zIndex(999)
+                        }
+                    }
             }
             .environmentObject(appearanceStore)
         }
