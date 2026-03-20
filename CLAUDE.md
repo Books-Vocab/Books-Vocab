@@ -114,12 +114,18 @@ Safe entrypoint：`./ops/devops_kg_safe.sh`
 
 | 主題 | 路徑 |
 |------|------|
-| backend dev | `docs/backend-dev.md` |
-| deploy / env / migration | `docs/deploy.md` |
-| incidents / 502 / caddy | `docs/debug.md` |
-| iOS build / xcode | `docs/ios-dev.md` |
-| UI design | `docs/ui-design.md` |
-| architecture / sync | `docs/architecture.md` |
+| backend dev | `docs/dev/backend-dev.md` |
+| deploy / env / migration | `docs/dev/deploy.md` |
+| incidents / 502 / caddy | `docs/dev/debug.md` |
+| iOS build / xcode | `docs/dev/ios-dev.md` |
+| UI design | `docs/dev/ui-design.md` |
+| architecture / sync | `docs/dev/architecture.md` |
 | UI component inventory | `docs/references/ui_component_pattern_inventory.md` |
 | UI review checklist | `docs/references/ui_review_checklist.md` |
 | UI state matrix | `docs/references/ui_state_matrix.md` |
+
+## Doc Freshness 規則
+
+- 修改任何有 `doc-meta` 的文件時，在同一 commit 前執行 `git rev-parse --short HEAD`，將結果填入 `verified_against`
+- 讀到 `tier: snapshot` 的文件時，執行 `ops/gen_ios_baseline.sh` 再生，而非手動編輯
+- 任何涉及 iOS 大規模重構的 PR 合併後，執行 `ops/gen_ios_baseline.sh` 更新快照
