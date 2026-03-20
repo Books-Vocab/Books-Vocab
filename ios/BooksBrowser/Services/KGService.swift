@@ -199,12 +199,19 @@ final class KGService: KGServing, LocalDataClearing {
         request.httpBody = body
 
         var lastError: Error?
+        var retryAfterOverride: TimeInterval? = nil
 
         for attempt in 1...retryPolicy.maxAttempts {
             do {
                 if attempt > 1 {
                     onRetry?(attempt - 1, retryPolicy.maxAttempts - 1)
-                    let delay = retryPolicy.baseDelay * pow(2.0, Double(attempt - 2))
+                    let delay: TimeInterval
+                    if let override = retryAfterOverride {
+                        delay = override
+                        retryAfterOverride = nil
+                    } else {
+                        delay = retryPolicy.baseDelay * pow(2.0, Double(attempt - 2))
+                    }
                     try await Task.sleep(nanoseconds: UInt64(delay * 1_000_000_000))
                 }
 
@@ -235,7 +242,15 @@ final class KGService: KGServing, LocalDataClearing {
                         statusCode: httpResponse.statusCode,
                         detail: String(data: data, encoding: .utf8) ?? "\(method) \(path) failed"
                     )
-                    if attempt < retryPolicy.maxAttempts { continue }
+                    if attempt < retryPolicy.maxAttempts {
+                        // 429: 優先使用伺服器的 Retry-After header（秒數格式，cap 60s）
+                        if httpResponse.statusCode == 429,
+                           let retryAfterValue = httpResponse.value(forHTTPHeaderField: "Retry-After"),
+                           let seconds = TimeInterval(retryAfterValue) {
+                            retryAfterOverride = min(seconds, 60)
+                        }
+                        continue
+                    }
                 }
 
                 return (data, httpResponse)
