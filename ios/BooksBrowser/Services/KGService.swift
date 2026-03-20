@@ -174,7 +174,8 @@ final class KGService: KGServing, LocalDataClearing {
         retryPolicy: RetryPolicy = .default,
         onRetry: ((Int, Int) -> Void)? = nil
     ) async throws -> (Data, HTTPURLResponse) {
-        let token = try await currentAuthToken()
+        var token = try await currentAuthToken()
+        var didRefreshToken = false
 
         guard var components = URLComponents(
             url: baseURL.appendingPathComponent(path),
@@ -214,6 +215,17 @@ final class KGService: KGServing, LocalDataClearing {
                 }
 
                 if httpResponse.statusCode == 401 {
+                    // 嘗試刷新 token 一次；若已刷新過仍 401 則放棄
+                    if !didRefreshToken {
+                        didRefreshToken = true
+                        AppLog.kg.info("401 received for \(path), attempting token refresh")
+                        let newToken = try await currentAuthToken()
+                        if newToken != token {
+                            token = newToken
+                            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+                            continue
+                        }
+                    }
                     throw KGError.unauthorized
                 }
 
