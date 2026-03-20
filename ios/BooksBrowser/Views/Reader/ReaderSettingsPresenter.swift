@@ -487,6 +487,8 @@ private extension ReaderSettingsPresenter {
             return "clean"
         case .mono:
             return "coded"
+        @unknown default:
+            return bindings.font.wrappedValue.rawValue
         }
     }
 }
