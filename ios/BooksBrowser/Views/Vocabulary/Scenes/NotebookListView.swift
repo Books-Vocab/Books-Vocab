@@ -94,7 +94,7 @@ struct NotebookListView: View {
                 .padding(.horizontal, skin.metrics.pageHorizontalInset)
             }
             .background(skin.palette.pageBackground)
-            .navigationTitle("生詞庫".localized)
+            .navigationTitle("單字本".localized)
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .topBarTrailing) {

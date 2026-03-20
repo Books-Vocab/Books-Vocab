@@ -30,7 +30,7 @@ struct VocabularyListView: View {
     @State var coordinator = VocabularyListCoordinator()
 
     var notebookName: String {
-        notebooks.first(where: { $0.remoteId == notebookId })?.name ?? "生詞庫".localized
+        notebooks.first(where: { $0.remoteId == notebookId })?.name ?? "單字本".localized
     }
 
     init(notebookId: String = "default") {
