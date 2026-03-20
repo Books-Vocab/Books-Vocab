@@ -72,14 +72,12 @@ extension ReaderView {
 
     @ViewBuilder
     var settingsPanelContent: some View {
-        if viewConfiguration.translationPanelMode == .vocab {
-            ReaderSettingsPanel(
-                settings: settings,
-                onDismiss: {
-                    closeOverlay(.settings)
-                }
-            )
-        }
+        ReaderSettingsPanel(
+            settings: settings,
+            onDismiss: {
+                closeOverlay(.settings)
+            }
+        )
     }
 
     @ViewBuilder
@@ -113,7 +111,6 @@ extension ReaderView {
                     closeOverlay(.translation)
                 }
             )
-            .environment(\.readerPanelMode, viewConfiguration.translationPanelMode)
         }
     }
 }
