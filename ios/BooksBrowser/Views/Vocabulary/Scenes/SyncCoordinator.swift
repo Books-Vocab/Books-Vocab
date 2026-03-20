@@ -101,7 +101,7 @@ final class SyncCoordinator: SyncCoordinating {
                         entry.prepareForRetryAttempt()
                         do {
                             try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
-                            if Task.isCancelled { break }
+                            // 遠端已刪除 → 必須同步刪本地，不可在此中斷
                             modelContext.delete(entry)
                             deleted += 1
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)

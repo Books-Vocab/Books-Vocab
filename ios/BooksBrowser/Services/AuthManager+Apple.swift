@@ -106,6 +106,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
             return UIWindow(windowScene: scene)
         }
 
-        fatalError("No window scene found to present ASAuthorizationController")
+        AppLog.auth.error("No window scene found for ASAuthorizationController — returning bare UIWindow")
+        return UIWindow()
     }
 }

@@ -46,7 +46,7 @@ struct BookshelfView: View {
 
                 if coordinator.isLoading {
                     loadingOverlay
-                        .transition(.opacity)
+                        .transition(.overlayFade)
                 }
             }
             .navigationTitle("書庫".localized)
@@ -312,7 +312,7 @@ struct BookCard: View {
             switch state {
             case .downloading(let progress):
                 ICloudProgressBadge(progress: progress)
-                    .padding(6)
+                    .padding(AppBookshelfMetrics.badgePadding)
             case .notDownloaded:
                 cloudIconBadge
             case .current:
@@ -326,10 +326,10 @@ struct BookCard: View {
     private var cloudIconBadge: some View {
         Image(systemName: "icloud.and.arrow.down")
             .font(AppFonts.caption2(weight: .semibold))
-            .foregroundStyle(.white)
-            .padding(6)
+            .foregroundStyle(AppBookshelfMetrics.badgeForeground)
+            .padding(AppBookshelfMetrics.badgePadding)
             .background(.ultraThinMaterial, in: Circle())
-            .padding(6)
+            .padding(AppBookshelfMetrics.badgePadding)
     }
 
     private func progressBar(_ progress: Double) -> some View {
@@ -357,18 +357,19 @@ struct BookCard: View {
 
 private struct ICloudProgressBadge: View {
     let progress: Double
+    private let foreground = AppBookshelfMetrics.badgeForeground
 
     var body: some View {
         ZStack {
             Circle()
-                .stroke(.white.opacity(0.3), lineWidth: 2.5)
+                .stroke(foreground.opacity(0.3), lineWidth: 2.5)
             Circle()
                 .trim(from: 0, to: progress)
-                .stroke(.white, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
+                .stroke(foreground, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
             Text("\(Int(progress * 100))")
                 .font(AppFonts.monoNumbers(size: 8))
-                .foregroundStyle(.white)
+                .foregroundStyle(foreground)
         }
         .frame(width: 32, height: 32)
         .background(.ultraThinMaterial, in: Circle())
