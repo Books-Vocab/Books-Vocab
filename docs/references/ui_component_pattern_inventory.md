@@ -48,9 +48,11 @@ Scope: `ios/BooksBrowser`
 - `AppActionButtonStyle`
 - `AppCard`
 - `AppTag`
+- `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 是全畫面頂端固定欄而非 panel 內 transient 訊息
+- `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 
 責任：
-- app-wide card / empty state / message / tab / search / row / action chrome
+- app-wide card / empty state / message / tab / search / row / action chrome / banner / sheet presentation
 
 不該做的事：
 - feature-specific 視覺語言不應直接塞回這層
@@ -82,9 +84,10 @@ Scope: `ios/BooksBrowser`
 - `VocabStatusHero`
 - `VocabTimelineRow`
 - `VocabActionButtonStyle`
+- `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
 
 責任：
-- vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row
+- vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層
 
 ### Reader Layer
 
@@ -106,10 +109,12 @@ Scope: `ios/BooksBrowser`
 - `ReaderSettingsPanelPresenter`
 - `ReaderSettingsVocabPresenter`
 - `ReaderViewPresenter`
+- `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter，以 variant enum 分派 glass / vocab 佈局，取代呼叫端直接判斷兩條分支
 
 責任：
 - reader glass / vocab 兩條 visual branch
 - reader loading / overlay / header / translation / settings panel
+- variant enum 分派，隔離呼叫端對視覺分支的感知
 
 目前狀態：
 - motion 已大幅收斂
@@ -138,6 +143,23 @@ Scope: `ios/BooksBrowser`
 目前狀態：
 - 已接入 shared motion
 - 狀態訊息開始接入 shared state card 語法
+
+### Models / Tokens Layer
+
+主要檔案：
+- `ios/BooksBrowser/Networking/RetryPolicy.swift`
+- `ios/BooksBrowser/UIComponents/AppMotion.swift`
+
+核心元件 / token：
+- `RetryPolicy` — 網路重試策略，實作指數退避（exponential backoff）+ Retry-After header 解析；所有 authenticated request 統一使用，不各自硬編 retry 邏輯
+- Animation convenience methods — `View.animatePhaseChange()`、`View.animateFeedback()` 等擴充，將常用 `withAnimation` 組合收斂為語意化呼叫
+
+責任：
+- 跨層共用的網路策略 model
+- 動畫呼叫語法糖，確保 motion token 使用一致
+
+不該做的事：
+- 不應在此層持有任何 SwiftUI View 或 `@State`
 
 ---
 
