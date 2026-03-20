@@ -1,3 +1,9 @@
+<!-- doc-meta
+tier: reference
+scope:
+  - backend/src/kg
+verified_against: 4eaa92b
+-->
 # Card 欄位格式規範
 
 ## 欄位說明
