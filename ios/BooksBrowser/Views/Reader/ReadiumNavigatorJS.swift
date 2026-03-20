@@ -409,16 +409,17 @@ enum ReadiumNavigatorJS {
 
         function findContextContainer(startEl) {
             var container = startEl;
-            while (container && container.tagName !== 'P' && container.tagName !== 'DIV'
-                   && container.tagName !== 'SECTION' && container.tagName !== 'BODY') {
+            while (container) {
+                var tag = (container.tagName || '').toUpperCase();
+                if (tag === 'P' || tag === 'DIV' || tag === 'SECTION' || tag === 'BODY') return container;
                 container = container.parentElement;
             }
-            return container;
+            return null;
         }
 
         function extractContextFromElement(startEl, word) {
             var container = findContextContainer(startEl);
-            var fullText = container ? container.textContent : word;
+            var fullText = container ? container.textContent : (startEl ? startEl.textContent : word);
             if (fullText.length <= 500) return fullText.trim();
             var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
             if (wordPos < 0) wordPos = Math.floor(fullText.length / 2);
