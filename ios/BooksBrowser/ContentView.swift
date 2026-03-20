@@ -39,7 +39,7 @@ struct ContentView: View {
                 Tab("書庫".localized, systemImage: "books.vertical") {
                     BookshelfView()
                 }
-                Tab("生詞庫".localized, systemImage: "character.book.closed") {
+                Tab("單字本".localized, systemImage: "character.book.closed") {
                     NotebookListView()
                 }
                 Tab("總覽".localized, systemImage: "chart.bar") {

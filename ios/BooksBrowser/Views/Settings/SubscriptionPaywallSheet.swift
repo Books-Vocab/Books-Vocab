@@ -23,7 +23,7 @@ struct SubscriptionPaywallSheet: View {
                 tone: vocabSkin.palette.success
             ),
             .init(
-                title: "知識庫同步與跨裝置狀態".localized,
+                title: "雲端同步與跨裝置狀態".localized,
                 description: nil,
                 icon: "checkmark.circle.fill",
                 tone: vocabSkin.palette.success
@@ -46,7 +46,7 @@ struct SubscriptionPaywallSheet: View {
                 tone: vocabSkin.palette.accent
             ),
             .init(
-                title: "知識庫同步與跨裝置狀態".localized,
+                title: "雲端同步與跨裝置狀態".localized,
                 description: "生詞與閱讀進度跨裝置同步".localized,
                 icon: "sparkles",
                 tone: vocabSkin.palette.accent
@@ -325,7 +325,7 @@ struct SubscriptionPaywallSheet: View {
     }
 
     private var paywallSummaryText: String {
-        return L10n.string("解鎖閱讀器 AI、知識庫同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
+        return L10n.string("解鎖閱讀器 AI、雲端同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
     }
 
     private var priceLine: String {
