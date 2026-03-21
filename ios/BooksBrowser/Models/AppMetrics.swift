@@ -137,6 +137,13 @@ enum AppMotion {
     /// 拖拽中卡片跟手（極低延遲、高阻尼，貼合手指）
     static let swipeTrackingSpring = Animation.interactiveSpring(response: 0.14, dampingFraction: 0.86)
 
+    // --- Visual polish tokens ---
+    static let pressFeedback: Animation = .spring(response: 0.25, dampingFraction: 0.65)
+    static let contentReveal: Animation = .spring(response: 0.35, dampingFraction: 0.82)
+    static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
+    static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
+    static let swipeRowSnap: Animation = .spring(response: 0.3, dampingFraction: 0.75)
+
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
     static let panelSnapBack = standardSpring
@@ -168,6 +175,8 @@ extension AnyTransition {
     static let bookshelfCard: AnyTransition = .opacity.combined(with: .scale(scale: 0.96))
     /// 列表項目簡潔過渡
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
+    static let listInsert: AnyTransition = .opacity.combined(with: .offset(y: 8))
+    static let listRemove: AnyTransition = .opacity
 }
 
 enum TodayReviewMetrics {
