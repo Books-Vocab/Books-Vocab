@@ -103,7 +103,7 @@ struct KGVocabPresenter: View {
                                         }
                                 }
                                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                                .swipeActions(
+                                .vocabSwipeActions(
                                     leading: {
                                         Button {
                                             onArchiveRow?(item.id)
@@ -118,6 +118,9 @@ struct KGVocabPresenter: View {
                                     },
                                     trailing: {
                                         Button {
+                                            // Opens the word detail sheet for a quick in-place review.
+                                            // Placeholder: future iteration will invoke spaced-repetition
+                                            // scheduling directly from this action.
                                             onQuickReviewRow?(item.id)
                                         } label: {
                                             Label("複習", systemImage: "arrow.clockwise")

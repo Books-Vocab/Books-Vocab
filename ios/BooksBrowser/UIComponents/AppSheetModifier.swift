@@ -18,27 +18,31 @@ private struct AppSheetModifier: ViewModifier {
     @State private var contentVisible = false
 
     func body(content: Content) -> some View {
-        Group {
-            switch preset {
-            case .large:
-                content
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.visible)
-                    .presentationContentInteraction(.scrolls)
-            case .medium:
-                content.presentationDetents([.medium])
-            case .adaptive:
-                content
-                    .presentationDetents([.medium, .large])
-                    .presentationDragIndicator(.visible)
+        // Apply opacity/scale to the content BEFORE presentation modifiers so that
+        // presentationDetents and related modifiers remain at the outermost position
+        // and are not inadvertently broken by the animation chain.
+        let animated = content
+            .opacity(contentVisible ? 1 : 0)
+            .scaleEffect(contentVisible ? 1 : 0.97)
+            .onAppear {
+                withAnimation(AppMotion.sheetContentAppear) {
+                    contentVisible = true
+                }
             }
-        }
-        .opacity(contentVisible ? 1 : 0)
-        .scaleEffect(contentVisible ? 1 : 0.97)
-        .onAppear {
-            withAnimation(AppMotion.sheetContentAppear) {
-                contentVisible = true
-            }
+
+        switch preset {
+        case .large:
+            animated
+                .presentationDetents([.large])
+                .presentationDragIndicator(.visible)
+                .presentationContentInteraction(.scrolls)
+        case .medium:
+            animated
+                .presentationDetents([.medium])
+        case .adaptive:
+            animated
+                .presentationDetents([.medium, .large])
+                .presentationDragIndicator(.visible)
         }
     }
 }
