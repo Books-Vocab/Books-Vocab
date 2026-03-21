@@ -85,6 +85,7 @@ extension ReaderTranslationHandler {
                     translationStatus = nil
                     translationErrorMessage = nil
                 }
+                await Task.yield()
                 if let selection = wordSelection {
                     autoSaveToVocabulary(
                         selection: selection,
@@ -151,6 +152,7 @@ extension ReaderTranslationHandler {
                     translationErrorMessage = nil
                 }
                 guard !Task.isCancelled else { return }
+                await Task.yield()
                 autoSaveToVocabulary(
                     selection: selection,
                     result: result,
