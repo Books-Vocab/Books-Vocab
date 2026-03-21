@@ -111,11 +111,17 @@ struct SwipeActionRow<Leading: View, Trailing: View>: ViewModifier {
                             }
                         }
                 )
-                .onTapGesture {
+                // Overlay captures taps ONLY when row is open, preventing conflict
+                // with WordRow's own onTapGesture.
+                .overlay {
                     if offset != 0 {
-                        withAnimation(AppMotion.swipeRowSnap) {
-                            offset = 0
-                        }
+                        Color.clear
+                            .contentShape(Rectangle())
+                            .onTapGesture {
+                                withAnimation(AppMotion.swipeRowSnap) {
+                                    offset = 0
+                                }
+                            }
                     }
                 }
         }
@@ -124,7 +130,9 @@ struct SwipeActionRow<Leading: View, Trailing: View>: ViewModifier {
 }
 
 extension View {
-    func swipeActions(
+    /// Vocab-specific swipe-to-reveal actions. Named `vocabSwipeActions` to avoid
+    /// shadowing the system `swipeActions(_:allowsFullSwipe:content:)` API.
+    func vocabSwipeActions(
         @ViewBuilder leading: () -> some View,
         @ViewBuilder trailing: () -> some View
     ) -> some View {
