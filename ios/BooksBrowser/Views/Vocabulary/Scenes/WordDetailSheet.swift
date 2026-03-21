@@ -5,6 +5,7 @@ struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
+    @State private var presenterState: WordDetailPresenter.State?
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -24,14 +25,24 @@ struct WordDetailSheet: View {
     }
 
     var body: some View {
-        WordDetailPresenter(
-            state: presenterState,
-            wrapInNavigation: wrapInNavigation,
-            onClose: wrapInNavigation ? { dismiss() } : nil,
-            onEdit: wrapInNavigation ? { isEditing = true } : nil,
-            onLinkTapped: handleLinkTap,
-            onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() }
-        )
+        Group {
+            if let presenterState {
+                WordDetailPresenter(
+                    state: presenterState,
+                    wrapInNavigation: wrapInNavigation,
+                    onClose: wrapInNavigation ? { dismiss() } : nil,
+                    onEdit: wrapInNavigation ? { isEditing = true } : nil,
+                    onLinkTapped: handleLinkTap,
+                    onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() }
+                )
+            } else {
+                ProgressView()
+            }
+        }
+        .task(id: entry.id) {
+            let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
+            presenterState = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
+        }
         .overlay {
             if wrapInNavigation {
                 LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
@@ -46,12 +57,9 @@ struct WordDetailSheet: View {
         externalLinkedCardStack ?? $localLinkedCardStack
     }
 
-    private var presenterState: WordDetailPresenter.State {
-        WordDetailPresentation.state(for: entry, in: allEntries)
-    }
-
     private func handleLinkTap(_ link: KGCardLinkSummary) {
-        guard let target = entry.linkedEntry(for: link, in: allEntries) else { return }
+        let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
+        guard let target = entry.linkedEntry(for: link, lookup: lookup) else { return }
         linkedCardStack.wrappedValue.append(target)
     }
 }

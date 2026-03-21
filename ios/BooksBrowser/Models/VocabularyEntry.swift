@@ -71,6 +71,8 @@ final class VocabularyEntry {
     var bookId: UUID?
     var isDemoEntry: Bool = false
 
+    @Transient var _cachedGraphLinks: [String: [KGCardLinkSummary]]?
+
     /// Sync status convenience
     var syncState: VocabularySyncState {
         get { VocabularySyncState(rawValue: syncStatus) ?? .pending }
@@ -160,10 +162,20 @@ extension VocabularyEntry {
         return remoteExamples
     }
 
+    private static let regexCache = NSCache<NSString, NSRegularExpression>()
+
+    private static func cachedRegex(pattern: String, options: NSRegularExpression.Options = .caseInsensitive) -> NSRegularExpression? {
+        let key = pattern as NSString
+        if let cached = regexCache.object(forKey: key) { return cached }
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: options) else { return nil }
+        regexCache.setObject(regex, forKey: key)
+        return regex
+    }
+
     /// 在 context 純文字中為 word 加上 **markdown** 標記（模擬 server 的 _build_example 邏輯）
     private func markWordInContext(_ text: String) -> String {
         let escaped = NSRegularExpression.escapedPattern(for: word)
-        if let regex = try? NSRegularExpression(pattern: escaped, options: .caseInsensitive),
+        if let regex = Self.cachedRegex(pattern: escaped),
            let match = regex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
             let ns = text as NSString
             let matched = ns.substring(with: match.range)
@@ -175,7 +187,7 @@ extension VocabularyEntry {
             let stem = String(firstWord.prefix(min(firstWord.count, 6)))
             let stemEsc = NSRegularExpression.escapedPattern(for: stem)
             let stemPat = "(?<![\\w\\p{L}])\(stemEsc)\\w*(?![\\w\\p{L}])"
-            if let stemRegex = try? NSRegularExpression(pattern: stemPat, options: .caseInsensitive),
+            if let stemRegex = Self.cachedRegex(pattern: stemPat),
                let match = stemRegex.firstMatch(in: text, range: NSRange(location: 0, length: (text as NSString).length)) {
                 let ns = text as NSString
                 let matched = ns.substring(with: match.range)
@@ -187,10 +199,14 @@ extension VocabularyEntry {
 
     var graphLinksByKind: [String: [KGCardLinkSummary]] {
         get {
+            if let cached = _cachedGraphLinks { return cached }
             guard let data = graphLinksJSON.data(using: .utf8) else { return [:] }
-            return (try? JSONDecoder().decode([String: [KGCardLinkSummary]].self, from: data)) ?? [:]
+            let decoded = (try? JSONDecoder().decode([String: [KGCardLinkSummary]].self, from: data)) ?? [:]
+            _cachedGraphLinks = decoded
+            return decoded
         }
         set {
+            _cachedGraphLinks = newValue
             guard
                 let data = try? JSONEncoder().encode(newValue),
                 let json = String(data: data, encoding: .utf8)
