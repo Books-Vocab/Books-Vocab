@@ -104,6 +104,16 @@ def create_notebook_store(user_dir: Path) -> NotebookStore:
     return _get_cached(key, lambda: NotebookStore(user_dir / "notebooks.db"))
 
 
+_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+
+
+def _require_gemini_api_key() -> str:
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
+    return api_key
+
+
 _gemini_client = None
 
 
@@ -113,12 +123,9 @@ def create_gemini_client():
 
     if _gemini_client is not None:
         return _gemini_client
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
     _gemini_client = OpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=_require_gemini_api_key(),
+        base_url=_GEMINI_BASE_URL,
     )
     return _gemini_client
 
@@ -137,12 +144,9 @@ def create_async_gemini_client():
 
     if _async_gemini_client is not None:
         return _async_gemini_client
-    api_key = os.getenv("GEMINI_API_KEY")
-    if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
     _async_gemini_client = AsyncOpenAI(
-        api_key=api_key,
-        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+        api_key=_require_gemini_api_key(),
+        base_url=_GEMINI_BASE_URL,
     )
     return _async_gemini_client
 
