@@ -7,6 +7,9 @@ plan/
 *.xcworkspace/xcuserdata/
 *.xcodeproj/xcuserdata/
 
+# Runtime data
+backend/data/*.db
+
 # Python cache in root if any
 __pycache__/
 .pytest_cache/

@@ -299,8 +299,8 @@ class CardRenderer:
             fields[FIELDS["pos"]] = {"id": FIELDS["pos"], "value": card.pos}
 
         if card.difficulty is not None:
-             tier = get_tier(card.content)
-             fields[FIELDS["difficulty"]] = {"id": FIELDS["difficulty"], "value": tier.tag}
+            tier = get_tier(card.content)
+            fields[FIELDS["difficulty"]] = {"id": FIELDS["difficulty"], "value": tier.tag}
 
         if card.examples:
             # Example with highlighting (not cloze)
