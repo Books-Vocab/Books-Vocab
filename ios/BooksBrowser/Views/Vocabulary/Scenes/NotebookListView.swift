@@ -61,6 +61,7 @@ struct NotebookListView: View {
                                 )
                             }
                             .buttonStyle(.pressable)
+                            .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                             .contextMenu {
                                 Button {
                                     setActiveNotebook(notebook.remoteId)

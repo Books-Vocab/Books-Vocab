@@ -101,6 +101,7 @@ struct KGVocabPresenter: View {
                                 }
                                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
                                 .animateSpring(selectionState.isSelecting)
+                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
