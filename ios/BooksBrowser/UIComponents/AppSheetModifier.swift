@@ -15,21 +15,30 @@ enum AppSheetPreset {
 
 private struct AppSheetModifier: ViewModifier {
     let preset: AppSheetPreset
+    @State private var contentVisible = false
 
     func body(content: Content) -> some View {
-        switch preset {
-        case .large:
-            content
-                .presentationDetents([.large])
-                .presentationDragIndicator(.visible)
-                .presentationContentInteraction(.scrolls)
-        case .medium:
-            content
-                .presentationDetents([.medium])
-        case .adaptive:
-            content
-                .presentationDetents([.medium, .large])
-                .presentationDragIndicator(.visible)
+        Group {
+            switch preset {
+            case .large:
+                content
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.visible)
+                    .presentationContentInteraction(.scrolls)
+            case .medium:
+                content.presentationDetents([.medium])
+            case .adaptive:
+                content
+                    .presentationDetents([.medium, .large])
+                    .presentationDragIndicator(.visible)
+            }
+        }
+        .opacity(contentVisible ? 1 : 0)
+        .scaleEffect(contentVisible ? 1 : 0.97)
+        .onAppear {
+            withAnimation(AppMotion.sheetContentAppear) {
+                contentVisible = true
+            }
         }
     }
 }
