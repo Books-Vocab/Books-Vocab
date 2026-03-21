@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 import os
 
 import GoogleSignIn
@@ -170,6 +171,9 @@ struct BooksBrowserApp: App {
                 }
                 .task {
                     iCloudDownloadManager.startMonitoring()
+                }
+                .task {
+                    try? Tips.configure()
                 }
                 .task {
                     if !authManager.isLoggedIn {
