@@ -56,8 +56,16 @@ struct ReaderVocabularyContext {
         entry.bookId = book.id
         entry.notebookId = notebookId
         modelContext.insert(entry)
-        modelContext.safeSave()
+        deferSave()
         return true
+    }
+
+    /// Schedule save on next run loop iteration to avoid blocking the current animation frame.
+    private func deferSave() {
+        let ctx = modelContext
+        DispatchQueue.main.async {
+            ctx.safeSave()
+        }
     }
 
     static func lookedUpWords(from vocabulary: [VocabularyEntry]) -> [String] {
