@@ -53,47 +53,49 @@ struct WordDetailPresenter: View {
 
     private var detailContentScroll: some View {
         ScrollView {
-            VocabCard(padding: 0) {
-                VStack(alignment: .leading, spacing: 0) {
-                    CardDocumentView(document: state.card.document)
+            VStack(alignment: .leading, spacing: 0) {
+                VocabCard(padding: 0) {
+                    VStack(alignment: .leading, spacing: 0) {
+                        CardDocumentView(document: state.card.document)
 
-                    if !state.card.forms.isEmpty {
-                        CardSectionDivider()
-                        CardFormsSection(
-                            forms: state.card.forms,
-                            rootForm: state.rootForm,
-                            colorScheme: colorScheme
-                        )
-                        .padding(vocabSkin.metrics.cardBlockPadding)
-                    }
+                        if !state.card.forms.isEmpty {
+                            CardSectionDivider()
+                            CardFormsSection(
+                                forms: state.card.forms,
+                                rootForm: state.rootForm,
+                                colorScheme: colorScheme
+                            )
+                            .padding(vocabSkin.metrics.cardBlockPadding)
+                        }
 
-                    if !state.card.linkGroups.isEmpty {
+                        if !state.card.linkGroups.isEmpty {
+                            CardSectionDivider()
+                            linksSection
+                                .padding(vocabSkin.metrics.cardBlockPadding)
+                        }
+
+                        if let reviewProgress = state.reviewProgress {
+                            CardSectionDivider()
+                            reviewProgressSection(reviewProgress)
+                                .padding(vocabSkin.metrics.cardBlockPadding)
+                        }
+
                         CardSectionDivider()
-                        linksSection
+                        metadataFooter
                             .padding(vocabSkin.metrics.cardBlockPadding)
                     }
-
-                    if let reviewProgress = state.reviewProgress {
-                        CardSectionDivider()
-                        reviewProgressSection(reviewProgress)
-                            .padding(vocabSkin.metrics.cardBlockPadding)
-                    }
-
-                    CardSectionDivider()
-                    metadataFooter
-                        .padding(vocabSkin.metrics.cardBlockPadding)
                 }
-            }
-            .padding(vocabSkin.metrics.cardBlockPadding)
+                .padding(vocabSkin.metrics.cardBlockPadding)
 
-            if let onToggleExcludeFromReader {
-                excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
-                    .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
-                    .padding(.top, vocabSkin.metrics.cardBlockInnerGap)
-            }
+                if let onToggleExcludeFromReader {
+                    excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
+                        .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+                        .padding(.top, vocabSkin.metrics.cardBlockInnerGap)
+                }
 
-            Spacer()
-                .frame(height: vocabSkin.metrics.cardBlockPadding * 2)
+                Spacer()
+                    .frame(height: vocabSkin.metrics.cardBlockPadding * 2)
+            }
         }
         .scrollContentBackground(.hidden)
         .vocabCanvasBackground()
