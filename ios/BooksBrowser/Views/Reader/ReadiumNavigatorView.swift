@@ -17,7 +17,6 @@ import os
 struct ReadiumNavigatorView: UIViewControllerRepresentable {
     let publication: Publication
     let initialLocator: Locator?
-    let httpServer: HTTPServer
     let lookedUpWords: [String]
     let bookUniqueWords: Set<String>?
     let viewConfiguration: ReaderViewConfiguration
@@ -85,8 +84,7 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
                         scroll: false
                     ),
                     editingActions: [aiSearchAction, aiExplainAction, .copy, .lookup]
-                ),
-                httpServer: httpServer
+                )
             )
         } catch {
             AppLog.reader.error("Failed to create EPUBNavigatorViewController: \(error)")

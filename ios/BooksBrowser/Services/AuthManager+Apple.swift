@@ -102,11 +102,9 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
             return window
         }
 
-        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
-            return UIWindow(windowScene: scene)
+        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
+            preconditionFailure("No UIWindowScene available for ASAuthorizationController")
         }
-
-        AppLog.auth.error("No window scene found for ASAuthorizationController — returning bare UIWindow")
-        return UIWindow()
+        return UIWindow(windowScene: scene)
     }
 }
