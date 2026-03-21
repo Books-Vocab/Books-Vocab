@@ -97,12 +97,24 @@ struct VocabEmptyStateContent: View {
     let title: String
     let systemImage: String
     let description: String
+    let guidanceText: String?
+    let symbolBounce: Bool
+
+    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, symbolBounce: Bool = false) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.guidanceText = guidanceText
+        self.symbolBounce = symbolBounce
+    }
 
     var body: some View {
         AppEmptyStateContent(
             title: title,
             systemImage: systemImage,
             description: description,
+            guidanceText: guidanceText,
+            symbolBounce: symbolBounce,
             style: .vocab(vocabSkin)
         )
     }

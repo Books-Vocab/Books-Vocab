@@ -103,6 +103,7 @@ struct BookshelfView: View {
                     title: "尚無書籍".localized,
                     systemImage: "book",
                     description: "匯入 EPUB 電子書開始閱讀".localized,
+                    guidanceText: "點擊上方匯入按鈕加入你的第一本書",
                     style: .bookshelf(appTheme)
                 )
 
@@ -144,6 +145,7 @@ struct BookshelfView: View {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
                         BookCard(book: book, coverHeight: coverHeight)
+                            .liftable()
                     }
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint("點兩下開始閱讀".localized)
