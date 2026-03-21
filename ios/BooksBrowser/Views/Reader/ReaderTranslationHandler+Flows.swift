@@ -1,4 +1,5 @@
 import SwiftUI
+import TipKit
 import os
 
 extension ReaderTranslationHandler {
@@ -92,6 +93,8 @@ extension ReaderTranslationHandler {
                         result: result,
                         context: vocabularyContext
                     )
+                    await LongPressTip.wordLookedUp.donate()
+                    LongPressTip().invalidate(reason: .actionPerformed)
                 }
             } catch {
                 guard !(error is CancellationError), !Task.isCancelled else { return }
