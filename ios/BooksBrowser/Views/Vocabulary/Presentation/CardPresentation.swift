@@ -115,4 +115,19 @@ extension VocabularyEntry {
     func linkedEntry(for link: KGCardLinkSummary, in entries: [VocabularyEntry]) -> VocabularyEntry? {
         entries.first { $0.kgCardId == link.cardId }
     }
+
+    func linkedEntry(for link: KGCardLinkSummary, lookup: [String: VocabularyEntry]) -> VocabularyEntry? {
+        lookup[link.cardId]
+    }
+
+    static func buildCardIdLookup(from entries: [VocabularyEntry]) -> [String: VocabularyEntry] {
+        var dict: [String: VocabularyEntry] = [:]
+        dict.reserveCapacity(entries.count)
+        for entry in entries {
+            if let id = entry.kgCardId {
+                dict[id] = entry
+            }
+        }
+        return dict
+    }
 }
