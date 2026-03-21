@@ -24,6 +24,7 @@ struct StatsPresenter: View {
 
     @State private var summary: StatsPresentation.Summary?
     @State private var showCalendar = false
+    @State private var contentReady = false
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
@@ -56,6 +57,13 @@ struct StatsPresenter: View {
                     .padding(.bottom, vocabSkin.metrics.pageBottomInset)
                 }
                 .vocabCanvasBackground()
+                .opacity(contentReady ? 1 : 0)
+                .scaleEffect(contentReady ? 1 : 0.98)
+                .onAppear {
+                    withAnimation(AppMotion.contentReveal) {
+                        contentReady = true
+                    }
+                }
             }
         }
         .animatePhaseChange(summary != nil)
@@ -117,6 +125,7 @@ struct StatsPresenter: View {
                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
             }
+            .liftable()
         }
         .buttonStyle(.plain)
     }
@@ -187,6 +196,7 @@ struct StatsPresenter: View {
                 VocabCard {
                     VocabActivityHeatmap(activity: summary.activity, weeks: 20)
                 }
+                .liftable()
             }
             .buttonStyle(.plain)
         }

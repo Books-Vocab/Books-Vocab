@@ -35,6 +35,8 @@ struct KGVocabPresenter: View {
     let onRowTapped: (UUID) -> Void
     let selectionState: SelectionModeState
     let onLongPress: (UUID) -> Void
+    var onArchiveRow: ((UUID) -> Void)?
+    var onQuickReviewRow: ((UUID) -> Void)?
     var onRefresh: (() async -> Void)?
 
     var body: some View {
@@ -64,7 +66,8 @@ struct KGVocabPresenter: View {
                         VocabEmptyStateContent(
                             title: state.emptyState.title,
                             systemImage: state.emptyState.systemImage,
-                            description: state.emptyState.description
+                            description: state.emptyState.description,
+                            guidanceText: "嘗試切換篩選條件或新增單字"
                         )
                         .padding(vocabSkin.metrics.listRowHorizontalInset)
                         .padding(.vertical, vocabSkin.metrics.listEmptyStateVerticalInset)
@@ -100,7 +103,37 @@ struct KGVocabPresenter: View {
                                         }
                                 }
                                 .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+                                .vocabSwipeActions(
+                                    leading: {
+                                        Button {
+                                            onArchiveRow?(item.id)
+                                        } label: {
+                                            Label("封存", systemImage: "archivebox")
+                                                .labelStyle(.iconOnly)
+                                                .font(vocabSkin.typography.iconMedium)
+                                                .foregroundStyle(.white)
+                                                .frame(maxHeight: .infinity)
+                                        }
+                                        .background(vocabSkin.palette.secondaryText)
+                                    },
+                                    trailing: {
+                                        Button {
+                                            // Opens the word detail sheet for a quick in-place review.
+                                            // Placeholder: future iteration will invoke spaced-repetition
+                                            // scheduling directly from this action.
+                                            onQuickReviewRow?(item.id)
+                                        } label: {
+                                            Label("複習", systemImage: "arrow.clockwise")
+                                                .labelStyle(.iconOnly)
+                                                .font(vocabSkin.typography.iconMedium)
+                                                .foregroundStyle(.white)
+                                                .frame(maxHeight: .infinity)
+                                        }
+                                        .background(vocabSkin.palette.accent)
+                                    }
+                                )
                                 .animateSpring(selectionState.isSelecting)
+                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()

@@ -15,19 +15,32 @@ enum AppSheetPreset {
 
 private struct AppSheetModifier: ViewModifier {
     let preset: AppSheetPreset
+    @State private var contentVisible = false
 
     func body(content: Content) -> some View {
+        // Apply opacity/scale to the content BEFORE presentation modifiers so that
+        // presentationDetents and related modifiers remain at the outermost position
+        // and are not inadvertently broken by the animation chain.
+        let animated = content
+            .opacity(contentVisible ? 1 : 0)
+            .scaleEffect(contentVisible ? 1 : 0.97)
+            .onAppear {
+                withAnimation(AppMotion.sheetContentAppear) {
+                    contentVisible = true
+                }
+            }
+
         switch preset {
         case .large:
-            content
+            animated
                 .presentationDetents([.large])
                 .presentationDragIndicator(.visible)
                 .presentationContentInteraction(.scrolls)
         case .medium:
-            content
+            animated
                 .presentationDetents([.medium])
         case .adaptive:
-            content
+            animated
                 .presentationDetents([.medium, .large])
                 .presentationDragIndicator(.visible)
         }

@@ -49,6 +49,7 @@ struct TodayReviewPresenter: View {
     @State var dismissPhase: DismissPhase = .idle
     @State var suppressTransition = false
     @State var flingHapticTrigger = 0
+    @State private var celebrationTriggered = false
     @State var stackRotations: [Double] = [
         .random(in: -1.0...1.0),
         .random(in: -1.0...1.0)
@@ -192,13 +193,23 @@ struct TodayReviewPresenter: View {
             VocabEmptyStateContent(
                 title: "今天複習完成".localized,
                 systemImage: "checkmark.circle",
-                description: "這一輪 session 的卡片都處理完了。".localized
+                description: "這一輪 session 的卡片都處理完了。".localized,
+                guidanceText: "明天再來複習新到期的單字",
+                symbolBounce: celebrationTriggered
             )
+            .scaleEffect(celebrationTriggered ? 1 : 0.8)
+            .opacity(celebrationTriggered ? 1 : 0)
+            .onAppear {
+                withAnimation(AppMotion.celebrationBounce) {
+                    celebrationTriggered = true
+                }
+            }
             Button("返回單字本".localized, action: onClose)
                 .buttonStyle(.ghost(vocabSkin.palette.primaryText))
             Spacer()
         }
         .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+        .sensoryFeedback(.success, trigger: celebrationTriggered)
     }
 
     func revealExpandZone(
