@@ -117,6 +117,7 @@ struct StatsPresenter: View {
                         .foregroundStyle(vocabSkin.palette.quaternaryText)
                 }
             }
+            .liftable()
         }
         .buttonStyle(.plain)
     }
@@ -187,6 +188,7 @@ struct StatsPresenter: View {
                 VocabCard {
                     VocabActivityHeatmap(activity: summary.activity, weeks: 20)
                 }
+                .liftable()
             }
             .buttonStyle(.plain)
         }
