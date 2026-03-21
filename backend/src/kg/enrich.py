@@ -5,6 +5,7 @@ Supports concurrent batch processing via ThreadPoolExecutor.
 
 from __future__ import annotations
 
+import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 
@@ -113,9 +114,6 @@ def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None, 
                getattr(response.usage, "completion_tokens", 0) or 0)
 
     return _parse_enrich_response(response.choices[0].message.content)
-
-
-import asyncio
 
 
 async def enrich_cards_stream(

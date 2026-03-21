@@ -97,6 +97,7 @@ final class AppLanguageStore: ObservableObject {
 
     private let defaults: UserDefaults
     private let cloud = CloudPreferencesSync.shared
+    private var cloudObserver: Any?
 
     private init(defaults: UserDefaults = .standard) {
         self.defaults = defaults
@@ -106,26 +107,24 @@ final class AppLanguageStore: ObservableObject {
         } else {
             self.selection = .system
         }
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(handleCloudChange(_:)),
-            name: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
-            object: NSUbiquitousKeyValueStore.default
-        )
+        cloudObserver = NotificationCenter.default.addObserver(
+            forName: NSUbiquitousKeyValueStore.didChangeExternallyNotification,
+            object: NSUbiquitousKeyValueStore.default,
+            queue: .main
+        ) { [weak self] notification in
+            guard let self,
+                  let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
+                  keys.contains(Keys.selectedLanguage),
+                  let raw = self.cloud.string(forKey: Keys.selectedLanguage),
+                  let value = AppLanguage(rawValue: raw),
+                  value != self.selection
+            else { return }
+            self.selection = value
+        }
     }
 
     deinit {
-        NotificationCenter.default.removeObserver(self)
-    }
-
-    @objc private func handleCloudChange(_ notification: Notification) {
-        guard let keys = notification.userInfo?[NSUbiquitousKeyValueStoreChangedKeysKey] as? [String],
-              keys.contains(Keys.selectedLanguage),
-              let raw = cloud.string(forKey: Keys.selectedLanguage),
-              let value = AppLanguage(rawValue: raw),
-              value != selection
-        else { return }
-        DispatchQueue.main.async { self.selection = value }
+        if let cloudObserver { NotificationCenter.default.removeObserver(cloudObserver) }
     }
 
     var locale: Locale {
