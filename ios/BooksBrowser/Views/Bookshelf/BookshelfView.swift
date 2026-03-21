@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 import UniformTypeIdentifiers
 
 /// 書架主頁 — 簡約留白設計
@@ -92,6 +93,7 @@ struct BookshelfView: View {
 
     // MARK: - 空狀態
 
+    @Environment(\.openURL) private var openURL
     @Environment(\.authManager) private var authManager
 
     private var emptyState: some View {
@@ -106,6 +108,13 @@ struct BookshelfView: View {
                     guidanceText: "點擊上方匯入按鈕加入你的第一本書",
                     style: .bookshelf(appTheme)
                 )
+
+                TipView(EPUBGuideTip()) { action in
+                    if action.id == "查看指南" {
+                        openURL(AppURLs.guide)
+                    }
+                }
+                .padding(.horizontal)
 
                 Button("匯入".localized) {
                     coordinator.presentImporter()
