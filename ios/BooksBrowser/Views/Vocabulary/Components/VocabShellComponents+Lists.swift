@@ -157,9 +157,10 @@ struct VocabActionButtonStyle: ButtonStyle {
                 RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .stroke(palette.border, lineWidth: 1)
             )
-            .opacity(configuration.isPressed ? 0.82 : 1)
-            .scaleEffect(configuration.isPressed ? 0.992 : 1)
-            .animateControl(configuration.isPressed)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
+            .opacity(configuration.isPressed ? 0.85 : 1)
+            .animation(AppMotion.pressFeedback, value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
     }
 
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
