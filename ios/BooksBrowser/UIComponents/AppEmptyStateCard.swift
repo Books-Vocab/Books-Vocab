@@ -17,11 +17,13 @@ struct AppEmptyStateContent: View {
     let systemImage: String
     let description: String
     let customStyle: AppEmptyStateStyle?
+    let symbolBounce: Bool
 
-    init(title: String, systemImage: String, description: String, style: AppEmptyStateStyle? = nil) {
+    init(title: String, systemImage: String, description: String, symbolBounce: Bool = false, style: AppEmptyStateStyle? = nil) {
         self.title = title
         self.systemImage = systemImage
         self.description = description
+        self.symbolBounce = symbolBounce
         self.customStyle = style
     }
 
@@ -31,6 +33,7 @@ struct AppEmptyStateContent: View {
             Image(systemName: systemImage)
                 .font(style.iconFont)
                 .foregroundStyle(style.iconColor)
+                .symbolEffect(.bounce, value: symbolBounce)
 
             Text(title.localized)
                 .font(style.titleFont)
