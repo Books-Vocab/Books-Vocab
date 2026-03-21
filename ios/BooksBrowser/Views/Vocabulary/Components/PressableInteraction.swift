@@ -53,3 +53,81 @@ extension View {
         modifier(LiftableModifier())
     }
 }
+
+// MARK: - Swipe Action Row
+
+/// Custom swipe-to-reveal actions for rows inside LazyVStack (where native .swipeActions is unavailable).
+/// Leading actions appear on right-swipe, trailing on left-swipe. Rubber-bands past threshold.
+struct SwipeActionRow<Leading: View, Trailing: View>: ViewModifier {
+    let leading: Leading
+    let trailing: Trailing
+
+    @State private var offset: CGFloat = 0
+    @GestureState private var dragOffset: CGFloat = 0
+
+    private let threshold: CGFloat = 80
+
+    func body(content: Content) -> some View {
+        ZStack {
+            // Leading action (revealed on right swipe)
+            HStack {
+                leading
+                    .frame(width: threshold)
+                Spacer()
+            }
+
+            // Trailing action (revealed on left swipe)
+            HStack {
+                Spacer()
+                trailing
+                    .frame(width: threshold)
+            }
+
+            // Main content
+            content
+                .offset(x: offset + dragOffset)
+                .gesture(
+                    DragGesture()
+                        .updating($dragOffset) { value, state, _ in
+                            let translation = value.translation.width
+                            if abs(translation) > threshold {
+                                let excess = abs(translation) - threshold
+                                let dampened = threshold + excess * 0.3
+                                state = translation > 0 ? dampened : -dampened
+                            } else {
+                                state = translation
+                            }
+                        }
+                        .onEnded { value in
+                            let translation = value.translation.width
+                            if abs(translation) > threshold {
+                                withAnimation(AppMotion.swipeRowSnap) {
+                                    offset = translation > 0 ? threshold : -threshold
+                                }
+                            } else {
+                                withAnimation(AppMotion.swipeRowSnap) {
+                                    offset = 0
+                                }
+                            }
+                        }
+                )
+                .onTapGesture {
+                    if offset != 0 {
+                        withAnimation(AppMotion.swipeRowSnap) {
+                            offset = 0
+                        }
+                    }
+                }
+        }
+        .clipped()
+    }
+}
+
+extension View {
+    func swipeActions(
+        @ViewBuilder leading: () -> some View,
+        @ViewBuilder trailing: () -> some View
+    ) -> some View {
+        modifier(SwipeActionRow(leading: leading(), trailing: trailing()))
+    }
+}
