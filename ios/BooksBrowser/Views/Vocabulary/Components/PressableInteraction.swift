@@ -42,7 +42,7 @@ struct LiftableModifier: ViewModifier {
             .scaleEffect(isPressed ? LiftShadow.pressedScale : 1)
             .animation(AppMotion.pressFeedback, value: isPressed)
             .simultaneousGesture(
-                DragGesture(minimumDistance: 0)
+                LongPressGesture(minimumDuration: 0.01)
                     .updating($isPressed) { _, state, _ in state = true }
             )
     }
