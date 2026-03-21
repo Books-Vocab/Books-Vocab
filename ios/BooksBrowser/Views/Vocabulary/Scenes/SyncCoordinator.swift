@@ -1,6 +1,7 @@
 import Foundation
 import SwiftData
 import SwiftUI
+import TipKit
 
 @MainActor protocol SyncCoordinating: AnyObject, Observable {
     var steps: [PipelineStep] { get }
@@ -233,6 +234,8 @@ final class SyncCoordinator: SyncCoordinating {
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .partial))
                 } else {
                     phase = .completed
+                    await SyncPendingTip.syncCompleted.donate()
+                    SyncPendingTip().invalidate(reason: .actionPerformed)
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .success))
                 }
             } catch {
