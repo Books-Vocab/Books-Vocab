@@ -50,7 +50,7 @@ private struct SyncCoordinatorKey: EnvironmentKey {
 }
 
 private struct AppToastCoordinatorKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: AppToastCoordinator = MainActor.assumeIsolated {
+    static let defaultValue: AppToastCoordinator = MainActor.assumeIsolated {
         AppToastCoordinator()
     }
 }
