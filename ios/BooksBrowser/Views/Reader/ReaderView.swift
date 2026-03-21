@@ -7,6 +7,7 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 import ReadiumShared
 import ReadiumNavigator
 import os
@@ -73,6 +74,10 @@ struct ReaderView: View {
             translationPanelContent
         } settingsPanel: {
             settingsPanelContent
+        }
+        .safeAreaInset(edge: .top) {
+            TipView(LongPressTip())
+                .padding(.horizontal)
         }
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
