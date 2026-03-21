@@ -173,7 +173,7 @@ struct BooksBrowserApp: App {
                     iCloudDownloadManager.startMonitoring()
                 }
                 .task {
-                    try? await Tips.configure()
+                    try? Tips.configure()
                 }
                 .task {
                     if !authManager.isLoggedIn {
