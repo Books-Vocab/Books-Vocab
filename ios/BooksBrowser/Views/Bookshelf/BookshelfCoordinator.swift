@@ -1,5 +1,6 @@
 import Foundation
 import SwiftData
+import TipKit
 import os
 
 @MainActor protocol BookshelfCoordinating: AnyObject, Observable {
@@ -98,6 +99,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
                 modelContext.insert(book)
                 modelContext.safeSave()
+                EPUBGuideTip().invalidate(reason: .actionPerformed)
                 AppLog.book.info("Book saved: \(book.title)")
 
                 isLoading = false
