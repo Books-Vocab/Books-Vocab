@@ -16,13 +16,15 @@ struct AppEmptyStateContent: View {
     let title: String
     let systemImage: String
     let description: String
+    let guidanceText: String?
     let customStyle: AppEmptyStateStyle?
     let symbolBounce: Bool
 
-    init(title: String, systemImage: String, description: String, symbolBounce: Bool = false, style: AppEmptyStateStyle? = nil) {
+    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, symbolBounce: Bool = false, style: AppEmptyStateStyle? = nil) {
         self.title = title
         self.systemImage = systemImage
         self.description = description
+        self.guidanceText = guidanceText
         self.symbolBounce = symbolBounce
         self.customStyle = style
     }
@@ -34,6 +36,7 @@ struct AppEmptyStateContent: View {
                 .font(style.iconFont)
                 .foregroundStyle(style.iconColor)
                 .symbolEffect(.bounce, value: symbolBounce)
+                .symbolEffect(.breathe)
 
             Text(title.localized)
                 .font(style.titleFont)
@@ -43,6 +46,13 @@ struct AppEmptyStateContent: View {
                 .font(style.descriptionFont)
                 .foregroundStyle(style.descriptionColor)
                 .multilineTextAlignment(.center)
+
+            if let guidanceText {
+                Text(guidanceText.localized)
+                    .font(style.descriptionFont)
+                    .foregroundStyle(style.descriptionColor.opacity(0.7))
+                    .multilineTextAlignment(.center)
+            }
         }
         .frame(maxWidth: .infinity)
     }

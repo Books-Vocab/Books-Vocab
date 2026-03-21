@@ -64,7 +64,8 @@ struct KGVocabPresenter: View {
                         VocabEmptyStateContent(
                             title: state.emptyState.title,
                             systemImage: state.emptyState.systemImage,
-                            description: state.emptyState.description
+                            description: state.emptyState.description,
+                            guidanceText: "嘗試切換篩選條件或新增單字"
                         )
                         .padding(vocabSkin.metrics.listRowHorizontalInset)
                         .padding(.vertical, vocabSkin.metrics.listEmptyStateVerticalInset)
