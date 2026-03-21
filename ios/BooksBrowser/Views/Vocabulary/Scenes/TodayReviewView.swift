@@ -72,7 +72,7 @@ struct TodayReviewView: View {
             LinkedCardOverlayStack(stack: $state.linkedCardStack)
         }
         .sheet(item: $state.tappedLink) { link in
-            LinkReasonSheet(link: link, onNavigate: state.navigateToLinkedCard)
+            LinkReasonSheet(link: link, onNavigate: { state.navigateToLinkedCard(link: link) })
                 .appSheet(.medium)
         }
         .onDisappear {
