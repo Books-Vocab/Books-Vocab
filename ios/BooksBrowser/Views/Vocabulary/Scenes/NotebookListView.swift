@@ -60,7 +60,8 @@ struct NotebookListView: View {
                                     color: notebook.color.flatMap { Color(hex: $0) }
                                 )
                             }
-                            .buttonStyle(.plain)
+                            .buttonStyle(.pressable)
+                            .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                             .contextMenu {
                                 Button {
                                     setActiveNotebook(notebook.remoteId)

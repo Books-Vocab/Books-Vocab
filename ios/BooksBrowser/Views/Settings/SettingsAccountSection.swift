@@ -75,7 +75,7 @@ struct SettingsAccountSection: View {
                         SettingsSocialBadge(kind: .google)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
                 .accessibilityLabel("使用 Google 帳號登入".localized)
 
@@ -84,7 +84,7 @@ struct SettingsAccountSection: View {
                         SettingsSocialBadge(kind: .apple)
                     }
                 }
-                .buttonStyle(.plain)
+                .buttonStyle(.pressable)
                 .appSettingsButtonChrome()
                 .accessibilityLabel("使用 Apple 帳號登入".localized)
 
