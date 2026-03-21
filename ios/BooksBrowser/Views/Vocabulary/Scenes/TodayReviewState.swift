@@ -14,10 +14,17 @@ final class TodayReviewState {
 
     // MARK: - Scoring
 
-    var forgotCount = 0
-    var rememberedCount = 0
+    var submittedFeedback: [Int: ReviewFeedback] = [:]
     var rememberedFeedbackTrigger = 0
     var forgotFeedbackTrigger = 0
+
+    var forgotCount: Int {
+        submittedFeedback.count { $0.key < currentIndex && $0.value == .forgot }
+    }
+
+    var rememberedCount: Int {
+        submittedFeedback.count { $0.key < currentIndex && $0.value == .remembered }
+    }
 
     // MARK: - Autoplay
 
@@ -98,9 +105,8 @@ final class TodayReviewState {
         tappedLink = link
     }
 
-    func navigateToLinkedCard() {
-        guard let link = tappedLink,
-              let target = linkedEntryLookup[link.cardId] else { return }
+    func navigateToLinkedCard(link: KGCardLinkSummary) {
+        guard let target = linkedEntryLookup[link.cardId] else { return }
         tappedLink = nil
         linkedCardStack.append(target)
     }
@@ -221,16 +227,16 @@ final class TodayReviewState {
         reviewSettings: ReviewSettings
     ) {
         guard let current = currentEntry else { return }
+        guard submittedFeedback[currentIndex] == nil else { return }
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
+        submittedFeedback[currentIndex] = feedback
         switch feedback {
         case .remembered:
             rememberedFeedbackTrigger += 1
-            rememberedCount += 1
         case .forgot:
             forgotFeedbackTrigger += 1
-            forgotCount += 1
         }
 
         AppAnalytics.track(.reviewCardSubmitted(
