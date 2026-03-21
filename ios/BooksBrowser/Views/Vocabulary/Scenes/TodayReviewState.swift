@@ -227,7 +227,7 @@ final class TodayReviewState {
         reviewSettings: ReviewSettings
     ) {
         guard let current = currentEntry else { return }
-        guard submittedFeedback[currentIndex] == nil else { return }
+        let alreadyPersisted = submittedFeedback[currentIndex] != nil
         pendingSaveTask?.cancel()
         persistenceErrorMessage = nil
 
@@ -258,6 +258,8 @@ final class TodayReviewState {
                 durationMs: durationMs
             ))
         }
+
+        guard !alreadyPersisted else { return }
 
         let entryToUpdate = current
         let settings = reviewSettings

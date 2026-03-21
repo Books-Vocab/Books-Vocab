@@ -3,9 +3,11 @@ import Foundation
 enum WordDetailPresentation {
     static func state(
         for entry: VocabularyEntry,
-        in allEntries: [VocabularyEntry]
+        in allEntries: [VocabularyEntry],
+        lookup: [String: VocabularyEntry]? = nil
     ) -> WordDetailPresenter.State {
         let card = entry.cardPresentation
+        let effectiveLookup = lookup ?? VocabularyEntry.buildCardIdLookup(from: allEntries)
 
         return WordDetailPresenter.State(
             title: card.word,
@@ -17,7 +19,7 @@ enum WordDetailPresentation {
                 card.linkGroups
                     .flatMap(\.items)
                     .compactMap { link in
-                        entry.linkedEntry(for: link, in: allEntries) == nil ? nil : link.cardId
+                        effectiveLookup[link.cardId] == nil ? nil : link.cardId
                     }
             ),
             reviewProgress: entry.shouldAppearInKnowledgeList ? reviewProgress(for: entry) : nil,
