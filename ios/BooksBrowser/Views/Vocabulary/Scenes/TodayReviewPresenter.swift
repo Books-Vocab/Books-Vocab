@@ -194,6 +194,7 @@ struct TodayReviewPresenter: View {
                 title: "今天複習完成".localized,
                 systemImage: "checkmark.circle",
                 description: "這一輪 session 的卡片都處理完了。".localized,
+                guidanceText: "明天再來複習新到期的單字",
                 symbolBounce: celebrationTriggered
             )
             .scaleEffect(celebrationTriggered ? 1 : 0.8)
