@@ -6,12 +6,14 @@
 
 import SwiftUI
 import SwiftData
+import TipKit
 
 struct NotebookListView: View {
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
     /// Predicate 對應 shouldAppearInKnowledgeList：synced + 非 delete + 非 archived
     @Query private var allEntries: [VocabularyEntry]
+    @Query private var pendingEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
@@ -26,6 +28,7 @@ struct NotebookListView: View {
             $0.isArchived == false
         }
         _allEntries = Query(filter: knowledgePredicate, sort: \.dateAdded, order: .reverse)
+        _pendingEntries = Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 && $0.actionType != "delete" })
     }
 
     @State private var showCreateSheet = false
@@ -41,6 +44,12 @@ struct NotebookListView: View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 LazyVStack(spacing: 0) {
+                    if !pendingEntries.isEmpty {
+                        TipView(SyncPendingTip())
+                            .padding(.horizontal, skin.metrics.listRowHorizontalInset)
+                            .padding(.bottom, skin.spacing.sectionGap)
+                    }
+
                     // Cross-notebook review section
                     if totalDueCount > 0 {
                         reviewBanner
