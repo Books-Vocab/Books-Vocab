@@ -101,11 +101,10 @@ extension ReaderView {
                     handler.deleteFromVocabulary(selection.word, context: vocabularyContext)
                     closeOverlay(.translation)
                 },
-                onShowDetail: vocabularyContext.existingEntry(matching: selection.word) != nil ? {
-                    if let entry = vocabularyContext.existingEntry(matching: selection.word) {
-                        readerState.detailEntry = entry
-                    }
-                } : nil,
+                onShowDetail: {
+                    let entry = vocabularyContext.existingEntry(matching: selection.word)
+                    return entry != nil ? { readerState.detailEntry = entry } : nil
+                }(),
                 onDismiss: {
                     handler.dismiss()
                     closeOverlay(.translation)

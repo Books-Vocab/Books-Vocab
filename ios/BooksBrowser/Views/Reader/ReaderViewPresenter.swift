@@ -12,8 +12,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
     let onExpandHeader: () -> Void
     let onCollapseHeader: () -> Void
     @ViewBuilder let mainContent: MainContent
-    @ViewBuilder let translationPanel: TranslationPanelContent
-    @ViewBuilder let settingsPanel: SettingsPanelContent
+    let translationPanelBuilder: () -> TranslationPanelContent
+    let settingsPanelBuilder: () -> SettingsPanelContent
 
     init(
         state: ReaderViewPresenterState,
@@ -24,8 +24,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         onExpandHeader: @escaping () -> Void,
         onCollapseHeader: @escaping () -> Void,
         @ViewBuilder mainContent: () -> MainContent,
-        @ViewBuilder translationPanel: () -> TranslationPanelContent,
-        @ViewBuilder settingsPanel: () -> SettingsPanelContent
+        @ViewBuilder translationPanel: @escaping () -> TranslationPanelContent,
+        @ViewBuilder settingsPanel: @escaping () -> SettingsPanelContent
     ) {
         self.state = state
         self.onDismiss = onDismiss
@@ -35,8 +35,8 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         self.onExpandHeader = onExpandHeader
         self.onCollapseHeader = onCollapseHeader
         self.mainContent = mainContent()
-        self.translationPanel = translationPanel()
-        self.settingsPanel = settingsPanel()
+        self.translationPanelBuilder = translationPanel
+        self.settingsPanelBuilder = settingsPanel
     }
 
     var body: some View {
