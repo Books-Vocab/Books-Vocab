@@ -225,9 +225,8 @@ struct NotebookListView: View {
     }
 
     private var filteredDueEntries: [VocabularyEntry] {
-        let now = Date()
-        return allEntries.filter {
-            $0.nextReviewAt <= now &&
+        allEntries.filter {
+            $0.reviewState == .due &&
             reviewFilter.matches($0.notebookId)
         }
     }
@@ -249,9 +248,8 @@ struct NotebookListView: View {
     }
 
     private var dueCounts: [String: Int] {
-        let now = Date()
-        return allEntries.reduce(into: [:]) { dict, entry in
-            if entry.nextReviewAt <= now {
+        allEntries.reduce(into: [:]) { dict, entry in
+            if entry.reviewState == .due {
                 dict[entry.notebookId, default: 0] += 1
             }
         }
