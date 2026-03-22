@@ -32,10 +32,10 @@ struct TranslationPanel: View {
     @State private var dragOffset: CGFloat = 0
     @State private var isSpeaking = false
     @State private var elapsedTime: Double = 0
+    @State private var timerTask: Task<Void, Never>?
 
-    private let ticker = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     private var isActive: Bool { isLoading || isLoadingExplanation }
-    private var timerText: String { String(format: "%.1fs", elapsedTime) }
+    private var timerText: String { isActive ? String(format: "%.1fs", elapsedTime) : "" }
     private var presenterState: TranslationPanelPresenterState {
         .init(
             word: word,
@@ -75,16 +75,25 @@ struct TranslationPanel: View {
                         }
                     }
             )
-            .transition(.readerPanelReveal)
             .sensoryFeedback(.success, trigger: isSaved)
-            .onReceive(ticker) { _ in
-                if isActive { elapsedTime += 0.1 }
+            .onChange(of: isActive) { _, active in
+                timerTask?.cancel()
+                if active {
+                    elapsedTime = 0
+                    timerTask = Task { @MainActor in
+                        while !Task.isCancelled {
+                            try? await Task.sleep(for: .milliseconds(100))
+                            guard !Task.isCancelled else { break }
+                            elapsedTime += 0.1
+                        }
+                    }
+                } else {
+                    timerTask = nil
+                }
             }
-            .onChange(of: isLoading) { _, new in
-                if new { elapsedTime = 0 }
-            }
-            .onChange(of: isLoadingExplanation) { _, new in
-                if new { elapsedTime = 0 }
+            .onDisappear {
+                timerTask?.cancel()
+                timerTask = nil
             }
     }
 

@@ -87,19 +87,6 @@ struct KGVocabView: View {
             },
             selectionState: selectionState,
             onLongPress: { id in selectionState.enter(with: id) },
-            onArchiveRow: { entryID in
-                Task {
-                    await coordinator.handleBatchArchive(
-                        [entryID],
-                        syncedEntries: syncedEntries,
-                        kgService: kgService,
-                        modelContext: modelContext
-                    )
-                }
-            },
-            onQuickReviewRow: { entryID in
-                handleRowTap(entryID)
-            },
             onRefresh: {
                 await coordinator.forceRefresh(
                     kgService: kgService,
