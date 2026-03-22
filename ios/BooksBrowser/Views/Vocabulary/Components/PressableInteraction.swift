@@ -27,31 +27,23 @@ private enum LiftShadow {
     static let pressedScale: CGFloat = 1.005
 }
 
-/// Subtle lift effect for cards. Scale up + shadow deepen on press.
-/// For buttons, use PressableStyle instead (scale down + opacity dim).
-struct LiftableModifier: ViewModifier {
-    @GestureState private var isPressed = false
-
-    func body(content: Content) -> some View {
-        content
+/// Subtle lift effect for cards inside NavigationLink/Button.
+/// Uses ButtonStyle to read isPressed without adding gestures that conflict with navigation.
+struct LiftableButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
             .shadow(
-                color: .black.opacity(isPressed ? LiftShadow.pressedOpacity : LiftShadow.idleOpacity),
-                radius: isPressed ? LiftShadow.pressedRadius : LiftShadow.idleRadius,
-                y: isPressed ? LiftShadow.pressedY : LiftShadow.idleY
+                color: .black.opacity(configuration.isPressed ? LiftShadow.pressedOpacity : LiftShadow.idleOpacity),
+                radius: configuration.isPressed ? LiftShadow.pressedRadius : LiftShadow.idleRadius,
+                y: configuration.isPressed ? LiftShadow.pressedY : LiftShadow.idleY
             )
-            .scaleEffect(isPressed ? LiftShadow.pressedScale : 1)
-            .animation(AppMotion.pressFeedback, value: isPressed)
-            .simultaneousGesture(
-                LongPressGesture(minimumDuration: 0.01)
-                    .updating($isPressed) { _, state, _ in state = true }
-            )
+            .scaleEffect(configuration.isPressed ? LiftShadow.pressedScale : 1)
+            .animation(AppMotion.pressFeedback, value: configuration.isPressed)
     }
 }
 
-extension View {
-    func liftable() -> some View {
-        modifier(LiftableModifier())
-    }
+extension ButtonStyle where Self == LiftableButtonStyle {
+    static var liftable: LiftableButtonStyle { LiftableButtonStyle() }
 }
 
 // MARK: - Swipe Action Row
@@ -67,23 +59,24 @@ struct SwipeActionRow<Leading: View, Trailing: View>: ViewModifier {
 
     private let threshold: CGFloat = 80
 
+    private var isSwiping: Bool { offset != 0 || dragOffset != 0 }
+
     func body(content: Content) -> some View {
         ZStack {
-            // Leading action (revealed on right swipe)
-            HStack {
-                leading
-                    .frame(width: threshold)
-                Spacer()
+            if isSwiping {
+                HStack {
+                    leading
+                        .frame(width: threshold)
+                    Spacer()
+                }
+
+                HStack {
+                    Spacer()
+                    trailing
+                        .frame(width: threshold)
+                }
             }
 
-            // Trailing action (revealed on left swipe)
-            HStack {
-                Spacer()
-                trailing
-                    .frame(width: threshold)
-            }
-
-            // Main content
             content
                 .offset(x: offset + dragOffset)
                 .gesture(
@@ -111,8 +104,6 @@ struct SwipeActionRow<Leading: View, Trailing: View>: ViewModifier {
                             }
                         }
                 )
-                // Overlay captures taps ONLY when row is open, preventing conflict
-                // with WordRow's own onTapGesture.
                 .overlay {
                     if offset != 0 {
                         Color.clear
