@@ -41,14 +41,14 @@ extension ReaderViewPresenter {
             Spacer()
 
             if state.chrome.overlay == .translation {
-                translationPanelBuilder()
+                translationPanel
                     .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
                     .padding(.bottom, ReaderPresentationMetrics.Overlay.bottomInset)
                     .transition(.readerPanelReveal)
             } else if state.chrome.overlay == .settings {
-                settingsPanelBuilder()
+                settingsPanel
                     .frame(maxWidth: ReaderPresentationMetrics.Overlay.panelMaxWidth)
                     .frame(maxWidth: .infinity)
                     .padding(.horizontal)
