@@ -154,8 +154,8 @@ struct BookshelfView: View {
                 ForEach(books) { book in
                     NavigationLink(value: book) {
                         BookCard(book: book, coverHeight: coverHeight)
-                            .liftable()
                     }
+                    .buttonStyle(.liftable)
                     .accessibilityLabel("\(book.title), \(book.author)")
                     .accessibilityHint("點兩下開始閱讀".localized)
                     .transition(.bookshelfCard)
