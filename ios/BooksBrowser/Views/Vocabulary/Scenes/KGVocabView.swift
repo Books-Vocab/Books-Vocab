@@ -102,7 +102,7 @@ struct KGVocabView: View {
                     onArchive: { handleBatchArchive() },
                     onDelete: { handleBatchDelete() }
                 )
-                .transition(.move(edge: .bottom).combined(with: .opacity))
+                .transition(.readerPanelReveal)
             }
         }
         .animateSpring(selectionState.isSelecting)
