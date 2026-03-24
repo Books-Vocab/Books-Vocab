@@ -53,9 +53,14 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
         if not active_links:
             continue
 
+        def _has_cjk(text: str) -> bool:
+            return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+
         logger.info("  [%s] %d active links to migrate", notebook_id, len(active_links))
 
         for link in active_links:
+            if _has_cjk(link.reason):
+                continue  # already migrated
             card_a = cards.get(link.from_id)
             card_b = cards.get(link.to_id)
             if not card_a or not card_b:
@@ -103,7 +108,14 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
                 continue
 
         graph._save_links()
-        logger.info("  [%s] saved", notebook_id)
+
+        # Touch all cards involved in active links so incremental sync picks them up
+        touched_ids = set()
+        for link in active_links:
+            touched_ids.add(link.from_id)
+            touched_ids.add(link.to_id)
+        touch_count = sum(1 for cid in touched_ids if cards.touch(cid))
+        logger.info("  [%s] saved, touched %d cards for sync", notebook_id, touch_count)
 
     return total_updated
 

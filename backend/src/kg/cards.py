@@ -397,6 +397,17 @@ class CardStore:
                 return True
             return False
 
+    def touch(self, card_id: str) -> bool:
+        """Bump updated_at without changing any fields. Returns True if card was touched."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                card.updated_at = datetime.now(UTC)
+                session.add(card)
+                session.commit()
+                return True
+            return False
+
     def update(self, card_id: str, **kwargs) -> Card | None:
         """Update specific fields of a card. Automatically sets updated_at."""
         with Session(self.engine) as session:
