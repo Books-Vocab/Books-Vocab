@@ -38,7 +38,7 @@ extension SyncPresenter {
                         }
                     }
                 }
-                .transition(.blurReplace)
+                .transition(.phaseBlurSwap)
             case .running:
                 VocabStatusHero(
                     systemImage: "arrow.triangle.2.circlepath",
@@ -49,17 +49,17 @@ extension SyncPresenter {
                     ProgressView()
                         .controlSize(.large)
                 }
-                .transition(.blurReplace)
+                .transition(.phaseBlurSwap)
             case .completed:
                 VocabStatusHero(
                     systemImage: "checkmark.circle.fill",
                     tone: vocabSkin.palette.success,
                     title: "同步完成".localized
                 )
-                .transition(.blurReplace)
+                .transition(.phaseBlurSwap)
             case .failed:
                 failedHero
-                .transition(.blurReplace)
+                .transition(.phaseBlurSwap)
             }
         }
     }
