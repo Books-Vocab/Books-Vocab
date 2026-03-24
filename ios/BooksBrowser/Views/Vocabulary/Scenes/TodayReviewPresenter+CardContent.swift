@@ -99,10 +99,9 @@ extension TodayReviewPresenter {
     func combinedAnswerContent(_ currentCard: TodayReviewPresenterState.CurrentCard, availableHeight: CGFloat) -> some View {
         let card = currentCard.card
         let hasLinks = !currentCard.linkGroups.isEmpty
-        let hasMeaning = currentCard.backDocument.blocks.contains { if case .meaning = $0 { return true }; return false }
         let exampleRadius = answerExampleRadius(
             containerHeight: availableHeight,
-            hasMeaning: hasMeaning,
+            backDocument: currentCard.backDocument,
             card: card,
             hasLinks: hasLinks
         )
@@ -188,15 +187,15 @@ extension TodayReviewPresenter {
     //
     // 演算法：「中心展開填充」
     // 1. 從容器可用高度扣除 front card + padding → 得到答案卡上限
-    // 2. 估算核心內容（word、meaning、links、padding）的佔用高度
-    // 3. 剩餘空間扣除來源區塊預留 → 例句可用高度
+    // 2. 遍歷 backDocument 實際 blocks 計算佔用高度（含 VStack spacing）
+    // 3. 剩餘空間 → 例句可用高度
     // 4. 可用高度 ÷ 行高 × 每行詞數 → 總詞預算 → truncateRadius
     //    radius 越大，以單字為中心向前後展開越多上下文
     //    空間不足時自動收縮，空間充裕時自然展開更多內容
 
     func answerExampleRadius(
         containerHeight: CGFloat,
-        hasMeaning: Bool,
+        backDocument: CardDocument,
         card: CardPresentation,
         hasLinks: Bool
     ) -> Int {
@@ -206,27 +205,49 @@ extension TodayReviewPresenter {
             - vocabSkin.metrics.reviewCardBottomInset
             - frontCardHeight
 
-        // ② 核心內容估算高度
+        // ② combinedAnswerContent 固定元素
         let gap = vocabSkin.metrics.reviewFoldSectionSpacing
         var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
             + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
 
-        if hasMeaning {
-            // divider(17) + 最多 3 行 explanation(22×3) + collocations 估算(30)
-            // reviewBackSubset 已去除 meaning title，不再計入 title 高度
-            coreHeight += 17 + 66 + 30 + gap
-        }
-
         if hasLinks {
-            coreHeight += 17 + 24 + gap                                         // divider + link strip
+            coreHeight += AppMetrics.dividerThin + gap                          // CardSectionDivider
+                + 24 + gap                                                      // link strip + gap before CardDocumentView
         }
 
-        // ③ 例句在最後，佔用全部剩餘空間（含 divider）
-        let exampleBudget = max(answerBudget - coreHeight - 17, 0)
+        // ③ CardDocumentView 內 example 之後的 blocks（含 inter-block spacing）
+        var seenExample = false
+        for block in backDocument.blocks {
+            switch block {
+            case .example:
+                seenExample = true
+            case .divider:
+                if seenExample {
+                    coreHeight += AppMetrics.dividerThin + gap
+                }
+            case .meaning(let meaning):
+                if seenExample {
+                    let lineCount = meaning.paragraphs.isEmpty ? 0 : 3
+                    coreHeight += CGFloat(lineCount) * 22 + gap
+                }
+            case .collocations(let items):
+                if seenExample {
+                    let rows = max(1, (items.count + 2) / 3)
+                    coreHeight += CGFloat(rows) * 32 + gap
+                }
+            default:
+                if seenExample {
+                    coreHeight += 30 + gap
+                }
+            }
+        }
 
-        // ④ 高度 → 行數 → 詞數 → radius
+        // ④ 例句可用高度
+        let exampleBudget = max(answerBudget - coreHeight, 0)
+
+        // ⑤ 高度 → 行數 → 詞數 → radius
         let lineHeight: CGFloat = 22
         let textWidth = containerWidth
             - vocabSkin.metrics.reviewCardHorizontalInset * 2
