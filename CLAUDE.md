@@ -36,7 +36,7 @@
 
 Safe entrypoint：`./ops/devops_kg_safe.sh`
 
-| 允許 | `deploy` `restart` `status` `logs` `backup` `env-check` `migrate` `users` `user-info` `run` |
+| 允許 | `deploy` `restart` `status` `logs` `backup` `env-check` `migrate` `users` `user-info` `run` `container-run` `migrate-run` |
 |------|---|
 | **封鎖** | `setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串 |
 

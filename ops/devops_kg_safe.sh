@@ -23,6 +23,8 @@ usage:
   $0 users
   $0 user-info <id>
   $0 run "<remote command>"
+  $0 container-run "<cmd>"
+  $0 migrate-run "<cmd>"
 
 blocked by default:
   setup / push-env / delete-user / ssh / any destructive run command
@@ -76,6 +78,28 @@ main() {
         exit 1
       fi
       "$BASE" run "$raw"
+      ;;
+    container-run)
+      preflight
+      shift
+      local raw="${*:-}"
+      [[ -n "$raw" ]] || { echo "✗ usage: $0 container-run \"<cmd>\"" >&2; exit 1; }
+      if is_blocked_run "$raw"; then
+        echo "✗ blocked dangerous command" >&2
+        exit 1
+      fi
+      "$BASE" container-run "$raw"
+      ;;
+    migrate-run)
+      preflight
+      shift
+      local raw="${*:-}"
+      [[ -n "$raw" ]] || { echo "✗ usage: $0 migrate-run \"<cmd>\"" >&2; exit 1; }
+      if is_blocked_run "$raw"; then
+        echo "✗ blocked dangerous command" >&2
+        exit 1
+      fi
+      "$BASE" migrate-run "$raw"
       ;;
     setup|push-env|delete-user|ssh)
       echo "✗ blocked in safe wrapper: $sub" >&2

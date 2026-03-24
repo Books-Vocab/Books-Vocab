@@ -71,7 +71,8 @@ final class VocabularyEntry {
     var bookId: UUID?
     var isDemoEntry: Bool = false
 
-    @Transient var _cachedGraphLinks: [String: [KGCardLinkSummary]]?
+    @Transient private var _graphLinksCache: [String: [KGCardLinkSummary]]?
+    @Transient private var _graphLinksCacheKey: String?
 
     /// Sync status convenience
     var syncState: VocabularySyncState {
@@ -199,22 +200,28 @@ extension VocabularyEntry {
 
     var graphLinksByKind: [String: [KGCardLinkSummary]] {
         get {
-            if let cached = _cachedGraphLinks { return cached }
+            // Invalidate cache when underlying JSON changes (e.g. cross-context sync)
+            if let cached = _graphLinksCache, _graphLinksCacheKey == graphLinksJSON {
+                return cached
+            }
             guard let data = graphLinksJSON.data(using: .utf8) else { return [:] }
             let decoded = (try? JSONDecoder().decode([String: [KGCardLinkSummary]].self, from: data)) ?? [:]
-            _cachedGraphLinks = decoded
+            _graphLinksCache = decoded
+            _graphLinksCacheKey = graphLinksJSON
             return decoded
         }
         set {
-            _cachedGraphLinks = newValue
+            _graphLinksCache = newValue
             guard
                 let data = try? JSONEncoder().encode(newValue),
                 let json = String(data: data, encoding: .utf8)
             else {
                 graphLinksJSON = "{}"
+                _graphLinksCacheKey = "{}"
                 return
             }
             graphLinksJSON = json
+            _graphLinksCacheKey = json
         }
     }
 }

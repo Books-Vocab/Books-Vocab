@@ -22,6 +22,10 @@ logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
 logger = logging.getLogger(__name__)
 
 
+def _has_cjk(text: str) -> bool:
+    return any('\u4e00' <= ch <= '\u9fff' for ch in text)
+
+
 def migrate_user_graph(user_dir: Path, client, model: str) -> int:
     """Migrate all notebook graphs for one user. Returns count of updated links."""
     from kg.cards import CardStore
@@ -52,9 +56,6 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
         active_links = [lk for lk in graph._links.values() if lk.status == "active"]
         if not active_links:
             continue
-
-        def _has_cjk(text: str) -> bool:
-            return any('\u4e00' <= ch <= '\u9fff' for ch in text)
 
         logger.info("  [%s] %d active links to migrate", notebook_id, len(active_links))
 
@@ -91,6 +92,9 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
                     m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
                     data = json.loads(m.group()) if m else {}
 
+                if data.get("link") == "not_applicable":
+                    logger.warning("    Link %s: LLM says not_applicable, keeping old", link.id)
+                    continue
                 new_reason = data.get("reason", "")
                 if not new_reason:
                     logger.warning("    Link %s: empty reason from LLM, keeping old", link.id)
