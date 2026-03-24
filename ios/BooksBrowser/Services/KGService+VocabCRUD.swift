@@ -20,18 +20,16 @@ struct KGVocabEntry: Codable {
 extension KGService {
 
     func deleteCard(word: String, notebookId: String) async throws {
-        let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         try await authenticatedVoid(
-            path: "api/vocab/\(encoded)",
+            path: "api/vocab/\(word)",
             method: "DELETE",
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
         )
     }
 
     func archiveCard(word: String, archived: Bool, notebookId: String) async throws {
-        let encoded = word.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed) ?? word
         try await authenticatedVoid(
-            path: "api/vocab/\(encoded)/archive",
+            path: "api/vocab/\(word)/archive",
             method: "PATCH",
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
             body: try JSONEncoder().encode(["archived": archived])
