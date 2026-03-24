@@ -19,7 +19,10 @@ SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
   YES: luster/resplendent, haggling/extorting, cacophony/clang
 - not_applicable: No meaningful learning relationship
 
-Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<brief>"}"""
+Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
+Example: "都形容光彩奪目，但 luster 偏指物體表面的光澤質感，resplendent 則強調整體華麗壯觀的視覺效果。"
+
+Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
 
 USER_TEMPLATE = """Word A: {word_a}
 Meaning A: {meaning_a}
