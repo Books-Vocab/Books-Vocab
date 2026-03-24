@@ -1,0 +1,151 @@
+"""One-time migration: regenerate graph link reasons in 繁體中文.
+
+Usage:
+    python -m kg.migrations.migrate_graph_reasons [data_dir]
+
+Default data_dir: ./data
+
+Reads each user's graph_*.json, finds active links, looks up the two
+cards' content+meaning from cards.db, calls Gemini to produce a Chinese
+reason, and overwrites the link in-place. A .bak is kept automatically
+by GraphStore._save_links().
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+import sys
+from pathlib import Path
+
+logging.basicConfig(level=logging.INFO, format="%(levelname)s %(message)s")
+logger = logging.getLogger(__name__)
+
+
+def migrate_user_graph(user_dir: Path, client, model: str) -> int:
+    """Migrate all notebook graphs for one user. Returns count of updated links."""
+    from kg.cards import CardStore
+    from kg.graph import GraphStore
+    from kg.judge import SYSTEM_PROMPT, USER_TEMPLATE, Judgement
+
+    import json
+    import re
+
+    graph_files = sorted(user_dir.glob("graph_*.json"))
+    if not graph_files:
+        return 0
+
+    total_updated = 0
+
+    for graph_path in graph_files:
+        notebook_id = graph_path.stem.replace("graph_", "")
+        candidates_path = user_dir / f"candidates_{notebook_id}.json"
+        cards_db_path = user_dir / "cards.db"
+
+        if not cards_db_path.exists():
+            logger.warning("  No cards.db in %s, skipping", user_dir.name)
+            continue
+
+        cards = CardStore(cards_db_path)
+        graph = GraphStore(graph_path, candidates_path)
+
+        active_links = [lk for lk in graph._links.values() if lk.status == "active"]
+        if not active_links:
+            continue
+
+        logger.info("  [%s] %d active links to migrate", notebook_id, len(active_links))
+
+        for link in active_links:
+            card_a = cards.get(link.from_id)
+            card_b = cards.get(link.to_id)
+            if not card_a or not card_b:
+                logger.warning("    Skipping link %s: missing card(s)", link.id)
+                continue
+
+            user_msg = USER_TEMPLATE.format(
+                word_a=card_a.content,
+                meaning_a=card_a.meaning,
+                word_b=card_b.content,
+                meaning_b=card_b.meaning,
+            )
+
+            try:
+                resp = client.chat.completions.create(
+                    model=model,
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": user_msg},
+                    ],
+                    response_format={"type": "json_object"},
+                    temperature=0.1,
+                )
+                content = resp.choices[0].message.content or ""
+                try:
+                    data = json.loads(content)
+                except (json.JSONDecodeError, ValueError):
+                    m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+                    data = json.loads(m.group()) if m else {}
+
+                new_reason = data.get("reason", "")
+                if not new_reason:
+                    logger.warning("    Link %s: empty reason from LLM, keeping old", link.id)
+                    continue
+
+                old_reason = link.reason
+                link.reason = new_reason
+                total_updated += 1
+                logger.info("    %s <-> %s: %s -> %s",
+                            card_a.content, card_b.content,
+                            old_reason[:40], new_reason[:40])
+
+            except Exception as exc:
+                logger.error("    Link %s failed: %s", link.id, exc)
+                continue
+
+        graph._save_links()
+        logger.info("  [%s] saved", notebook_id)
+
+    return total_updated
+
+
+def main() -> None:
+    data_dir = Path(sys.argv[1]) if len(sys.argv) > 1 else Path("data")
+    if not data_dir.exists():
+        logger.error("Data directory %s does not exist", data_dir)
+        sys.exit(1)
+
+    api_key = os.getenv("GEMINI_API_KEY")
+    if not api_key:
+        logger.error("GEMINI_API_KEY env var is required")
+        sys.exit(1)
+
+    model = os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite")
+
+    from openai import OpenAI
+    client = OpenAI(
+        api_key=api_key,
+        base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
+    )
+
+    user_dirs = sorted([
+        d for d in data_dir.iterdir()
+        if d.is_dir() and (d / "cards.db").exists()
+    ])
+    logger.info("Found %d user directories", len(user_dirs))
+
+    grand_total = 0
+    for user_dir in user_dirs:
+        logger.info("Migrating %s ...", user_dir.name)
+        try:
+            count = migrate_user_graph(user_dir, client, model)
+            grand_total += count
+            if count:
+                logger.info("  Updated %d links", count)
+        except Exception as exc:
+            logger.error("  FAILED: %s", exc, exc_info=True)
+
+    logger.info("Migration complete. Total links updated: %d", grand_total)
+
+
+if __name__ == "__main__":
+    main()
