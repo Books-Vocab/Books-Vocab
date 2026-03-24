@@ -83,8 +83,7 @@ enum TodayReviewPresenterPreviewData {
             rememberedCount: 2,
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
-            persistenceFailureTrigger: 0,
-            persistenceErrorMessage: nil,
+
             isAutoPlaying: false,
             isAutoPlayPaused: false
         )
@@ -103,8 +102,6 @@ enum TodayReviewPresenterPreviewData {
         rememberedCount: 8,
         rememberedFeedbackTrigger: 0,
         forgotFeedbackTrigger: 0,
-        persistenceFailureTrigger: 0,
-        persistenceErrorMessage: nil,
         isAutoPlaying: false,
         isAutoPlayPaused: false
     )
@@ -123,8 +120,7 @@ enum TodayReviewPresenterPreviewData {
             rememberedCount: 0,
             rememberedFeedbackTrigger: 0,
             forgotFeedbackTrigger: 0,
-            persistenceFailureTrigger: 0,
-            persistenceErrorMessage: nil,
+
             isAutoPlaying: true,
             isAutoPlayPaused: paused
         )

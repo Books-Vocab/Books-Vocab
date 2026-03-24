@@ -61,8 +61,8 @@ struct TodayReviewView: View {
             onShuffle: state.shuffleQueue,
             onPrevious: state.goPrevious,
             onNext: state.goNext,
-            onForgot: { state.submit(.forgot, modelContext: modelContext, reviewSettings: reviewSettingsStore.settings) },
-            onRemembered: { state.submit(.remembered, modelContext: modelContext, reviewSettings: reviewSettingsStore.settings) },
+            onForgot: { state.submit(.forgot) },
+            onRemembered: { state.submit(.remembered) },
             onLinkTap: state.handleLinkTap,
             onToggleAutoPlay: state.toggleAutoPlay,
             onToggleAutoPlayPause: state.toggleAutoPlayPause,
@@ -85,9 +85,19 @@ struct TodayReviewView: View {
                     durationMs: durationMs
                 ))
             }
+
+            // 背景批次寫入所有複習結果（不阻塞主線程、不觸發 @Query）
+            let container = modelContext.container
+            state.persistResults(
+                container: container,
+                reviewSettings: reviewSettingsStore.settings
+            )
+
             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
             Task {
-                await kgService.pushReviewQuietly(container: modelContext.container)
+                // 等背景寫入完成後再 push，確保 push 包含最新結果
+                try? await Task.sleep(for: .milliseconds(500))
+                await kgService.pushReviewQuietly(container: container)
             }
         }
     }
