@@ -17,14 +17,8 @@ final class TodayReviewState {
     var submittedFeedback: [Int: ReviewFeedback] = [:]
     var rememberedFeedbackTrigger = 0
     var forgotFeedbackTrigger = 0
-
-    var forgotCount: Int {
-        submittedFeedback.count { $0.key < currentIndex && $0.value == .forgot }
-    }
-
-    var rememberedCount: Int {
-        submittedFeedback.count { $0.key < currentIndex && $0.value == .remembered }
-    }
+    private(set) var forgotCount = 0
+    private(set) var rememberedCount = 0
 
     // MARK: - Autoplay
 
@@ -32,11 +26,7 @@ final class TodayReviewState {
     var isAutoPlayPaused = false
     var autoplayTask: Task<Void, Never>?
 
-    // MARK: - Persistence
-
-    var pendingSaveTask: Task<Void, Never>?
-    var persistenceFailureTrigger = 0
-    var persistenceErrorMessage: String?
+    // MARK: - Persistence (deferred to session end)
 
     // MARK: - Analytics
 
@@ -81,8 +71,6 @@ final class TodayReviewState {
             rememberedCount: rememberedCount,
             rememberedFeedbackTrigger: rememberedFeedbackTrigger,
             forgotFeedbackTrigger: forgotFeedbackTrigger,
-            persistenceFailureTrigger: persistenceFailureTrigger,
-            persistenceErrorMessage: persistenceErrorMessage,
             isAutoPlaying: isAutoPlaying,
             isAutoPlayPaused: isAutoPlayPaused
         )
@@ -219,24 +207,20 @@ final class TodayReviewState {
         }
     }
 
-    // MARK: - Submit (Scoring + Persistence)
+    // MARK: - Submit (Scoring only — persistence deferred to session end)
 
-    func submit(
-        _ feedback: ReviewFeedback,
-        modelContext: ModelContext,
-        reviewSettings: ReviewSettings
-    ) {
-        guard let current = currentEntry else { return }
-        let alreadyPersisted = submittedFeedback[currentIndex] != nil
-        pendingSaveTask?.cancel()
-        persistenceErrorMessage = nil
+    func submit(_ feedback: ReviewFeedback) {
+        guard currentEntry != nil else { return }
+        let alreadyScored = submittedFeedback[currentIndex] != nil
 
         submittedFeedback[currentIndex] = feedback
         switch feedback {
         case .remembered:
             rememberedFeedbackTrigger += 1
+            if !alreadyScored { rememberedCount += 1 }
         case .forgot:
             forgotFeedbackTrigger += 1
+            if !alreadyScored { forgotCount += 1 }
         }
 
         AppAnalytics.track(.reviewCardSubmitted(
@@ -258,33 +242,37 @@ final class TodayReviewState {
                 durationMs: durationMs
             ))
         }
+    }
 
-        guard !alreadyPersisted else { return }
+    // MARK: - Background Persistence (called once at session end)
 
-        let entryToUpdate = current
+    /// 在背景 context 批次寫入所有複習結果，完全不觸發主線程 @Query。
+    func persistResults(container: ModelContainer, reviewSettings: ReviewSettings) {
+        let feedbackSnapshot = submittedFeedback
+        let entryIDs = queue.map(\.id)
         let settings = reviewSettings
-        Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(280))
-            entryToUpdate.applyReviewFeedback(feedback, settings: settings)
-            ReviewActivityLog.recordReview(
-                word: entryToUpdate.word,
-                entryID: entryToUpdate.id,
-                feedback: feedback,
-                context: modelContext,
-                notebookId: entryToUpdate.notebookId
-            )
-        }
+        guard !feedbackSnapshot.isEmpty else { return }
 
-        pendingSaveTask = Task { @MainActor in
-            try? await Task.sleep(for: .milliseconds(650))
-            do {
-                try modelContext.save()
-            } catch {
-                withAnimation(AppMotion.phaseChange) {
-                    persistenceErrorMessage = L10n.format("複習結果尚未寫入本機：%@", error.localizedDescription)
-                }
-                persistenceFailureTrigger += 1
+        Task.detached(priority: .utility) {
+            let ctx = ModelContext(container)
+            for (index, feedback) in feedbackSnapshot {
+                guard index < entryIDs.count else { continue }
+                let targetID = entryIDs[index]
+                var descriptor = FetchDescriptor<VocabularyEntry>(
+                    predicate: #Predicate<VocabularyEntry> { $0.id == targetID }
+                )
+                descriptor.fetchLimit = 1
+                guard let entry = try? ctx.fetch(descriptor).first else { continue }
+                entry.applyReviewFeedback(feedback, settings: settings)
+                let record = ReviewRecord(
+                    word: entry.word,
+                    entryID: entry.id,
+                    feedback: feedback == .remembered ? 1 : 0
+                )
+                record.notebookId = entry.notebookId
+                ctx.insert(record)
             }
+            try? ctx.save()
         }
     }
 
