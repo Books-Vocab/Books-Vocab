@@ -127,8 +127,10 @@ def main() -> None:
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/",
     )
 
+    # User dirs live under data_dir/users/ (production layout)
+    users_root = data_dir / "users" if (data_dir / "users").is_dir() else data_dir
     user_dirs = sorted([
-        d for d in data_dir.iterdir()
+        d for d in users_root.iterdir()
         if d.is_dir() and (d / "cards.db").exists()
     ])
     logger.info("Found %d user directories", len(user_dirs))
