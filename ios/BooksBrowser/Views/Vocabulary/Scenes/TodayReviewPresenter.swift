@@ -28,8 +28,6 @@ struct TodayReviewPresenterState {
     let rememberedCount: Int
     let rememberedFeedbackTrigger: Int
     let forgotFeedbackTrigger: Int
-    let persistenceFailureTrigger: Int
-    let persistenceErrorMessage: String?
     let isAutoPlaying: Bool
     let isAutoPlayPaused: Bool
 }
@@ -121,7 +119,6 @@ struct TodayReviewPresenter: View {
                 containerWidth = newWidth
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
-            .sensoryFeedback(.error, trigger: state.persistenceFailureTrigger)
         }
     }
 
