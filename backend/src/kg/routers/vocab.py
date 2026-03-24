@@ -11,6 +11,7 @@ from ..api_models import (
     DailyReviewStatsResponse,
     DeleteWordResponse,
     GraphLinkResponse,
+    ManualLinkRequest,
     MoveWordsRequest,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
@@ -22,6 +23,7 @@ from ..deps import (
     _card_store,
     _daily_stats_store,
     _embedding_store,
+    _gemini_client,
     _graph_store,
     _notebook_store,
     _require_pro_access,
@@ -31,6 +33,8 @@ from ..deps import (
 from ..vocab_handlers import (
     add_vocab_response,
     archive_word_response,
+    create_manual_link_response,
+    delete_graph_link_response,
     delete_word_response,
     get_graph_links_response,
     list_vocab_response,
@@ -156,6 +160,33 @@ def get_graph_links(
         user, require_pro_access=_require_pro_access,
         graph_store_factory=_graph_store, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
+    )
+
+
+@router.post("/api/graph/links", response_model=GraphLinkResponse)
+def create_graph_link(
+    req: ManualLinkRequest,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    return create_manual_link_response(
+        req, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        gemini_client_factory=_gemini_client, notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
+@router.delete("/api/graph/links/{link_id}", status_code=204)
+def delete_graph_link(
+    link_id: str,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    delete_graph_link_response(
+        link_id, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
     )
 
 

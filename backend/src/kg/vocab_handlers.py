@@ -12,6 +12,7 @@ from .api_models import (
     DailyReviewStatsPushResponse,
     DailyReviewStatsResponse,
     GraphLinkResponse,
+    ManualLinkRequest,
     MoveWordsRequest,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
@@ -22,6 +23,7 @@ from .notebook import validate_notebook_access
 from .vocab_service import (
     add_vocab_entries,
     archive_vocab_word,
+    create_manual_link,
     delete_vocab_word,
     graph_links_payload,
     list_vocab_cards,
@@ -30,6 +32,7 @@ from .vocab_service import (
     pull_daily_review_stats,
     push_daily_review_stats,
     push_review_states,
+    reject_graph_link,
 )
 
 
@@ -231,3 +234,55 @@ def pull_daily_stats_response(
     store = daily_stats_store_factory(user["dir"])
     entries = pull_daily_review_stats(since=since, stats_store=store)
     return DailyReviewStatsResponse(entries=entries)
+
+
+def create_manual_link_response(
+    req: ManualLinkRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    gemini_client_factory: Callable[[], Any],
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> GraphLinkResponse:
+    require_pro_access(user, "knowledge_graph")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+
+    from .judge import ManualLinkJudge
+    judge = ManualLinkJudge(gemini_client_factory())
+
+    link = create_manual_link(
+        from_id=req.from_id, to_id=req.to_id,
+        cards_store=cards, graph=graph, judge=judge,
+    )
+    return GraphLinkResponse(
+        id=link.id,
+        fromId=link.from_id,
+        toId=link.to_id,
+        kind=link.kind.value if hasattr(link.kind, 'value') else link.kind,
+        confidence=link.confidence,
+        reason=link.reason,
+    )
+
+
+def delete_graph_link_response(
+    link_id: str,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> None:
+    require_pro_access(user, "knowledge_graph")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    reject_graph_link(link_id=link_id, graph=graph, cards_store=cards)
