@@ -14,6 +14,7 @@ set -euo pipefail
 SSH_KEY="$HOME/.ssh/lightsail_default.pem"
 SERVER="ubuntu@54.95.189.179"
 REMOTE_DIR="~/knowledge_graph_api"
+CONTAINER="knowledge-graph-api"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
@@ -453,6 +454,26 @@ cmd_run() {
   run_remote "$*"
 }
 
+# ── 指令：container-run <cmd...> ─────────────────────────────────────────────
+# 在 Docker container 內執行指令（自動包 docker exec）
+cmd_container_run() {
+  [[ -z "${1:-}" ]] && err "用法: $0 container-run \"<cmd>\""
+  run_remote "docker inspect -f '{{.State.Running}}' $CONTAINER 2>/dev/null" \
+    | grep -q true || err "容器 $CONTAINER 未在運行"
+  info "在容器 $CONTAINER 內執行指令"
+  run_remote "docker exec $CONTAINER $*"
+}
+
+# ── 指令：migrate-run <cmd...> ───────────────────────────────────────────────
+# backup + 在 container 內執行遷移指令 + 自動重啟（清 in-memory cache）
+cmd_migrate_run() {
+  [[ -z "${1:-}" ]] && err "用法: $0 migrate-run \"<cmd>\""
+  cmd_backup
+  cmd_container_run "$@"
+  info "遷移完成，重啟容器以清除 in-memory cache"
+  cmd_restart
+}
+
 # ── 指令：ssh ─────────────────────────────────────────────────────────────────
 # 注意：此指令為互動式，agent 應使用 ./devops.sh run "<cmd>" 代替
 cmd_ssh() {
@@ -476,6 +497,8 @@ case "${1:-help}" in
   user-info)    cmd_user_info "${2:-}" ;;
   delete-user)  cmd_delete_user "${2:-}" "${3:-}" ;;
   run)          cmd_run "${@:2}" ;;
+  container-run) cmd_container_run "${@:2}" ;;
+  migrate-run)  cmd_migrate_run "${@:2}" ;;
   ssh)          cmd_ssh ;;
   help|--help|-h|*)
     echo ""
@@ -497,7 +520,9 @@ case "${1:-help}" in
     echo "  users                   列出所有遠端用戶 + users.json"
     echo "  user-info <id>          查看特定用戶單字統計"
     echo "  delete-user <id> [--yes]  刪除用戶資料（--yes 跳過確認，或設 DEVOPS_YES=1）"
-    echo "  run \"<cmd>\"             在遠端執行任意指令（agent 用）"
+    echo "  run \"<cmd>\"             在遠端 host 執行任意指令"
+    echo "  container-run \"<cmd>\"   在 Docker 容器內執行指令"
+    echo "  migrate-run \"<cmd>\"     container-run + 自動重啟（清 cache）"
     echo "  ssh                     開啟互動式 SSH（人工用，agent 改用 run）"
     echo ""
     echo "Agent 環境變數:"
