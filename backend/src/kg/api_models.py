@@ -135,6 +135,11 @@ class GraphLinkResponse(BaseModel):
     reason: str
 
 
+class ManualLinkRequest(BaseModel):
+    from_id: str
+    to_id: str
+
+
 class QuickTranslateResponse(BaseModel):
     t: str
     p: str | None = None
