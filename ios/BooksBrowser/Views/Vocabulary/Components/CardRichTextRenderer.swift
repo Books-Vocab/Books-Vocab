@@ -118,11 +118,19 @@ enum CardRichTextRenderer {
     }
 
     nonisolated(unsafe) private static var truncationCache: [TruncationCacheKey: String] = [:]
+    private static let cacheCapacity = 256
+
+    static func clearTruncationCache() {
+        truncationCache.removeAll(keepingCapacity: false)
+    }
 
     private static func cachedTruncate(_ raw: String, radius: Int, targetWord: String?) -> String {
         let key = TruncationCacheKey(raw: raw, radius: radius, targetWord: targetWord)
         if let cached = truncationCache[key] {
             return cached
+        }
+        if truncationCache.count >= cacheCapacity {
+            truncationCache.removeAll(keepingCapacity: true)
         }
         let result = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
         truncationCache[key] = result
