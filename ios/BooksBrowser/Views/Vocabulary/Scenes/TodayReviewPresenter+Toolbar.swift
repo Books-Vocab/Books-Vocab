@@ -56,7 +56,6 @@ extension TodayReviewPresenter {
 
     var bottomToolbar: some View {
         VStack(spacing: 10) {
-            persistenceMessage
             toolbarControls
         }
         .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
@@ -71,19 +70,6 @@ extension TodayReviewPresenter {
                 )
                 .ignoresSafeArea(edges: .bottom)
         )
-    }
-
-    @ViewBuilder
-    private var persistenceMessage: some View {
-        if let msg = state.persistenceErrorMessage {
-            VocabStateMessageCard(
-                title: "本機儲存失敗".localized,
-                systemImage: "externaldrive.badge.exclamationmark",
-                description: msg
-            )
-            .transition(.overlayFade)
-            .animatePhaseChange(state.persistenceErrorMessage)
-        }
     }
 
     @ViewBuilder
