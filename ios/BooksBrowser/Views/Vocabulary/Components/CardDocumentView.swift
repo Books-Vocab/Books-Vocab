@@ -133,6 +133,7 @@ private struct CardDocumentExampleBlock: View {
                     targetWord: targetWord
                 )
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .fixedSize(horizontal: false, vertical: true)
             } else {
                 CardInlineText(
                     paragraph: paragraph,
