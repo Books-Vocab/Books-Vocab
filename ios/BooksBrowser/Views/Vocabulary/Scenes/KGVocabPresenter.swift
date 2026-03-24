@@ -82,7 +82,7 @@ struct KGVocabPresenter: View {
                                                     : vocabSkin.palette.quaternaryText
                                             )
                                             .onTapGesture { selectionState.toggle(item.id) }
-                                            .transition(.scale.combined(with: .opacity))
+                                            .transition(.selectionReveal)
                                     }
 
                                     WordRow(viewData: item.row)

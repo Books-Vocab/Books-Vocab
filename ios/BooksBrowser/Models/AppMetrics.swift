@@ -177,6 +177,10 @@ extension AnyTransition {
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
     static let listInsert: AnyTransition = .opacity.combined(with: .offset(y: 8))
     static let listRemove: AnyTransition = .opacity
+    /// Sync phase 切換（blur replace）
+    static let phaseBlurSwap: AnyTransition = .init(.blurReplace)
+    /// 選取模式 checkbox 顯現
+    static let selectionReveal: AnyTransition = .scale.combined(with: .opacity)
 }
 
 enum TodayReviewMetrics {
