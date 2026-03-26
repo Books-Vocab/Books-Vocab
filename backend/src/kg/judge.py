@@ -150,3 +150,78 @@ class Judge:
             return None
 
         return judgement
+
+
+MANUAL_LINK_SYSTEM_PROMPT = """The user believes these two vocabulary words are related. Your job is to classify the relationship and explain it.
+
+Choose ONE type:
+- contrasts_with: The words have similar or overlapping meanings but differ in nuance, tone, formality, or usage scope
+- shares_usage: The words appear in similar contexts, share thematic domains, or complement each other in usage
+
+Do NOT return "not_applicable" — the user has decided these words are related. Find and articulate the connection.
+
+Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
+
+Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
+
+
+class ManualLinkJudge:
+    """LLM judge for user-initiated links. Never returns None."""
+
+    def __init__(self, client: OpenAI, model: str = "gemini-2.5-flash-lite") -> None:
+        self.client = client
+        self.model = model
+
+    def evaluate(
+        self,
+        word_a: str,
+        meaning_a: str,
+        word_b: str,
+        meaning_b: str,
+        user_id: str | None = None,
+    ) -> Judgement:
+        user_msg = USER_TEMPLATE.format(
+            word_a=word_a, meaning_a=meaning_a,
+            word_b=word_b, meaning_b=meaning_b,
+        )
+
+        resp = self.client.chat.completions.create(
+            model=self.model,
+            messages=[
+                {"role": "system", "content": MANUAL_LINK_SYSTEM_PROMPT},
+                {"role": "user", "content": user_msg},
+            ],
+            response_format={"type": "json_object"},
+            temperature=0.1,
+        )
+
+        if user_id and resp.usage:
+            from .token_tracker import record
+            record(user_id, "manual_link_judge",
+                   getattr(resp.usage, "prompt_tokens", 0) or 0,
+                   getattr(resp.usage, "completion_tokens", 0) or 0)
+
+        content = resp.choices[0].message.content or ""
+
+        import json
+        import re
+
+        try:
+            data = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            m = re.search(r'\{[^{}]*\}', content, re.DOTALL)
+            if m:
+                try:
+                    data = json.loads(m.group())
+                except (json.JSONDecodeError, ValueError):
+                    return Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+            else:
+                return Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+
+        link_val = data.get("link", "shares_usage")
+        reason_val = data.get("reason", "使用者認為這兩個詞相關。")
+
+        if link_val not in ("contrasts_with", "shares_usage"):
+            link_val = "shares_usage"
+
+        return Judgement(link=link_val, confidence=1.0, reason=reason_val)
