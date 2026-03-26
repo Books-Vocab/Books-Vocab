@@ -1,3 +1,66 @@
+English
+Books & Vocab Terms of Use
+Last Updated: March 2026
+
+SERVICE DESCRIPTION
+Books & Vocab is an e-book reading and vocabulary management application. A Books & Vocab Pro subscription provides advanced features including AI translation and contextual explanations, knowledge base sync, association graphs, and spaced repetition review.
+By using this service, you agree to these terms. If you do not accept these terms, please stop using the service.
+
+ACCOUNT TERMS
+Using advanced features of Books & Vocab requires signing in with Apple Sign-In or a Google account. You are responsible for all activity under your account.
+— Your account is for personal use only and may not be transferred or shared
+— Keep your login credentials secure
+— Contact us immediately if you notice unauthorized access to your account
+— We reserve the right to terminate accounts that violate these terms
+
+SUBSCRIPTION AND PAYMENT
+Books & Vocab Pro subscriptions are processed through the Apple App Store. All payments are collected and managed by Apple.
+— Subscription pricing is as displayed in the App Store for your region
+— Apple will automatically charge your account for renewal within 24 hours before the end of the current period
+— You can turn off auto-renewal at any time in the Subscriptions section of your Apple ID settings
+— After turning off auto-renewal, you may continue using the service until the end of the current billing period
+— Refund requests must be submitted to Apple and are handled per Apple's refund policy
+
+FREE TRIAL
+New users may be eligible for a free trial of Books & Vocab Pro, which includes access to all advanced features.
+— The free trial duration is determined by the App Store and shown at the time of signup
+— If not canceled, the trial will automatically convert to a paid subscription upon expiration
+— Each Apple ID is eligible for one free trial only
+— To avoid being charged, cancel at least 24 hours before the trial period ends
+
+INTELLECTUAL PROPERTY
+All intellectual property rights in the Books & Vocab application, including its interface design, code, and functionality, belong to the developer.
+— Your vocabulary data, reading history, and personal content belong to you
+— Copyright of e-books you import belongs to the original rights holders; please ensure you have lawful rights to use them
+— You may not copy, modify, or distribute this application without permission
+
+USAGE RESTRICTIONS
+When using this service, you shall not:
+— Reverse engineer, decompile, or attempt to extract the source code of the application
+— Access the API or server resources in bulk through automated means
+— Upload or share e-book content that infringes copyright
+— Attempt to bypass subscription verification or access control mechanisms
+— Use this service for any activity that violates applicable laws
+
+DISCLAIMER
+This service is provided "as is" without any express or implied warranties. Output from AI translation and explanation features is for reference only and is not guaranteed to be fully accurate.
+To the maximum extent permitted by law, we shall not be liable for any direct or indirect damages arising from the use of or inability to use this service.
+
+TERMINATION
+You may terminate your use of this service at any time by deleting your account. Upon account deletion, your personal data will be immediately removed from the server.
+If you violate these terms, we reserve the right to suspend or terminate your account access without prior notice. Subscription fees are non-refundable.
+
+MODIFICATIONS
+We reserve the right to modify these terms at any time. Significant changes will be communicated through in-app notifications or email. Continued use of the service constitutes acceptance of the modified terms.
+
+GOVERNING LAW
+These terms are governed by the laws of the Republic of China (Taiwan). Any disputes arising from these terms or this service shall first be resolved through negotiation. If negotiation fails, the parties agree to submit to the jurisdiction of the Taipei District Court in Taiwan as the court of first instance.
+
+CONTACT US
+For any questions regarding these terms of use, please email max970228@gmail.com.
+
+
+繁體中文
 Books & Vocab 服務條款
 最後更新：2026 年 3 月
 
