@@ -26,6 +26,8 @@ struct WordDetailPresenter: View {
     let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
     let onToggleExcludeFromReader: (() -> Void)?
+    let onAddLink: (() -> Void)?
+    let onDeleteLink: ((KGCardLinkSummary) -> Void)?
 
     var body: some View {
         Group {
@@ -68,7 +70,7 @@ struct WordDetailPresenter: View {
                             .padding(vocabSkin.metrics.cardBlockPadding)
                         }
 
-                        if !state.card.linkGroups.isEmpty {
+                        if !state.card.linkGroups.isEmpty || onAddLink != nil {
                             CardSectionDivider()
                             linksSection
                                 .padding(vocabSkin.metrics.cardBlockPadding)
@@ -104,7 +106,18 @@ struct WordDetailPresenter: View {
 
     private var linksSection: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            CardSectionLabel(title: "知識連結".localized, systemImage: "link")
+            HStack {
+                CardSectionLabel(title: "知識連結".localized, systemImage: "link")
+                Spacer()
+                if let onAddLink {
+                    Button(action: onAddLink) {
+                        Image(systemName: "plus")
+                            .font(vocabSkin.typography.iconSmall)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                    }
+                    .buttonStyle(.plain)
+                }
+            }
 
             ForEach(state.card.linkGroups) { group in
                 VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
@@ -117,7 +130,8 @@ struct WordDetailPresenter: View {
                             link: link,
                             onTap: state.navigableLinkCardIDs.contains(link.cardId) ? {
                                 onLinkTapped(link)
-                            } : nil
+                            } : nil,
+                            onDelete: onDeleteLink != nil ? { onDeleteLink?(link) } : nil
                         )
                     }
                 }

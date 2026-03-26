@@ -6,6 +6,7 @@ struct WordDetailGraphLinkRow: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let link: KGCardLinkSummary
     let onTap: (() -> Void)?
+    let onDelete: (() -> Void)?
 
     var body: some View {
         Group {
@@ -17,6 +18,15 @@ struct WordDetailGraphLinkRow: View {
                 .contentShape(Rectangle())
             } else {
                 linkRowContent(showsAccessory: false)
+            }
+        }
+        .contextMenu {
+            if let onDelete {
+                Button(role: .destructive) {
+                    onDelete()
+                } label: {
+                    Label("刪除連結".localized, systemImage: "trash")
+                }
             }
         }
     }

@@ -437,3 +437,67 @@ def pull_daily_review_stats(
         )
         for s in stats
     ]
+
+
+def create_manual_link(
+    *,
+    from_id: str,
+    to_id: str,
+    cards_store: Any,
+    graph: Any,
+    judge: Any,
+) -> Any:
+    """Create a manual link between two cards. Calls LLM for kind + reason."""
+    from .graph import LinkKind
+
+    card_a = cards_store.get(from_id)
+    card_b = cards_store.get(to_id)
+    if not card_a or card_a.is_deleted or card_a.is_archived:
+        raise HTTPException(404, f"Card '{from_id}' not found or unavailable")
+    if not card_b or card_b.is_deleted or card_b.is_archived:
+        raise HTTPException(404, f"Card '{to_id}' not found or unavailable")
+
+    existing = graph.find_link_between(from_id, to_id)
+    if existing and existing.status == "active":
+        raise HTTPException(409, "Link already exists between these cards")
+
+    judgement = judge.evaluate(
+        card_a.content, card_a.meaning,
+        card_b.content, card_b.meaning,
+    )
+
+    if existing and existing.status == "rejected":
+        existing.status = "active"
+        existing.kind = LinkKind(judgement.link)
+        existing.confidence = 1.0
+        existing.reason = judgement.reason
+        graph._save_links()
+        link = existing
+    else:
+        link = graph.add_link(
+            from_id, to_id,
+            LinkKind(judgement.link),
+            confidence=1.0,
+            reason=judgement.reason,
+        )
+
+    cards_store.touch(from_id)
+    cards_store.touch(to_id)
+    return link
+
+
+def reject_graph_link(
+    *,
+    link_id: str,
+    graph: Any,
+    cards_store: Any,
+) -> None:
+    """Reject a link (user-initiated deletion)."""
+    try:
+        graph.reject_link(link_id)
+    except KeyError:
+        raise HTTPException(404, f"Link '{link_id}' not found")
+
+    lk = graph._links[link_id]
+    cards_store.touch(lk.from_id)
+    cards_store.touch(lk.to_id)

@@ -36,7 +36,7 @@ class GraphLink(BaseModel):
     confidence: float
     reason: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    status: Literal["candidate", "active", "deprecated"] = "active"
+    status: Literal["candidate", "active", "deprecated", "rejected"] = "active"
 
 
 class CandidatePair(BaseModel):
@@ -143,17 +143,38 @@ class GraphStore:
         return [self._links[lid] for lid in link_ids if self._links[lid].status == "active"]
 
     def has_link(self, id_a: str, id_b: str) -> bool:
-        """Check if a link exists between two cards."""
+        """Check if a link exists between two cards (active or rejected counts)."""
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
             lk = self._links[lid]
-            if lk.status != "active":
+            if lk.status not in ("active", "rejected"):
                 continue
             if (lk.from_id == id_a and lk.to_id == id_b) or (
                 lk.from_id == id_b and lk.to_id == id_a
             ):
                 return True
         return False
+
+    def find_link_between(self, id_a: str, id_b: str) -> GraphLink | None:
+        """Find active or rejected link between two cards (bidirectional). Returns None for deprecated/absent."""
+        candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
+        for lid in candidates:
+            lk = self._links[lid]
+            if lk.status not in ("active", "rejected"):
+                continue
+            if (lk.from_id == id_a and lk.to_id == id_b) or (
+                lk.from_id == id_b and lk.to_id == id_a
+            ):
+                return lk
+        return None
+
+    def reject_link(self, link_id: str) -> None:
+        """Set link status to rejected. Raises KeyError if not found."""
+        lk = self._links.get(link_id)
+        if lk is None:
+            raise KeyError(link_id)
+        lk.status = "rejected"
+        self._save_links()
 
     def all_links(self) -> Iterator[GraphLink]:
         yield from self._links.values()
