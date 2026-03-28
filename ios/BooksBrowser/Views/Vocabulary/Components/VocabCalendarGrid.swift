@@ -15,13 +15,7 @@ struct VocabCalendarGrid: View {
     @Binding var selectedDay: String?
 
     private static let calendar = Calendar.current
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        return f
-    }()
+    private static let dayFormatter = AppDateFormatters.dayKey
 
     private let weekdaySymbols = ["一", "二", "三", "四", "五", "六", "日"]
     private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)

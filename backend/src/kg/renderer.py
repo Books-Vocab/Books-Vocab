@@ -2,12 +2,18 @@
 
 from __future__ import annotations
 
+import html
 import re
 from enum import StrEnum
 
 from .cards import Card, CardStore
 from .difficulty import TIERS
 from .graph import LINK_LABELS, GraphStore, LinkKind
+
+
+def _esc(text: str) -> str:
+    """Escape user content for safe HTML embedding."""
+    return html.escape(text, quote=False)
 
 
 def _difficulty_div(zipf: float | None) -> str:
@@ -160,7 +166,7 @@ class CardRenderer:
                 if mochi_id:
                     link_strs.append(f"[[{mochi_id}]]")
                 else:
-                    link_strs.append(f"*{word_name}*")
+                    link_strs.append(f"*{_esc(word_name)}*")
 
             if link_strs:
                 parts.append(f"{label}：{'、'.join(link_strs)}")
@@ -189,21 +195,21 @@ class CardRenderer:
             front_lines.append(diff_div)
             front_lines.append("")  # blank line for markdown parsing
 
-        pos_str = f" {card.pos}" if card.pos else ""
-        front_lines.append(f'<div class="word">{card.content}{pos_str}</div>')
+        pos_str = f" {_esc(card.pos)}" if card.pos else ""
+        front_lines.append(f'<div class="word">{_esc(card.content)}{pos_str}</div>')
 
         if card.examples:
             front_lines.append("")
-            front_lines.append(f'<div class="example">{self._format_example(card.examples[0])}</div>')
+            front_lines.append(f'<div class="example">{_esc(self._format_example(card.examples[0]))}</div>')
 
         # === BACK ===
-        back_lines.append(f'<div class="meaning">{card.meaning}</div>')
+        back_lines.append(f'<div class="meaning">{_esc(card.meaning)}</div>')
 
         if card.note:
             back_lines.append("")
             back_lines.append('<div class="note">')
             back_lines.append("")
-            back_lines.append(card.note)
+            back_lines.append(_esc(card.note))
             back_lines.append("")
             back_lines.append("</div>")
 
@@ -229,7 +235,7 @@ class CardRenderer:
         back_lines: list[str] = []
 
         # === FRONT ===
-        front_lines.append(f'<div class="meaning">{card.meaning}</div>')
+        front_lines.append(f'<div class="meaning">{_esc(card.meaning)}</div>')
 
         if card.examples:
             # For production cloze, we also might want truncation?
@@ -248,7 +254,7 @@ class CardRenderer:
             truncated = self._truncate_example(card.examples[0])
             cloze = self._make_cloze(truncated)
             front_lines.append("")
-            front_lines.append(f'<div class="example">_{cloze}_</div>')
+            front_lines.append(f'<div class="example">_{_esc(cloze)}_</div>')
 
         # === BACK ===
         diff_div = _difficulty_div(card.difficulty)
@@ -256,14 +262,14 @@ class CardRenderer:
             back_lines.append(diff_div)
             back_lines.append("")
 
-        pos_str = f" {card.pos}" if card.pos else ""
-        back_lines.append(f'<div class="word">{card.content}{pos_str}</div>')
+        pos_str = f" {_esc(card.pos)}" if card.pos else ""
+        back_lines.append(f'<div class="word">{_esc(card.content)}{pos_str}</div>')
 
         if card.note:
             back_lines.append("")
             back_lines.append('<div class="note">')
             back_lines.append("")
-            back_lines.append(card.note)
+            back_lines.append(_esc(card.note))
             back_lines.append("")
             back_lines.append("</div>")
 

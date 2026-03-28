@@ -52,9 +52,7 @@ extension KGService {
             queryItems.append(URLQueryItem(name: "notebook_id", value: notebookId))
         }
         if isIncremental {
-            let formatter = ISO8601DateFormatter()
-            formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-            let dateString = formatter.string(from: Date(timeIntervalSince1970: lastSyncMillis))
+            let dateString = AppDateFormatters.iso8601.string(from: Date(timeIntervalSince1970: lastSyncMillis))
             queryItems.append(URLQueryItem(name: "since", value: dateString))
             AppLog.kg.info("Performing incremental sync since: \(dateString)")
         } else {

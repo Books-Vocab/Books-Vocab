@@ -12,22 +12,8 @@ import os
 @ModelActor
 actor BackgroundSyncActor {
 
-    // MARK: - Cached Date Formatters
-
-    private static let isoFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let isoFormatterNoFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
     private static func parseISO8601(_ string: String) -> Date? {
-        isoFormatter.date(from: string) ?? isoFormatterNoFractional.date(from: string)
+        AppDateFormatters.parseISO8601(string)
     }
 
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
@@ -130,13 +116,22 @@ actor BackgroundSyncActor {
         // Any local entry that has `syncStatus == 1` but is MISSING from the remote fetched list
         // means it was deleted remotely before soft-deletes were implemented.
         if !isIncremental {
-            progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
-            for entry in localEntries {
-                if entry.shouldAppearInKnowledgeList {
-                    let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
-                    if !fetchedCardKeys.contains(orphanKey) {
-                        AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
-                        modelContext.delete(entry)
+            let localSyncedCount = localEntries.filter { $0.shouldAppearInKnowledgeList }.count
+            let serverReturnedCount = fetchedCards.count
+
+            // Safety guard: if server returned suspiciously few cards compared to local
+            // (e.g. due to server-side truncation), skip orphan cleanup to prevent data loss.
+            if localSyncedCount > 0 && serverReturnedCount < localSyncedCount / 2 {
+                AppLog.sync.warning("Orphan cleanup SKIPPED: server returned \(serverReturnedCount) cards but local has \(localSyncedCount). Possible server truncation.")
+            } else {
+                progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
+                for entry in localEntries {
+                    if entry.shouldAppearInKnowledgeList {
+                        let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
+                        if !fetchedCardKeys.contains(orphanKey) {
+                            AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
+                            modelContext.delete(entry)
+                        }
                     }
                 }
             }
@@ -193,8 +188,8 @@ actor BackgroundSyncActor {
             payload.append([
                 "word": entry.word,
                 "review_interval_hours": entry.reviewIntervalHours,
-                "next_review_at": Self.isoFormatter.string(from: entry.nextReviewAt),
-                "last_reviewed_at": Self.isoFormatter.string(from: lastReviewed),
+                "next_review_at": AppDateFormatters.iso8601.string(from: entry.nextReviewAt),
+                "last_reviewed_at": AppDateFormatters.iso8601.string(from: lastReviewed),
                 "review_count": entry.reviewCount,
                 "lapse_count": entry.lapseCount,
                 "review_streak": entry.reviewStreak,
@@ -297,13 +292,7 @@ actor BackgroundSyncActor {
         return Array(Set(entries.map(\.notebookId)))
     }
 
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        return f
-    }()
+    private static let dayFormatter = AppDateFormatters.dayKey
 
     // MARK: - Review State Merge Helper
 
@@ -314,7 +303,7 @@ actor BackgroundSyncActor {
         let localLast = entry.lastReviewedAt ?? .distantPast
         if serverLast >= localLast {
             if localLast != .distantPast {
-                AppLog.sync.info("Review merge: server wins for '\(entry.word)' (server=\(serverLastStr), local=\(isoFormatter.string(from: localLast)))")
+                AppLog.sync.info("Review merge: server wins for '\(entry.word)' (server=\(serverLastStr), local=\(AppDateFormatters.iso8601.string(from: localLast)))")
             }
             entry.reviewIntervalHours = card.reviewIntervalHours ?? entry.reviewIntervalHours
             if let nextStr = card.nextReviewAt, let nextDate = parseISO8601(nextStr) {
@@ -326,7 +315,7 @@ actor BackgroundSyncActor {
             entry.reviewStreak = max(entry.reviewStreak, card.reviewStreak ?? 0)
             entry.lastReviewFeedbackRaw = card.lastReviewFeedback ?? entry.lastReviewFeedbackRaw
         } else if localLast > serverLast {
-            AppLog.sync.info("Review merge: local wins for '\(entry.word)' (local=\(isoFormatter.string(from: localLast)), server=\(serverLastStr)), local review preserved")
+            AppLog.sync.info("Review merge: local wins for '\(entry.word)' (local=\(AppDateFormatters.iso8601.string(from: localLast)), server=\(serverLastStr)), local review preserved")
         }
     }
 }

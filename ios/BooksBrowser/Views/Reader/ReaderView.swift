@@ -104,7 +104,7 @@ struct ReaderView: View {
         .task {
             await loadPublication()
         }
-        .onChange(of: allVocabulary) { _, _ in
+        .onChange(of: allVocabulary.count) { _, _ in
             handler.loadLookedUpWords(from: allVocabulary)
         }
         .onChange(of: authManager.isLoggedIn) { _, loggedIn in
