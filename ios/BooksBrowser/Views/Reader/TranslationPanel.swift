@@ -5,6 +5,7 @@
 //  Created by 陳亮宇 on 2026/2/24.
 //
 
+import Combine
 import SwiftUI
 
 struct TranslationPanel: View {
@@ -32,8 +33,8 @@ struct TranslationPanel: View {
     @State private var dragOffset: CGFloat = 0
     @State private var isSpeaking = false
     @State private var elapsedTime: Double = 0
+    @State private var timerCancellable: (any Cancellable)?
 
-    private let ticker = Timer.publish(every: 0.1, on: .main, in: .common).autoconnect()
     private var isActive: Bool { isLoading || isLoadingExplanation }
     private var timerText: String { String(format: "%.1fs", elapsedTime) }
     private var presenterState: TranslationPanelPresenterState {
@@ -77,15 +78,33 @@ struct TranslationPanel: View {
             )
             .transition(.readerPanelReveal)
             .sensoryFeedback(.success, trigger: isSaved)
-            .onReceive(ticker) { _ in
-                if isActive { elapsedTime += 0.1 }
-            }
             .onChange(of: isLoading) { _, new in
                 if new { elapsedTime = 0 }
             }
             .onChange(of: isLoadingExplanation) { _, new in
                 if new { elapsedTime = 0 }
             }
+            .onChange(of: isActive) { _, active in
+                if active { startTimer() } else { stopTimer() }
+            }
+            .onAppear {
+                if isActive { startTimer() }
+            }
+            .onDisappear {
+                stopTimer()
+            }
+    }
+
+    private func startTimer() {
+        guard timerCancellable == nil else { return }
+        timerCancellable = Timer.publish(every: 0.1, on: .main, in: .common)
+            .autoconnect()
+            .sink { _ in elapsedTime += 0.1 }
+    }
+
+    private func stopTimer() {
+        timerCancellable?.cancel()
+        timerCancellable = nil
     }
 
     private var panelContent: some View {
