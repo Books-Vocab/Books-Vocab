@@ -298,6 +298,7 @@ struct BookCard: View {
                         style: .continuous
                     )
                 )
+                .transition(.opacity)
         } else {
             RoundedRectangle(
                 cornerRadius: AppBookshelfMetrics.coverCornerRadius,
@@ -325,7 +326,14 @@ struct BookCard: View {
             decodedCoverImage = nil
             return
         }
-        decodedCoverImage = UIImage(data: coverData)
+        Task.detached {
+            let image = UIImage(data: coverData)
+            await MainActor.run {
+                withAnimation(AppMotion.contentFade) {
+                    decodedCoverImage = image
+                }
+            }
+        }
     }
 
     @ViewBuilder
@@ -389,6 +397,7 @@ private struct ICloudProgressBadge: View {
                 .trim(from: 0, to: progress)
                 .stroke(foreground, style: StrokeStyle(lineWidth: 2.5, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .animation(AppMotion.progressLinear, value: progress)
             Text("\(Int(progress * 100))")
                 .font(AppFonts.monoNumbers(size: 8))
                 .foregroundStyle(foreground)
