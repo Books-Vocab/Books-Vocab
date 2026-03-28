@@ -272,7 +272,9 @@ final class TodayReviewState {
                 record.notebookId = entry.notebookId
                 ctx.insert(record)
             }
-            try? ctx.save()
+            if !ctx.safeSave() {
+                AppLog.data.error("persistResults: failed to save \(feedbackSnapshot.count) review results")
+            }
         }
     }
 
