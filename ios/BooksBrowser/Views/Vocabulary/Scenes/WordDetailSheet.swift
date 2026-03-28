@@ -8,6 +8,7 @@ struct WordDetailSheet: View {
     @State private var isEditing = false
     @State private var showAddLink = false
     @State private var presenterState: WordDetailPresenter.State?
+    @State private var linkError: String?
 
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -39,8 +40,25 @@ struct WordDetailSheet: View {
                     onAddLink: { showAddLink = true },
                     onDeleteLink: handleDeleteLink
                 )
+                .overlay(alignment: .top) {
+                    if let linkError {
+                        AppBanner(
+                            message: linkError,
+                            systemImage: "exclamationmark.triangle",
+                            onDismiss: { self.linkError = nil }
+                        )
+                        .padding(.top, 4)
+                    }
+                }
             } else {
-                ProgressView()
+                VocabStateMessageCard(
+                    title: "載入中".localized,
+                    systemImage: "doc.text"
+                ) {
+                    ProgressView()
+                        .controlSize(.small)
+                }
+                .padding()
             }
         }
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
@@ -95,7 +113,7 @@ struct WordDetailSheet: View {
                 current[link.kind, default: []].append(summary)
                 entry.graphLinksByKind = current
             } catch {
-                // sync will reconcile
+                linkError = "新增連結失敗".localized
             }
         }
     }
@@ -112,7 +130,7 @@ struct WordDetailSheet: View {
                 }
                 entry.graphLinksByKind = current
             } catch {
-                // sync will reconcile
+                linkError = "刪除連結失敗".localized
             }
         }
     }

@@ -208,12 +208,12 @@ async def _step_difficulty(
     from .difficulty import get_zipf
 
     cards = card_store_factory(user["dir"])
-    scored = 0
+    updates = []
     for card in cards.all(include_deleted=False, notebook_id=notebook_id):
         difficulty = round(get_zipf(card.content), 2)
         if card.difficulty != difficulty:
-            cards.update(card.id, difficulty=difficulty)
-            scored += 1
+            updates.append((card.id, {"difficulty": difficulty}))
+    scored = cards.batch_update(updates)
     logger.info("[%s] Scored %d cards", uid, scored)
 
 

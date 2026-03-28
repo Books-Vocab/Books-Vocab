@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Any
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
@@ -63,12 +63,12 @@ class NotebookResponse(BaseModel):
 
 class NotebookCreateRequest(BaseModel):
     name: str = Field(max_length=100)
-    color: str | None = None
+    color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
 
 
 class NotebookUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=100)
-    color: str | None = None
+    color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
     sort_order: int | None = None
 
 
@@ -136,8 +136,8 @@ class GraphLinkResponse(BaseModel):
 
 
 class ManualLinkRequest(BaseModel):
-    from_id: str
-    to_id: str
+    from_id: str = Field(min_length=1)
+    to_id: str = Field(min_length=1)
 
 
 class QuickTranslateResponse(BaseModel):
@@ -151,7 +151,7 @@ class ExplainResponse(BaseModel):
 
 
 class AuthVerifyRequest(BaseModel):
-    provider: str  # "apple" or "google"
+    provider: Literal["apple", "google"]
     token: str = Field(max_length=10000)
     email: str | None = None  # Optional: email from provider
 
@@ -302,12 +302,12 @@ class AppStoreNotificationResponse(BaseModel):
 
 class ReviewStateEntry(BaseModel):
     word: str
-    review_interval_hours: float
+    review_interval_hours: float = Field(ge=0)
     next_review_at: str  # ISO8601
     last_reviewed_at: str  # ISO8601
-    review_count: int
-    lapse_count: int
-    review_streak: int
+    review_count: int = Field(ge=0)
+    lapse_count: int = Field(ge=0)
+    review_streak: int = Field(ge=0)
     last_review_feedback: int
 
 
@@ -321,10 +321,10 @@ class ReviewStatePushResponse(BaseModel):
 
 
 class DailyReviewStatEntry(BaseModel):
-    day_key: str  # "yyyy-MM-dd"
-    total: int
-    remembered: int
-    forgot: int
+    day_key: str = Field(pattern=r"^\d{4}-\d{2}-\d{2}$")  # "yyyy-MM-dd"
+    total: int = Field(ge=0)
+    remembered: int = Field(ge=0)
+    forgot: int = Field(ge=0)
 
 
 class DailyReviewStatsPushRequest(BaseModel):
@@ -337,6 +337,27 @@ class DailyReviewStatsPushResponse(BaseModel):
 
 class DailyReviewStatsResponse(BaseModel):
     entries: list[DailyReviewStatEntry]
+
+
+class BatchDeleteRequest(BaseModel):
+    words: list[str] = Field(min_length=1, max_length=200)
+
+
+class BatchDeleteResponse(BaseModel):
+    deleted: int
+    deleted_words: list[str]
+    not_found: list[str]
+
+
+class BatchArchiveRequest(BaseModel):
+    words: list[str] = Field(min_length=1, max_length=200)
+    archived: bool = True
+
+
+class BatchArchiveResponse(BaseModel):
+    updated: int
+    updated_words: list[str]
+    not_found: list[str]
 
 
 class MoveWordsRequest(BaseModel):
