@@ -76,6 +76,7 @@ struct ReaderSettingsPanel: View {
 }
 
 private struct ReaderSettingsPanelPreviewHarness: View {
+    @Environment(\.appTheme) private var appTheme
     let initialFontSizeText: String
     let canDecreaseFontSize: Bool
     let canIncreaseFontSize: Bool
@@ -106,7 +107,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
 
     var body: some View {
         ZStack {
-            AppTheme.light.palette.pageBackground.ignoresSafeArea()
+            appTheme.palette.pageBackground.ignoresSafeArea()
 
             VStack {
                 Spacer()

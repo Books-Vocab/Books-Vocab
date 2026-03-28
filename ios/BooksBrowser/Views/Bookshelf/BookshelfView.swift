@@ -444,19 +444,25 @@ private enum BookshelfPreviewData {
 
 #Preview("Bookshelf Card / Progress") {
     AppThemeContainer {
-        BookCard(book: BookshelfPreviewData.activeBook)
-            .padding()
-            .frame(width: 180)
-            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+        BookCardPreviewScene(book: BookshelfPreviewData.activeBook)
     }
 }
 
 #Preview("Bookshelf Card / Placeholder") {
     AppThemeContainer {
-        BookCard(book: BookshelfPreviewData.placeholderBook)
+        BookCardPreviewScene(book: BookshelfPreviewData.placeholderBook)
+    }
+}
+
+private struct BookCardPreviewScene: View {
+    @Environment(\.appTheme) private var appTheme
+    let book: Book
+
+    var body: some View {
+        BookCard(book: book)
             .padding()
             .frame(width: 180)
-            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+            .background(appTheme.palette.pageBackground.ignoresSafeArea())
     }
 }
 
