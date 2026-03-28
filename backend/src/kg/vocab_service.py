@@ -31,6 +31,16 @@ def _normalize_word(word: str) -> str:
     return unicodedata.normalize("NFC", word).strip().lower()
 
 
+def _build_content_lookup(cards_store: Any, notebook_id: str | None = None) -> dict[str, Any]:
+    """Build a normalized-content → card dict from all active cards. O(N) single pass."""
+    lookup: dict[str, Any] = {}
+    for card in cards_store.all(include_deleted=False, notebook_id=notebook_id):
+        key = _normalize_word(card.content)
+        if key not in lookup:  # first match wins (same as find_by_content)
+            lookup[key] = card
+    return lookup
+
+
 def _clean_content(word: str) -> str:
     """Clean up word content for storage: strip trailing punctuation, lowercase first char."""
     word = word.strip().rstrip(".,;:!?")
@@ -302,8 +312,10 @@ def batch_delete_vocab_words(
     deleted_words: list[str] = []
     not_found: list[str] = []
 
+    lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
+
     for word in words:
-        card = cards_store.find_by_content(word, notebook_id=notebook_id)
+        card = lookup.get(_normalize_word(word))
         if not card:
             not_found.append(word)
             continue
@@ -341,8 +353,10 @@ def batch_archive_vocab_words(
     updated_words: list[str] = []
     not_found: list[str] = []
 
+    lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
+
     for word in words:
-        card = cards_store.find_by_content(word, notebook_id=notebook_id)
+        card = lookup.get(_normalize_word(word))
         if not card:
             not_found.append(word)
             continue
@@ -373,10 +387,11 @@ def move_vocab_words(
     if from_notebook_id == to_notebook_id:
         raise ValidationError("Source and target notebook are the same")
 
-    # Find card IDs before move (for graph cleanup)
+    # Find card IDs before move (for graph cleanup) — single bulk lookup
+    lookup = _build_content_lookup(cards_store, notebook_id=from_notebook_id)
     card_ids = []
     for word in words:
-        card = cards_store.find_by_content(word, notebook_id=from_notebook_id)
+        card = lookup.get(_normalize_word(word))
         if card:
             card_ids.append(card.id)
 
