@@ -10,7 +10,9 @@ struct WordDetailGraphLinkRow: View {
 
     var body: some View {
         Group {
-            if let onTap {
+            if link.isPending {
+                pendingRowContent
+            } else if let onTap {
                 Button(action: onTap) {
                     linkRowContent(showsAccessory: true)
                 }
@@ -21,7 +23,7 @@ struct WordDetailGraphLinkRow: View {
             }
         }
         .contextMenu {
-            if let onDelete {
+            if let onDelete, !link.isPending {
                 Button(role: .destructive) {
                     onDelete()
                 } label: {
@@ -29,6 +31,21 @@ struct WordDetailGraphLinkRow: View {
                 }
             }
         }
+    }
+
+    private var pendingRowContent: some View {
+        HStack(alignment: .top, spacing: vocabSkin.metrics.linkRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: vocabSkin.metrics.linkDetailGap) {
+                Text(link.word)
+                    .font(vocabSkin.typography.rowWord)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                ShimmerLine()
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
     }
 
     private func linkRowContent(showsAccessory: Bool) -> some View {
@@ -54,6 +71,22 @@ struct WordDetailGraphLinkRow: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
+    }
+}
+
+// MARK: - ShimmerLine
+
+private struct ShimmerLine: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    @State private var shimmerPhase = false
+
+    var body: some View {
+        RoundedRectangle(cornerRadius: 3)
+            .fill(vocabSkin.palette.tertiaryText.opacity(shimmerPhase ? 0.18 : 0.08))
+            .frame(width: 140, height: 10)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .animation(AppMotion.breathing, value: shimmerPhase)
+            .onAppear { shimmerPhase = true }
     }
 }
 
