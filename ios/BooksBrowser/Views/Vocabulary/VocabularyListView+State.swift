@@ -43,32 +43,36 @@ extension VocabularyListView {
         selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
     }
 
+    /// Single-pass classification of all knowledge entries into review-state buckets.
+    var classifiedKnowledge: VocabularyEntryPresentation.ClassifiedResult {
+        VocabularyEntryPresentation.classifyKnowledgeEntries(in: allEntries, now: Date())
+    }
+
     var syncedKnowledgeEntries: [VocabularyEntry] {
-        let now = Date()
-        return VocabularyEntryPresentation.syncedKnowledgeEntries(in: allEntries, now: now)
+        let c = classifiedKnowledge
+        return c.dueBucket + c.unlearnedBucket + c.reviewedBucket
     }
 
     var knowledgeReviewEntries: [VocabularyEntry] {
-        let now = Date()
-        return VocabularyEntryPresentation.knowledgeReviewEntries(in: allEntries, now: now)
+        let c = classifiedKnowledge
+        return c.dueBucket + c.unlearnedBucket
     }
 
     var knowledgeReviewCount: Int {
-        knowledgeReviewEntries.count
+        let c = classifiedKnowledge
+        return c.dueCount + c.unlearnedCount
     }
 
     var knowledgeDueEntries: [VocabularyEntry] {
-        let now = Date()
-        return VocabularyEntryPresentation.knowledgeDueEntries(in: allEntries, now: now)
+        classifiedKnowledge.dueBucket
     }
 
     var knowledgeDueCount: Int {
-        knowledgeDueEntries.count
+        classifiedKnowledge.dueCount
     }
 
     var knowledgeUnlearnedEntries: [VocabularyEntry] {
-        let now = Date()
-        return VocabularyEntryPresentation.knowledgeUnlearnedEntries(in: allEntries, now: now)
+        classifiedKnowledge.unlearnedBucket
     }
 
     var tabOptions: [VocabTabOption<Int>] {
