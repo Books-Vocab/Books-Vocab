@@ -56,6 +56,7 @@ async def _step_enrich(
 
         if msg.get("results"):
             result_map = {result["word"].lower(): result for result in msg["results"]}
+            batch_updates: list[tuple[str, dict]] = []
             for card in targets:
                 enrichment = result_map.get(card.content.lower())
                 if not enrichment:
@@ -73,9 +74,9 @@ async def _step_enrich(
                 if enrichment.get("meaning_fix"):
                     kwargs["meaning"] = enrichment["meaning_fix"]
                 if kwargs:
-                    updated_card = cards.update(card.id, **kwargs)
-                    if updated_card:
-                        updated += 1
+                    batch_updates.append((card.id, kwargs))
+            if batch_updates:
+                updated += cards.batch_update(batch_updates)
 
     logger.info("[%s] Enriched %d cards", uid, updated)
 
@@ -95,8 +96,9 @@ def _sync_embed_loop(
         logger.warning("[%s] Batch embedding failed: %s", uid, exc)
         return 0
 
-    # Link candidates for newly embedded cards
+    # Link candidates for newly embedded cards — batch to avoid per-pair disk writes
     backfilled = 0
+    candidate_items: list[tuple[str, str, float]] = []
     for card in missing:
         if not embeddings.has(card.id):
             continue
@@ -104,10 +106,13 @@ def _sync_embed_loop(
             similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
             for other_id, score in similar:
                 if score > SIMILARITY_THRESHOLD:
-                    graph.add_candidate(card.id, other_id, score)
+                    candidate_items.append((card.id, other_id, score))
             backfilled += 1
         except (OSError, ValueError) as exc:
             logger.warning("[%s] Link candidate failed for '%s': %s", uid, card.content, exc)
+
+    if candidate_items:
+        graph.batch_add_candidates(candidate_items)
     return backfilled
 
 
@@ -162,7 +167,7 @@ async def _step_link(
     client = gemini_client_factory()
     judge = Judge(client, model=gemini_model)
     cards = card_store_factory(user["dir"])
-    created_links = 0
+    pending_links: list[tuple[str, str, Any, float, str]] = []
     index = 0
 
     try:
@@ -181,19 +186,23 @@ async def _step_link(
             )
 
             if result:
-                graph.add_link(
+                pending_links.append((
                     candidate.from_id,
                     candidate.to_id,
                     link_kind_enum(result.link),
                     result.confidence,
                     result.reason,
-                )
-                created_links += 1
+                ))
     except (OpenAIError, OSError, ValueError, RuntimeError):
+        # Flush accumulated links before requeuing
+        if pending_links:
+            graph.batch_add_links(pending_links)
         graph.requeue_candidates(candidates[index:])
         raise
 
-    logger.info("[%s] Created %d links", uid, created_links)
+    # Single disk write for all judged links
+    created = graph.batch_add_links(pending_links) if pending_links else []
+    logger.info("[%s] Created %d links", uid, len(created))
 
 
 async def _step_difficulty(
