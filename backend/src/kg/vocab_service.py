@@ -129,7 +129,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
     )
 
 
-def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
+def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> list[CardResponse]:
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:

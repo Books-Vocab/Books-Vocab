@@ -363,3 +363,18 @@ class BatchArchiveResponse(BaseModel):
 class MoveWordsRequest(BaseModel):
     words: list[str] = Field(min_length=1, max_length=200)
     to_notebook_id: str
+
+
+class MoveWordsResponse(BaseModel):
+    moved: int
+
+
+class ArchiveWordResponse(BaseModel):
+    word: str
+    id: str
+    archived: bool
+
+
+class QuotaResponse(BaseModel):
+    fraction: float
+    reset_seconds: int
