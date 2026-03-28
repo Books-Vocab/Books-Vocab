@@ -44,7 +44,19 @@ extension KGService {
             progress?(L10n.string("升級卡片資料格式，重新同步全部卡片..."), 0, 0)
         }
 
-        let lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
+        var lastSyncMillis = defaults.double(forKey: SyncKeys.incrementalBoundary)
+        // Safety: if boundary exists but local store is empty, force full sync.
+        // This handles Xcode rebuild (clears SQLite but not UserDefaults),
+        // interrupted syncs, or any other boundary/data mismatch.
+        if lastSyncMillis > 0 {
+            let actor = BackgroundSyncActor(modelContainer: container)
+            let localCount = try await actor.syncedEntryCount()
+            if localCount == 0 {
+                AppLog.kg.warning("Incremental boundary exists but local store is empty — forcing full sync")
+                defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+                lastSyncMillis = 0
+            }
+        }
         let isIncremental = lastSyncMillis > 0
 
         var queryItems: [URLQueryItem] = []
