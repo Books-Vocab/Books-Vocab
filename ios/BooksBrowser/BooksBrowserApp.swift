@@ -188,6 +188,11 @@ struct BooksBrowserApp: App {
                         let actor = BackgroundSyncActor(modelContainer: modelContainer)
                         do {
                             try await actor.clearSyncedData()
+                            // Force full sync on next login by clearing the incremental boundary.
+                            // Without this, re-login after a Keychain-only wipe (e.g. Xcode rebuild)
+                            // would do an incremental sync that skips already-deleted entries.
+                            UserDefaults.standard.removeObject(forKey: "kg_last_incremental_sync")
+                            UserDefaults.standard.removeObject(forKey: "kg_review_payload_version")
                         } catch {
                             AppLog.app.error("clearSyncedData failed: \(error.localizedDescription)")
                         }
