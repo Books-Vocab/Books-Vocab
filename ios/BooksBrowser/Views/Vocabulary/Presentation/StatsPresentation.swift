@@ -61,8 +61,8 @@ enum StatsPresentation {
             let key = dayFormatter.string(from: date)
             let label: String
             switch offset {
-            case 0: label = "今天"
-            case 1: label = "明天"
+            case 0: label = "今天".localized
+            case 1: label = "明天".localized
             default:
                 label = compactDayFormatter.string(from: date)
             }

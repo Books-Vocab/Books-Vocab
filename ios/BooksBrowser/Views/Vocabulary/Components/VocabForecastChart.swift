@@ -12,6 +12,7 @@ struct VocabForecastChart: View {
     let buckets: [StatsPresentation.ForecastBucket]
 
     @State private var tappedIndex: Int?
+    @State private var dismissTask: Task<Void, Never>?
 
     private let dotSize: CGFloat = 8
 
@@ -73,19 +74,16 @@ struct VocabForecastChart: View {
             }
 
             // Dot + Stem
-            ZStack(alignment: .top) {
+            VStack(spacing: 0) {
+                Spacer(minLength: 0)
+
                 if bucket.count > 0 {
-                    // Stem
+                    dotView(index: index, bucket: bucket, size: effectiveDotSize)
+
                     Rectangle()
                         .fill(vocabSkin.palette.accent.opacity(0.3))
-                        .frame(width: 1, height: stemHeight)
-                        .frame(maxHeight: .infinity, alignment: .bottom)
-
-                    // Dot at top
-                    dotView(index: index, bucket: bucket, size: effectiveDotSize)
+                        .frame(width: 1, height: max(stemHeight - effectiveDotSize, 0))
                 } else {
-                    // Empty: tiny dot on baseline
-                    Spacer()
                     Circle()
                         .fill(vocabSkin.palette.mutedFill)
                         .frame(width: 3, height: 3)
@@ -100,9 +98,11 @@ struct VocabForecastChart: View {
         }
         .contentShape(Rectangle())
         .onTapGesture {
+            dismissTask?.cancel()
             withAnimation(AppMotion.feedbackPulse) { tappedIndex = index }
-            Task {
+            dismissTask = Task {
                 try? await Task.sleep(for: .seconds(1.5))
+                guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.contentFade) { tappedIndex = nil }
             }
         }
@@ -135,8 +135,8 @@ struct VocabForecastChart: View {
     @ViewBuilder
     private func dateLabel(index: Int, bucket: StatsPresentation.ForecastBucket) -> some View {
         let text: String? = {
-            if index == 0 { return "今天" }
-            if index == 6, buckets.count > 7 { return "1w" }
+            if index == 0 { return "今天".localized }
+            if index == 6, buckets.count > 7 { return "1週".localized }
             if index == buckets.count - 1 { return bucket.label }
             return nil
         }()
