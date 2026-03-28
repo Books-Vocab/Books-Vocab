@@ -20,6 +20,7 @@ struct NotebookListView: View {
     @Environment(\.vocabSkin) private var skin
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @State private var coordinator = NotebookListCoordinator()
 
     init() {
         let knowledgePredicate = #Predicate<VocabularyEntry> {
@@ -129,12 +130,16 @@ struct NotebookListView: View {
             }
             .sheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { name, color in
-                    Task { @MainActor in await createNotebook(name: name, color: color) }
+                    Task { @MainActor in
+                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService)
+                    }
                 }
             }
             .sheet(item: $editingNotebook) { notebook in
                 NotebookEditSheet(mode: .edit(name: notebook.name, color: notebook.color)) { name, color in
-                    Task { @MainActor in await updateNotebook(notebook, name: name, color: color) }
+                    Task { @MainActor in
+                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService)
+                    }
                 }
             }
             .fullScreenCover(item: $activeReviewSession) { session in
@@ -148,7 +153,12 @@ struct NotebookListView: View {
                 ArchivedVocabSheet()
             }
             .task {
-                await ensureDefaultNotebook()
+                await coordinator.ensureDefaultNotebook(
+                    authManager: authManager,
+                    currentNotebooks: notebooks,
+                    modelContext: modelContext,
+                    kgService: kgService
+                )
             }
             .confirmationDialog(
                 "確定要刪除此單字本？".localized,
@@ -160,7 +170,16 @@ struct NotebookListView: View {
             ) {
                 Button("刪除".localized, role: .destructive) {
                     if let notebook = notebookToDelete {
-                        deleteNotebook(notebook)
+                        Task { @MainActor in
+                            await coordinator.deleteNotebook(
+                                notebook,
+                                isActive: activeNotebookId == notebook.remoteId,
+                                modelContext: modelContext,
+                                kgService: kgService,
+                                toastCoordinator: toastCoordinator,
+                                setActiveNotebook: { setActiveNotebook($0) }
+                            )
+                        }
                         notebookToDelete = nil
                     }
                 }
@@ -262,75 +281,4 @@ struct NotebookListView: View {
         UserDefaults.standard.set(id, forKey: "activeNotebookId")
     }
 
-    // MARK: - Notebook Operations
-
-    private func ensureDefaultNotebook() async {
-        guard authManager.isLoggedIn else { return }
-        guard notebooks.isEmpty else { return }
-
-        do {
-            let remoteNotebooks = try await kgService.fetchNotebooks()
-            for remote in remoteNotebooks where !remote.isDeleted {
-                let nb = Notebook(
-                    remoteId: remote.id,
-                    name: remote.name,
-                    color: remote.color,
-                    isDefault: remote.isDefault
-                )
-                nb.sortOrder = remote.sortOrder
-                nb.syncStatus = 1
-                modelContext.insert(nb)
-            }
-            modelContext.safeSave()
-        } catch {
-            // Fallback: create a local default
-            if notebooks.isEmpty {
-                let nb = Notebook(remoteId: "default", name: "我的單字本", isDefault: true)
-                nb.syncStatus = 1
-                modelContext.insert(nb)
-                modelContext.safeSave()
-            }
-        }
-    }
-
-    private func createNotebook(name: String, color: String?) async {
-        do {
-            let remote = try await kgService.createNotebook(name: name, color: color)
-            let nb = Notebook(remoteId: remote.id, name: remote.name, color: remote.color)
-            nb.syncStatus = 1
-            modelContext.insert(nb)
-            modelContext.safeSave()
-        } catch {
-            AppLog.kg.error("createNotebook failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func updateNotebook(_ notebook: Notebook, name: String, color: String?) async {
-        do {
-            let remote = try await kgService.updateNotebook(id: notebook.remoteId, name: name, color: color)
-            notebook.name = remote.name
-            notebook.color = remote.color
-            notebook.updatedAt = Date()
-            modelContext.safeSave()
-        } catch {
-            AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
-        }
-    }
-
-    private func deleteNotebook(_ notebook: Notebook) {
-        Task { @MainActor in
-            do {
-                try await kgService.deleteNotebook(id: notebook.remoteId)
-                if activeNotebookId == notebook.remoteId {
-                    setActiveNotebook("default")
-                }
-                notebook.isDeleted = true
-                notebook.updatedAt = Date()
-                modelContext.safeSave()
-            } catch {
-                toastCoordinator.error("刪除失敗")
-                AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")
-            }
-        }
-    }
 }
