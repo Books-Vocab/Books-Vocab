@@ -379,9 +379,9 @@ class TestIncrementalSync:
         store = _make_store(tmp_path)
         from unittest.mock import MagicMock
 
-        from fastapi import HTTPException
+        from kg.exceptions import BadRequestError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(BadRequestError) as exc_info:
             list_vocab_cards(
                 since="not-a-timestamp",
                 cards_store=store,

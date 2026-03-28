@@ -257,6 +257,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
+    from .exceptions import KGError
+
+    @app.exception_handler(KGError)
+    async def kg_error_handler(request: Request, exc: KGError):
+        return JSONResponse(status_code=exc.status_code, content=exc.to_detail())
+
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):
         request_id = getattr(request.state, "request_id", "unknown")

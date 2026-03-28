@@ -138,6 +138,7 @@ class TestDeleteVocabWordWithGraph:
 
     def test_not_found_raises_404(self, graph_store):
         cards = _FakeCardsStore([])
-        with pytest.raises(HTTPException) as exc_info:
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError) as exc_info:
             delete_vocab_word("missing", cards_store=cards, graph=graph_store)
         assert exc_info.value.status_code == 404
