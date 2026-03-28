@@ -69,9 +69,10 @@ async def test_run_quick_translate_raises_on_empty_choices():
         chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
     )
     logger = MagicMock()
-    with pytest.raises(HTTPException) as exc_info:
+    from kg.exceptions import ExternalServiceError
+    with pytest.raises(ExternalServiceError) as exc_info:
         await run_quick_translate(req, {"id": "u_test"}, client=client, logger=logger)
-    assert exc_info.value.status_code == 500
+    assert exc_info.value.status_code == 502
     logger.error.assert_called_once()
 
 

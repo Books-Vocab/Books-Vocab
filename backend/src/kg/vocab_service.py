@@ -7,7 +7,7 @@ from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
-from fastapi import HTTPException
+from .exceptions import BadRequestError, ConflictError, NotFoundError, ValidationError
 
 from .api_models import (
     CardLinkSummaryResponse,
@@ -133,7 +133,7 @@ def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, 
     if since:
         parsed_since = parse_datetime(since)
         if parsed_since is None:
-            raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
+            raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
         cards = cards_store.get_modified_since(parsed_since, notebook_id=notebook_id)
         # Incremental: need full dict for graph link resolution (cards is only a subset)
         cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
@@ -154,15 +154,15 @@ def push_review_states(
     notebook_id: str | None = None,
 ) -> dict[str, int]:
     """Merge client review states into server cards. Returns {updated, skipped}."""
-    card_by_word: dict[str, Any] = {}
+    cards_by_word: dict[str, list[Any]] = {}
     for card in cards_store.all(notebook_id=notebook_id):
-        card_by_word[_normalize_word(card.content)] = card
+        cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
 
     updated = 0
     skipped = 0
     for entry in entries:
-        card = card_by_word.get(_normalize_word(entry.word))
-        if not card:
+        cards = cards_by_word.get(_normalize_word(entry.word))
+        if not cards:
             skipped += 1
             continue
 
@@ -171,46 +171,47 @@ def push_review_states(
             skipped += 1
             continue
 
-        server_last = parse_datetime(card.last_reviewed_at)
-        if server_last and server_last >= client_last:
-            # Server is newer or equal — only take max counts
-            changed = False
-            if entry.review_count > card.review_count:
-                card.review_count = entry.review_count
-                changed = True
-            if entry.lapse_count > card.lapse_count:
-                card.lapse_count = entry.lapse_count
-                changed = True
-            if changed:
-                cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
-                updated += 1
-            else:
-                skipped += 1
-            continue
+        for card in cards:
+            server_last = parse_datetime(card.last_reviewed_at)
+            if server_last and server_last >= client_last:
+                # Server is newer or equal — only take max counts
+                changed = False
+                if entry.review_count > card.review_count:
+                    card.review_count = entry.review_count
+                    changed = True
+                if entry.lapse_count > card.lapse_count:
+                    card.lapse_count = entry.lapse_count
+                    changed = True
+                if changed:
+                    cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
+                    updated += 1
+                else:
+                    skipped += 1
+                continue
 
-        # Client is newer — accept all fields
-        client_next = parse_datetime(entry.next_review_at)
-        cards_store.update(
-            card.id,
-            review_interval_hours=entry.review_interval_hours,
-            next_review_at=client_next,
-            last_reviewed_at=client_last,
-            review_count=max(entry.review_count, card.review_count),
-            lapse_count=max(entry.lapse_count, card.lapse_count),
-            review_streak=entry.review_streak,
-            last_review_feedback=entry.last_review_feedback,
-        )
-        updated += 1
+            # Client is newer — accept all fields
+            client_next = parse_datetime(entry.next_review_at)
+            cards_store.update(
+                card.id,
+                review_interval_hours=entry.review_interval_hours,
+                next_review_at=client_next,
+                last_reviewed_at=client_last,
+                review_count=max(entry.review_count, card.review_count),
+                lapse_count=max(entry.lapse_count, card.lapse_count),
+                review_streak=entry.review_streak,
+                last_review_feedback=entry.last_review_feedback,
+            )
+            updated += 1
 
     return {"updated": updated, "skipped": skipped}
 
 
 def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_builder: Callable[[Any, Any, dict[str, Any]], CardResponse], notebook_id: str | None = None) -> CardResponse:
     if len(word) > MAX_WORD_LENGTH:
-        raise HTTPException(status_code=422, detail="Word too long")
+        raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
-        raise HTTPException(404, f"Word '{word}' not found")
+        raise NotFoundError("Word", word)
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
     cards_by_id: dict[str, Any] = {card.id: card}
@@ -228,10 +229,10 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
 
 def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
-        raise HTTPException(status_code=422, detail="Word too long")
+        raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
-        raise HTTPException(404, f"Word '{word}' not found")
+        raise NotFoundError("Word", word)
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         if archived:
@@ -244,10 +245,10 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
 
 def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
-        raise HTTPException(status_code=422, detail="Word too long")
+        raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
-        raise HTTPException(404, f"Word '{word}' not found")
+        raise NotFoundError("Word", word)
     cards_store.delete(card.id)
     if graph is not None:
         try:
@@ -273,9 +274,9 @@ def move_vocab_words(
 ) -> dict[str, int]:
     """Move specific cards between notebooks. Deprecates graph links in source, adds candidates in target."""
     if not words:
-        raise HTTPException(422, "No words provided")
+        raise ValidationError("No words provided")
     if from_notebook_id == to_notebook_id:
-        raise HTTPException(422, "Source and target notebook are the same")
+        raise ValidationError("Source and target notebook are the same")
 
     # Find card IDs before move (for graph cleanup)
     card_ids = []
@@ -362,10 +363,7 @@ def add_vocab_entries(
     notebook_id: str = "default",
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
-        raise HTTPException(
-            status_code=422,
-            detail=f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}",
-        )
+        raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
     existing = {_normalize_word(card.content) for card in cards.all(notebook_id=notebook_id)}
 
     created = 0
@@ -468,13 +466,13 @@ def create_manual_link(
     card_a = cards_store.get(from_id)
     card_b = cards_store.get(to_id)
     if not card_a or card_a.is_deleted or card_a.is_archived:
-        raise HTTPException(404, f"Card '{from_id}' not found or unavailable")
+        raise NotFoundError("Card", from_id)
     if not card_b or card_b.is_deleted or card_b.is_archived:
-        raise HTTPException(404, f"Card '{to_id}' not found or unavailable")
+        raise NotFoundError("Card", to_id)
 
     existing = graph.find_link_between(from_id, to_id)
     if existing and existing.status == "active":
-        raise HTTPException(409, "Link already exists between these cards")
+        raise ConflictError("Link already exists between these cards")
 
     judgement = judge.evaluate(
         card_a.content, card_a.meaning,
@@ -511,7 +509,7 @@ def reject_graph_link(
     try:
         graph.reject_link(link_id)
     except KeyError:
-        raise HTTPException(404, f"Link '{link_id}' not found")
+        raise NotFoundError("Link", link_id)
 
     lk = graph._links[link_id]
     cards_store.touch(lk.from_id)

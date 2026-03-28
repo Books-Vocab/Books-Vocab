@@ -117,6 +117,13 @@ extension KGService {
     // MARK: - Background Sync (輕量：push review + pull)
 
     func backgroundSync(container: ModelContainer) async {
+        // 防止併發：快速前景/背景切換可能觸發多個 sync task
+        guard claimBackgroundSync() else {
+            AppLog.kg.info("backgroundSync skipped: already in progress")
+            return
+        }
+        defer { releaseBackgroundSync() }
+
         // 離線時跳過整個背景同步，不產生無意義的錯誤日誌
         guard NetworkMonitor.shared.isConnected else {
             AppLog.kg.info("backgroundSync skipped: offline")
