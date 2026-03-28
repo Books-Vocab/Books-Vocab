@@ -143,6 +143,8 @@ enum AppMotion {
     static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
     static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
     static let swipeRowSnap: Animation = .spring(response: 0.3, dampingFraction: 0.75)
+    // Chart dot / lollipop 出現動畫
+    static let chartDotAppear = Animation.spring(response: 0.3, dampingFraction: 0.7)
 
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
