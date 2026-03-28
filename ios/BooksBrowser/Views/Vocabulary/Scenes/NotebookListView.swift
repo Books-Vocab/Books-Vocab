@@ -152,7 +152,7 @@ struct NotebookListView: View {
             .sheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
             }
-            .task {
+            .task(id: authManager.isLoggedIn) {
                 await coordinator.ensureDefaultNotebook(
                     authManager: authManager,
                     currentNotebooks: notebooks,
