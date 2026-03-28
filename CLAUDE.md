@@ -15,16 +15,33 @@
 
 ## 對話啟動流程（每次對話強制執行）
 
-1. **載入 `using-superpowers` skill** — 在回應使用者之前，先 `Skill("using-superpowers")`。
-2. **掃描 skill 觸發條件** — 對照使用者的第一句話，凡符合任何已註冊 skill 的觸發描述，立即載入。「不確定是否符合」= 符合，寧可多載入，不可漏掉。
+1. **Deep Scan** — 立即 `Skill("deep-scan")`，dispatch 5-7 個 opus agent 平行掃描全專案。不等結果，繼續下一步。
+2. **掃描 skill 觸發條件** — 對照使用者的第一句話，凡符合已註冊 skill 的觸發描述，立即載入。「不確定是否符合」= 符合。
 3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
 4. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`；deploy/migration 前再加 backup：`./ops/devops_kg_safe.sh backup`。
+5. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
 
-## Skill 規則（零例外）
+## Skill 系統（5 個 skill）
 
-- 觸發條件一旦符合，**立即**透過 Skill tool 調用，不可等使用者要求，不可詢問「要不要載入」。
-- 多個 skill 同時符合則全部載入。
-- Skill 優先序：流程類（brainstorming、systematic-debugging）先於實作類（TDD、writing-plans）。
+| Skill | 觸發 | 用途 |
+|-------|------|------|
+| `deep-scan` | 每次對話自動 + `/deep-scan` | 全專案平行掃描 |
+| `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
+| `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
+| `debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
+| `devops` | 部署 / status / logs | 運維操作參考 |
+
+### Skill 規則
+
+- 觸發條件符合就**立即** `Skill()` 調用，不問使用者。
+- 多個同時符合則全部載入。
+- **所有 agent 一律 `model: "opus"`。無例外。**
+
+## 鐵律（全域規則，不可繞過）
+
+1. **TDD** — 先寫 failing test，確認紅，寫最小實作，確認綠。不可跳過。
+2. **驗證先於宣稱** — 說「完成」「通過」「修好」之前，必須有當下的驗證輸出作為證據。「should work」= 謊言。
+3. **根因先於修復** — 遇到 bug 必須確認根因才動手改。不可看到錯就補 patch。
 
 ## Git
 
