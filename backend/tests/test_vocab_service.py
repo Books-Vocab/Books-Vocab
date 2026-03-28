@@ -18,6 +18,7 @@ from kg.vocab_service import (
     graph_links_payload,
     list_vocab_cards,
     lookup_vocab_word,
+    move_vocab_words,
 )
 
 
@@ -405,3 +406,127 @@ class TestBatchArchiveVocabWords:
         from kg.exceptions import ValidationError
         with pytest.raises(ValidationError):
             batch_archive_vocab_words([], archived=True, cards_store=cards)
+
+
+# ---------------------------------------------------------------------------
+# N+1 fix: batch operations use bulk lookup instead of per-word find_by_content
+# ---------------------------------------------------------------------------
+
+class TestBatchDeleteCaseInsensitive:
+    """batch_delete_vocab_words must match words case-insensitively."""
+
+    def test_case_insensitive_match(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="Hello"),
+            _FakeCard(id="c2", content="WORLD"),
+        ])
+        result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
+        assert result["deleted"] == 2
+        assert set(result["deleted_words"]) == {"hello", "world"}
+        assert result["not_found"] == []
+
+    def test_nfc_normalization(self):
+        import unicodedata
+        # café in NFC vs NFD
+        nfc = unicodedata.normalize("NFC", "café")
+        nfd = unicodedata.normalize("NFD", "café")
+        cards = _FakeCardsStore([_FakeCard(id="c1", content=nfd)])
+        result = batch_delete_vocab_words([nfc], cards_store=cards)
+        assert result["deleted"] == 1
+
+    def test_no_find_by_content_calls(self):
+        """After N+1 fix, batch_delete should use all() not find_by_content."""
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+        ])
+        call_count = 0
+        original_find = cards.find_by_content
+        def counting_find(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            return original_find(*a, **kw)
+        cards.find_by_content = counting_find
+        batch_delete_vocab_words(["hello", "world"], cards_store=cards)
+        assert call_count == 0, f"find_by_content called {call_count} times, expected 0"
+
+
+class TestBatchArchiveCaseInsensitive:
+    """batch_archive_vocab_words must match words case-insensitively."""
+
+    def test_case_insensitive_match(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="Hello"),
+            _FakeCard(id="c2", content="WORLD"),
+        ])
+        result = batch_archive_vocab_words(["hello", "world"], archived=True, cards_store=cards)
+        assert result["updated"] == 2
+        assert result["not_found"] == []
+
+    def test_nfc_normalization(self):
+        import unicodedata
+        nfc = unicodedata.normalize("NFC", "café")
+        nfd = unicodedata.normalize("NFD", "café")
+        cards = _FakeCardsStore([_FakeCard(id="c1", content=nfd)])
+        result = batch_archive_vocab_words([nfc], archived=True, cards_store=cards)
+        assert result["updated"] == 1
+
+    def test_no_find_by_content_calls(self):
+        """After N+1 fix, batch_archive should use all() not find_by_content."""
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+        ])
+        call_count = 0
+        original_find = cards.find_by_content
+        def counting_find(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            return original_find(*a, **kw)
+        cards.find_by_content = counting_find
+        batch_archive_vocab_words(["hello", "world"], archived=True, cards_store=cards)
+        assert call_count == 0, f"find_by_content called {call_count} times, expected 0"
+
+
+class _FakeMoveCardsStore:
+    """Fake store for move_vocab_words that supports all() and move_cards()."""
+    def __init__(self, cards):
+        self._cards = list(cards)
+        self.moved = None
+
+    def all(self, include_deleted=False, notebook_id=None):
+        return [c for c in self._cards if not c.is_deleted]
+
+    def move_cards(self, words, from_notebook_id, to_notebook_id):
+        self.moved = (words, from_notebook_id, to_notebook_id)
+        return len(words)
+
+    def find_by_content(self, content, notebook_id=None):
+        raise AssertionError("find_by_content should not be called")
+
+
+class TestMoveVocabWordsNoNPlusOne:
+    """move_vocab_words should not call find_by_content in a loop."""
+
+    def test_no_find_by_content_calls(self):
+        from test_move_cards import _FakeGraphStore
+        cards = _FakeMoveCardsStore([
+            _FakeCard(id="c1", content="apple"),
+            _FakeCard(id="c2", content="book"),
+        ])
+        src_graph = _FakeGraphStore()
+        call_count = 0
+        original_find = cards.find_by_content
+        def counting_find(*a, **kw):
+            nonlocal call_count
+            call_count += 1
+            return original_find(*a, **kw)
+        cards.find_by_content = counting_find
+        move_vocab_words(
+            words=["apple", "book"],
+            from_notebook_id="nb1",
+            to_notebook_id="nb2",
+            cards_store=cards,
+            source_graph=src_graph,
+        )
+        assert call_count == 0, f"find_by_content called {call_count} times, expected 0"
