@@ -22,22 +22,40 @@ def embed_and_link_new_cards(
     logger: logging.Logger,
 ) -> None:
     """Generate embeddings for new cards and create graph link candidates."""
+    # Collect cards that need embedding
+    batch_items: list[tuple[str, str]] = []
+    batch_cards: list[Any] = []
     for entry in entries:
         word = entry.word.strip()
         card_id = card_ids.get(word)
         card = cards.get(card_id) if card_id else None
         if card and not embeddings.has(card.id):
-            try:
-                embeddings.add(card.id, card.embed_text())
-                similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
-                for other_id, score in similar:
-                    if score > SIMILARITY_THRESHOLD:
-                        other_card = cards.get(other_id)
-                        if other_card and not other_card.is_archived:
-                            graph.add_candidate(card.id, other_id, score)
-            except (OSError, ValueError) as exc:
-                logger.warning("Failed to generate embedding for '%s': %s", word, exc)
-                continue
+            batch_items.append((card.id, card.embed_text()))
+            batch_cards.append(card)
+
+    if not batch_items:
+        return
+
+    # Single API call for all embeddings
+    try:
+        embeddings.add_batch(batch_items)
+    except (OSError, ValueError) as exc:
+        logger.warning("Batch embedding failed: %s", exc)
+        return
+
+    # Link candidates for newly embedded cards
+    for card in batch_cards:
+        if not embeddings.has(card.id):
+            continue
+        try:
+            similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
+            for other_id, score in similar:
+                if score > SIMILARITY_THRESHOLD:
+                    other_card = cards.get(other_id)
+                    if other_card and not other_card.is_archived:
+                        graph.add_candidate(card.id, other_id, score)
+        except (OSError, ValueError) as exc:
+            logger.warning("Failed to link candidates for '%s': %s", card.id, exc)
 
 
 def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
