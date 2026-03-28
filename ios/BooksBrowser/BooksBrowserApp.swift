@@ -205,6 +205,8 @@ struct BooksBrowserApp: App {
                     Task {
                         AppLog.kg.info("Post-login sync triggered")
                         await kgService.backgroundSync(container: modelContainer)
+                        // Poke main context so @Query picks up background actor's save
+                        try? modelContainer.mainContext.save()
                         if let error = kgService.lastBackgroundSyncError {
                             toastCoordinator.warning(error)
                             kgService.lastBackgroundSyncError = nil
@@ -221,6 +223,8 @@ struct BooksBrowserApp: App {
                             AppAnalytics.track(.backgroundSyncTriggered)
                             let syncStart = Date()
                             await kgService.backgroundSync(container: modelContainer)
+                            // Poke main context so @Query picks up background actor's save
+                            try? modelContainer.mainContext.save()
                             let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
                             let success = kgService.lastBackgroundSyncError == nil
                             AppAnalytics.track(.backgroundSyncCompleted(durationMs: durationMs, success: success))
