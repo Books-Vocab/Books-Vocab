@@ -110,6 +110,7 @@ private enum TOCPreviewLoadState {
 }
 
 private struct TOCViewPreviewScene: View {
+    @Environment(\.appTheme) private var appTheme
     let loadState: TOCPreviewLoadState
     let tocTitles: [String]
 
@@ -162,7 +163,7 @@ private struct TOCViewPreviewScene: View {
                     }
                 }
             }
-            .background(AppTheme.light.palette.pageBackground.ignoresSafeArea())
+            .background(appTheme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("目錄")
             .navigationBarTitleDisplayMode(.inline)
         }

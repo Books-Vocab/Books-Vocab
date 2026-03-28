@@ -71,25 +71,35 @@ struct AppToast: View {
 }
 
 #Preview("Toast Styles") {
-    VStack(spacing: 24) {
-        AppToast(
-            item: .init(message: "已複製", style: .success),
-            onDismiss: {}
-        )
-        AppToast(
-            item: .init(message: "背景同步完成，新增 3 個單字", style: .info),
-            onDismiss: {}
-        )
-        AppToast(
-            item: .init(message: "部分同步失敗，2 個單字未上傳", style: .warning),
-            onDismiss: {}
-        )
-        AppToast(
-            item: .init(message: "刪除失敗", style: .error),
-            onDismiss: {}
-        )
+    AppThemeContainer {
+        AppToastPreviewScene()
     }
-    .padding()
-    .frame(maxWidth: .infinity, maxHeight: .infinity)
-    .background(AppTheme.light.palette.pageBackground)
+}
+
+private struct AppToastPreviewScene: View {
+    @Environment(\.appTheme) private var appTheme
+
+    var body: some View {
+        VStack(spacing: 24) {
+            AppToast(
+                item: .init(message: "已複製", style: .success),
+                onDismiss: {}
+            )
+            AppToast(
+                item: .init(message: "背景同步完成，新增 3 個單字", style: .info),
+                onDismiss: {}
+            )
+            AppToast(
+                item: .init(message: "部分同步失敗，2 個單字未上傳", style: .warning),
+                onDismiss: {}
+            )
+            AppToast(
+                item: .init(message: "刪除失敗", style: .error),
+                onDismiss: {}
+            )
+        }
+        .padding()
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(appTheme.palette.pageBackground)
+    }
 }
