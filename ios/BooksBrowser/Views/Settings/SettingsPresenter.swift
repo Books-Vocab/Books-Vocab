@@ -26,6 +26,7 @@ struct SettingsPresenter: View {
     @State private var showSubscriptionDetail = false
     @State private var showTranslationLanguage = false
     @State private var showReviewSection = false
+    @State private var syncRotation: Double = 0
 
     private var externalActionItems: [ExternalActionItem] {
         [
@@ -178,12 +179,40 @@ struct SettingsPresenter: View {
     // MARK: - Sync Summary Row
 
     private func syncSummaryRow(_ summary: SettingsPresenterState.SyncSummaryState) -> some View {
-        AppKeyValueRow(icon: "arrow.triangle.2.circlepath", label: "同步狀態".localized, style: .settings(vocabSkin)) {
-            SettingsStatusSummaryValue(
-                text: summary.summaryText,
-                color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
-            )
+        Button {
+            actions.resync()
+        } label: {
+            AppKeyValueRow(
+                icon: "arrow.triangle.2.circlepath",
+                label: "同步狀態".localized,
+                style: .settings(vocabSkin)
+            ) {
+                if summary.isSyncing {
+                    HStack(spacing: vocabSkin.spacing.inlineGap) {
+                        Image(systemName: "arrow.triangle.2.circlepath")
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.accent)
+                            .rotationEffect(.degrees(syncRotation))
+                            .onAppear {
+                                withAnimation(AppMotion.breathing) {
+                                    syncRotation = 360
+                                }
+                            }
+                            .onDisappear { syncRotation = 0 }
+                        Text("同步中…".localized)
+                            .font(vocabSkin.typography.caption)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                    }
+                } else {
+                    SettingsStatusSummaryValue(
+                        text: summary.summaryText,
+                        color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
+                    )
+                }
+            }
         }
+        .buttonStyle(.plain)
+        .disabled(summary.isSyncing)
     }
 
     private func externalActionRow(_ item: ExternalActionItem) -> some View {

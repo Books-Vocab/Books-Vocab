@@ -35,6 +35,7 @@ final class SettingsCoordinator: SettingsCoordinating {
     var iconBreathing = false
     var showDeleteAccountConfirm = false
     var isDeletingAccount = false
+    var isResyncing = false
     var deleteAccountError: String?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
@@ -187,6 +188,14 @@ final class SettingsCoordinator: SettingsCoordinating {
         let id = manualLoginUserId.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !id.isEmpty else { return }
         authManager.login(customToken: id)
+    }
+
+    func resync(kgService: any KGServing, modelContext: ModelContext) async {
+        guard !isResyncing else { return }
+        isResyncing = true
+        defer { isResyncing = false }
+        await kgService.backgroundSync(container: modelContext.container)
+        try? modelContext.container.mainContext.save()
     }
 
     #if DEBUG
