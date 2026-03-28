@@ -155,3 +155,35 @@ class EmbeddingStore:
 
     def count(self) -> int:
         return len(self._ids)
+
+    def merge_from(self, source: "EmbeddingStore") -> None:
+        """Merge embeddings from *source* into this store.
+
+        Cards already present in target are skipped. Source is emptied after merge.
+        No API calls — only existing vectors are moved.
+        """
+        if source._embeddings is None or not source._ids:
+            return
+
+        # Find new IDs (in source but not in target)
+        new_indices = [i for i, cid in enumerate(source._ids) if cid not in self._id_set]
+        if new_indices:
+            new_vecs = source._embeddings[new_indices]
+            new_ids = [source._ids[i] for i in new_indices]
+
+            if self._embeddings is None:
+                self._embeddings = new_vecs
+            else:
+                self._embeddings = np.vstack([self._embeddings, new_vecs])
+
+            self._ids.extend(new_ids)
+            self._id_set.update(new_ids)
+            self._invalidate_norms()
+            self._save()
+
+        # Clear source
+        source._embeddings = None
+        source._ids = []
+        source._id_set = set()
+        source._invalidate_norms()
+        source._save()
