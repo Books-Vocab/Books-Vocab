@@ -39,12 +39,14 @@ struct VocabularyListPresenter<Content: View>: View {
                 )
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
                 .padding(.bottom, vocabSkin.metrics.pageSectionVerticalInset)
+                .transition(.listInsert)
             }
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .animatePhaseChange(selectedTab)
         }
+        .animation(AppMotion.standardSpring, value: state.showsSearchField)
         .vocabCanvasBackground()
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {

@@ -33,6 +33,7 @@ struct SyncPresenter: View {
                     VStack(alignment: .leading, spacing: 0) {
                         ForEach(Array(state.steps.enumerated()), id: \.element.id) { index, step in
                             stepRow(step)
+                                .transition(.listInsert)
 
                             if index < state.steps.count - 1 {
                                 Divider()
@@ -42,6 +43,7 @@ struct SyncPresenter: View {
                     }
                     .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
                     .padding(.vertical, vocabSkin.metrics.reviewTopBarBottomInset)
+                    .animation(AppMotion.standardSpring, value: state.steps.map(\.id))
                 }
                 .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
             }
