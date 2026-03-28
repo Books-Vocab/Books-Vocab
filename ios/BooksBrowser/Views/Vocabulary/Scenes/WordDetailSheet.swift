@@ -61,6 +61,7 @@ struct WordDetailSheet: View {
                 .padding()
             }
         }
+        .animation(AppMotion.contentFade, value: presenterState != nil)
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
             let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
             presenterState = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
