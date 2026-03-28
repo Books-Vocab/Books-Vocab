@@ -94,13 +94,24 @@ struct WordDetailSheet: View {
 
     private func handleAddLink(_ target: VocabularyEntry) {
         guard let fromId = entry.kgCardId, let toId = target.kgCardId else { return }
+        // Guard against duplicate add (pending or already linked)
+        let allLinks = entry.graphLinksByKind.values.flatMap { $0 }
+        guard !allLinks.contains(where: { $0.cardId == toId }) else { return }
         let notebookId = entry.notebookId
+
+        // 1. Optimistic insert — placeholder appears immediately
+        let placeholderId = "pending-\(UUID().uuidString)"
+        let placeholder = KGCardLinkSummary.pending(id: placeholderId, cardId: toId, word: target.word)
+        var current = entry.graphLinksByKind
+        current[placeholder.kind, default: []].append(placeholder)
+        entry.graphLinksByKind = current
+
+        // 2. Backend call — replace placeholder on success, rollback on failure
         Task {
             do {
                 let link = try await kgService.createManualLink(
                     fromId: fromId, toId: toId, notebookId: notebookId
                 )
-                var current = entry.graphLinksByKind
                 let summary = KGCardLinkSummary(
                     id: link.id,
                     cardId: toId,
@@ -110,9 +121,23 @@ struct WordDetailSheet: View {
                     confidence: link.confidence,
                     reason: link.reason
                 )
-                current[link.kind, default: []].append(summary)
-                entry.graphLinksByKind = current
+                var updated = entry.graphLinksByKind
+                // Remove placeholder from its temporary group
+                updated[placeholder.kind]?.removeAll { $0.id == placeholderId }
+                if updated[placeholder.kind]?.isEmpty == true {
+                    updated.removeValue(forKey: placeholder.kind)
+                }
+                // Insert real link under correct kind
+                updated[link.kind, default: []].append(summary)
+                entry.graphLinksByKind = updated
             } catch {
+                // Rollback — remove placeholder
+                var rollback = entry.graphLinksByKind
+                rollback[placeholder.kind]?.removeAll { $0.id == placeholderId }
+                if rollback[placeholder.kind]?.isEmpty == true {
+                    rollback.removeValue(forKey: placeholder.kind)
+                }
+                entry.graphLinksByKind = rollback
                 linkError = "新增連結失敗".localized
             }
         }
@@ -120,16 +145,23 @@ struct WordDetailSheet: View {
 
     private func handleDeleteLink(_ link: KGCardLinkSummary) {
         let notebookId = entry.notebookId
+
+        // 1. Optimistic remove
+        var current = entry.graphLinksByKind
+        current[link.kind]?.removeAll { $0.id == link.id }
+        if current[link.kind]?.isEmpty == true {
+            current.removeValue(forKey: link.kind)
+        }
+        entry.graphLinksByKind = current
+
+        // 2. Backend call — rollback on failure (re-insert single link, not full snapshot)
         Task {
             do {
                 try await kgService.deleteLink(linkId: link.id, notebookId: notebookId)
-                var current = entry.graphLinksByKind
-                current[link.kind]?.removeAll { $0.id == link.id }
-                if current[link.kind]?.isEmpty == true {
-                    current.removeValue(forKey: link.kind)
-                }
-                entry.graphLinksByKind = current
             } catch {
+                var rollback = entry.graphLinksByKind
+                rollback[link.kind, default: []].append(link)
+                entry.graphLinksByKind = rollback
                 linkError = "刪除連結失敗".localized
             }
         }
