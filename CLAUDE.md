@@ -42,6 +42,7 @@
 1. **TDD** — 先寫 failing test，確認紅，寫最小實作，確認綠。不可跳過。
 2. **驗證先於宣稱** — 說「完成」「通過」「修好」之前，必須有當下的驗證輸出作為證據。「should work」= 謊言。
 3. **根因先於修復** — 遇到 bug 必須確認根因才動手改。不可看到錯就補 patch。
+4. **逐項 review，不批次** — 每完成一個 fix/feature 立即 dispatch review agent 審核，發現問題當場修，確認 PASS 後才進下一個。禁止「全部寫完再一起 review」。此規則適用所有程式碼修改，無論是否走 execute skill。
 
 ## Git
 

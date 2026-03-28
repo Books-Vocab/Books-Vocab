@@ -135,10 +135,14 @@ def list_vocab_cards(*, since: str | None, limit: int = 5000, cards_store: Any, 
         if parsed_since is None:
             raise HTTPException(400, "Invalid since timestamp format. Expected ISO 8601.")
         cards = cards_store.get_modified_since(parsed_since, notebook_id=notebook_id)
+        # Incremental: need full dict for graph link resolution (cards is only a subset)
+        cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
     else:
-        cards = cards_store.all_limited(limit=limit, notebook_id=notebook_id)
+        # Full sync: single query for ALL cards (including deleted for link resolution).
+        # No 5000-card truncation — return everything so iOS orphan cleanup is safe.
+        cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
+        cards = [c for c in cards_by_id.values() if not c.is_deleted]
 
-    cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
 
@@ -207,7 +211,18 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
     if not card:
         raise HTTPException(404, f"Word '{word}' not found")
-    cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
+
+    # Only fetch the target card + its graph-linked neighbours instead of full table.
+    cards_by_id: dict[str, Any] = {card.id: card}
+    get_links = getattr(graph, "get_links_for", None)
+    if get_links is not None:
+        for link in get_links(card.id):
+            linked_id = link.from_id if link.to_id == card.id else link.to_id
+            if linked_id not in cards_by_id:
+                linked_card = cards_store.get(linked_id)
+                if linked_card:
+                    cards_by_id[linked_id] = linked_card
+
     return card_response_builder(card, graph, cards_by_id)
 
 

@@ -162,6 +162,10 @@ class _FakeEmbeddings:
     def add(self, card_id, text):
         pass
 
+    def add_batch(self, items):
+        for card_id, text in items:
+            self.add(card_id, text)
+
     def find_similar(self, card_id, k=3):
         return []
 

@@ -87,17 +87,27 @@ def _sync_embed_loop(
     uid: str,
     logger: logging.Logger,
 ) -> int:
+    # Batch embed all missing cards in a single API call
+    items = [(card.id, card.embed_text()) for card in missing]
+    try:
+        embeddings.add_batch(items)
+    except (OpenAIError, OSError, ValueError) as exc:
+        logger.warning("[%s] Batch embedding failed: %s", uid, exc)
+        return 0
+
+    # Link candidates for newly embedded cards
     backfilled = 0
     for card in missing:
+        if not embeddings.has(card.id):
+            continue
         try:
-            embeddings.add(card.id, card.embed_text())
             similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
             for other_id, score in similar:
                 if score > SIMILARITY_THRESHOLD:
                     graph.add_candidate(card.id, other_id, score)
             backfilled += 1
-        except (OpenAIError, OSError, ValueError) as exc:
-            logger.warning("[%s] Embedding backfill failed for '%s': %s", uid, card.content, exc)
+        except (OSError, ValueError) as exc:
+            logger.warning("[%s] Link candidate failed for '%s': %s", uid, card.content, exc)
     return backfilled
 
 

@@ -40,17 +40,8 @@ extension KGSubscriptionStatus {
         expiryISO8601Formatter.date(from: isoString) ?? expiryISO8601FallbackFormatter.date(from: isoString)
     }
 
-    private static let expiryISO8601Formatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    private static let expiryISO8601FallbackFormatter: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
+    private static let expiryISO8601Formatter = AppDateFormatters.iso8601
+    private static let expiryISO8601FallbackFormatter = AppDateFormatters.iso8601Simple
 
     private static let expiryDisplayFormatter: DateFormatter = {
         let f = DateFormatter()
