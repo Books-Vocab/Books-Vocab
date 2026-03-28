@@ -196,6 +196,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         defer { isResyncing = false }
         await kgService.backgroundSync(container: modelContext.container)
         try? modelContext.container.mainContext.save()
+        await kgService.healthCheck()
     }
 
     #if DEBUG
