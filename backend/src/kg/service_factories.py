@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
@@ -81,6 +82,8 @@ def _resolve_notebook_paths(
 
     file_specs: list of (template, legacy_name) — template uses {nb} placeholder.
     """
+    if not re.match(r'^[a-zA-Z0-9_-]+$', notebook_id):
+        raise ValueError(f"Invalid notebook_id: {notebook_id!r}")
     paths = [user_dir / tmpl.format(nb=notebook_id) for tmpl, _ in file_specs]
     if notebook_id == "default":
         for (_, legacy_name), target in zip(file_specs, paths):

@@ -113,7 +113,31 @@ def test_sync_transaction_id_mismatch_raises_400(tmp_path):
     assert exc_info.value.status_code == 400
 
 
-def test_sync_xcode_env_allows_unsigned(tmp_path):
+def test_sync_xcode_env_rejects_unsigned_when_not_debug(tmp_path):
+    """Xcode environment bypass must NOT work when allow_unsigned_sync=False (production)."""
+    deps = _common_deps(tmp_path)
+    deps["decode_signed_transaction_info"] = MagicMock()
+
+    req = AppStoreSyncRequest(
+        product_id="pro_monthly",
+        transaction_id="txn-xcode",
+        environment="xcode",
+        status="active",
+        is_trial=False,
+        will_renew=True,
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        sync_app_store_subscription_response(
+            req, {"id": "u1"},
+            allow_unsigned_sync=False,
+            **deps,
+        )
+    assert exc_info.value.status_code == 400
+
+
+def test_sync_xcode_env_allows_unsigned_when_enabled(tmp_path):
+    """Xcode environment bypass works when allow_unsigned_sync=True (dev/test)."""
     deps = _common_deps(tmp_path)
     deps["decode_signed_transaction_info"] = MagicMock()
 
@@ -128,7 +152,7 @@ def test_sync_xcode_env_allows_unsigned(tmp_path):
 
     result = sync_app_store_subscription_response(
         req, {"id": "u1"},
-        allow_unsigned_sync=False,
+        allow_unsigned_sync=True,
         **deps,
     )
     deps["decode_signed_transaction_info"].assert_not_called()
