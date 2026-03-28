@@ -119,6 +119,11 @@ extension VocabularyEntry {
         return isReviewDue ? .due : .reviewed
     }
 
+    func reviewState(at now: Date) -> VocabularyReviewState {
+        if reviewCount == 0 { return .unlearned }
+        return nextReviewAt <= now ? .due : .reviewed
+    }
+
     func applyReviewFeedback(_ feedback: ReviewFeedback, settings: ReviewSettings = .default, now: Date = Date()) {
         let baseInterval = reviewCount == 0 ? settings.effectiveInitialIntervalHours : reviewIntervalHours
         let updatedInterval = VocabularyReviewPolicy.nextIntervalHours(

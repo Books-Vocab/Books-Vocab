@@ -44,11 +44,13 @@ extension VocabularyListView {
     }
 
     var syncedKnowledgeEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.syncedKnowledgeEntries(in: allEntries)
+        let now = Date()
+        return VocabularyEntryPresentation.syncedKnowledgeEntries(in: allEntries, now: now)
     }
 
     var knowledgeReviewEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeReviewEntries(in: allEntries)
+        let now = Date()
+        return VocabularyEntryPresentation.knowledgeReviewEntries(in: allEntries, now: now)
     }
 
     var knowledgeReviewCount: Int {
@@ -56,7 +58,8 @@ extension VocabularyListView {
     }
 
     var knowledgeDueEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeDueEntries(in: allEntries)
+        let now = Date()
+        return VocabularyEntryPresentation.knowledgeDueEntries(in: allEntries, now: now)
     }
 
     var knowledgeDueCount: Int {
@@ -64,7 +67,8 @@ extension VocabularyListView {
     }
 
     var knowledgeUnlearnedEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.knowledgeUnlearnedEntries(in: allEntries)
+        let now = Date()
+        return VocabularyEntryPresentation.knowledgeUnlearnedEntries(in: allEntries, now: now)
     }
 
     var tabOptions: [VocabTabOption<Int>] {
