@@ -39,9 +39,14 @@ class _FakeCardsStore:
     def __init__(self):
         self.moved = None
         self._cards = {}
+        self._default_words = ["apple", "book"]
     def move_cards(self, words, from_notebook_id, to_notebook_id):
         self.moved = (words, from_notebook_id, to_notebook_id)
         return len(words)
+    def all(self, include_deleted=False, notebook_id=None):
+        from types import SimpleNamespace
+        words = list(self._cards.keys()) if self._cards else self._default_words
+        return [SimpleNamespace(id=f"id_{w}", content=w, is_deleted=False) for w in words]
     def find_by_content(self, word, notebook_id=None):
         from types import SimpleNamespace
         return self._cards.get(word, SimpleNamespace(id=f"id_{word}"))
