@@ -94,6 +94,7 @@ extension SettingsView {
             syncSummary: authManager.isLoggedIn
                 ? .init(
                     isConnected: kgService.isConnected,
+                    isSyncing: coordinator.isResyncing,
                     summaryText: syncSummaryText
                 )
                 : nil,
@@ -140,6 +141,11 @@ extension SettingsView {
             openSupport: { openURL(AppURLs.support) },
             requestAppRating: {
                 requestReview()
+            },
+            resync: {
+                Task {
+                    await coordinator.resync(kgService: kgService, modelContext: modelContext)
+                }
             }
         )
     }

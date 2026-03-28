@@ -58,6 +58,7 @@ struct SettingsPresenterState {
 
     struct SyncSummaryState {
         let isConnected: Bool
+        let isSyncing: Bool
         let summaryText: String
     }
 
@@ -107,4 +108,5 @@ struct SettingsPresenterActions {
     let openTermsOfService: () -> Void
     let openSupport: () -> Void
     let requestAppRating: () -> Void
+    let resync: () -> Void
 }
