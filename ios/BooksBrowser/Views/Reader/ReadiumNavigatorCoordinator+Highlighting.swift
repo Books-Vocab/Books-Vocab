@@ -93,7 +93,9 @@ extension ReadiumNavigatorView.Coordinator {
         }
     }
 
-    static func buildFontFaceCSS() -> String {
+    /// Cached font-face CSS — fonts are bundled resources that never change at runtime,
+    /// so we build the ~6 MB base64 CSS string once and reuse it across all page turns.
+    private static let _fontFaceCSS: String = {
         let fontDefs: [(file: String, family: String, weight: String, style: String)] = [
             ("CormorantGaramond-Regular", "Cormorant Garamond", "normal", "normal"),
             ("CormorantGaramond-Bold", "Cormorant Garamond", "bold", "normal"),
@@ -128,5 +130,9 @@ extension ReadiumNavigatorView.Coordinator {
             """
         }
         return css
+    }()
+
+    static func buildFontFaceCSS() -> String {
+        _fontFaceCSS
     }
 }

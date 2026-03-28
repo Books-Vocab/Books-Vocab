@@ -199,6 +199,18 @@ struct BooksBrowserApp: App {
                     await subscriptionManager.loadProducts()
                     await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
                 }
+                .onChange(of: authManager.isLoggedIn) { wasLoggedIn, isNowLoggedIn in
+                    // Trigger sync immediately after login (scenePhase won't re-fire .active)
+                    guard !wasLoggedIn, isNowLoggedIn, !authManager.isDemoMode else { return }
+                    Task {
+                        AppLog.kg.info("Post-login sync triggered")
+                        await kgService.backgroundSync(container: modelContainer)
+                        if let error = kgService.lastBackgroundSyncError {
+                            toastCoordinator.warning(error)
+                            kgService.lastBackgroundSyncError = nil
+                        }
+                    }
+                }
                 .onChange(of: scenePhase) { _, newPhase in
                     switch newPhase {
                     case .active:
