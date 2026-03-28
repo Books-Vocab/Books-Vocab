@@ -302,6 +302,7 @@ class AppStoreNotificationResponse(BaseModel):
 
 class ReviewStateEntry(BaseModel):
     word: str
+    card_id: str | None = None  # precise matching; falls back to word if absent
     review_interval_hours: float = Field(ge=0)
     next_review_at: str  # ISO8601
     last_reviewed_at: str  # ISO8601

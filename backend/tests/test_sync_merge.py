@@ -40,6 +40,7 @@ def _entry(
     word: str,
     last_reviewed_at: str,
     *,
+    card_id: str | None = None,
     review_interval_hours: float = 24.0,
     next_review_at: str | None = None,
     review_count: int = 1,
@@ -49,6 +50,7 @@ def _entry(
 ) -> ReviewStateEntry:
     return ReviewStateEntry(
         word=word,
+        card_id=card_id,
         review_interval_hours=review_interval_hours,
         next_review_at=next_review_at or _iso(_now() + timedelta(hours=review_interval_hours)),
         last_reviewed_at=last_reviewed_at,
@@ -253,8 +255,28 @@ class TestPushReviewStates:
         assert updated.review_count == 10  # max(3, 10)
         assert updated.lapse_count == 8    # max(8, 5)
 
-    def test_cross_notebook_same_word_all_updated(self, tmp_path):
-        """Same word in multiple notebooks must ALL get review state updates."""
+    def test_card_id_targets_exact_card_cross_notebook(self, tmp_path):
+        """When card_id is provided, only that exact card is updated — not same-word cards in other notebooks."""
+        store = _make_store(tmp_path)
+        card_a = store.add("run", "跑", notebook_id="notebook-a")
+        card_b = store.add("run", "跑", notebook_id="notebook-b")
+
+        client_time = _now()
+        entry = _entry("run", _iso(client_time), review_count=5, review_streak=3, card_id=card_a.id)
+
+        result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+        assert result == {"updated": 1, "skipped": 0}
+
+        updated_a = store.get(card_a.id)
+        updated_b = store.get(card_b.id)
+        assert updated_a.review_count == 5
+        assert updated_a.review_streak == 3
+        # notebook-b's "run" must be untouched
+        assert updated_b.review_count == 0
+        assert updated_b.review_streak == 0
+
+    def test_card_id_fallback_word_match_without_card_id(self, tmp_path):
+        """Without card_id, fallback to word matching — updates all same-word cards (backward compat)."""
         store = _make_store(tmp_path)
         card_a = store.add("evoke", "喚起", notebook_id="notebook-a")
         card_b = store.add("evoke", "喚起", notebook_id="notebook-b")
@@ -271,6 +293,17 @@ class TestPushReviewStates:
         assert updated_b.review_count == 5
         assert updated_a.review_streak == 3
         assert updated_b.review_streak == 3
+
+    def test_card_id_not_found_skips(self, tmp_path):
+        """Entry with non-existent card_id should be skipped."""
+        store = _make_store(tmp_path)
+        store.add("run", "跑", notebook_id="default")
+
+        client_time = _now()
+        entry = _entry("run", _iso(client_time), review_count=5, card_id="nonexistent-id")
+
+        result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+        assert result == {"updated": 0, "skipped": 1}
 
 
 # ============================================================================
