@@ -24,6 +24,20 @@ struct VocabTabSelector<ID: Hashable>: View {
     }
 }
 
+struct VocabFilterChipBar<ID: Hashable>: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let options: [VocabTabOption<ID>]
+    @Binding var selection: Set<ID>
+
+    var body: some View {
+        AppFilterChipBar(
+            options: options,
+            selection: $selection,
+            style: .vocab(vocabSkin)
+        )
+    }
+}
+
 struct VocabSearchField: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var text: String
