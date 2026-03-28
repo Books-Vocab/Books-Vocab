@@ -18,7 +18,7 @@ struct KGVocabPresenter: View {
 
         struct RowItem: Identifiable {
             let id: UUID
-            let row: WordRow.ViewData
+            let entry: VocabularyEntry
         }
 
         let banner: Banner?
@@ -85,7 +85,12 @@ struct KGVocabPresenter: View {
                                             .transition(.selectionReveal)
                                     }
 
-                                    WordRow(viewData: item.row)
+                                    WordRow(viewData: item.entry.wordRowViewData(
+                                        showsReviewState: false,
+                                        showsSourceContext: false,
+                                        showsDifficultyTier: false,
+                                        showsReviewProgress: true
+                                    ))
                                         .contentShape(Rectangle())
                                         .onTapGesture {
                                             if selectionState.isSelecting {
@@ -114,7 +119,6 @@ struct KGVocabPresenter: View {
                         }
                     }
                     }
-                    .id(selectedReviewState)
                     .transition(.contentSwap)
                 }
             }
@@ -135,58 +139,28 @@ private enum KGVocabPresenterPreviewData {
         VocabTabOption(id: $0, title: $0.title, count: count(for: $0))
     }
 
-    static let rows: [KGVocabPresenter.State.RowItem] = [
-        .init(
-            id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
-            row: WordRow.ViewData(
-                id: UUID(uuidString: "11111111-1111-1111-1111-111111111111")!,
-                word: "meticulous",
-                wordTone: .primary,
-                isStrikethrough: false,
-                partOfSpeech: "adj.",
-                translation: "一絲不苟的；非常仔細的",
-                bookTitle: nil,
-                chapterTitle: nil,
-                difficultyTier: nil,
-                reviewProgress: .init(
-                    statusLabel: "待複習",
-                    detailLabel: "18h / 24h",
-                    ratio: 0.75
-                ),
-                leadingSystemImage: nil,
-                leadingTone: nil,
-                trailingLabel: nil,
-                trailingTone: nil,
-                statusText: nil,
-                statusTone: nil
-            )
-        ),
-        .init(
-            id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
-            row: WordRow.ViewData(
-                id: UUID(uuidString: "22222222-2222-2222-2222-222222222222")!,
-                word: "nuance",
-                wordTone: .primary,
-                isStrikethrough: false,
-                partOfSpeech: "n.",
-                translation: "細微差異；語氣層次",
-                bookTitle: nil,
-                chapterTitle: nil,
-                difficultyTier: nil,
-                reviewProgress: .init(
-                    statusLabel: "已複習",
-                    detailLabel: "3d / 7d",
-                    ratio: 0.43
-                ),
-                leadingSystemImage: nil,
-                leadingTone: nil,
-                trailingLabel: nil,
-                trailingTone: nil,
-                statusText: nil,
-                statusTone: nil
-            )
+    static let rows: [KGVocabPresenter.State.RowItem] = {
+        let e1 = VocabularyEntry(
+            word: "meticulous",
+            translation: "一絲不苟的；非常仔細的",
+            context: "",
+            bookTitle: "Sample"
         )
-    ]
+        e1.id = UUID(uuidString: "11111111-1111-1111-1111-111111111111")!
+        e1.partOfSpeech = "adj."
+        let e2 = VocabularyEntry(
+            word: "nuance",
+            translation: "細微差異；語氣層次",
+            context: "",
+            bookTitle: "Sample"
+        )
+        e2.id = UUID(uuidString: "22222222-2222-2222-2222-222222222222")!
+        e2.partOfSpeech = "n."
+        return [
+            .init(id: e1.id, entry: e1),
+            .init(id: e2.id, entry: e2)
+        ]
+    }()
 
     static let populatedState = KGVocabPresenter.State(
         banner: .init(message: "2 個單字刪除待同步", canDismiss: false, canRetry: true),
