@@ -26,6 +26,16 @@ struct KGCardLinkSummary: Codable, Identifiable, Equatable {
     let label: String
     let confidence: Double
     let reason: String
+
+    /// True when this is an optimistic placeholder awaiting backend response.
+    var isPending: Bool { id.hasPrefix("pending-") }
+
+    static func pending(id: String, cardId: String, word: String) -> KGCardLinkSummary {
+        KGCardLinkSummary(
+            id: id, cardId: cardId, word: word,
+            kind: "shares_usage", label: "分析中…", confidence: 0, reason: ""
+        )
+    }
 }
 
 struct KGCard: Codable, Identifiable {
