@@ -154,15 +154,15 @@ def push_review_states(
     notebook_id: str | None = None,
 ) -> dict[str, int]:
     """Merge client review states into server cards. Returns {updated, skipped}."""
-    card_by_word: dict[str, Any] = {}
+    cards_by_word: dict[str, list[Any]] = {}
     for card in cards_store.all(notebook_id=notebook_id):
-        card_by_word[_normalize_word(card.content)] = card
+        cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
 
     updated = 0
     skipped = 0
     for entry in entries:
-        card = card_by_word.get(_normalize_word(entry.word))
-        if not card:
+        cards = cards_by_word.get(_normalize_word(entry.word))
+        if not cards:
             skipped += 1
             continue
 
@@ -171,36 +171,37 @@ def push_review_states(
             skipped += 1
             continue
 
-        server_last = parse_datetime(card.last_reviewed_at)
-        if server_last and server_last >= client_last:
-            # Server is newer or equal — only take max counts
-            changed = False
-            if entry.review_count > card.review_count:
-                card.review_count = entry.review_count
-                changed = True
-            if entry.lapse_count > card.lapse_count:
-                card.lapse_count = entry.lapse_count
-                changed = True
-            if changed:
-                cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
-                updated += 1
-            else:
-                skipped += 1
-            continue
+        for card in cards:
+            server_last = parse_datetime(card.last_reviewed_at)
+            if server_last and server_last >= client_last:
+                # Server is newer or equal — only take max counts
+                changed = False
+                if entry.review_count > card.review_count:
+                    card.review_count = entry.review_count
+                    changed = True
+                if entry.lapse_count > card.lapse_count:
+                    card.lapse_count = entry.lapse_count
+                    changed = True
+                if changed:
+                    cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
+                    updated += 1
+                else:
+                    skipped += 1
+                continue
 
-        # Client is newer — accept all fields
-        client_next = parse_datetime(entry.next_review_at)
-        cards_store.update(
-            card.id,
-            review_interval_hours=entry.review_interval_hours,
-            next_review_at=client_next,
-            last_reviewed_at=client_last,
-            review_count=max(entry.review_count, card.review_count),
-            lapse_count=max(entry.lapse_count, card.lapse_count),
-            review_streak=entry.review_streak,
-            last_review_feedback=entry.last_review_feedback,
-        )
-        updated += 1
+            # Client is newer — accept all fields
+            client_next = parse_datetime(entry.next_review_at)
+            cards_store.update(
+                card.id,
+                review_interval_hours=entry.review_interval_hours,
+                next_review_at=client_next,
+                last_reviewed_at=client_last,
+                review_count=max(entry.review_count, card.review_count),
+                lapse_count=max(entry.lapse_count, card.lapse_count),
+                review_streak=entry.review_streak,
+                last_review_feedback=entry.last_review_feedback,
+            )
+            updated += 1
 
     return {"updated": updated, "skipped": skipped}
 
