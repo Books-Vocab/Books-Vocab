@@ -134,9 +134,12 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
-        cards = cards_store.get_modified_since(parsed_since, notebook_id=notebook_id)
-        # Incremental: need full dict for graph link resolution (cards is only a subset)
+        # Single query: full dict for link resolution, then filter for modified subset
         cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
+        # Strip tzinfo for comparison — SQLite returns naive datetimes
+        naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
+        cards = [c for c in cards_by_id.values()
+                 if (c.updated_at.replace(tzinfo=None) if c.updated_at.tzinfo else c.updated_at) > naive_since]
     else:
         # Full sync: single query for ALL cards (including deleted for link resolution).
         # No 5000-card truncation — return everything so iOS orphan cleanup is safe.
