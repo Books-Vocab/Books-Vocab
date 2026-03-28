@@ -22,7 +22,7 @@ struct KGVocabView: View {
     @Environment(\.authManager) private var authManager
 
     @State private var coordinator = KGVocabCoordinator()
-    @State private var selectedReviewState: VocabularyReviewState = .due
+    @State private var selectedReviewStates: Set<VocabularyReviewState> = []
     @State private var sortOption: KGVocabSortOption = .default
     @State private var selectionState = SelectionModeState()
     @State private var showNotebookPicker = false
@@ -49,7 +49,7 @@ struct KGVocabView: View {
         let n = Date()
         let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: syncedEntries, now: n)
         let filtered = VocabularyEntryPresentation.sortAndFilter(
-            c.bucket(for: selectedReviewState),
+            c.mergedBucket(for: selectedReviewStates),
             searchText: searchText,
             sortOption: sortOption,
             now: n
@@ -68,10 +68,7 @@ struct KGVocabView: View {
             await coordinator.loadInitialData(
                 authManager: authManager,
                 kgService: kgService,
-                modelContext: modelContext,
-                dueEntries: c.dueBucket,
-                unlearnedEntries: c.unlearnedBucket,
-                selectedReviewState: $selectedReviewState
+                modelContext: modelContext
             )
         }
     }
@@ -102,7 +99,7 @@ struct KGVocabView: View {
 
         return KGVocabPresenter(
             state: state,
-            selectedReviewState: $selectedReviewState,
+            selectedReviewStates: $selectedReviewStates,
             sortOption: $sortOption,
             onDismissBanner: coordinator.errorMessage == nil ? nil : { coordinator.dismissBanner() },
             onRetryBanner: pendingDeletes.isEmpty ? nil : {
@@ -138,7 +135,7 @@ struct KGVocabView: View {
             }
         }
         .animateSpring(selectionState.isSelecting)
-        .onChange(of: selectedReviewState) { _, _ in
+        .onChange(of: selectedReviewStates) { _, _ in
             selectionState.exit()
         }
         .onChange(of: filteredEntries.count) { _, newCount in
@@ -188,10 +185,7 @@ struct KGVocabView: View {
                         await coordinator.loadInitialData(
                             authManager: authManager,
                             kgService: kgService,
-                            modelContext: modelContext,
-                            dueEntries: c.dueBucket,
-                            unlearnedEntries: c.unlearnedBucket,
-                            selectedReviewState: $selectedReviewState
+                            modelContext: modelContext
                         )
                     }
                 }
@@ -228,25 +222,26 @@ struct KGVocabView: View {
     private var emptyStateTitle: String {
         if syncedEntries.isEmpty { return "尚無已收錄單字".localized }
         if !searchText.isEmpty { return "沒有符合的單字".localized }
-        return selectedReviewState.title
+        if !selectedReviewStates.isEmpty { return "目前沒有符合篩選條件的單字".localized }
+        return "尚無已收錄單字".localized
     }
 
     private var emptyStateDescription: String {
         if syncedEntries.isEmpty { return "同步完成後，這裡會顯示你的雲端單字。".localized }
-        if !searchText.isEmpty { return "試試其他關鍵字，或切換到別的狀態。".localized }
-        switch selectedReviewState {
-        case .unlearned: return "目前沒有尚未進入複習流程的卡片。".localized
-        case .due: return "今天沒有到期卡片。".localized
-        case .reviewed: return "目前沒有已複習中的卡片。".localized
-        }
+        if !searchText.isEmpty { return "試試其他關鍵字，或取消部分篩選條件。".localized }
+        if !selectedReviewStates.isEmpty { return "試試取消部分篩選條件，或切換排序方式。".localized }
+        return "同步完成後，這裡會顯示你的雲端單字。".localized
     }
 
     private var emptyStateIcon: String {
-        switch selectedReviewState {
-        case .unlearned: return "sparkles"
-        case .due: return "checkmark.seal"
-        case .reviewed: return "leaf"
+        if selectedReviewStates.count == 1, let state = selectedReviewStates.first {
+            switch state {
+            case .unlearned: return "sparkles"
+            case .due: return "checkmark.seal"
+            case .reviewed: return "leaf"
+            }
         }
+        return "line.3.horizontal.decrease.circle"
     }
 
     // MARK: - Helpers

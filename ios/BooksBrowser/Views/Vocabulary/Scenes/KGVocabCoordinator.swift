@@ -9,7 +9,7 @@ import SwiftUI
     func dismissBanner()
     func handleRowTap(_ entryID: UUID, syncedEntries: [VocabularyEntry])
     func handleDeleteTap(_ entryID: UUID, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
-    func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext, dueEntries: [VocabularyEntry], unlearnedEntries: [VocabularyEntry], selectedReviewState: Binding<VocabularyReviewState>) async
+    func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
     func forceRefresh(kgService: any KGServing, modelContext: ModelContext) async
     func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
     func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
@@ -44,20 +44,12 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     func loadInitialData(
         authManager: any AuthManaging,
         kgService: any KGServing,
-        modelContext: ModelContext,
-        dueEntries: [VocabularyEntry],
-        unlearnedEntries: [VocabularyEntry],
-        selectedReviewState: Binding<VocabularyReviewState>
+        modelContext: ModelContext
     ) async {
         guard authManager.isLoggedIn else { return }
 
         // Demo 模式已有本地資料，不需呼叫 API
-        if authManager.isDemoMode {
-            if dueEntries.isEmpty && !unlearnedEntries.isEmpty {
-                selectedReviewState.wrappedValue = .unlearned
-            }
-            return
-        }
+        if authManager.isDemoMode { return }
 
         isLoading = true
         defer { isLoading = false }
@@ -65,9 +57,6 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         do {
             try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
             errorMessage = nil
-            if dueEntries.isEmpty && !unlearnedEntries.isEmpty {
-                selectedReviewState.wrappedValue = .unlearned
-            }
         } catch {
             errorMessage = error.localizedDescription
         }

@@ -28,7 +28,7 @@ struct KGVocabPresenter: View {
     }
 
     let state: State
-    @Binding var selectedReviewState: VocabularyReviewState
+    @Binding var selectedReviewStates: Set<VocabularyReviewState>
     @Binding var sortOption: KGVocabSortOption
     let onDismissBanner: (() -> Void)?
     let onRetryBanner: (() -> Void)?
@@ -52,7 +52,7 @@ struct KGVocabPresenter: View {
 
                 VocabListCard {
                     VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-                        VocabTabSelector(options: state.reviewStateOptions, selection: $selectedReviewState)
+                        VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
                         HStack {
                             Spacer()
                             VocabSortPill(sortOption: $sortOption)
@@ -119,7 +119,6 @@ struct KGVocabPresenter: View {
                         }
                     }
                     }
-                    .transition(.contentSwap)
                 }
             }
             .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
@@ -200,7 +199,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.populatedState,
-            selectedReviewState: .constant(.due),
+            selectedReviewStates: .constant([]),
             sortOption: .constant(.default),
             onDismissBanner: {},
             onRetryBanner: {},
@@ -216,7 +215,7 @@ private enum KGVocabPresenterPreviewData {
     AppThemeContainer {
         KGVocabPresenter(
             state: KGVocabPresenterPreviewData.emptyState,
-            selectedReviewState: .constant(.reviewed),
+            selectedReviewStates: .constant([.reviewed]),
             sortOption: .constant(.alphabetical),
             onDismissBanner: nil,
             onRetryBanner: nil,
