@@ -29,7 +29,8 @@ struct KGAddResponse: Codable {
 }
 
 struct KGOptionalIntegrationProviderConfig: Codable {
-    let api_key: String?
+    var api_key: String?
+    var has_api_key: Bool?
 }
 
 struct KGUserIntegrationsConfig: Codable {
@@ -63,6 +64,10 @@ struct KGUserConfig: Codable {
 
     var optionalIntegrationApiKey: String? {
         integrations?.mochi?.api_key
+    }
+
+    var hasMochiApiKey: Bool {
+        integrations?.mochi?.has_api_key ?? false
     }
 }
 

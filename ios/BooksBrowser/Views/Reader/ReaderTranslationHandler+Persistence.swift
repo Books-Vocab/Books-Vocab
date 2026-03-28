@@ -30,7 +30,8 @@ extension ReaderTranslationHandler {
         result: TranslationResult,
         context: ReaderVocabularyContext
     ) {
-        if context.existingEntry(matching: selection.word) != nil {
+        if let existing = context.existingEntry(matching: selection.word),
+           existing.syncAction != .delete {
             appendLookedUpWordIfNeeded(selection.word)
             withAnimation(AppMotion.feedbackPulse) { isSaved = true }
             return
@@ -52,7 +53,8 @@ extension ReaderTranslationHandler {
         selection: WordSelection,
         context: ReaderVocabularyContext
     ) {
-        if context.existingEntry(matching: selection.word) != nil {
+        if let existing = context.existingEntry(matching: selection.word),
+           existing.syncAction != .delete {
             appendLookedUpWordIfNeeded(selection.word)
             withAnimation(AppMotion.feedbackPulse) { isSaved = true }
             return
