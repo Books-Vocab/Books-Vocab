@@ -161,6 +161,14 @@ actor BackgroundSyncActor {
         AppLog.sync.info("Local data cleared. Deleted \(entries.count) vocab + \(reviews.count) review + \(notebooks.count) notebooks. reason=\(reason)")
     }
 
+    /// Returns the number of synced entries in the local store.
+    func syncedEntryCount() throws -> Int {
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.syncStatus == 1 }
+        )
+        return try modelContext.fetchCount(descriptor)
+    }
+
     /// Deletes only server-synced entries (syncStatus == 1).
     /// Used on startup when not logged in to remove stale KG data
     /// while preserving locally-created pending words (syncStatus == 0).
