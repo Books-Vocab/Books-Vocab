@@ -281,7 +281,7 @@ struct BookCard: View {
             }
         }
         .task(id: book.coverImageData) {
-            decodeCoverImage()
+            await decodeCoverImage()
         }
     }
 
@@ -298,7 +298,7 @@ struct BookCard: View {
                         style: .continuous
                     )
                 )
-                .transition(.opacity)
+                .transition(.contentSwap)
         } else {
             RoundedRectangle(
                 cornerRadius: AppBookshelfMetrics.coverCornerRadius,
@@ -321,18 +321,17 @@ struct BookCard: View {
         }
     }
 
-    private func decodeCoverImage() {
+    private func decodeCoverImage() async {
         guard let coverData = book.coverImageData else {
             decodedCoverImage = nil
             return
         }
-        Task.detached {
-            let image = UIImage(data: coverData)
-            await MainActor.run {
-                withAnimation(AppMotion.contentFade) {
-                    decodedCoverImage = image
-                }
-            }
+        let image = await Task.detached {
+            UIImage(data: coverData)
+        }.value
+        guard !Task.isCancelled else { return }
+        withAnimation(AppMotion.contentFade) {
+            decodedCoverImage = image
         }
     }
 
