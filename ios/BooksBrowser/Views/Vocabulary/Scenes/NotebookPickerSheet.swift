@@ -9,6 +9,8 @@ struct NotebookPickerSheet: View {
     let excludeNotebookId: String
     let onPick: (Notebook) -> Void
 
+    @State private var errorMessage: String?
+
     private var availableNotebooks: [Notebook] {
         notebooks.filter { !$0.isDeleted && $0.remoteId != excludeNotebookId }
     }
@@ -16,7 +18,23 @@ struct NotebookPickerSheet: View {
     var body: some View {
         NavigationStack {
             Group {
-                if availableNotebooks.isEmpty {
+                if let errorMessage {
+                    VStack {
+                        Spacer()
+                        VocabStateMessageCard(
+                            title: "發生錯誤".localized,
+                            systemImage: "exclamationmark.triangle",
+                            description: errorMessage
+                        ) {
+                            Button("重試".localized) {
+                                self.errorMessage = nil
+                            }
+                            .buttonStyle(.vocabAction())
+                        }
+                        Spacer()
+                    }
+                    .padding(vocabSkin.metrics.cardBlockPadding)
+                } else if availableNotebooks.isEmpty {
                     VStack {
                         Spacer()
                         VocabEmptyStateCard(
@@ -30,8 +48,7 @@ struct NotebookPickerSheet: View {
                 } else {
                     List(availableNotebooks) { notebook in
                         Button {
-                            onPick(notebook)
-                            dismiss()
+                            pickNotebook(notebook)
                         } label: {
                             HStack {
                                 if let color = notebook.color {
@@ -57,5 +74,14 @@ struct NotebookPickerSheet: View {
                 }
             }
         }
+    }
+
+    private func pickNotebook(_ notebook: Notebook) {
+        guard notebook.remoteId != excludeNotebookId, !notebook.isDeleted else {
+            errorMessage = "此單字本無法使用".localized
+            return
+        }
+        onPick(notebook)
+        dismiss()
     }
 }
