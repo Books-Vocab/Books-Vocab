@@ -427,6 +427,27 @@ class CardStore:
                 return card
         return None
 
+    def batch_update(self, updates: list[tuple[str, dict]]) -> int:
+        """Update multiple cards in a single transaction. Returns count of actually changed cards."""
+        if not updates:
+            return 0
+        changed = 0
+        with Session(self.engine) as session:
+            for card_id, kwargs in updates:
+                card = session.get(Card, card_id)
+                if card and not card.is_deleted:
+                    has_changes = False
+                    for key, value in kwargs.items():
+                        if hasattr(card, key) and getattr(card, key) != value:
+                            setattr(card, key, value)
+                            has_changes = True
+                    if has_changes:
+                        card.updated_at = datetime.now(UTC)
+                        session.add(card)
+                        changed += 1
+            session.commit()
+        return changed
+
     def save(self) -> None:
         """No-op for SQLite. Changes are committed immediately or via explicit sessions."""
         pass
