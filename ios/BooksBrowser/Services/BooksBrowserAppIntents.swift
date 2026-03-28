@@ -62,7 +62,7 @@ struct AddVocabularyIntent: AppIntent {
             if let result = try? await service.translateQuick(word: targetWord, context: context ?? "") {
                 entry.translation = result.translation
                 entry.partOfSpeech = result.partOfSpeech
-                // 在實際架構中，還需儲存回 modelContext
+                modelContext.safeSave()
             }
         }
 
