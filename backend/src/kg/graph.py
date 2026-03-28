@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import threading
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime
@@ -54,6 +55,7 @@ class GraphStore:
     def __init__(self, links_path: Path, candidates_path: Path) -> None:
         self.links_path = links_path
         self.candidates_path = candidates_path
+        self._lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
         self._candidates: list[CandidatePair] = []
         self._from_index: dict[str, set[str]] = {}  # card_id → set of link_ids
@@ -132,9 +134,10 @@ class GraphStore:
             confidence=confidence,
             reason=reason,
         )
-        self._links[link.id] = link
-        self._index_link(link)
-        self._save_links()
+        with self._lock:
+            self._links[link.id] = link
+            self._index_link(link)
+            self._save_links()
         return link
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
@@ -142,8 +145,8 @@ class GraphStore:
         link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
         return [self._links[lid] for lid in link_ids if self._links[lid].status == "active"]
 
-    def has_link(self, id_a: str, id_b: str) -> bool:
-        """Check if a link exists between two cards (active or rejected counts)."""
+    def _has_link_unlocked(self, id_a: str, id_b: str) -> bool:
+        """Check link existence without acquiring the lock (internal use)."""
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
             lk = self._links[lid]
@@ -154,6 +157,10 @@ class GraphStore:
             ):
                 return True
         return False
+
+    def has_link(self, id_a: str, id_b: str) -> bool:
+        """Check if a link exists between two cards (active or rejected counts)."""
+        return self._has_link_unlocked(id_a, id_b)
 
     def find_link_between(self, id_a: str, id_b: str) -> GraphLink | None:
         """Find active or rejected link between two cards (bidirectional). Returns None for deprecated/absent."""
@@ -170,11 +177,12 @@ class GraphStore:
 
     def reject_link(self, link_id: str) -> None:
         """Set link status to rejected. Raises KeyError if not found."""
-        lk = self._links.get(link_id)
-        if lk is None:
-            raise KeyError(link_id)
-        lk.status = "rejected"
-        self._save_links()
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            lk.status = "rejected"
+            self._save_links()
 
     def all_links(self) -> Iterator[GraphLink]:
         yield from self._links.values()
@@ -186,28 +194,31 @@ class GraphStore:
 
     def add_candidate(self, from_id: str, to_id: str, similarity: float) -> None:
         """Add a candidate pair for LLM judgement."""
-        # Skip if already exists or link exists
-        if self.has_link(from_id, to_id):
-            return
-        for c in self._candidates:
-            if (c.from_id == from_id and c.to_id == to_id) or (
-                c.from_id == to_id and c.to_id == from_id
-            ):
+        with self._lock:
+            # Skip if already exists or link exists
+            if self._has_link_unlocked(from_id, to_id):
                 return
-        self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
-        self._save_candidates()
+            for c in self._candidates:
+                if (c.from_id == from_id and c.to_id == to_id) or (
+                    c.from_id == to_id and c.to_id == from_id
+                ):
+                    return
+            self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
+            self._save_candidates()
 
     def pop_candidates(self) -> list[CandidatePair]:
         """Get and clear all pending candidates."""
-        result = self._candidates[:]
-        self._candidates.clear()
-        self._save_candidates()
+        with self._lock:
+            result = self._candidates[:]
+            self._candidates.clear()
+            self._save_candidates()
         return result
 
     def requeue_candidates(self, candidates: list[CandidatePair]) -> None:
         """Push unprocessed candidates back onto the list."""
-        self._candidates.extend(candidates)
-        self._save_candidates()
+        with self._lock:
+            self._candidates.extend(candidates)
+            self._save_candidates()
 
     def candidate_count(self) -> int:
         return len(self._candidates)
@@ -216,41 +227,44 @@ class GraphStore:
 
     def deprecate_links_for(self, card_id: str) -> int:
         """Deprecate all active links involving a card. Returns count of deprecated links."""
-        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-        count = 0
-        for lid in list(link_ids):
-            lk = self._links.get(lid)
-            if lk and lk.status == "active":
-                lk.status = "deprecated"
-                count += 1
-        if count:
-            self._save_links()
+        with self._lock:
+            link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+            count = 0
+            for lid in list(link_ids):
+                lk = self._links.get(lid)
+                if lk and lk.status == "active":
+                    lk.status = "deprecated"
+                    count += 1
+            if count:
+                self._save_links()
         return count
 
     def restore_links_for(self, card_id: str, cards_store) -> int:
         """Restore deprecated links for a card, only if the other end is alive."""
-        link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-        count = 0
-        for lid in list(link_ids):
-            lk = self._links.get(lid)
-            if lk and lk.status == "deprecated":
-                other_id = lk.to_id if lk.from_id == card_id else lk.from_id
-                other_card = cards_store.get(other_id)
-                if other_card and not other_card.is_deleted and not other_card.is_archived:
-                    lk.status = "active"
-                    count += 1
-        if count:
-            self._save_links()
+        with self._lock:
+            link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
+            count = 0
+            for lid in list(link_ids):
+                lk = self._links.get(lid)
+                if lk and lk.status == "deprecated":
+                    other_id = lk.to_id if lk.from_id == card_id else lk.from_id
+                    other_card = cards_store.get(other_id)
+                    if other_card and not other_card.is_deleted and not other_card.is_archived:
+                        lk.status = "active"
+                        count += 1
+            if count:
+                self._save_links()
         return count
 
     def remove_candidates_for(self, card_id: str) -> int:
         """Remove all pending candidates involving a card. Returns count removed."""
-        before = len(self._candidates)
-        self._candidates = [
-            c for c in self._candidates
-            if c.from_id != card_id and c.to_id != card_id
-        ]
-        removed = before - len(self._candidates)
-        if removed:
-            self._save_candidates()
+        with self._lock:
+            before = len(self._candidates)
+            self._candidates = [
+                c for c in self._candidates
+                if c.from_id != card_id and c.to_id != card_id
+            ]
+            removed = before - len(self._candidates)
+            if removed:
+                self._save_candidates()
         return removed
