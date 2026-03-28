@@ -156,16 +156,33 @@ def push_review_states(
     logger: logging.Logger,
     notebook_id: str | None = None,
 ) -> dict[str, int]:
-    """Merge client review states into server cards. Returns {updated, skipped}."""
-    cards_by_word: dict[str, list[Any]] = {}
-    for card in cards_store.all(notebook_id=notebook_id):
-        cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
+    """Merge client review states into server cards. Returns {updated, skipped}.
+
+    When an entry carries ``card_id``, only that exact card is matched —
+    preventing cross-notebook pollution for same-word cards.
+    Entries without ``card_id`` fall back to word-based matching (backward compat).
+    """
+    # Build lookup indices lazily: word-index only when needed.
+    cards_by_word: dict[str, list[Any]] | None = None
+
+    def _get_cards_by_word() -> dict[str, list[Any]]:
+        nonlocal cards_by_word
+        if cards_by_word is None:
+            cards_by_word = {}
+            for card in cards_store.all(notebook_id=notebook_id):
+                cards_by_word.setdefault(_normalize_word(card.content), []).append(card)
+        return cards_by_word
 
     updated = 0
     skipped = 0
     pending_updates: list[tuple[str, dict]] = []
     for entry in entries:
-        cards = cards_by_word.get(_normalize_word(entry.word))
+        # Prefer card_id for precise matching; fall back to word matching.
+        if entry.card_id:
+            card = cards_store.get(entry.card_id)
+            cards = [card] if card and not card.is_deleted else []
+        else:
+            cards = _get_cards_by_word().get(_normalize_word(entry.word), [])
         if not cards:
             skipped += 1
             continue

@@ -185,7 +185,7 @@ actor BackgroundSyncActor {
         var payload: [[String: Any]] = []
         for entry in entries {
             let lastReviewed = entry.lastReviewedAt ?? entry.dateAdded
-            payload.append([
+            var item: [String: Any] = [
                 "word": entry.word,
                 "review_interval_hours": entry.reviewIntervalHours,
                 "next_review_at": AppDateFormatters.iso8601.string(from: entry.nextReviewAt),
@@ -194,7 +194,11 @@ actor BackgroundSyncActor {
                 "lapse_count": entry.lapseCount,
                 "review_streak": entry.reviewStreak,
                 "last_review_feedback": entry.lastReviewFeedbackRaw,
-            ])
+            ]
+            if let cardId = entry.kgCardId, !cardId.isEmpty {
+                item["card_id"] = cardId
+            }
+            payload.append(item)
         }
         return payload
     }
