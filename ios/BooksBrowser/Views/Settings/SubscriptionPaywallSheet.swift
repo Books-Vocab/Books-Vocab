@@ -181,9 +181,10 @@ struct SubscriptionPaywallSheet: View {
                 .foregroundStyle(vocabSkin.palette.secondaryText)
                 .lineSpacing(6)
 
-            // 價格區塊（突出）
+            // 價格區塊（金額最突出，試用為次要 — 3.1.2(c) 合規）
             SettingsSubscriptionInfoBlock(
-                title: priceLine,
+                title: billedAmountLine,
+                subtitle: trialInfoLine,
                 detail: L10n.format("權限來源：%@", entitlementSourceLine),
                 titleFont: vocabSkin.typography.sectionTitle
             )
@@ -202,7 +203,7 @@ struct SubscriptionPaywallSheet: View {
                     }
                 } label: {
                     paywallActionLabel(
-                        title: "開始免費試用".localized,
+                        title: ctaButtonTitle,
                         isLoading: subscriptionManager.isLoading
                     )
                 }
@@ -328,7 +329,8 @@ struct SubscriptionPaywallSheet: View {
         return L10n.string("解鎖閱讀器 AI、雲端同步、關聯圖與內建複習。免費試用與價格會直接來自 App Store。")
     }
 
-    private var priceLine: String {
+    /// 帳單金額（最突出的定價元素 — 3.1.2(c) 合規）
+    private var billedAmountLine: String {
         if isAdminGranted {
             if let expiresAt = subscriptionManager.entitlements.pro.expires_at, !expiresAt.isEmpty {
                 return L10n.format("管理員授權 · 有效至 %@", expiresAt)
@@ -336,13 +338,43 @@ struct SubscriptionPaywallSheet: View {
             return L10n.string("管理員授權")
         }
         if let product = subscriptionManager.proProduct {
-            let days = subscriptionManager.entitlements.pro.trial_days ?? 7
-            return L10n.format("%@ / month · %@ 天免費試用", product.displayPrice, "\(days)")
+            return L10n.format("%@ / month", product.displayPrice)
         }
         if let remotePrice = subscriptionManager.entitlements.pro.price_display, !remotePrice.isEmpty {
             return remotePrice
         }
         return L10n.string("載入 App Store 價格中…")
+    }
+
+    /// 試用資訊（次要位置，字級小於帳單金額）
+    private var trialInfoLine: String? {
+        guard !isAdminGranted else { return nil }
+        let days = subscriptionManager.entitlements.pro.trial_days ?? 7
+        guard days > 0 else { return nil }
+        return L10n.format("包含 %@ 天免費試用", "\(days)")
+    }
+
+    /// 已啟用狀態使用的完整價格行（維持原格式）
+    private var priceLine: String {
+        if isAdminGranted {
+            return billedAmountLine
+        }
+        if let trialLine = trialInfoLine {
+            return "\(billedAmountLine) · \(trialLine)"
+        }
+        return billedAmountLine
+    }
+
+    /// CTA 按鈕標題（包含價格 — 3.1.2(c) 合規）
+    private var ctaButtonTitle: String {
+        if let product = subscriptionManager.proProduct {
+            let days = subscriptionManager.entitlements.pro.trial_days ?? 7
+            if days > 0 {
+                return L10n.format("免費試用 %@ 天，之後 %@/月", "\(days)", product.displayPrice)
+            }
+            return L10n.format("訂閱 — %@/月", product.displayPrice)
+        }
+        return L10n.string("訂閱")
     }
 
     private var entitlementSourceLine: String {
