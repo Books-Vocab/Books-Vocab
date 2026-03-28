@@ -70,7 +70,7 @@ def admin_stats_response(
         vocab_count = 0
         try:
             store = card_store_factory(user_dir)
-            vocab_count = sum(1 for card in store.all() if not card.is_deleted)
+            vocab_count = store.count()
         except (OSError, ValueError):
             logger.warning("Failed to load card store for user %s", uid, exc_info=True)
 
