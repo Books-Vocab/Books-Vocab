@@ -170,8 +170,9 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         logger.info("KG API starting up")
         yield
         logger.info("KG API shutting down")
-        from .service_factories import reset_gemini_client
+        from .service_factories import reset_async_gemini_client, reset_gemini_client
         reset_gemini_client()
+        await reset_async_gemini_client()
 
     app = FastAPI(title="Knowledge Graph API", version="0.1.0", lifespan=lifespan)
     app.state.kg_settings = settings

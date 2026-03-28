@@ -7,11 +7,10 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import Any
 
-from fastapi import HTTPException
-
 _logger = logging.getLogger(__name__)
 
 from .api_models import AppStoreNotificationRequest, EntitlementsResponse, SubscriptionStatusResponse
+from .exceptions import BadRequestError, ValidationError
 from .user_store import parse_datetime
 
 
@@ -253,7 +252,7 @@ def verified_transaction_snapshot(
 ) -> dict[str, Any]:
     product_id = payload.get("productId")
     if not isinstance(product_id, str) or not product_id.strip():
-        raise HTTPException(status_code=400, detail="Verified App Store transaction is missing productId")
+        raise ValidationError("Verified App Store transaction is missing productId")
 
     environment = str(payload.get("environment") or "production").lower()
     transaction_id = payload.get("transactionId")
@@ -314,18 +313,18 @@ def decode_notification_payload(
                 },
                 req.raw_payload,
             )
-        raise HTTPException(status_code=400, detail="signed_payload is required for App Store notifications")
+        raise BadRequestError("signed_payload is required for App Store notifications")
 
     verified_notification = verify_signed_jws(req.signed_payload, bundle_id=bundle_id)
     notification_payload = verified_notification.payload
     data = notification_payload.get("data", {})
     if not isinstance(data, dict):
-        raise HTTPException(status_code=400, detail="App Store notification data payload is malformed")
+        raise BadRequestError("App Store notification data payload is malformed")
 
     signed_transaction_info = data.get("signedTransactionInfo")
     signed_renewal_info = data.get("signedRenewalInfo")
     if not isinstance(signed_transaction_info, str) or not signed_transaction_info:
-        raise HTTPException(status_code=400, detail="App Store notification missing signedTransactionInfo")
+        raise BadRequestError("App Store notification missing signedTransactionInfo")
 
     transaction_verified = verify_signed_jws(signed_transaction_info, bundle_id=bundle_id)
     renewal_payload = None
