@@ -2,8 +2,6 @@ from __future__ import annotations
 
 import pytest
 
-from fastapi import HTTPException
-
 import kg.service_factories as sf
 
 
@@ -28,6 +26,5 @@ def test_reset_creates_new_instance(monkeypatch):
 
 def test_missing_api_key_raises(monkeypatch):
     monkeypatch.delenv("GEMINI_API_KEY", raising=False)
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(RuntimeError, match="GEMINI_API_KEY not configured"):
         sf.create_gemini_client()
-    assert exc_info.value.status_code == 500

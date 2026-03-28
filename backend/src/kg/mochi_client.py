@@ -106,6 +106,16 @@ class MochiClient:
             payload["template-id"] = template_id
         return self._request("POST", f"/cards/{card_id}", json=payload)
 
+    def close(self) -> None:
+        """Close the underlying httpx connection pool."""
+        self._client.close()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.close()
+
     def delete_card(self, card_id: str) -> None:
         """Delete a card."""
         self._request("DELETE", f"/cards/{card_id}")
