@@ -312,3 +312,41 @@ class GraphStore:
             if removed:
                 self._save_candidates()
         return removed
+
+    # --- Merge ---
+
+    def merge_from(self, source: "GraphStore") -> None:
+        """Merge all links and candidates from *source* into this store.
+
+        - Links whose card pair already exists in target are skipped (no duplicates).
+        - After merge, source is emptied and its files are saved (now empty).
+        """
+        with self._lock:
+            # Merge links
+            for lk in list(source._links.values()):
+                if not self._has_link_unlocked(lk.from_id, lk.to_id):
+                    self._links[lk.id] = lk
+                    self._index_link(lk)
+
+            # Merge candidates — skip pairs that already have a link or candidate in target
+            existing_pairs: set[tuple[str, str]] = set()
+            for c in self._candidates:
+                existing_pairs.add((c.from_id, c.to_id))
+                existing_pairs.add((c.to_id, c.from_id))
+
+            for c in source._candidates:
+                if (c.from_id, c.to_id) not in existing_pairs and not self._has_link_unlocked(c.from_id, c.to_id):
+                    self._candidates.append(c)
+                    existing_pairs.add((c.from_id, c.to_id))
+                    existing_pairs.add((c.to_id, c.from_id))
+
+            self._save_links()
+            self._save_candidates()
+
+        # Clear source
+        with source._lock:
+            source._links.clear()
+            source._candidates.clear()
+            source._rebuild_index()
+            source._save_links()
+            source._save_candidates()
