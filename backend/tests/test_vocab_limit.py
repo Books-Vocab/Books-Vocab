@@ -59,11 +59,12 @@ def test_list_vocab_cards_default_limit_5000():
     assert len(result) == 10
 
 
-def test_list_vocab_cards_limit_2_returns_only_2():
+def test_list_vocab_cards_full_sync_returns_all_no_truncation():
+    """Full sync (since=None) must return ALL cards — no 5000-cap truncation."""
     cards = [_FakeCard(id=f"c{i}", content=f"word{i}") for i in range(5)]
     store = _FakeCardsStore(cards)
     result = list_vocab_cards(since=None, limit=2, cards_store=store, graph=object(), card_response_builder=_card_builder)
-    assert len(result) == 2
+    assert len(result) == 5  # limit is ignored for full sync to prevent data loss
 
 
 def test_list_vocab_cards_with_since_ignores_limit():
