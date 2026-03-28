@@ -255,6 +255,7 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
             graph.deprecate_links_for(card.id)
             graph.remove_candidates_for(card.id)
         except Exception:
+            logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
                 cards_store.restore(card.id)
             except Exception:

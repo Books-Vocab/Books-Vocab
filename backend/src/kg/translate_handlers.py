@@ -5,8 +5,10 @@ from logging import Logger
 from typing import Any
 
 from fastapi import HTTPException
+from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
+from .exceptions import ExternalServiceError
 from .translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -36,6 +38,10 @@ async def _safe_translate(
         return await coro(req, user, **kw)
     except HTTPException:
         raise
+    except OpenAIError as exc:
+        if logger:
+            logger.error("%s OpenAI error: %s", label, exc, exc_info=True)
+        raise ExternalServiceError(f"{label} failed: {exc}") from exc
     except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         if logger:
             logger.error("%s failed: %s", label, exc, exc_info=True)

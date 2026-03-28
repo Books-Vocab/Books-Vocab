@@ -201,6 +201,13 @@ def make_app_store_api_token(bundle_id: str) -> str:
     return jwt.encode(payload, private_key, algorithm="ES256", headers={"kid": key_id, "typ": "JWT"})
 
 
+def _validate_transaction_id(transaction_id: str) -> None:
+    """Ensure transaction_id is numeric (Apple's format)."""
+    import re
+    if not re.match(r'^\d+$', transaction_id):
+        raise ValueError(f"Invalid transaction_id: {transaction_id!r}")
+
+
 def _base_url_for_environment(environment: str | None) -> str:
     env = (environment or "").lower()
     return SANDBOX_API_BASE_URL if env == "sandbox" else PRODUCTION_API_BASE_URL
@@ -212,6 +219,7 @@ async def fetch_transaction_info(
     bundle_id: str,
     environment: str | None = None,
 ) -> dict[str, Any]:
+    _validate_transaction_id(transaction_id)
     token = make_app_store_api_token(bundle_id)
     base_url = _base_url_for_environment(environment)
     url = f"{base_url}/inApps/v1/transactions/{transaction_id}"
