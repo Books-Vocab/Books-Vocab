@@ -93,13 +93,32 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         modelContext: ModelContext
     ) async {
         var failedCount = 0
-        for entry in pendingDeletes {
+        let grouped = Dictionary(grouping: pendingDeletes, by: \.notebookId)
+
+        for (nbId, entries) in grouped {
+            let words = entries.map(\.word)
             do {
-                try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
-                modelContext.delete(entry)
+                let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
+                let deletedSet = Set(response.deleted_words)
+                for entry in entries {
+                    if deletedSet.contains(entry.word) {
+                        modelContext.delete(entry)
+                    } else {
+                        failedCount += 1
+                        AppLog.kg.error("batchDelete: word not found '\(entry.word)'")
+                    }
+                }
             } catch {
-                failedCount += 1
-                AppLog.kg.error("deleteCard retry failed '\(entry.word)': \(error.localizedDescription)")
+                // Fallback to per-word delete
+                for entry in entries {
+                    do {
+                        try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
+                        modelContext.delete(entry)
+                    } catch {
+                        failedCount += 1
+                        AppLog.kg.error("deleteCard retry failed '\(entry.word)': \(error.localizedDescription)")
+                    }
+                }
             }
         }
 
@@ -132,13 +151,31 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     ) async {
         let entries = syncedEntries.filter { entryIDs.contains($0.id) }
         var failCount = 0
-        for entry in entries {
+        let grouped = Dictionary(grouping: entries, by: \.notebookId)
+
+        for (nbId, nbEntries) in grouped {
+            let words = nbEntries.map(\.word)
             do {
-                try await kgService.archiveCard(word: entry.word, archived: true, notebookId: entry.notebookId)
-                entry.isArchived = true
+                let response = try await kgService.batchArchiveCards(words: words, archived: true, notebookId: nbId)
+                let updatedSet = Set(response.updated_words)
+                for entry in nbEntries {
+                    if updatedSet.contains(entry.word) {
+                        entry.isArchived = true
+                    } else {
+                        failCount += 1
+                    }
+                }
             } catch {
-                failCount += 1
-                AppLog.kg.error("Batch archive failed '\(entry.word)': \(error.localizedDescription)")
+                // Fallback to per-word archive
+                for entry in nbEntries {
+                    do {
+                        try await kgService.archiveCard(word: entry.word, archived: true, notebookId: entry.notebookId)
+                        entry.isArchived = true
+                    } catch {
+                        failCount += 1
+                        AppLog.kg.error("Batch archive failed '\(entry.word)': \(error.localizedDescription)")
+                    }
+                }
             }
         }
         modelContext.safeSave()

@@ -15,6 +15,18 @@ struct KGVocabEntry: Codable {
     let root_form: String?
 }
 
+struct KGBatchDeleteResponse: Codable {
+    let deleted: Int
+    let deleted_words: [String]
+    let not_found: [String]
+}
+
+struct KGBatchArchiveResponse: Codable {
+    let updated: Int
+    let updated_words: [String]
+    let not_found: [String]
+}
+
 // MARK: - Vocabulary CRUD
 
 extension KGService {
@@ -27,12 +39,38 @@ extension KGService {
         )
     }
 
+    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse {
+        let body = try JSONEncoder().encode(["words": words])
+        return try await authenticatedDecode(
+            KGBatchDeleteResponse.self,
+            path: "api/vocab/batch-delete",
+            method: "POST",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
+            body: body
+        )
+    }
+
     func archiveCard(word: String, archived: Bool, notebookId: String) async throws {
         try await authenticatedVoid(
             path: "api/vocab/\(word)/archive",
             method: "PATCH",
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
             body: try JSONEncoder().encode(["archived": archived])
+        )
+    }
+
+    func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse {
+        struct BatchArchiveBody: Encodable {
+            let words: [String]
+            let archived: Bool
+        }
+        let body = try JSONEncoder().encode(BatchArchiveBody(words: words, archived: archived))
+        return try await authenticatedDecode(
+            KGBatchArchiveResponse.self,
+            path: "api/vocab/batch-archive",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)],
+            body: body
         )
     }
 

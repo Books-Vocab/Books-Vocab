@@ -9,6 +9,7 @@ struct AddLinkSheet: View {
     let onSelect: (VocabularyEntry) -> Void
 
     @State private var searchText = ""
+    @State private var searchError: String?
 
     private var existingLinkedCardIds: Set<String> {
         Set(sourceEntry.graphLinksByKind.values.flatMap { $0 }.map(\.cardId))
@@ -33,6 +34,17 @@ struct AddLinkSheet: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 0) {
+                if let searchError {
+                    AppBanner(
+                        message: searchError,
+                        systemImage: "exclamationmark.triangle",
+                        onRetry: {
+                            self.searchError = nil
+                        },
+                        onDismiss: { self.searchError = nil }
+                    )
+                }
+
                 searchField
                     .padding(vocabSkin.metrics.cardBlockPadding)
 
@@ -53,8 +65,7 @@ struct AddLinkSheet: View {
                 } else {
                     List(filteredEntries) { entry in
                         Button {
-                            onSelect(entry)
-                            dismiss()
+                            selectEntry(entry)
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.word)
@@ -80,6 +91,15 @@ struct AddLinkSheet: View {
                 }
             }
         }
+    }
+
+    private func selectEntry(_ entry: VocabularyEntry) {
+        guard entry.kgCardId != nil else {
+            searchError = "此單字尚未同步，無法建立連結".localized
+            return
+        }
+        onSelect(entry)
+        dismiss()
     }
 
     private var searchField: some View {

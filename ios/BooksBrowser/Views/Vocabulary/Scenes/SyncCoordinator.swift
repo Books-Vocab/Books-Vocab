@@ -94,25 +94,50 @@ final class SyncCoordinator: SyncCoordinating {
 
                 if !deletes.isEmpty {
                     updateStep("upload_delete", status: .running, total: deletes.count)
+                    deletes.forEach { $0.prepareForRetryAttempt() }
 
+                    // Group by notebook and batch-delete
+                    let groupedDeletes = Dictionary(grouping: deletes, by: \.notebookId)
                     var deleted = 0
                     var failedWords: [String] = []
-                    for entry in deletes {
+
+                    for (nbId, entries) in groupedDeletes {
                         if Task.isCancelled { break }
-                        entry.prepareForRetryAttempt()
+                        let words = entries.map(\.word)
                         do {
-                            try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
-                            // 遠端已刪除 → 必須同步刪本地，不可在此中斷
-                            modelContext.delete(entry)
-                            deleted += 1
+                            let response = try await kgService.batchDeleteCards(words: words, notebookId: nbId)
+                            // Delete locally for successfully deleted words
+                            let deletedSet = Set(response.deleted_words)
+                            for entry in entries {
+                                if deletedSet.contains(entry.word) {
+                                    modelContext.delete(entry)
+                                    deleted += 1
+                                } else {
+                                    entry.markSyncFailed()
+                                    failedWords.append(entry.word)
+                                }
+                            }
                             updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
+                            // Batch failed — fallback to per-word delete
                             if Task.isCancelled { break }
-                            entry.markSyncFailed()
-                            encounteredFailure = true
-                            failedWords.append(entry.word)
+                            for entry in entries {
+                                if Task.isCancelled { break }
+                                do {
+                                    try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
+                                    modelContext.delete(entry)
+                                    deleted += 1
+                                    updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
+                                } catch {
+                                    if Task.isCancelled { break }
+                                    entry.markSyncFailed()
+                                    encounteredFailure = true
+                                    failedWords.append(entry.word)
+                                }
+                            }
                         }
                     }
+                    if !failedWords.isEmpty { encounteredFailure = true }
                     modelContext.safeSave()
 
                     if failedWords.isEmpty {

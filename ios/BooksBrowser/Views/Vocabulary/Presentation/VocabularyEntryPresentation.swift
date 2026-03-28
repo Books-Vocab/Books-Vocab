@@ -83,6 +83,90 @@ enum VocabularyEntryPresentation {
         entries.count { $0.shouldAppearInKnowledgeList && $0.reviewState(at: now) == reviewState }
     }
 
+    /// Single-pass partition of knowledge entries into review-state buckets.
+    /// Returns counts and the filtered+sorted list for the selected state.
+    struct ClassifiedResult {
+        var dueBucket: [VocabularyEntry]
+        var unlearnedBucket: [VocabularyEntry]
+        var reviewedBucket: [VocabularyEntry]
+
+        var dueCount: Int { dueBucket.count }
+        var unlearnedCount: Int { unlearnedBucket.count }
+        var reviewedCount: Int { reviewedBucket.count }
+
+        func count(for state: VocabularyReviewState) -> Int {
+            switch state {
+            case .due: return dueCount
+            case .unlearned: return unlearnedCount
+            case .reviewed: return reviewedCount
+            }
+        }
+
+        func bucket(for state: VocabularyReviewState) -> [VocabularyEntry] {
+            switch state {
+            case .due: return dueBucket
+            case .unlearned: return unlearnedBucket
+            case .reviewed: return reviewedBucket
+            }
+        }
+    }
+
+    static func classifyKnowledgeEntries(
+        in entries: [VocabularyEntry],
+        now: Date
+    ) -> ClassifiedResult {
+        var due: [VocabularyEntry] = []
+        var unlearned: [VocabularyEntry] = []
+        var reviewed: [VocabularyEntry] = []
+
+        for entry in entries {
+            guard entry.shouldAppearInKnowledgeList else { continue }
+            switch entry.reviewState(at: now) {
+            case .due: due.append(entry)
+            case .unlearned: unlearned.append(entry)
+            case .reviewed: reviewed.append(entry)
+            }
+        }
+
+        return ClassifiedResult(
+            dueBucket: due,
+            unlearnedBucket: unlearned,
+            reviewedBucket: reviewed
+        )
+    }
+
+    static func sortAndFilter(
+        _ entries: [VocabularyEntry],
+        searchText: String,
+        sortOption: KGVocabSortOption = .default,
+        now: Date
+    ) -> [VocabularyEntry] {
+        let sorted: [VocabularyEntry]
+        switch sortOption {
+        case .default:
+            sorted = entries.sorted { compareKnowledgeEntries($0, $1, now: now) }
+        case .alphabetical:
+            sorted = entries.sorted {
+                $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
+            }
+        case .dateAdded:
+            sorted = entries.sorted { $0.dateAdded > $1.dateAdded }
+        case .difficulty:
+            sorted = entries.sorted { lhs, rhs in
+                let lhsTier = tierPriority(lhs.difficultyTier)
+                let rhsTier = tierPriority(rhs.difficultyTier)
+                if lhsTier != rhsTier { return lhsTier < rhsTier }
+                return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
+            }
+        }
+
+        guard !searchText.isEmpty else { return sorted }
+        return sorted.filter {
+            $0.word.localizedCaseInsensitiveContains(searchText) ||
+            $0.translation.localizedCaseInsensitiveContains(searchText)
+        }
+    }
+
     static func archivedEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
         entries
             .filter(\.shouldAppearInArchiveList)

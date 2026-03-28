@@ -5,6 +5,10 @@ from fastapi.responses import Response
 
 from ..api_models import (
     ArchiveWordRequest,
+    BatchArchiveRequest,
+    BatchArchiveResponse,
+    BatchDeleteRequest,
+    BatchDeleteResponse,
     CardResponse,
     DailyReviewStatsPushRequest,
     DailyReviewStatsPushResponse,
@@ -33,6 +37,8 @@ from ..deps import (
 from ..vocab_handlers import (
     add_vocab_response,
     archive_word_response,
+    batch_archive_response,
+    batch_delete_response,
     create_manual_link_response,
     delete_graph_link_response,
     delete_word_response,
@@ -71,6 +77,39 @@ def list_vocab(
 
 
 # Static paths MUST be registered before {word} path parameter
+
+@router.post("/api/vocab/batch-delete", response_model=BatchDeleteResponse)
+def batch_delete(
+    req: BatchDeleteRequest,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    return batch_delete_response(
+        req, user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
+@router.patch("/api/vocab/batch-archive", response_model=BatchArchiveResponse)
+def batch_archive(
+    req: BatchArchiveRequest,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    return batch_archive_response(
+        req, user,
+        require_pro_access=_require_pro_access,
+        card_store_factory=_card_store,
+        graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store,
+        notebook_id=notebook_id,
+    )
+
+
 @router.get("/api/vocab/daily-stats", response_model=DailyReviewStatsResponse)
 def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_user)):
     return pull_daily_stats_response(
