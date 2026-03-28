@@ -44,3 +44,18 @@ class ExternalServiceError(KGError):
 class LLMParseError(ExternalServiceError):
     """LLM returned unparseable output."""
     status_code = 502
+
+
+class BadRequestError(KGError):
+    """Malformed or unparseable input."""
+    status_code = 400
+
+
+class ValidationError(KGError):
+    """Invalid input from client."""
+    status_code = 422
+
+
+class ConflictError(KGError):
+    """Resource conflict (e.g. duplicate link)."""
+    status_code = 409

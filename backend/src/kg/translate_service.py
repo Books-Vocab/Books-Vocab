@@ -4,7 +4,7 @@ import json
 import logging
 from typing import Any
 
-from fastapi import HTTPException
+from .exceptions import ExternalServiceError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
@@ -116,7 +116,7 @@ async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, cl
     )
     if not response.choices:
         logger.error("translate/quick: Gemini returned empty choices. Full response: %s", response)
-        raise HTTPException(500, "Gemini returned empty response")
+        raise ExternalServiceError("Gemini returned empty response")
 
     track_usage(user["id"], "translate_quick", response)
     data = _parse_json_payload(response.choices[0].message.content)
@@ -138,7 +138,7 @@ async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, c
     if not response.choices:
         if logger:
             logger.error("translate/phrase: Gemini returned empty choices. Full response: %s", response)
-        raise HTTPException(500, "Gemini returned empty response")
+        raise ExternalServiceError("Gemini returned empty response")
 
     track_usage(user["id"], "translate_phrase", response)
     data = _parse_json_payload(response.choices[0].message.content)
@@ -156,7 +156,7 @@ async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, 
     if not response.choices:
         if logger:
             logger.error("translate/explain: Gemini returned empty choices. Full response: %s", response)
-        raise HTTPException(500, "Gemini returned empty response")
+        raise ExternalServiceError("Gemini returned empty response")
 
     track_usage(user["id"], "translate_explain", response)
     data = _parse_json_payload(response.choices[0].message.content)

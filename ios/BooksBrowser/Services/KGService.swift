@@ -123,6 +123,28 @@ final class KGService: KGServing, LocalDataClearing {
     /// 最近一次背景同步失敗訊息（UI 可觀測）
     var lastBackgroundSyncError: String?
 
+    /// Guard against concurrent backgroundSync calls (e.g. rapid foreground/background toggling)
+    @ObservationIgnored
+    private let _backgroundSyncLock = NSLock()
+    @ObservationIgnored
+    private var _isBackgroundSyncing = false
+
+    /// Thread-safe check-and-set for background sync guard.
+    /// Returns `true` if sync was successfully claimed (caller should proceed).
+    func claimBackgroundSync() -> Bool {
+        _backgroundSyncLock.lock()
+        defer { _backgroundSyncLock.unlock() }
+        guard !_isBackgroundSyncing else { return false }
+        _isBackgroundSyncing = true
+        return true
+    }
+
+    func releaseBackgroundSync() {
+        _backgroundSyncLock.lock()
+        defer { _backgroundSyncLock.unlock() }
+        _isBackgroundSyncing = false
+    }
+
     var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {

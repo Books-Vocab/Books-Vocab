@@ -75,9 +75,9 @@ def test_move_vocab_words_service():
 
 
 def test_move_vocab_words_empty():
-    from fastapi import HTTPException
+    from kg.exceptions import ValidationError
     cards = _FakeCardsStore()
-    with pytest.raises(HTTPException) as exc_info:
+    with pytest.raises(ValidationError) as exc_info:
         move_vocab_words(
             words=[],
             from_notebook_id="nb1",
