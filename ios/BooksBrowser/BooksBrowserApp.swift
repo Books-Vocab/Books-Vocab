@@ -122,6 +122,14 @@ struct BooksBrowserApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
+    private static let fontObserver: Any? = NotificationCenter.default.addObserver(
+        forName: .serifCJKFontDidBecomeAvailable,
+        object: nil,
+        queue: .main
+    ) { _ in
+        AppFonts.configureGlobalAppearance()
+    }
+
     @State private var showWelcome =
         !ProcessInfo.processInfo.arguments.contains("-skipWelcome") &&
         !UserDefaults.standard.bool(forKey: "hasSeenWelcome")

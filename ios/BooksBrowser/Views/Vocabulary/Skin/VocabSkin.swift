@@ -294,40 +294,55 @@ struct VocabSkin {
 }
 
 extension VocabSkin {
-    static let baseTypography = Typography(
-        // Serif tokens — 標題 (Athelas + STSongti-TC)
-        displayTitle: AppFonts.serif(size: 24, bold: true),
-        sectionTitle: AppFonts.serif(size: 18, bold: true),
-        detailWord: .system(size: 27, weight: .semibold, design: .monospaced),   // 單字渲染，另外管理
-        reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),    // 單字渲染，另外管理
-        rowWord: .system(size: 18, weight: .semibold, design: .monospaced),       // 單字渲染，另外管理
-        translationTitle: AppFonts.serif(size: 21, bold: true),
-        // Sans tokens — 內文 (ElmsSans + PingFang TC)
-        body: AppFonts.sans(size: 15),
-        example: AppFonts.sans(size: 18),
-        detailExampleSerif: .custom("CormorantGaramond-Italic", size: 22),        // 例句渲染，另外管理
-        detailExampleSerifStrong: .custom("CormorantGaramond-BoldItalic", size: 22), // 例句渲染，另外管理
-        caption: AppFonts.sans(size: 12, bold: true),
-        captionStrong: AppFonts.sans(size: 12, bold: true),
-        // Mono tokens (ElmsSans + system monospaced)
-        monoLabel: AppFonts.mono(size: 10, bold: true),
-        monoBody: AppFonts.mono(size: 14),
-        monoBodyStrong: AppFonts.mono(size: 14, bold: true),
-        monoEmphasis: AppFonts.mono(size: 16, bold: true),
-        numericHero: AppFonts.serif(size: 38, bold: true),
-        // SF Symbols — 維持 system
-        iconTiny: .system(size: 10, weight: .thin, design: .default),
-        iconSmall: .system(size: 12, weight: .medium, design: .default),
-        iconMedium: .system(size: 14, weight: .medium, design: .default),
-        iconToolbar: .system(size: 15, weight: .medium, design: .default),
-        iconNavigation: .system(size: 16, weight: .thin, design: .default),
-        symbolLarge: .system(size: 30, weight: .light, design: .default),
-        symbolHero: .system(size: 44, weight: .light, design: .default),
-        // Settings — mono (數值調控)
-        settingsFontSizeDisplay: AppFonts.mono(size: 28, bold: true),
-        settingsAdjustSmall: AppFonts.sans(size: 15, bold: true),
-        settingsAdjustLarge: AppFonts.sans(size: 28, bold: true)
-    )
+    private static var _cachedTypography: Typography?
+
+    static var baseTypography: Typography {
+        if let cached = _cachedTypography { return cached }
+        let t = buildTypography()
+        _cachedTypography = t
+        return t
+    }
+
+    static func invalidateTypographyCache() {
+        _cachedTypography = nil
+    }
+
+    private static func buildTypography() -> Typography {
+        Typography(
+            // Serif tokens — 標題 (Athelas + STSongti-TC)
+            displayTitle: AppFonts.serif(size: 24, bold: true),
+            sectionTitle: AppFonts.serif(size: 18, bold: true),
+            detailWord: .system(size: 27, weight: .semibold, design: .monospaced),   // 單字渲染，另外管理
+            reviewWord: .system(size: 36, weight: .semibold, design: .monospaced),    // 單字渲染，另外管理
+            rowWord: .system(size: 18, weight: .semibold, design: .monospaced),       // 單字渲染，另外管理
+            translationTitle: AppFonts.serif(size: 21, bold: true),
+            // Sans tokens — 內文 (ElmsSans + PingFang TC)
+            body: AppFonts.sans(size: 15),
+            example: AppFonts.sans(size: 18),
+            detailExampleSerif: .custom("CormorantGaramond-Italic", size: 22),        // 例句渲染，另外管理
+            detailExampleSerifStrong: .custom("CormorantGaramond-BoldItalic", size: 22), // 例句渲染，另外管理
+            caption: AppFonts.sans(size: 12, bold: true),
+            captionStrong: AppFonts.sans(size: 12, bold: true),
+            // Mono tokens (ElmsSans + system monospaced)
+            monoLabel: AppFonts.mono(size: 10, bold: true),
+            monoBody: AppFonts.mono(size: 14),
+            monoBodyStrong: AppFonts.mono(size: 14, bold: true),
+            monoEmphasis: AppFonts.mono(size: 16, bold: true),
+            numericHero: AppFonts.serif(size: 38, bold: true),
+            // SF Symbols — 維持 system
+            iconTiny: .system(size: 10, weight: .thin, design: .default),
+            iconSmall: .system(size: 12, weight: .medium, design: .default),
+            iconMedium: .system(size: 14, weight: .medium, design: .default),
+            iconToolbar: .system(size: 15, weight: .medium, design: .default),
+            iconNavigation: .system(size: 16, weight: .thin, design: .default),
+            symbolLarge: .system(size: 30, weight: .light, design: .default),
+            symbolHero: .system(size: 44, weight: .light, design: .default),
+            // Settings — mono (數值調控)
+            settingsFontSizeDisplay: AppFonts.mono(size: 28, bold: true),
+            settingsAdjustSmall: AppFonts.sans(size: 15, bold: true),
+            settingsAdjustLarge: AppFonts.sans(size: 28, bold: true)
+        )
+    }
 
     static let baseRadii = Radii(
         stage: 14,
