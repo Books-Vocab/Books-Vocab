@@ -33,14 +33,6 @@ final class ReviewRecord {
     }
 
     static func makeDayKey(from date: Date) -> String {
-        Self.dayFormatter.string(from: date)
+        AppDateFormatters.dayKey.string(from: date)
     }
-
-    private static let dayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        f.locale = Locale(identifier: "en_US_POSIX")
-        f.timeZone = .current
-        return f
-    }()
 }

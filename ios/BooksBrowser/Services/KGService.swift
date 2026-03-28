@@ -347,9 +347,7 @@ final class KGService: KGServing, LocalDataClearing {
             serverCardCount = health.cards
 
             if let lastModStr = health.lastModified {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                lastSyncDate = formatter.date(from: lastModStr)
+                lastSyncDate = AppDateFormatters.iso8601.date(from: lastModStr)
             }
         } catch KGError.unauthorized {
             AppLog.kg.error("Health check failed: 401 Unauthorized")
