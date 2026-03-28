@@ -109,6 +109,17 @@ enum VocabularyEntryPresentation {
             case .reviewed: return reviewedBucket
             }
         }
+
+        func mergedBucket(for states: Set<VocabularyReviewState>) -> [VocabularyEntry] {
+            if states.isEmpty {
+                return dueBucket + unlearnedBucket + reviewedBucket
+            }
+            var result: [VocabularyEntry] = []
+            for state in VocabularyReviewState.allCases where states.contains(state) {
+                result.append(contentsOf: bucket(for: state))
+            }
+            return result
+        }
     }
 
     static func classifyKnowledgeEntries(
