@@ -11,10 +11,12 @@ struct VocabActivityHeatmap: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     let activity: [String: Int]  // "yyyy-MM-dd" -> count
+    let thresholds: [Int]
     let weeks: Int
 
-    init(activity: [String: Int], weeks: Int = 20) {
+    init(activity: [String: Int], thresholds: [Int] = [], weeks: Int = 20) {
         self.activity = activity
+        self.thresholds = thresholds
         self.weeks = weeks
     }
 
@@ -26,9 +28,11 @@ struct VocabActivityHeatmap: View {
     private let weekdayLabels = ["一", "三", "五", "日"]
     private let weekdayIndices = [0, 2, 4, 6] // Mon, Wed, Fri, Sun (Monday=0)
 
-    private var grid: [[CellData]] {
+    @State private var grid: [[CellData]] = []
+
+    private static func buildGrid(activity: [String: Int], weeks: Int) -> [[CellData]] {
         let today = Date()
-        let cal = Self.calendar
+        let cal = calendar
 
         // 找到本週一
         var comps = cal.dateComponents([.yearForWeekOfYear, .weekOfYear], from: today)
@@ -41,7 +45,7 @@ struct VocabActivityHeatmap: View {
             var column: [CellData] = []
             for dayOffset in 0..<7 {
                 guard let date = cal.date(byAdding: .day, value: dayOffset, to: weekStart) else { continue }
-                let key = Self.dayFormatter.string(from: date)
+                let key = dayFormatter.string(from: date)
                 let count = activity[key] ?? 0
                 let isFuture = date > today
                 column.append(CellData(key: key, count: count, isFuture: isFuture))
@@ -94,49 +98,52 @@ struct VocabActivityHeatmap: View {
                 Text("少".localized)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
-                ForEach(0..<5, id: \.self) { level in
-                    RoundedRectangle(cornerRadius: 2, style: .continuous)
+                ForEach(1..<5, id: \.self) { level in
+                    let size: CGFloat = level >= 3 ? cellSize * 1.15 : cellSize
+                    Circle()
                         .fill(levelColor(level))
-                        .frame(width: cellSize, height: cellSize)
+                        .frame(width: size, height: size)
                 }
                 Text("多".localized)
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
         }
+        .task { grid = Self.buildGrid(activity: activity, weeks: weeks) }
+        .onChange(of: activity) { _, new in grid = Self.buildGrid(activity: new, weeks: weeks) }
     }
 
     @ViewBuilder
     private func cellView(_ cell: CellData) -> some View {
         if cell.isFuture {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(Color.clear)
+            Color.clear
                 .frame(width: cellSize, height: cellSize)
         } else {
-            RoundedRectangle(cornerRadius: 2, style: .continuous)
-                .fill(levelColor(intensityLevel(cell.count)))
-                .frame(width: cellSize, height: cellSize)
+            let level = intensityLevel(cell.count)
+            let dotSize: CGFloat = level >= 3 ? cellSize * 1.15 : cellSize
+            Circle()
+                .fill(levelColor(level))
+                .frame(width: dotSize, height: dotSize)
+                .frame(width: cellSize, height: cellSize) // outer frame for consistent grid spacing
         }
     }
 
     private func intensityLevel(_ count: Int) -> Int {
-        switch count {
-        case 0: return 0
-        case 1...3: return 1
-        case 4...7: return 2
-        case 8...14: return 3
-        default: return 4
-        }
+        guard count > 0 else { return 0 }
+        if thresholds.count < 3 { return 1 }
+        if count <= thresholds[0] { return 1 }
+        if count <= thresholds[1] { return 2 }
+        if count <= thresholds[2] { return 3 }
+        return 4
     }
 
     private func levelColor(_ level: Int) -> Color {
-        let base = vocabSkin.palette.accent
         switch level {
-        case 0: return vocabSkin.palette.mutedFill
-        case 1: return base.opacity(0.25)
-        case 2: return base.opacity(0.50)
-        case 3: return base.opacity(0.75)
-        default: return base
+        case 0: return Color.clear
+        case 1: return vocabSkin.palette.mutedFill
+        case 2: return vocabSkin.palette.accent.opacity(0.35)
+        case 3: return vocabSkin.palette.accent.opacity(0.6)
+        default: return vocabSkin.palette.accent
         }
     }
 }

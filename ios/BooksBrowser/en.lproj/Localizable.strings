@@ -1,3 +1,10 @@
+"1週" = "1w";
+"7天" = "7d";
+"14天" = "14d";
+"30天" = "30d";
+"今天" = "Today";
+"明天" = "Tomorrow";
+
 "(無法讀取)" = "(unreadable)";
 "1. 登入網頁版的 app.mochi.cards" = "1. Sign in to app.mochi.cards on the web";
 "2. 點擊右上角設定 (Settings)" = "2. Open Settings in the top-right corner";
