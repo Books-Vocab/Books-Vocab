@@ -61,6 +61,7 @@ struct WordDetailSheet: View {
                 .padding()
             }
         }
+        .animation(AppMotion.contentFade, value: presenterState != nil)
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
             // Yield once so SwiftUI can render the loading placeholder before
             // we run the (lightweight but synchronous) presentation computation.
