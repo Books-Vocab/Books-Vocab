@@ -46,8 +46,17 @@ struct KGVocabView: View {
     }
 
     var body: some View {
-        VocabSceneShell(phase: scenePhase) {
-            content
+        let n = Date()
+        let c = VocabularyEntryPresentation.classifyKnowledgeEntries(in: syncedEntries, now: n)
+        let filtered = VocabularyEntryPresentation.sortAndFilter(
+            c.bucket(for: selectedReviewState),
+            searchText: searchText,
+            sortOption: sortOption,
+            now: n
+        )
+
+        VocabSceneShell(phase: buildScenePhase(classified: c)) {
+            contentView(classified: c, filteredEntries: filtered)
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
@@ -60,16 +69,39 @@ struct KGVocabView: View {
                 authManager: authManager,
                 kgService: kgService,
                 modelContext: modelContext,
-                dueEntries: dueEntries,
-                unlearnedEntries: unlearnedEntries,
+                dueEntries: c.dueBucket,
+                unlearnedEntries: c.unlearnedBucket,
                 selectedReviewState: $selectedReviewState
             )
         }
     }
 
-    private var content: some View {
-        KGVocabPresenter(
-            state: presenterState,
+    private func contentView(
+        classified c: VocabularyEntryPresentation.ClassifiedResult,
+        filteredEntries: [VocabularyEntry]
+    ) -> some View {
+        let tabOptions = VocabularyReviewState.allCases.map { state in
+            VocabTabOption(
+                id: state,
+                title: state.title,
+                count: c.count(for: state)
+            )
+        }
+        let state = KGVocabPresenter.State(
+            banner: bannerState,
+            reviewStateOptions: tabOptions,
+            rows: filteredEntries.map {
+                KGVocabPresenter.State.RowItem(id: $0.id, entry: $0)
+            },
+            emptyState: .init(
+                title: emptyStateTitle,
+                systemImage: emptyStateIcon,
+                description: emptyStateDescription
+            )
+        )
+
+        return KGVocabPresenter(
+            state: state,
             selectedReviewState: $selectedReviewState,
             sortOption: $sortOption,
             onDismissBanner: coordinator.errorMessage == nil ? nil : { coordinator.dismissBanner() },
@@ -136,22 +168,11 @@ struct KGVocabView: View {
         }
     }
 
-    private var now: Date { Date() }
-
-    private var reviewStateOptions: [VocabTabOption<VocabularyReviewState>] {
-        let n = now
-        return VocabularyReviewState.allCases.map { state in
-            VocabTabOption(
-                id: state,
-                title: state.title,
-                count: count(for: state, now: n)
-            )
-        }
-    }
-
     // MARK: - Computed
 
-    private var scenePhase: VocabScenePhase {
+    private func buildScenePhase(
+        classified c: VocabularyEntryPresentation.ClassifiedResult
+    ) -> VocabScenePhase {
         if !authManager.isLoggedIn {
             return .empty(
                 title: "尚未登入".localized,
@@ -168,8 +189,8 @@ struct KGVocabView: View {
                             authManager: authManager,
                             kgService: kgService,
                             modelContext: modelContext,
-                            dueEntries: dueEntries,
-                            unlearnedEntries: unlearnedEntries,
+                            dueEntries: c.dueBucket,
+                            unlearnedEntries: c.unlearnedBucket,
                             selectedReviewState: $selectedReviewState
                         )
                     }
@@ -183,24 +204,6 @@ struct KGVocabView: View {
         } else {
             return .content
         }
-    }
-
-    private var presenterState: KGVocabPresenter.State {
-        KGVocabPresenter.State(
-            banner: bannerState,
-            reviewStateOptions: reviewStateOptions,
-            rows: filteredEntries.map {
-                KGVocabPresenter.State.RowItem(
-                    id: $0.id,
-                    entry: $0
-                )
-            },
-            emptyState: .init(
-                title: emptyStateTitle,
-                systemImage: emptyStateIcon,
-                description: emptyStateDescription
-            )
-        )
     }
 
     private var bannerState: KGVocabPresenter.State.Banner? {
@@ -221,46 +224,6 @@ struct KGVocabView: View {
         return nil
     }
 
-    private var dueEntries: [VocabularyEntry] {
-        let n = now
-        return VocabularyEntryPresentation.filteredKnowledgeEntries(
-            in: syncedEntries,
-            reviewState: .due,
-            searchText: "",
-            now: n
-        )
-    }
-
-    private var unlearnedEntries: [VocabularyEntry] {
-        let n = now
-        return VocabularyEntryPresentation.filteredKnowledgeEntries(
-            in: syncedEntries,
-            reviewState: .unlearned,
-            searchText: "",
-            now: n
-        )
-    }
-
-    private var reviewedEntries: [VocabularyEntry] {
-        let n = now
-        return VocabularyEntryPresentation.filteredKnowledgeEntries(
-            in: syncedEntries,
-            reviewState: .reviewed,
-            searchText: "",
-            now: n
-        )
-    }
-
-    private var filteredEntries: [VocabularyEntry] {
-        let n = now
-        return VocabularyEntryPresentation.filteredKnowledgeEntries(
-            in: syncedEntries,
-            reviewState: selectedReviewState,
-            searchText: searchText,
-            sortOption: sortOption,
-            now: n
-        )
-    }
 
     private var emptyStateTitle: String {
         if syncedEntries.isEmpty { return "尚無已收錄單字".localized }
@@ -287,14 +250,6 @@ struct KGVocabView: View {
     }
 
     // MARK: - Helpers
-
-    private func count(for state: VocabularyReviewState, now: Date) -> Int {
-        VocabularyEntryPresentation.countKnowledgeEntries(
-            in: syncedEntries,
-            reviewState: state,
-            now: now
-        )
-    }
 
     private func handleRowTap(_ entryID: UUID) {
         coordinator.handleRowTap(entryID, syncedEntries: syncedEntries)

@@ -12,6 +12,8 @@ from kg.vocab_service import (
     _normalize_word,
     add_vocab_entries,
     archive_vocab_word,
+    batch_archive_vocab_words,
+    batch_delete_vocab_words,
     delete_vocab_word,
     graph_links_payload,
     list_vocab_cards,
@@ -323,3 +325,80 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
     # Card should NOT be deleted since graph failed
     restored = cards_store.get(card_id)
     assert not restored.is_deleted
+
+
+# ---------------------------------------------------------------------------
+# batch_delete_vocab_words
+# ---------------------------------------------------------------------------
+
+class TestBatchDeleteVocabWords:
+    def test_deletes_multiple_words(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+            _FakeCard(id="c3", content="keep"),
+        ])
+        result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
+        assert result["deleted"] == 2
+        assert set(result["deleted_words"]) == {"hello", "world"}
+        assert result["not_found"] == []
+
+    def test_partial_not_found(self):
+        cards = _FakeCardsStore([_FakeCard(id="c1", content="hello")])
+        result = batch_delete_vocab_words(["hello", "missing"], cards_store=cards)
+        assert result["deleted"] == 1
+        assert result["deleted_words"] == ["hello"]
+        assert result["not_found"] == ["missing"]
+
+    def test_empty_list_raises(self):
+        cards = _FakeCardsStore([])
+        from kg.exceptions import ValidationError
+        with pytest.raises(ValidationError):
+            batch_delete_vocab_words([], cards_store=cards)
+
+    def test_with_graph(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+        ])
+        graph = _FakeArchiveGraph()
+        result = batch_delete_vocab_words(["hello", "world"], cards_store=cards, graph=graph)
+        assert result["deleted"] == 2
+        assert set(graph.deprecated_for) == {"c1", "c2"}
+
+
+# ---------------------------------------------------------------------------
+# batch_archive_vocab_words
+# ---------------------------------------------------------------------------
+
+class TestBatchArchiveVocabWords:
+    def test_archives_multiple_words(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+        ])
+        result = batch_archive_vocab_words(["hello", "world"], archived=True, cards_store=cards)
+        assert result["updated"] == 2
+        assert result["not_found"] == []
+
+    def test_unarchive_multiple(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello", is_archived=True),
+            _FakeCard(id="c2", content="world", is_archived=True),
+        ])
+        graph = _FakeArchiveGraph()
+        result = batch_archive_vocab_words(["hello", "world"], archived=False, cards_store=cards, graph=graph)
+        assert result["updated"] == 2
+        assert set(graph.restored_for) == {"c1", "c2"}
+
+    def test_partial_not_found(self):
+        cards = _FakeCardsStore([_FakeCard(id="c1", content="hello")])
+        result = batch_archive_vocab_words(["hello", "missing"], archived=True, cards_store=cards)
+        assert result["updated"] == 1
+        assert result["not_found"] == ["missing"]
+
+    def test_empty_list_raises(self):
+        cards = _FakeCardsStore([])
+        from kg.exceptions import ValidationError
+        with pytest.raises(ValidationError):
+            batch_archive_vocab_words([], archived=True, cards_store=cards)
