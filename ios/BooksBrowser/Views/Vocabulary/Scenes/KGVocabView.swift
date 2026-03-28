@@ -297,3 +297,14 @@ struct KGVocabView: View {
     }
 
 }
+
+// MARK: - Preview
+
+#Preview("KGVocab / Default") {
+    AppThemeContainer {
+        NavigationStack {
+            KGVocabView(searchText: .constant(""))
+        }
+        .modelContainer(for: [VocabularyEntry.self, Notebook.self, ReviewRecord.self], inMemory: true)
+    }
+}

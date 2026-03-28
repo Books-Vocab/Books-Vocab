@@ -101,6 +101,7 @@ struct TranslationPanel: View {
 }
 
 private struct TranslationPanelPreviewScene: View {
+    @Environment(\.appTheme) private var appTheme
     var isExpanded: Bool
     var isExplanationOnly: Bool
     var translation: String? = "華麗的；令人驚豔的"
@@ -113,7 +114,7 @@ private struct TranslationPanelPreviewScene: View {
 
     var body: some View {
         ZStack {
-            AppTheme.light.palette.scrim.opacity(0.12).ignoresSafeArea()
+            appTheme.palette.scrim.opacity(0.12).ignoresSafeArea()
 
             VStack {
                 Spacer()
