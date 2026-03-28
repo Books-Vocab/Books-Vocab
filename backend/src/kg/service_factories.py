@@ -132,7 +132,13 @@ def create_gemini_client():
 
 def reset_gemini_client() -> None:
     global _gemini_client
+    client = _gemini_client
     _gemini_client = None
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            logger.debug("Failed to close gemini client", exc_info=True)
 
 
 _async_gemini_client = None
@@ -151,9 +157,15 @@ def create_async_gemini_client():
     return _async_gemini_client
 
 
-def reset_async_gemini_client() -> None:
+async def reset_async_gemini_client() -> None:
     global _async_gemini_client
+    client = _async_gemini_client
     _async_gemini_client = None
+    if client is not None:
+        try:
+            await client.close()
+        except Exception:
+            logger.debug("Failed to close async gemini client", exc_info=True)
 
 
 def create_embedding_store(
