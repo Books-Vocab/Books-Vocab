@@ -2,11 +2,10 @@ from __future__ import annotations
 
 import logging
 import os
+import re
 import threading
 from collections import OrderedDict
 from pathlib import Path
-
-from fastapi import HTTPException
 
 from .cards import CardStore
 from .daily_stats import DailyReviewStatsStore
@@ -83,6 +82,8 @@ def _resolve_notebook_paths(
 
     file_specs: list of (template, legacy_name) — template uses {nb} placeholder.
     """
+    if not re.match(r'^[a-zA-Z0-9_-]+$', notebook_id):
+        raise ValueError(f"Invalid notebook_id: {notebook_id!r}")
     paths = [user_dir / tmpl.format(nb=notebook_id) for tmpl, _ in file_specs]
     if notebook_id == "default":
         for (_, legacy_name), target in zip(file_specs, paths):
@@ -110,7 +111,7 @@ _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 def _require_gemini_api_key() -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
+        raise RuntimeError("GEMINI_API_KEY not configured on server")
     return api_key
 
 
@@ -132,7 +133,13 @@ def create_gemini_client():
 
 def reset_gemini_client() -> None:
     global _gemini_client
+    client = _gemini_client
     _gemini_client = None
+    if client is not None:
+        try:
+            client.close()
+        except Exception:
+            logger.debug("Failed to close gemini client", exc_info=True)
 
 
 _async_gemini_client = None
@@ -151,9 +158,15 @@ def create_async_gemini_client():
     return _async_gemini_client
 
 
-def reset_async_gemini_client() -> None:
+async def reset_async_gemini_client() -> None:
     global _async_gemini_client
+    client = _async_gemini_client
     _async_gemini_client = None
+    if client is not None:
+        try:
+            await client.close()
+        except Exception:
+            logger.debug("Failed to close async gemini client", exc_info=True)
 
 
 def create_embedding_store(

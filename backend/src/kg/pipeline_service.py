@@ -247,7 +247,10 @@ async def _step_external_sync(
     )
 
     loop = asyncio.get_running_loop()
-    stats = await loop.run_in_executor(None, lambda: syncer.sync(RenderIntent.FULL, dry_run=False))
+    try:
+        stats = await loop.run_in_executor(None, lambda: syncer.sync(RenderIntent.FULL, dry_run=False))
+    finally:
+        mochi_client.close()
     logger.info(
         "[%s] Optional external sync (Mochi): %d created, %d updated, %d deleted",
         uid, stats["created"], stats["updated"], stats["deleted"],
