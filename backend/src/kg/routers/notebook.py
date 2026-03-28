@@ -3,7 +3,7 @@ from __future__ import annotations
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
-from ..deps import _notebook_store, _card_store, _require_pro_access, get_current_user
+from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, _require_pro_access, get_current_user
 from ..vocab_service import _dt_to_iso
 
 router = APIRouter()
@@ -81,6 +81,15 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     result = store.delete(nb_id)
     if result is False:
         raise HTTPException(400, "Cannot delete: notebook not found or is default")
-    # 只在首次刪除時搬移卡片；冪等重試時已無卡片需搬
-    reassigned = cards.reassign_notebook(nb_id, "default") if result is True else 0
+    # 只在首次刪除時搬移卡片並合併 graph/embedding；冪等重試時已無資料需搬
+    reassigned = 0
+    if result is True:
+        reassigned = cards.reassign_notebook(nb_id, "default")
+        # Merge graph links/candidates and embeddings into default notebook
+        src_graph = _graph_store(user["dir"], notebook_id=nb_id)
+        tgt_graph = _graph_store(user["dir"], notebook_id="default")
+        tgt_graph.merge_from(src_graph)
+        src_emb = _embedding_store(user["dir"], notebook_id=nb_id)
+        tgt_emb = _embedding_store(user["dir"], notebook_id="default")
+        tgt_emb.merge_from(src_emb)
     return {"deleted": nb_id, "cardsReassigned": reassigned}
