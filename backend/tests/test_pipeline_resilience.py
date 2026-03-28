@@ -43,6 +43,9 @@ class _CardsBothFields:
     def update(self, card_id, **kwargs):
         return None
 
+    def batch_update(self, updates):
+        return 0
+
     def get(self, card_id):
         return None
 
@@ -64,6 +67,9 @@ class _CardsNeedEnrich:
 
     def update(self, card_id, **kwargs):
         return None
+
+    def batch_update(self, updates):
+        return 0
 
 
 class _GraphOk:

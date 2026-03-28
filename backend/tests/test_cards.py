@@ -118,6 +118,58 @@ class TestCount:
         assert store.count() == 0
 
 
+class TestBatchUpdate:
+    def test_batch_update_modifies_multiple_cards(self, store):
+        c1 = store.add(content="lucid", meaning="clear")
+        c2 = store.add(content="ephemeral", meaning="short-lived")
+        c3 = store.add(content="cogent", meaning="compelling")
+
+        updates = [
+            (c1.id, {"difficulty": 0.5}),
+            (c2.id, {"difficulty": 0.8}),
+            (c3.id, {"difficulty": 0.3}),
+        ]
+        count = store.batch_update(updates)
+        assert count == 3
+
+        assert store.get(c1.id).difficulty == 0.5
+        assert store.get(c2.id).difficulty == 0.8
+        assert store.get(c3.id).difficulty == 0.3
+
+    def test_batch_update_skips_deleted_cards(self, store):
+        c1 = store.add(content="lucid", meaning="clear")
+        c2 = store.add(content="ephemeral", meaning="short-lived")
+        store.delete(c2.id)
+
+        updates = [
+            (c1.id, {"difficulty": 0.5}),
+            (c2.id, {"difficulty": 0.8}),
+        ]
+        count = store.batch_update(updates)
+        assert count == 1
+        assert store.get(c1.id).difficulty == 0.5
+
+    def test_batch_update_skips_nonexistent_ids(self, store):
+        c1 = store.add(content="lucid", meaning="clear")
+        updates = [
+            (c1.id, {"difficulty": 0.5}),
+            ("nonexistent", {"difficulty": 0.9}),
+        ]
+        count = store.batch_update(updates)
+        assert count == 1
+
+    def test_batch_update_empty_list(self, store):
+        count = store.batch_update([])
+        assert count == 0
+
+    def test_batch_update_no_change_not_counted(self, store):
+        c1 = store.add(content="lucid", meaning="clear")
+        store.update(c1.id, difficulty=0.5)
+        # same value again — should not count as updated
+        count = store.batch_update([(c1.id, {"difficulty": 0.5})])
+        assert count == 0
+
+
 class TestEmbedText:
     def test_embed_text_format(self, store):
         card = store.add(content="affect", meaning="to influence")
