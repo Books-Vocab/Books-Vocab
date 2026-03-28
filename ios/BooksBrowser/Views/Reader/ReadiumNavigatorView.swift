@@ -133,6 +133,18 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         return host
     }
 
+    static func dismantleUIViewController(_ uiViewController: NavigatorHostViewController, coordinator: Coordinator) {
+        // 移除 WKUserContentController 對 Coordinator 的強引用，打斷 retain cycle
+        if let controller = coordinator.registeredContentController {
+            for name in Coordinator.registeredHandlerNames {
+                controller.removeScriptMessageHandler(forName: name)
+            }
+            coordinator.registeredContentController = nil
+        }
+        coordinator.navigator = nil
+        coordinator.contentOffsetObserver = nil
+    }
+
     func updateUIViewController(_ uiViewController: NavigatorHostViewController, context: Context) {
         // 同步最新的 SwiftUI View 給 Coordinator，避免舊的 state capture 導致閉包操作拿不到最新的 bookUniqueWords
         context.coordinator.parent = self
@@ -152,6 +164,10 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         var planner = BridgePlanner()
         var isApplyingPreferences = false
         let domExecutor = ReaderDOMExecutor()
+
+        /// 記住 setupUserScripts 傳入的 controller，供 dismantle 時移除 handler 打斷 retain cycle
+        weak var registeredContentController: WKUserContentController?
+        static let registeredHandlerNames = ["wordTap", "wordDeselect", "selectionState", "markingProgress"]
 
         // 選取期間鎖定翻頁
         var selectionPageAnchor: CGPoint?
@@ -199,10 +215,10 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         // MARK: EPUBNavigatorDelegate — JS 注入
 
         func navigator(_ navigator: EPUBNavigatorViewController, setupUserScripts userContentController: WKUserContentController) {
-            userContentController.add(self, name: "wordTap")
-            userContentController.add(self, name: "wordDeselect")
-            userContentController.add(self, name: "selectionState")
-            userContentController.add(self, name: "markingProgress")
+            registeredContentController = userContentController
+            for name in Self.registeredHandlerNames {
+                userContentController.add(self, name: name)
+            }
 
             // ── 自訂字體：從 App Bundle 讀取 TTF → base64 → @font-face ──
             let fontFaceCSS = Self.buildFontFaceCSS()

@@ -5,6 +5,7 @@ from fastapi.responses import Response
 
 from ..api_models import (
     ArchiveWordRequest,
+    ArchiveWordResponse,
     BatchArchiveRequest,
     BatchArchiveResponse,
     BatchDeleteRequest,
@@ -17,6 +18,7 @@ from ..api_models import (
     GraphLinkResponse,
     ManualLinkRequest,
     MoveWordsRequest,
+    MoveWordsResponse,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
@@ -58,14 +60,13 @@ router = APIRouter()
 def list_vocab(
     response: Response,
     since: str | None = None,
-    limit: int = Query(default=5000, ge=1, le=5000),
     notebook_id: str | None = Query(None),
     user: dict = Depends(get_current_user),
 ):
     from ..pipeline_service import is_pipeline_running
 
     result = list_vocab_response(
-        since=since, limit=limit, user=user,
+        since=since, user=user,
         require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
@@ -155,7 +156,7 @@ def lookup_word(
     )
 
 
-@router.patch("/api/vocab/move")
+@router.patch("/api/vocab/move", response_model=MoveWordsResponse)
 def move_words(
     req: MoveWordsRequest,
     notebook_id: str = Query("default"),
@@ -171,7 +172,7 @@ def move_words(
     )
 
 
-@router.patch("/api/vocab/{word}/archive")
+@router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
 def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default"), user: dict = Depends(get_current_user)):
     return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
 

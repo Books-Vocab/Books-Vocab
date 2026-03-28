@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from ..api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, UserConfigRequest, UserConfigResponse
+from ..api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, QuotaResponse, UserConfigRequest, UserConfigResponse
 from ..deps import (
     _build_entitlements_response,
     _card_store,
@@ -34,7 +34,7 @@ def get_user_entitlements(user: dict = Depends(get_current_user)):
     return get_user_entitlements_response(user, build_entitlements_response=_build_entitlements_response)
 
 
-@router.get("/api/user/quota")
+@router.get("/api/user/quota", response_model=QuotaResponse)
 def get_user_quota(user: dict = Depends(get_current_user)):
     from ..quota_service import get_quota_state
     return get_quota_state(user["id"], is_pro=_is_pro(user))

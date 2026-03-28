@@ -211,8 +211,8 @@ class TestHealthResponse:
 
         user_dir = tmp_path / "user1"
         user_dir.mkdir()
-        cards_path = user_dir / "cards.json"
-        cards_path.write_text("{}")
+        cards_path = user_dir / "cards.db"
+        cards_path.write_bytes(b"")
 
         user = {"dir": user_dir}
 
