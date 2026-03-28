@@ -22,15 +22,23 @@ enum StatsPresentation {
         let longestStreak: Int
         let activity: [String: Int]
         let forecast: [ForecastBucket]
+        let heatmapThresholds: [Int]
     }
 
     private static let calendar = Calendar.current
 
     private static let dayFormatter = AppDateFormatters.dayKey
 
+    private static let compactDayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "M/d"
+        return f
+    }()
+
     static func buildSummary(
         from entries: [VocabularyEntry],
-        reviewRecords: [ReviewRecord]
+        reviewRecords: [ReviewRecord],
+        forecastDays: Int = 14
     ) -> Summary {
         let synced = entries.filter { $0.isSynced && $0.syncAction != .delete }
         let now = Date()
@@ -47,7 +55,6 @@ enum StatsPresentation {
             }
         }
 
-        let forecastDays = 14
         var forecast: [ForecastBucket] = []
         for offset in 0..<forecastDays {
             guard let date = calendar.date(byAdding: .day, value: offset, to: now) else { continue }
@@ -57,14 +64,24 @@ enum StatsPresentation {
             case 0: label = "今天"
             case 1: label = "明天"
             default:
-                let f = DateFormatter()
-                f.dateFormat = "M/d"
-                label = f.string(from: date)
+                label = compactDayFormatter.string(from: date)
             }
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }
 
         let activity = ReviewActivityLog.activity(for: 180, records: reviewRecords)
+
+        // Compute adaptive heatmap thresholds from activity data
+        let nonZeroCounts = activity.values.filter { $0 > 0 }.sorted()
+        let heatmapThresholds: [Int]
+        if nonZeroCounts.count < 4 {
+            heatmapThresholds = [1, 2, 3]  // simple fallback
+        } else {
+            let p25 = nonZeroCounts[nonZeroCounts.count / 4]
+            let p50 = nonZeroCounts[nonZeroCounts.count / 2]
+            let p75 = nonZeroCounts[nonZeroCounts.count * 3 / 4]
+            heatmapThresholds = [p25, p50, p75]
+        }
 
         return Summary(
             totalCards: synced.count,
@@ -73,7 +90,8 @@ enum StatsPresentation {
             currentStreak: ReviewActivityLog.currentStreak(records: reviewRecords),
             longestStreak: ReviewActivityLog.longestStreak(records: reviewRecords),
             activity: activity,
-            forecast: forecast
+            forecast: forecast,
+            heatmapThresholds: heatmapThresholds
         )
     }
 }
