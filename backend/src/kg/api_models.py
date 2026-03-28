@@ -6,6 +6,8 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, Field, field_validator
 
+from kg.languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
+
 
 def _normalize_context(v: str) -> str:
     """Normalize EPUB-sourced context: collapse whitespace, strip NBSP, etc."""
@@ -113,6 +115,20 @@ class TranslationLanguageConfig(BaseModel):
     source_lang: str = "en"
     target_lang: str = "zh-Hant"
 
+    @field_validator("source_lang")
+    @classmethod
+    def validate_source_lang(cls, v: str) -> str:
+        if v not in SUPPORTED_SOURCE_LANGS:
+            raise ValueError(f"Unsupported source language: {v}")
+        return v
+
+    @field_validator("target_lang")
+    @classmethod
+    def validate_target_lang(cls, v: str) -> str:
+        if v not in SUPPORTED_TARGET_LANGS:
+            raise ValueError(f"Unsupported target language: {v}")
+        return v
+
 
 class TranslateRequest(BaseModel):
     word: str = Field(min_length=1, max_length=500)
@@ -124,6 +140,20 @@ class TranslateRequest(BaseModel):
     @classmethod
     def normalize_context(cls, v: str) -> str:
         return _normalize_context(v) if isinstance(v, str) else v
+
+    @field_validator("source_lang")
+    @classmethod
+    def validate_source_lang(cls, v: str | None) -> str | None:
+        if v is not None and v not in SUPPORTED_SOURCE_LANGS:
+            raise ValueError(f"Unsupported source language: {v}")
+        return v
+
+    @field_validator("target_lang")
+    @classmethod
+    def validate_target_lang(cls, v: str | None) -> str | None:
+        if v is not None and v not in SUPPORTED_TARGET_LANGS:
+            raise ValueError(f"Unsupported target language: {v}")
+        return v
 
 
 class GraphLinkResponse(BaseModel):

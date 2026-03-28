@@ -237,7 +237,14 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         if any(path.startswith(p) for p in _RATE_LIMIT_EXEMPT):
             return await call_next(request)
         auth = request.headers.get("authorization", "")
-        key = auth[-16:] if len(auth) > 16 else (request.client.host if request.client else "unknown")
+        if len(auth) > 16:
+            key = auth[-16:]
+        else:
+            xff = request.headers.get("x-forwarded-for", "")
+            if xff:
+                key = xff.split(",")[0].strip()
+            else:
+                key = request.client.host if request.client else "unknown"
         limiter = translate_limiter if "/api/translate" in path else api_limiter
         if not await limiter.is_allowed(key):
             return JSONResponse(
