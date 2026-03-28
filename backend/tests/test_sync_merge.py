@@ -253,6 +253,25 @@ class TestPushReviewStates:
         assert updated.review_count == 10  # max(3, 10)
         assert updated.lapse_count == 8    # max(8, 5)
 
+    def test_cross_notebook_same_word_all_updated(self, tmp_path):
+        """Same word in multiple notebooks must ALL get review state updates."""
+        store = _make_store(tmp_path)
+        card_a = store.add("evoke", "喚起", notebook_id="notebook-a")
+        card_b = store.add("evoke", "喚起", notebook_id="notebook-b")
+
+        client_time = _now()
+        entry = _entry("evoke", _iso(client_time), review_count=5, review_streak=3)
+
+        result = push_review_states([entry], cards_store=store, logger=logging.getLogger())
+        assert result == {"updated": 2, "skipped": 0}
+
+        updated_a = store.get(card_a.id)
+        updated_b = store.get(card_b.id)
+        assert updated_a.review_count == 5
+        assert updated_b.review_count == 5
+        assert updated_a.review_streak == 3
+        assert updated_b.review_streak == 3
+
 
 # ============================================================================
 # Incremental sync — soft-delete visibility
@@ -360,9 +379,9 @@ class TestIncrementalSync:
         store = _make_store(tmp_path)
         from unittest.mock import MagicMock
 
-        from fastapi import HTTPException
+        from kg.exceptions import BadRequestError
 
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(BadRequestError) as exc_info:
             list_vocab_cards(
                 since="not-a-timestamp",
                 cards_store=store,

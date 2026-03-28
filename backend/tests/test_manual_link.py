@@ -119,8 +119,8 @@ class TestCreateManualLink:
     def test_rejects_missing_card(self, store):
         cards = FakeCardsStore([FakeCard("a")])
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc:
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError) as exc:
             create_manual_link(from_id="a", to_id="missing", cards_store=cards, graph=store, judge=judge)
         assert exc.value.status_code == 404
 
@@ -128,8 +128,8 @@ class TestCreateManualLink:
         cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
         store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "existing")
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "r"}')
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc:
+        from kg.exceptions import ConflictError
+        with pytest.raises(ConflictError) as exc:
             create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
         assert exc.value.status_code == 409
 
@@ -163,7 +163,7 @@ class TestRejectGraphLink:
 
     def test_rejects_nonexistent_link(self, store):
         cards = FakeCardsStore([])
-        from fastapi import HTTPException
-        with pytest.raises(HTTPException) as exc:
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError) as exc:
             reject_graph_link(link_id="nonexistent", graph=store, cards_store=cards)
         assert exc.value.status_code == 404
