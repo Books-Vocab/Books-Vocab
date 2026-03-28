@@ -136,12 +136,15 @@ struct KGVocabView: View {
         }
     }
 
+    private var now: Date { Date() }
+
     private var reviewStateOptions: [VocabTabOption<VocabularyReviewState>] {
-        VocabularyReviewState.allCases.map { state in
+        let n = now
+        return VocabularyReviewState.allCases.map { state in
             VocabTabOption(
                 id: state,
                 title: state.title,
-                count: count(for: state)
+                count: count(for: state, now: n)
             )
         }
     }
@@ -189,12 +192,7 @@ struct KGVocabView: View {
             rows: filteredEntries.map {
                 KGVocabPresenter.State.RowItem(
                     id: $0.id,
-                    row: $0.wordRowViewData(
-                        showsReviewState: false,
-                        showsSourceContext: false,
-                        showsDifficultyTier: false,
-                        showsReviewProgress: true
-                    )
+                    entry: $0
                 )
             },
             emptyState: .init(
@@ -224,35 +222,43 @@ struct KGVocabView: View {
     }
 
     private var dueEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredKnowledgeEntries(
+        let n = now
+        return VocabularyEntryPresentation.filteredKnowledgeEntries(
             in: syncedEntries,
             reviewState: .due,
-            searchText: ""
+            searchText: "",
+            now: n
         )
     }
 
     private var unlearnedEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredKnowledgeEntries(
+        let n = now
+        return VocabularyEntryPresentation.filteredKnowledgeEntries(
             in: syncedEntries,
             reviewState: .unlearned,
-            searchText: ""
+            searchText: "",
+            now: n
         )
     }
 
     private var reviewedEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredKnowledgeEntries(
+        let n = now
+        return VocabularyEntryPresentation.filteredKnowledgeEntries(
             in: syncedEntries,
             reviewState: .reviewed,
-            searchText: ""
+            searchText: "",
+            now: n
         )
     }
 
     private var filteredEntries: [VocabularyEntry] {
-        VocabularyEntryPresentation.filteredKnowledgeEntries(
+        let n = now
+        return VocabularyEntryPresentation.filteredKnowledgeEntries(
             in: syncedEntries,
             reviewState: selectedReviewState,
             searchText: searchText,
-            sortOption: sortOption
+            sortOption: sortOption,
+            now: n
         )
     }
 
@@ -282,10 +288,11 @@ struct KGVocabView: View {
 
     // MARK: - Helpers
 
-    private func count(for state: VocabularyReviewState) -> Int {
+    private func count(for state: VocabularyReviewState, now: Date) -> Int {
         VocabularyEntryPresentation.countKnowledgeEntries(
             in: syncedEntries,
-            reviewState: state
+            reviewState: state,
+            now: now
         )
     }
 
