@@ -106,3 +106,53 @@ class TestRestoreLinksFor:
         cards_store = type("S", (), {"get": lambda self, cid: type("C", (), {"is_deleted": False, "is_archived": False})()})()
         count = store.restore_links_for("card_a", cards_store)
         assert count == 0
+
+
+class TestBatchAddLinks:
+    def test_creates_multiple_links_single_save(self, store, tmp_path):
+        items = [
+            ("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r1"),
+            ("c", "d", LinkKind.SHARES_USAGE, 0.8, "r2"),
+        ]
+        created = store.batch_add_links(items)
+        assert len(created) == 2
+        assert store.link_count() == 2
+        assert store.has_link("a", "b")
+        assert store.has_link("c", "d")
+
+    def test_empty_batch_no_save(self, store):
+        created = store.batch_add_links([])
+        assert created == []
+
+    def test_persisted_after_reload(self, store, tmp_path):
+        store.batch_add_links([("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")])
+        reloaded = GraphStore(store.links_path, store.candidates_path)
+        assert reloaded.link_count() == 1
+        assert reloaded.has_link("a", "b")
+
+
+class TestBatchAddCandidates:
+    def test_adds_multiple_deduped(self, store):
+        items = [
+            ("a", "b", 0.8),
+            ("a", "b", 0.9),  # duplicate
+            ("c", "d", 0.7),
+        ]
+        added = store.batch_add_candidates(items)
+        assert added == 2
+        assert store.candidate_count() == 2
+
+    def test_skips_existing_links(self, store):
+        store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        added = store.batch_add_candidates([("a", "b", 0.8)])
+        assert added == 0
+
+    def test_skips_existing_candidates(self, store):
+        store.add_candidate("a", "b", 0.8)
+        added = store.batch_add_candidates([("a", "b", 0.9)])
+        assert added == 0
+
+    def test_persisted_after_reload(self, store):
+        store.batch_add_candidates([("a", "b", 0.8), ("c", "d", 0.7)])
+        reloaded = GraphStore(store.links_path, store.candidates_path)
+        assert reloaded.candidate_count() == 2
