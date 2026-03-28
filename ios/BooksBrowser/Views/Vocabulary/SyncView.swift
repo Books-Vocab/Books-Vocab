@@ -87,3 +87,12 @@ struct SyncView: View {
         refreshStepLayout()
     }
 }
+
+// MARK: - Preview
+
+#Preview("SyncView / Ready") {
+    AppThemeContainer {
+        SyncView()
+            .modelContainer(for: [VocabularyEntry.self, Notebook.self], inMemory: true)
+    }
+}
