@@ -178,7 +178,7 @@ def health_response(
     cards = card_store_factory(user_dir)
     graph = graph_store_factory(user_dir)
 
-    cards_path = user_dir / "cards.json"
+    cards_path = user_dir / "cards.db"
     last_mod = None
     if cards_path.exists():
         ts = cards_path.stat().st_mtime

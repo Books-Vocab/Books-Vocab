@@ -79,6 +79,9 @@ class _GraphOk:
     def add_candidate(self, *args):
         pass
 
+    def batch_add_candidates(self, items):
+        return 0
+
 
 class _EmbeddingsOk:
     def has(self, card_id):

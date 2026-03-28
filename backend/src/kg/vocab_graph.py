@@ -43,7 +43,8 @@ def embed_and_link_new_cards(
         logger.warning("Batch embedding failed: %s", exc)
         return
 
-    # Link candidates for newly embedded cards
+    # Link candidates for newly embedded cards — batch to avoid per-pair disk writes
+    candidate_items: list[tuple[str, str, float]] = []
     for card in batch_cards:
         if not embeddings.has(card.id):
             continue
@@ -53,9 +54,12 @@ def embed_and_link_new_cards(
                 if score > SIMILARITY_THRESHOLD:
                     other_card = cards.get(other_id)
                     if other_card and not other_card.is_archived:
-                        graph.add_candidate(card.id, other_id, score)
+                        candidate_items.append((card.id, other_id, score))
         except (OSError, ValueError) as exc:
             logger.warning("Failed to link candidates for '%s': %s", card.id, exc)
+
+    if candidate_items:
+        graph.batch_add_candidates(candidate_items)
 
 
 def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:

@@ -59,21 +59,20 @@ def test_list_vocab_cards_default_limit_5000():
     assert len(result) == 10
 
 
-def test_list_vocab_cards_full_sync_returns_all_no_truncation():
-    """Full sync (since=None) must return ALL cards — no 5000-cap truncation."""
+def test_list_vocab_cards_full_sync_returns_all():
+    """Full sync (since=None) must return ALL cards."""
     cards = [_FakeCard(id=f"c{i}", content=f"word{i}") for i in range(5)]
     store = _FakeCardsStore(cards)
-    result = list_vocab_cards(since=None, limit=2, cards_store=store, graph=object(), card_response_builder=_card_builder)
-    assert len(result) == 5  # limit is ignored for full sync to prevent data loss
+    result = list_vocab_cards(since=None, cards_store=store, graph=object(), card_response_builder=_card_builder)
+    assert len(result) == 5
 
 
-def test_list_vocab_cards_with_since_ignores_limit():
-    """since 路徑走 get_modified_since，limit 不影響。"""
+def test_list_vocab_cards_with_since_returns_modified():
+    """since 路徑走 get_modified_since。"""
     cards = [_FakeCard(id=f"c{i}", content=f"word{i}") for i in range(5)]
     store = _FakeCardsStore(cards)
     result = list_vocab_cards(
         since="2024-01-01T00:00:00Z",
-        limit=1,
         cards_store=store,
         graph=object(),
         card_response_builder=_card_builder,

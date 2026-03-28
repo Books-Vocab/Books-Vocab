@@ -140,6 +140,27 @@ class GraphStore:
             self._save_links()
         return link
 
+    def batch_add_links(
+        self,
+        links: list[tuple[str, str, "LinkKind", float, str]],
+    ) -> list[GraphLink]:
+        """Create multiple links with a single disk write. Returns created links."""
+        created: list[GraphLink] = []
+        for from_id, to_id, kind, confidence, reason in links:
+            link = GraphLink(
+                from_id=from_id,
+                to_id=to_id,
+                kind=kind,
+                confidence=confidence,
+                reason=reason,
+            )
+            self._links[link.id] = link
+            self._index_link(link)
+            created.append(link)
+        if created:
+            self._save_links()
+        return created
+
     def get_links_for(self, card_id: str) -> list[GraphLink]:
         """Get all active links involving a card."""
         link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
@@ -205,6 +226,29 @@ class GraphStore:
                     return
             self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
             self._save_candidates()
+
+    def batch_add_candidates(self, items: list[tuple[str, str, float]]) -> int:
+        """Add multiple candidate pairs with a single disk write. Returns count added."""
+        # Build a set of existing pairs for O(1) lookup
+        existing: set[tuple[str, str]] = set()
+        for c in self._candidates:
+            existing.add((c.from_id, c.to_id))
+            existing.add((c.to_id, c.from_id))
+
+        added = 0
+        for from_id, to_id, similarity in items:
+            if self.has_link(from_id, to_id):
+                continue
+            if (from_id, to_id) in existing:
+                continue
+            self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
+            existing.add((from_id, to_id))
+            existing.add((to_id, from_id))
+            added += 1
+
+        if added:
+            self._save_candidates()
+        return added
 
     def pop_candidates(self) -> list[CandidatePair]:
         """Get and clear all pending candidates."""

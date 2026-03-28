@@ -133,45 +133,70 @@ extension KGService {
 
         var failures: [String] = []
 
-        do {
-            _ = try await pushReviewStates(container: container)
-        } catch KGError.unauthorized {
-            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-            lastBackgroundSyncError = "Session expired"
-            return
-        } catch {
-            AppLog.kg.warning("backgroundSync pushReview failed: \(error.localizedDescription)")
-            failures.append("pushReview")
+        // Phase 1: push review states & daily stats in parallel
+        async let pushReviewResult: Result<Void, Error> = {
+            do {
+                _ = try await self.pushReviewStates(container: container)
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }()
+        async let pushStatsResult: Result<Void, Error> = {
+            do {
+                _ = try await self.pushDailyStats(container: container)
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        let pushResults = await [pushReviewResult, pushStatsResult]
+        let pushLabels = ["pushReview", "pushDailyStats"]
+
+        for (result, label) in zip(pushResults, pushLabels) {
+            if case .failure(let error) = result {
+                if error is KGError, case KGError.unauthorized = error {
+                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+                    lastBackgroundSyncError = "Session expired"
+                    return
+                }
+                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                failures.append(label)
+            }
         }
-        do {
-            _ = try await pushDailyStats(container: container)
-        } catch KGError.unauthorized {
-            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-            lastBackgroundSyncError = "Session expired"
-            return
-        } catch {
-            AppLog.kg.warning("backgroundSync pushDailyStats failed: \(error.localizedDescription)")
-            failures.append("pushDailyStats")
-        }
-        do {
-            try await pullCardsToLocal(container: container, progress: nil)
-        } catch KGError.unauthorized {
-            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-            lastBackgroundSyncError = "Session expired"
-            return
-        } catch {
-            AppLog.kg.warning("backgroundSync pull failed: \(error.localizedDescription)")
-            failures.append("pull")
-        }
-        do {
-            try await pullDailyStats(container: container)
-        } catch KGError.unauthorized {
-            await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
-            lastBackgroundSyncError = "Session expired"
-            return
-        } catch {
-            AppLog.kg.warning("backgroundSync pullDailyStats failed: \(error.localizedDescription)")
-            failures.append("pullDailyStats")
+
+        // Phase 2: pull cards & daily stats in parallel (after push completes)
+        async let pullCardsResult: Result<Void, Error> = {
+            do {
+                try await self.pullCardsToLocal(container: container, progress: nil)
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }()
+        async let pullStatsResult: Result<Void, Error> = {
+            do {
+                try await self.pullDailyStats(container: container)
+                return .success(())
+            } catch {
+                return .failure(error)
+            }
+        }()
+
+        let pullResults = await [pullCardsResult, pullStatsResult]
+        let pullLabels = ["pull", "pullDailyStats"]
+
+        for (result, label) in zip(pullResults, pullLabels) {
+            if case .failure(let error) = result {
+                if error is KGError, case KGError.unauthorized = error {
+                    await handleUnauthorized(modelContainer: container, reason: "backgroundSync_401")
+                    lastBackgroundSyncError = "Session expired"
+                    return
+                }
+                AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                failures.append(label)
+            }
         }
 
         if failures.isEmpty {
