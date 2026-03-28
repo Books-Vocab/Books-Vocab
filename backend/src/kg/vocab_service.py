@@ -263,6 +263,78 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
     return {"deleted": word, "id": card.id}
 
 
+def batch_delete_vocab_words(
+    words: list[str],
+    *,
+    cards_store: Any,
+    graph: Any = None,
+    notebook_id: str | None = None,
+) -> dict[str, Any]:
+    """Delete multiple words in one call. Skips not-found words instead of raising."""
+    if not words:
+        raise ValidationError("No words provided")
+    if len(words) > MAX_BATCH_SIZE:
+        raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
+
+    deleted_words: list[str] = []
+    not_found: list[str] = []
+
+    for word in words:
+        card = cards_store.find_by_content(word, notebook_id=notebook_id)
+        if not card:
+            not_found.append(word)
+            continue
+        cards_store.delete(card.id)
+        if graph is not None:
+            try:
+                graph.deprecate_links_for(card.id)
+                graph.remove_candidates_for(card.id)
+            except Exception:
+                try:
+                    cards_store.restore(card.id)
+                except Exception:
+                    logger.exception("restore failed for card %s after graph error", card.id)
+                not_found.append(word)
+                continue
+        deleted_words.append(word)
+
+    return {"deleted": len(deleted_words), "deleted_words": deleted_words, "not_found": not_found}
+
+
+def batch_archive_vocab_words(
+    words: list[str],
+    *,
+    archived: bool,
+    cards_store: Any,
+    graph: Any = None,
+    notebook_id: str | None = None,
+) -> dict[str, Any]:
+    """Archive or unarchive multiple words in one call. Skips not-found words."""
+    if not words:
+        raise ValidationError("No words provided")
+    if len(words) > MAX_BATCH_SIZE:
+        raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
+
+    updated_words: list[str] = []
+    not_found: list[str] = []
+
+    for word in words:
+        card = cards_store.find_by_content(word, notebook_id=notebook_id)
+        if not card:
+            not_found.append(word)
+            continue
+        cards_store.update(card.id, is_archived=archived)
+        if graph is not None:
+            if archived:
+                graph.deprecate_links_for(card.id)
+                graph.remove_candidates_for(card.id)
+            else:
+                graph.restore_links_for(card.id, cards_store)
+        updated_words.append(word)
+
+    return {"updated": len(updated_words), "updated_words": updated_words, "not_found": not_found}
+
+
 def move_vocab_words(
     words: list[str],
     *,

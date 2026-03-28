@@ -7,6 +7,8 @@ from typing import Any
 
 from .api_models import (
     ArchiveWordRequest,
+    BatchArchiveRequest,
+    BatchDeleteRequest,
     CardResponse,
     DailyReviewStatsPushRequest,
     DailyReviewStatsPushResponse,
@@ -23,6 +25,8 @@ from .notebook import validate_notebook_access
 from .vocab_service import (
     add_vocab_entries,
     archive_vocab_word,
+    batch_archive_vocab_words,
+    batch_delete_vocab_words,
     create_manual_link,
     delete_vocab_word,
     graph_links_payload,
@@ -150,6 +154,42 @@ def delete_word_response(
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
     return delete_vocab_word(word, cards_store=cards, graph=graph, notebook_id=notebook_id)
+
+
+def batch_delete_response(
+    req: BatchDeleteRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any] | None = None,
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> dict[str, Any]:
+    require_pro_access(user, "knowledge_sync")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
+    return batch_delete_vocab_words(req.words, cards_store=cards, graph=graph, notebook_id=notebook_id)
+
+
+def batch_archive_response(
+    req: BatchArchiveRequest,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any] | None = None,
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> dict[str, Any]:
+    require_pro_access(user, "knowledge_sync")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
+    return batch_archive_vocab_words(req.words, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
 def get_graph_links_response(

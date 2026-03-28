@@ -29,7 +29,9 @@ protocol KGServing: AnyObject {
     func createManualLink(fromId: String, toId: String, notebookId: String) async throws -> KGGraphLink
     func deleteLink(linkId: String, notebookId: String) async throws
     func deleteCard(word: String, notebookId: String) async throws
+    func batchDeleteCards(words: [String], notebookId: String) async throws -> KGBatchDeleteResponse
     func archiveCard(word: String, archived: Bool, notebookId: String) async throws
+    func batchArchiveCards(words: [String], archived: Bool, notebookId: String) async throws -> KGBatchArchiveResponse
     func moveCards(words: [String], fromNotebook: String, toNotebook: String) async throws
     func pushReviewStates(container: ModelContainer) async throws -> (updated: Int, skipped: Int)
     func pushDailyStats(container: ModelContainer) async throws -> Int
