@@ -60,9 +60,11 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         fileManager: any BookFileManaging
     ) {
         // Manual cascade: clear bookId on related vocabulary entries
-        if let entries = try? modelContext.fetch(FetchDescriptor<VocabularyEntry>()) {
-            let bookId = book.id
-            for entry in entries where entry.bookId == bookId {
+        let bookId = book.id
+        var descriptor = FetchDescriptor<VocabularyEntry>()
+        descriptor.predicate = #Predicate<VocabularyEntry> { $0.bookId == bookId }
+        if let entries = try? modelContext.fetch(descriptor) {
+            for entry in entries {
                 entry.bookId = nil
             }
         }

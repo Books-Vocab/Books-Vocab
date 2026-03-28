@@ -62,8 +62,12 @@ struct WordDetailSheet: View {
             }
         }
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
+            // Yield once so SwiftUI can render the loading placeholder before
+            // we run the (lightweight but synchronous) presentation computation.
+            await Task.yield()
             let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
-            presenterState = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
+            let state = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
+            presenterState = state
         }
         .overlay {
             if wrapInNavigation {
