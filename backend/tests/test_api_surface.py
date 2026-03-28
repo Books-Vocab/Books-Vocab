@@ -392,7 +392,7 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
         assert users_data["apple-sub"]["_linked_to"] == "google-sub"
 
         r_unknown = client.post("/auth/verify", json={"provider": "line", "token": "x"})
-        assert r_unknown.status_code == 400
+        assert r_unknown.status_code == 422  # Pydantic rejects unknown provider
     finally:
         _swap_settings(original_settings)
 
