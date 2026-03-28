@@ -5,10 +5,10 @@ enum VocabularyEntryPresentation {
         entries.filter(\.shouldUploadOnNextSync)
     }
 
-    static func syncedKnowledgeEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
+    static func syncedKnowledgeEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
         entries
             .filter(\.shouldAppearInKnowledgeList)
-            .sorted(by: compareKnowledgeEntries)
+            .sorted { compareKnowledgeEntries($0, $1, now: now) }
     }
 
     static func filteredPendingEntries(
@@ -28,15 +28,16 @@ enum VocabularyEntryPresentation {
         in entries: [VocabularyEntry],
         reviewState: VocabularyReviewState,
         searchText: String,
-        sortOption: KGVocabSortOption = .default
+        sortOption: KGVocabSortOption = .default,
+        now: Date = Date()
     ) -> [VocabularyEntry] {
         let baseFiltered = entries
-            .filter { $0.shouldAppearInKnowledgeList && $0.reviewState == reviewState }
+            .filter { $0.shouldAppearInKnowledgeList && $0.reviewState(at: now) == reviewState }
 
         let sorted: [VocabularyEntry]
         switch sortOption {
         case .default:
-            sorted = baseFiltered.sorted(by: compareKnowledgeEntries)
+            sorted = baseFiltered.sorted { compareKnowledgeEntries($0, $1, now: now) }
         case .alphabetical:
             sorted = baseFiltered.sorted {
                 $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
@@ -59,25 +60,27 @@ enum VocabularyEntryPresentation {
         }
     }
 
-    static func knowledgeReviewEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries).filter {
-            $0.reviewState == .due || $0.reviewState == .unlearned
+    static func knowledgeReviewEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
+        syncedKnowledgeEntries(in: entries, now: now).filter {
+            let state = $0.reviewState(at: now)
+            return state == .due || state == .unlearned
         }
     }
 
-    static func knowledgeDueEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries).filter { $0.reviewState == .due }
+    static func knowledgeDueEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
+        syncedKnowledgeEntries(in: entries, now: now).filter { $0.reviewState(at: now) == .due }
     }
 
-    static func knowledgeUnlearnedEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries).filter { $0.reviewState == .unlearned }
+    static func knowledgeUnlearnedEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
+        syncedKnowledgeEntries(in: entries, now: now).filter { $0.reviewState(at: now) == .unlearned }
     }
 
     static func countKnowledgeEntries(
         in entries: [VocabularyEntry],
-        reviewState: VocabularyReviewState
+        reviewState: VocabularyReviewState,
+        now: Date = Date()
     ) -> Int {
-        syncedKnowledgeEntries(in: entries).filter { $0.reviewState == reviewState }.count
+        entries.count { $0.shouldAppearInKnowledgeList && $0.reviewState(at: now) == reviewState }
     }
 
     static func archivedEntries(in entries: [VocabularyEntry]) -> [VocabularyEntry] {
@@ -98,9 +101,9 @@ enum VocabularyEntryPresentation {
         }
     }
 
-    static func compareKnowledgeEntries(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry) -> Bool {
-        if reviewPriority(lhs.reviewState) != reviewPriority(rhs.reviewState) {
-            return reviewPriority(lhs.reviewState) < reviewPriority(rhs.reviewState)
+    static func compareKnowledgeEntries(_ lhs: VocabularyEntry, _ rhs: VocabularyEntry, now: Date) -> Bool {
+        if reviewPriority(lhs.reviewState(at: now)) != reviewPriority(rhs.reviewState(at: now)) {
+            return reviewPriority(lhs.reviewState(at: now)) < reviewPriority(rhs.reviewState(at: now))
         }
         if lhs.nextReviewAt != rhs.nextReviewAt {
             return lhs.nextReviewAt < rhs.nextReviewAt
