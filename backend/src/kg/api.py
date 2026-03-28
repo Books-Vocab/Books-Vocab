@@ -242,7 +242,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         else:
             xff = request.headers.get("x-forwarded-for", "")
             if xff:
-                key = xff.split(",")[0].strip()
+                key = xff.split(",")[-1].strip()
             else:
                 key = request.client.host if request.client else "unknown"
         limiter = translate_limiter if "/api/translate" in path else api_limiter

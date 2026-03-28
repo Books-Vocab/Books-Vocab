@@ -62,13 +62,14 @@ class TestRateLimitUsesForwardedFor:
         )
         assert r_b.status_code != 429, "client_b must not share client_a's bucket"
 
-    def test_xff_first_ip_used_as_key(self, isolated_client):
-        """When X-Forwarded-For has multiple IPs (client, proxy1, proxy2),
-        the first (leftmost) IP should be used as the rate-limit key."""
+    def test_xff_rightmost_ip_used_as_key(self, isolated_client):
+        """When X-Forwarded-For has multiple IPs, the rightmost (last) IP
+        should be used as the rate-limit key, because Caddy appends the real
+        client IP — leftmost entries can be spoofed by the client."""
         from kg.rate_limit import api_limiter
 
-        real_ip = "192.0.2.50"
-        xff = f"{real_ip}, 10.0.0.1, 127.0.0.1"
+        real_ip = "127.0.0.1"
+        xff = f"10.0.0.1, 192.0.2.50, {real_ip}"
 
         async def exhaust():
             dq = api_limiter._requests.setdefault(real_ip, collections.deque())
@@ -83,7 +84,32 @@ class TestRateLimitUsesForwardedFor:
             headers={"X-Forwarded-For": xff},
         )
         assert r.status_code == 429, (
-            f"Should use first IP from X-Forwarded-For as key, got {r.status_code}"
+            f"Should use rightmost IP from X-Forwarded-For as key, got {r.status_code}"
+        )
+
+    def test_xff_spoofed_leftmost_does_not_bypass(self, isolated_client):
+        """An attacker spoofing the leftmost XFF entry must not bypass rate
+        limiting — the rightmost (Caddy-appended) IP is the real key."""
+        from kg.rate_limit import api_limiter
+
+        real_ip = "203.0.113.99"
+        spoofed_ip = "1.2.3.4"
+        xff = f"{spoofed_ip}, {real_ip}"
+
+        async def exhaust():
+            dq = api_limiter._requests.setdefault(real_ip, collections.deque())
+            now = time.monotonic()
+            for _ in range(api_limiter.max_requests):
+                dq.append(now)
+
+        asyncio.run(exhaust())
+
+        r = isolated_client.get(
+            "/api/health",
+            headers={"X-Forwarded-For": xff},
+        )
+        assert r.status_code == 429, (
+            f"Spoofed leftmost IP should not bypass rate limit, got {r.status_code}"
         )
 
 
