@@ -13,6 +13,32 @@ import UIKit
 import CoreText
 import os
 
+extension Notification.Name {
+    static let serifCJKFontDidBecomeAvailable = Notification.Name("serifCJKFontDidBecomeAvailable")
+}
+
+@Observable
+final class FontAvailabilityTracker {
+    var serifCJKVersion: Int = 0
+
+    private var observer: Any?
+
+    init() {
+        observer = NotificationCenter.default.addObserver(
+            forName: .serifCJKFontDidBecomeAvailable,
+            object: nil,
+            queue: .main
+        ) { [weak self] _ in
+            VocabSkin.invalidateTypographyCache()
+            self?.serifCJKVersion += 1
+        }
+    }
+
+    deinit {
+        if let observer { NotificationCenter.default.removeObserver(observer) }
+    }
+}
+
 enum AppFonts {
 
     // MARK: - Font Builders
@@ -203,6 +229,9 @@ enum AppFonts {
             switch state {
             case .didFinish:
                 AppLog.fonts.info("STSongti-TC download completed")
+                DispatchQueue.main.async {
+                    NotificationCenter.default.post(name: .serifCJKFontDidBecomeAvailable, object: nil)
+                }
             case .didFailWithError:
                 AppLog.fonts.error("STSongti-TC download failed")
             default:

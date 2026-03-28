@@ -131,9 +131,11 @@ extension View {
 struct AppThemeContainer<Content: View>: View {
     @Environment(\.colorScheme) private var colorScheme
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
+    @State private var fontTracker = FontAvailabilityTracker()
     @ViewBuilder let content: () -> Content
 
     var body: some View {
+        let _ = fontTracker.serifCJKVersion
         let theme = AppTheme.resolve(for: appearanceStore.selection, systemColorScheme: colorScheme)
         content()
             .appTheme(theme)
