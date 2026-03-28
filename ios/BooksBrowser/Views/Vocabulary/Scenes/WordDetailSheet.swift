@@ -62,8 +62,13 @@ struct WordDetailSheet: View {
             }
         }
         .task(id: "\(entry.id)|\(entry.graphLinksJSON.hashValue)") {
-            let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
-            presenterState = WordDetailPresentation.state(for: entry, in: allEntries, lookup: lookup)
+            let capturedEntry = entry
+            let capturedAllEntries = allEntries
+            let state = await Task.detached(priority: .userInitiated) {
+                let lookup = VocabularyEntry.buildCardIdLookup(from: capturedAllEntries)
+                return WordDetailPresentation.state(for: capturedEntry, in: capturedAllEntries, lookup: lookup)
+            }.value
+            presenterState = state
         }
         .overlay {
             if wrapInNavigation {

@@ -101,9 +101,7 @@ extension TodayReviewPresenter {
         let hasLinks = !currentCard.linkGroups.isEmpty
         let exampleRadius = answerExampleRadius(
             containerHeight: availableHeight,
-            backDocument: currentCard.backDocument,
-            card: card,
-            hasLinks: hasLinks
+            currentCard: currentCard
         )
         return VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
             HStack(spacing: 6) {
@@ -195,10 +193,10 @@ extension TodayReviewPresenter {
 
     func answerExampleRadius(
         containerHeight: CGFloat,
-        backDocument: CardDocument,
-        card: CardPresentation,
-        hasLinks: Bool
+        currentCard: TodayReviewPresenterState.CurrentCard
     ) -> Int {
+        let hasLinks = !currentCard.linkGroups.isEmpty
+
         // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
         let answerBudget = containerHeight
             - vocabSkin.metrics.reviewCardTopInset
@@ -217,32 +215,8 @@ extension TodayReviewPresenter {
                 + 24 + gap                                                      // link strip + gap before CardDocumentView
         }
 
-        // ③ CardDocumentView 內 example 之後的 blocks（含 inter-block spacing）
-        var seenExample = false
-        for block in backDocument.blocks {
-            switch block {
-            case .example:
-                seenExample = true
-            case .divider:
-                if seenExample {
-                    coreHeight += AppMetrics.dividerThin + gap
-                }
-            case .meaning(let meaning):
-                if seenExample {
-                    let lineCount = meaning.paragraphs.isEmpty ? 0 : 3
-                    coreHeight += CGFloat(lineCount) * 22 + gap
-                }
-            case .collocations(let items):
-                if seenExample {
-                    let rows = max(1, (items.count + 2) / 3)
-                    coreHeight += CGFloat(rows) * 32 + gap
-                }
-            default:
-                if seenExample {
-                    coreHeight += 30 + gap
-                }
-            }
-        }
+        // ③ Post-example blocks — pre-computed in CurrentCard, O(1) lookup
+        coreHeight += currentCard.postExampleMetrics.totalHeight(gap: gap)
 
         // ④ 例句可用高度
         let exampleBudget = max(answerBudget - coreHeight, 0)
