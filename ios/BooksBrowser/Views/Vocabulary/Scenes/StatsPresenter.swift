@@ -22,6 +22,8 @@ struct StatsPresenter: View {
     /// init 覆寫為只載入近 6 個月的紀錄（統計用途不需全量）
     @Query var reviewRecords: [ReviewRecord]
 
+    @AppStorage("stats_forecast_days") private var forecastDays = 14
+
     @State private var summary: StatsPresentation.Summary?
     @State private var showCalendar = false
     @State private var contentReady = false
@@ -50,7 +52,7 @@ struct StatsPresenter: View {
                         streakSection(summary)
                         heatmapSection(summary)
                         forecastSection(summary)
-                        totalsSection(summary)
+                        totalsFooter(summary)
                     }
                     .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
                     .padding(.top, vocabSkin.metrics.pageTopInset)
@@ -67,17 +69,16 @@ struct StatsPresenter: View {
             }
         }
         .animatePhaseChange(summary != nil)
-        .task {
-            recompute()
-        }
-        .onChange(of: syncedEntries.count) { _, _ in
-            recompute()
-        }
-        .onChange(of: reviewRecords.count) { _, _ in
-            recompute()
-        }
-        .onChange(of: filter) { _, _ in
-            recompute()
+        .task(id: recomputeKey) {
+            let entries = filteredEntries
+            let records = filteredReviewRecords
+            let days = forecastDays
+            let result = StatsPresentation.buildSummary(
+                from: entries,
+                reviewRecords: records,
+                forecastDays: days
+            )
+            summary = result
         }
         .sheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
@@ -98,11 +99,13 @@ struct StatsPresenter: View {
             : reviewRecords
     }
 
-    private func recompute() {
-        summary = StatsPresentation.buildSummary(
-            from: filteredEntries,
-            reviewRecords: filteredReviewRecords
-        )
+    private var recomputeKey: Int {
+        var hasher = Hasher()
+        hasher.combine(syncedEntries.count)
+        hasher.combine(reviewRecords.count)
+        hasher.combine(filter.selectedIds)
+        hasher.combine(forecastDays)
+        return hasher.finalize()
     }
 
     // MARK: - Graph Entry
@@ -193,7 +196,11 @@ struct StatsPresenter: View {
 
             Button { showCalendar = true } label: {
                 VocabCard {
-                    VocabActivityHeatmap(activity: summary.activity, weeks: 20)
+                    VocabActivityHeatmap(
+                        activity: summary.activity,
+                        thresholds: summary.heatmapThresholds,
+                        weeks: 20
+                    )
                 }
             }
             .buttonStyle(.liftable)
@@ -202,7 +209,18 @@ struct StatsPresenter: View {
 
     private func forecastSection(_ summary: StatsPresentation.Summary) -> some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
-            sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
+            HStack {
+                sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
+                Spacer()
+                VocabTabSelector(
+                    options: [
+                        VocabTabOption(id: 7, title: "7天"),
+                        VocabTabOption(id: 14, title: "14天"),
+                        VocabTabOption(id: 30, title: "30天"),
+                    ],
+                    selection: $forecastDays
+                )
+            }
 
             VocabCard {
                 VocabForecastChart(buckets: summary.forecast)
@@ -211,26 +229,11 @@ struct StatsPresenter: View {
         }
     }
 
-    private func totalsSection(_ summary: StatsPresentation.Summary) -> some View {
-        VocabCard {
-            HStack(spacing: vocabSkin.spacing.sectionGap) {
-                miniStat(label: "總卡片數".localized, value: "\(summary.totalCards)")
-                miniStat(label: "今天到期".localized, value: "\(summary.dueToday)")
-                miniStat(label: "今天已複習".localized, value: "\(summary.reviewedToday)")
-            }
-        }
-    }
-
-    private func miniStat(label: String, value: String) -> some View {
-        VStack(spacing: 2) {
-            Text(value)
-                .font(vocabSkin.typography.monoEmphasis)
-                .foregroundStyle(vocabSkin.palette.primaryText)
-            Text(label)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
-        }
-        .frame(maxWidth: .infinity)
+    private func totalsFooter(_ summary: StatsPresentation.Summary) -> some View {
+        Text("\(summary.totalCards) 張卡片 · \(summary.dueToday) 張到期 · 今天已複習 \(summary.reviewedToday) 張")
+            .font(vocabSkin.typography.monoLabel)
+            .foregroundStyle(vocabSkin.palette.quaternaryText)
+            .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func sectionHeader(title: String, systemImage: String) -> some View {
