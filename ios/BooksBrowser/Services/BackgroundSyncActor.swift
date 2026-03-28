@@ -130,13 +130,22 @@ actor BackgroundSyncActor {
         // Any local entry that has `syncStatus == 1` but is MISSING from the remote fetched list
         // means it was deleted remotely before soft-deletes were implemented.
         if !isIncremental {
-            progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
-            for entry in localEntries {
-                if entry.shouldAppearInKnowledgeList {
-                    let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
-                    if !fetchedCardKeys.contains(orphanKey) {
-                        AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
-                        modelContext.delete(entry)
+            let localSyncedCount = localEntries.filter { $0.shouldAppearInKnowledgeList }.count
+            let serverReturnedCount = fetchedCards.count
+
+            // Safety guard: if server returned suspiciously few cards compared to local
+            // (e.g. due to server-side truncation), skip orphan cleanup to prevent data loss.
+            if localSyncedCount > 0 && serverReturnedCount < localSyncedCount / 2 {
+                AppLog.sync.warning("Orphan cleanup SKIPPED: server returned \(serverReturnedCount) cards but local has \(localSyncedCount). Possible server truncation.")
+            } else {
+                progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
+                for entry in localEntries {
+                    if entry.shouldAppearInKnowledgeList {
+                        let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
+                        if !fetchedCardKeys.contains(orphanKey) {
+                            AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
+                            modelContext.delete(entry)
+                        }
                     }
                 }
             }
