@@ -102,3 +102,46 @@ struct TodayReviewView: View {
         }
     }
 }
+
+// MARK: - Preview
+
+#Preview("TodayReview / Session") {
+    AppThemeContainer {
+        TodayReviewView(
+            entries: TodayReviewViewPreviewData.sampleEntries,
+            allEntries: TodayReviewViewPreviewData.sampleEntries,
+            onClose: {}
+        )
+        .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
+    }
+}
+
+private enum TodayReviewViewPreviewData {
+    static let sampleEntries: [VocabularyEntry] = {
+        let e1 = VocabularyEntry(
+            word: "meticulous",
+            translation: "一絲不苟的",
+            context: "The editor was meticulous about every detail.",
+            explanation: "做事非常細心、注意細節。",
+            partOfSpeech: "adj.",
+            bookTitle: "Designing Interfaces",
+            chapterTitle: "Writing Tone"
+        )
+        e1.syncState = .synced
+        e1.reviewMode = .recognition
+
+        let e2 = VocabularyEntry(
+            word: "ephemeral",
+            translation: "短暫的",
+            context: "Social media posts are ephemeral by nature.",
+            explanation: "形容事物存在時間極短。",
+            partOfSpeech: "adj.",
+            bookTitle: "Designing Interfaces",
+            chapterTitle: "Writing Tone"
+        )
+        e2.syncState = .synced
+        e2.reviewMode = .recognition
+
+        return [e1, e2]
+    }()
+}
