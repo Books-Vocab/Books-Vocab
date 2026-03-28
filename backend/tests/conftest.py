@@ -69,6 +69,10 @@ class _DummyEmbeddingStore:
     def add(self, card_id: str, text: str) -> None:
         self._ids.add(card_id)
 
+    def add_batch(self, items: list) -> None:
+        for card_id, text in items:
+            self.add(card_id, text)
+
     def find_similar(self, card_id: str, k: int = 3):
         return []
 

@@ -29,7 +29,8 @@ struct KGAddResponse: Codable {
 }
 
 struct KGOptionalIntegrationProviderConfig: Codable {
-    let api_key: String?
+    var api_key: String?
+    var has_api_key: Bool?
 }
 
 struct KGUserIntegrationsConfig: Codable {
@@ -63,6 +64,10 @@ struct KGUserConfig: Codable {
 
     var optionalIntegrationApiKey: String? {
         integrations?.mochi?.api_key
+    }
+
+    var hasMochiApiKey: Bool {
+        integrations?.mochi?.has_api_key ?? false
     }
 }
 
@@ -342,9 +347,7 @@ final class KGService: KGServing, LocalDataClearing {
             serverCardCount = health.cards
 
             if let lastModStr = health.lastModified {
-                let formatter = ISO8601DateFormatter()
-                formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-                lastSyncDate = formatter.date(from: lastModStr)
+                lastSyncDate = AppDateFormatters.iso8601.date(from: lastModStr)
             }
         } catch KGError.unauthorized {
             AppLog.kg.error("Health check failed: 401 Unauthorized")

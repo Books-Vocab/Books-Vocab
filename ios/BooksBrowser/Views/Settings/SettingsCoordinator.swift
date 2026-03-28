@@ -65,9 +65,17 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         if authManager.isLoggedIn {
             if let config = try? await kgService.fetchUserConfig() {
-                let fetched = config.optionalIntegrationApiKey ?? ""
-                fetchedKey = fetched
-                optionalIntegrationApiKey = fetched
+                if let key = config.optionalIntegrationApiKey, !key.isEmpty {
+                    fetchedKey = key
+                    optionalIntegrationApiKey = key
+                } else if config.hasMochiApiKey {
+                    let placeholder = "••••••••"
+                    fetchedKey = placeholder
+                    optionalIntegrationApiKey = placeholder
+                } else {
+                    fetchedKey = ""
+                    optionalIntegrationApiKey = ""
+                }
 
                 // Sync translation language from server config
                 if let translation = config.translation {
@@ -98,9 +106,16 @@ final class SettingsCoordinator: SettingsCoordinating {
             guard !Task.isCancelled else { return }
             if authManager.isLoggedIn {
                 do {
-                    let config = try await kgService.updateOptionalIntegrationKey(optionalIntegrationApiKey)
-                    fetchedKey = config.optionalIntegrationApiKey ?? ""
-                    optionalIntegrationApiKey = fetchedKey
+                    let sent = optionalIntegrationApiKey
+                    let config = try await kgService.updateOptionalIntegrationKey(sent)
+                    if config.hasMochiApiKey {
+                        let placeholder = "••••••••"
+                        fetchedKey = placeholder
+                        optionalIntegrationApiKey = placeholder
+                    } else {
+                        fetchedKey = ""
+                        optionalIntegrationApiKey = ""
+                    }
                 } catch {
                     AppLog.kg.error("updateUserConfig (API key) failed: \(error.localizedDescription)")
                     return

@@ -39,9 +39,17 @@ struct ReaderVocabularyContext {
         translation: String,
         rootForm: String? = nil
     ) -> Bool {
-        let wordLower = selection.word.lowercased()
-        let alreadyExists = vocabulary.contains { $0.word.lowercased() == wordLower }
-        guard !alreadyExists else { return false }
+        // Defend against race: if entry exists but is queued for delete, restore it
+        if let existing = existingEntry(matching: selection.word) {
+            if existing.syncAction == .delete {
+                existing.restorePendingEntry()
+                existing.translation = translation
+                if let rootForm { existing.rootForm = rootForm }
+                modelContext.safeSave()
+                return true
+            }
+            return false
+        }
 
         let entry = VocabularyEntry(
             word: selection.word,

@@ -25,6 +25,7 @@ class EmbeddingStore:
         self.user_id = user_id
         self._embeddings: np.ndarray | None = None
         self._ids: list[str] = []
+        self._id_set: set[str] = set()
         self._norms: np.ndarray | None = None  # cached L2 norms
         self._load()
 
@@ -32,6 +33,7 @@ class EmbeddingStore:
         if self.embeddings_path.exists() and self.ids_path.exists():
             self._embeddings = np.load(self.embeddings_path)
             self._ids = json.loads(self.ids_path.read_text())
+            self._id_set = set(self._ids)
             self._invalidate_norms()
 
     def _invalidate_norms(self) -> None:
@@ -54,13 +56,16 @@ class EmbeddingStore:
         tmp_ids.write_text(json.dumps(self._ids))
         tmp_ids.replace(self.ids_path)
 
-    def _embed(self, text: str) -> np.ndarray:
-        """Get embedding using OpenAI compatibility layer."""
+    def _embed(self, texts: list[str]) -> np.ndarray:
+        """Get embeddings for one or more texts via a single API call.
+
+        Returns an (N, EMBEDDING_DIM) float32 array.
+        """
         import time
         for attempt in range(3):
             try:
                 response = self.client.embeddings.create(
-                    input=[text],
+                    input=texts,
                     model=EMBEDDING_MODEL
                 )
                 if self.user_id and response.usage:
@@ -68,8 +73,10 @@ class EmbeddingStore:
                     record(self.user_id, "embed",
                            getattr(response.usage, "prompt_tokens", 0) or getattr(response.usage, "total_tokens", 0) or 0,
                            0)
-                embedding = response.data[0].embedding
-                return np.array(embedding, dtype=np.float32)
+                # response.data may not be sorted by index; sort to match input order
+                sorted_data = sorted(response.data, key=lambda d: d.index)
+                vecs = np.array([d.embedding for d in sorted_data], dtype=np.float32)
+                return vecs
             except OpenAIError as e:
                 if attempt < 2:
                     time.sleep(2 ** attempt)
@@ -78,28 +85,44 @@ class EmbeddingStore:
                 raise e
 
     def add(self, card_id: str, text: str) -> None:
-        """Add embedding for a card."""
-        if card_id in self._ids:
-            return  # already exists
+        """Add embedding for a single card (delegates to add_batch)."""
+        self.add_batch([(card_id, text)])
 
-        vec = self._embed(text)
+    def add_batch(self, items: list[tuple[str, str]]) -> None:
+        """Add embeddings for multiple cards in a single API call.
+
+        Items already present are silently skipped. Performs one API call,
+        one np.vstack, and one disk save for the entire batch.
+        """
+        # Filter out already-embedded cards
+        new_items = [(cid, text) for cid, text in items if cid not in self._id_set]
+        if not new_items:
+            return
+
+        new_ids = [cid for cid, _ in new_items]
+        new_texts = [text for _, text in new_items]
+
+        vecs = self._embed(new_texts)  # single API call
+
         if self._embeddings is None:
-            self._embeddings = vec.reshape(1, -1)
+            self._embeddings = vecs
         else:
-            self._embeddings = np.vstack([self._embeddings, vec])
-        self._ids.append(card_id)
+            self._embeddings = np.vstack([self._embeddings, vecs])
+
+        self._ids.extend(new_ids)
+        self._id_set.update(new_ids)
         self._invalidate_norms()
         self._save()
 
     def update(self, card_id: str, text: str) -> None:
         """Update existing embedding."""
-        if card_id not in self._ids:
+        if card_id not in self._id_set:
             self.add(card_id, text)
             return
 
         idx = self._ids.index(card_id)
-        vec = self._embed(text)
-        self._embeddings[idx] = vec
+        vecs = self._embed([text])
+        self._embeddings[idx] = vecs[0]
         self._invalidate_norms()
         self._save()
 
@@ -108,7 +131,7 @@ class EmbeddingStore:
 
         Returns list of (card_id, similarity_score) sorted by similarity descending.
         """
-        if self._embeddings is None or card_id not in self._ids:
+        if self._embeddings is None or card_id not in self._id_set:
             return []
 
         idx = self._ids.index(card_id)
@@ -128,7 +151,7 @@ class EmbeddingStore:
         return results[:k]
 
     def has(self, card_id: str) -> bool:
-        return card_id in self._ids
+        return card_id in self._id_set
 
     def count(self) -> int:
         return len(self._ids)

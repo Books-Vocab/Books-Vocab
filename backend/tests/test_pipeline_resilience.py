@@ -93,6 +93,10 @@ class _EmbeddingsMissing:
         self.added.append(card_id)
         self.add_thread_ids.append(threading.get_ident())
 
+    def add_batch(self, items):
+        for card_id, text in items:
+            self.add(card_id, text)
+
     def find_similar(self, card_id, k=3):
         return []
 
