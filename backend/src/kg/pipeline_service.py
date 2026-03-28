@@ -56,6 +56,7 @@ async def _step_enrich(
 
         if msg.get("results"):
             result_map = {result["word"].lower(): result for result in msg["results"]}
+            batch_updates: list[tuple[str, dict]] = []
             for card in targets:
                 enrichment = result_map.get(card.content.lower())
                 if not enrichment:
@@ -73,9 +74,9 @@ async def _step_enrich(
                 if enrichment.get("meaning_fix"):
                     kwargs["meaning"] = enrichment["meaning_fix"]
                 if kwargs:
-                    updated_card = cards.update(card.id, **kwargs)
-                    if updated_card:
-                        updated += 1
+                    batch_updates.append((card.id, kwargs))
+            if batch_updates:
+                updated += cards.batch_update(batch_updates)
 
     logger.info("[%s] Enriched %d cards", uid, updated)
 

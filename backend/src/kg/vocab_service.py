@@ -160,6 +160,7 @@ def push_review_states(
 
     updated = 0
     skipped = 0
+    pending_updates: list[tuple[str, dict]] = []
     for entry in entries:
         cards = cards_by_word.get(_normalize_word(entry.word))
         if not cards:
@@ -183,7 +184,7 @@ def push_review_states(
                     card.lapse_count = entry.lapse_count
                     changed = True
                 if changed:
-                    cards_store.update(card.id, review_count=card.review_count, lapse_count=card.lapse_count)
+                    pending_updates.append((card.id, dict(review_count=card.review_count, lapse_count=card.lapse_count)))
                     updated += 1
                 else:
                     skipped += 1
@@ -191,8 +192,7 @@ def push_review_states(
 
             # Client is newer — accept all fields
             client_next = parse_datetime(entry.next_review_at)
-            cards_store.update(
-                card.id,
+            pending_updates.append((card.id, dict(
                 review_interval_hours=entry.review_interval_hours,
                 next_review_at=client_next,
                 last_reviewed_at=client_last,
@@ -200,9 +200,11 @@ def push_review_states(
                 lapse_count=max(entry.lapse_count, card.lapse_count),
                 review_streak=entry.review_streak,
                 last_review_feedback=entry.last_review_feedback,
-            )
+            )))
             updated += 1
 
+    if pending_updates:
+        cards_store.batch_update(pending_updates)
     return {"updated": updated, "skipped": skipped}
 
 
