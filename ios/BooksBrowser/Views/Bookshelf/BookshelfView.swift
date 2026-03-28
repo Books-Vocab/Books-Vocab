@@ -230,6 +230,7 @@ struct BookCard: View {
     @Environment(\.iCloudDownloadManager) private var downloadManager
     let book: Book
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
+    @State private var decodedCoverImage: UIImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
@@ -279,12 +280,14 @@ struct BookCard: View {
                 }
             }
         }
+        .task(id: book.coverImageData) {
+            decodeCoverImage()
+        }
     }
 
     @ViewBuilder
     private var coverView: some View {
-        if let coverData = book.coverImageData,
-           let uiImage = UIImage(data: coverData) {
+        if let uiImage = decodedCoverImage {
             Image(uiImage: uiImage)
                 .resizable()
                 .aspectRatio(2/3, contentMode: .fill)
@@ -315,6 +318,14 @@ struct BookCard: View {
                 }
             }
         }
+    }
+
+    private func decodeCoverImage() {
+        guard let coverData = book.coverImageData else {
+            decodedCoverImage = nil
+            return
+        }
+        decodedCoverImage = UIImage(data: coverData)
     }
 
     @ViewBuilder
