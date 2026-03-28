@@ -21,7 +21,8 @@ enum SettingsPresenterPreviewData {
         openPrivacyPolicy: {},
         openTermsOfService: {},
         openSupport: {},
-        requestAppRating: {}
+        requestAppRating: {},
+        resync: {}
     )
 
     static let loggedOut = SettingsPresenterState(
@@ -82,7 +83,7 @@ enum SettingsPresenterPreviewData {
             ctaTitle: "管理訂閱",
             isRefreshing: false
         ),
-        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 3 分鐘前"),
+        syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 3 分鐘前"),
         optionalIntegration: .init(isEnabled: true),
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
@@ -125,7 +126,7 @@ enum SettingsPresenterPreviewData {
             ctaTitle: "重新整理",
             isRefreshing: true
         ),
-        syncSummary: .init(isConnected: false, summaryText: "離線"),
+        syncSummary: .init(isConnected: false, isSyncing: false, summaryText: "離線"),
         optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
@@ -168,7 +169,7 @@ enum SettingsPresenterPreviewData {
             ctaTitle: "管理訂閱",
             isRefreshing: false
         ),
-        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 剛剛"),
+        syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 剛剛"),
         optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: true)
@@ -211,7 +212,7 @@ enum SettingsPresenterPreviewData {
             ctaTitle: "開始免費試用",
             isRefreshing: false
         ),
-        syncSummary: .init(isConnected: true, summaryText: "已連線 · 128 張 · 10 分鐘前"),
+        syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 10 分鐘前"),
         optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
@@ -242,7 +243,7 @@ enum SettingsPresenterPreviewData {
             )
         ),
         subscription: nil,
-        syncSummary: .init(isConnected: false, summaryText: "離線"),
+        syncSummary: .init(isConnected: false, isSyncing: false, summaryText: "離線"),
         optionalIntegration: .init(isEnabled: true),
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
