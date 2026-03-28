@@ -15,6 +15,7 @@ struct ArchivedVocabSheet: View {
     private var archivedAllEntries: [VocabularyEntry]
     @State private var searchText = ""
     @State private var selectedEntry: VocabularyEntry?
+    @State private var errorMessage: String?
 
     var body: some View {
         NavigationStack {
@@ -72,6 +73,15 @@ struct ArchivedVocabSheet: View {
                 WordDetailSheet(entry: entry)
                     .appSheet(.large)
             }
+            .overlay(alignment: .top) {
+                if let errorMessage {
+                    AppBanner(
+                        message: errorMessage,
+                        systemImage: "exclamationmark.triangle",
+                        onDismiss: { self.errorMessage = nil }
+                    )
+                }
+            }
         }
     }
 
@@ -92,6 +102,9 @@ struct ArchivedVocabSheet: View {
                 modelContext.safeSave()
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
+                await MainActor.run {
+                    errorMessage = "解除封存失敗：\(error.localizedDescription)".localized
+                }
             }
         }
     }
