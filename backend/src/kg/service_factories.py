@@ -6,8 +6,6 @@ import threading
 from collections import OrderedDict
 from pathlib import Path
 
-from fastapi import HTTPException
-
 from .cards import CardStore
 from .daily_stats import DailyReviewStatsStore
 from .embeddings import EmbeddingStore
@@ -110,7 +108,7 @@ _GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
 def _require_gemini_api_key() -> str:
     api_key = os.getenv("GEMINI_API_KEY")
     if not api_key:
-        raise HTTPException(500, "GEMINI_API_KEY not configured on server")
+        raise RuntimeError("GEMINI_API_KEY not configured on server")
     return api_key
 
 
