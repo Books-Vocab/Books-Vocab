@@ -40,10 +40,12 @@ enum TodayReviewPresenterPreviewData {
                 overflowCount: 1
             )
         ]
+        let backDoc = baseCard.document.reviewBackSubset()
         return .init(
             card: baseCard,
             linkGroups: groups,
-            backDocument: baseCard.document.reviewBackSubset()
+            backDocument: backDoc,
+            postExampleMetrics: .from(backDoc)
         )
     }()
 
@@ -62,10 +64,12 @@ enum TodayReviewPresenterPreviewData {
             entry.reviewMode = .recognition
             return entry.cardPresentation
         }()
+        let backDoc = card.document.reviewBackSubset()
         return .init(
             card: card,
             linkGroups: [],
-            backDocument: card.document.reviewBackSubset()
+            backDocument: backDoc,
+            postExampleMetrics: .from(backDoc)
         )
     }()
 

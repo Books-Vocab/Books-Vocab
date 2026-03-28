@@ -10,10 +10,54 @@ struct TodayReviewPresenterState {
         let overflowCount: Int
     }
 
+    /// Pre-computed layout metrics for blocks after the first `.example` in backDocument.
+    /// Separates the gap-dependent count from fixed heights so `answerExampleRadius`
+    /// doesn't need to iterate blocks every frame.
+    struct PostExampleMetrics {
+        /// Total fixed height from post-example blocks (excluding gap contributions).
+        let fixedHeight: CGFloat
+        /// Number of gap units needed (one per post-example block).
+        let gapCount: Int
+
+        func totalHeight(gap: CGFloat) -> CGFloat {
+            fixedHeight + CGFloat(gapCount) * gap
+        }
+
+        /// Iterate backDocument blocks once, returning pre-computed metrics.
+        static func from(_ backDoc: CardDocument) -> PostExampleMetrics {
+            var fixedHeight: CGFloat = 0
+            var gapCount = 0
+            var seenExample = false
+            for block in backDoc.blocks {
+                switch block {
+                case .example:
+                    seenExample = true
+                case .divider:
+                    if seenExample { fixedHeight += AppMetrics.dividerThin; gapCount += 1 }
+                case .meaning(let meaning):
+                    if seenExample {
+                        let lineCount = meaning.paragraphs.isEmpty ? 0 : 3
+                        fixedHeight += CGFloat(lineCount) * 22; gapCount += 1
+                    }
+                case .collocations(let items):
+                    if seenExample {
+                        let rows = max(1, (items.count + 2) / 3)
+                        fixedHeight += CGFloat(rows) * 32; gapCount += 1
+                    }
+                default:
+                    if seenExample { fixedHeight += 30; gapCount += 1 }
+                }
+            }
+            return .init(fixedHeight: fixedHeight, gapCount: gapCount)
+        }
+    }
+
     struct CurrentCard {
         let card: CardPresentation
         let linkGroups: [LinkGroup]
         let backDocument: CardDocument
+        /// Pre-computed post-example block metrics — avoids re-iterating blocks every frame.
+        let postExampleMetrics: PostExampleMetrics
     }
 
     let progressText: String

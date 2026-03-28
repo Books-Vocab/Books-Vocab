@@ -297,10 +297,12 @@ final class TodayReviewState {
                 )
             }
             let backDoc = card.document.reviewBackSubset()
+            let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDoc)
             cache[entry.id] = .init(
                 card: card,
                 linkGroups: compactGroups,
-                backDocument: backDoc
+                backDocument: backDoc,
+                postExampleMetrics: metrics
             )
         }
         return cache
