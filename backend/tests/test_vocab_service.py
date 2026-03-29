@@ -261,6 +261,7 @@ class _FakeArchiveGraph:
         self.deprecated_for = []
         self.removed_candidates_for = []
         self.restored_for = []
+        self.removed_blocked_for = []
 
     def deprecate_links_for(self, card_id):
         self.deprecated_for.append(card_id)
@@ -269,6 +270,9 @@ class _FakeArchiveGraph:
     def remove_candidates_for(self, card_id):
         self.removed_candidates_for.append(card_id)
         return 0
+
+    def remove_blocked_pairs_for(self, card_id):
+        self.removed_blocked_for.append(card_id)
 
     def restore_links_for(self, card_id, cards_store):
         self.restored_for.append(card_id)

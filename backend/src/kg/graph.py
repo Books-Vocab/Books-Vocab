@@ -444,8 +444,12 @@ class GraphStore:
                         existing_pairs.add((c.from_id, c.to_id))
                         existing_pairs.add((c.to_id, c.from_id))
 
+                # Merge blocked pairs
+                self._blocked_pairs |= source._blocked_pairs
+
                 self._save_links()
                 self._save_candidates()
+                self._save_blocked()
 
             # Clear source (still under source._lock, target lock released)
             source._links.clear()
