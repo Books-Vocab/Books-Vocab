@@ -195,8 +195,7 @@ def test_graph_links_returns_active_only(isolated_api):
 
     active = graph.add_link("c1", "c2", LinkKind.CONTRASTS_WITH, 0.91, "opposite meanings")
     deprecated = graph.add_link("c2", "c3", LinkKind.SHARES_USAGE, 0.80, "same pattern")
-    deprecated.status = "deprecated"
-    graph._save_links()
+    graph.update_link(deprecated.id, status="deprecated")
 
     r = client.get("/api/graph/links", headers=headers)
     assert r.status_code == 200, r.text

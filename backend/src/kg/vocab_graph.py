@@ -65,7 +65,7 @@ def embed_and_link_new_cards(
 def graph_links_payload(*, graph: Any) -> list[GraphLinkResponse]:
     """Build graph links response from active links."""
     links = []
-    for link in graph._links.values():
+    for link in graph.all_links():
         if link.status != "active":
             continue
         links.append(
