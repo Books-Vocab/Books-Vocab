@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import logging
 import re
-import unicodedata
 from collections.abc import Callable
 from datetime import datetime
 from typing import Any
 
 from .exceptions import BadRequestError, ConflictError, NotFoundError, ValidationError
+from .text_utils import normalize_nfc_lower
 
 from .api_models import (
     CardLinkSummaryResponse,
@@ -28,7 +28,7 @@ MAX_WORD_LENGTH = 200
 
 
 def _normalize_word(word: str) -> str:
-    return unicodedata.normalize("NFC", word).strip().lower()
+    return normalize_nfc_lower(word)
 
 
 def _build_content_lookup(cards_store: Any, notebook_id: str | None = None) -> dict[str, Any]:
