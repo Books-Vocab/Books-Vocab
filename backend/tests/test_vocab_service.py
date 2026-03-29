@@ -110,11 +110,12 @@ def test_list_vocab_rejects_bad_since():
 
 
 def test_graph_links_payload_only_returns_active_links():
+    links = {
+        "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="contrasts_with"), confidence=0.9, reason="r1", status="active"),
+        "l2": SimpleNamespace(id="l2", from_id="c2", to_id="c3", kind=SimpleNamespace(value="shares_usage"), confidence=0.7, reason="r2", status="deprecated"),
+    }
     graph = SimpleNamespace(
-        _links={
-            "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="contrasts_with"), confidence=0.9, reason="r1", status="active"),
-            "l2": SimpleNamespace(id="l2", from_id="c2", to_id="c3", kind=SimpleNamespace(value="shares_usage"), confidence=0.7, reason="r2", status="deprecated"),
-        }
+        all_links=lambda: links.values(),
     )
 
     payload = graph_links_payload(graph=graph)
