@@ -144,6 +144,13 @@ final class ReviewSettingsStore {
     }
 }
 
+private struct ReviewSettingsStoreKey: EnvironmentKey {
+    static let defaultValue: ReviewSettingsStore = .shared
+}
+
 extension EnvironmentValues {
-    @Entry var reviewSettingsStore: ReviewSettingsStore = .shared
+    var reviewSettingsStore: ReviewSettingsStore {
+        get { self[ReviewSettingsStoreKey.self] }
+        set { self[ReviewSettingsStoreKey.self] = newValue }
+    }
 }
