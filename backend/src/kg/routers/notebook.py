@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
@@ -86,10 +88,18 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     if result is True:
         reassigned = cards.reassign_notebook(nb_id, "default")
         # Merge graph links/candidates and embeddings into default notebook
-        src_graph = _graph_store(user["dir"], notebook_id=nb_id)
-        tgt_graph = _graph_store(user["dir"], notebook_id="default")
-        tgt_graph.merge_from(src_graph)
-        src_emb = _embedding_store(user["dir"], notebook_id=nb_id)
-        tgt_emb = _embedding_store(user["dir"], notebook_id="default")
-        tgt_emb.merge_from(src_emb)
+        # Failures are non-fatal: cards are already reassigned, graph/embedding
+        # data can be reconciled later.
+        try:
+            src_graph = _graph_store(user["dir"], notebook_id=nb_id)
+            tgt_graph = _graph_store(user["dir"], notebook_id="default")
+            tgt_graph.merge_from(src_graph)
+        except Exception:
+            logging.warning("Failed to merge graph data from notebook %s", nb_id, exc_info=True)
+        try:
+            src_emb = _embedding_store(user["dir"], notebook_id=nb_id)
+            tgt_emb = _embedding_store(user["dir"], notebook_id="default")
+            tgt_emb.merge_from(src_emb)
+        except Exception:
+            logging.warning("Failed to merge embedding data from notebook %s", nb_id, exc_info=True)
     return {"deleted": nb_id, "cardsReassigned": reassigned}
