@@ -10,6 +10,7 @@ def store(tmp_path):
     return GraphStore(
         links_path=tmp_path / "links.json",
         candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
     )
 
 
@@ -126,7 +127,7 @@ class TestBatchAddLinks:
 
     def test_persisted_after_reload(self, store, tmp_path):
         store.batch_add_links([("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")])
-        reloaded = GraphStore(store.links_path, store.candidates_path)
+        reloaded = GraphStore(store.links_path, store.candidates_path, store.blocked_path)
         assert reloaded.link_count() == 1
         assert reloaded.has_link("a", "b")
 
@@ -154,5 +155,5 @@ class TestBatchAddCandidates:
 
     def test_persisted_after_reload(self, store):
         store.batch_add_candidates([("a", "b", 0.8), ("c", "d", 0.7)])
-        reloaded = GraphStore(store.links_path, store.candidates_path)
+        reloaded = GraphStore(store.links_path, store.candidates_path, store.blocked_path)
         assert reloaded.candidate_count() == 2

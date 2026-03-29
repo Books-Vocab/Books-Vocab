@@ -109,6 +109,7 @@ def test_graph_links_payload_only_returns_active_links():
     links = {
         "l1": SimpleNamespace(id="l1", from_id="c1", to_id="c2", kind=SimpleNamespace(value="contrasts_with"), confidence=0.9, reason="r1", status="active"),
         "l2": SimpleNamespace(id="l2", from_id="c2", to_id="c3", kind=SimpleNamespace(value="shares_usage"), confidence=0.7, reason="r2", status="deprecated"),
+        "l3": SimpleNamespace(id="l3", from_id="c3", to_id="c4", kind=SimpleNamespace(value="contrasts_with"), confidence=0.8, reason="r3", status="hidden"),
     }
     graph = SimpleNamespace(
         all_links=lambda: links.values(),
@@ -261,6 +262,7 @@ class _FakeArchiveGraph:
         self.deprecated_for = []
         self.removed_candidates_for = []
         self.restored_for = []
+        self.removed_blocked_for = []
 
     def deprecate_links_for(self, card_id):
         self.deprecated_for.append(card_id)
@@ -269,6 +271,9 @@ class _FakeArchiveGraph:
     def remove_candidates_for(self, card_id):
         self.removed_candidates_for.append(card_id)
         return 0
+
+    def remove_blocked_pairs_for(self, card_id):
+        self.removed_blocked_for.append(card_id)
 
     def restore_links_for(self, card_id, cards_store):
         self.restored_for.append(card_id)
