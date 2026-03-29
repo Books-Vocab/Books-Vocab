@@ -32,7 +32,6 @@ from ..deps import (
     _gemini_client,
     _graph_store,
     _notebook_store,
-    _require_pro_access,
     get_current_user,
     logger,
 )
@@ -67,7 +66,6 @@ def list_vocab(
 
     result = list_vocab_response(
         since=since, user=user,
-        require_pro_access=_require_pro_access,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
         notebook_store_factory=_notebook_store,
@@ -87,7 +85,6 @@ def batch_delete(
 ):
     return batch_delete_response(
         req, user,
-        require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
@@ -103,7 +100,6 @@ def batch_archive(
 ):
     return batch_archive_response(
         req, user,
-        require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
@@ -114,7 +110,7 @@ def batch_archive(
 @router.get("/api/vocab/daily-stats", response_model=DailyReviewStatsResponse)
 def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_user)):
     return pull_daily_stats_response(
-        since, user, require_pro_access=_require_pro_access,
+        since, user,
         daily_stats_store_factory=_daily_stats_store,
     )
 
@@ -122,7 +118,7 @@ def pull_daily_stats(since: str | None = None, user: dict = Depends(get_current_
 @router.patch("/api/vocab/daily-stats", response_model=DailyReviewStatsPushResponse)
 def push_daily_stats(req: DailyReviewStatsPushRequest, user: dict = Depends(get_current_user)):
     return push_daily_stats_response(
-        req, user, require_pro_access=_require_pro_access,
+        req, user,
         daily_stats_store_factory=_daily_stats_store, logger=logger,
     )
 
@@ -135,7 +131,7 @@ def push_review(
     # notebook_id 不做過濾：iOS client 推送全部 notebook 的複習狀態，
     # 後端需在全域卡片中查找匹配。
     return push_review_response(
-        req, user, require_pro_access=_require_pro_access,
+        req, user,
         card_store_factory=_card_store, logger=logger,
         notebook_id=None,
     )
@@ -148,7 +144,7 @@ def lookup_word(
     user: dict = Depends(get_current_user),
 ):
     return lookup_word_response(
-        word, user, require_pro_access=_require_pro_access,
+        word, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         card_response_builder=lambda card, graph_obj, cards_by_id: _card_response(card, graph_obj, cards_by_id),
         notebook_store_factory=_notebook_store,
@@ -164,7 +160,6 @@ def move_words(
 ):
     return move_words_response(
         req, user,
-        require_pro_access=_require_pro_access,
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
@@ -174,7 +169,7 @@ def move_words(
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
 def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default"), user: dict = Depends(get_current_user)):
-    return archive_word_response(word, req, user, require_pro_access=_require_pro_access, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
+    return archive_word_response(word, req, user, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
@@ -184,7 +179,7 @@ def delete_word(
     user: dict = Depends(get_current_user),
 ):
     return delete_word_response(
-        word, user, require_pro_access=_require_pro_access,
+        word, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
@@ -197,7 +192,7 @@ def get_graph_links(
     user: dict = Depends(get_current_user),
 ):
     return get_graph_links_response(
-        user, require_pro_access=_require_pro_access,
+        user,
         graph_store_factory=_graph_store, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
@@ -210,7 +205,7 @@ def create_graph_link(
     user: dict = Depends(get_current_user),
 ):
     return create_manual_link_response(
-        req, user, require_pro_access=_require_pro_access,
+        req, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         gemini_client_factory=_gemini_client, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
@@ -224,7 +219,7 @@ def delete_graph_link(
     user: dict = Depends(get_current_user),
 ):
     delete_graph_link_response(
-        link_id, user, require_pro_access=_require_pro_access,
+        link_id, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store, notebook_id=notebook_id,
     )
@@ -237,7 +232,7 @@ def add_vocab(
     user: dict = Depends(get_current_user),
 ):
     return add_vocab_response(
-        entries, user, require_pro_access=_require_pro_access,
+        entries, user,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
         graph_store_factory=_graph_store, logger=logger,
         notebook_store_factory=_notebook_store,

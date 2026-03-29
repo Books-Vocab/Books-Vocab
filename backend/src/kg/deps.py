@@ -23,7 +23,6 @@ from .billing import (
     current_subscription_record,
     default_subscription_payload,
     notification_status,
-    require_pro_access,
     resolve_user_id_from_subscription_index,
     write_subscription_snapshot,
 )
@@ -167,9 +166,6 @@ def _current_admin_grant_record(user_record: dict[str, Any] | None) -> dict[str,
 def _current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
     return current_subscription_record(user_record)
 
-
-def _require_pro_access(user: dict[str, Any], capability: str) -> None:
-    require_pro_access(user, capability)
 
 
 def _resolve_user_id_from_subscription_index(
