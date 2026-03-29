@@ -7,28 +7,31 @@ def store(tmp_path):
     return GraphStore(
         links_path=tmp_path / "links.json",
         candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
     )
 
-class TestRejectedStatus:
-    def test_has_link_returns_true_for_rejected(self, store):
+class TestHiddenStatusBehavior:
+    def test_has_link_returns_true_for_hidden(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        store.reject_link(lk.id)
+        store.hide_link(lk.id)
         assert store.has_link("a", "b") is True
 
-    def test_get_links_for_excludes_rejected(self, store):
+    def test_get_links_for_includes_hidden(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        store.reject_link(lk.id)
-        assert store.get_links_for("a") == []
+        store.hide_link(lk.id)
+        links = store.get_links_for("a")
+        assert len(links) == 1
+        assert links[0].status == "hidden"
 
-    def test_add_candidate_skips_rejected_pair(self, store):
+    def test_add_candidate_skips_hidden_pair(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        store.reject_link(lk.id)
+        store.hide_link(lk.id)
         store.add_candidate("a", "b", 0.85)
         assert store.candidate_count() == 0
 
-    def test_reject_nonexistent_link_raises(self, store):
+    def test_hide_nonexistent_link_raises(self, store):
         with pytest.raises(KeyError):
-            store.reject_link("nonexistent")
+            store.hide_link("nonexistent")
 
 class TestFindLinkBetween:
     def test_finds_active_link(self, store):
@@ -43,12 +46,12 @@ class TestFindLinkBetween:
         assert found is not None
         assert found.id == lk.id
 
-    def test_finds_rejected_link(self, store):
+    def test_finds_hidden_link(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        store.reject_link(lk.id)
+        store.hide_link(lk.id)
         found = store.find_link_between("a", "b")
         assert found is not None
-        assert found.status == "rejected"
+        assert found.status == "hidden"
 
     def test_returns_none_when_no_link(self, store):
         assert store.find_link_between("a", "b") is None
@@ -63,7 +66,7 @@ class TestFindLinkBetween:
 import pytest
 from unittest.mock import MagicMock
 from kg.judge import ManualLinkJudge
-from kg.vocab_service import create_manual_link, reject_graph_link
+from kg.vocab_service import create_manual_link
 
 
 class FakeCard:
@@ -133,37 +136,35 @@ class TestCreateManualLink:
             create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
         assert exc.value.status_code == 409
 
-    def test_revives_rejected_link(self, store):
+    def test_unhides_hidden_link(self, store):
         cards = FakeCardsStore([
             FakeCard("a", content="apple", meaning="蘋果"),
             FakeCard("b", content="banana", meaning="香蕉"),
         ])
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "old reason")
-        store.reject_link(lk.id)
+        store.hide_link(lk.id)
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
         result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
         assert result.status == "active"
-        assert result.kind == LinkKind.SHARES_USAGE
-        assert result.reason == "新原因"
+        assert result.kind == LinkKind.CONTRASTS_WITH  # original preserved, LLM skipped
+        assert result.reason == "old reason"  # original preserved, LLM skipped
         assert result.id == lk.id  # same link, not new
 
 
-class TestRejectGraphLink:
-    def test_rejects_link(self, store):
-        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+class TestDeleteGraphLink:
+    def test_hard_delete_removes_and_blocks(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        reject_graph_link(link_id=lk.id, graph=store, cards_store=cards)
-        assert store.find_link_between("a", "b").status == "rejected"
+        pair = store.hard_delete_link(lk.id)
+        assert pair == ("a", "b")
+        assert store.get_link(lk.id) is None
+        assert store.is_blocked("a", "b") is True
 
-    def test_touches_both_cards(self, store):
-        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+    def test_hard_delete_nonexistent_raises(self, store):
+        with pytest.raises(KeyError):
+            store.hard_delete_link("nonexistent")
+
+    def test_blocked_pair_prevents_new_candidates(self, store):
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        reject_graph_link(link_id=lk.id, graph=store, cards_store=cards)
-        assert "a" in cards.touched and "b" in cards.touched
-
-    def test_rejects_nonexistent_link(self, store):
-        cards = FakeCardsStore([])
-        from kg.exceptions import NotFoundError
-        with pytest.raises(NotFoundError) as exc:
-            reject_graph_link(link_id="nonexistent", graph=store, cards_store=cards)
-        assert exc.value.status_code == 404
+        store.hard_delete_link(lk.id)
+        store.add_candidate("a", "b", 0.85)
+        assert store.candidate_count() == 0

@@ -88,6 +88,7 @@ def build_links_by_kind(card_id: str, *, graph: Any, cards_by_id: dict[str, Any]
                 label=link_labels.get(link.kind, link.kind.value),
                 confidence=link.confidence,
                 reason=link.reason,
+                hidden=(link.status == "hidden"),
             )
         )
 
@@ -284,6 +285,7 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
         try:
             graph.deprecate_links_for(card.id)
             graph.remove_candidates_for(card.id)
+            graph.remove_blocked_pairs_for(card.id)
         except Exception:
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
@@ -322,6 +324,7 @@ def batch_delete_vocab_words(
             try:
                 graph.deprecate_links_for(card.id)
                 graph.remove_candidates_for(card.id)
+                graph.remove_blocked_pairs_for(card.id)
             except Exception:
                 try:
                     cards_store.restore(card.id)
@@ -582,45 +585,80 @@ def create_manual_link(
     if existing and existing.status == "active":
         raise ConflictError("Link already exists between these cards")
 
+    # Hidden → unhide directly, skip LLM
+    if existing and existing.status == "hidden":
+        graph.unhide_link(existing.id)
+        cards_store.touch(from_id)
+        cards_store.touch(to_id)
+        return existing
+
+    # Blocked pair → unblock first, then fall through to LLM evaluation
+    if graph.is_blocked(from_id, to_id):
+        graph.unblock_pair(from_id, to_id)
+
     judgement = judge.evaluate(
         card_a.content, card_a.meaning,
         card_b.content, card_b.meaning,
     )
 
-    if existing and existing.status == "rejected":
-        graph.update_link(
-            existing.id,
-            status="active",
-            kind=LinkKind(judgement.link),
-            confidence=1.0,
-            reason=judgement.reason,
-        )
-        link = existing
-    else:
-        link = graph.add_link(
-            from_id, to_id,
-            LinkKind(judgement.link),
-            confidence=1.0,
-            reason=judgement.reason,
-        )
+    link = graph.add_link(
+        from_id, to_id,
+        LinkKind(judgement.link),
+        confidence=1.0,
+        reason=judgement.reason,
+    )
 
     cards_store.touch(from_id)
     cards_store.touch(to_id)
     return link
 
 
-def reject_graph_link(
+def hide_graph_link(
     *,
     link_id: str,
     graph: Any,
     cards_store: Any,
 ) -> None:
-    """Reject a link (user-initiated deletion)."""
+    """Hide a link (user wants to stop seeing it but not permanently delete)."""
+    lk = graph.get_link(link_id)
+    if lk is None:
+        raise NotFoundError("Link", link_id)
     try:
-        graph.reject_link(link_id)
+        graph.hide_link(link_id)
     except KeyError:
         raise NotFoundError("Link", link_id)
-
-    lk = graph.get_link(link_id)
     cards_store.touch(lk.from_id)
     cards_store.touch(lk.to_id)
+
+
+def unhide_graph_link(
+    *,
+    link_id: str,
+    graph: Any,
+    cards_store: Any,
+) -> None:
+    """Unhide a previously hidden link."""
+    lk = graph.get_link(link_id)
+    if lk is None:
+        raise NotFoundError("Link", link_id)
+    try:
+        graph.unhide_link(link_id)
+    except KeyError:
+        raise NotFoundError("Link", link_id)
+    cards_store.touch(lk.from_id)
+    cards_store.touch(lk.to_id)
+
+
+def delete_graph_link(
+    *,
+    link_id: str,
+    graph: Any,
+    cards_store: Any,
+) -> None:
+    """Hard-delete a link and block the pair from being re-created."""
+    try:
+        from_id, to_id = graph.hard_delete_link(link_id)
+    except KeyError:
+        raise NotFoundError("Link", link_id)
+    cards_store.touch(from_id)
+    cards_store.touch(to_id)

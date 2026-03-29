@@ -26,10 +26,12 @@ def graph_pair(tmp_path):
     src = GraphStore(
         tmp_path / "graph_src.json",
         tmp_path / "candidates_src.json",
+        tmp_path / "blocked_src.json",
     )
     tgt = GraphStore(
         tmp_path / "graph_default.json",
         tmp_path / "candidates_default.json",
+        tmp_path / "blocked_default.json",
     )
     return src, tgt
 

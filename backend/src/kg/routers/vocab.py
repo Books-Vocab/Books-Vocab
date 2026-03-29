@@ -44,12 +44,14 @@ from ..vocab_handlers import (
     delete_graph_link_response,
     delete_word_response,
     get_graph_links_response,
+    hide_graph_link_response,
     list_vocab_response,
     lookup_word_response,
     move_words_response,
     pull_daily_stats_response,
     push_daily_stats_response,
     push_review_response,
+    unhide_graph_link_response,
 )
 
 router = APIRouter()
@@ -209,6 +211,32 @@ def create_graph_link(
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         gemini_client_factory=_gemini_client, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
+    )
+
+
+@router.patch("/api/graph/links/{link_id}/hide", status_code=204)
+def hide_graph_link(
+    link_id: str,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    hide_graph_link_response(
+        link_id, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
+    )
+
+
+@router.patch("/api/graph/links/{link_id}/unhide", status_code=204)
+def unhide_graph_link(
+    link_id: str,
+    notebook_id: str = Query("default"),
+    user: dict = Depends(get_current_user),
+):
+    unhide_graph_link_response(
+        link_id, user, require_pro_access=_require_pro_access,
+        card_store_factory=_card_store, graph_store_factory=_graph_store,
+        notebook_store_factory=_notebook_store, notebook_id=notebook_id,
     )
 
 
