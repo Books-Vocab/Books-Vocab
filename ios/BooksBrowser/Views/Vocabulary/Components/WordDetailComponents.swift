@@ -7,11 +7,15 @@ struct WordDetailGraphLinkRow: View {
     let link: KGCardLinkSummary
     let onTap: (() -> Void)?
     let onDelete: (() -> Void)?
+    var onHide: (() -> Void)?
+    var onUnhide: (() -> Void)?
 
     var body: some View {
         Group {
             if link.isPending {
                 pendingRowContent
+            } else if link.isHidden {
+                hiddenRowContent
             } else if let onTap {
                 Button(action: onTap) {
                     linkRowContent(showsAccessory: true)
@@ -23,14 +27,42 @@ struct WordDetailGraphLinkRow: View {
             }
         }
         .contextMenu {
-            if let onDelete, !link.isPending {
-                Button(role: .destructive) {
-                    onDelete()
-                } label: {
-                    Label("刪除連結".localized, systemImage: "trash")
+            if !link.isPending {
+                if link.isHidden {
+                    if let onUnhide {
+                        Button {
+                            onUnhide()
+                        } label: {
+                            Label("恢復連結".localized, systemImage: "eye")
+                        }
+                    }
+                } else {
+                    if let onHide {
+                        Button {
+                            onHide()
+                        } label: {
+                            Label("隱藏連結".localized, systemImage: "eye.slash")
+                        }
+                    }
+                }
+                if let onDelete {
+                    Button(role: .destructive) {
+                        onDelete()
+                    } label: {
+                        Label("刪除連結".localized, systemImage: "trash")
+                    }
                 }
             }
         }
+    }
+
+    private var hiddenRowContent: some View {
+        Text(link.word)
+            .font(vocabSkin.typography.rowWord)
+            .foregroundStyle(vocabSkin.palette.quaternaryText)
+            .opacity(0.5)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
     }
 
     private var pendingRowContent: some View {

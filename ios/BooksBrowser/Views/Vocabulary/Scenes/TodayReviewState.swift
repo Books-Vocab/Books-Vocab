@@ -308,7 +308,7 @@ final class TodayReviewState {
         cache.reserveCapacity(entries.count)
         for entry in entries {
             let card = CardPresentation(entry: entry)
-            let compactGroups = card.linkGroups.map { fullGroup in
+            let compactGroups = card.activeLinkGroups.map { fullGroup in
                 let limited = fullGroup.limited(to: 2)
                 return TodayReviewPresenterState.LinkGroup(
                     id: fullGroup.id,

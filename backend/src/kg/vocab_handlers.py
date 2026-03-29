@@ -28,15 +28,17 @@ from .vocab_service import (
     batch_archive_vocab_words,
     batch_delete_vocab_words,
     create_manual_link,
+    delete_graph_link,
     delete_vocab_word,
     graph_links_payload,
+    hide_graph_link,
     list_vocab_cards,
     lookup_vocab_word,
     move_vocab_words,
     pull_daily_review_stats,
     push_daily_review_stats,
     push_review_states,
-    reject_graph_link,
+    unhide_graph_link,
 )
 
 
@@ -295,4 +297,40 @@ def delete_graph_link_response(
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
-    reject_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+    delete_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+
+
+def hide_graph_link_response(
+    link_id: str,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> None:
+    require_pro_access(user, "knowledge_graph")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    hide_graph_link(link_id=link_id, graph=graph, cards_store=cards)
+
+
+def unhide_graph_link_response(
+    link_id: str,
+    user: dict[str, Any],
+    *,
+    require_pro_access: Callable[[dict[str, Any], str], None],
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any],
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+    notebook_id: str = "default",
+) -> None:
+    require_pro_access(user, "knowledge_graph")
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    unhide_graph_link(link_id=link_id, graph=graph, cards_store=cards)

@@ -36,6 +36,7 @@ struct CardPresentation {
     let syncStatus: Int
     let dateAdded: Date
     let linkGroups: [CardLinkGroupPresentation]
+    let activeLinkGroups: [CardLinkGroupPresentation]
     let document: CardDocument
 
     init(entry: VocabularyEntry, linkOrdering: [String] = Self.defaultLinkOrdering) {
@@ -70,6 +71,12 @@ struct CardPresentation {
             )
         }
 
+        activeLinkGroups = linkGroups.compactMap { group in
+            let activeItems = group.items.filter { !$0.isHidden }
+            guard !activeItems.isEmpty else { return nil }
+            return CardLinkGroupPresentation(id: group.id, label: group.label, items: activeItems)
+        }
+
         let trimmedContext = sourceContext.trimmingCharacters(in: .whitespacesAndNewlines)
         let computedShowsSourceContext: Bool
         if trimmedContext.isEmpty {
@@ -95,7 +102,7 @@ struct CardPresentation {
     }
 
     var totalLinkCount: Int {
-        linkGroups.reduce(0) { $0 + $1.items.count }
+        activeLinkGroups.reduce(0) { $0 + $1.items.count }
     }
 
     var showsSourceContext: Bool {

@@ -18,6 +18,7 @@ def graph_store(tmp_path):
     return GraphStore(
         links_path=tmp_path / "links.json",
         candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
     )
 
 
@@ -96,6 +97,7 @@ class TestDeprecateLinksFor:
         store = GraphStore(
             links_path=tmp_path / "links.json",
             candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
         )
         store.add_link("card_a", "card_b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         store.deprecate_links_for("card_a")
@@ -103,6 +105,7 @@ class TestDeprecateLinksFor:
         reloaded = GraphStore(
             links_path=tmp_path / "links.json",
             candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
         )
         assert reloaded.get_links_for("card_a") == []
 

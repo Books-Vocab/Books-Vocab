@@ -52,4 +52,20 @@ extension KGService {
             queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
         )
     }
+
+    func hideLink(linkId: String, notebookId: String) async throws {
+        try await authenticatedVoid(
+            path: "api/graph/links/\(linkId)/hide",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
+        )
+    }
+
+    func unhideLink(linkId: String, notebookId: String) async throws {
+        try await authenticatedVoid(
+            path: "api/graph/links/\(linkId)/unhide",
+            method: "PATCH",
+            queryItems: [URLQueryItem(name: "notebook_id", value: notebookId)]
+        )
+    }
 }
