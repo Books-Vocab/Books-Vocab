@@ -6,7 +6,6 @@
 //
 
 import Foundation
-import FoundationModels
 import os
 
 /// AI 翻譯結果

@@ -55,6 +55,26 @@ private struct AppToastCoordinatorKey: EnvironmentKey {
     }
 }
 
+private struct NetworkMonitorKey: EnvironmentKey {
+    static let defaultValue: NetworkMonitor = .shared
+}
+
+private struct BookFileManagerKey: EnvironmentKey {
+    static let defaultValue: any BookFileManaging = LocalBookFileManager()
+}
+
+private struct QuotaStoreKey: EnvironmentKey {
+    static let defaultValue: any QuotaProviding = QuotaStore.shared
+}
+
+private struct SpeechServiceKey: EnvironmentKey {
+    static let defaultValue: any Speaking = SpeechService.shared
+}
+
+private struct ReaderSettingsKey: EnvironmentKey {
+    static let defaultValue: ReaderSettings = .shared
+}
+
 extension EnvironmentValues {
     var iCloudDownloadManager: ICloudDownloadManager {
         get { self[ICloudDownloadManagerKey.self] }
@@ -77,11 +97,26 @@ extension EnvironmentValues {
         get { self[KGServiceEnvironmentKey.self] }
         set { self[KGServiceEnvironmentKey.self] = newValue }
     }
-    @Entry var networkMonitor: NetworkMonitor = .shared
-    @Entry var bookFileManager: any BookFileManaging = LocalBookFileManager()
-    @Entry var quotaStore: any QuotaProviding = QuotaStore.shared
-    @Entry var speechService: any Speaking = SpeechService.shared
-    @Entry var readerSettings: ReaderSettings = .shared
+    var networkMonitor: NetworkMonitor {
+        get { self[NetworkMonitorKey.self] }
+        set { self[NetworkMonitorKey.self] = newValue }
+    }
+    var bookFileManager: any BookFileManaging {
+        get { self[BookFileManagerKey.self] }
+        set { self[BookFileManagerKey.self] = newValue }
+    }
+    var quotaStore: any QuotaProviding {
+        get { self[QuotaStoreKey.self] }
+        set { self[QuotaStoreKey.self] = newValue }
+    }
+    var speechService: any Speaking {
+        get { self[SpeechServiceKey.self] }
+        set { self[SpeechServiceKey.self] = newValue }
+    }
+    var readerSettings: ReaderSettings {
+        get { self[ReaderSettingsKey.self] }
+        set { self[ReaderSettingsKey.self] = newValue }
+    }
 
     var subscriptionManager: any SubscriptionManaging {
         get { self[SubscriptionManagerEnvironmentKey.self] }
