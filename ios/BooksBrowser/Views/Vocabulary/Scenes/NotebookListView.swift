@@ -42,17 +42,11 @@ struct NotebookListView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
-        // Pre-compute counts once per render to avoid repeated O(n) traversals
-        let cardCounts = allEntries.reduce(into: [String: Int]()) { dict, entry in
-            dict[entry.notebookId, default: 0] += 1
-        }
-        let now = Date()
-        let dueCounts = allEntries.reduce(into: [String: Int]()) { dict, entry in
-            if entry.nextReviewAt <= now {
-                dict[entry.notebookId, default: 0] += 1
-            }
-        }
+        // Single-pass: compute cardCounts & dueCounts together
+        let (cardCounts, dueCounts) = Self.computeCounts(allEntries)
         let totalDueCount = dueCounts.values.reduce(0, +)
+        let filteredDueEntries = Self.computeFilteredDueEntries(allEntries, filter: reviewFilter)
+        let filteredDueCount = filteredDueEntries.count
 
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -65,7 +59,7 @@ struct NotebookListView: View {
 
                     // Cross-notebook review section
                     if totalDueCount > 0 {
-                        reviewBanner
+                        reviewBannerContent(filteredDueCount: filteredDueCount, filteredDueEntries: filteredDueEntries)
                             .padding(.bottom, skin.spacing.sectionGap)
                     }
 
@@ -204,7 +198,7 @@ struct NotebookListView: View {
     // MARK: - Review Banner
 
     @ViewBuilder
-    private var reviewBanner: some View {
+    private func reviewBannerContent(filteredDueCount: Int, filteredDueEntries: [VocabularyEntry]) -> some View {
         VStack(spacing: skin.spacing.inlineGap) {
             HStack {
                 VStack(alignment: .leading, spacing: skin.spacing.microGap) {
@@ -222,7 +216,7 @@ struct NotebookListView: View {
                 NotebookFilterChip(filter: $reviewFilter)
 
                 Button {
-                    startFilteredReview()
+                    startReview(with: filteredDueEntries)
                 } label: {
                     Label("開始".localized, systemImage: "play.fill")
                         .font(skin.typography.captionStrong)
@@ -251,20 +245,33 @@ struct NotebookListView: View {
 
     // MARK: - Review Helpers
 
-    private var filteredDueEntries: [VocabularyEntry] {
-        let now = Date()
-        return allEntries.filter {
-            $0.nextReviewAt <= now &&
-            reviewFilter.matches($0.notebookId)
-        }
-    }
-
-    private var filteredDueCount: Int { filteredDueEntries.count }
-
-    private func startFilteredReview() {
-        let entries = filteredDueEntries
+    private func startReview(with entries: [VocabularyEntry]) {
         guard !entries.isEmpty else { return }
         activeReviewSession = TodayReviewSession(entries: entries)
+    }
+
+    // MARK: - Card Count Helpers (single-pass O(n))
+
+    /// Returns (cardCounts, dueCounts) in one iteration over allEntries.
+    private static func computeCounts(_ entries: [VocabularyEntry]) -> ([String: Int], [String: Int]) {
+        let now = Date()
+        var card: [String: Int] = [:]
+        var due: [String: Int] = [:]
+        for entry in entries {
+            card[entry.notebookId, default: 0] += 1
+            if entry.nextReviewAt <= now {
+                due[entry.notebookId, default: 0] += 1
+            }
+        }
+        return (card, due)
+    }
+
+    private static func computeFilteredDueEntries(_ entries: [VocabularyEntry], filter: NotebookFilter) -> [VocabularyEntry] {
+        let now = Date()
+        return entries.filter {
+            $0.nextReviewAt <= now &&
+            filter.matches($0.notebookId)
+        }
     }
 
     private func setActiveNotebook(_ id: String) {
