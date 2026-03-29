@@ -35,8 +35,7 @@ def require_admin(token: str | None, *, admin_token: str, authorization: str | N
 
 
 def admin_ui_response(token: str | None, *, admin_token: str, admin_html: str, authorization: str | None = None) -> HTMLResponse:
-    # HTML shell pages are served without auth — all data requires authenticated API calls.
-    # The token is passed via URL on initial visit and stored in sessionStorage by the JS.
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     return HTMLResponse(admin_html)
 
 
@@ -161,6 +160,7 @@ def admin_test_catalog_response(
 
 
 def admin_tests_ui_response(token: str | None, *, admin_token: str, admin_tests_html: str, authorization: str | None = None) -> HTMLResponse:
+    require_admin(token, admin_token=admin_token, authorization=authorization)
     return HTMLResponse(admin_tests_html)
 
 

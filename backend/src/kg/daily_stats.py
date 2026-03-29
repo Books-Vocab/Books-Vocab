@@ -36,6 +36,7 @@ class DailyReviewStatsStore:
         with self.engine.connect() as conn:
             conn.exec_driver_sql("PRAGMA journal_mode=WAL;")
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
+            conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         DailyReviewStat.metadata.create_all(self.engine, tables=[DailyReviewStat.__table__], checkfirst=True)
 
     def upsert(self, day_key: str, total: int, remembered: int, forgot: int) -> DailyReviewStat:

@@ -52,6 +52,12 @@ class TestBackwardCompatibility:
         result = decrypt_value(encrypted, "")
         assert result == encrypted  # can't decrypt without secret
 
+    def test_decrypt_wrong_key_raises_valueerror(self):
+        encrypted = encrypt_value("mykey", _SECRET)
+        import pytest
+        with pytest.raises(ValueError, match="key mismatch"):
+            decrypt_value(encrypted, "wrong-secret-key!!")
+
 
 class TestIsEncrypted:
 
