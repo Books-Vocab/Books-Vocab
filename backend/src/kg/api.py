@@ -112,7 +112,6 @@ from .deps import (  # noqa: F401
     _MAX_USER_LOCKS,
     _notification_status,
     _parse_datetime,
-    _require_pro_access,
     _resolve_and_link_user,
     _resolve_user_id_from_subscription_index,
     _with_quota_check,
