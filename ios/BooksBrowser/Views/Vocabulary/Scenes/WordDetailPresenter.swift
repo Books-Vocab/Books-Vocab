@@ -28,6 +28,8 @@ struct WordDetailPresenter: View {
     let onToggleExcludeFromReader: (() -> Void)?
     let onAddLink: (() -> Void)?
     let onDeleteLink: ((KGCardLinkSummary) -> Void)?
+    let onHideLink: ((KGCardLinkSummary) -> Void)?
+    let onUnhideLink: ((KGCardLinkSummary) -> Void)?
 
     var body: some View {
         Group {
@@ -131,7 +133,9 @@ struct WordDetailPresenter: View {
                             onTap: state.navigableLinkCardIDs.contains(link.cardId) ? {
                                 onLinkTapped(link)
                             } : nil,
-                            onDelete: onDeleteLink != nil ? { onDeleteLink?(link) } : nil
+                            onDelete: onDeleteLink != nil ? { onDeleteLink?(link) } : nil,
+                            onHide: onHideLink != nil ? { onHideLink?(link) } : nil,
+                            onUnhide: onUnhideLink != nil ? { onUnhideLink?(link) } : nil
                         )
                     }
                 }
