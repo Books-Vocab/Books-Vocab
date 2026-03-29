@@ -8,7 +8,6 @@ from ..deps import (
     _embedding_store,
     _gemini_client,
     _graph_store,
-    _require_pro_access,
     get_user_lock,
     get_current_user,
     logger,
@@ -47,5 +46,5 @@ async def run_pipeline(
 
     return queue_pipeline_response(
         background_tasks, user,
-        require_pro_access=_require_pro_access, run_pipeline_background_fn=_bg,
+        run_pipeline_background_fn=_bg,
     )
