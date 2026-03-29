@@ -371,7 +371,7 @@ class DailyReviewStatsResponse(BaseModel):
 
 
 class BatchDeleteRequest(BaseModel):
-    words: list[str] = Field(min_length=1, max_length=200)
+    words: list[str] = Field(min_length=1, max_length=500)
 
 
 class BatchDeleteResponse(BaseModel):
@@ -381,7 +381,7 @@ class BatchDeleteResponse(BaseModel):
 
 
 class BatchArchiveRequest(BaseModel):
-    words: list[str] = Field(min_length=1, max_length=200)
+    words: list[str] = Field(min_length=1, max_length=500)
     archived: bool = True
 
 
@@ -392,7 +392,7 @@ class BatchArchiveResponse(BaseModel):
 
 
 class MoveWordsRequest(BaseModel):
-    words: list[str] = Field(min_length=1, max_length=200)
+    words: list[str] = Field(min_length=1, max_length=500)
     to_notebook_id: str
 
 
