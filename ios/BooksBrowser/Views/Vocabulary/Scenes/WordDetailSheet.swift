@@ -38,7 +38,9 @@ struct WordDetailSheet: View {
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
                     onAddLink: { showAddLink = true },
-                    onDeleteLink: handleDeleteLink
+                    onDeleteLink: handleDeleteLink,
+                    onHideLink: handleHideLink,
+                    onUnhideLink: handleUnhideLink
                 )
                 .overlay(alignment: .top) {
                     if let linkError {
@@ -124,7 +126,8 @@ struct WordDetailSheet: View {
                     kind: link.kind,
                     label: link.kind == "contrasts_with" ? "對比" : "相關",
                     confidence: link.confidence,
-                    reason: link.reason
+                    reason: link.reason,
+                    hidden: false
                 )
                 var updated = entry.graphLinksByKind
                 // Remove placeholder from its temporary group
@@ -168,6 +171,56 @@ struct WordDetailSheet: View {
                 rollback[link.kind, default: []].append(link)
                 entry.graphLinksByKind = rollback
                 linkError = "刪除連結失敗".localized
+            }
+        }
+    }
+
+    private func handleHideLink(_ link: KGCardLinkSummary) {
+        let notebookId = entry.notebookId
+
+        // 1. Optimistic update
+        var current = entry.graphLinksByKind
+        if let idx = current[link.kind]?.firstIndex(where: { $0.id == link.id }) {
+            current[link.kind]?[idx] = link.withHidden(true)
+        }
+        entry.graphLinksByKind = current
+
+        // 2. Backend call — rollback on failure
+        Task {
+            do {
+                try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
+            } catch {
+                var rollback = entry.graphLinksByKind
+                if let idx = rollback[link.kind]?.firstIndex(where: { $0.id == link.id }) {
+                    rollback[link.kind]?[idx] = link.withHidden(false)
+                }
+                entry.graphLinksByKind = rollback
+                linkError = "隱藏連結失敗".localized
+            }
+        }
+    }
+
+    private func handleUnhideLink(_ link: KGCardLinkSummary) {
+        let notebookId = entry.notebookId
+
+        // 1. Optimistic update
+        var current = entry.graphLinksByKind
+        if let idx = current[link.kind]?.firstIndex(where: { $0.id == link.id }) {
+            current[link.kind]?[idx] = link.withHidden(false)
+        }
+        entry.graphLinksByKind = current
+
+        // 2. Backend call — rollback on failure
+        Task {
+            do {
+                try await kgService.unhideLink(linkId: link.id, notebookId: notebookId)
+            } catch {
+                var rollback = entry.graphLinksByKind
+                if let idx = rollback[link.kind]?.firstIndex(where: { $0.id == link.id }) {
+                    rollback[link.kind]?[idx] = link.withHidden(true)
+                }
+                entry.graphLinksByKind = rollback
+                linkError = "恢復連結失敗".localized
             }
         }
     }

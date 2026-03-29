@@ -241,6 +241,7 @@ def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
             "label": "相關",
             "confidence": 0.92,
             "reason": "similar contexts",
+            "hidden": False,
         }
     ]
     assert body["linksByKind"]["contrasts_with"] == [
@@ -252,6 +253,7 @@ def test_vocab_lookup_includes_mode_and_grouped_link_summaries(isolated_api):
             "label": "對比",
             "confidence": 0.74,
             "reason": "opposite direction",
+            "hidden": False,
         }
     ]
 

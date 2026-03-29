@@ -14,6 +14,7 @@ def store(tmp_path):
     return GraphStore(
         links_path=tmp_path / "links.json",
         candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
     )
 
 

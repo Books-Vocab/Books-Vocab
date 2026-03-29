@@ -109,6 +109,7 @@ class CardLinkSummaryResponse(BaseModel):
     label: str
     confidence: float
     reason: str
+    hidden: bool = False
 
 
 class TranslationLanguageConfig(BaseModel):

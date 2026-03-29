@@ -26,14 +26,32 @@ struct KGCardLinkSummary: Codable, Identifiable, Equatable {
     let label: String
     let confidence: Double
     let reason: String
+    let hidden: Bool?
+
+    init(id: String, cardId: String, word: String, kind: String,
+         label: String, confidence: Double, reason: String, hidden: Bool? = nil) {
+        self.id = id; self.cardId = cardId; self.word = word; self.kind = kind
+        self.label = label; self.confidence = confidence; self.reason = reason
+        self.hidden = hidden
+    }
+
+    var isHidden: Bool { hidden ?? false }
 
     /// True when this is an optimistic placeholder awaiting backend response.
     var isPending: Bool { id.hasPrefix("pending-") }
 
+    /// Helper for optimistic updates (KGCardLinkSummary has let fields).
+    func withHidden(_ value: Bool) -> KGCardLinkSummary {
+        KGCardLinkSummary(id: id, cardId: cardId, word: word, kind: kind,
+                          label: label, confidence: confidence, reason: reason,
+                          hidden: value)
+    }
+
     static func pending(id: String, cardId: String, word: String) -> KGCardLinkSummary {
         KGCardLinkSummary(
             id: id, cardId: cardId, word: word,
-            kind: "shares_usage", label: "分析中…", confidence: 0, reason: ""
+            kind: "shares_usage", label: "分析中…", confidence: 0, reason: "",
+            hidden: false
         )
     }
 }
