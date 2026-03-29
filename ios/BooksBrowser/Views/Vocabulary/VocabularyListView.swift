@@ -45,12 +45,14 @@ struct VocabularyListView: View {
     }
 
     var body: some View {
+        let classified = VocabularyEntryPresentation.classifyKnowledgeEntries(in: allEntries, now: Date())
+
         VocabularyListPresenter(
-            state: presenterState,
+            state: presenterState(classified: classified),
             selectedTab: $selectedTab,
             searchText: $searchText
         ) {
-            routedContent
+            routedContent(classified: classified)
         }
         .navigationTitle(notebookName)
         .navigationBarTitleDisplayMode(.large)
@@ -59,18 +61,18 @@ struct VocabularyListView: View {
             isLoggedIn: authManager.isLoggedIn,
             isSyncing: syncCoordinator.phase == .running,
             pendingCount: pendingCount,
-            knowledgeReviewCount: knowledgeReviewCount,
-            knowledgeDueCount: knowledgeDueCount,
+            knowledgeReviewCount: classified.dueCount + classified.unlearnedCount,
+            knowledgeDueCount: classified.dueCount,
             onSync: coordinator.presentSyncView,
-            onStartDueReview: { coordinator.startKnowledgeReview(entries: knowledgeDueEntries) },
-            onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: knowledgeUnlearnedEntries) },
-            onStartAllReview: { coordinator.startKnowledgeReview(entries: knowledgeReviewEntries) },
+            onStartDueReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
+            onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
+            onStartAllReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) },
             onExportCSV: { coordinator.exportCSV(entries: pendingEntries) },
             onExportJSON: { coordinator.exportJSON(entries: pendingEntries) },
             onExportAnki: { coordinator.exportAnki(entries: pendingEntries) },
             hasPendingEntries: !pendingEntries.isEmpty,
-            knowledgeDueEntriesCount: knowledgeDueEntries.count,
-            knowledgeUnlearnedEntriesCount: knowledgeUnlearnedEntries.count
+            knowledgeDueEntriesCount: classified.dueCount,
+            knowledgeUnlearnedEntriesCount: classified.unlearnedCount
         ))
         .modifier(VocabularyListSheets(
             coordinator: coordinator,
