@@ -343,7 +343,7 @@ class ReviewStateEntry(BaseModel):
 
 
 class ReviewStatePushRequest(BaseModel):
-    entries: list[ReviewStateEntry]
+    entries: list[ReviewStateEntry] = Field(max_length=5000)
 
 
 class ReviewStatePushResponse(BaseModel):
@@ -359,7 +359,7 @@ class DailyReviewStatEntry(BaseModel):
 
 
 class DailyReviewStatsPushRequest(BaseModel):
-    entries: list[DailyReviewStatEntry]
+    entries: list[DailyReviewStatEntry] = Field(max_length=5000)
 
 
 class DailyReviewStatsPushResponse(BaseModel):
