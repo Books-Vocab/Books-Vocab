@@ -124,7 +124,8 @@ struct WordDetailSheet: View {
                     kind: link.kind,
                     label: link.kind == "contrasts_with" ? "對比" : "相關",
                     confidence: link.confidence,
-                    reason: link.reason
+                    reason: link.reason,
+                    hidden: false
                 )
                 var updated = entry.graphLinksByKind
                 // Remove placeholder from its temporary group
