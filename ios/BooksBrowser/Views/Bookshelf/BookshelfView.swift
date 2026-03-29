@@ -407,10 +407,14 @@ private struct ICloudProgressBadge: View {
 }
 
 private extension Date {
+    private static let shortFormatter: RelativeDateTimeFormatter = {
+        let f = RelativeDateTimeFormatter()
+        f.unitsStyle = .short
+        return f
+    }()
+
     var relativeShort: String {
-        let formatter = RelativeDateTimeFormatter()
-        formatter.unitsStyle = .short
-        return formatter.localizedString(for: self, relativeTo: Date())
+        Self.shortFormatter.localizedString(for: self, relativeTo: Date())
     }
 }
 
