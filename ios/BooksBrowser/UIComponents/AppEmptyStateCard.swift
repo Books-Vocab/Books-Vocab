@@ -36,7 +36,6 @@ struct AppEmptyStateContent: View {
                 .font(style.iconFont)
                 .foregroundStyle(style.iconColor)
                 .symbolEffect(.bounce, value: symbolBounce)
-                .symbolEffect(.breathe)
 
             Text(title.localized)
                 .font(style.titleFont)

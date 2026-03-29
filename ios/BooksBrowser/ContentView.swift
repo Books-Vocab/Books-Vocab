@@ -28,17 +28,13 @@ struct ContentView: View {
             }
 
             TabView {
-                Tab("書庫".localized, systemImage: "books.vertical") {
-                    BookshelfView()
-                }
-                Tab("單字本".localized, systemImage: "character.book.closed") {
-                    NotebookListView()
-                }
-                Tab("總覽".localized, systemImage: "chart.bar") {
-                    OverviewTab()
-                }
+                BookshelfView()
+                    .tabItem { Label("書庫".localized, systemImage: "books.vertical") }
+                NotebookListView()
+                    .tabItem { Label("單字本".localized, systemImage: "character.book.closed") }
+                OverviewTab()
+                    .tabItem { Label("總覽".localized, systemImage: "chart.bar") }
             }
-            .tabViewStyle(.tabBarOnly)
         }
         .animatePhaseChange(networkMonitor.isConnected)
         .animatePhaseChange(authManager.isDemoMode)
