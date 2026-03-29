@@ -86,9 +86,6 @@ async def test_async_translate_quota_check_blocks_exceeded():
     req = TranslateRequest(word="evoke", context="context")
     user = {"id": "u_test", "config": {}, "record": None}
 
-    def _require_pro_access_noop(u, cap):
-        pass
-
     client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
 
     quota_exceeded = {

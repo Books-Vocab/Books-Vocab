@@ -96,10 +96,6 @@ def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str,
     return subscription
 
 
-def require_pro_access(user: dict[str, Any], capability: str) -> None:
-    """No-op: all features are available to all users. Quota limits differ by tier."""
-    return
-
 
 def append_app_store_event(notifications_file: Path, payload: dict[str, Any]) -> None:
     notifications_file.parent.mkdir(parents=True, exist_ok=True)

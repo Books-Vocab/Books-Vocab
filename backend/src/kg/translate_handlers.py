@@ -21,13 +21,11 @@ async def _safe_translate(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
     label: str,
     logger: Logger | None = None,
     model: str | None = None,
 ):
-    require_pro_access(user, "reader_ai")
     client = gemini_client_factory()
     try:
         kw: dict[str, Any] = {"client": client}
@@ -52,14 +50,12 @@ async def translate_quick_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
     logger: Logger,
     model: str | None = None,
 ) -> QuickTranslateResponse:
     return await _safe_translate(
         run_quick_translate, req, user,
-        require_pro_access=require_pro_access,
         gemini_client_factory=gemini_client_factory,
         label="translate/quick", logger=logger, model=model,
     )
@@ -69,13 +65,11 @@ async def translate_phrase_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
     model: str | None = None,
 ) -> dict[str, str]:
     return await _safe_translate(
         run_phrase_translate, req, user,
-        require_pro_access=require_pro_access,
         gemini_client_factory=gemini_client_factory,
         label="translate/phrase", model=model,
     )
@@ -85,13 +79,11 @@ async def translate_explain_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     gemini_client_factory: Callable[[], Any],
     model: str | None = None,
 ) -> ExplainResponse:
     return await _safe_translate(
         run_explain_translate, req, user,
-        require_pro_access=require_pro_access,
         gemini_client_factory=gemini_client_factory,
         label="translate/explain", model=model,
     )

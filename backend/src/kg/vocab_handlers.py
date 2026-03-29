@@ -44,14 +44,12 @@ def list_vocab_response(
     since: str | None,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> list[Any]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards_store = card_store_factory(user["dir"])
@@ -69,14 +67,12 @@ def lookup_word_response(
     word: str,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     card_response_builder: Callable[[Any, Any, dict[str, Any]], Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -95,13 +91,11 @@ def archive_word_response(
     req: ArchiveWordRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -113,13 +107,11 @@ def move_words_response(
     req: MoveWordsRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, int]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
         validate_notebook_access(notebook_store_factory(user["dir"]), req.to_notebook_id)
@@ -140,13 +132,11 @@ def delete_word_response(
     word: str,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, str]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -158,13 +148,11 @@ def batch_delete_response(
     req: BatchDeleteRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -176,13 +164,11 @@ def batch_archive_response(
     req: BatchArchiveRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -193,12 +179,10 @@ def batch_archive_response(
 def get_graph_links_response(
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     graph_store_factory: Callable[..., Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> list[GraphLinkResponse]:
-    require_pro_access(user, "knowledge_graph")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
@@ -209,7 +193,6 @@ def add_vocab_response(
     entries: list[VocabEntry],
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     embedding_store_factory: Callable[..., Any],
     graph_store_factory: Callable[..., Any],
@@ -217,7 +200,6 @@ def add_vocab_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> VocabAddResponse:
-    require_pro_access(user, "knowledge_sync")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -236,12 +218,10 @@ def push_review_response(
     req: ReviewStatePushRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     logger: Logger,
     notebook_id: str | None = None,
 ) -> ReviewStatePushResponse:
-    require_pro_access(user, "knowledge_sync")
     cards = card_store_factory(user["dir"])
     result = push_review_states(req.entries, cards_store=cards, logger=logger, notebook_id=notebook_id)
     return ReviewStatePushResponse(**result)
@@ -251,11 +231,9 @@ def push_daily_stats_response(
     req: DailyReviewStatsPushRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     daily_stats_store_factory: Callable[[Path], Any],
     logger: Logger,
 ) -> DailyReviewStatsPushResponse:
-    require_pro_access(user, "knowledge_sync")
     store = daily_stats_store_factory(user["dir"])
     result = push_daily_review_stats(req.entries, stats_store=store, logger=logger)
     return DailyReviewStatsPushResponse(**result)
@@ -265,10 +243,8 @@ def pull_daily_stats_response(
     since: str | None,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     daily_stats_store_factory: Callable[[Path], Any],
 ) -> DailyReviewStatsResponse:
-    require_pro_access(user, "knowledge_sync")
     store = daily_stats_store_factory(user["dir"])
     entries = pull_daily_review_stats(since=since, stats_store=store)
     return DailyReviewStatsResponse(entries=entries)
@@ -278,14 +254,12 @@ def create_manual_link_response(
     req: ManualLinkRequest,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     gemini_client_factory: Callable[[], Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> GraphLinkResponse:
-    require_pro_access(user, "knowledge_graph")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -312,13 +286,11 @@ def delete_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    require_pro_access(user, "knowledge_graph")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
