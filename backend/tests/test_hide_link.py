@@ -169,3 +169,192 @@ class TestRejectedMigration:
         # active link should still be there
         assert store.get_link("lk2") is not None
         assert store.link_count() == 1
+
+
+# --- Task 3: Service-layer tests ---
+
+from unittest.mock import MagicMock
+from kg.vocab_service import (
+    hide_graph_link,
+    unhide_graph_link,
+    delete_graph_link,
+    create_manual_link,
+    build_links_by_kind,
+)
+from kg.judge import ManualLinkJudge
+
+
+class FakeCard:
+    def __init__(self, id, content="word", meaning="meaning", is_deleted=False, is_archived=False):
+        self.id = id
+        self.content = content
+        self.meaning = meaning
+        self.is_deleted = is_deleted
+        self.is_archived = is_archived
+
+
+class FakeCardsStore:
+    def __init__(self, cards):
+        self._cards = {c.id: c for c in cards}
+        self.touched = []
+
+    def get(self, card_id):
+        return self._cards.get(card_id)
+
+    def touch(self, card_id):
+        self.touched.append(card_id)
+
+
+def _make_judge(response_json: str):
+    client = MagicMock()
+    choice = MagicMock()
+    choice.message.content = response_json
+    resp = MagicMock()
+    resp.choices = [choice]
+    resp.usage = None
+    client.chat.completions.create.return_value = resp
+    return ManualLinkJudge(client)
+
+
+class TestHideGraphLinkService:
+    def test_hide_sets_status_hidden(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        hide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        found = store.find_link_between("a", "b")
+        assert found.status == "hidden"
+
+    def test_hide_touches_both_cards(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        hide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert "a" in cards.touched and "b" in cards.touched
+
+    def test_hide_nonexistent_raises_not_found(self, store):
+        cards = FakeCardsStore([FakeCard("a")])
+        from kg.exceptions import NotFoundError
+        with pytest.raises(NotFoundError):
+            hide_graph_link(link_id="nonexistent", graph=store, cards_store=cards)
+
+    def test_unhide_sets_status_active(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        unhide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        found = store.find_link_between("a", "b")
+        assert found.status == "active"
+
+    def test_unhide_touches_both_cards(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        unhide_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert "a" in cards.touched and "b" in cards.touched
+
+    def test_delete_hard_deletes_and_blocks(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        delete_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert store.find_link_between("a", "b") is None
+        assert store.is_blocked("a", "b") is True
+
+    def test_delete_touches_both_cards(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards = FakeCardsStore([FakeCard("a"), FakeCard("b")])
+        delete_graph_link(link_id=lk.id, graph=store, cards_store=cards)
+        assert "a" in cards.touched and "b" in cards.touched
+
+
+class TestCreateManualLinkHiddenBranch:
+    def test_create_manual_link_unhides_hidden(self, store):
+        """Hidden link exists -> unhide via LLM, do NOT create new."""
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "original reason")
+        store.hide_link(lk.id)
+        cards = FakeCardsStore([
+            FakeCard("a", content="apple", meaning="蘋果"),
+            FakeCard("b", content="banana", meaning="香蕉"),
+        ])
+        judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
+        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+        assert result.status == "active"
+        assert result.id == lk.id  # same link object
+
+    def test_create_manual_link_unblocks_and_creates(self, store):
+        """Blocked pair -> unblock, call LLM, create new link."""
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hard_delete_link(lk.id)
+        assert store.is_blocked("a", "b") is True
+        cards = FakeCardsStore([
+            FakeCard("a", content="apple", meaning="蘋果"),
+            FakeCard("b", content="banana", meaning="香蕉"),
+        ])
+        judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
+        result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
+        assert result is not None
+        assert store.is_blocked("a", "b") is False
+
+
+class TestBuildLinksIncludesHidden:
+    def test_hidden_links_have_hidden_flag(self, store):
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        cards_by_id = {"a": FakeCard("a", content="word_a"), "b": FakeCard("b", content="word_b")}
+        result = build_links_by_kind(
+            "a", graph=store, cards_by_id=cards_by_id,
+            link_kinds=list(LinkKind),
+            link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
+        )
+        all_links = [l for group in result.values() for l in group]
+        assert len(all_links) == 1
+        assert all_links[0].hidden is True
+
+    def test_active_links_have_hidden_false(self, store):
+        store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        cards_by_id = {"a": FakeCard("a", content="word_a"), "b": FakeCard("b", content="word_b")}
+        result = build_links_by_kind(
+            "a", graph=store, cards_by_id=cards_by_id,
+            link_kinds=list(LinkKind),
+            link_labels={LinkKind.CONTRASTS_WITH: "對比", LinkKind.SHARES_USAGE: "相關"},
+        )
+        all_links = [l for group in result.values() for l in group]
+        assert len(all_links) == 1
+        assert all_links[0].hidden is False
+
+
+# --- Task 3.5: merge_from + delete_word blocked pairs ---
+
+class TestMergeFromBlockedPairs:
+    def test_merge_copies_blocked_pairs(self, tmp_path):
+        src = GraphStore(
+            links_path=tmp_path / "src_links.json",
+            candidates_path=tmp_path / "src_cand.json",
+            blocked_path=tmp_path / "src_blocked.json",
+        )
+        dst = GraphStore(
+            links_path=tmp_path / "dst_links.json",
+            candidates_path=tmp_path / "dst_cand.json",
+            blocked_path=tmp_path / "dst_blocked.json",
+        )
+        lk = src.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        src.hard_delete_link(lk.id)
+        dst.merge_from(src)
+        assert dst.is_blocked("a", "b") is True
+
+
+class TestDeleteWordClearsBlockedPairs:
+    def test_remove_blocked_pairs_for_card(self, store):
+        lk1 = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r1")
+        lk2 = store.add_link("a", "c", LinkKind.SHARES_USAGE, 0.8, "r2")
+        store.hard_delete_link(lk1.id)
+        store.hard_delete_link(lk2.id)
+        assert store.is_blocked("a", "b") and store.is_blocked("a", "c")
+        store.remove_blocked_pairs_for("a")
+        assert not store.is_blocked("a", "b") and not store.is_blocked("a", "c")
+
+    def test_remove_blocked_pairs_preserves_unrelated(self, store):
+        lk1 = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r1")
+        lk2 = store.add_link("c", "d", LinkKind.SHARES_USAGE, 0.8, "r2")
+        store.hard_delete_link(lk1.id)
+        store.hard_delete_link(lk2.id)
+        store.remove_blocked_pairs_for("a")
+        assert store.is_blocked("c", "d") is True
