@@ -587,7 +587,7 @@ def create_manual_link(
         card_b.content, card_b.meaning,
     )
 
-    if existing and existing.status == "rejected":
+    if existing and existing.status == "hidden":
         graph.update_link(
             existing.id,
             status="active",

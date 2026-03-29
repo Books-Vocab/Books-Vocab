@@ -37,7 +37,7 @@ class GraphLink(BaseModel):
     confidence: float
     reason: str
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
-    status: Literal["candidate", "active", "deprecated", "rejected"] = "active"
+    status: Literal["candidate", "active", "deprecated", "hidden"] = "active"
 
 
 class CandidatePair(BaseModel):
@@ -86,6 +86,9 @@ class GraphStore:
         return tuple(sorted([a, b]))  # type: ignore[return-value]
 
     def _load(self) -> None:
+        if self.blocked_path and self.blocked_path.exists():
+            data = json.loads(self.blocked_path.read_text())
+            self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
         if self.links_path.exists():
             data = json.loads(self.links_path.read_text())
             dirty = False
@@ -93,16 +96,21 @@ class GraphStore:
                 if lk.get("kind") in self._RETIRED_KINDS:
                     dirty = True
                     continue
+                # Migrate rejected → blocked
+                if lk.get("status") == "rejected":
+                    dirty = True
+                    self._blocked_pairs.add(
+                        self._normalize_pair(lk["from_id"], lk["to_id"])
+                    )
+                    continue
                 link = GraphLink.model_validate(lk)
                 self._links[link.id] = link
             if dirty:
                 self._save_links()
+                self._save_blocked()
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
-        if self.blocked_path and self.blocked_path.exists():
-            data = json.loads(self.blocked_path.read_text())
-            self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
         self._rebuild_index()
 
     def _save_links(self) -> None:
@@ -184,9 +192,9 @@ class GraphStore:
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
-        """Get all active links involving a card."""
+        """Get all active and hidden links involving a card."""
         link_ids = self._from_index.get(card_id, set()) | self._to_index.get(card_id, set())
-        return [self._links[lid] for lid in link_ids if self._links[lid].status == "active"]
+        return [self._links[lid] for lid in link_ids if self._links[lid].status in ("active", "hidden")]
 
     def _has_link_unlocked(self, id_a: str, id_b: str) -> bool:
         """Check link existence without acquiring the lock (internal use)."""
@@ -195,7 +203,7 @@ class GraphStore:
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
             lk = self._links[lid]
-            if lk.status not in ("active", "rejected"):
+            if lk.status not in ("active", "hidden"):
                 continue
             if (lk.from_id == id_a and lk.to_id == id_b) or (
                 lk.from_id == id_b and lk.to_id == id_a
@@ -208,11 +216,11 @@ class GraphStore:
         return self._has_link_unlocked(id_a, id_b)
 
     def find_link_between(self, id_a: str, id_b: str) -> GraphLink | None:
-        """Find active or rejected link between two cards (bidirectional). Returns None for deprecated/absent."""
+        """Find active or hidden link between two cards (bidirectional). Returns None for deprecated/absent."""
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
             lk = self._links[lid]
-            if lk.status not in ("active", "rejected"):
+            if lk.status not in ("active", "hidden"):
                 continue
             if (lk.from_id == id_a and lk.to_id == id_b) or (
                 lk.from_id == id_b and lk.to_id == id_a
@@ -245,6 +253,24 @@ class GraphStore:
             if lk is None:
                 raise KeyError(link_id)
             lk.status = "rejected"
+            self._save_links()
+
+    def hide_link(self, link_id: str) -> None:
+        """Set link status to hidden. Raises KeyError if not found."""
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            lk.status = "hidden"
+            self._save_links()
+
+    def unhide_link(self, link_id: str) -> None:
+        """Set link status back to active. Raises KeyError if not found."""
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            lk.status = "active"
             self._save_links()
 
     def hard_delete_link(self, link_id: str) -> tuple[str, str]:
