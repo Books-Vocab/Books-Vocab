@@ -42,6 +42,18 @@ struct NotebookListView: View {
     @State private var navigationPath = NavigationPath()
 
     var body: some View {
+        // Pre-compute counts once per render to avoid repeated O(n) traversals
+        let cardCounts = allEntries.reduce(into: [String: Int]()) { dict, entry in
+            dict[entry.notebookId, default: 0] += 1
+        }
+        let now = Date()
+        let dueCounts = allEntries.reduce(into: [String: Int]()) { dict, entry in
+            if entry.nextReviewAt <= now {
+                dict[entry.notebookId, default: 0] += 1
+            }
+        }
+        let totalDueCount = dueCounts.values.reduce(0, +)
+
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 LazyVStack(spacing: 0) {
@@ -239,10 +251,6 @@ struct NotebookListView: View {
 
     // MARK: - Review Helpers
 
-    private var totalDueCount: Int {
-        dueCounts.values.reduce(0, +)
-    }
-
     private var filteredDueEntries: [VocabularyEntry] {
         let now = Date()
         return allEntries.filter {
@@ -257,23 +265,6 @@ struct NotebookListView: View {
         let entries = filteredDueEntries
         guard !entries.isEmpty else { return }
         activeReviewSession = TodayReviewSession(entries: entries)
-    }
-
-    // MARK: - Card Count Helpers (pre-computed dictionaries, O(n) single pass)
-
-    private var cardCounts: [String: Int] {
-        allEntries.reduce(into: [:]) { dict, entry in
-            dict[entry.notebookId, default: 0] += 1
-        }
-    }
-
-    private var dueCounts: [String: Int] {
-        let now = Date()
-        return allEntries.reduce(into: [:]) { dict, entry in
-            if entry.nextReviewAt <= now {
-                dict[entry.notebookId, default: 0] += 1
-            }
-        }
     }
 
     private func setActiveNotebook(_ id: String) {
