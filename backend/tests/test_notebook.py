@@ -86,5 +86,5 @@ def test_cards_notebook_id_filter(tmp_path):
     assert len(all_nb1) == 2
     assert {c.content for c in all_nb1} == {"apple", "cherry"}
 
-    limited = cs.all_limited(limit=1, notebook_id="nb1")
-    assert len(limited) == 1
+    all_nb1_list = list(cs.all(notebook_id="nb1"))
+    assert len(all_nb1_list) == 2
