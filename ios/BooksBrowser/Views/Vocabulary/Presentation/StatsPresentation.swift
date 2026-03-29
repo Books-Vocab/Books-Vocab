@@ -83,12 +83,14 @@ enum StatsPresentation {
             heatmapThresholds = [p25, p50, p75]
         }
 
+        let streakResult = ReviewActivityLog.streaks(records: reviewRecords)
+
         return Summary(
             totalCards: synced.count,
             reviewedToday: ReviewActivityLog.reviewedToday(records: reviewRecords),
             dueToday: forecastMap[todayKey] ?? 0,
-            currentStreak: ReviewActivityLog.currentStreak(records: reviewRecords),
-            longestStreak: ReviewActivityLog.longestStreak(records: reviewRecords),
+            currentStreak: streakResult.current,
+            longestStreak: streakResult.longest,
             activity: activity,
             forecast: forecast,
             heatmapThresholds: heatmapThresholds
