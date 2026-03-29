@@ -360,3 +360,27 @@ class TestDeleteWordClearsBlockedPairs:
         store.hard_delete_link(lk2.id)
         store.remove_blocked_pairs_for("a")
         assert store.is_blocked("c", "d") is True
+
+
+# --- Task 4: HTTP endpoint regression tests ---
+
+class TestHideUnhideEndpointHTTP:
+    """Regression: _require_pro_access was deleted in #269 but re-referenced in #270."""
+
+    def test_hide_endpoint_returns_404_not_500(self, isolated_api):
+        # A non-existent link_id should return 404 (NotFoundError),
+        # NOT 500 (NameError from undefined _require_pro_access).
+        r = isolated_api.client.patch(
+            "/api/graph/links/nonexistent-link-id/hide",
+            params={"notebook_id": "default"},
+            headers=isolated_api.headers,
+        )
+        assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
+
+    def test_unhide_endpoint_returns_404_not_500(self, isolated_api):
+        r = isolated_api.client.patch(
+            "/api/graph/links/nonexistent-link-id/unhide",
+            params={"notebook_id": "default"},
+            headers=isolated_api.headers,
+        )
+        assert r.status_code == 404, f"Expected 404, got {r.status_code}: {r.text}"
