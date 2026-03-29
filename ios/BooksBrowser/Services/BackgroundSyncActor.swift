@@ -317,7 +317,7 @@ actor BackgroundSyncActor {
     // MARK: - Merge Key Helper
 
     private func mergeKey(_ word: String, notebookId: String) -> String {
-        "\(word.precomposedStringWithCanonicalMapping.lowercased())|\(notebookId)"
+        "\(word.precomposedStringWithCanonicalMapping.trimmingCharacters(in: .whitespaces).lowercased())|\(notebookId)"
     }
 
     // MARK: - Review State Merge Helper
