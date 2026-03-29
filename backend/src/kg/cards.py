@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-import unicodedata
 import uuid
 from collections.abc import Iterator
 from datetime import UTC, datetime, timedelta
@@ -14,6 +13,8 @@ from sqlalchemy import JSON, Column
 from sqlalchemy.exc import IntegrityError, OperationalError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
+
+from .text_utils import normalize_nfc, normalize_nfc_lower
 
 logger = logging.getLogger(__name__)
 
@@ -139,7 +140,7 @@ class CardStore:
         true safety net — if a duplicate slips through, IntegrityError
         catches it and we return the existing card.
         """
-        norm = unicodedata.normalize("NFC", content).strip()
+        norm = normalize_nfc(content)
         with Session(self.engine) as session:
             row = session.connection().exec_driver_sql(
                 "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
@@ -192,7 +193,7 @@ class CardStore:
         keepers_to_bump: list[str] = []
 
         for card in cards:
-            key = unicodedata.normalize("NFC", card.content).strip().lower()
+            key = normalize_nfc_lower(card.content)
             if key in seen:
                 keeper = seen[key]
                 if (card.review_count, -card.created_at.timestamp()) > (
@@ -209,7 +210,7 @@ class CardStore:
             # Collect keeper IDs that have duplicates removed
             deleted_keys = set()
             for card in to_delete:
-                key = unicodedata.normalize("NFC", card.content).strip().lower()
+                key = normalize_nfc_lower(card.content)
                 deleted_keys.add(key)
             for key in deleted_keys:
                 keepers_to_bump.append(seen[key].id)
@@ -247,8 +248,7 @@ class CardStore:
 
         When notebook_id is given, results are scoped to that notebook.
         """
-        import unicodedata
-        norm = unicodedata.normalize("NFC", content).strip()
+        norm = normalize_nfc(content)
         with Session(self.engine) as session:
             # 1. Exact match — uses index
             stmt = select(Card).where(Card.content == norm, Card.is_deleted.is_(False))
@@ -273,7 +273,7 @@ class CardStore:
                 fallback_stmt = fallback_stmt.where(Card.notebook_id == notebook_id)
             norm_lower = norm.lower()
             for card in session.exec(fallback_stmt).all():
-                if unicodedata.normalize("NFC", card.content).strip().lower() == norm_lower:
+                if normalize_nfc_lower(card.content) == norm_lower:
                     return card
             return None
 
@@ -358,7 +358,7 @@ class CardStore:
         moved = 0
         with Session(self.engine) as session:
             for word in words:
-                norm = unicodedata.normalize("NFC", word).strip()
+                norm = normalize_nfc(word)
                 row = session.connection().exec_driver_sql(
                     "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
                     "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
