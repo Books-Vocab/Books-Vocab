@@ -52,12 +52,14 @@ class CandidatePair(BaseModel):
 class GraphStore:
     """JSON-based graph storage."""
 
-    def __init__(self, links_path: Path, candidates_path: Path) -> None:
+    def __init__(self, links_path: Path, candidates_path: Path, blocked_path: Path | None = None) -> None:
         self.links_path = links_path
         self.candidates_path = candidates_path
+        self.blocked_path = blocked_path
         self._lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
         self._candidates: list[CandidatePair] = []
+        self._blocked_pairs: set[tuple[str, str]] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id → set of link_ids
         self._to_index: dict[str, set[str]] = {}    # card_id → set of link_ids
         self._load()
@@ -79,6 +81,10 @@ class GraphStore:
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: set[str] = {"confusable"}
 
+    @staticmethod
+    def _normalize_pair(a: str, b: str) -> tuple[str, str]:
+        return tuple(sorted([a, b]))  # type: ignore[return-value]
+
     def _load(self) -> None:
         if self.links_path.exists():
             data = json.loads(self.links_path.read_text())
@@ -94,6 +100,9 @@ class GraphStore:
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
+        if self.blocked_path and self.blocked_path.exists():
+            data = json.loads(self.blocked_path.read_text())
+            self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
         self._rebuild_index()
 
     def _save_links(self) -> None:
@@ -115,6 +124,18 @@ class GraphStore:
             bak_path = self.candidates_path.with_suffix(".json.bak")
             self.candidates_path.replace(bak_path)
         tmp_path.replace(self.candidates_path)
+
+    def _save_blocked(self) -> None:
+        if self.blocked_path is None:
+            return
+        self.blocked_path.parent.mkdir(parents=True, exist_ok=True)
+        data = [list(pair) for pair in self._blocked_pairs]
+        tmp_path = self.blocked_path.with_suffix(".json.tmp")
+        tmp_path.write_text(json.dumps(data, ensure_ascii=False))
+        if self.blocked_path.exists():
+            bak_path = self.blocked_path.with_suffix(".json.bak")
+            self.blocked_path.replace(bak_path)
+        tmp_path.replace(self.blocked_path)
 
     # --- Links ---
 
@@ -169,6 +190,8 @@ class GraphStore:
 
     def _has_link_unlocked(self, id_a: str, id_b: str) -> bool:
         """Check link existence without acquiring the lock (internal use)."""
+        if self._normalize_pair(id_a, id_b) in self._blocked_pairs:
+            return True
         candidates = self._from_index.get(id_a, set()) | self._to_index.get(id_a, set())
         for lid in candidates:
             lk = self._links[lid]
@@ -223,6 +246,39 @@ class GraphStore:
                 raise KeyError(link_id)
             lk.status = "rejected"
             self._save_links()
+
+    def hard_delete_link(self, link_id: str) -> tuple[str, str]:
+        """Delete a link and add the pair to blocked list. Returns (from_id, to_id)."""
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            from_id, to_id = lk.from_id, lk.to_id
+            self._unindex_link(lk)
+            del self._links[link_id]
+            self._blocked_pairs.add(self._normalize_pair(from_id, to_id))
+            self._save_links()
+            self._save_blocked()
+        return (from_id, to_id)
+
+    def is_blocked(self, from_id: str, to_id: str) -> bool:
+        """Check if a pair is blocked."""
+        return self._normalize_pair(from_id, to_id) in self._blocked_pairs
+
+    def remove_blocked_pairs_for(self, card_id: str) -> None:
+        """Remove all blocked pairs involving a card."""
+        with self._lock:
+            self._blocked_pairs = {
+                pair for pair in self._blocked_pairs
+                if card_id not in pair
+            }
+            self._save_blocked()
+
+    def unblock_pair(self, from_id: str, to_id: str) -> None:
+        """Remove a specific blocked pair."""
+        with self._lock:
+            self._blocked_pairs.discard(self._normalize_pair(from_id, to_id))
+            self._save_blocked()
 
     def all_links(self) -> Iterator[GraphLink]:
         yield from self._links.values()

@@ -93,11 +93,12 @@ def _resolve_notebook_paths(
 
 def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
     key = f"graph:{user_dir}:{notebook_id}"
-    links_path, candidates_path = _resolve_notebook_paths(user_dir, notebook_id, [
+    links_path, candidates_path, blocked_path = _resolve_notebook_paths(user_dir, notebook_id, [
         ("graph_{nb}.json", "graph.json"),
         ("candidates_{nb}.json", "candidates.json"),
+        ("blocked_{nb}.json", "blocked.json"),
     ])
-    return _get_cached(key, lambda: GraphStore(links_path, candidates_path))
+    return _get_cached(key, lambda: GraphStore(links_path, candidates_path, blocked_path))
 
 
 def create_notebook_store(user_dir: Path) -> NotebookStore:
