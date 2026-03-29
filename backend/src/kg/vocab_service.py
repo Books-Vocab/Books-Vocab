@@ -247,14 +247,12 @@ def lookup_vocab_word(word: str, *, cards_store: Any, graph: Any, card_response_
 
     # Only fetch the target card + its graph-linked neighbours instead of full table.
     cards_by_id: dict[str, Any] = {card.id: card}
-    get_links = getattr(graph, "get_links_for", None)
-    if get_links is not None:
-        for link in get_links(card.id):
-            linked_id = link.from_id if link.to_id == card.id else link.to_id
-            if linked_id not in cards_by_id:
-                linked_card = cards_store.get(linked_id)
-                if linked_card:
-                    cards_by_id[linked_id] = linked_card
+    for link in graph.get_links_for(card.id):
+        linked_id = link.from_id if link.to_id == card.id else link.to_id
+        if linked_id not in cards_by_id:
+            linked_card = cards_store.get(linked_id)
+            if linked_card:
+                cards_by_id[linked_id] = linked_card
 
     return card_response_builder(card, graph, cards_by_id)
 
