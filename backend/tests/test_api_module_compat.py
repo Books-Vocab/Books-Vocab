@@ -19,7 +19,6 @@ def test_api_module_exposes_expected_surface():
         "_default_subscription_payload",
         "_build_entitlements_response",
         "_current_subscription_record",
-        "_require_pro_access",
         "_resolve_user_id_from_subscription_index",
         "_write_subscription_snapshot",
         "_notification_status",
