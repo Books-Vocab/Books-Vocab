@@ -47,8 +47,28 @@ enum ReviewActivityLog {
         return result
     }
 
-    static func currentStreak(records: [ReviewRecord]) -> Int {
+    /// Compute both streaks in a single pass over the records (one `groupByDay`).
+    static func streaks(records: [ReviewRecord]) -> (current: Int, longest: Int) {
         let grouped = groupByDay(records)
+        return (
+            current: computeCurrentStreak(grouped: grouped),
+            longest: computeLongestStreak(grouped: grouped)
+        )
+    }
+
+    // Convenience — kept for backward compatibility.
+    static func currentStreak(records: [ReviewRecord]) -> Int {
+        computeCurrentStreak(grouped: groupByDay(records))
+    }
+
+    // Convenience — kept for backward compatibility.
+    static func longestStreak(records: [ReviewRecord]) -> Int {
+        computeLongestStreak(grouped: groupByDay(records))
+    }
+
+    // MARK: - Streak internals
+
+    private static func computeCurrentStreak(grouped: [String: Int]) -> Int {
         let today = Date()
         var streak = 0
         for offset in 0... {
@@ -64,8 +84,7 @@ enum ReviewActivityLog {
         return streak
     }
 
-    static func longestStreak(records: [ReviewRecord]) -> Int {
-        let grouped = groupByDay(records)
+    private static func computeLongestStreak(grouped: [String: Int]) -> Int {
         guard !grouped.isEmpty else { return 0 }
 
         let sortedDays = grouped.keys.sorted()
