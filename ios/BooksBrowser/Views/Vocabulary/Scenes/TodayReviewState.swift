@@ -41,9 +41,19 @@ final class TodayReviewState {
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry]) {
         let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
         queue = ordered
-        preparedCardCache = Self.buildPreparedCardCache(from: ordered)
+        // Build only the first card synchronously for instant display
+        if let first = ordered.first {
+            preparedCardCache = Self.buildPreparedCardCache(from: [first])
+        }
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
         AppAnalytics.track(.reviewSessionStarted(cardCount: ordered.count))
+        // Build remaining cards asynchronously to avoid blocking main thread
+        if ordered.count > 1 {
+            Task { @MainActor in
+                let fullCache = Self.buildPreparedCardCache(from: ordered)
+                self.preparedCardCache = fullCache
+            }
+        }
     }
 
     // MARK: - Computed (State Projection)
@@ -78,13 +88,24 @@ final class TodayReviewState {
 
     private var currentCardState: TodayReviewPresenterState.CurrentCard? {
         guard let current = currentEntry else { return nil }
-        return preparedCardCache[current.id]
+        return cachedOrBuildCard(for: current)
     }
 
     private var nextCardState: TodayReviewPresenterState.CurrentCard? {
         let nextIndex = currentIndex + 1
         guard nextIndex < queue.count else { return nil }
-        return preparedCardCache[queue[nextIndex].id]
+        return cachedOrBuildCard(for: queue[nextIndex])
+    }
+
+    /// Fallback: build on-demand if async cache hasn't completed yet.
+    private func cachedOrBuildCard(for entry: VocabularyEntry) -> TodayReviewPresenterState.CurrentCard? {
+        if let cached = preparedCardCache[entry.id] { return cached }
+        let built = Self.buildPreparedCardCache(from: [entry])
+        if let card = built[entry.id] {
+            preparedCardCache[entry.id] = card
+            return card
+        }
+        return nil
     }
 
     // MARK: - Actions

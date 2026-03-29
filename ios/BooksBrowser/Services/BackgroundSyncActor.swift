@@ -257,10 +257,17 @@ actor BackgroundSyncActor {
         let descriptor = FetchDescriptor<ReviewRecord>()
         let allRecords = try modelContext.fetch(descriptor)
 
-        // Count local records per day
+        // Pre-build grouped counts per day (O(N) single pass)
         var localDayCounts: [String: Int] = [:]
+        var localRememberedCounts: [String: Int] = [:]
+        var localForgotCounts: [String: Int] = [:]
         for record in allRecords {
             localDayCounts[record.dayKey, default: 0] += 1
+            if record.feedback == 1 {
+                localRememberedCounts[record.dayKey, default: 0] += 1
+            } else {
+                localForgotCounts[record.dayKey, default: 0] += 1
+            }
         }
 
         var inserted = 0
@@ -279,8 +286,8 @@ actor BackgroundSyncActor {
             // Need to create (total - localCount) placeholder records
             let deficit = total - localCount
             // Distribute: fill remembered first, then forgot
-            let localRemembered = allRecords.filter { $0.dayKey == dayKey && $0.feedback == 1 }.count
-            let localForgot = allRecords.filter { $0.dayKey == dayKey && $0.feedback == 0 }.count
+            let localRemembered = localRememberedCounts[dayKey] ?? 0
+            let localForgot = localForgotCounts[dayKey] ?? 0
             let needRemembered = max(0, remembered - localRemembered)
             let needForgot = max(0, forgot - localForgot)
             let toCreate = min(deficit, needRemembered + needForgot)
