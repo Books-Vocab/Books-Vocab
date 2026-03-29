@@ -3,9 +3,6 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-import pytest
-
-from kg.cards import CardStore
 from kg.vocab_service import list_vocab_cards
 
 
@@ -35,10 +32,6 @@ class _FakeCard:
 class _FakeCardsStore:
     def __init__(self, cards):
         self._cards = list(cards)
-
-    def all_limited(self, limit: int = 5000, include_deleted: bool = False, notebook_id: str | None = None):
-        cards = [c for c in self._cards if include_deleted or not c.is_deleted]
-        return cards[:limit]
 
     def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
@@ -78,46 +71,3 @@ def test_list_vocab_cards_with_since_returns_modified():
         card_response_builder=_card_builder,
     )
     assert len(result) == 5  # get_modified_since returns all 5
-
-
-# ---------------------------------------------------------------------------
-# Tests: CardStore.all_limited with real SQLite
-# ---------------------------------------------------------------------------
-
-@pytest.fixture()
-def store(tmp_path):
-    return CardStore(path=tmp_path / "cards.db")
-
-
-def test_all_limited_respects_limit(store):
-    for i in range(10):
-        store.add(content=f"word{i}", meaning="m")
-    result = store.all_limited(limit=3)
-    assert len(result) == 3
-
-
-def test_all_limited_default_limit_allows_all_under_5000(store):
-    for i in range(20):
-        store.add(content=f"word{i}", meaning="m")
-    result = store.all_limited()
-    assert len(result) == 20
-
-
-def test_all_limited_excludes_deleted_by_default(store):
-    c1 = store.add(content="evoke", meaning="bring to mind")
-    store.add(content="lucid", meaning="clear")
-    store.delete(c1.id)
-    result = store.all_limited()
-    ids = [c.id for c in result]
-    assert c1.id not in ids
-    assert len(result) == 1
-
-
-def test_all_limited_orders_by_updated_at_desc(store):
-    c1 = store.add(content="alpha", meaning="first")
-    c2 = store.add(content="beta", meaning="second")
-    # update alpha so it has a newer updated_at
-    store.update(c1.id, meaning="first updated")
-    result = store.all_limited()
-    assert result[0].content == "alpha"
-    assert result[1].content == "beta"
