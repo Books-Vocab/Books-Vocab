@@ -9,7 +9,7 @@ from collections.abc import Iterator
 from datetime import UTC, datetime
 from enum import StrEnum
 from pathlib import Path
-from typing import Literal
+from typing import Any, Literal
 
 from pydantic import BaseModel, Field
 
@@ -195,6 +195,24 @@ class GraphStore:
             ):
                 return lk
         return None
+
+    def get_link(self, link_id: str) -> GraphLink | None:
+        """Return a link by ID, or None if not found."""
+        return self._links.get(link_id)
+
+    def update_link(self, link_id: str, **attrs: Any) -> GraphLink:
+        """Update attributes of an existing link and persist."""
+        ALLOWED = {"status", "kind", "confidence", "reason"}
+        with self._lock:
+            lk = self._links.get(link_id)
+            if lk is None:
+                raise KeyError(link_id)
+            for key, value in attrs.items():
+                if key not in ALLOWED:
+                    raise ValueError(f"Cannot update attribute: {key}")
+                setattr(lk, key, value)
+            self._save_links()
+        return lk
 
     def reject_link(self, link_id: str) -> None:
         """Set link status to rejected. Raises KeyError if not found."""

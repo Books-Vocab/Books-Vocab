@@ -590,11 +590,13 @@ def create_manual_link(
     )
 
     if existing and existing.status == "rejected":
-        existing.status = "active"
-        existing.kind = LinkKind(judgement.link)
-        existing.confidence = 1.0
-        existing.reason = judgement.reason
-        graph._save_links()
+        graph.update_link(
+            existing.id,
+            status="active",
+            kind=LinkKind(judgement.link),
+            confidence=1.0,
+            reason=judgement.reason,
+        )
         link = existing
     else:
         link = graph.add_link(
@@ -621,6 +623,6 @@ def reject_graph_link(
     except KeyError:
         raise NotFoundError("Link", link_id)
 
-    lk = graph._links[link_id]
+    lk = graph.get_link(link_id)
     cards_store.touch(lk.from_id)
     cards_store.touch(lk.to_id)
