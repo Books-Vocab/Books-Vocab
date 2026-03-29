@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 
 import jwt as pyjwt
+import pytest
 
 from kg.auth_service import create_jwt_token, resolve_and_link_user
 
@@ -249,8 +250,5 @@ def test_jwt_token_expiry_zero_is_immediately_expired():
         jwt_algorithm="HS256",
         jwt_expiry_minutes=0,
     )
-    try:
+    with pytest.raises(pyjwt.ExpiredSignatureError):
         pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])
-        assert False, "Expected ExpiredSignatureError"
-    except pyjwt.ExpiredSignatureError:
-        pass
