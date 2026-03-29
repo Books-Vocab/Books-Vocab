@@ -21,7 +21,6 @@
 | **音標** | 自動 | IPA 發音 | 0（免費字典 API）|
 | **Phase 2** | 手動按 `▼` | 語境解釋（1-2句） | 按需觸發 |
 
-- **雙引擎**：支援 **Gemini API**（雲端）與 **Apple Intelligence / FoundationModels**（端側，iOS 26+）可在設定中切換
 - 已加入生詞庫的單字**直接從本地讀取**，零 API 呼叫
 
 ### 📝 離線優先生詞庫（Offline-First）
@@ -38,7 +37,6 @@
 - **孤兒清理**：遠端已物理刪除的卡片，本地在全量同步時會自動移除，保持雙向一致
 
 ### 🍎 Apple 系統整合 & 多帳戶認證
-- **App Intents**：支援 Siri 與 Visual Intelligence（iOS 26+）直接將選取的單字加入生字庫
 - **Google Sign-In**：支援 Google 帳戶登入 & 多設備無縫切換
 - **Guest Mode**：未登入時仍可查詞與保存至「待收錄」，支援離線優先體驗
 - **多帳戶隔離**：每個帳戶的 SwiftData 與 KG 伺服器資料完全隔離
@@ -63,11 +61,10 @@ BooksBrowser/
 │   └── SharedTypes.swift       # 共用型別（KGCard 等）
 │
 ├── Services/
-│   ├── TranslationService.swift   # AI 翻譯（Gemini API + Apple Intelligence 雙引擎）
+│   ├── TranslationService.swift   # AI 翻譯（後端 API）
 │   ├── KGService.swift            # KG 伺服器通訊（health check / batch add / background pipeline / pull & merge）
 │   ├── DictionaryService.swift    # Free Dictionary API（IPA 音標）
-│   ├── SpeechService.swift        # 單字朗讀（AVSpeechSynthesizer）
-│   └── BooksBrowserAppIntents.swift # App Intents（Siri / Visual Intelligence 整合）
+│   └── SpeechService.swift        # 單字朗讀（AVSpeechSynthesizer）
 │
 ├── Views/
 │   ├── Bookshelf/
@@ -98,7 +95,6 @@ BooksBrowser/
 |------|------|
 | [Readium Swift Toolkit](https://github.com/nicegamer7/readium-swift-toolkit) (v3.7.0) | EPUB 解析與排版 |
 | Gemini API (`gemini-flash-lite-latest`) | 雲端 AI 翻譯（低 Token 成本）|
-| Apple FoundationModels (iOS 26+) | 端側 Apple Intelligence 翻譯 |
 | [Free Dictionary API](https://dictionaryapi.dev/) | IPA 音標（免費，零 Token）|
 | KG FastAPI Server（自架） | 知識圖譜、雲端同步與背景處理後端 |
 
@@ -132,14 +128,8 @@ open BooksBrowser.xcodeproj
 
 ### 4. 設定 AI 翻譯引擎
 
-**選項 A — Gemini（推薦，需 API Key）**
 - 前往 [Google AI Studio](https://aistudio.google.com/) 取得免費 API Key
 - App → 設定 → 輸入 Gemini API Key
-- 此引擎在後端伺服器與前端均可使用
-
-**選項 B — Apple Intelligence（端側，iOS 26+，推薦）**
-- 確認裝置已啟用並下載 Apple Intelligence 語言模型
-- App → 設定 → 切換 AI 引擎為 `Apple Intelligence`（無需 API Key）
 
 ### 5. （可選）連線 KG 伺服器與啟動雙向同步
 - App → 設定 → 輸入 KG 伺服器 URL（預設 `http://localhost:8000`）
@@ -152,7 +142,7 @@ open BooksBrowser.xcodeproj
 
 | 項目 | 需求 |
 |------|------|
-| iOS | 17.0+（Apple Intelligence 功能需 iOS 26+）|
+| iOS | 17.0+ |
 | Xcode | 16+ |
 | Swift | 6 |
 
