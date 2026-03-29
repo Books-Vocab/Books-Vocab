@@ -130,7 +130,11 @@ enum CardRichTextRenderer {
             return cached
         }
         if truncationCache.count >= cacheCapacity {
-            truncationCache.removeAll(keepingCapacity: true)
+            // Evict half instead of all to avoid cliff-edge cache miss storm
+            let keysToRemove = Array(truncationCache.keys.prefix(cacheCapacity / 2))
+            for key in keysToRemove {
+                truncationCache.removeValue(forKey: key)
+            }
         }
         let result = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
         truncationCache[key] = result

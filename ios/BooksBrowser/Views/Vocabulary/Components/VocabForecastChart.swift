@@ -170,6 +170,6 @@ struct VocabForecastChart: View {
                     .shadow(color: vocabSkin.palette.shadow, radius: 2, y: 1)
             )
             .offset(x: xOffset, y: -(chartHeight + labelHeight + vocabSkin.spacing.inlineGap))
-            .transition(.opacity)
+            .transition(.overlayFade)
     }
 }
