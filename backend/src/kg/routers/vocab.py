@@ -221,7 +221,7 @@ def hide_graph_link(
     user: dict = Depends(get_current_user),
 ):
     hide_graph_link_response(
-        link_id, user, require_pro_access=_require_pro_access,
+        link_id, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store, notebook_id=notebook_id,
     )
@@ -234,7 +234,7 @@ def unhide_graph_link(
     user: dict = Depends(get_current_user),
 ):
     unhide_graph_link_response(
-        link_id, user, require_pro_access=_require_pro_access,
+        link_id, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store, notebook_id=notebook_id,
     )
