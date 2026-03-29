@@ -53,7 +53,7 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
         cards = CardStore(cards_db_path)
         graph = GraphStore(graph_path, candidates_path)
 
-        active_links = [lk for lk in graph._links.values() if lk.status == "active"]
+        active_links = [lk for lk in graph.all_links() if lk.status == "active"]
         if not active_links:
             continue
 
@@ -101,7 +101,7 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
                     continue
 
                 old_reason = link.reason
-                link.reason = new_reason
+                graph.update_link(link.id, reason=new_reason)
                 total_updated += 1
                 logger.info("    %s <-> %s: %s -> %s",
                             card_a.content, card_b.content,
@@ -110,8 +110,6 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
             except Exception as exc:
                 logger.error("    Link %s failed: %s", link.id, exc)
                 continue
-
-        graph._save_links()
 
         # Touch all cards involved in active links so incremental sync picks them up
         touched_ids = set()
