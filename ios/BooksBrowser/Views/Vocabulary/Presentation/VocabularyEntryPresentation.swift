@@ -5,12 +5,6 @@ enum VocabularyEntryPresentation {
         entries.filter(\.shouldUploadOnNextSync)
     }
 
-    static func syncedKnowledgeEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
-        entries
-            .filter(\.shouldAppearInKnowledgeList)
-            .sorted { compareKnowledgeEntries($0, $1, now: now) }
-    }
-
     static func filteredPendingEntries(
         in entries: [VocabularyEntry],
         searchText: String
@@ -58,29 +52,6 @@ enum VocabularyEntryPresentation {
             $0.word.localizedCaseInsensitiveContains(searchText) ||
             $0.translation.localizedCaseInsensitiveContains(searchText)
         }
-    }
-
-    static func knowledgeReviewEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries, now: now).filter {
-            let state = $0.reviewState(at: now)
-            return state == .due || state == .unlearned
-        }
-    }
-
-    static func knowledgeDueEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries, now: now).filter { $0.reviewState(at: now) == .due }
-    }
-
-    static func knowledgeUnlearnedEntries(in entries: [VocabularyEntry], now: Date = Date()) -> [VocabularyEntry] {
-        syncedKnowledgeEntries(in: entries, now: now).filter { $0.reviewState(at: now) == .unlearned }
-    }
-
-    static func countKnowledgeEntries(
-        in entries: [VocabularyEntry],
-        reviewState: VocabularyReviewState,
-        now: Date = Date()
-    ) -> Int {
-        entries.count { $0.shouldAppearInKnowledgeList && $0.reviewState(at: now) == reviewState }
     }
 
     /// Single-pass partition of knowledge entries into review-state buckets.

@@ -7,16 +7,17 @@ import SwiftUI
 
 extension VocabularyListView {
 
-    var presenterState: VocabularyListPresenterState {
+    func presenterState(classified: VocabularyEntryPresentation.ClassifiedResult) -> VocabularyListPresenterState {
         .init(
-            tabOptions: tabOptions,
+            tabOptions: tabOptions(classified: classified),
             showsSearchField: showsSearchField,
             searchPrompt: selectedTab == 0 ? "搜尋待收錄單字".localized : "搜尋單字".localized
         )
     }
 
-    var pendingPresenterState: PendingVocabPresenterState {
-        PendingVocabPresenterState(
+    func pendingPresenterState(classified: VocabularyEntryPresentation.ClassifiedResult) -> PendingVocabPresenterState {
+        let syncedCount = classified.dueCount + classified.unlearnedCount + classified.reviewedCount
+        return PendingVocabPresenterState(
             pendingCount: filteredPendingEntries.count,
             rows: filteredPendingEntries.map { entry in
                 .init(
@@ -26,8 +27,8 @@ extension VocabularyListView {
                     actionTone: entry.syncAction == .delete ? .secondary : .tertiary
                 )
             },
-            knowledgeCount: syncedKnowledgeEntries.count,
-            dueCount: knowledgeDueCount
+            knowledgeCount: syncedCount,
+            dueCount: classified.dueCount
         )
     }
 
@@ -43,45 +44,14 @@ extension VocabularyListView {
         selectedTab == 0 || (selectedTab == 1 && authManager.isLoggedIn)
     }
 
-    /// Single-pass classification of all knowledge entries into review-state buckets.
-    var classifiedKnowledge: VocabularyEntryPresentation.ClassifiedResult {
-        VocabularyEntryPresentation.classifyKnowledgeEntries(in: allEntries, now: Date())
-    }
-
-    var syncedKnowledgeEntries: [VocabularyEntry] {
-        let c = classifiedKnowledge
-        return c.dueBucket + c.unlearnedBucket + c.reviewedBucket
-    }
-
-    var knowledgeReviewEntries: [VocabularyEntry] {
-        let c = classifiedKnowledge
-        return c.dueBucket + c.unlearnedBucket
-    }
-
-    var knowledgeReviewCount: Int {
-        let c = classifiedKnowledge
-        return c.dueCount + c.unlearnedCount
-    }
-
-    var knowledgeDueEntries: [VocabularyEntry] {
-        classifiedKnowledge.dueBucket
-    }
-
-    var knowledgeDueCount: Int {
-        classifiedKnowledge.dueCount
-    }
-
-    var knowledgeUnlearnedEntries: [VocabularyEntry] {
-        classifiedKnowledge.unlearnedBucket
-    }
-
-    var tabOptions: [VocabTabOption<Int>] {
-        [
+    func tabOptions(classified: VocabularyEntryPresentation.ClassifiedResult) -> [VocabTabOption<Int>] {
+        let syncedCount = classified.dueCount + classified.unlearnedCount + classified.reviewedCount
+        return [
             .init(id: 0, title: "待收錄".localized, count: pendingCount, systemImage: "tray"),
             .init(
                 id: 1,
                 title: "已收錄".localized,
-                count: syncedKnowledgeEntries.count,
+                count: syncedCount,
                 systemImage: "books.vertical"
             ),
         ]
@@ -114,11 +84,11 @@ extension VocabularyListView {
     // MARK: - Routed Content
 
     @ViewBuilder
-    var routedContent: some View {
+    func routedContent(classified: VocabularyEntryPresentation.ClassifiedResult) -> some View {
         Group {
             if selectedTab == 0 {
                 PendingVocabPresenter(
-                    state: pendingPresenterState,
+                    state: pendingPresenterState(classified: classified),
                     onRowTapped: handlePendingRowTap,
                     onActionTapped: handlePendingActionTap,
                     onSwitchToKnowledge: switchToKnowledgeTab

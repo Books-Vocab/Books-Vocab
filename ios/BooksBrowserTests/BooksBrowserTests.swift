@@ -168,7 +168,9 @@ struct BooksBrowserTests {
         let entries = [pendingAdd, synced, pendingDelete, failedAdd]
 
         #expect(VocabularyEntryPresentation.pendingEntries(in: entries).map(\.word).sorted() == ["evoke", "obsolete", "resilient"])
-        #expect(VocabularyEntryPresentation.syncedKnowledgeEntries(in: entries).map(\.word) == ["lucid"])
+        let classified = VocabularyEntryPresentation.classifyKnowledgeEntries(in: entries, now: Date())
+        let allSynced = classified.dueBucket + classified.unlearnedBucket + classified.reviewedBucket
+        #expect(allSynced.map(\.word) == ["lucid"])
     }
 
     private func makeSnapshot(
