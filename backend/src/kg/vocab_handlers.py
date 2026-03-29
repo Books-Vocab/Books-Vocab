@@ -304,13 +304,11 @@ def hide_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    require_pro_access(user, "knowledge_graph")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
@@ -322,13 +320,11 @@ def unhide_graph_link_response(
     link_id: str,
     user: dict[str, Any],
     *,
-    require_pro_access: Callable[[dict[str, Any], str], None],
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    require_pro_access(user, "knowledge_graph")
     if notebook_id is not None and notebook_store_factory is not None:
         validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
     cards = card_store_factory(user["dir"])
