@@ -217,7 +217,7 @@ struct BookshelfView: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .glassEffect(.regular, in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
         }
     }
 
@@ -518,7 +518,7 @@ private struct BookshelfLoadingPreview: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .glassEffect(.regular, in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
         }
     }
 }

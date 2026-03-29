@@ -33,7 +33,7 @@ struct VocabularyListToolbar: ViewModifier {
                             systemImage: "arrow.triangle.2.circlepath",
                             badge: pendingCount > 0 ? "\(pendingCount)" : nil
                         )
-                        .symbolEffect(.rotate, options: .repeating, isActive: isSyncing)
+                        .symbolEffect(.pulse, options: .repeating, isActive: isSyncing)
                     }
                     .accessibilityLabel("同步詞彙".localized)
                 }
