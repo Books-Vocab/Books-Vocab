@@ -32,7 +32,7 @@ actor BackgroundSyncActor {
         // correctly handle same word in different notebooks.
         var localDict = [String: VocabularyEntry]()
         for entry in localEntries {
-            let key = "\(entry.word.lowercased())|\(entry.notebookId)"
+            let key = mergeKey(entry.word, notebookId: entry.notebookId)
             localDict[key] = entry
         }
 
@@ -46,7 +46,7 @@ actor BackgroundSyncActor {
                 progress(L10n.string("同步最新卡片..."), index, totalCards)
             }
             let cardNotebookId = card.notebookId ?? notebookId
-            let mergeKey = "\(card.content.lowercased())|\(cardNotebookId)"
+            let mergeKey = mergeKey(card.content, notebookId: cardNotebookId)
             fetchedCardKeys.insert(mergeKey)
 
             if let existingEntry = localDict[mergeKey] {
@@ -119,20 +119,28 @@ actor BackgroundSyncActor {
             let localSyncedCount = localEntries.filter { $0.shouldAppearInKnowledgeList }.count
             let serverReturnedCount = fetchedCards.count
 
-            // Safety guard: if server returned suspiciously few cards compared to local
-            // (e.g. due to server-side truncation), skip orphan cleanup to prevent data loss.
-            if localSyncedCount > 0 && serverReturnedCount < localSyncedCount / 2 {
-                AppLog.sync.warning("Orphan cleanup SKIPPED: server returned \(serverReturnedCount) cards but local has \(localSyncedCount). Possible server truncation.")
+            // Safety guard: tiered protection against accidental mass deletion
+            let ratio = Double(serverReturnedCount) / Double(max(localSyncedCount, 1))
+            let diff = localSyncedCount - serverReturnedCount
+
+            if ratio < 0.3 {
+                AppLog.sync.warning("Orphan cleanup BLOCKED: server returned <30% (\(serverReturnedCount)/\(localSyncedCount))")
+            } else if diff > 50 && ratio < 0.8 {
+                AppLog.sync.warning("Orphan cleanup BLOCKED: large diff (\(diff) entries, ratio=\(String(format: "%.1f%%", ratio * 100)))")
             } else {
                 progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
+                var orphanedWords: [String] = []
                 for entry in localEntries {
                     if entry.shouldAppearInKnowledgeList {
-                        let orphanKey = "\(entry.word.lowercased())|\(entry.notebookId)"
+                        let orphanKey = mergeKey(entry.word, notebookId: entry.notebookId)
                         if !fetchedCardKeys.contains(orphanKey) {
-                            AppLog.sync.info("Cleaning up remote orphan: \(entry.word)")
+                            orphanedWords.append(entry.word)
                             modelContext.delete(entry)
                         }
                     }
+                }
+                if !orphanedWords.isEmpty {
+                    AppLog.sync.warning("Orphan cleanup removed \(orphanedWords.count) entries: \(orphanedWords.prefix(20).joined(separator: ", "))\(orphanedWords.count > 20 ? "..." : "")")
                 }
             }
         }
@@ -305,6 +313,12 @@ actor BackgroundSyncActor {
     }
 
     private static let dayFormatter = AppDateFormatters.dayKey
+
+    // MARK: - Merge Key Helper
+
+    private func mergeKey(_ word: String, notebookId: String) -> String {
+        "\(word.precomposedStringWithCanonicalMapping.lowercased())|\(notebookId)"
+    }
 
     // MARK: - Review State Merge Helper
 
