@@ -146,8 +146,8 @@ class TestCreateManualLink:
         judge = _make_judge('{"link": "shares_usage", "confidence": 0.9, "reason": "新原因"}')
         result = create_manual_link(from_id="a", to_id="b", cards_store=cards, graph=store, judge=judge)
         assert result.status == "active"
-        assert result.kind == LinkKind.SHARES_USAGE
-        assert result.reason == "新原因"
+        assert result.kind == LinkKind.CONTRASTS_WITH  # original preserved, LLM skipped
+        assert result.reason == "old reason"  # original preserved, LLM skipped
         assert result.id == lk.id  # same link, not new
 
 

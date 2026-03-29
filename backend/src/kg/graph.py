@@ -246,15 +246,6 @@ class GraphStore:
             self._save_links()
         return lk
 
-    def reject_link(self, link_id: str) -> None:
-        """Set link status to rejected. Raises KeyError if not found."""
-        with self._lock:
-            lk = self._links.get(link_id)
-            if lk is None:
-                raise KeyError(link_id)
-            lk.status = "rejected"
-            self._save_links()
-
     def hide_link(self, link_id: str) -> None:
         """Set link status to hidden. Raises KeyError if not found."""
         with self._lock:

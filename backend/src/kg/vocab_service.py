@@ -585,6 +585,13 @@ def create_manual_link(
     if existing and existing.status == "active":
         raise ConflictError("Link already exists between these cards")
 
+    # Hidden → unhide directly, skip LLM
+    if existing and existing.status == "hidden":
+        graph.unhide_link(existing.id)
+        cards_store.touch(from_id)
+        cards_store.touch(to_id)
+        return existing
+
     # Blocked pair → unblock first, then fall through to LLM evaluation
     if graph.is_blocked(from_id, to_id):
         graph.unblock_pair(from_id, to_id)
@@ -594,43 +601,16 @@ def create_manual_link(
         card_b.content, card_b.meaning,
     )
 
-    if existing and existing.status == "hidden":
-        graph.update_link(
-            existing.id,
-            status="active",
-            kind=LinkKind(judgement.link),
-            confidence=1.0,
-            reason=judgement.reason,
-        )
-        link = existing
-    else:
-        link = graph.add_link(
-            from_id, to_id,
-            LinkKind(judgement.link),
-            confidence=1.0,
-            reason=judgement.reason,
-        )
+    link = graph.add_link(
+        from_id, to_id,
+        LinkKind(judgement.link),
+        confidence=1.0,
+        reason=judgement.reason,
+    )
 
     cards_store.touch(from_id)
     cards_store.touch(to_id)
     return link
-
-
-def reject_graph_link(
-    *,
-    link_id: str,
-    graph: Any,
-    cards_store: Any,
-) -> None:
-    """Reject a link (user-initiated deletion). Deprecated — use delete_graph_link."""
-    try:
-        graph.reject_link(link_id)
-    except KeyError:
-        raise NotFoundError("Link", link_id)
-
-    lk = graph.get_link(link_id)
-    cards_store.touch(lk.from_id)
-    cards_store.touch(lk.to_id)
 
 
 def hide_graph_link(

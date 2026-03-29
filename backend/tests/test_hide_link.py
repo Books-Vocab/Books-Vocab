@@ -267,7 +267,7 @@ class TestHideGraphLinkService:
 
 class TestCreateManualLinkHiddenBranch:
     def test_create_manual_link_unhides_hidden(self, store):
-        """Hidden link exists -> unhide via LLM, do NOT create new."""
+        """Hidden link exists -> unhide directly, skip LLM, preserve original kind/reason."""
         lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "original reason")
         store.hide_link(lk.id)
         cards = FakeCardsStore([
@@ -278,6 +278,8 @@ class TestCreateManualLinkHiddenBranch:
         result = create_manual_link(from_id="a", to_id="b", graph=store, cards_store=cards, judge=judge)
         assert result.status == "active"
         assert result.id == lk.id  # same link object
+        assert result.reason == "original reason"  # LLM was NOT called
+        assert result.kind == LinkKind.CONTRASTS_WITH  # original kind preserved
 
     def test_create_manual_link_unblocks_and_creates(self, store):
         """Blocked pair -> unblock, call LLM, create new link."""

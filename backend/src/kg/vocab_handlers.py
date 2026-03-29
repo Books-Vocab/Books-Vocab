@@ -38,7 +38,6 @@ from .vocab_service import (
     pull_daily_review_stats,
     push_daily_review_stats,
     push_review_states,
-    reject_graph_link,
     unhide_graph_link,
 )
 
