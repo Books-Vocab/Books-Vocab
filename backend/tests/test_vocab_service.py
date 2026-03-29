@@ -51,10 +51,6 @@ class _FakeCardsStore:
             return list(self._cards)
         return [card for card in self._cards if not card.is_deleted]
 
-    def all_limited(self, limit: int = 5000, include_deleted: bool = False, notebook_id: str | None = None):
-        cards = self.all(include_deleted=include_deleted)
-        return cards[:limit]
-
     def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None):
         return {card.id: card for card in self.all(include_deleted=include_deleted)}
 
@@ -86,7 +82,7 @@ def _card_builder(card, graph, cards_by_id):
 
 def test_list_lookup_and_delete_vocab_helpers():
     cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke"), _FakeCard(id="c2", content="lucid")])
-    graph = object()
+    graph = SimpleNamespace(get_links_for=lambda card_id: [])
 
     listed = list_vocab_cards(since=None, cards_store=cards, graph=graph, card_response_builder=_card_builder)
     assert [item["content"] for item in listed] == ["evoke", "lucid"]
@@ -252,7 +248,7 @@ def test_lookup_vocab_word_unicode_normalized():
     precomposed = unicodedata.normalize("NFC", "café")
     decomposed = unicodedata.normalize("NFD", "café")
     cards = _FakeCardsStore([_FakeCard(id="c1", content=precomposed)])
-    result = lookup_vocab_word(decomposed, cards_store=cards, graph=object(), card_response_builder=_card_builder)
+    result = lookup_vocab_word(decomposed, cards_store=cards, graph=SimpleNamespace(get_links_for=lambda card_id: []), card_response_builder=_card_builder)
     assert result["id"] == "c1"
 
 
