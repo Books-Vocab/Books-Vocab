@@ -18,6 +18,7 @@ struct ArchivedVocabSheet: View {
     @State private var errorMessage: String?
 
     var body: some View {
+        let archivedEntries = self.archivedEntries
         NavigationStack {
             Group {
                 if archivedEntries.isEmpty {
