@@ -1,0 +1,250 @@
+"""Tests for Apple Sign-In JWT validation (apple_auth.py)."""
+
+from __future__ import annotations
+
+import time
+from unittest.mock import MagicMock, patch
+
+import httpx
+import jwt as real_jwt
+import pytest
+from fastapi import HTTPException
+
+from kg import apple_auth
+
+
+@pytest.fixture(autouse=True)
+def _reset_cache():
+    """Reset global JWKS cache before each test."""
+    apple_auth._apple_public_keys.clear()
+    apple_auth._keys_last_fetched = 0
+    yield
+    apple_auth._apple_public_keys.clear()
+    apple_auth._keys_last_fetched = 0
+
+
+FAKE_KID = "test-kid-1"
+FAKE_JWK = {"kid": FAKE_KID, "n": "AQAB", "e": "AQAB"}
+FAKE_JWKS_RESPONSE = {"keys": [FAKE_JWK]}
+AUDIENCE = "com.Max0228.BooksBrowser"
+FAKE_PEM = b"-----FAKE PEM-----"
+
+
+def _mock_httpx_success(keys_response: dict | None = None):
+    """Return a mock httpx.Client context manager that returns keys_response."""
+    resp = MagicMock()
+    resp.json.return_value = keys_response or FAKE_JWKS_RESPONSE
+    resp.raise_for_status.return_value = None
+    client_instance = MagicMock()
+    client_instance.get.return_value = resp
+    client_cm = MagicMock()
+    client_cm.__enter__ = MagicMock(return_value=client_instance)
+    client_cm.__exit__ = MagicMock(return_value=False)
+    return client_cm, client_instance
+
+
+def _mock_httpx_error():
+    """Return a mock httpx.Client that raises HTTPError."""
+    client_instance = MagicMock()
+    client_instance.get.side_effect = httpx.HTTPError("connection failed")
+    cm = MagicMock()
+    cm.__enter__ = MagicMock(return_value=client_instance)
+    cm.__exit__ = MagicMock(return_value=False)
+    return cm
+
+
+class TestVerifyAppleToken:
+    """Tests for verify_apple_token."""
+
+    def test_happy_path(self):
+        """Valid token returns sub."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {"sub": "apple-user-123"}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            result = apple_auth.verify_apple_token("fake.token.here", AUDIENCE)
+            assert result == "apple-user-123"
+            mock_jwt.decode.assert_called_once()
+
+    def test_jwks_cache_hit_no_refetch(self):
+        """When kid is cached and cache is fresh, no HTTP call is made."""
+        apple_auth._apple_public_keys[FAKE_KID] = FAKE_JWK
+        apple_auth._keys_last_fetched = time.time()
+
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth.httpx.Client") as mock_client_cls,
+            patch("kg.apple_auth.RSAPublicNumbers") as mock_rsa,
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {"sub": "user-cached"}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            mock_key = MagicMock()
+            mock_key.public_bytes.return_value = FAKE_PEM
+            mock_rsa.return_value.public_key.return_value = mock_key
+
+            result = apple_auth.verify_apple_token("cached.token", AUDIENCE)
+            assert result == "user-cached"
+            mock_client_cls.assert_not_called()
+
+    def test_kid_not_in_cache_triggers_refetch(self):
+        """When kid is missing from cache, JWKS is re-fetched."""
+        apple_auth._apple_public_keys["other-kid"] = {"kid": "other-kid"}
+        apple_auth._keys_last_fetched = time.time()
+
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth.httpx.Client") as mock_client_cls,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM) as mock_get_key,
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {"sub": "user-refetched"}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            result = apple_auth.verify_apple_token("refetch.token", AUDIENCE)
+            assert result == "user-refetched"
+            # _get_rsa_public_key was called (which would internally refetch)
+            mock_get_key.assert_called_once_with(FAKE_KID)
+
+    def test_token_missing_kid_raises_401(self):
+        """Token header without kid raises 401."""
+        with patch("kg.apple_auth.jwt") as mock_jwt:
+            mock_jwt.get_unverified_header.return_value = {}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("no-kid.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+            assert "kid" in exc_info.value.detail.lower()
+
+    def test_kid_not_found_after_refetch_raises_401(self):
+        """kid not present in JWKS even after re-fetch raises 401."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth.httpx.Client") as mock_client_cls,
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": "nonexistent-kid"}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            cm, _ = _mock_httpx_success()
+            mock_client_cls.return_value = cm
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("bad-kid.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+
+    def test_expired_token_raises_401(self):
+        """Expired token raises 401."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+            mock_jwt.decode.side_effect = real_jwt.ExpiredSignatureError()
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("expired.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+            assert "expired" in exc_info.value.detail.lower()
+
+    def test_audience_mismatch_raises_401(self):
+        """Wrong audience raises 401."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+            mock_jwt.decode.side_effect = real_jwt.InvalidAudienceError()
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("bad-aud.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+            assert "audience" in exc_info.value.detail.lower()
+
+    def test_invalid_signature_raises_401(self):
+        """Invalid signature raises 401."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+            mock_jwt.decode.side_effect = real_jwt.InvalidSignatureError()
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("bad-sig.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+
+    def test_decoded_token_missing_sub_raises_401(self):
+        """Decoded token without sub raises 401."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {"email": "user@example.com"}  # no sub
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("no-sub.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+            assert "sub" in exc_info.value.detail.lower()
+
+
+class TestFetchApplePublicKeys:
+    """Tests for _fetch_apple_public_keys."""
+
+    def test_network_error_no_cache_raises_500(self):
+        """JWKS fetch failure with empty cache raises 500."""
+        with patch("kg.apple_auth.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value = _mock_httpx_error()
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth._fetch_apple_public_keys()
+            assert exc_info.value.status_code == 500
+
+    def test_network_error_with_cache_uses_stale(self):
+        """JWKS fetch failure with existing cache keeps stale cache."""
+        apple_auth._apple_public_keys[FAKE_KID] = FAKE_JWK
+        apple_auth._keys_last_fetched = time.time() - 200000  # expired
+
+        with patch("kg.apple_auth.httpx.Client") as mock_client_cls:
+            mock_client_cls.return_value = _mock_httpx_error()
+
+            # Should not raise — silently keeps old cache
+            apple_auth._fetch_apple_public_keys()
+            assert FAKE_KID in apple_auth._apple_public_keys
