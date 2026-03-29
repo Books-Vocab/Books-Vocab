@@ -146,19 +146,20 @@ class GraphStore:
     ) -> list[GraphLink]:
         """Create multiple links with a single disk write. Returns created links."""
         created: list[GraphLink] = []
-        for from_id, to_id, kind, confidence, reason in links:
-            link = GraphLink(
-                from_id=from_id,
-                to_id=to_id,
-                kind=kind,
-                confidence=confidence,
-                reason=reason,
-            )
-            self._links[link.id] = link
-            self._index_link(link)
-            created.append(link)
-        if created:
-            self._save_links()
+        with self._lock:
+            for from_id, to_id, kind, confidence, reason in links:
+                link = GraphLink(
+                    from_id=from_id,
+                    to_id=to_id,
+                    kind=kind,
+                    confidence=confidence,
+                    reason=reason,
+                )
+                self._links[link.id] = link
+                self._index_link(link)
+                created.append(link)
+            if created:
+                self._save_links()
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
