@@ -241,6 +241,7 @@ class MochiSync:
                 mochi_cards[card["id"]] = card
 
         # 2. Iterate local cards that are mapped
+        pending_updates: list[tuple[str, dict]] = []
         from tqdm import tqdm
         iterator = tqdm(mochi_to_local.items(), desc="Pulling from Mochi", unit="card")
 
@@ -264,57 +265,29 @@ class MochiSync:
                 stats["skipped"] += 1
                 continue
 
-            # Check for changes
+            # Check for changes — collect field diffs without mutating the
+            # detached Card object (the Session that loaded it is already
+            # closed, so in-place mutations would never reach the DB).
             changed = False
+            card_changes: dict[str, object] = {}
 
-            # Helper to check change
-            def has_changed(key: str) -> bool:  # noqa: B023
-                if key not in updates:  # noqa: B023
-                    return False
-                if getattr(local_card, key) != updates[key]:  # noqa: B023
-                    return True
-                return False
-
-            if has_changed("content"):
-                if not dry_run:
-                    local_card.content = updates["content"]
-                changed = True
-
-            if has_changed("meaning"):
-                if not dry_run:
-                    local_card.meaning = updates["meaning"]
-                changed = True
-
-            if has_changed("pos"):
-                if not dry_run:
-                    local_card.pos = updates["pos"]
-                changed = True
-
-            if "note" in updates and local_card.note != updates["note"]:
-                if not dry_run:
-                    local_card.note = updates["note"]
-                changed = True
-
-            # Sync lists carefully
-            if "collocations" in updates:
-                if local_card.collocations != updates["collocations"]:
-                    if not dry_run:
-                        local_card.collocations = updates["collocations"]
+            SYNC_FIELDS = ("content", "meaning", "pos", "note", "collocations", "examples")
+            for key in SYNC_FIELDS:
+                if key not in updates:
+                    continue
+                if getattr(local_card, key) != updates[key]:
                     changed = True
-
-            # Examples: Only update if present in updates (Recognition only usually)
-            if "examples" in updates:
-                if local_card.examples != updates["examples"]:
-                     if not dry_run:
-                         local_card.examples = updates["examples"]
-                     changed = True
+                    if not dry_run:
+                        card_changes[key] = updates[key]
 
             if changed:
                 stats["updated"] += 1
+                if not dry_run and card_changes:
+                    pending_updates.append((local_id, card_changes))
             else:
                 stats["skipped"] += 1
 
-        if not dry_run and stats["updated"] > 0:
-            self.cards.save()
+        if not dry_run and pending_updates:
+            self.cards.batch_update(pending_updates)
 
         return stats
