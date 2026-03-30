@@ -32,6 +32,7 @@ struct VocabularyListSheets: ViewModifier {
                 TodayReviewView(
                     entries: session.entries,
                     allEntries: allEntries,
+                    currentUserID: AuthManager.shared.userId,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
             }
@@ -42,6 +43,7 @@ struct VocabularyListSheets: ViewModifier {
                 TodayReviewView(
                     entries: session.entries,
                     allEntries: allEntries,
+                    currentUserID: AuthManager.shared.userId,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
                 .appSheet(.large)
