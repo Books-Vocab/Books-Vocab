@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from fastapi import Header
+from fastapi import Cookie, Header
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML
 from .admin_handlers import (
@@ -45,16 +45,17 @@ def create_admin_handlers(
     expected by :func:`route_registration.register_routes`.
     """
 
-    def admin_ui(token: str | None = None, authorization: str | None = Header(None)):
+    def admin_ui(token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Admin dashboard UI."""
         return admin_ui_response(
             token,
             admin_token=runtime_settings_fn().admin_token,
             admin_html=ADMIN_HTML,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_stats(token: str | None = None, authorization: str | None = Header(None)):
+    def admin_stats(token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Return per-user token + vocab stats for admin dashboard."""
         from .token_tracker import get_all_stats
 
@@ -70,9 +71,10 @@ def create_admin_handlers(
             card_store_factory=card_store_factory,
             authorization=authorization,
             jwt_secret=settings.jwt_secret,
+            cookie_token=admin_session,
         )
 
-    def admin_logs(token: str | None = None, n: int = 200, level: str | None = None, authorization: str | None = Header(None)):
+    def admin_logs(token: str | None = None, n: int = 200, level: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Return recent in-memory log entries for the admin dashboard."""
         return admin_logs_response(
             token,
@@ -81,9 +83,10 @@ def create_admin_handlers(
             n=n,
             level=level,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_user_entitlement(user_id: str, token: str | None = None, authorization: str | None = Header(None)):
+    def admin_user_entitlement(user_id: str, token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Return one user's computed Pro entitlement plus raw admin grant metadata."""
         return admin_user_entitlement_response(
             token,
@@ -93,9 +96,10 @@ def create_admin_handlers(
             build_entitlements_response=build_entitlements_response_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_grant_pro_access(req: AdminGrantRequest, user_id: str, token: str | None = None, authorization: str | None = Header(None)):
+    def admin_grant_pro_access(req: AdminGrantRequest, user_id: str, token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Manually grant Pro access for a user through the admin surface."""
         return admin_grant_pro_access_response(
             token,
@@ -108,9 +112,10 @@ def create_admin_handlers(
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_revoke_pro_access(user_id: str, token: str | None = None, authorization: str | None = Header(None)):
+    def admin_revoke_pro_access(user_id: str, token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Remove manual Pro access for a user through the admin surface."""
         return admin_revoke_pro_access_response(
             token,
@@ -122,9 +127,10 @@ def create_admin_handlers(
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None, authorization: str | None = Header(None)):
+    def admin_run_tests(req: AdminTestRunRequest | None = None, token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Run test suite and return matrix view data."""
         return admin_run_tests_response(
             token,
@@ -133,33 +139,37 @@ def create_admin_handlers(
             run_pytest_matrix=run_pytest_matrix,
             store_last_test_run=store_last_test_run,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_last_test_run(token: str | None = None, authorization: str | None = Header(None)):
+    def admin_last_test_run(token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Get latest test run result for matrix page."""
         return admin_last_test_run_response(
             token,
             admin_token=runtime_settings_fn().admin_token,
             get_last_test_run=get_last_test_run,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_test_catalog(token: str | None = None, authorization: str | None = Header(None)):
+    def admin_test_catalog(token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Return clickable test-matrix catalog."""
         return admin_test_catalog_response(
             token,
             admin_token=runtime_settings_fn().admin_token,
             build_test_catalog=build_test_catalog,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
-    def admin_tests_ui(token: str | None = None, authorization: str | None = Header(None)):
+    def admin_tests_ui(token: str | None = None, authorization: str | None = Header(None), admin_session: str | None = Cookie(None)):
         """Minimal grayscale test matrix dashboard."""
         return admin_tests_ui_response(
             token,
             admin_token=runtime_settings_fn().admin_token,
             admin_tests_html=ADMIN_TESTS_HTML,
             authorization=authorization,
+            cookie_token=admin_session,
         )
 
     return {
