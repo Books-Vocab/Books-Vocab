@@ -37,10 +37,12 @@ struct TodayReviewView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
 
+    private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
 
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], onClose: @escaping () -> Void) {
         _state = State(initialValue: TodayReviewState(entries: entries, allEntries: allEntries))
+        self.allEntries = allEntries
         self.onClose = onClose
     }
 
@@ -69,7 +71,7 @@ struct TodayReviewView: View {
             onDetailTap: state.handleDetailTap
         )
         .overlay {
-            LinkedCardOverlayStack(stack: $state.linkedCardStack)
+            LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }
         .sheet(item: $state.tappedLink) { link in
             LinkReasonSheet(link: link, onNavigate: { state.navigateToLinkedCard(link: link) })
