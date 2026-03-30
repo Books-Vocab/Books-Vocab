@@ -6,10 +6,94 @@
 //
 
 import Foundation
+import SwiftData
 import Testing
 @testable import BooksBrowser
 
 struct BooksBrowserTests {
+    @Test @MainActor func todayReviewStateRestoresProgressAcrossSessionReload() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+
+        let first = VocabularyEntry(word: "lucid", translation: "清晰", context: "A lucid answer.", bookTitle: "Sample")
+        first.kgCardId = "card-lucid"
+        first.markSynced()
+        let second = VocabularyEntry(word: "evoke", translation: "喚起", context: "Evoke memory.", bookTitle: "Sample")
+        second.kgCardId = "card-evoke"
+        second.markSynced()
+        context.insert(first)
+        context.insert(second)
+        #expect(context.safeSave())
+
+        let state = TodayReviewState(
+            entries: [first, second],
+            allEntries: [first, second],
+            currentUserID: "user-1"
+        )
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        try await Task.sleep(for: .milliseconds(100))
+
+        let replacementFirst = VocabularyEntry(word: "lucid", translation: "清晰", context: "A lucid answer.", bookTitle: "Sample")
+        replacementFirst.kgCardId = "card-lucid"
+        replacementFirst.markSynced()
+        let replacementSecond = VocabularyEntry(word: "evoke", translation: "喚起", context: "Evoke memory.", bookTitle: "Sample")
+        replacementSecond.kgCardId = "card-evoke"
+        replacementSecond.markSynced()
+        let restored = TodayReviewState(
+            entries: [replacementFirst, replacementSecond],
+            allEntries: [replacementFirst, replacementSecond],
+            currentUserID: "user-1"
+        )
+
+        #expect(restored.currentIndex == 1)
+        #expect(restored.rememberedCount == 1)
+        #expect(restored.forgotCount == 0)
+        #expect(restored.progressText == "2 / 2")
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+    }
+
+    @Test @MainActor func todayReviewStateFlushesAnswerOncePerCard() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        let context = ModelContext(container)
+
+        let first = VocabularyEntry(word: "lucid", translation: "清晰", context: "A lucid answer.", bookTitle: "Sample")
+        first.kgCardId = "card-lucid"
+        first.markSynced()
+        let second = VocabularyEntry(word: "evoke", translation: "喚起", context: "Evoke memory.", bookTitle: "Sample")
+        second.kgCardId = "card-evoke"
+        second.markSynced()
+        context.insert(first)
+        context.insert(second)
+        #expect(context.safeSave())
+
+        let state = TodayReviewState(
+            entries: [first, second],
+            allEntries: [first, second],
+            currentUserID: "user-1"
+        )
+        state.submit(.remembered, container: container, reviewSettings: .default)
+        state.goPrevious()
+        state.submit(.forgot, container: container, reviewSettings: .default)
+        try await Task.sleep(for: .milliseconds(100))
+
+        let entry = try context.fetch(FetchDescriptor<VocabularyEntry>()).first { $0.kgCardId == "card-lucid" }
+        let records = try context.fetch(FetchDescriptor<ReviewRecord>())
+
+        #expect(entry?.reviewCount == 1)
+        #expect(entry?.lastReviewFeedbackRaw == ReviewFeedback.remembered.rawValue)
+        #expect(records.count == 1)
+        #expect(state.currentIndex == 1)
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+    }
+
     @Test func readerBridgePlannerEmitsSingleWordHighlightCommand() async throws {
         var planner = ReadiumNavigatorView.Coordinator.BridgePlanner()
         let base = makeSnapshot(lookedUpWords: [])
