@@ -152,6 +152,7 @@ struct NotebookListView: View {
                 TodayReviewView(
                     entries: session.entries,
                     allEntries: allEntries,
+                    currentUserID: authManager.userId,
                     onClose: { activeReviewSession = nil }
                 )
             }

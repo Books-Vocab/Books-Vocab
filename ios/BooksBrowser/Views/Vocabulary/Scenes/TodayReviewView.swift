@@ -40,8 +40,17 @@ struct TodayReviewView: View {
     private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
 
-    init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], onClose: @escaping () -> Void) {
-        _state = State(initialValue: TodayReviewState(entries: entries, allEntries: allEntries))
+    init(
+        entries: [VocabularyEntry],
+        allEntries: [VocabularyEntry],
+        currentUserID: String?,
+        onClose: @escaping () -> Void
+    ) {
+        _state = State(initialValue: TodayReviewState(
+            entries: entries,
+            allEntries: allEntries,
+            currentUserID: currentUserID
+        ))
         self.allEntries = allEntries
         self.onClose = onClose
     }
@@ -63,8 +72,12 @@ struct TodayReviewView: View {
             onShuffle: state.shuffleQueue,
             onPrevious: state.goPrevious,
             onNext: state.goNext,
-            onForgot: { state.submit(.forgot) },
-            onRemembered: { state.submit(.remembered) },
+            onForgot: {
+                state.submit(.forgot, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            },
+            onRemembered: {
+                state.submit(.remembered, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            },
             onLinkTap: state.handleLinkTap,
             onToggleAutoPlay: state.toggleAutoPlay,
             onToggleAutoPlayPause: state.toggleAutoPlayPause,
@@ -86,20 +99,14 @@ struct TodayReviewView: View {
                     completed: false,
                     durationMs: durationMs
                 ))
+                state.persistSnapshot()
+            } else {
+                state.clearSnapshot()
             }
-
-            // 背景批次寫入所有複習結果（不阻塞主線程、不觸發 @Query）
-            let container = modelContext.container
-            state.persistResults(
-                container: container,
-                reviewSettings: reviewSettingsStore.settings
-            )
 
             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
             Task {
-                // 等背景寫入完成後再 push，確保 push 包含最新結果
-                try? await Task.sleep(for: .milliseconds(500))
-                await kgService.pushReviewQuietly(container: container)
+                await kgService.pushReviewQuietly(container: modelContext.container)
             }
         }
     }
@@ -112,6 +119,7 @@ struct TodayReviewView: View {
         TodayReviewView(
             entries: TodayReviewViewPreviewData.sampleEntries,
             allEntries: TodayReviewViewPreviewData.sampleEntries,
+            currentUserID: "preview-user",
             onClose: {}
         )
         .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
