@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 471deda
+verified_against: 6fd22c4
 -->
 # 後端部署指南
 
@@ -49,7 +49,11 @@ cd ~/MPSO/projects/kg
 ./devops.sh logs 50     # 如有問題查日誌
 ```
 
-`deploy` 內部流程：backup → env-check → rsync → docker build → migrate → health check → env-drift（非通過自動中止）。
+`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build → migrate → health check → env-drift → **追加 deploy.log**（非通過自動中止）。
+
+部署完成後可透過兩種方式確認遠端版本：
+- `./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
+- `curl https://wordnexus.lol/api/system/info` — 無需 auth，回傳 version、uptime、migration 狀態
 
 ---
 
@@ -155,7 +159,7 @@ deploy 失敗
 ## 常用指令速查
 
 ```bash
-./devops.sh status          # 健康狀態 + HTTP code
+./devops.sh status          # 健康狀態 + 部署版本 + 最近部署記錄
 ./devops.sh logs [n]        # 查日誌（預設 50 行）
 ./devops.sh users           # 列出用戶 + 可選第三方整合設定
 ./devops.sh user-info <id>  # 用戶單字統計

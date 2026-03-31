@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 471deda
+verified_against: 6fd22c4
 -->
 # 伺服器排障指南
 
@@ -19,8 +19,12 @@ verified_against: 471deda
 ## 30 秒快速診斷
 
 ```bash
+# 最快：不需 SSH、不需 auth
+curl -s https://wordnexus.lol/api/system/info | python3 -m json.tool
+
+# 詳細
 cd ~/MPSO/projects/kg
-./ops/devops_kg_safe.sh status   # HTTP code 判斷根因
+./ops/devops_kg_safe.sh status   # HTTP code + 部署版本 + 部署記錄
 ./ops/devops_kg_safe.sh logs 50
 ```
 
