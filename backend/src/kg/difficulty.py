@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from functools import lru_cache
 
 from wordfreq import zipf_frequency
 
@@ -25,6 +26,7 @@ TIERS = [
 ]
 
 
+@lru_cache(maxsize=4096)
 def get_zipf(word: str, lang: str = "en") -> float:
     """Get Zipf frequency for a word. Higher = more common."""
     tokens = word.strip().split()

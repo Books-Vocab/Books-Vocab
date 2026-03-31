@@ -178,3 +178,24 @@ class TestEmbedText:
     def test_embed_text_pure_function(self):
         card = Card(content="lucid", meaning="clear")
         assert card.embed_text() == "lucid: clear"
+
+
+def test_get_batch_returns_matching_cards(tmp_path):
+    store = CardStore(tmp_path / "cards.db")
+    c1 = store.add("hello", meaning="你好")
+    c2 = store.add("world", meaning="世界")
+    c3 = store.add("foo", meaning="富")
+
+    result = store.get_batch({c1.id, c3.id})
+    assert set(result.keys()) == {c1.id, c3.id}
+    assert result[c1.id].content == "hello"
+
+def test_get_batch_empty_set(tmp_path):
+    store = CardStore(tmp_path / "cards.db")
+    assert store.get_batch(set()) == {}
+
+def test_get_batch_missing_ids(tmp_path):
+    store = CardStore(tmp_path / "cards.db")
+    c1 = store.add("hello", meaning="你好")
+    result = store.get_batch({c1.id, "nonexistent"})
+    assert set(result.keys()) == {c1.id}
