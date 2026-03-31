@@ -411,7 +411,9 @@ enum ReadiumNavigatorJS {
             var container = startEl;
             while (container) {
                 var tag = (container.tagName || '').toUpperCase();
-                if (tag === 'P' || tag === 'DIV' || tag === 'SECTION' || tag === 'BODY') return container;
+                if (tag === 'P' || tag === 'LI' || tag === 'BLOCKQUOTE' || tag === 'TD'
+                    || tag === 'DIV' || tag === 'SECTION') return container;
+                if (tag === 'BODY') return container;
                 container = container.parentElement;
             }
             return null;
@@ -422,7 +424,18 @@ enum ReadiumNavigatorJS {
             var fullText = container ? container.textContent : (startEl ? startEl.textContent : word);
             fullText = fullText.trim();
 
-            var sentences = fullText.match(/[^.!?]*[.!?]+[ ]?|[^.!?]+$/g);
+            // Use Intl.Segmenter for locale-aware sentence splitting (Safari 14.1+)
+            var sentences;
+            if (typeof Intl !== 'undefined' && Intl.Segmenter) {
+                var lang = document.documentElement.lang || navigator.language || 'en';
+                var segmenter = new Intl.Segmenter(lang, { granularity: 'sentence' });
+                sentences = Array.from(segmenter.segment(fullText), function(s) { return s.segment; });
+            } else {
+                // Fallback: split on CJK/Western sentence terminators and newlines
+                sentences = fullText.split(/(?<=[.!?。！？])\\s*|(?<=\\n)/);
+                sentences = sentences.filter(function(s) { return s.trim().length > 0; });
+            }
+
             if (!sentences || sentences.length <= 1) {
                 if (fullText.length <= 300) return fullText;
                 var wordPos = fullText.toLowerCase().indexOf(word.toLowerCase());
@@ -442,17 +455,23 @@ enum ReadiumNavigatorJS {
             }
             if (targetIdx < 0) return fullText.substring(0, 300).trim();
 
-            var result = sentences[targetIdx].trim();
-            if (result.length < 80) {
-                if (targetIdx > 0 && sentences[targetIdx - 1].trim().length > 15) {
-                    result = sentences[targetIdx - 1].trim() + ' ' + result;
-                } else if (targetIdx < sentences.length - 1) {
-                    result = result + ' ' + sentences[targetIdx + 1].trim();
-                }
+            // Return: previous sentence + target sentence + next sentence
+            var from = Math.max(0, targetIdx - 1);
+            var to = Math.min(sentences.length, targetIdx + 2);
+            var result = '';
+            for (var j = from; j < to; j++) {
+                result += sentences[j];
             }
+            result = result.trim();
 
-            // Strip leading fragment (short leftover from previous sentence)
-            result = result.replace(/^[A-Za-z,\u{2019}\u{2018}' ]{1,15}[.!?] /, '');
+            // Hard cap at 500 chars (word-centered)
+            if (result.length > 500) {
+                var wp = result.toLowerCase().indexOf(wordLower);
+                if (wp < 0) wp = Math.floor(result.length / 2);
+                var s = Math.max(0, wp - 200);
+                var e = Math.min(result.length, wp + word.length + 200);
+                result = result.substring(s, e).trim();
+            }
 
             return result;
         }

@@ -245,9 +245,10 @@ final class TranslationService: Translating {
         }
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
+        let trimmedContext = context.count > 600 ? String(context.prefix(600)) : context
         let body: [String: String] = [
             "word": word,
-            "context": context,
+            "context": trimmedContext,
             "source_lang": TranslationLanguage.currentSource.rawValue,
             "target_lang": TranslationLanguage.currentTarget.rawValue,
         ]
