@@ -31,14 +31,14 @@ final class Book {
     var dateLastRead: Date?
     var progression: Double?          // 閱讀進度 (0.0 ~ 1.0)
     var preferredNotebookId: String?   // 綁定的單字本 remoteId（nil = 跟隨全域設定）
-    var format: BookFormat = .epub
+    var format: BookFormat = BookFormat.epub
 
     init(
         title: String,
         author: String,
         coverImageData: Data? = nil,
         fileName: String,
-        format: BookFormat = .epub
+        format: BookFormat = BookFormat.epub
     ) {
         self.id = UUID()
         self.title = title
