@@ -79,7 +79,7 @@ async def test_run_quick_translate_raises_on_empty_choices():
 @pytest.mark.asyncio
 async def test_async_translate_quota_check_blocks_exceeded():
     """quota check 仍正常運作（exceeded 時 raise 429）"""
-    from fastapi import HTTPException
+    from kg.exceptions import QuotaExceededError
 
     from kg.translate_handlers import translate_quick_response
 
@@ -95,6 +95,6 @@ async def test_async_translate_quota_check_blocks_exceeded():
     }
     with patch("kg.quota_service.check_and_get_quota", return_value=quota_exceeded):
         from kg.api import _check_quota
-        with pytest.raises(HTTPException) as exc_info:
+        with pytest.raises(QuotaExceededError) as exc_info:
             _check_quota(user, "translate_quick", None)
     assert exc_info.value.status_code == 429

@@ -286,7 +286,11 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     @app.exception_handler(KGError)
     async def kg_error_handler(request: Request, exc: KGError):
-        return JSONResponse(status_code=exc.status_code, content=exc.to_detail())
+        return JSONResponse(
+            status_code=exc.status_code,
+            content=exc.to_detail(),
+            headers=exc.headers if exc.headers else None,
+        )
 
     @app.exception_handler(Exception)
     async def unhandled_exception_handler(request: Request, exc: Exception):

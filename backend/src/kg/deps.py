@@ -13,7 +13,7 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any, Callable
 
-from fastapi import Depends, HTTPException, Request, Response
+from fastapi import Cookie, Depends, Header, HTTPException, Query, Request, Response
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .api_models import CardLinkSummaryResponse, EntitlementsResponse
@@ -224,3 +224,25 @@ def _resolve_and_link_user(
         users_lock_file=str(settings.users_lock_file),
         load_users_fn=load_users_fn, save_users_fn=save_users_fn, email=email,
     )
+
+
+# ---------------------------------------------------------------------------
+# Admin auth dependency
+# ---------------------------------------------------------------------------
+
+async def get_admin_user(
+    request: Request,
+    token: str | None = Query(None),
+    authorization: str | None = Header(None),
+    admin_session: str | None = Cookie(None),
+):
+    """Router-level dependency that gates admin access."""
+    from .admin_handlers import require_admin
+
+    admin_token = request.app.state.kg_settings.admin_token
+    try:
+        require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=admin_session)
+    except HTTPException as exc:
+        from .exceptions import ForbiddenError
+
+        raise ForbiddenError(exc.detail or "Admin authentication required")
