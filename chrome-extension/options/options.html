@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KG 詞彙助手 — 設定</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="options.css">
+</head>
+<body>
+  <div class="kg-options">
+    <h1 class="kg-options__title">KG 詞彙助手</h1>
+
+    <!-- Account section -->
+    <section class="kg-section-card">
+      <h2 class="kg-section-card__title">帳號</h2>
+      <div id="auth-status"></div>
+    </section>
+
+    <!-- Theme section -->
+    <section class="kg-section-card">
+      <h2 class="kg-section-card__title">主題</h2>
+      <div class="kg-theme-selector" id="theme-selector">
+        <label class="kg-theme-option" data-theme-value="light">
+          <input type="radio" name="theme" value="light" class="kg-theme-option__radio">
+          <span class="kg-theme-option__label">☀️ 淺色</span>
+        </label>
+        <label class="kg-theme-option" data-theme-value="dark">
+          <input type="radio" name="theme" value="dark" class="kg-theme-option__radio">
+          <span class="kg-theme-option__label">🌙 深色</span>
+        </label>
+        <label class="kg-theme-option" data-theme-value="sepia">
+          <input type="radio" name="theme" value="sepia" class="kg-theme-option__radio">
+          <span class="kg-theme-option__label">📜 懷舊</span>
+        </label>
+      </div>
+    </section>
+
+    <!-- About section -->
+    <section class="kg-section-card">
+      <h2 class="kg-section-card__title">關於</h2>
+      <p class="kg-about">版本 0.1.0</p>
+    </section>
+  </div>
+  <script src="../shared/theme.js"></script>
+  <script src="options.js"></script>
+</body>
+</html>
