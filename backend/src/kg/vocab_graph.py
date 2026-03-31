@@ -44,19 +44,29 @@ def embed_and_link_new_cards(
         return
 
     # Link candidates for newly embedded cards — batch to avoid per-pair disk writes
-    candidate_items: list[tuple[str, str, float]] = []
+    # Phase 1: collect all similar pairs and other_ids
+    all_similar: list[tuple[Any, list[tuple[str, float]]]] = []
+    all_other_ids: set[str] = set()
     for card in batch_cards:
         if not embeddings.has(card.id):
             continue
         try:
             similar = embeddings.find_similar(card.id, k=CANDIDATE_K)
-            for other_id, score in similar:
-                if score > SIMILARITY_THRESHOLD:
-                    other_card = cards.get(other_id)
-                    if other_card and not other_card.is_archived:
-                        candidate_items.append((card.id, other_id, score))
+            filtered = [(oid, sc) for oid, sc in similar if sc > SIMILARITY_THRESHOLD]
+            if filtered:
+                all_similar.append((card, filtered))
+                all_other_ids.update(oid for oid, _ in filtered)
         except (OSError, ValueError) as exc:
             logger.warning("Failed to link candidates for '%s': %s", card.id, exc)
+
+    # Phase 2: batch fetch neighbour cards, then build candidates
+    others_by_id = cards.get_batch(all_other_ids) if all_other_ids else {}
+    candidate_items: list[tuple[str, str, float]] = []
+    for card, similar in all_similar:
+        for other_id, score in similar:
+            other_card = others_by_id.get(other_id)
+            if other_card and not other_card.is_archived:
+                candidate_items.append((card.id, other_id, score))
 
     if candidate_items:
         graph.batch_add_candidates(candidate_items)
