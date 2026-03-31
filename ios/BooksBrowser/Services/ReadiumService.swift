@@ -77,7 +77,7 @@ final class ReadiumService: ReadiumServing {
 
         // 建立唯一檔名
         let fileName = UUID().uuidString + ".epub"
-        let destinationURL = Book.epubsDirectory.appendingPathComponent(fileName)
+        let destinationURL = Book.booksDirectory.appendingPathComponent(fileName)
         AppLog.readium.info("Destination: \(destinationURL.path)")
 
         // 複製到 App Documents
@@ -164,10 +164,10 @@ final class ReadiumService: ReadiumServing {
     /// 刪除 EPUB 檔案（同時清理 iCloud 和本機）
     func deleteEPUB(fileName: String) {
         let fm = FileManager.default
-        if let iCloudDir = Book.iCloudEpubsDirectory {
+        if let iCloudDir = Book.iCloudBooksDirectory {
             try? fm.removeItem(at: iCloudDir.appendingPathComponent(fileName))
         }
-        try? fm.removeItem(at: Book.localEpubsDirectory.appendingPathComponent(fileName))
+        try? fm.removeItem(at: Book.localBooksDirectory.appendingPathComponent(fileName))
     }
 }
 
