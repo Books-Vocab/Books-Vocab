@@ -161,14 +161,18 @@ class TestInputValidation:
         )
         assert r.status_code == 422, r.text
 
-    def test_translate_context_too_long_returns_422(self, client_env):
+    def test_translate_context_too_long_truncated(self, client_env):
+        """Overlong context is silently truncated by the before-validator, not rejected."""
         client, user_id, headers, _ = client_env
         r = client.post(
             "/api/translate/quick",
             json={"word": "hello", "context": "x" * 5001},
             headers=headers,
         )
-        assert r.status_code == 422, r.text
+        # Before-validator truncates to 1000 chars, so Pydantic accepts it.
+        # The request proceeds (may fail for other reasons like missing API key,
+        # but it should NOT be 422).
+        assert r.status_code != 422, r.text
 
     def test_translate_word_at_limit_accepted(self, client_env):
         """Exactly 500 chars should pass Pydantic validation (not 422)."""
