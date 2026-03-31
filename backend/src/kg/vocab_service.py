@@ -198,10 +198,13 @@ def push_review_states(
     updated = 0
     skipped = 0
     pending_updates: list[tuple[str, dict]] = []
+    # Pre-fetch all cards with card_id in one batch to avoid N+1
+    _card_ids_to_fetch = {e.card_id for e in entries if e.card_id}
+    _cards_by_id = cards_store.get_batch(_card_ids_to_fetch) if _card_ids_to_fetch else {}
     for entry in entries:
         # Prefer card_id for precise matching; fall back to word matching.
         if entry.card_id:
-            card = cards_store.get(entry.card_id)
+            card = _cards_by_id.get(entry.card_id)
             cards = [card] if card and not card.is_deleted else []
         else:
             cards = _get_cards_by_word().get(_normalize_word(entry.word), [])
@@ -418,9 +421,12 @@ def move_vocab_words(
     # Add candidates in target notebook so pipeline regenerates links
     if target_graph is not None:
         target_ids = [c.id for c in (cards_store.all(notebook_id=to_notebook_id) or []) if c.id not in card_ids and not c.is_deleted and not c.is_archived]
+        candidate_pairs = []
         for card_id in card_ids:
-            for other_id in target_ids[:20]:  # cap to avoid O(n²) explosion
-                target_graph.add_candidate(card_id, other_id, similarity=0.0)
+            for other_id in target_ids[:20]:
+                candidate_pairs.append((card_id, other_id, 0.0))
+        if candidate_pairs:
+            target_graph.batch_add_candidates(candidate_pairs)
 
     return {"moved": moved}
 
@@ -486,7 +492,8 @@ def add_vocab_entries(
 ) -> VocabAddResponse:
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
-    existing = {_normalize_word(card.content) for card in cards.all(notebook_id=notebook_id)}
+    all_cards = list(cards.all(notebook_id=notebook_id))
+    existing = {_normalize_word(card.content) for card in all_cards}
 
     created = 0
     skipped = 0

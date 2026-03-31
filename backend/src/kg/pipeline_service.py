@@ -170,10 +170,17 @@ async def _step_link(
     pending_links: list[tuple[str, str, Any, float, str]] = []
     index = 0
 
+    # Pre-fetch all candidate cards in one batch
+    _all_candidate_ids = set()
+    for c in candidates:
+        _all_candidate_ids.add(c.from_id)
+        _all_candidate_ids.add(c.to_id)
+    cards_cache = cards.get_batch(_all_candidate_ids) if _all_candidate_ids else {}
+
     try:
         for index, candidate in enumerate(candidates):  # noqa: B007
-            card_a = cards.get(candidate.from_id)
-            card_b = cards.get(candidate.to_id)
+            card_a = cards_cache.get(candidate.from_id)
+            card_b = cards_cache.get(candidate.to_id)
             if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted or card_a.is_archived or card_b.is_archived:
                 continue
 
