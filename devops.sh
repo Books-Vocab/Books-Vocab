@@ -215,6 +215,11 @@ cmd_deploy() {
     confirm "繼續部署？"
   fi
 
+  # 寫入部署版本標記
+  local deploy_sha
+  deploy_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  echo "$deploy_sha" > "$LOCAL_DIR/VERSION"
+
   section "Step 1/3: 同步代碼"
   rsync -az --stats \
     -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes" \
@@ -258,7 +263,13 @@ cmd_deploy() {
   section "Step 5/5: .env 一致性驗證"
   cmd_env_drift
 
-  ok "部署完成。"
+  # 記錄部署日誌
+  local deploy_log="$BACKUP_DIR/deploy.log"
+  mkdir -p "$BACKUP_DIR"
+  echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
+  info "部署記錄已追加至 $deploy_log"
+
+  ok "部署完成 (version: $deploy_sha)。"
 }
 
 # ── 指令：migrate ─────────────────────────────────────────────────────────────
@@ -310,6 +321,9 @@ cmd_restart() {
 
 # ── 指令：status ──────────────────────────────────────────────────────────────
 cmd_status() {
+  section "部署版本"
+  run_remote "cat $REMOTE_DIR/VERSION 2>/dev/null && echo '' || echo 'unknown (no VERSION file)'"
+
   section "Docker 容器"
   run_remote "docker ps --format 'table {{.Names}}\t{{.Status}}\t{{.Ports}}'"
 
@@ -322,6 +336,14 @@ cmd_status() {
 
   section "用戶數量"
   run_remote "ls $REMOTE_DIR/data/users/ 2>/dev/null | wc -l | xargs echo '用戶目錄數:'" || echo "(無用戶資料)"
+
+  section "最近部署記錄"
+  local deploy_log="$BACKUP_DIR/deploy.log"
+  if [[ -f "$deploy_log" ]]; then
+    tail -5 "$deploy_log"
+  else
+    echo "(無部署記錄)"
+  fi
 }
 
 # ── 指令：logs ────────────────────────────────────────────────────────────────

@@ -13,6 +13,9 @@ data/*.bak
 data/legacy_id_map.json
 legacy_cards/
 
+# Deploy-time generated
+VERSION
+
 # IDE
 .vscode/
 .idea/
