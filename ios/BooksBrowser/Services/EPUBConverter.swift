@@ -359,20 +359,21 @@ struct EPUBConverter {
     /// Split plain text into chapters of approximately `charsPerChapter` characters,
     /// breaking at paragraph boundaries.
     private func splitTXTIntoChapters(_ text: String, charsPerChapter: Int) -> [String] {
-        let paragraphs = text.components(separatedBy: "\n\n")
+        let lines = text.components(separatedBy: "\n")
         var chapters: [String] = []
         var current = ""
 
-        for para in paragraphs {
-            let escaped = escapeHTML(para.trimmingCharacters(in: .whitespacesAndNewlines))
-            guard !escaped.isEmpty else { continue }
+        for line in lines {
+            let trimmed = line.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !trimmed.isEmpty else { continue }
+            let escaped = escapeHTML(trimmed)
 
             if current.count + escaped.count > charsPerChapter, !current.isEmpty {
                 chapters.append(current)
                 current = ""
             }
             if !current.isEmpty { current += "\n" }
-            current += "<p>\(escaped.replacingOccurrences(of: "\n", with: "<br/>"))</p>"
+            current += "<p>\(escaped)</p>"
         }
         if !current.isEmpty { chapters.append(current) }
         if chapters.isEmpty { chapters.append("<p></p>") }
