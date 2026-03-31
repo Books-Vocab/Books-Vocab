@@ -42,6 +42,22 @@ from .vocab_service import (
 )
 
 
+def _resolve_stores(
+    user: dict[str, Any],
+    notebook_id: str | None,
+    *,
+    card_store_factory: Callable[[Path], Any],
+    graph_store_factory: Callable[..., Any] | None = None,
+    notebook_store_factory: Callable[[Path], Any] | None = None,
+) -> tuple[Any, Any]:
+    """Validate notebook access and construct card + graph stores."""
+    if notebook_id is not None and notebook_store_factory is not None:
+        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
+    cards = card_store_factory(user["dir"])
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default") if graph_store_factory is not None else None
+    return cards, graph
+
+
 def list_vocab_response(
     since: str | None,
     user: dict[str, Any],
@@ -52,10 +68,12 @@ def list_vocab_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> list[Any]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards_store = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default")
+    cards_store, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return list_vocab_cards(
         since=since,
         cards_store=cards_store,
@@ -75,10 +93,12 @@ def lookup_word_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> CardResponse:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return lookup_vocab_word(
         word,
         cards_store=cards,
@@ -98,10 +118,12 @@ def archive_word_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str | None = None,
 ) -> dict[str, str]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id or "default") if graph_store_factory is not None else None
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
@@ -139,10 +161,12 @@ def delete_word_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, str]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return delete_vocab_word(word, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
@@ -155,10 +179,12 @@ def batch_delete_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return batch_delete_vocab_words(req.words, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
@@ -171,10 +197,12 @@ def batch_archive_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory is not None else None
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return batch_archive_vocab_words(req.words, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
@@ -202,9 +230,11 @@ def add_vocab_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> VocabAddResponse:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
+    cards, _ = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     return add_vocab_entries(
         entries,
         user=user,
@@ -262,10 +292,12 @@ def create_manual_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> GraphLinkResponse:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
 
     from .judge import ManualLinkJudge
     judge = ManualLinkJudge(gemini_client_factory())
@@ -293,10 +325,12 @@ def delete_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     delete_graph_link(link_id=link_id, graph=graph, cards_store=cards)
 
 
@@ -309,10 +343,12 @@ def hide_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     hide_graph_link(link_id=link_id, graph=graph, cards_store=cards)
 
 
@@ -325,8 +361,10 @@ def unhide_graph_link_response(
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> None:
-    if notebook_id is not None and notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+    cards, graph = _resolve_stores(
+        user, notebook_id,
+        card_store_factory=card_store_factory,
+        graph_store_factory=graph_store_factory,
+        notebook_store_factory=notebook_store_factory,
+    )
     unhide_graph_link(link_id=link_id, graph=graph, cards_store=cards)

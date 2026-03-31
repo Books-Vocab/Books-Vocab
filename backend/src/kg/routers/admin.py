@@ -3,8 +3,10 @@ from __future__ import annotations
 from collections.abc import Callable
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from fastapi.responses import HTMLResponse
+
+from ..deps import get_admin_user
 
 
 def build_admin_router(
@@ -20,7 +22,7 @@ def build_admin_router(
     admin_test_catalog: Callable[..., Any],
     admin_tests_ui: Callable[..., Any],
 ) -> APIRouter:
-    router = APIRouter()
+    router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/admin", response_class=HTMLResponse, include_in_schema=False)(admin_ui)
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
     router.get("/api/admin/logs", include_in_schema=False)(admin_logs)

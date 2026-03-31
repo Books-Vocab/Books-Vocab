@@ -448,3 +448,11 @@ class GraphStore:
             source._rebuild_index()
             source._save_links()
             source._save_candidates()
+
+    def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
+        """Deprecate links + remove candidates (+ blocked pairs if deleting)."""
+        dep_count = self.deprecate_links_for(card_id)
+        cand_count = self.remove_candidates_for(card_id)
+        if remove_blocked:
+            self.remove_blocked_pairs_for(card_id)
+        return {"deprecated": dep_count, "candidates_removed": cand_count}

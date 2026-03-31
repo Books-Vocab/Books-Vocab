@@ -14,6 +14,7 @@ from fastapi.responses import HTMLResponse
 from filelock import FileLock
 
 from .api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
+from .exceptions import NotFoundError
 from .user_store import resolve_mochi_api_key_from_config
 
 
@@ -72,33 +73,23 @@ def _set_admin_cookie(response: HTMLResponse, admin_token: str) -> HTMLResponse:
 
 
 def admin_ui_response(
-    token: str | None,
     *,
     admin_token: str,
     admin_html: str,
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> HTMLResponse:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     return _set_admin_cookie(HTMLResponse(admin_html), admin_token)
 
 
 def admin_stats_response(
-    token: str | None,
     *,
-    admin_token: str,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     get_all_stats: Callable[[], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     data_dir: Any,
     card_store_factory: Callable[[Any], Any],
-    authorization: str | None = None,
     jwt_secret: str = "",
-    cookie_token: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
-
     from .quota_service import get_all_quota_usage, token_cost_usd
 
     users_data = load_users()
@@ -153,43 +144,28 @@ def admin_stats_response(
 
 
 def admin_logs_response(
-    token: str | None,
     *,
-    admin_token: str,
     log_getter: Callable[..., list[dict[str, Any]]],
     n: int,
     level: str | None,
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     return {"logs": log_getter(n=n, level=level or None)}
 
 
 def admin_run_tests_response(
-    token: str | None,
     *,
-    admin_token: str,
     req: Any,
     run_pytest_matrix: Callable[..., dict[str, Any]],
     store_last_test_run: Callable[[dict[str, Any]], dict[str, Any]],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     selected = req.itemIds if req else []
     return store_last_test_run(run_pytest_matrix(selected_items=selected))
 
 
 def admin_last_test_run_response(
-    token: str | None,
     *,
-    admin_token: str,
     get_last_test_run: Callable[[], dict[str, Any] | None],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     last_run = get_last_test_run()
     if last_run is None:
         return {"status": "idle"}
@@ -197,45 +173,31 @@ def admin_last_test_run_response(
 
 
 def admin_test_catalog_response(
-    token: str | None,
     *,
-    admin_token: str,
     build_test_catalog: Callable[[], dict[str, Any]],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> dict[str, Any]:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     return build_test_catalog()
 
 
 def admin_tests_ui_response(
-    token: str | None,
     *,
     admin_token: str,
     admin_tests_html: str,
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> HTMLResponse:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     return _set_admin_cookie(HTMLResponse(admin_tests_html), admin_token)
 
 
 def admin_user_entitlement_response(
-    token: str | None,
     user_id: str,
     *,
-    admin_token: str,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> AdminUserEntitlementResponse:
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
     users = load_users()
     record = users.get(user_id)
     if not isinstance(record, dict) or user_id.startswith("_"):
-        raise HTTPException(status_code=404, detail="User not found")
+        raise NotFoundError("User", user_id)
     return AdminUserEntitlementResponse(
         user_id=user_id,
         pro=build_entitlements_response(record).pro,
@@ -244,27 +206,21 @@ def admin_user_entitlement_response(
 
 
 def _mutate_admin_grant(
-    token: str | None,
     user_id: str,
     *,
-    admin_token: str,
     users_lock_file: Path,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
     grant_updates: dict[str, Any] | None = None,
 ) -> AdminUserEntitlementResponse:
     """Shared logic for granting/revoking admin Pro access."""
-    require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=cookie_token)
-
     with FileLock(str(users_lock_file)):
         users = load_users()
         record = users.get(user_id)
         if not isinstance(record, dict) or user_id.startswith("_"):
-            raise HTTPException(status_code=404, detail="User not found")
+            raise NotFoundError("User", user_id)
 
         admin_grant = current_admin_grant_record(record)
         if grant_updates:
@@ -280,28 +236,22 @@ def _mutate_admin_grant(
 
 
 def admin_grant_pro_access_response(
-    token: str | None,
     user_id: str,
     req: AdminGrantRequest,
     *,
-    admin_token: str,
     users_lock_file: Path,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> AdminUserEntitlementResponse:
     now_iso = datetime.now(tz=UTC).isoformat()
     return _mutate_admin_grant(
-        token, user_id,
-        admin_token=admin_token, users_lock_file=users_lock_file,
+        user_id,
+        users_lock_file=users_lock_file,
         load_users=load_users, save_users=save_users,
         current_admin_grant_record=current_admin_grant_record,
         build_entitlements_response=build_entitlements_response,
-        authorization=authorization,
-        cookie_token=cookie_token,
         grant_updates={
             "is_active": True,
             "plan_name": "Books & Vocab Pro",
@@ -317,27 +267,21 @@ def admin_grant_pro_access_response(
 
 
 def admin_revoke_pro_access_response(
-    token: str | None,
     user_id: str,
     *,
-    admin_token: str,
     users_lock_file: Path,
     load_users: Callable[[], dict[str, dict[str, Any]]],
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
-    authorization: str | None = None,
-    cookie_token: str | None = None,
 ) -> AdminUserEntitlementResponse:
     now_iso = datetime.now(tz=UTC).isoformat()
     return _mutate_admin_grant(
-        token, user_id,
-        admin_token=admin_token, users_lock_file=users_lock_file,
+        user_id,
+        users_lock_file=users_lock_file,
         load_users=load_users, save_users=save_users,
         current_admin_grant_record=current_admin_grant_record,
         build_entitlements_response=build_entitlements_response,
-        authorization=authorization,
-        cookie_token=cookie_token,
         grant_updates={
             "is_active": False,
             "status": "inactive",

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from typing import Any, Callable
 
-from fastapi import HTTPException, Response
+from fastapi import Response
+
+from .exceptions import QuotaExceededError
 
 
 def _is_pro(user: dict) -> bool:
@@ -18,9 +20,8 @@ def _with_quota_check(
     pro = _is_pro(user)
     quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
     if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+        raise QuotaExceededError(
+            quota["reset_seconds"],
             headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
         )
     result = handler()
@@ -35,9 +36,8 @@ def _check_quota(user: dict, call_type: str, response: Response | None) -> dict:
     pro = _is_pro(user)
     quota = check_and_get_quota(user["id"], call_type, is_pro=pro)
     if quota["exceeded"]:
-        raise HTTPException(
-            429,
-            detail={"code": "quota_exhausted", "reset_seconds": quota["reset_seconds"]},
+        raise QuotaExceededError(
+            quota["reset_seconds"],
             headers={"X-Quota-Fraction": "0.0", "X-Quota-Reset": str(quota["reset_seconds"])},
         )
     return quota
