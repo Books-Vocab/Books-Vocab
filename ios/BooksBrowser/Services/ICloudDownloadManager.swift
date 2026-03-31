@@ -49,17 +49,20 @@ final class ICloudDownloadManager {
         }
         AppLog.book.info("ICloudDownloadManager: container = \(containerURL.path)")
 
-        let epubsDir = containerURL.appendingPathComponent("Documents/EPUBs")
+        let booksDir = containerURL.appendingPathComponent("Documents/Books")
         // 列出目錄中已知的檔案（含 .icloud placeholder）
-        if let contents = try? fm.contentsOfDirectory(atPath: epubsDir.path) {
-            AppLog.book.info("ICloudDownloadManager: EPUBs directory has \(contents.count) entries: \(contents.joined(separator: ", "))")
+        if let contents = try? fm.contentsOfDirectory(atPath: booksDir.path) {
+            AppLog.book.info("ICloudDownloadManager: Books directory has \(contents.count) entries: \(contents.joined(separator: ", "))")
         } else {
-            AppLog.book.info("ICloudDownloadManager: EPUBs directory is empty or not accessible")
+            AppLog.book.info("ICloudDownloadManager: Books directory is empty or not accessible")
         }
 
         let query = NSMetadataQuery()
         query.searchScopes = [NSMetadataQueryUbiquitousDocumentsScope]
-        query.predicate = NSPredicate(format: "%K LIKE '*.epub'", NSMetadataItemFSNameKey)
+        query.predicate = NSPredicate(
+            format: "%K LIKE '*.epub' OR %K LIKE '*.pdf'",
+            NSMetadataItemFSNameKey, NSMetadataItemFSNameKey
+        )
 
         gatherObserver = NotificationCenter.default.addObserver(
             forName: .NSMetadataQueryDidFinishGathering,
@@ -97,7 +100,7 @@ final class ICloudDownloadManager {
 
     /// 手動觸發特定檔案下載
     func triggerDownload(for fileName: String) {
-        guard let dir = Book.iCloudEpubsDirectory else { return }
+        guard let dir = Book.iCloudBooksDirectory else { return }
         let url = dir.appendingPathComponent(fileName)
         do {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)

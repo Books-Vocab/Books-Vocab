@@ -80,20 +80,20 @@ struct BooksBrowserApp: App {
         let migrationKey = "iCloudDataMigrationCompleted_v1"
         guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
 
-        let localEpubsDir = Book.localEpubsDirectory
-        guard let iCloudDir = Book.iCloudEpubsDirectory else {
-            AppLog.app.info("iCloud not available, deferring EPUB migration")
+        let localBooksDir = Book.localBooksDirectory
+        guard let iCloudDir = Book.iCloudBooksDirectory else {
+            AppLog.app.info("iCloud not available, deferring book migration")
             return
         }
 
         let files: [URL]
         do {
             files = try FileManager.default.contentsOfDirectory(
-                at: localEpubsDir,
+                at: localBooksDir,
                 includingPropertiesForKeys: nil
             )
         } catch {
-            AppLog.app.warning("Cannot list local EPUBs for migration: \(error.localizedDescription)")
+            AppLog.app.warning("Cannot list local books for migration: \(error.localizedDescription)")
             UserDefaults.standard.set(true, forKey: migrationKey)
             return
         }
