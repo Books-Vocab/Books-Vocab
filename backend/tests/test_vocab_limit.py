@@ -36,9 +36,17 @@ class _FakeCardsStore:
     def get_modified_since(self, parsed_since, notebook_id: str | None = None):
         return list(self._cards)
 
+    def get_batch(self, card_ids: set[str]) -> dict:
+        return {c.id: c for c in self._cards if c.id in card_ids}
+
     def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None):
         cards = [c for c in self._cards if include_deleted or not c.is_deleted]
         return {c.id: c for c in cards}
+
+
+class _FakeGraph:
+    def get_links_for(self, card_id):
+        return []
 
 
 # ---------------------------------------------------------------------------
@@ -67,7 +75,7 @@ def test_list_vocab_cards_with_since_returns_modified():
     result = list_vocab_cards(
         since="2024-01-01T00:00:00Z",
         cards_store=store,
-        graph=object(),
+        graph=_FakeGraph(),
         card_response_builder=_card_builder,
     )
     assert len(result) == 5  # get_modified_since returns all 5

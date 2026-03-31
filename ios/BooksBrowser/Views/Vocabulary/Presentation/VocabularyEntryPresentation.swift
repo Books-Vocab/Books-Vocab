@@ -123,29 +123,28 @@ enum VocabularyEntryPresentation {
         sortOption: KGVocabSortOption = .default,
         now: Date
     ) -> [VocabularyEntry] {
-        let sorted: [VocabularyEntry]
+        // Filter first to reduce sort input size
+        let base = searchText.isEmpty ? entries : entries.filter {
+            $0.word.localizedCaseInsensitiveContains(searchText) ||
+            $0.translation.localizedCaseInsensitiveContains(searchText)
+        }
+
         switch sortOption {
         case .default:
-            sorted = entries.sorted { compareKnowledgeEntries($0, $1, now: now) }
+            return base.sorted { compareKnowledgeEntries($0, $1, now: now) }
         case .alphabetical:
-            sorted = entries.sorted {
+            return base.sorted {
                 $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
             }
         case .dateAdded:
-            sorted = entries.sorted { $0.dateAdded > $1.dateAdded }
+            return base.sorted { $0.dateAdded > $1.dateAdded }
         case .difficulty:
-            sorted = entries.sorted { lhs, rhs in
+            return base.sorted { lhs, rhs in
                 let lhsTier = tierPriority(lhs.difficultyTier)
                 let rhsTier = tierPriority(rhs.difficultyTier)
                 if lhsTier != rhsTier { return lhsTier < rhsTier }
                 return lhs.word.localizedCaseInsensitiveCompare(rhs.word) == .orderedAscending
             }
-        }
-
-        guard !searchText.isEmpty else { return sorted }
-        return sorted.filter {
-            $0.word.localizedCaseInsensitiveContains(searchText) ||
-            $0.translation.localizedCaseInsensitiveContains(searchText)
         }
     }
 

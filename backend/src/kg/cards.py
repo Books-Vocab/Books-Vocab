@@ -296,6 +296,14 @@ class CardStore:
                 statement = statement.where(Card.notebook_id == notebook_id)
             return {card.id: card for card in session.exec(statement).all()}
 
+    def get_batch(self, card_ids: set[str]) -> dict[str, "Card"]:
+        """Fetch multiple cards by ID in a single query."""
+        if not card_ids:
+            return {}
+        with Session(self.engine) as session:
+            statement = select(Card).where(Card.id.in_(card_ids))
+            return {card.id: card for card in session.exec(statement).all()}
+
     def get_modified_since(self, since: datetime, notebook_id: str | None = None) -> list[Card]:
         """Fetch all cards (including soft-deleted) modified after the given timestamp."""
         with Session(self.engine) as session:
