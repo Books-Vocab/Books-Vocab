@@ -108,7 +108,6 @@ def test_admin_ui_response_sets_signed_cookie():
     from kg.admin_handlers import admin_ui_response
 
     resp = admin_ui_response(
-        "secret",
         admin_token="secret",
         admin_html="<h1>Admin</h1>",
     )
@@ -121,15 +120,12 @@ def test_admin_ui_response_sets_signed_cookie():
     assert "path=/admin" in cookie_header.lower()
 
 
-def test_admin_ui_response_works_with_cookie_only():
+def test_admin_ui_response_returns_200():
     from kg.admin_handlers import admin_ui_response
 
-    signed = _sign_cookie("secret")
     resp = admin_ui_response(
-        None,
         admin_token="secret",
         admin_html="<h1>Admin</h1>",
-        cookie_token=signed,
     )
     assert resp.status_code == 200
 
@@ -138,7 +134,6 @@ def test_admin_tests_ui_response_sets_cookie():
     from kg.admin_handlers import admin_tests_ui_response
 
     resp = admin_tests_ui_response(
-        "secret",
         admin_token="secret",
         admin_tests_html="<h1>Tests</h1>",
     )

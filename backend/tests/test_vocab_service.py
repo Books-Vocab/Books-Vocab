@@ -279,6 +279,13 @@ class _FakeArchiveGraph:
         self.restored_for.append(card_id)
         return 1
 
+    def cleanup_for_card(self, card_id, *, remove_blocked=False):
+        self.deprecate_links_for(card_id)
+        self.remove_candidates_for(card_id)
+        if remove_blocked:
+            self.remove_blocked_pairs_for(card_id)
+        return {"deprecated": 1, "candidates_removed": 0}
+
 
 class TestArchiveVocabWord:
     def test_archive_deprecates_graph_links(self):
@@ -324,6 +331,9 @@ def test_delete_rolls_back_on_graph_failure(tmp_path):
             raise RuntimeError("graph write failed")
         def remove_candidates_for(self, cid):
             pass
+        def cleanup_for_card(self, cid, *, remove_blocked=False):
+            self.deprecate_links_for(cid)
+            self.remove_candidates_for(cid)
 
     with pytest.raises(RuntimeError):
         delete_vocab_word("testword", cards_store=cards_store, graph=_FailingGraph())
