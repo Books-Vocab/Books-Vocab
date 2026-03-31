@@ -1,0 +1,134 @@
+/* ── Options Page Layout ── */
+
+body {
+  margin: 0;
+  background: var(--page-bg);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  display: flex;
+  justify-content: center;
+  padding: var(--sp-xl) var(--sp-md);
+}
+
+.kg-options {
+  max-width: 480px;
+  width: 100%;
+}
+
+.kg-options__title {
+  font-family: var(--font-serif);
+  font-size: var(--text-h1);
+  font-weight: 700;
+  text-align: center;
+  margin: 0 0 var(--sp-xl) 0;
+}
+
+/* ── Section Card ── */
+
+.kg-section-card {
+  background: var(--card-bg);
+  border-radius: var(--radius-card);
+  padding: var(--card-padding);
+  margin-bottom: var(--section-gap);
+}
+
+.kg-section-card__title {
+  font-family: var(--font-serif);
+  font-size: var(--text-section-title);
+  font-weight: 700;
+  margin: 0 0 var(--sp-sm) 0;
+}
+
+/* ── Buttons ── */
+
+.kg-btn {
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-sm) var(--sp-md);
+  font-family: var(--font-sans);
+  font-size: var(--text-body);
+  cursor: pointer;
+  transition: var(--ease-quick);
+}
+
+.kg-btn:hover {
+  filter: brightness(0.9);
+}
+
+.kg-btn--outline {
+  background: transparent;
+  border: 2px solid var(--accent);
+  color: var(--accent);
+}
+
+.kg-btn--outline:hover {
+  background: var(--accent);
+  color: #fff;
+}
+
+.kg-btn--destructive {
+  background: var(--destructive);
+}
+
+.kg-btn--destructive:hover {
+  filter: brightness(0.85);
+}
+
+/* ── Auth Info ── */
+
+.kg-auth-info {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-sm);
+}
+
+/* ── Theme Selector ── */
+
+.kg-theme-selector {
+  display: flex;
+  flex-direction: row;
+  gap: var(--sp-sm);
+}
+
+.kg-theme-option {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--stage-bg);
+  border: 2px solid transparent;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-sm) var(--sp-md);
+  cursor: pointer;
+  transition: var(--ease-quick);
+  user-select: none;
+}
+
+.kg-theme-option:hover {
+  border-color: var(--tint);
+}
+
+.kg-theme-option--active {
+  border-color: var(--accent);
+}
+
+.kg-theme-option__radio {
+  display: none;
+}
+
+.kg-theme-option__label {
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  pointer-events: none;
+}
+
+/* ── About ── */
+
+.kg-about {
+  font-size: var(--text-caption);
+  color: var(--text-tertiary);
+  margin: 0;
+}
