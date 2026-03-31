@@ -62,6 +62,14 @@ class _FakeGraphStore:
     def remove_candidates_for(self, card_id):
         self.removed.append(card_id)
         return 0
+    def remove_blocked_pairs_for(self, card_id):
+        return 0
+    def cleanup_for_card(self, card_id, *, remove_blocked=False):
+        self.deprecate_links_for(card_id)
+        self.remove_candidates_for(card_id)
+        if remove_blocked:
+            self.remove_blocked_pairs_for(card_id)
+        return {"deprecated": 1, "candidates_removed": 0}
 
 
 def test_move_vocab_words_service():

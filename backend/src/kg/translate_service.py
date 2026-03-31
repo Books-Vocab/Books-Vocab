@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import logging
+from collections.abc import Callable
 from typing import Any
 
 from .exceptions import ExternalServiceError
@@ -119,58 +120,42 @@ def track_usage(user_id: str, operation: str, response: Any) -> None:
     )
 
 
-async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
+async def _run_llm_translate(
+    *,
+    req: TranslateRequest,
+    user: dict[str, Any],
+    client: Any,
+    model: str,
+    prompt_fn: Callable,
+    operation: str,
+    logger: logging.Logger | None = None,
+) -> dict:
+    """Common LLM translate flow: resolve langs -> call -> parse -> track."""
     source_lang, target_lang = resolve_translation_langs(req, user)
     response = await client.chat.completions.create(
         model=model,
-        messages=[{"role": "user", "content": quick_translate_prompt(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    if not response.choices:
-        logger.error("translate/quick: Gemini returned empty choices. Full response: %s", response)
-        raise ExternalServiceError("Gemini returned empty response")
-
-    track_usage(user["id"], "translate_quick", response)
-    data = _parse_json_payload(response.choices[0].message.content)
-    return QuickTranslateResponse(
-        t=data.get("t", ""),
-        p=_normalize_pos(data.get("p")),
-        r=data.get("r"),
-    )
-
-
-async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
-    source_lang, target_lang = resolve_translation_langs(req, user)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": phrase_translate_prompt(req, source_lang, target_lang)}],
+        messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang)}],
         temperature=0.3,
         response_format={"type": "json_object"},
     )
     if not response.choices:
         if logger:
-            logger.error("translate/phrase: Gemini returned empty choices. Full response: %s", response)
+            logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
         raise ExternalServiceError("Gemini returned empty response")
+    track_usage(user["id"], operation, response)
+    return _parse_json_payload(response.choices[0].message.content)
 
-    track_usage(user["id"], "translate_phrase", response)
-    data = _parse_json_payload(response.choices[0].message.content)
+
+async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
+    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=quick_translate_prompt, operation="translate_quick", logger=logger)
+    return QuickTranslateResponse(t=data.get("t", ""), p=_normalize_pos(data.get("p")), r=data.get("r"))
+
+
+async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
+    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=phrase_translate_prompt, operation="translate_phrase", logger=logger)
     return {"t": data.get("t", "")}
 
 
 async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
-    source_lang, target_lang = resolve_translation_langs(req, user)
-    response = await client.chat.completions.create(
-        model=model,
-        messages=[{"role": "user", "content": explain_translate_prompt(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
-    )
-    if not response.choices:
-        if logger:
-            logger.error("translate/explain: Gemini returned empty choices. Full response: %s", response)
-        raise ExternalServiceError("Gemini returned empty response")
-
-    track_usage(user["id"], "translate_explain", response)
-    data = _parse_json_payload(response.choices[0].message.content)
+    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=explain_translate_prompt, operation="translate_explain", logger=logger)
     return ExplainResponse(e=data.get("e", ""))

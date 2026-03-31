@@ -281,8 +281,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
     cards_store.update(card.id, is_archived=archived)
     if graph is not None:
         if archived:
-            graph.deprecate_links_for(card.id)
-            graph.remove_candidates_for(card.id)
+            graph.cleanup_for_card(card.id)
         else:
             graph.restore_links_for(card.id, cards_store)
     return {"word": word, "id": card.id, "archived": archived}
@@ -297,9 +296,7 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
     cards_store.delete(card.id)
     if graph is not None:
         try:
-            graph.deprecate_links_for(card.id)
-            graph.remove_candidates_for(card.id)
-            graph.remove_blocked_pairs_for(card.id)
+            graph.cleanup_for_card(card.id, remove_blocked=True)
         except Exception:
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
@@ -336,9 +333,7 @@ def batch_delete_vocab_words(
         cards_store.delete(card.id)
         if graph is not None:
             try:
-                graph.deprecate_links_for(card.id)
-                graph.remove_candidates_for(card.id)
-                graph.remove_blocked_pairs_for(card.id)
+                graph.cleanup_for_card(card.id, remove_blocked=True)
             except Exception:
                 try:
                     cards_store.restore(card.id)
@@ -378,8 +373,7 @@ def batch_archive_vocab_words(
         cards_store.update(card.id, is_archived=archived)
         if graph is not None:
             if archived:
-                graph.deprecate_links_for(card.id)
-                graph.remove_candidates_for(card.id)
+                graph.cleanup_for_card(card.id)
             else:
                 graph.restore_links_for(card.id, cards_store)
         updated_words.append(word)
@@ -415,8 +409,7 @@ def move_vocab_words(
     # Deprecate graph links in source notebook
     if source_graph is not None:
         for card_id in card_ids:
-            source_graph.deprecate_links_for(card_id)
-            source_graph.remove_candidates_for(card_id)
+            source_graph.cleanup_for_card(card_id)
 
     # Add candidates in target notebook so pipeline regenerates links
     if target_graph is not None:
