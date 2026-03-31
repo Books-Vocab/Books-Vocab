@@ -120,7 +120,19 @@ final class Book {
         let localURL = localBooksDirectory.appendingPathComponent(fileName)
         if fm.fileExists(atPath: localURL.path) { return localURL }
 
-        // 3. 都找不到 — 返回偏好目錄（供錯誤訊息使用）
+        // 3. Legacy fallback — 舊版存在 Documents/EPUBs/ 的檔案
+        let legacyDir = fm.urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("EPUBs")
+        let legacyURL = legacyDir.appendingPathComponent(fileName)
+        if fm.fileExists(atPath: legacyURL.path) { return legacyURL }
+        if let iCloudContainer = fm.url(forUbiquityContainerIdentifier: nil) {
+            let legacyICloud = iCloudContainer.appendingPathComponent("Documents/EPUBs/\(fileName)")
+            if fm.fileExists(atPath: legacyICloud.path) { return legacyICloud }
+            let legacyPlaceholder = iCloudContainer.appendingPathComponent("Documents/EPUBs/.\(fileName).icloud")
+            if fm.fileExists(atPath: legacyPlaceholder.path) { return legacyICloud }
+        }
+
+        // 4. 都找不到 — 返回偏好目錄（供錯誤訊息使用）
         return booksDirectory.appendingPathComponent(fileName)
     }
 
