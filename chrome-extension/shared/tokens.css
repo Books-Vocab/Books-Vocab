@@ -1,0 +1,171 @@
+/* ============================================================
+   KG Design Tokens — 1:1 mapping from iOS AppTheme / VocabSkin
+   ============================================================ */
+
+/* --- Font Faces --- */
+
+@font-face {
+  font-family: 'Athelas';
+  src: url('../fonts/Athelas-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'Athelas';
+  src: url('../fonts/Athelas-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('../fonts/ElmsSans-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'ElmsSans';
+  src: url('../fonts/ElmsSans-Bold.woff2') format('woff2');
+  font-weight: 700;
+  font-style: normal;
+  font-display: swap;
+}
+
+@font-face {
+  font-family: 'CormorantGaramond';
+  src: url('../fonts/CormorantGaramond-Italic.woff2') format('woff2');
+  font-weight: 400;
+  font-style: italic;
+  font-display: swap;
+}
+
+/* --- Theme: Light (default) --- */
+
+:root,
+[data-theme="light"] {
+  /* Surface */
+  --page-bg: #F3F3F1;
+  --stage-bg: #F8F7F6;
+  --card-bg: #FCFCFA;
+
+  /* Text */
+  --text-primary: #30302E;
+  --text-secondary: #6E6E6B;
+  --text-tertiary: #70706B;
+
+  /* Semantic */
+  --accent: hsl(215, 28%, 66%);
+  --success: hsl(152, 20%, 60%);
+  --destructive: hsl(355, 26%, 66%);
+  --warning: hsl(36, 80%, 80%);
+  --tint: hsl(215, 16%, 52%);
+}
+
+/* --- Theme: Dark --- */
+
+[data-theme="dark"] {
+  --page-bg: #1A1B1D;
+  --stage-bg: #202124;
+  --card-bg: #28292C;
+
+  --text-primary: #F0F0EB;
+  --text-secondary: #BDBFC4;
+  --text-tertiary: #9499A3;
+
+  --accent: hsl(215, 28%, 70%);
+  --success: hsl(152, 20%, 62%);
+  --destructive: hsl(355, 25%, 68%);
+  --warning: hsl(36, 60%, 90%);
+  --tint: hsl(215, 18%, 74%);
+}
+
+/* --- Theme: Sepia --- */
+
+[data-theme="sepia"] {
+  --page-bg: #F5F1EB;
+  --stage-bg: #FAF6F0;
+  --card-bg: #FCFAF6;
+
+  --text-primary: #30302E;
+  --text-secondary: #6E6E6B;
+  --text-tertiary: #70706B;
+
+  --accent: hsl(215, 28%, 66%);
+  --success: hsl(152, 20%, 60%);
+  --destructive: hsl(355, 26%, 66%);
+  --warning: hsl(36, 80%, 80%);
+  --tint: hsl(215, 16%, 52%);
+}
+
+/* --- Typography --- */
+
+:root {
+  /* Font stacks */
+  --font-serif: 'Athelas', 'STSongti TC', 'Noto Serif TC', Georgia, serif;
+  --font-sans: 'ElmsSans', 'PingFang TC', -apple-system, sans-serif;
+  --font-italic: 'CormorantGaramond', Georgia, serif;
+  --font-mono: 'ElmsSans Mono', 'SF Mono', monospace;
+
+  /* Type scale */
+  --text-h1: 28px;
+  --text-h2: 22px;
+  --text-section-title: 18px;
+  --text-body: 17px;
+  --text-subhead: 15px;
+  --text-caption: 12px;
+  --text-caption2: 11px;
+  --text-detail-word: 27px;
+  --text-row-word: 18px;
+}
+
+/* --- Spacing --- */
+
+:root {
+  --sp-micro: 2px;
+  --sp-tiny: 3px;
+  --sp-xs: 4px;
+  --sp-sm: 8px;
+  --sp-compact: 12px;
+  --sp-md: 16px;
+  --sp-lg: 24px;
+  --sp-xl: 32px;
+  --sp-xxl: 48px;
+}
+
+/* --- Radii --- */
+
+:root {
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-card: 12px;
+  --radius-overlay: 13px;
+  --radius-chip: 8px;
+}
+
+/* --- Skin Spacing --- */
+
+:root {
+  --card-padding: 18px;
+  --section-gap: 14px;
+  --inline-gap: 8px;
+  --sheet-padding: 24px;
+  --page-h-padding: 20px;
+}
+
+/* --- Motion --- */
+
+:root {
+  --ease-quick: ease-out 0.15s;
+  --ease-control: ease-out 0.14s;
+  --ease-chip: ease-out 0.18s;
+  --spring-standard: cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.3s;
+  --spring-emphasized: cubic-bezier(0.25, 0.46, 0.45, 0.94) 0.35s;
+  --transition-content-swap: opacity 0.2s ease-out, transform 0.2s ease-out;
+  --transition-panel-reveal: transform 0.3s ease-out, opacity 0.25s ease-out;
+}

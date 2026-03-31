@@ -1,0 +1,135 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>WordNexus - Signed In</title>
+<style>
+:root {
+  --page-bg: #F3F3F1;
+  --card-bg: #FCFCFA;
+  --accent: hsl(215, 28%, 66%);
+  --accent-hover: hsl(215, 28%, 56%);
+  --text: #2C2C2C;
+  --text-secondary: #6B6B6B;
+  --text-success: #2D7A3A;
+  --border: #E0E0DE;
+  --radius: 12px;
+  --shadow: 0 2px 8px rgba(0,0,0,0.06);
+}
+* { margin: 0; padding: 0; box-sizing: border-box; }
+body {
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  background: var(--page-bg);
+  color: var(--text);
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.card {
+  background: var(--card-bg);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  padding: 48px 40px;
+  max-width: 440px;
+  width: 100%;
+  text-align: center;
+}
+h1 { font-size: 24px; font-weight: 600; margin-bottom: 8px; }
+.status { font-size: 14px; margin-bottom: 24px; }
+.status.ok { color: var(--text-success); }
+.status.err { color: #c0392b; }
+#ext-status { display: none; }
+.fallback { display: none; }
+.token-box {
+  background: var(--page-bg);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 12px;
+  font-family: 'SF Mono', 'Fira Code', monospace;
+  font-size: 11px;
+  word-break: break-all;
+  max-height: 120px;
+  overflow-y: auto;
+  margin-bottom: 12px;
+  text-align: left;
+  color: var(--text-secondary);
+}
+.btn-copy {
+  display: inline-block;
+  padding: 10px 24px;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+.btn-copy:hover { background: var(--accent-hover); }
+.hint { color: var(--text-secondary); font-size: 12px; margin-top: 16px; }
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>WordNexus</h1>
+  <div id="ext-status">
+    <p class="status ok">Token sent to extension. You can close this tab.</p>
+  </div>
+  <div id="fallback" class="fallback">
+    <p class="status">Copy the token below and paste it in the extension:</p>
+    <div class="token-box" id="token-display">{{ token }}</div>
+    <button class="btn-copy" onclick="copyToken()">Copy Token</button>
+    <p class="hint">If the extension is installed, tokens are sent automatically.</p>
+  </div>
+</div>
+<script>
+(function() {
+  var token = {{ token | tojson }};
+  var extensionId = {{ extension_id | tojson }};
+  var sent = false;
+
+  function showFallback() {
+    if (!sent) {
+      document.getElementById('fallback').style.display = 'block';
+    }
+  }
+
+  if (extensionId && typeof chrome !== 'undefined' && chrome.runtime && chrome.runtime.sendMessage) {
+    try {
+      chrome.runtime.sendMessage(
+        extensionId,
+        {type: 'auth_token', token: token},
+        function(response) {
+          if (chrome.runtime.lastError || !response || !response.ok) {
+            showFallback();
+          } else {
+            sent = true;
+            document.getElementById('ext-status').style.display = 'block';
+          }
+        }
+      );
+      // Fallback after timeout in case sendMessage never calls back
+      setTimeout(showFallback, 2000);
+    } catch (e) {
+      showFallback();
+    }
+  } else {
+    showFallback();
+  }
+})();
+
+function copyToken() {
+  var token = {{ token | tojson }};
+  navigator.clipboard.writeText(token).then(function() {
+    var btn = document.querySelector('.btn-copy');
+    btn.textContent = 'Copied!';
+    setTimeout(function() { btn.textContent = 'Copy Token'; }, 2000);
+  });
+}
+</script>
+</body>
+</html>
