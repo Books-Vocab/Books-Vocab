@@ -82,6 +82,7 @@ from .routers import (
     translate_router,
     user_router,
     vocab_router,
+    web_auth_router,
 )
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
@@ -308,6 +309,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(pipeline_router)
     app.include_router(translate_router)
     app.include_router(auth_router)
+    app.include_router(web_auth_router)
 
     # Admin router uses builder pattern (runtime closures)
     def _settings_fn() -> KGSettings:

@@ -15,6 +15,9 @@ class KGSettings:
     jwt_algorithm: str = "HS256"
     jwt_expiry_minutes: int = 60 * 24 * 7
     google_client_id: str = ""
+    google_client_secret: str = ""
+    google_redirect_uri: str = "https://wordnexus.lol/auth/web/google/callback"
+    chrome_extension_id: str = ""
     apple_bundle_id: str = "com.Max0228.BooksBrowser"
     app_store_allow_unsigned_sync: bool = False
     app_store_allow_unsigned_notifications: bool = False
@@ -83,6 +86,9 @@ def load_settings() -> KGSettings:
         jwt_secret=jwt_secret,
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
+        google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
+        google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "https://wordnexus.lol/auth/web/google/callback"),
+        chrome_extension_id=os.getenv("CHROME_EXTENSION_ID", ""),
         apple_bundle_id=os.getenv("APPLE_BUNDLE_ID", "com.Max0228.BooksBrowser"),
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,

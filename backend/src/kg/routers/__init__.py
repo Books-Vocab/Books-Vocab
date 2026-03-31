@@ -8,6 +8,7 @@ from .system import router as system_router
 from .translate import router as translate_router
 from .user import router as user_router
 from .vocab import router as vocab_router
+from .web_auth import router as web_auth_router
 
 __all__ = [
     "build_admin_router",
@@ -20,4 +21,5 @@ __all__ = [
     "translate_router",
     "user_router",
     "vocab_router",
+    "web_auth_router",
 ]
