@@ -40,6 +40,7 @@ class Card(SQLModel, table=True):
     notebook_id: str = SQLField(default="default")
     is_deleted: bool = SQLField(default=False)
     is_archived: bool = SQLField(default=False)
+    source: str | None = SQLField(default=None)  # JSON string
 
     # Spaced-review state (synced from client)
     review_interval_hours: float = SQLField(default=12.0)
@@ -97,6 +98,7 @@ class CardStore:
         review_columns = {
             "notebook_id": "TEXT DEFAULT 'default'",
             "is_archived": "INTEGER DEFAULT 0",
+            "source": "TEXT",
             "review_interval_hours": "REAL DEFAULT 12.0",
             "next_review_at": "TIMESTAMP",
             "last_reviewed_at": "TIMESTAMP",
@@ -131,6 +133,7 @@ class CardStore:
         root_form: str | None = None,
         inflections: list[str] | None = None,
         notebook_id: str = "default",
+        source: str | None = None,
     ) -> Card:
         """Create and store a new card.
 
@@ -160,6 +163,7 @@ class CardStore:
                 root_form=root_form,
                 inflections=inflections or [],
                 notebook_id=notebook_id,
+                source=source,
             )
             session.add(card)
             try:

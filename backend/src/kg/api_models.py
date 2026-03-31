@@ -20,6 +20,13 @@ def _normalize_context(v: str) -> str:
     return v.strip()
 
 
+class VocabSource(BaseModel):
+    type: Literal["book", "web"]
+    title: str | None = None
+    url: str | None = None       # web only
+    chapter: str | None = None   # book only
+
+
 class VocabEntry(BaseModel):
     """A vocabulary entry from BooksBrowser."""
 
@@ -27,6 +34,7 @@ class VocabEntry(BaseModel):
     translation: str = Field(max_length=1000)
     context: str = Field(default="", max_length=5000)
     root_form: str | None = None  # AI-determined lemma from translate/quick
+    source: VocabSource | None = None
 
     @field_validator("context", mode="before")
     @classmethod
@@ -90,6 +98,7 @@ class CardResponse(BaseModel):
     inflections: list[str] = []
     linksByKind: dict[str, list[CardLinkSummaryResponse]] = Field(default_factory=dict)
     notebookId: str = "default"
+    source: VocabSource | None = None
     updatedAt: str | None = None
     # Review state
     reviewIntervalHours: float = 12.0
