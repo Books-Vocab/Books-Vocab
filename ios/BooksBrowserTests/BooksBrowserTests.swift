@@ -257,6 +257,71 @@ struct BooksBrowserTests {
         #expect(allSynced.map(\.word) == ["lucid"])
     }
 
+    // MARK: - mutateLink / insertLink helpers
+
+    @Test func mutateLinkReplacesExistingLink() {
+        let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
+        let link = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
+        entry.graphLinksByKind = ["synonym": [link]]
+
+        let result = entry.mutateLink(id: "link-1") { $0.withHidden(true) }
+
+        #expect(result != nil)
+        #expect(result?.kind == "synonym")
+        #expect(result?.original.isHidden == false)
+        #expect(entry.graphLinksByKind["synonym"]?.first?.isHidden == true)
+    }
+
+    @Test func mutateLinkRemovesLinkWhenTransformReturnsNil() {
+        let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
+        let link = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
+        entry.graphLinksByKind = ["synonym": [link]]
+
+        let result = entry.mutateLink(id: "link-1") { _ in nil }
+
+        #expect(result != nil)
+        #expect(result?.original.id == "link-1")
+        // group should be cleaned up
+        #expect(entry.graphLinksByKind["synonym"] == nil)
+    }
+
+    @Test func mutateLinkReturnsNilWhenNotFound() {
+        let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
+        entry.graphLinksByKind = [:]
+
+        let result = entry.mutateLink(id: "nonexistent") { $0.withHidden(true) }
+
+        #expect(result == nil)
+    }
+
+    @Test func insertLinkAddsToCorrectKindGroup() {
+        let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
+        let existing = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
+        entry.graphLinksByKind = ["synonym": [existing]]
+
+        let newLink = KGCardLinkSummary(id: "link-2", cardId: "c2", word: "beta", kind: "antonym", label: "antonym", confidence: 0.8, reason: "test")
+        entry.insertLink(newLink, kind: "antonym")
+
+        #expect(entry.graphLinksByKind["antonym"]?.count == 1)
+        #expect(entry.graphLinksByKind["antonym"]?.first?.id == "link-2")
+        #expect(entry.graphLinksByKind["synonym"]?.count == 1)
+    }
+
+    @Test func mutateLinkCleansUpEmptyGroup() {
+        let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
+        let link1 = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
+        let link2 = KGCardLinkSummary(id: "link-2", cardId: "c2", word: "beta", kind: "synonym", label: "synonym", confidence: 0.8, reason: "test")
+        entry.graphLinksByKind = ["synonym": [link1, link2]]
+
+        // Remove first link — group still has one
+        _ = entry.mutateLink(id: "link-1") { _ in nil }
+        #expect(entry.graphLinksByKind["synonym"]?.count == 1)
+
+        // Remove second link — group should be cleaned up
+        _ = entry.mutateLink(id: "link-2") { _ in nil }
+        #expect(entry.graphLinksByKind["synonym"] == nil)
+    }
+
     private func makeSnapshot(
         lookedUpWords: [String],
         clearHighlightTrigger: UUID = UUID(),
