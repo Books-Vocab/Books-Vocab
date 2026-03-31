@@ -193,6 +193,37 @@ extension VocabularyEntry {
         return text
     }
 
+    // MARK: - Link mutation helpers
+
+    /// Finds a link by `id` across all kind-groups, applies `transform`, and returns the original.
+    /// - If `transform` returns a new link → replaces in-place.
+    /// - If `transform` returns `nil` → removes (and cleans up empty groups).
+    /// - Returns `nil` when no link with the given `id` exists.
+    @discardableResult
+    func mutateLink(id linkId: String, _ transform: (KGCardLinkSummary) -> KGCardLinkSummary?) -> (kind: String, original: KGCardLinkSummary)? {
+        var dict = graphLinksByKind
+        for (kind, links) in dict {
+            guard let idx = links.firstIndex(where: { $0.id == linkId }) else { continue }
+            let original = links[idx]
+            if let replacement = transform(original) {
+                dict[kind]?[idx] = replacement
+            } else {
+                dict[kind]?.remove(at: idx)
+                if dict[kind]?.isEmpty == true { dict[kind] = nil }
+            }
+            graphLinksByKind = dict
+            return (kind: kind, original: original)
+        }
+        return nil
+    }
+
+    /// Re-inserts a link into a specific kind-group (used for rollback after delete).
+    func insertLink(_ link: KGCardLinkSummary, kind: String) {
+        var dict = graphLinksByKind
+        dict[kind, default: []].append(link)
+        graphLinksByKind = dict
+    }
+
     var graphLinksByKind: [String: [KGCardLinkSummary]] {
         get {
             // Invalidate cache when underlying JSON changes (e.g. cross-context sync)
