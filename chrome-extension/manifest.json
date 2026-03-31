@@ -1,0 +1,39 @@
+{
+  "manifest_version": 3,
+  "name": "KG 詞彙助手",
+  "version": "0.1.0",
+  "description": "閱讀時選詞翻譯，建立詞彙知識圖譜",
+  "permissions": ["activeTab", "sidePanel", "storage"],
+  "host_permissions": ["https://wordnexus.lol/*"],
+  "background": {
+    "service_worker": "background.js"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content/content.js"],
+      "run_at": "document_idle"
+    }
+  ],
+  "side_panel": {
+    "default_path": "sidepanel/index.html"
+  },
+  "options_ui": {
+    "page": "options/options.html",
+    "open_in_tab": true
+  },
+  "externally_connectable": {
+    "matches": ["https://wordnexus.lol/*"]
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["fonts/*", "shared/tokens.css", "content/popup.css"],
+      "matches": ["<all_urls>"]
+    }
+  ],
+  "icons": {
+    "16": "icons/icon16.png",
+    "48": "icons/icon48.png",
+    "128": "icons/icon128.png"
+  }
+}
