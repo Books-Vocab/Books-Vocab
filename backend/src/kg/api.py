@@ -266,6 +266,22 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
         return response
 
+    from fastapi.exceptions import RequestValidationError
+
+    @app.exception_handler(RequestValidationError)
+    async def validation_error_handler(request: Request, exc: RequestValidationError):
+        body = None
+        try:
+            body = await request.body()
+            body = body.decode("utf-8", errors="replace")[:500]
+        except Exception:
+            pass
+        logger.warning(
+            "Validation error [%s %s] body=%s errors=%s",
+            request.method, request.url.path, body, exc.errors(),
+        )
+        return JSONResponse(status_code=422, content={"detail": exc.errors()})
+
     from .exceptions import KGError
 
     @app.exception_handler(KGError)

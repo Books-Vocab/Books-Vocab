@@ -34,7 +34,7 @@ struct WordDetailSheet: View {
                     state: presenterState,
                     wrapInNavigation: wrapInNavigation,
                     onClose: wrapInNavigation ? { dismiss() } : nil,
-                    onEdit: wrapInNavigation ? { isEditing = true } : nil,
+                    onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
                     onAddLink: { showAddLink = true },
