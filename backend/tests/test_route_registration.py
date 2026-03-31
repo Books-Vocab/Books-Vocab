@@ -44,6 +44,7 @@ def test_registered_routes_cover_core_api_surface():
         ("/api/admin/tests/catalog", ("GET",)),
         ("/admin/tests", ("GET",)),
         ("/admin/test", ("GET",)),
+        ("/api/system/info", ("GET",)),
     }
 
     missing = expected_routes - routes
