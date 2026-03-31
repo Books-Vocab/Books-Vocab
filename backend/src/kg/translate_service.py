@@ -11,6 +11,19 @@ from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_L
 from .vocab_service import _normalize_pos
 
 
+def _context_around_word(context: str, word: str, max_len: int = 300) -> str:
+    """Truncate context centered on the target word."""
+    if len(context) <= max_len:
+        return context
+    pos = context.lower().find(word.lower())
+    if pos < 0:
+        return context[:max_len]
+    half = (max_len - len(word)) // 2
+    start = max(0, pos - half)
+    end = min(len(context), pos + len(word) + half)
+    return context[start:end].strip()
+
+
 def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tuple[str, str]:
     """Resolve source/target languages from request → user config → defaults."""
     source = req.source_lang
@@ -38,7 +51,7 @@ def quick_translate_prompt(req: TranslateRequest, source_lang: str, target_lang:
     return f'''Translate from {src_name} to {tgt_name}. Provide translation, POS, and lemma (root form).
 POS options: n. / v. / adj. / adv. / conj. / prep.
 Word: "{req.word}"
-Context: "{req.context[:300]}"
+Context: "{_context_around_word(req.context, req.word)}"
 
 Translation (t) rules:
 - Must be {tgt_name} (use 繁體中文 characters, never 简体)
@@ -61,7 +74,7 @@ def phrase_translate_prompt(req: TranslateRequest, source_lang: str, target_lang
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
     return f'''Translate the following {src_name} phrase/expression into {tgt_name} (use 繁體中文, never 简体).
 Phrase: "{req.word}"
-Context: "{req.context[:300]}"
+Context: "{_context_around_word(req.context, req.word)}"
 Output pure JSON (no Markdown): {{ "t": "..." }}'''
 
 
@@ -76,7 +89,7 @@ def explain_translate_prompt(req: TranslateRequest, source_lang: str, target_lan
 Write as a single flowing paragraph (3-5 sentences). Do NOT use section headers, bullet points, or numbered lists. The explanation should read like a knowledgeable tutor speaking naturally.
 
 Word: "{req.word}"
-Context: "{req.context[:300]}"
+Context: "{_context_around_word(req.context, req.word)}"
 Output pure JSON (no Markdown): {{ "e": "..." }}'''
 
 

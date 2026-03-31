@@ -133,14 +133,18 @@ class TranslationLanguageConfig(BaseModel):
 
 class TranslateRequest(BaseModel):
     word: str = Field(min_length=1, max_length=500)
-    context: str = Field(max_length=5000)
+    context: str = Field(default="", max_length=1000)
     source_lang: str | None = None
     target_lang: str | None = None
 
     @field_validator("context", mode="before")
     @classmethod
     def normalize_context(cls, v: str) -> str:
-        return _normalize_context(v) if isinstance(v, str) else v
+        if isinstance(v, str):
+            v = _normalize_context(v)
+            if len(v) > 1000:
+                v = v[:1000]
+        return v
 
     @field_validator("source_lang")
     @classmethod
