@@ -71,7 +71,12 @@ struct BookshelfView: View {
             }
             .fileImporter(
                 isPresented: $coordinator.isImporting,
-                allowedContentTypes: [UTType(filenameExtension: "epub") ?? .data],
+                allowedContentTypes: [
+                    UTType(filenameExtension: "epub") ?? .data,
+                    .plainText,
+                    UTType(filenameExtension: "md") ?? .data,
+                    .pdf,
+                ],
                 allowsMultipleSelection: false
             ) { result in
                 coordinator.handleFileImport(
@@ -104,7 +109,7 @@ struct BookshelfView: View {
                 AppEmptyStateContent(
                     title: "尚無書籍".localized,
                     systemImage: "book",
-                    description: "匯入 EPUB 電子書開始閱讀".localized,
+                    description: "匯入電子書開始閱讀（EPUB・TXT・MD・PDF）".localized,
                     guidanceText: "點擊上方匯入按鈕加入你的第一本書",
                     style: .bookshelf(appTheme)
                 )
@@ -186,7 +191,12 @@ struct BookshelfView: View {
             try? await Task.sleep(for: .seconds(1.5))
         }
         .navigationDestination(for: Book.self) { book in
-            ReaderView(book: book)
+            switch book.format {
+            case .epub, .txt, .md:
+                ReaderView(book: book)
+            case .pdf:
+                PDFReaderView(book: book)
+            }
         }
     }
 
@@ -316,6 +326,15 @@ struct BookCard: View {
                         .foregroundStyle(appTheme.palette.secondaryText)
                         .multilineTextAlignment(.center)
                         .padding(.horizontal, AppBookshelfMetrics.placeholderTitleHorizontalPadding)
+                    if book.format != .epub {
+                        Text(book.format.rawValue.uppercased())
+                            .font(AppFonts.caption2())
+                            .foregroundStyle(appTheme.palette.secondaryText)
+                            .padding(.horizontal, AppMetrics.spacingExtraSmall)
+                            .padding(.vertical, AppMetrics.spacingMicro)
+                            .background(appTheme.palette.mutedFill)
+                            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall))
+                    }
                 }
             }
         }
