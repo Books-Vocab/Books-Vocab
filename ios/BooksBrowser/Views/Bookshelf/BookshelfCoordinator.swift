@@ -69,7 +69,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             }
         }
 
-        fileManager.deleteBookFile(named: book.epubFileName)
+        fileManager.deleteBookFile(named: book.fileName)
         modelContext.delete(book)
     }
 
@@ -87,7 +87,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 loadingMessage = L10n.string("正在解析 EPUB...")
 
                 let draft = try await importService.importBook(from: url)
-                AppLog.book.info("Import succeeded: \(draft.epubFileName)")
+                AppLog.book.info("Import succeeded: \(draft.fileName)")
                 AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 
                 loadingMessage = L10n.string("正在儲存...")
@@ -96,7 +96,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     title: draft.title,
                     author: draft.author,
                     coverImageData: draft.coverImageData,
-                    epubFileName: draft.epubFileName
+                    fileName: draft.fileName,
+                    format: draft.format
                 )
 
                 modelContext.insert(book)

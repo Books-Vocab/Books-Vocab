@@ -4,7 +4,8 @@ struct ImportedBookDraft {
     let title: String
     let author: String
     let coverImageData: Data?
-    let epubFileName: String
+    let fileName: String
+    let format: BookFormat
 }
 
 @MainActor
@@ -29,7 +30,8 @@ final class BookshelfImportService: BookshelfImporting {
             title: metadata.title,
             author: metadata.author,
             coverImageData: coverData,
-            epubFileName: fileName
+            fileName: fileName,
+            format: .epub
         )
     }
 }

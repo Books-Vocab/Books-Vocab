@@ -97,7 +97,7 @@ final class ICloudDownloadManager {
 
     /// 手動觸發特定檔案下載
     func triggerDownload(for fileName: String) {
-        guard let dir = Book.iCloudEpubsDirectory else { return }
+        guard let dir = Book.iCloudBooksDirectory else { return }
         let url = dir.appendingPathComponent(fileName)
         do {
             try FileManager.default.startDownloadingUbiquitousItem(at: url)

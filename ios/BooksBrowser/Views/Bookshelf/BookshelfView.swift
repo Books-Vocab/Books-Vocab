@@ -337,7 +337,7 @@ struct BookCard: View {
 
     @ViewBuilder
     private var iCloudDownloadBadge: some View {
-        if let state = downloadManager.state(for: book.epubFileName) {
+        if let state = downloadManager.state(for: book.fileName) {
             switch state {
             case .downloading(let progress):
                 ICloudProgressBadge(progress: progress)
@@ -423,7 +423,7 @@ private enum BookshelfPreviewData {
         let book = Book(
             title: "The Architecture of Words",
             author: "Lena Harper",
-            epubFileName: "architecture-of-words.epub"
+            fileName: "architecture-of-words.epub"
         )
         book.progression = 0.64
         book.dateLastRead = Calendar.current.date(byAdding: .day, value: -3, to: Date())
@@ -434,7 +434,7 @@ private enum BookshelfPreviewData {
         let book = Book(
             title: "A Very Long Book Title For Empty Cover Placeholder",
             author: "M. Rivera",
-            epubFileName: "placeholder.epub"
+            fileName: "placeholder.epub"
         )
         book.progression = 0.18
         book.dateLastRead = Calendar.current.date(byAdding: .hour, value: -5, to: Date())
