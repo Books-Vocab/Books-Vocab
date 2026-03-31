@@ -151,25 +151,30 @@ struct WordDetailSheet: View {
         }
     }
 
+    private func counterpart(for link: KGCardLinkSummary) -> VocabularyEntry? {
+        let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
+        return entry.linkedEntry(for: link, lookup: lookup)
+    }
+
     private func handleDeleteLink(_ link: KGCardLinkSummary) {
         let notebookId = entry.notebookId
+        let peer = counterpart(for: link)
 
-        // 1. Optimistic remove
-        var current = entry.graphLinksByKind
-        current[link.kind]?.removeAll { $0.id == link.id }
-        if current[link.kind]?.isEmpty == true {
-            current.removeValue(forKey: link.kind)
-        }
-        entry.graphLinksByKind = current
+        // 1. Optimistic remove — bilateral
+        let removed = entry.mutateLink(id: link.id) { _ in nil }
+        let peerRemoved = peer?.mutateLink(id: link.id) { _ in nil }
 
-        // 2. Backend call — rollback on failure (re-insert single link, not full snapshot)
+        // 2. Backend call — rollback on failure
         Task {
             do {
                 try await kgService.deleteLink(linkId: link.id, notebookId: notebookId)
             } catch {
-                var rollback = entry.graphLinksByKind
-                rollback[link.kind, default: []].append(link)
-                entry.graphLinksByKind = rollback
+                if let removed {
+                    entry.insertLink(removed.original, kind: removed.kind)
+                }
+                if let peerRemoved {
+                    peer?.insertLink(peerRemoved.original, kind: peerRemoved.kind)
+                }
                 linkError = "刪除連結失敗".localized
             }
         }
@@ -177,24 +182,19 @@ struct WordDetailSheet: View {
 
     private func handleHideLink(_ link: KGCardLinkSummary) {
         let notebookId = entry.notebookId
+        let peer = counterpart(for: link)
 
-        // 1. Optimistic update
-        var current = entry.graphLinksByKind
-        if let idx = current[link.kind]?.firstIndex(where: { $0.id == link.id }) {
-            current[link.kind]?[idx] = link.withHidden(true)
-        }
-        entry.graphLinksByKind = current
+        // 1. Optimistic hide — bilateral
+        entry.mutateLink(id: link.id) { $0.withHidden(true) }
+        peer?.mutateLink(id: link.id) { $0.withHidden(true) }
 
         // 2. Backend call — rollback on failure
         Task {
             do {
                 try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
             } catch {
-                var rollback = entry.graphLinksByKind
-                if let idx = rollback[link.kind]?.firstIndex(where: { $0.id == link.id }) {
-                    rollback[link.kind]?[idx] = link.withHidden(false)
-                }
-                entry.graphLinksByKind = rollback
+                entry.mutateLink(id: link.id) { $0.withHidden(false) }
+                peer?.mutateLink(id: link.id) { $0.withHidden(false) }
                 linkError = "隱藏連結失敗".localized
             }
         }
@@ -202,24 +202,19 @@ struct WordDetailSheet: View {
 
     private func handleUnhideLink(_ link: KGCardLinkSummary) {
         let notebookId = entry.notebookId
+        let peer = counterpart(for: link)
 
-        // 1. Optimistic update
-        var current = entry.graphLinksByKind
-        if let idx = current[link.kind]?.firstIndex(where: { $0.id == link.id }) {
-            current[link.kind]?[idx] = link.withHidden(false)
-        }
-        entry.graphLinksByKind = current
+        // 1. Optimistic unhide — bilateral
+        entry.mutateLink(id: link.id) { $0.withHidden(false) }
+        peer?.mutateLink(id: link.id) { $0.withHidden(false) }
 
         // 2. Backend call — rollback on failure
         Task {
             do {
                 try await kgService.unhideLink(linkId: link.id, notebookId: notebookId)
             } catch {
-                var rollback = entry.graphLinksByKind
-                if let idx = rollback[link.kind]?.firstIndex(where: { $0.id == link.id }) {
-                    rollback[link.kind]?[idx] = link.withHidden(true)
-                }
-                entry.graphLinksByKind = rollback
+                entry.mutateLink(id: link.id) { $0.withHidden(true) }
+                peer?.mutateLink(id: link.id) { $0.withHidden(true) }
                 linkError = "恢復連結失敗".localized
             }
         }
