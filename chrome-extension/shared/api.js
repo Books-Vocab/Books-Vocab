@@ -96,7 +96,7 @@ class ApiError extends Error {
  * @param {string} [context]
  */
 async function translate(word, context) {
-  return apiFetch('/api/translate', {
+  return apiFetch('/api/translate/quick', {
     method: 'POST',
     body: JSON.stringify({ word, context }),
   });
@@ -120,7 +120,7 @@ async function translatePhrase(text, context) {
  * @param {string} [context]
  */
 async function explain(word, context) {
-  return apiFetch('/api/explain', {
+  return apiFetch('/api/translate/explain', {
     method: 'POST',
     body: JSON.stringify({ word, context }),
   });
@@ -131,9 +131,9 @@ async function explain(word, context) {
  * @param {Array<{word: string, context?: string, source_url?: string}>} entries
  */
 async function addVocab(entries) {
-  return apiFetch('/api/vocabulary', {
+  return apiFetch('/api/vocab', {
     method: 'POST',
-    body: JSON.stringify({ entries }),
+    body: JSON.stringify(entries),
   });
 }
 
@@ -143,7 +143,7 @@ async function addVocab(entries) {
  */
 async function listVocab(since) {
   const params = since ? `?since=${encodeURIComponent(since)}` : '';
-  return apiFetch(`/api/vocabulary${params}`);
+  return apiFetch(`/api/vocab${params}`);
 }
 
 /**
@@ -151,7 +151,7 @@ async function listVocab(since) {
  * @param {string} word
  */
 async function lookupWord(word) {
-  return apiFetch(`/api/vocabulary/${encodeURIComponent(word)}`);
+  return apiFetch(`/api/vocab/${encodeURIComponent(word)}`);
 }
 
 // ---------------------------------------------------------------------------

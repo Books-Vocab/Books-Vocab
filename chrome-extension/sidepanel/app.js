@@ -128,7 +128,7 @@ function onSearch() {
   }
 
   const filtered = vocabData.filter((item) => {
-    const word = (item.word || '').toLowerCase();
+    const word = (item.content || '').toLowerCase();
     const meaning = (item.meaning || item.translation || '').toLowerCase();
     return word.includes(query) || meaning.includes(query);
   });
@@ -167,11 +167,12 @@ function renderList(items) {
 function createCard(item) {
   const card = document.createElement('div');
   card.className = 'kg-list-card';
-  card.dataset.word = item.word || '';
+  card.dataset.word = item.content || '';
 
   const meaning = item.meaning || item.translation || '';
   const pos = item.pos || '';
-  const isWeb = !!(item.source_url || item.source_title);
+  const source = item.source || null;
+  const isWeb = source && source.type === 'web';
   const sourceIcon = isWeb ? '🌐' : '📖';
 
   // Top row: word + pos + source
@@ -180,7 +181,7 @@ function createCard(item) {
 
   const wordEl = document.createElement('span');
   wordEl.className = 'kg-list-card__word';
-  wordEl.textContent = item.word || '';
+  wordEl.textContent = item.content || '';
   row.appendChild(wordEl);
 
   if (pos) {
@@ -229,7 +230,7 @@ function toggleDetail(card, item) {
   const prev = stateContent.querySelector('.kg-detail');
   if (prev) prev.remove();
 
-  expandedWord = item.word;
+  expandedWord = item.content;
 
   const detail = document.createElement('div');
   detail.className = 'kg-detail';
@@ -240,9 +241,10 @@ function toggleDetail(card, item) {
   const collocations = item.collocations || [];
   const note = item.note || '';
   const context = item.context_sentence || item.context || '';
-  const sourceUrl = item.source_url || '';
-  const sourceTitle = item.source_title || '';
-  const isWeb = !!(sourceUrl || sourceTitle);
+  const source = item.source || null;
+  const sourceUrl = source ? (source.url || '') : '';
+  const sourceTitle = source ? (source.title || '') : '';
+  const isWeb = source && source.type === 'web';
 
   // Full meaning
   if (meaning) {

@@ -2,26 +2,18 @@
  * Options page — login flow, theme switching, about info.
  */
 
-const AUTH_KEYS = ['auth_token', 'user_id'];
+const AUTH_KEYS = ['auth_token'];
 const authStatus = document.getElementById('auth-status');
 const themeSelector = document.getElementById('theme-selector');
 
-// ── Helpers ──
-
-function truncateId(id) {
-  if (!id) return '—';
-  const s = String(id);
-  return s.length > 12 ? s.slice(0, 6) + '…' + s.slice(-4) : s;
-}
-
 // ── Auth UI ──
 
-function renderLoggedIn(userId) {
+function renderLoggedIn() {
   authStatus.innerHTML = '';
 
   const info = document.createElement('div');
   info.className = 'kg-auth-info';
-  info.textContent = '已登入：' + truncateId(userId);
+  info.textContent = '已登入';
 
   const btn = document.createElement('button');
   btn.className = 'kg-btn kg-btn--destructive';
@@ -46,7 +38,7 @@ function renderLoggedOut() {
 async function refreshAuthUI() {
   const data = await chrome.storage.local.get(AUTH_KEYS);
   if (data.auth_token) {
-    renderLoggedIn(data.user_id);
+    renderLoggedIn();
   } else {
     renderLoggedOut();
   }
@@ -97,7 +89,7 @@ function handleThemeChange(e) {
 
   // Live storage changes (e.g. OAuth completing in another tab)
   chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && (changes.auth_token || changes.user_id)) {
+    if (area === 'local' && changes.auth_token) {
       refreshAuthUI();
     }
   });
