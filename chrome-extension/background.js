@@ -7,8 +7,7 @@
  * 3. Open side panel on extension icon click
  */
 
-// Load shared modules into service worker scope
-importScripts('shared/api.js', 'shared/theme.js');
+import * as KGApi from './shared/api.js';
 
 const TOKEN_KEY = KGApi.TOKEN_KEY;
 

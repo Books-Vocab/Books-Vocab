@@ -158,6 +158,22 @@ async function lookupWord(word) {
 // Exports
 // ---------------------------------------------------------------------------
 
+// ES module exports (for background.js service worker)
+export {
+  translate,
+  translatePhrase,
+  explain,
+  addVocab,
+  listVocab,
+  lookupWord,
+  apiFetch,
+  ApiError,
+  getToken,
+  API_BASE,
+  TOKEN_KEY,
+};
+
+// Global exports (for non-module contexts: content script, side panel, options)
 if (typeof globalThis !== 'undefined') {
   globalThis.KGApi = {
     translate,
