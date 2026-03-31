@@ -36,13 +36,6 @@ document.addEventListener('DOMContentLoaded', async () => {
   const theme = await initTheme(document.documentElement);
   updateThemeBtn(theme);
 
-  // Listen for theme changes from other contexts
-  chrome.storage.onChanged.addListener((changes, area) => {
-    if (area === 'local' && changes[THEME_KEY]) {
-      updateThemeBtn(resolveTheme(changes[THEME_KEY].newValue));
-    }
-  });
-
   themeBtn.addEventListener('click', cycleTheme);
   retryBtn.addEventListener('click', loadVocabList);
   searchInput.addEventListener('input', debounce(onSearch, 300));
