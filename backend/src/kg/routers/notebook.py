@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import logging
 
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
 from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, get_current_user
+from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_service import _dt_to_iso
 
 router = APIRouter()
@@ -34,7 +35,7 @@ def list_notebooks(since: str | None = None, user: dict = Depends(get_current_us
         from ..user_store import parse_datetime
         parsed = parse_datetime(since)
         if parsed is None:
-            raise HTTPException(400, "Invalid since timestamp")
+            raise BadRequestError("Invalid since timestamp")
         notebooks = store.get_modified_since(parsed)
     else:
         notebooks = store.all(include_deleted=True)
@@ -64,10 +65,10 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: dict = Depends
     if req.sort_order is not None:
         kwargs["sort_order"] = req.sort_order
     if not kwargs:
-        raise HTTPException(400, "No fields to update")
+        raise BadRequestError("No fields to update")
     nb = store.update(nb_id, **kwargs)
     if nb is None:
-        raise HTTPException(404, "Notebook not found")
+        raise NotFoundError("Notebook", nb_id)
     cards = _card_store(user["dir"])
     return _notebook_response(nb, card_count=cards.count(notebook_id=nb.id))
 
@@ -78,7 +79,7 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     cards = _card_store(user["dir"])
     result = store.delete(nb_id)
     if result is False:
-        raise HTTPException(400, "Cannot delete: notebook not found or is default")
+        raise BadRequestError("Cannot delete: notebook not found or is default")
     # 只在首次刪除時搬移卡片並合併 graph/embedding；冪等重試時已無資料需搬
     reassigned = 0
     if result is True:
