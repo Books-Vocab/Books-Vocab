@@ -19,6 +19,7 @@ dependencies = [
     "filelock>=3.0,<4.0",
     "lemminflect>=0.2,<1.0",
     "jinja2>=3.1,<4.0",
+    "python-multipart>=0.0.7,<1.0",
 ]
 
 [project.scripts]
