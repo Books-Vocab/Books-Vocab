@@ -74,6 +74,9 @@ struct BooksBrowserApp: App {
                 modelContainer = Self.makeFallbackModelContainer()
             }
         }
+
+        // Always recover orphan book files (idempotent — skips files with existing records)
+        Self.recoverOrphanBooks(container: modelContainer)
     }
 
     private static func runMigrationIfNeeded(container: ModelContainer) {
@@ -280,19 +283,35 @@ struct BooksBrowserApp: App {
         }
     }
 
-    /// 刪除本機 SwiftData store 後重建 ModelContainer（保留 CloudKit store）
+    /// 刪除本機 SwiftData store 後重建 ModelContainer（CloudKit store 從 iCloud 恢復）
     private static func retryAfterStoreReset(localConfig: ModelConfiguration, cloudConfig: ModelConfiguration) -> ModelContainer? {
-        // 只刪除 LocalStore；CloudKit store 會自動從 iCloud 恢復
-        let storeURL = localConfig.url
-        let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
-        for path in storePaths {
-            try? FileManager.default.removeItem(at: path)
+        // 刪除 LocalStore + CloudStore（CloudKit 資料會從 iCloud 自動恢復）
+        for storeURL in [localConfig.url, cloudConfig.url] {
+            let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
+            for path in storePaths {
+                try? FileManager.default.removeItem(at: path)
+            }
+            AppLog.app.info("Removed store files at \(storeURL.lastPathComponent)")
         }
-        AppLog.app.info("Removed local store files at \(storeURL.lastPathComponent)")
 
-        return try? ModelContainer(
+        // First try: dual-store (local + CloudKit)
+        if let container = try? ModelContainer(
             for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
             configurations: localConfig, cloudConfig
+        ) {
+            return container
+        }
+
+        // Second try: all local, no CloudKit (iOS 26 CloudKit schema validation may fail)
+        AppLog.app.warning("Dual-store retry failed — attempting single-store without CloudKit")
+        let localOnlyConfig = ModelConfiguration(
+            "LocalStore",
+            schema: Schema([Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self]),
+            cloudKitDatabase: .none
+        )
+        return try? ModelContainer(
+            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: localOnlyConfig
         )
     }
 
@@ -300,10 +319,75 @@ struct BooksBrowserApp: App {
         do {
             return try ModelContainer(
                 for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
         } catch {
             fatalError("Cannot create fallback in-memory ModelContainer: \(error)")
+        }
+    }
+
+    /// Store reset 後掃描磁碟上的書籍檔案，重建遺失的 Book 記錄
+    @MainActor
+    private static func recoverOrphanBooks(container: ModelContainer) {
+        let context = ModelContext(container)
+        let fm = FileManager.default
+        let supportedExtensions: Set<String> = ["epub", "txt", "md", "pdf"]
+
+        // Scan both local and iCloud directories
+        var allFiles: [URL] = []
+        if let files = try? fm.contentsOfDirectory(at: Book.localBooksDirectory, includingPropertiesForKeys: nil) {
+            allFiles.append(contentsOf: files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) })
+        }
+        if let iCloudDir = Book.iCloudBooksDirectory,
+           let files = try? fm.contentsOfDirectory(at: iCloudDir, includingPropertiesForKeys: nil) {
+            allFiles.append(contentsOf: files.filter { supportedExtensions.contains($0.pathExtension.lowercased()) })
+        }
+
+        AppLog.app.info("recoverOrphanBooks: local=\(Book.localBooksDirectory.path), iCloud=\(Book.iCloudBooksDirectory?.path ?? "nil"), found \(allFiles.count) book file(s)")
+        guard !allFiles.isEmpty else {
+            AppLog.app.info("recoverOrphanBooks: no book files found on disk")
+            return
+        }
+
+        // Get existing book fileNames
+        let existing: Set<String>
+        if let books = try? context.fetch(FetchDescriptor<Book>()) {
+            existing = Set(books.map(\.epubFileName))
+        } else {
+            existing = []
+        }
+
+        var recovered = 0
+        for file in allFiles {
+            let fileName = file.lastPathComponent
+            guard !existing.contains(fileName) else { continue }
+
+            // Skip .icloud placeholder files and Originals directory
+            guard !fileName.hasPrefix("."), fileName != "Originals" else { continue }
+
+            let ext = file.pathExtension.lowercased()
+            let format: BookFormat = switch ext {
+            case "epub": .epub
+            case "txt":  .txt
+            case "md":   .md
+            case "pdf":  .pdf
+            default: .epub
+            }
+
+            // Derive title from fileName (strip UUID prefix if present)
+            let baseName = file.deletingPathExtension().lastPathComponent
+            let title = baseName.count > 37 && baseName.dropFirst(36).first == "_"
+                ? String(baseName.dropFirst(37))  // UUID_originalName pattern
+                : baseName
+
+            let book = Book(title: title, author: "", fileName: fileName, format: format)
+            context.insert(book)
+            recovered += 1
+        }
+
+        if recovered > 0 {
+            try? context.save()
+            AppLog.app.info("Recovered \(recovered) orphan book(s) from disk")
         }
     }
 }
