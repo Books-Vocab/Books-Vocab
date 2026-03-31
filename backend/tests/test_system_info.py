@@ -1,0 +1,66 @@
+"""Tests for the /api/system/info endpoint (no auth required)."""
+from __future__ import annotations
+
+from unittest.mock import patch
+
+from fastapi.testclient import TestClient
+
+from kg.api import app
+
+
+class TestSystemInfoEndpoint:
+
+    def test_returns_200_without_auth(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get("/api/system/info")
+        assert r.status_code == 200, r.text
+
+    def test_response_contains_version(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get("/api/system/info")
+        body = r.json()
+        assert "version" in body
+
+    def test_response_contains_started_at(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get("/api/system/info")
+        body = r.json()
+        assert "started_at" in body
+        assert body["started_at"] is not None
+
+    def test_response_contains_uptime_seconds(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get("/api/system/info")
+        body = r.json()
+        assert "uptime_seconds" in body
+        assert isinstance(body["uptime_seconds"], (int, float))
+        assert body["uptime_seconds"] >= 0
+
+    def test_response_contains_migration_version(self):
+        client = TestClient(app, raise_server_exceptions=False)
+        r = client.get("/api/system/info")
+        body = r.json()
+        assert "migration_version" in body
+
+    def test_version_reads_from_file(self, tmp_path):
+        version_file = tmp_path / "VERSION"
+        version_file.write_text("abc1234\n")
+        with patch("kg.routers.system.VERSION_FILE", version_file):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get("/api/system/info")
+        assert r.json()["version"] == "abc1234"
+
+    def test_version_unknown_when_file_missing(self, tmp_path):
+        missing = tmp_path / "NO_SUCH_FILE"
+        with patch("kg.routers.system.VERSION_FILE", missing):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get("/api/system/info")
+        assert r.json()["version"] == "unknown"
+
+    def test_endpoint_exempt_from_rate_limit(self):
+        """The system info endpoint should not be rate-limited."""
+        client = TestClient(app, raise_server_exceptions=False)
+        # Hit it many times — should never get 429
+        for _ in range(20):
+            r = client.get("/api/system/info")
+            assert r.status_code != 429

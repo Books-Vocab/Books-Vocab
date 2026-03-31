@@ -78,6 +78,7 @@ from .routers import (
     notebook_router,
     pipeline_router,
     static_pages_router,
+    system_router,
     translate_router,
     user_router,
     vocab_router,
@@ -228,6 +229,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     _RATE_LIMIT_EXEMPT = {
         "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
         "/api/billing/app-store/notifications", "/admin",
+        "/api/system/info",
     }
 
     @app.middleware("http")
@@ -277,6 +279,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         return JSONResponse(status_code=500, content={"detail": "Internal server error", "request_id": request_id})
 
     # --- routers ---
+    app.include_router(system_router)
     app.include_router(static_pages_router)
     app.include_router(user_router)
     app.include_router(billing_router)

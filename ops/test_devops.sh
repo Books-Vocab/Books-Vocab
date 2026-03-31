@@ -69,6 +69,21 @@ awk '/^require_local_files\(\)/,/^}/' "$KG" | grep -q 'docker-compose.yml' \
   && ok "KG require_local_files checks docker-compose.yml" \
   || fail_t "KG require_local_files missing docker-compose.yml check"
 
+# ── 7. 部署版本追蹤 ──────────────────────────────────────────────────────
+section "Deploy version tracking"
+grep -q 'git rev-parse --short HEAD' "$KG" \
+  && ok "KG deploy stamps git SHA" \
+  || fail_t "KG deploy missing git SHA stamp"
+grep -q 'VERSION' "$KG" \
+  && ok "KG writes VERSION file" \
+  || fail_t "KG missing VERSION file write"
+grep -q 'deploy.log' "$KG" \
+  && ok "KG appends deploy log" \
+  || fail_t "KG missing deploy log"
+awk '/^cmd_status\(\)/,/^}/' "$KG" | grep -q 'VERSION' \
+  && ok "KG status shows deployed version" \
+  || fail_t "KG status missing version display"
+
 # ── 結果 ──────────────────────────────────────────────────────────────────
 echo ""
 echo "══════════════════════════════"
