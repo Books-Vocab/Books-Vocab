@@ -490,6 +490,79 @@ class TestBatchArchiveCaseInsensitive:
         assert call_count == 0, f"find_by_content called {call_count} times, expected 0"
 
 
+# ---------------------------------------------------------------------------
+# Task 2 (incremental query): 增量查詢優化
+# ---------------------------------------------------------------------------
+
+def test_incremental_query_does_not_load_all_cards(tmp_path):
+    """Incremental sync should use get_modified_since, not all_as_dict."""
+    from unittest.mock import MagicMock
+    from datetime import datetime, timedelta
+    from kg.vocab_service import list_vocab_cards
+
+    cards_store = MagicMock()
+    now = datetime(2026, 3, 31, 12, 0, 0)
+    modified_card = MagicMock()
+    modified_card.id = "card1"
+    modified_card.is_deleted = False
+    modified_card.content = "test"
+    modified_card.updated_at = now
+
+    cards_store.get_modified_since.return_value = [modified_card]
+    cards_store.get_batch.return_value = {}
+
+    graph = MagicMock()
+    graph.get_links_for.return_value = []
+
+    builder = MagicMock(return_value=MagicMock())
+
+    since = (now - timedelta(hours=1)).isoformat() + "Z"
+    list_vocab_cards(since=since, cards_store=cards_store, graph=graph,
+                     card_response_builder=builder, notebook_id=None)
+
+    cards_store.get_modified_since.assert_called_once()
+    cards_store.all_as_dict.assert_not_called()
+
+
+def test_incremental_query_resolves_neighbour_links(tmp_path):
+    """Incremental query should correctly resolve links to non-modified neighbour cards."""
+    from kg.cards import CardStore
+    from kg.graph import GraphStore, LinkKind
+    from kg.vocab_service import list_vocab_cards, card_response
+    from kg.difficulty import get_tier
+    import time
+
+    cards = CardStore(tmp_path / "cards.db")
+    old_card = cards.add("apple", meaning="蘋果")
+    time.sleep(0.05)
+    from datetime import datetime, timezone
+    since_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    time.sleep(0.05)
+    new_card = cards.add("fruit", meaning="水果")
+
+    graph = GraphStore(
+        tmp_path / "graph.json",
+        tmp_path / "candidates.json",
+        tmp_path / "blocked.json",
+    )
+    graph.batch_add_links([(new_card.id, old_card.id, LinkKind.SHARES_USAGE, 0.9, "fruit→apple")])
+
+    link_kinds = list(LinkKind)
+    link_labels = {k: k.value for k in LinkKind}
+    def builder(card, g, cards_by_id):
+        return card_response(card, graph=g, cards_by_id=cards_by_id,
+                             tier_getter=get_tier, link_kinds=link_kinds, link_labels=link_labels)
+
+    since_str = since_dt.isoformat() + "Z"
+    results = list_vocab_cards(since=since_str, cards_store=cards, graph=graph,
+                               card_response_builder=builder, notebook_id=None)
+
+    assert len(results) == 1
+    assert results[0].content == "fruit"
+    assert "shares_usage" in results[0].linksByKind
+    assert results[0].linksByKind["shares_usage"][0].word == "apple"
+
+
 class _FakeMoveCardsStore:
     """Fake store for move_vocab_words that supports all() and move_cards()."""
     def __init__(self, cards):

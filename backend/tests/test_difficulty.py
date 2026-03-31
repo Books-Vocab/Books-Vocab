@@ -75,3 +75,17 @@ class TestGetTier:
 
         core_tier = get_tier("the")
         assert core_tier.tag == "core"
+
+
+def test_get_zipf_is_cached():
+    from kg.difficulty import get_zipf
+    # Clear any existing cache
+    get_zipf.cache_clear()
+    # Warm cache
+    result1 = get_zipf("hello")
+    # Check cache info shows hits
+    info_before = get_zipf.cache_info()
+    result2 = get_zipf("hello")
+    info_after = get_zipf.cache_info()
+    assert result1 == result2
+    assert info_after.hits > info_before.hits

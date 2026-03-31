@@ -145,17 +145,28 @@ def list_vocab_cards(*, since: str | None, cards_store: Any, graph: Any, card_re
         parsed_since = parse_datetime(since)
         if parsed_since is None:
             raise BadRequestError("Invalid since timestamp format. Expected ISO 8601.")
-        # Single query: full dict for link resolution, then filter for modified subset
-        cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
-        # Strip tzinfo for comparison — SQLite returns naive datetimes
         naive_since = parsed_since.replace(tzinfo=None) if parsed_since.tzinfo else parsed_since
-        cards = [c for c in cards_by_id.values()
-                 if (c.updated_at.replace(tzinfo=None) if c.updated_at.tzinfo else c.updated_at) > naive_since]
+        # Phase 1: only fetch modified cards (uses ix_card_updated_at index)
+        modified = cards_store.get_modified_since(naive_since, notebook_id=notebook_id)
+        modified_by_id: dict[str, Any] = {c.id: c for c in modified}
+        # Phase 2: collect neighbour IDs for link resolution (graph is in-memory, N lookups OK)
+        neighbour_ids: set[str] = set()
+        for card in modified:
+            if card.is_deleted:
+                continue
+            for link in graph.get_links_for(card.id):
+                other_id = link.to_id if link.from_id == card.id else link.from_id
+                if other_id not in modified_by_id:
+                    neighbour_ids.add(other_id)
+        neighbours = cards_store.get_batch(neighbour_ids) if neighbour_ids else {}
+        # NOTE: cards_by_id is a subset (modified + neighbours), not the full table.
+        # build_links_by_kind skips missing neighbours via `if not other_card`.
+        cards_by_id = modified_by_id | neighbours
+        cards = modified
     else:
-        # Full sync: single query for ALL cards (including deleted for link resolution).
-        # No 5000-card truncation — return everything so iOS orphan cleanup is safe.
-        cards_by_id = cards_store.all_as_dict(include_deleted=True, notebook_id=notebook_id)
-        cards = [c for c in cards_by_id.values() if not c.is_deleted]
+        # Full sync: all non-deleted cards. Deleted neighbours are skipped by build_links_by_kind.
+        cards_by_id = cards_store.all_as_dict(include_deleted=False, notebook_id=notebook_id)
+        cards = list(cards_by_id.values())
 
     return [card_response_builder(card, graph, cards_by_id) for card in cards]
 
