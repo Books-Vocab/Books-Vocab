@@ -18,6 +18,7 @@ dependencies = [
     "google-auth[requests]>=2.25.0,<3.0",
     "filelock>=3.0,<4.0",
     "lemminflect>=0.2,<1.0",
+    "jinja2>=3.1,<4.0",
 ]
 
 [project.scripts]

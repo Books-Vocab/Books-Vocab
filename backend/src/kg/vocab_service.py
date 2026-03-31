@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 import logging
 import re
 from collections.abc import Callable
@@ -16,6 +17,7 @@ from .api_models import (
     ReviewStateEntry,
     VocabAddResponse,
     VocabEntry,
+    VocabSource,
 )
 from .user_store import parse_datetime
 from .vocab_graph import embed_and_link_new_cards
@@ -129,6 +131,7 @@ def card_response(card: Any, *, graph: Any, cards_by_id: dict[str, Any], tier_ge
         inflections=card.inflections or [],
         linksByKind=links_by_kind,
         notebookId=getattr(card, "notebook_id", "default"),
+        source=VocabSource(**json.loads(card.source)) if getattr(card, "source", None) else None,
         updatedAt=_dt_to_iso(card.updated_at),
         reviewIntervalHours=card.review_interval_hours,
         nextReviewAt=_dt_to_iso(card.next_review_at),
@@ -514,6 +517,7 @@ def add_vocab_entries(
             root_form=root,
             inflections=inflections,
             notebook_id=notebook_id,
+            source=json.dumps(entry.source.model_dump()) if entry.source else None,
         )
         card_ids[word] = card.id
         existing.add(_normalize_word(word))

@@ -1,0 +1,199 @@
+/* ============================================================
+   KG Popup — Shadow DOM styles
+   All values via design tokens from tokens.css
+   ============================================================ */
+
+/* --- Base --- */
+
+.kg-popup {
+  max-width: 360px;
+  min-width: 240px;
+  background: var(--card-bg);
+  border-radius: var(--radius-overlay);
+  padding: var(--card-padding);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.12);
+  font-family: var(--font-sans);
+  color: var(--text-primary);
+  line-height: 1.5;
+  animation: kg-popup-enter 0.15s ease-out both;
+}
+
+@keyframes kg-popup-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* --- Word --- */
+
+.kg-popup__word {
+  font-size: var(--text-detail-word);
+  font-family: var(--font-mono);
+  font-weight: 700;
+  color: var(--text-primary);
+  margin-bottom: var(--sp-xs);
+  word-break: break-word;
+}
+
+/* --- Pronunciation --- */
+
+.kg-popup__pronunciation {
+  font-size: var(--text-caption);
+  color: var(--text-secondary);
+  margin-bottom: var(--sp-sm);
+}
+
+/* --- POS chip --- */
+
+.kg-popup__chip {
+  display: inline-block;
+  font-size: var(--text-caption2);
+  color: var(--accent);
+  background: hsla(215, 28%, 66%, 0.12);
+  padding: var(--sp-micro) var(--sp-sm);
+  border-radius: var(--radius-chip);
+  margin-bottom: var(--sp-sm);
+  font-weight: 600;
+}
+
+[data-theme="dark"] .kg-popup__chip {
+  background: hsla(215, 28%, 70%, 0.15);
+}
+
+/* --- Translation --- */
+
+.kg-popup__translation {
+  font-size: var(--text-body);
+  color: var(--text-primary);
+  margin-bottom: var(--sp-compact);
+  transition: var(--transition-content-swap);
+}
+
+/* --- Explanation --- */
+
+.kg-popup__explanation {
+  font-size: var(--text-subhead);
+  color: var(--text-secondary);
+  margin-top: var(--sp-sm);
+  padding-top: var(--sp-sm);
+  border-top: 1px solid hsla(0, 0%, 50%, 0.12);
+  white-space: pre-wrap;
+  transition: var(--transition-content-swap);
+}
+
+.kg-popup__explanation[hidden] {
+  display: none;
+}
+
+/* --- Actions row --- */
+
+.kg-popup__actions {
+  display: flex;
+  gap: var(--inline-gap);
+  margin-top: var(--sp-sm);
+}
+
+/* --- Button --- */
+
+.kg-popup__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-xs);
+  font-family: var(--font-sans);
+  font-size: var(--text-subhead);
+  font-weight: 600;
+  color: #fff;
+  background: var(--accent);
+  border: none;
+  border-radius: var(--radius-sm);
+  padding: var(--sp-xs) var(--sp-compact);
+  cursor: pointer;
+  transition: opacity 0.15s ease-out, background 0.15s ease-out;
+  text-decoration: none;
+  line-height: 1.4;
+}
+
+.kg-popup__btn:hover {
+  opacity: 0.85;
+}
+
+.kg-popup__btn:active {
+  opacity: 0.7;
+}
+
+.kg-popup__btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* Expand / collapse variant */
+.kg-popup__btn--expand {
+  background: transparent;
+  color: var(--tint);
+  padding-left: 0;
+}
+
+.kg-popup__btn--expand:hover {
+  opacity: 0.7;
+}
+
+/* Success variant */
+.kg-popup__btn--success {
+  background: var(--success);
+}
+
+/* --- Error --- */
+
+.kg-popup__error {
+  font-size: var(--text-subhead);
+  color: var(--destructive);
+  margin-top: var(--sp-sm);
+}
+
+/* --- Login prompt --- */
+
+.kg-popup__login {
+  text-align: center;
+  padding: var(--sp-md) 0;
+}
+
+.kg-popup__login p {
+  font-size: var(--text-body);
+  color: var(--text-secondary);
+  margin: 0 0 var(--sp-compact);
+}
+
+/* --- Skeleton loading --- */
+
+.kg-popup__skeleton {
+  height: var(--sp-md);
+  background: linear-gradient(
+    90deg,
+    hsla(0, 0%, 50%, 0.08) 25%,
+    hsla(0, 0%, 50%, 0.15) 50%,
+    hsla(0, 0%, 50%, 0.08) 75%
+  );
+  background-size: 200% 100%;
+  border-radius: var(--radius-sm);
+  margin-top: var(--sp-sm);
+  animation: kg-shimmer 1.4s ease-in-out infinite;
+}
+
+.kg-popup__skeleton--short {
+  width: 60%;
+}
+
+@keyframes kg-shimmer {
+  0% {
+    background-position: 200% 0;
+  }
+  100% {
+    background-position: -200% 0;
+  }
+}

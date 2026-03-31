@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KG 詞彙</title>
+  <link rel="stylesheet" href="../shared/tokens.css">
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <!-- Header -->
+  <header class="kg-header">
+    <h1 class="kg-header__title">KG 詞彙</h1>
+    <button class="kg-theme-btn" id="themeBtn" title="切換主題">🌗</button>
+  </header>
+
+  <!-- Search -->
+  <div class="kg-search-wrap">
+    <input type="text" class="kg-search" id="searchInput" placeholder="搜尋詞彙…" autocomplete="off">
+    <span class="kg-search__count" id="searchCount"></span>
+  </div>
+
+  <!-- State: Loading -->
+  <div class="kg-state kg-state--loading" id="stateLoading">
+    <div class="kg-skeleton"><div class="kg-skeleton__card"></div></div>
+    <div class="kg-skeleton"><div class="kg-skeleton__card"></div></div>
+    <div class="kg-skeleton"><div class="kg-skeleton__card"></div></div>
+    <div class="kg-skeleton"><div class="kg-skeleton__card"></div></div>
+  </div>
+
+  <!-- State: Empty -->
+  <div class="kg-state kg-state--empty kg-empty" id="stateEmpty" hidden>
+    <span class="kg-empty__icon">📚</span>
+    <p class="kg-empty__title">還沒有詞彙</p>
+    <p class="kg-empty__subtitle">在網頁上選取文字來翻譯和收藏</p>
+  </div>
+
+  <!-- State: Error -->
+  <div class="kg-state kg-state--error kg-error" id="stateError" hidden>
+    <span class="kg-error__icon">⚠️</span>
+    <p class="kg-error__title">載入失敗</p>
+    <button class="kg-error__retry" id="retryBtn">重試</button>
+  </div>
+
+  <!-- State: Content -->
+  <div class="kg-list" id="stateContent" hidden></div>
+
+  <script src="../shared/theme.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>
