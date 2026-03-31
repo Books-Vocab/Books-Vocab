@@ -15,7 +15,7 @@ struct ReaderPublicationLoader {
         for book: Book,
         updatePhase: @escaping @MainActor (String) -> Void
     ) async throws -> ReaderPublicationLoadResult {
-        let url = book.epubFileURL
+        let url = book.fileURL
 
         if !FileManager.default.isReadableFile(atPath: url.path) {
             try await waitForICloudFile(at: url, updatePhase: updatePhase)
