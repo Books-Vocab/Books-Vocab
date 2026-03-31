@@ -356,7 +356,7 @@ struct BookCard: View {
 
     @ViewBuilder
     private var iCloudDownloadBadge: some View {
-        if let state = downloadManager.state(for: book.fileName) {
+        if let state = downloadManager.state(for: book.epubFileName) {
             switch state {
             case .downloading(let progress):
                 ICloudProgressBadge(progress: progress)
