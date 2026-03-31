@@ -47,7 +47,19 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         switch result {
         case .success(let urls):
             guard let url = urls.first else { return }
-            importEPUB(from: url, modelContext: modelContext, importService: importService)
+            let ext = url.pathExtension.lowercased()
+            let importMethod: (URL) async throws -> ImportedBookDraft
+            switch ext {
+            case "epub": importMethod = importService.importBook
+            case "txt":  importMethod = importService.importTXT
+            case "md":   importMethod = importService.importMD
+            case "pdf":  importMethod = importService.importPDF
+            default:
+                errorMessage = "不支援的格式：.\(ext)"
+                showError = true
+                return
+            }
+            performImport(url: url, modelContext: modelContext, method: importMethod)
         case .failure(let error):
             errorMessage = error.localizedDescription
             showError = true
@@ -73,20 +85,19 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         modelContext.delete(book)
     }
 
-    private func importEPUB(
-        from url: URL,
+    private func performImport(
+        url: URL,
         modelContext: ModelContext,
-        importService: any BookshelfImporting
+        method: @escaping (URL) async throws -> ImportedBookDraft
     ) {
         isLoading = true
-        loadingMessage = L10n.string("正在匯入書籍...")
+        loadingMessage = L10n.string("正在匯入...")
 
         Task {
             do {
                 AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
-                loadingMessage = L10n.string("正在解析 EPUB...")
 
-                let draft = try await importService.importBook(from: url)
+                let draft = try await method(url)
                 AppLog.book.info("Import succeeded: \(draft.fileName)")
                 AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 

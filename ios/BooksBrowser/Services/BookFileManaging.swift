@@ -12,5 +12,10 @@ final class LocalBookFileManager: BookFileManaging {
             try? fm.removeItem(at: iCloudDir.appendingPathComponent(fileName))
         }
         try? fm.removeItem(at: Book.localBooksDirectory.appendingPathComponent(fileName))
+
+        // Clean up original file if it exists
+        let originalsDir = Book.booksDirectory.appendingPathComponent("Originals")
+        let origFile = originalsDir.appendingPathComponent(fileName)
+        try? fm.removeItem(at: origFile)
     }
 }
