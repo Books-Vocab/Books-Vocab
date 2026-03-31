@@ -81,7 +81,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             }
         }
 
-        fileManager.deleteBookFile(named: book.fileName)
+        fileManager.deleteBookFile(named: book.epubFileName)
         modelContext.delete(book)
     }
 

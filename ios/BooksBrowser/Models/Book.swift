@@ -24,14 +24,19 @@ final class Book {
     var title: String = ""
     var author: String = ""
     var coverImageData: Data?
-    @Attribute(originalName: "epubFileName")
-    var fileName: String = ""         // 檔案名稱（UUID.epub / UUID.txt / …）
+    var epubFileName: String = ""     // 檔案名稱（UUID.epub / UUID.txt / …），歷史命名保留以相容 CloudKit
     var lastReadLocatorJSON: String?  // Readium Locator 序列化 JSON
     var dateAdded: Date = Date()
     var dateLastRead: Date?
     var progression: Double?          // 閱讀進度 (0.0 ~ 1.0)
     var preferredNotebookId: String?   // 綁定的單字本 remoteId（nil = 跟隨全域設定）
-    var format: BookFormat = BookFormat.epub
+    var formatRaw: String = BookFormat.epub.rawValue
+
+    /// CloudKit 安全存取：舊記錄可能沒有 formatRaw，fallback 為 .epub
+    var format: BookFormat {
+        get { BookFormat(rawValue: formatRaw) ?? .epub }
+        set { formatRaw = newValue.rawValue }
+    }
 
     init(
         title: String,
@@ -44,8 +49,8 @@ final class Book {
         self.title = title
         self.author = author
         self.coverImageData = coverImageData
-        self.fileName = fileName
-        self.format = format
+        self.epubFileName = fileName
+        self.formatRaw = format.rawValue
         self.lastReadLocatorJSON = nil
         self.dateAdded = Date()
         self.dateLastRead = nil
@@ -54,7 +59,7 @@ final class Book {
 
     /// 書籍檔案的完整 URL — 自動解析 iCloud / 本機位置
     var fileURL: URL {
-        Self.resolveFileURL(for: fileName)
+        Self.resolveFileURL(for: epubFileName)
     }
 
     // MARK: - 目錄管理
