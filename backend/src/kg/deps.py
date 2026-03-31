@@ -242,7 +242,7 @@ async def get_admin_user(
     admin_token = request.app.state.kg_settings.admin_token
     try:
         require_admin(token, admin_token=admin_token, authorization=authorization, cookie_token=admin_session)
-    except HTTPException:
+    except HTTPException as exc:
         from .exceptions import ForbiddenError
 
-        raise ForbiddenError("Admin authentication required")
+        raise ForbiddenError(exc.detail or "Admin authentication required")
