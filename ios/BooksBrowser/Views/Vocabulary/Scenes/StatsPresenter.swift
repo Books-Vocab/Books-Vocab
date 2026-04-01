@@ -84,7 +84,7 @@ struct StatsPresenter: View {
             )
             graphLinks = await loadGraphLinks()
         }
-        .sheet(isPresented: $showCalendar) {
+        .toastSheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
         }
     }
