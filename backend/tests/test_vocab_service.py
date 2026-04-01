@@ -6,20 +6,18 @@ from types import SimpleNamespace
 import pytest
 from fastapi import HTTPException
 
-from kg.vocab_service import (
-    MAX_BATCH_SIZE,
-    MAX_WORD_LENGTH,
-    _normalize_word,
-    add_vocab_entries,
+from kg.vocab_shared import MAX_BATCH_SIZE, MAX_WORD_LENGTH, _normalize_word
+from kg.vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
     batch_delete_vocab_words,
     delete_vocab_word,
-    graph_links_payload,
     list_vocab_cards,
     lookup_vocab_word,
     move_vocab_words,
 )
+from kg.vocab_graph import graph_links_payload
+from kg.vocab_intake import add_vocab_entries
 
 
 @dataclass
@@ -319,7 +317,7 @@ class TestArchiveVocabWord:
 def test_delete_rolls_back_on_graph_failure(tmp_path):
     """If graph operations fail, card deletion must be rolled back."""
     from kg.cards import CardStore
-    from kg.vocab_service import delete_vocab_word
+    from kg.vocab_crud import delete_vocab_word
     import pytest
 
     cards_store = CardStore(tmp_path / "cards.db")
@@ -508,7 +506,7 @@ def test_incremental_query_does_not_load_all_cards(tmp_path):
     """Incremental sync should use get_modified_since, not all_as_dict."""
     from unittest.mock import MagicMock
     from datetime import datetime, timedelta
-    from kg.vocab_service import list_vocab_cards
+    from kg.vocab_crud import list_vocab_cards
 
     cards_store = MagicMock()
     now = datetime(2026, 3, 31, 12, 0, 0)
@@ -538,7 +536,8 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
     """Incremental query should correctly resolve links to non-modified neighbour cards."""
     from kg.cards import CardStore
     from kg.graph import GraphStore, LinkKind
-    from kg.vocab_service import list_vocab_cards, card_response
+    from kg.vocab_crud import list_vocab_cards
+    from kg.vocab_shared import card_response
     from kg.difficulty import get_tier
     import time
 
