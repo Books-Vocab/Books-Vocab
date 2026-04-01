@@ -87,8 +87,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             let nb = Notebook(remoteId: remote.id, name: remote.name, color: remote.color)
             nb.syncStatus = 1
             modelContext.insert(nb)
-            modelContext.safeSaveWithToast(toastCoordinator)
-            toastCoordinator.success("已建立")
+            if modelContext.safeSaveWithToast(toastCoordinator) {
+                toastCoordinator.success("已建立")
+            }
         } catch {
             toastCoordinator.error("建立失敗")
             AppLog.kg.error("createNotebook failed: \(error.localizedDescription)")
@@ -108,8 +109,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             notebook.name = remote.name
             notebook.color = remote.color
             notebook.updatedAt = Date()
-            modelContext.safeSaveWithToast(toastCoordinator)
-            toastCoordinator.success("已更新")
+            if modelContext.safeSaveWithToast(toastCoordinator) {
+                toastCoordinator.success("已更新")
+            }
         } catch {
             toastCoordinator.error("更新失敗")
             AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
