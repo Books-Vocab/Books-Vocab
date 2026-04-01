@@ -31,7 +31,15 @@ struct GraphThumbnailWebView: UIViewRepresentable {
 
     func updateUIView(_ webView: WKWebView, context: Context) {
         let coord = context.coordinator
-        let sig = "\(colorScheme)-\(nodes.count)-\(edges.count)-\(theme.backgroundHex)"
+        var hasher = Hasher()
+        hasher.combine(colorScheme == .dark)
+        for n in nodes {
+            hasher.combine(n.id)
+            hasher.combine(n.colorHex)
+            hasher.combine(n.ratio)
+        }
+        hasher.combine(edges.count)
+        let sig = "\(hasher.finalize())"
         guard coord.lastSignature != sig else { return }
         coord.lastSignature = sig
         coord.sendInitGraph(buildPayload(), webView: webView)
@@ -81,9 +89,9 @@ struct GraphThumbnailWebView: UIViewRepresentable {
             label: theme.labelHex, labelShadow: theme.labelShadowHex
         )
         let forces = GraphForces(
-            repel: 40, linkDistance: 30, linkStrength: 1.2,
-            centerStrength: 0.04, baseNodeRadius: 3,
-            collideRadius: 3, linkThickness: 0.8
+            repel: 12, linkDistance: 12, linkStrength: 1.8,
+            centerStrength: 0.2, baseNodeRadius: 4,
+            collideRadius: 0, linkThickness: 0.8
         )
         let payload = Payload(
             nodes: nodePayloads, links: linkPayloads,
