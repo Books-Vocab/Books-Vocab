@@ -33,6 +33,7 @@ struct PDFReaderView: View {
     @State private var loadError: String?
     @State private var handler = ReaderTranslationHandler()
     @State private var showTranslation = false
+    @State private var showLoginSheet = false
 
     private var vocabularyContext: ReaderVocabularyContext {
         ReaderVocabularyContext(
@@ -102,7 +103,8 @@ struct PDFReaderView: View {
                         withAnimation(AppMotion.panelState) {
                             showTranslation = false
                         }
-                    }
+                    },
+                    onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true }
                 )
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                 .transition(.readerPanelReveal)
@@ -110,6 +112,9 @@ struct PDFReaderView: View {
         }
         .task { loadDocument() }
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showLoginSheet) {
+            LoginSheet()
+        }
     }
 
     // MARK: - Loading

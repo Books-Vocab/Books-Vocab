@@ -14,6 +14,7 @@ struct OverviewTab: View {
     @Environment(\.vocabSkin) private var skin
 
     @State private var filter = NotebookFilter.load()
+    @State private var showLoginSheet = false
 
     var body: some View {
         NavigationStack {
@@ -39,7 +40,8 @@ struct OverviewTab: View {
                 AppEmptyStateCard(
                     title: "需登入帳號".localized,
                     systemImage: "person.crop.circle.badge.exclamationmark",
-                    description: "總覽功能需要登入帳號後才能存取您的雲端資料。".localized
+                    description: "總覽功能需要登入帳號後才能存取您的雲端資料。".localized,
+                    action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
                 )
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -47,6 +49,9 @@ struct OverviewTab: View {
         }
         .navigationTitle("總覽".localized)
         .navigationBarTitleDisplayMode(.large)
+        .sheet(isPresented: $showLoginSheet) {
+            LoginSheet()
+        }
     }
 }
 

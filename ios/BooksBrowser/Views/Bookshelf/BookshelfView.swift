@@ -19,6 +19,7 @@ struct BookshelfView: View {
     @Environment(\.bookFileManager) private var bookFileManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @State private var coordinator = BookshelfCoordinator()
+    @State private var showLoginSheet = false
 
     private var columns: [GridItem] {
         let item: GridItem = sizeClass == .regular
@@ -93,6 +94,9 @@ struct BookshelfView: View {
             .sheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
+            .sheet(isPresented: $showLoginSheet) {
+                LoginSheet()
+            }
         }
     }
 
@@ -128,6 +132,11 @@ struct BookshelfView: View {
                 .fixedSize(horizontal: false, vertical: true)
 
                 if !authManager.isDemoMode && !authManager.isLoggedIn {
+                    Button(action: { showLoginSheet = true }) {
+                        Label("登入帳號".localized, systemImage: "person.crop.circle")
+                    }
+                    .buttonStyle(.appAction(.outline))
+
                     Button(action: {
                         authManager.enterDemoMode(modelContainer: modelContext.container)
                     }) {

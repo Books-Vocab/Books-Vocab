@@ -28,6 +28,7 @@ struct TranslationPanel: View {
     let onDelete: () -> Void
     let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
+    var onLogin: (() -> Void)? = nil
 
     @Environment(\.speechService) private var speechService
     @State private var dragOffset: CGFloat = 0
@@ -114,7 +115,8 @@ struct TranslationPanel: View {
             onExpand: onExpand,
             onDelete: onDelete,
             onShowDetail: onShowDetail,
-            onDismiss: onDismiss
+            onDismiss: onDismiss,
+            onLogin: onLogin
         )
     }
 }

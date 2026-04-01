@@ -18,6 +18,7 @@ struct TranslationVocabPresenter: View {
     let onDelete: () -> Void
     let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
+    var onLogin: (() -> Void)? = nil
 
     var body: some View {
         VocabCard(padding: 0) {
@@ -112,6 +113,11 @@ struct TranslationVocabPresenter: View {
                 systemImage: state.guestMessageIcon,
                 description: "登入後即可獲得 AI 翻譯，並同步至雲端。"
             )
+
+            if let onLogin {
+                Button("登入帳號".localized, action: onLogin)
+                    .buttonStyle(.vocabAction())
+            }
 
             footerToolbar(showChevron: false, timerValue: nil)
         }

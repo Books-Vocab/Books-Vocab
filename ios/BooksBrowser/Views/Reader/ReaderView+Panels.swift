@@ -109,7 +109,8 @@ extension ReaderView {
                 onDismiss: {
                     handler.dismiss()
                     closeOverlay(.translation)
-                }
+                },
+                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true }
             )
         }
     }
