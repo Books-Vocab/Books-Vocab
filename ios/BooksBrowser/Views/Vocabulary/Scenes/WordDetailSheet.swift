@@ -77,6 +77,7 @@ struct WordDetailSheet: View {
                 LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
             }
         }
+        .toastOverlay()
         .sheet(isPresented: $isEditing) {
             WordEditSheet(entry: entry)
         }
