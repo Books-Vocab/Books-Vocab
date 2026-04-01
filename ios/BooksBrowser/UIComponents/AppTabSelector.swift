@@ -152,16 +152,16 @@ extension AppTabSelectorStyle {
             textUnselectedColor: skin.palette.secondaryText,
             countSelectedFill: skin.palette.primaryText.opacity(0.08),
             countUnselectedFill: skin.palette.mutedFill,
-            selectedBackground: skin.palette.cardBackground,
-            unselectedBackground: skin.palette.stageBackground,
-            selectedBorder: skin.palette.cardBorder,
-            unselectedBorder: skin.palette.divider.opacity(0.8),
-            selectedOuterBorder: skin.palette.cardBorder.opacity(0.4),
-            unselectedOuterBorder: skin.palette.divider.opacity(0.38),
-            containerBackground: skin.palette.pageBackground,
+            selectedBackground: skin.palette.mutedFill,
+            unselectedBackground: .clear,
+            selectedBorder: .clear,
+            unselectedBorder: .clear,
+            selectedOuterBorder: .clear,
+            unselectedOuterBorder: .clear,
+            containerBackground: .clear,
             controlRadius: skin.radii.control,
             containerRadius: skin.radii.control + 4,
-            outerBorderInset: 3
+            outerBorderInset: 0
         )
     }
 }

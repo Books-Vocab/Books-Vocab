@@ -73,8 +73,8 @@ extension AppSearchFieldStyle {
             textColor: skin.palette.primaryText,
             clearButtonFont: skin.typography.iconMedium,
             clearButtonColor: skin.palette.quaternaryText,
-            background: skin.palette.cardBackground,
-            border: skin.palette.cardBorder,
+            background: skin.palette.mutedFill,
+            border: .clear,
             cornerRadius: skin.radii.control
         )
     }
