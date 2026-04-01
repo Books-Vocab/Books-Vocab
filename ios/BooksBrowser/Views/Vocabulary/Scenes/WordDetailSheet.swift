@@ -77,11 +77,10 @@ struct WordDetailSheet: View {
                 LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
             }
         }
-        .toastOverlay()
-        .sheet(isPresented: $isEditing) {
+        .toastSheet(isPresented: $isEditing) {
             WordEditSheet(entry: entry)
         }
-        .sheet(isPresented: $showAddLink) {
+        .toastSheet(isPresented: $showAddLink) {
             AddLinkSheet(
                 sourceEntry: entry,
                 allEntries: allEntries,

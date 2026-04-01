@@ -10,6 +10,7 @@ struct ReaderVocabularyContext {
     let book: Book
     let currentLocator: Locator?
     let notebookId: String
+    let toastCoordinator: AppToastCoordinator
 
     func existingEntry(matching word: String) -> VocabularyEntry? {
         let wordLower = word.lowercased()
@@ -31,7 +32,7 @@ struct ReaderVocabularyContext {
             modelContext.delete(entry)
             AppLog.reader.info("Deleted local entry: \(word)")
         }
-        modelContext.safeSave()
+        modelContext.safeSaveWithToast(toastCoordinator)
     }
 
     func saveEntry(
@@ -45,7 +46,7 @@ struct ReaderVocabularyContext {
                 existing.restorePendingEntry()
                 existing.translation = translation
                 if let rootForm { existing.rootForm = rootForm }
-                modelContext.safeSave()
+                modelContext.safeSaveWithToast(toastCoordinator)
                 return true
             }
             return false
@@ -71,8 +72,9 @@ struct ReaderVocabularyContext {
     /// Schedule save on next run loop iteration to avoid blocking the current animation frame.
     private func deferSave() {
         let ctx = modelContext
+        let toast = toastCoordinator
         DispatchQueue.main.async {
-            ctx.safeSave()
+            ctx.safeSaveWithToast(toast)
         }
     }
 
