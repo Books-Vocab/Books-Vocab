@@ -6,7 +6,7 @@ import pytest
 from fastapi import HTTPException
 
 from kg.graph import GraphStore, LinkKind
-from kg.vocab_service import delete_vocab_word
+from kg.vocab_crud import delete_vocab_word
 
 
 # ---------------------------------------------------------------------------

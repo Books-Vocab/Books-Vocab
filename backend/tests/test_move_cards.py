@@ -1,7 +1,7 @@
 from __future__ import annotations
 import pytest
 from kg.cards import CardStore
-from kg.vocab_service import move_vocab_words
+from kg.vocab_crud import move_vocab_words
 
 @pytest.fixture
 def store(tmp_path):

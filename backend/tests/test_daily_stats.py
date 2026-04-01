@@ -7,7 +7,7 @@ from pathlib import Path
 
 from kg.api_models import DailyReviewStatEntry
 from kg.daily_stats import DailyReviewStatsStore
-from kg.vocab_service import pull_daily_review_stats, push_daily_review_stats
+from kg.vocab_review import pull_daily_review_stats, push_daily_review_stats
 
 
 def _make_store(tmp_path: Path) -> DailyReviewStatsStore:

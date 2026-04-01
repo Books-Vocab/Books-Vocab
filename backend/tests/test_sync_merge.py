@@ -15,7 +15,8 @@ import pytest
 
 from kg.api_models import ReviewStateEntry
 from kg.cards import CardStore
-from kg.vocab_service import list_vocab_cards, push_review_states
+from kg.vocab_crud import list_vocab_cards
+from kg.vocab_review import push_review_states
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -315,7 +316,7 @@ class TestIncrementalSync:
 
     def _build_response(self, card, graph, cards_by_id):
         """Minimal card response builder for testing."""
-        from kg.vocab_service import CardResponse
+        from kg.api_models import CardResponse
         return CardResponse(
             id=card.id,
             content=card.content,
