@@ -83,6 +83,7 @@ struct TodayReviewView: View {
             onToggleAutoPlayPause: state.toggleAutoPlayPause,
             onDetailTap: state.handleDetailTap
         )
+        .toastOverlay()
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }
