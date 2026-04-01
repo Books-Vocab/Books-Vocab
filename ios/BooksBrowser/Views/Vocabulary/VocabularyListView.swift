@@ -80,6 +80,20 @@ struct VocabularyListView: View {
             allEntries: allEntries,
             sizeClass: sizeClass
         ))
+        #if os(macOS)
+        .inspector(isPresented: Binding(
+            get: { coordinator.selectedEntry != nil || coordinator.activeReviewSession != nil },
+            set: { isPresented in
+                if !isPresented {
+                    coordinator.activeReviewSession = nil
+                    coordinator.selectedEntry = nil
+                }
+            }
+        )) {
+            macInspectorContent
+                .inspectorColumnWidth(min: 350, ideal: 420, max: 600)
+        }
+        #endif
         .task {
             guard !authManager.isDemoMode else { return }
             await kgService.healthCheck()
@@ -102,6 +116,29 @@ struct VocabularyListView: View {
             }
         }
     }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macInspectorContent: some View {
+        if let session = coordinator.activeReviewSession {
+            TodayReviewView(
+                entries: session.entries,
+                allEntries: allEntries,
+                currentUserID: AuthManager.shared.userId,
+                onClose: {
+                    coordinator.activeReviewSession = nil
+                    coordinator.selectedEntry = nil
+                }
+            )
+        } else if let entry = coordinator.selectedEntry {
+            WordDetailSheet(
+                entry: entry,
+                allEntries: allEntries,
+                wrapInNavigation: false
+            )
+        }
+    }
+    #endif
 }
 
 #Preview {
