@@ -41,6 +41,9 @@ struct NotebookListView: View {
     @State private var notebookToDelete: Notebook?
     @State private var showArchiveList = false
     @State private var navigationPath = NavigationPath()
+    #if os(macOS)
+    @State private var macDetail = MacDetailState()
+    #endif
 
     var body: some View {
         // Single-pass: compute cardCounts & dueCounts together
@@ -164,18 +167,10 @@ struct NotebookListView: View {
                 .toastOverlay()
             }
             #elseif os(macOS)
-            .inspector(isPresented: Binding(
-                get: { activeReviewSession != nil },
-                set: { if !$0 { activeReviewSession = nil } }
-            )) {
-                if let session = activeReviewSession {
-                    TodayReviewView(
-                        entries: session.entries,
-                        allEntries: allEntries,
-                        currentUserID: authManager.userId,
-                        onClose: { activeReviewSession = nil }
-                    )
-                    .inspectorColumnWidth(min: 350, ideal: 420, max: 600)
+            .onChange(of: activeReviewSession) { _, session in
+                if let session {
+                    macDetail.showReview(session, allEntries: allEntries)
+                    activeReviewSession = nil
                 }
             }
             #endif
@@ -217,6 +212,23 @@ struct NotebookListView: View {
                 Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
             }
         }
+        #if os(macOS)
+        .environment(\.macDetail, macDetail)
+        .safeAreaInset(edge: .trailing, spacing: 0) {
+            if macDetail.hasDetail {
+                HStack(spacing: 0) {
+                    Divider()
+                    macDetailPanel
+                        .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
+                }
+                .transition(.move(edge: .trailing).combined(with: .opacity))
+            }
+        }
+        .animation(AppMotion.standardSpring, value: macDetail.hasDetail)
+        .onChange(of: navigationPath) { _, path in
+            if path.isEmpty { macDetail.dismiss() }
+        }
+        #endif
     }
 
     // MARK: - Review Banner
@@ -287,6 +299,26 @@ struct NotebookListView: View {
         guard !entries.isEmpty else { return }
         activeReviewSession = TodayReviewSession(entries: entries)
     }
+
+    #if os(macOS)
+    @ViewBuilder
+    private var macDetailPanel: some View {
+        if let session = macDetail.activeReviewSession {
+            TodayReviewView(
+                entries: session.entries,
+                allEntries: macDetail.contextEntries.isEmpty ? allEntries : macDetail.contextEntries,
+                currentUserID: authManager.userId,
+                onClose: { macDetail.dismiss() }
+            )
+        } else if let entry = macDetail.selectedEntry {
+            WordDetailSheet(
+                entry: entry,
+                allEntries: macDetail.contextEntries,
+                wrapInNavigation: false
+            )
+        }
+    }
+    #endif
 
     // MARK: - Card Count Helpers (single-pass O(n))
 

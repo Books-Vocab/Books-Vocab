@@ -645,25 +645,21 @@
 		AA000004READIUM04 /* ReadiumShared */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			platformFilter = ios;
 			productName = ReadiumShared;
 		};
 		AA000005READIUM05 /* ReadiumStreamer */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			platformFilter = ios;
 			productName = ReadiumStreamer;
 		};
 		AA000006READIUM06 /* ReadiumNavigator */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			platformFilter = ios;
 			productName = ReadiumNavigator;
 		};
 		AA000009READIUM09 /* ReadiumAdapterGCDWebServer */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
-			platformFilter = ios;
 			productName = ReadiumAdapterGCDWebServer;
 		};
 		E9D331AE2F521D2D00D4355C /* GoogleSignIn */ = {
