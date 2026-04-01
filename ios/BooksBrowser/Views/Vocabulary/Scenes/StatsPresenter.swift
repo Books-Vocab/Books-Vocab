@@ -123,23 +123,35 @@ struct StatsPresenter: View {
     // MARK: - Graph Entry
 
     private var graphEntrySection: some View {
-        NavigationLink {
+        let nodes = graphThumbnailNodes
+        let nodeIDs = Set(nodes.map(\.id))
+        let edges = graphLinks.map {
+            KnowledgeGraphPresentation.edges(from: $0, validNodeIDs: nodeIDs)
+        } ?? []
+
+        return NavigationLink {
             KnowledgeGraphView(allEntries: filteredEntries)
         } label: {
             VocabCard(padding: 0) {
                 VStack(spacing: 0) {
-                    graphEntryHeader
+                    graphEntryHeader(nodeCount: nodes.count)
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
-                    graphEntryBody
+                    graphEntryBody(nodes: nodes, edges: edges)
                         .frame(height: 140)
+
+                    if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
+                        healthBar(ratio: avgRatio)
+                            .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+                            .padding(.bottom, 8)
+                    }
                 }
             }
         }
         .buttonStyle(.liftable)
     }
 
-    private var graphEntryHeader: some View {
+    private func graphEntryHeader(nodeCount: Int) -> some View {
         HStack(spacing: vocabSkin.spacing.inlineGap) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .font(vocabSkin.typography.iconMedium)
@@ -149,8 +161,7 @@ struct StatsPresenter: View {
                 .foregroundStyle(vocabSkin.palette.primaryText)
             Spacer()
             if let graphLinks, !graphLinks.isEmpty {
-                let nodes = graphThumbnailNodes
-                Text("\(nodes.count) 詞 · \(graphLinks.count) 連結")
+                Text("\(nodeCount) 詞 · \(graphLinks.count) 連結")
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
@@ -161,12 +172,8 @@ struct StatsPresenter: View {
     }
 
     @ViewBuilder
-    private var graphEntryBody: some View {
-        if let graphLinks {
-            let nodes = graphThumbnailNodes
-            let nodeIDs = Set(nodes.map(\.id))
-            let edges = KnowledgeGraphPresentation.edges(from: graphLinks, validNodeIDs: nodeIDs)
-
+    private func graphEntryBody(nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge]) -> some View {
+        if graphLinks != nil {
             if nodes.isEmpty {
                 VocabStateMessageCard(
                     title: "探索單字建立連結".localized,
@@ -194,6 +201,47 @@ struct StatsPresenter: View {
             links: graphLinks,
             showIsolatedNodes: false
         )
+    }
+
+    private func averageRatio(of nodes: [KnowledgeGraphNode]) -> Double? {
+        let ratios = nodes.compactMap(\.ratio)
+        guard !ratios.isEmpty else { return nil }
+        return ratios.reduce(0, +) / Double(ratios.count)
+    }
+
+    private func healthBar(ratio: Double) -> some View {
+        let stops: [Gradient.Stop] = [
+            0, 0.15, 0.30, 0.45, 0.60, 0.72, 0.85, 1.0, 1.3, 2.0, 3.0
+        ].map { r in
+            Gradient.Stop(
+                color: ReviewGradient.color(for: r),
+                location: CGFloat(min(r / 3.0, 1.0))
+            )
+        }
+        let position = CGFloat(min(max(ratio, 0), 3.0) / 3.0)
+
+        return VStack(spacing: 0) {
+            GeometryReader { geo in
+                ZStack(alignment: .leading) {
+                    RoundedRectangle(cornerRadius: 1)
+                        .fill(LinearGradient(
+                            stops: stops,
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        ))
+                        .frame(height: 2)
+
+                    Triangle()
+                        .fill(vocabSkin.palette.primaryText)
+                        .frame(width: 6, height: 5)
+                        .offset(
+                            x: geo.size.width * position - 3,
+                            y: -4
+                        )
+                }
+            }
+            .frame(height: 7)
+        }
     }
 
     // MARK: - Sections
@@ -308,5 +356,16 @@ struct StatsPresenter: View {
                 .font(vocabSkin.typography.captionStrong)
         }
         .foregroundStyle(vocabSkin.palette.tertiaryText)
+    }
+}
+
+private struct Triangle: Shape {
+    func path(in rect: CGRect) -> Path {
+        var p = Path()
+        p.move(to: CGPoint(x: rect.midX, y: rect.maxY))
+        p.addLine(to: CGPoint(x: rect.maxX, y: 0))
+        p.addLine(to: CGPoint(x: rect.minX, y: 0))
+        p.closeSubpath()
+        return p
     }
 }

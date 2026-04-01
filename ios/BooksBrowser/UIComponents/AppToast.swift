@@ -70,6 +70,28 @@ struct AppToast: View {
     }
 }
 
+// MARK: - Toast Overlay Modifier
+
+private struct ToastOverlayModifier: ViewModifier {
+    @Environment(\.toastCoordinator) private var toastCoordinator
+
+    func body(content: Content) -> some View {
+        content.overlay(alignment: .top) {
+            if let toast = toastCoordinator.current {
+                AppToast(item: toast, onDismiss: { toastCoordinator.dismiss() })
+                    .transition(.bannerReveal)
+                    .zIndex(999)
+            }
+        }
+    }
+}
+
+extension View {
+    func toastOverlay() -> some View {
+        modifier(ToastOverlayModifier())
+    }
+}
+
 #Preview("Toast Styles") {
     AppThemeContainer {
         AppToastPreviewScene()
