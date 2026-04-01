@@ -3,6 +3,7 @@ import SwiftUI
 struct WordEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.vocabSkin) private var vocabSkin
     @Bindable var entry: VocabularyEntry
 
     @State private var draftTranslation = ""
@@ -12,9 +13,9 @@ struct WordEditSheet: View {
 
     var body: some View {
         NavigationStack {
-            Form {
-                if let saveError {
-                    Section {
+            ScrollView {
+                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                    if let saveError {
                         AppBanner(
                             message: saveError,
                             systemImage: "exclamationmark.triangle",
@@ -22,22 +23,13 @@ struct WordEditSheet: View {
                             onDismiss: { self.saveError = nil }
                         )
                     }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                }
 
-                Section(header: Text("翻譯結果".localized)) {
-                    TextEditor(text: $draftTranslation)
-                        .frame(minHeight: 80)
-                        .scrollContentBackground(.hidden)
+                    editSection(title: "翻譯結果".localized, text: $draftTranslation)
+                    editSection(title: "教學筆記".localized, text: $draftExplanation)
                 }
-
-                Section(header: Text("教學筆記".localized)) {
-                    TextEditor(text: $draftExplanation)
-                        .frame(minHeight: 80)
-                        .scrollContentBackground(.hidden)
-                }
+                .padding(vocabSkin.spacing.cardPadding)
             }
+            .vocabCanvasBackground()
             .navigationTitle(entry.word)
             .inlineNavigationBarTitle()
             .toolbar {
@@ -59,6 +51,29 @@ struct WordEditSheet: View {
         .onAppear {
             draftTranslation = entry.translation
             draftExplanation = entry.explanation ?? ""
+        }
+    }
+
+    private func editSection(title: String, text: Binding<String>) -> some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+            Text(title)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.secondaryText)
+
+            TextEditor(text: text)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+                .scrollContentBackground(.hidden)
+                .padding(vocabSkin.spacing.inlineGap)
+                .frame(minHeight: 80)
+                .background(
+                    RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
+                        .fill(vocabSkin.palette.cardBackground)
+                        .overlay(
+                            RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
+                                .stroke(vocabSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
+                        )
+                )
         }
     }
 
