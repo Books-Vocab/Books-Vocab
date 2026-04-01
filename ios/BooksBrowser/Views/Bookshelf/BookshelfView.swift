@@ -17,6 +17,7 @@ struct BookshelfView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @State private var coordinator = BookshelfCoordinator()
 
@@ -169,7 +170,8 @@ struct BookshelfView: View {
                             coordinator.deleteBook(
                                 book,
                                 modelContext: modelContext,
-                                fileManager: bookFileManager
+                                fileManager: bookFileManager,
+                                toastCoordinator: toastCoordinator
                             )
                         } label: {
                             Label("刪除".localized, systemImage: "trash")
