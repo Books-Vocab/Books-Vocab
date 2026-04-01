@@ -13,7 +13,7 @@ import os
     func presentImporter()
     func presentSettings()
     func dismissError()
-    func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting)
+    func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
     func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
 }
 
@@ -42,7 +42,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     func handleFileImport(
         _ result: Result<[URL], Error>,
         modelContext: ModelContext,
-        importService: any BookshelfImporting
+        importService: any BookshelfImporting,
+        toastCoordinator: AppToastCoordinator
     ) {
         switch result {
         case .success(let urls):
@@ -59,7 +60,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 showError = true
                 return
             }
-            performImport(url: url, modelContext: modelContext, method: importMethod)
+            performImport(url: url, modelContext: modelContext, method: importMethod, toastCoordinator: toastCoordinator)
         case .failure(let error):
             errorMessage = error.localizedDescription
             showError = true
@@ -91,7 +92,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     private func performImport(
         url: URL,
         modelContext: ModelContext,
-        method: @escaping (URL) async throws -> ImportedBookDraft
+        method: @escaping (URL) async throws -> ImportedBookDraft,
+        toastCoordinator: AppToastCoordinator
     ) {
         isLoading = true
         loadingMessage = L10n.string("正在匯入...")
@@ -118,6 +120,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 modelContext.safeSave()
                 EPUBGuideTip().invalidate(reason: .actionPerformed)
                 AppLog.book.info("Book saved: \(book.title)")
+                toastCoordinator.success("已匯入")
 
                 isLoading = false
                 loadingMessage = ""
