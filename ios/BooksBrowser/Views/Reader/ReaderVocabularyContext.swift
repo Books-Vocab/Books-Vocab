@@ -72,8 +72,9 @@ struct ReaderVocabularyContext {
     /// Schedule save on next run loop iteration to avoid blocking the current animation frame.
     private func deferSave() {
         let ctx = modelContext
+        let toast = toastCoordinator
         DispatchQueue.main.async {
-            ctx.safeSave()
+            ctx.safeSaveWithToast(toast)
         }
     }
 
