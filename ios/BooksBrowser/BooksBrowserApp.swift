@@ -158,13 +158,7 @@ struct BooksBrowserApp: App {
                     .environment(\.speechService, SpeechService.shared)
                     .environment(\.readerSettings, .shared)
                     .environment(\.toastCoordinator, toastCoordinator)
-                    .overlay(alignment: .top) {
-                        if let toast = toastCoordinator.current {
-                            AppToast(item: toast, onDismiss: { toastCoordinator.dismiss() })
-                                .transition(.bannerReveal)
-                                .zIndex(999)
-                        }
-                    }
+                    .toastOverlay()
             }
             .environmentObject(appearanceStore)
         }
