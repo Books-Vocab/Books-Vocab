@@ -27,6 +27,9 @@ let labelColor = '#FFFFFF';
 let labelShadowColor = 'rgba(0,0,0,0.9)';
 let qt = null;
 let _frameCount = 0, _lastFpsTime = performance.now();
+let _drawScheduled = false;
+let _lastHoveredId = null, _lastSelectedId = null;
+const _rgbaCache = new Map();
 
 const canvas = document.getElementById('g');
 const ctx = canvas.getContext('2d');
@@ -114,6 +117,13 @@ function opacityForEdge(sid, tid) {
     return 0.05;
 }
 
+// ── Draw scheduling (rAF coalescing) ─────────────────────────────────────────
+function scheduleDraw() {
+    if (_drawScheduled) return;
+    _drawScheduled = true;
+    requestAnimationFrame(() => { _drawScheduled = false; draw(); });
+}
+
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function draw() {
     // FPS debug counter (enable via: window.debugFPS = true)
@@ -194,27 +204,38 @@ function draw() {
         ctx.fill();
     }
 
-    // Draw labels (double-pass fillText instead of shadowBlur)
+    // Draw labels (batched by font size, double-pass fillText)
     if (!isThumbnail) {
-        for (const d of nodes) {
-            const r = nodeRadius(d);
-            const opacity = opacityForNode(d.id);
-            if (opacity < 0.2) continue;
-            const fontSize = d.degree > 3 ? 10 : 8;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const baseMul = currentMode === 'dark' ? 0.90 : 0.82;
+
+        // Batch: small labels (8px) then large labels (10px)
+        for (let pass = 0; pass < 2; pass++) {
+            const fontSize = pass === 0 ? 8 : 10;
+            const degreeTest = pass === 0 ? (deg) => deg <= 3 : (deg) => deg > 3;
             ctx.font = `${fontSize}px -apple-system, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
 
-            // Shadow pass — offset 1px
-            ctx.fillStyle = labelShadowColor;
-            ctx.globalAlpha = 0.6 * opacity;
-            ctx.fillText(d.word, d.x + 1, d.y + r + 4);
+            for (const d of nodes) {
+                if (!degreeTest(d.degree)) continue;
+                const opacity = opacityForNode(d.id);
+                if (opacity < 0.2) continue;
+                const r = nodeRadius(d);
 
-            // Main pass
-            const labelAlpha = currentMode === 'dark' ? 0.90 * opacity : 0.82 * opacity;
-            ctx.fillStyle = hexToRGBA(labelColor, labelAlpha);
-            ctx.globalAlpha = 1;
-            ctx.fillText(d.word, d.x, d.y + r + 3);
+                // Shadow pass
+                ctx.fillStyle = labelShadowColor;
+                ctx.globalAlpha = 0.6 * opacity;
+                ctx.fillText(d.word, d.x + 1, d.y + r + 4);
+
+                // Main pass (cached rgba)
+                const labelAlpha = baseMul * opacity;
+                const cacheKey = labelColor + '_' + labelAlpha.toFixed(3);
+                let rgba = _rgbaCache.get(cacheKey);
+                if (!rgba) { rgba = hexToRGBA(labelColor, labelAlpha); _rgbaCache.set(cacheKey, rgba); }
+                ctx.fillStyle = rgba;
+                ctx.globalAlpha = 1;
+                ctx.fillText(d.word, d.x, d.y + r + 3);
+            }
         }
     }
 
@@ -263,7 +284,7 @@ function bindInteractions() {
 
     const zoom = d3.zoom()
         .scaleExtent([0.1, 8])
-        .on('zoom', e => { transform = e.transform; draw(); });
+        .on('zoom', e => { transform = e.transform; scheduleDraw(); });
     d3.select(canvas).call(zoom);
 
     const drag = d3.drag()
@@ -305,7 +326,7 @@ function bindInteractions() {
         } else {
             selectedId = null;
         }
-        draw();
+        scheduleDraw();
     });
 
     canvas.addEventListener('pointermove', function(e) {
@@ -317,12 +338,12 @@ function bindInteractions() {
         const newId = node ? node.id : null;
         if (newId !== hoveredId) {
             hoveredId = newId;
-            draw();
+            scheduleDraw();
         }
     });
 
     canvas.addEventListener('pointerleave', function() {
-        if (hoveredId !== null) { hoveredId = null; draw(); }
+        if (hoveredId !== null) { hoveredId = null; scheduleDraw(); }
     });
 }
 
@@ -330,6 +351,7 @@ function bindInteractions() {
 window.initGraph = function(jsonStr) {
     const data = JSON.parse(jsonStr);
     glowCache.clear();
+    _rgbaCache.clear();
     forces = data.forces || {};
     isThumbnail = !!data.thumbnail;
 
@@ -425,6 +447,7 @@ window.updateForces = function(arg) {
 // ── updateTheme ───────────────────────────────────────────────────────────────
 window.updateTheme = function(mode) {
     glowCache.clear();
+    _rgbaCache.clear();
     currentMode = mode;
     draw();
 };
