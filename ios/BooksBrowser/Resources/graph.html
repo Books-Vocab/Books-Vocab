@@ -79,6 +79,7 @@ function opacityForNode(id) {
 }
 
 function opacityForEdge(sid, tid) {
+    if (isThumbnail) return 0.08;
     if (!selectedId) return 0.25;
     if (sid === selectedId || tid === selectedId) return 0.7;
     return 0.05;
@@ -327,6 +328,7 @@ window.initGraph = function(jsonStr) {
 
     if (isThumbnail) {
         sim.alphaDecay(0.08).alphaMin(0.05).velocityDecay(0.6);
+        sim.force('collide', null);
     }
 
     draw();
