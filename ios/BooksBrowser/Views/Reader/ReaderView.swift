@@ -47,6 +47,7 @@ struct ReaderView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.readerSettings) var settings
 
     @Environment(\.colorScheme) private var colorScheme

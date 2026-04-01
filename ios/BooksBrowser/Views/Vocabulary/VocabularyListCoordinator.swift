@@ -11,12 +11,12 @@ import os
     var activeReviewSession: TodayReviewSession? { get set }
     func presentSyncView()
     func presentSettings()
-    func exportCSV(entries: [VocabularyEntry])
-    func exportJSON(entries: [VocabularyEntry])
-    func exportAnki(entries: [VocabularyEntry])
+    func exportCSV(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator)
+    func exportJSON(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator)
+    func exportAnki(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator)
     func startKnowledgeReview(entries: [VocabularyEntry])
     func handlePendingRowTap(_ entryID: UUID, pendingEntries: [VocabularyEntry])
-    func handlePendingActionTap(_ entryID: UUID, pendingEntries: [VocabularyEntry], modelContext: ModelContext)
+    func handlePendingActionTap(_ entryID: UUID, pendingEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
 }
 
 @Observable @MainActor
@@ -36,16 +36,19 @@ final class VocabularyListCoordinator: VocabularyListCoordinating {
         showSettings = true
     }
 
-    func exportCSV(entries: [VocabularyEntry]) {
+    func exportCSV(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsCSV(entries: entries)
+        if exportURL == nil { toastCoordinator.error("匯出失敗") }
     }
 
-    func exportJSON(entries: [VocabularyEntry]) {
+    func exportJSON(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsJSON(entries: entries)
+        if exportURL == nil { toastCoordinator.error("匯出失敗") }
     }
 
-    func exportAnki(entries: [VocabularyEntry]) {
+    func exportAnki(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsAnki(entries: entries)
+        if exportURL == nil { toastCoordinator.error("匯出失敗") }
     }
 
     func startKnowledgeReview(entries: [VocabularyEntry]) {
@@ -60,18 +63,19 @@ final class VocabularyListCoordinator: VocabularyListCoordinating {
     func handlePendingActionTap(
         _ entryID: UUID,
         pendingEntries: [VocabularyEntry],
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        toastCoordinator: AppToastCoordinator
     ) {
         guard let entry = pendingEntries.first(where: { $0.id == entryID }) else { return }
-        handlePendingRemoval(entry, modelContext: modelContext)
+        handlePendingRemoval(entry, modelContext: modelContext, toastCoordinator: toastCoordinator)
     }
 
-    private func handlePendingRemoval(_ entry: VocabularyEntry, modelContext: ModelContext) {
+    private func handlePendingRemoval(_ entry: VocabularyEntry, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) {
         if entry.syncAction == .delete {
             entry.markSynced()
         } else {
             modelContext.delete(entry)
         }
-        modelContext.safeSave()
+        modelContext.safeSaveWithToast(toastCoordinator)
     }
 }

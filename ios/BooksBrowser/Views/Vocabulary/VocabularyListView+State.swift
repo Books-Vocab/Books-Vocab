@@ -77,7 +77,8 @@ extension VocabularyListView {
         coordinator.handlePendingActionTap(
             entryID,
             pendingEntries: pendingEntries,
-            modelContext: modelContext
+            modelContext: modelContext,
+            toastCoordinator: toastCoordinator
         )
     }
 

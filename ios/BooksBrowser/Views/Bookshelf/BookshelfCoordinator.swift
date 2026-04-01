@@ -14,7 +14,7 @@ import os
     func presentSettings()
     func dismissError()
     func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting)
-    func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging)
+    func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
 }
 
 @Observable @MainActor
@@ -69,7 +69,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     func deleteBook(
         _ book: Book,
         modelContext: ModelContext,
-        fileManager: any BookFileManaging
+        fileManager: any BookFileManaging,
+        toastCoordinator: AppToastCoordinator
     ) {
         // Manual cascade: clear bookId on related vocabulary entries
         let bookId = book.id
@@ -83,6 +84,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
         fileManager.deleteBookFile(named: book.epubFileName)
         modelContext.delete(book)
+        modelContext.safeSaveWithToast(toastCoordinator)
+        toastCoordinator.success("已刪除")
     }
 
     private func performImport(
