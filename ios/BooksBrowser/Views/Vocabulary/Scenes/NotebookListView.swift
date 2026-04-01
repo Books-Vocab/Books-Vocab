@@ -79,6 +79,8 @@ struct NotebookListView: View {
                             }
                             #if os(iOS)
                             .buttonStyle(.pressable)
+                            #else
+                            .buttonStyle(.plain)
                             #endif
                             .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                             .contextMenu {
