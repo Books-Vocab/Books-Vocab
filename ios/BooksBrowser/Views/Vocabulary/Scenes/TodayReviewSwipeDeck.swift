@@ -93,9 +93,9 @@ extension TodayReviewPresenter {
 
         let distance = screenWidth * 1.3 + min(velocity / 2000, 0.5) * screenWidth * 0.4
 
-        withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
-            swipeOffset = direction * distance
-        } completion: {
+        // Completion block — shared between animation callback and safety fallback
+        let completeFling: @MainActor @Sendable () -> Void = { [self] in
+            guard dismissPhase == .animatingOut else { return }
             var noAnim = Transaction(animation: nil)
             noAnim.disablesAnimations = true
             withTransaction(noAnim) {
@@ -109,6 +109,18 @@ extension TodayReviewPresenter {
             DispatchQueue.main.async {
                 suppressTransition = false
             }
+        }
+
+        withAnimation(AppMotion.swipeFlingSpring, completionCriteria: .logicallyComplete) {
+            swipeOffset = direction * distance
+        } completion: {
+            completeFling()
+        }
+
+        // Safety fallback: if animation completion never fires (macOS edge case),
+        // force-complete after a generous timeout to prevent UI deadlock.
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+            completeFling()
         }
     }
 }
