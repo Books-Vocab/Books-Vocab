@@ -25,9 +25,41 @@ let W = window.innerWidth, H = window.innerHeight;
 let backgroundColor = 'transparent';
 let labelColor = '#FFFFFF';
 let labelShadowColor = 'rgba(0,0,0,0.9)';
+let qt = null;
+let _frameCount = 0, _lastFpsTime = performance.now();
+let _drawScheduled = false;
+let _lastHoveredId = null, _lastSelectedId = null;
+const _rgbaCache = new Map();
 
 const canvas = document.getElementById('g');
 const ctx = canvas.getContext('2d');
+
+// ── Glow texture cache ───────────────────────────────────────────────────────
+const glowCache = new Map();
+
+function getGlowTexture(color, radius) {
+    const rBucket = Math.max(2, Math.round(radius / 2) * 2);
+    const key = color + '_' + rBucket;
+    let tex = glowCache.get(key);
+    const size = Math.ceil(rBucket * 2.2 * 2);
+    if (tex) return { tex, size };
+
+    const off = document.createElement('canvas');
+    off.width = size; off.height = size;
+    const oc = off.getContext('2d');
+    const cx = size / 2, cy = size / 2;
+    const inner = rBucket * 0.4, outer = rBucket * 2.2;
+    const grad = oc.createRadialGradient(cx, cy, inner, cx, cy, outer);
+    grad.addColorStop(0, color + '30');
+    grad.addColorStop(1, color + '00');
+    oc.fillStyle = grad;
+    oc.beginPath();
+    oc.arc(cx, cy, outer, 0, 2 * Math.PI);
+    oc.fill();
+
+    glowCache.set(key, off);
+    return { tex: off, size };
+}
 
 // ── Bridge to Swift ───────────────────────────────────────────────────────────
 function postBridge(obj) {
@@ -85,8 +117,26 @@ function opacityForEdge(sid, tid) {
     return 0.05;
 }
 
+// ── Draw scheduling (rAF coalescing) ─────────────────────────────────────────
+function scheduleDraw() {
+    if (_drawScheduled) return;
+    _drawScheduled = true;
+    requestAnimationFrame(() => { _drawScheduled = false; draw(); });
+}
+
 // ── Draw ──────────────────────────────────────────────────────────────────────
 function draw() {
+    // FPS debug counter (enable via: window.debugFPS = true)
+    if (window.debugFPS) {
+        _frameCount++;
+        const now = performance.now();
+        if (now - _lastFpsTime >= 1000) {
+            console.log('[graph-perf] ' + _frameCount + ' fps');
+            _frameCount = 0;
+            _lastFpsTime = now;
+        }
+    }
+
     // Fade in thumbnail once simulation has converged
     if (isThumbnail && canvas.style.opacity === '0' && sim && sim.alpha() < 0.15) {
         canvas.style.opacity = '1';
@@ -102,67 +152,105 @@ function draw() {
     ctx.translate(transform.x, transform.y);
     ctx.scale(transform.k, transform.k);
 
-    // Draw edges
+    // Draw edges (batched by color + opacity to reduce state switches)
     const screenLineWidth = (forces.linkThickness || 1.0) / transform.k;
+    const edgeGroups = new Map();
     for (const l of links) {
         const s = l.source, t = l.target;
         if (!s || !t || s.x == null || t.x == null) continue;
         const sid = typeof s === 'object' ? s.id : s;
         const tid = typeof t === 'object' ? t.id : t;
+        const alpha = opacityForEdge(sid, tid);
+        const color = EDGE_COLORS[l.kind] || '#888888';
+        const key = color + '_' + alpha.toFixed(2);
+        if (!edgeGroups.has(key)) edgeGroups.set(key, { color, alpha, segs: [] });
+        edgeGroups.get(key).segs.push(s.x, s.y, t.x, t.y);
+    }
+    for (const [, g] of edgeGroups) {
         ctx.beginPath();
-        ctx.moveTo(s.x, s.y);
-        ctx.lineTo(t.x, t.y);
-        ctx.strokeStyle = EDGE_COLORS[l.kind] || '#888888';
-        ctx.globalAlpha = opacityForEdge(sid, tid);
+        const segs = g.segs;
+        for (let i = 0; i < segs.length; i += 4) {
+            ctx.moveTo(segs[i], segs[i + 1]);
+            ctx.lineTo(segs[i + 2], segs[i + 3]);
+        }
+        ctx.strokeStyle = g.color;
+        ctx.globalAlpha = g.alpha;
         ctx.lineWidth = screenLineWidth;
         ctx.stroke();
     }
 
-    // Draw nodes (with subtle glow)
+    // Draw nodes — two passes: glow textures first, then fills batched by style
+    // Pass 1: glow halos (skip in thumbnail)
+    if (!isThumbnail) {
+        for (const d of nodes) {
+            const interactOpacity = opacityForNode(d.id);
+            if (interactOpacity < 0.1) continue;
+            const r = nodeRadius(d);
+            const color = nodeColor(d);
+            const opacity = interactOpacity * baseOpacityForNode(d);
+            const { tex, size } = getGlowTexture(color, r);
+            ctx.globalAlpha = opacity;
+            ctx.drawImage(tex, d.x - size / 2, d.y - size / 2, size, size);
+        }
+    }
+
+    // Pass 2: node fills batched by color + opacity
+    const nodeGroups = new Map();
     for (const d of nodes) {
+        const interactOpacity = opacityForNode(d.id);
+        if (interactOpacity < 0.1) continue;
         const r = nodeRadius(d);
         const color = nodeColor(d);
-        const interactOpacity = opacityForNode(d.id);
-        const baseOp = baseOpacityForNode(d);
-        const opacity = interactOpacity * baseOp;
-
-        // Glow halo (skip in thumbnail — too small, becomes color blob)
-        if (!isThumbnail) {
-            ctx.beginPath();
-            ctx.arc(d.x, d.y, r * 2.2, 0, 2 * Math.PI);
-            const grad = ctx.createRadialGradient(d.x, d.y, r * 0.4, d.x, d.y, r * 2.2);
-            grad.addColorStop(0, color + '30');
-            grad.addColorStop(1, color + '00');
-            ctx.fillStyle = grad;
-            ctx.globalAlpha = opacity;
-            ctx.fill();
-        }
-
-        // Node fill
+        const opacity = interactOpacity * baseOpacityForNode(d);
+        const key = color + '_' + opacity.toFixed(2);
+        if (!nodeGroups.has(key)) nodeGroups.set(key, { color, opacity, arcs: [] });
+        nodeGroups.get(key).arcs.push(d.x, d.y, r);
+    }
+    for (const [, g] of nodeGroups) {
+        ctx.fillStyle = g.color;
+        ctx.globalAlpha = g.opacity;
         ctx.beginPath();
-        ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = opacity;
+        const arcs = g.arcs;
+        for (let i = 0; i < arcs.length; i += 3) {
+            ctx.moveTo(arcs[i] + arcs[i + 2], arcs[i + 1]);
+            ctx.arc(arcs[i], arcs[i + 1], arcs[i + 2], 0, 2 * Math.PI);
+        }
         ctx.fill();
     }
 
-    // Draw labels (skip in thumbnail — too small to read)
+    // Draw labels (batched by font size, double-pass fillText)
     if (!isThumbnail) {
-        ctx.globalAlpha = 1;
-        for (const d of nodes) {
-            const r = nodeRadius(d);
-            const opacity = opacityForNode(d.id);
-            if (opacity < 0.2) continue;
-            const fontSize = d.degree > 3 ? 10 : 8;
+        ctx.textAlign = 'center';
+        ctx.textBaseline = 'top';
+        const baseMul = currentMode === 'dark' ? 0.90 : 0.82;
+
+        // Batch: small labels (8px) then large labels (10px)
+        for (let pass = 0; pass < 2; pass++) {
+            const fontSize = pass === 0 ? 8 : 10;
+            const degreeTest = pass === 0 ? (deg) => deg <= 3 : (deg) => deg > 3;
             ctx.font = `${fontSize}px -apple-system, sans-serif`;
-            ctx.textAlign = 'center';
-            ctx.textBaseline = 'top';
-            ctx.shadowColor = labelShadowColor;
-            ctx.shadowBlur = 4;
-            ctx.fillStyle = hexToRGBA(labelColor, currentMode === 'dark' ? 0.90 * opacity : 0.82 * opacity);
-            ctx.fillText(d.word, d.x, d.y + r + 3);
+
+            for (const d of nodes) {
+                if (!degreeTest(d.degree)) continue;
+                const opacity = opacityForNode(d.id);
+                if (opacity < 0.2) continue;
+                const r = nodeRadius(d);
+
+                // Shadow pass
+                ctx.fillStyle = labelShadowColor;
+                ctx.globalAlpha = 0.6 * opacity;
+                ctx.fillText(d.word, d.x + 1, d.y + r + 4);
+
+                // Main pass (cached rgba)
+                const labelAlpha = baseMul * opacity;
+                const cacheKey = labelColor + '_' + labelAlpha.toFixed(3);
+                let rgba = _rgbaCache.get(cacheKey);
+                if (!rgba) { rgba = hexToRGBA(labelColor, labelAlpha); _rgbaCache.set(cacheKey, rgba); }
+                ctx.fillStyle = rgba;
+                ctx.globalAlpha = 1;
+                ctx.fillText(d.word, d.x, d.y + r + 3);
+            }
         }
-        ctx.shadowBlur = 0;
     }
 
     ctx.restore();
@@ -180,11 +268,16 @@ function buildAdjCache() {
     });
 }
 
-// ── findNode ──────────────────────────────────────────────────────────────────
+// ── findNode (quadtree O(log N)) ─────────────────────────────────────────────
 function findNode(x, y) {
+    if (!qt) return null;
     const sx = (x - transform.x) / transform.k;
     const sy = (y - transform.y) / transform.k;
-    return nodes.find(n => Math.hypot(n.x - sx, n.y - sy) < nodeRadius(n) + 4);
+    const maxR = (forces.baseNodeRadius || 4) * 2.2 + 4;
+    const found = qt.find(sx, sy, maxR);
+    if (!found) return null;
+    if (Math.hypot(found.x - sx, found.y - sy) < nodeRadius(found) + 4) return found;
+    return null;
 }
 
 function hexToRGBA(hex, alpha) {
@@ -205,7 +298,7 @@ function bindInteractions() {
 
     const zoom = d3.zoom()
         .scaleExtent([0.1, 8])
-        .on('zoom', e => { transform = e.transform; draw(); });
+        .on('zoom', e => { transform = e.transform; scheduleDraw(); });
     d3.select(canvas).call(zoom);
 
     const drag = d3.drag()
@@ -247,7 +340,7 @@ function bindInteractions() {
         } else {
             selectedId = null;
         }
-        draw();
+        scheduleDraw();
     });
 
     canvas.addEventListener('pointermove', function(e) {
@@ -259,18 +352,20 @@ function bindInteractions() {
         const newId = node ? node.id : null;
         if (newId !== hoveredId) {
             hoveredId = newId;
-            draw();
+            scheduleDraw();
         }
     });
 
     canvas.addEventListener('pointerleave', function() {
-        if (hoveredId !== null) { hoveredId = null; draw(); }
+        if (hoveredId !== null) { hoveredId = null; scheduleDraw(); }
     });
 }
 
 // ── initGraph ─────────────────────────────────────────────────────────────────
 window.initGraph = function(jsonStr) {
     const data = JSON.parse(jsonStr);
+    glowCache.clear();
+    _rgbaCache.clear();
     forces = data.forces || {};
     isThumbnail = !!data.thumbnail;
 
@@ -334,7 +429,10 @@ window.initGraph = function(jsonStr) {
         .force('x',       d3.forceX(cx).strength(gravity))
         .force('y',       d3.forceY(cy).strength(gravity))
         .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 2))
-        .on('tick', draw);
+        .on('tick', () => {
+            qt = d3.quadtree(nodes, d => d.x, d => d.y);
+            draw();
+        });
 
     if (isThumbnail) {
         sim.alphaDecay(0.08).alphaMin(0.05).velocityDecay(0.6);
@@ -362,6 +460,8 @@ window.updateForces = function(arg) {
 
 // ── updateTheme ───────────────────────────────────────────────────────────────
 window.updateTheme = function(mode) {
+    glowCache.clear();
+    _rgbaCache.clear();
     currentMode = mode;
     draw();
 };
