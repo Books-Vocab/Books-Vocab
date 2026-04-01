@@ -41,7 +41,7 @@ from .settings import KGSettings
 from .types import UserRecord
 from .user_context import resolve_current_user
 from .user_store import collect_account_ids_for_deletion, parse_datetime
-from .vocab_service import build_links_by_kind, card_response
+from .vocab_shared import build_links_by_kind, card_response
 
 logger = logging.getLogger("kg.api")
 

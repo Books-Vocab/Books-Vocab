@@ -3,7 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from datetime import UTC, datetime
 
-from kg.vocab_service import list_vocab_cards
+from kg.vocab_crud import list_vocab_cards
 
 
 # ---------------------------------------------------------------------------

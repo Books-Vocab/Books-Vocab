@@ -113,37 +113,29 @@ class GraphStore:
             self._candidates = [CandidatePair.model_validate(c) for c in data]
         self._rebuild_index()
 
+    @staticmethod
+    def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None:
+        """Atomic JSON write: tmp → bak → replace."""
+        path.parent.mkdir(parents=True, exist_ok=True)
+        tmp = path.with_suffix(".json.tmp")
+        tmp.write_text(json.dumps(data, indent=indent, ensure_ascii=False))
+        if path.exists():
+            path.replace(path.with_suffix(".json.bak"))
+        tmp.replace(path)
+
     def _save_links(self) -> None:
-        self.links_path.parent.mkdir(parents=True, exist_ok=True)
         data = [lk.model_dump(mode="json") for lk in self._links.values()]
-        tmp_path = self.links_path.with_suffix(".json.tmp")
-        tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-        if self.links_path.exists():
-            bak_path = self.links_path.with_suffix(".json.bak")
-            self.links_path.replace(bak_path)
-        tmp_path.replace(self.links_path)
+        self._atomic_json_write(self.links_path, data)
 
     def _save_candidates(self) -> None:
-        self.candidates_path.parent.mkdir(parents=True, exist_ok=True)
         data = [c.model_dump(mode="json") for c in self._candidates]
-        tmp_path = self.candidates_path.with_suffix(".json.tmp")
-        tmp_path.write_text(json.dumps(data, indent=2, ensure_ascii=False))
-        if self.candidates_path.exists():
-            bak_path = self.candidates_path.with_suffix(".json.bak")
-            self.candidates_path.replace(bak_path)
-        tmp_path.replace(self.candidates_path)
+        self._atomic_json_write(self.candidates_path, data)
 
     def _save_blocked(self) -> None:
         if self.blocked_path is None:
             return
-        self.blocked_path.parent.mkdir(parents=True, exist_ok=True)
         data = [list(pair) for pair in self._blocked_pairs]
-        tmp_path = self.blocked_path.with_suffix(".json.tmp")
-        tmp_path.write_text(json.dumps(data, ensure_ascii=False))
-        if self.blocked_path.exists():
-            bak_path = self.blocked_path.with_suffix(".json.bak")
-            self.blocked_path.replace(bak_path)
-        tmp_path.replace(self.blocked_path)
+        self._atomic_json_write(self.blocked_path, data, indent=None)
 
     # --- Links ---
 

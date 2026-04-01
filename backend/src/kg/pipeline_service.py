@@ -64,7 +64,7 @@ async def _step_enrich(
                 kwargs: dict[str, Any] = {}
                 if enrichment.get("pos"):
                     if force or not card.pos:
-                        from .vocab_service import _normalize_pos
+                        from .vocab_shared import _normalize_pos
                         kwargs["pos"] = _normalize_pos(enrichment["pos"])
                 if enrichment.get("note"):
                     if force or not card.note:

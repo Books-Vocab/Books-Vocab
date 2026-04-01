@@ -7,7 +7,7 @@ from fastapi import APIRouter, Depends
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
 from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, get_current_user
 from ..exceptions import BadRequestError, NotFoundError
-from ..vocab_service import _dt_to_iso
+from ..vocab_shared import _dt_to_iso
 
 router = APIRouter()
 

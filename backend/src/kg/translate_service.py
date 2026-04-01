@@ -9,7 +9,7 @@ from .exceptions import ExternalServiceError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
-from .vocab_service import _normalize_pos
+from .vocab_shared import _normalize_pos
 
 
 def _context_around_word(context: str, word: str, max_len: int = 300) -> str:
