@@ -20,8 +20,10 @@ struct BooksBrowserApp: App {
     let authManager = AuthManager.shared
     let kgService = KGService()
     let subscriptionManager = SubscriptionManager.shared
+    #if os(iOS)
     let readiumService: any ReadiumServing = ReadiumService.shared
     let bookshelfImportService: any BookshelfImporting
+    #endif
     let bookFileManager: any BookFileManaging
     let iCloudDownloadManager = ICloudDownloadManager()
     let networkMonitor = NetworkMonitor.shared
@@ -30,10 +32,14 @@ struct BooksBrowserApp: App {
     let startupFailure: AppStartupFailure?
 
     init() {
+        #if os(iOS)
         AppFonts.ensureSerifCJKAvailable()
         AppFonts.configureGlobalAppearance()
+        #endif
         NSUbiquitousKeyValueStore.default.synchronize()
+        #if os(iOS)
         bookshelfImportService = BookshelfImportService(readiumService: readiumService)
+        #endif
         bookFileManager = LocalBookFileManager()
 
         let localConfig = ModelConfiguration(
@@ -125,6 +131,7 @@ struct BooksBrowserApp: App {
 
     @Environment(\.scenePhase) private var scenePhase
 
+    #if os(iOS)
     private static let fontObserver: Any? = NotificationCenter.default.addObserver(
         forName: .serifCJKFontDidBecomeAvailable,
         object: nil,
@@ -132,6 +139,7 @@ struct BooksBrowserApp: App {
     ) { _ in
         AppFonts.configureGlobalAppearance()
     }
+    #endif
 
     @State private var showWelcome =
         !ProcessInfo.processInfo.arguments.contains("-skipWelcome") &&
@@ -149,14 +157,16 @@ struct BooksBrowserApp: App {
                     .environment(\.subscriptionManager, subscriptionManager)
                     .environment(\.locale, appLanguage.locale)
                     .tint(AppColors.tint)
+                    #if os(iOS)
                     .environment(\.readiumService, readiumService)
                     .environment(\.bookshelfImportService, bookshelfImportService)
+                    .environment(\.readerSettings, .shared)
+                    #endif
                     .environment(\.bookFileManager, bookFileManager)
                     .environment(\.iCloudDownloadManager, iCloudDownloadManager)
                     .environment(\.syncCoordinator, syncCoordinator)
                     .environment(\.quotaStore, QuotaStore.shared)
                     .environment(\.speechService, SpeechService.shared)
-                    .environment(\.readerSettings, .shared)
                     .environment(\.toastCoordinator, toastCoordinator)
                     .toastOverlay()
             }
@@ -261,7 +271,7 @@ struct BooksBrowserApp: App {
                         Text(reason)
                     }
                 }
-                .fullScreenCover(isPresented: $showWelcome) {
+                .platformFullScreenCover(isPresented: $showWelcome) {
                     WelcomeView(
                         onStart: {
                             UserDefaults.standard.set(true, forKey: "hasSeenWelcome")

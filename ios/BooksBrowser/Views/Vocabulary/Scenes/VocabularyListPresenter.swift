@@ -50,7 +50,7 @@ struct VocabularyListPresenter<Content: View>: View {
         .vocabCanvasBackground()
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {
-            UIApplication.shared.sendAction(#selector(UIResponder.resignFirstResponder), to: nil, from: nil, for: nil)
+            dismissKeyboard()
         }
     }
 }

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 // MARK: - Presenter
@@ -101,3 +102,4 @@ struct ReaderSettingsPresenter: View {
     }
     .preferredColorScheme(.dark)
 }
+#endif

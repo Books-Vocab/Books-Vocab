@@ -9,7 +9,11 @@
 //
 
 import SwiftUI
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import CoreText
 import os
 
@@ -43,7 +47,15 @@ enum AppFonts {
 
     // MARK: - Font Builders
 
-    private static let cascadeListKey = UIFontDescriptor.AttributeName(
+    private static func platformFont(descriptor: PlatformFontDescriptor, size: CGFloat) -> PlatformFont {
+        #if os(iOS)
+        return PlatformFont(descriptor: descriptor, size: size)
+        #elseif os(macOS)
+        return PlatformFont(descriptor: descriptor, size: size) ?? PlatformFont.systemFont(ofSize: size)
+        #endif
+    }
+
+    private static let cascadeListKey = PlatformFontDescriptor.AttributeName(
         rawValue: "NSCTFontCascadeListAttribute"
     )
 
@@ -51,31 +63,31 @@ enum AppFonts {
     static func serif(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
         let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
-        let base = UIFontDescriptor(fontAttributes: [.name: primary])
-        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
         let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
-        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
+        return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
     /// Sans: ElmsSans + PingFang TC cascade
     static func sans(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
         let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
-        let base = UIFontDescriptor(fontAttributes: [.name: primary])
-        let cjk = UIFontDescriptor(fontAttributes: [.name: fallback])
+        let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
         let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
-        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
+        return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
     /// Mono: ElmsSans + system monospaced cascade
     static func mono(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
-        let sysMono = UIFont.monospacedSystemFont(
+        let sysMono = PlatformFont.monospacedSystemFont(
             ofSize: size, weight: bold ? .bold : .regular
         ).fontDescriptor
-        let base = UIFontDescriptor(fontAttributes: [.name: primary])
+        let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
         let descriptor = base.addingAttributes([cascadeListKey: [sysMono]])
-        return Font(UIFont(descriptor: descriptor, size: size) as CTFont)
+        return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
     // MARK: - 標題層級 (Headers) — serif
@@ -136,6 +148,7 @@ enum AppFonts {
 
     // MARK: - UIKit Fonts (for Appearance API)
 
+    #if os(iOS)
     /// UIKit serif font — Athelas + STSongti-TC cascade
     static func uiSerif(size: CGFloat, bold: Bool = false) -> UIFont {
         let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
@@ -177,19 +190,13 @@ enum AppFonts {
     }
 
     /// 設定 UINavigationBar + UITabBar 全域字體
-    ///
-    /// 重要：SwiftUI 的 `.toolbarBackground(.hidden)` 會覆蓋 UIKit appearance proxy，
-    /// 因此透明背景必須在這裡用 `configureWithTransparentBackground()` 實現，
-    /// 不能和 `.toolbarBackground(.hidden)` 混用。
     static func configureGlobalAppearance() {
-        // Navigation bar: serif font + transparent background
         let (_, transparent) = makeNavBarAppearances()
         UINavigationBar.appearance().standardAppearance = transparent
         UINavigationBar.appearance().compactAppearance = transparent
         UINavigationBar.appearance().scrollEdgeAppearance = transparent
         UINavigationBar.appearance().compactScrollEdgeAppearance = transparent
 
-        // Tab bar: sans
         let tabFont = uiSans(size: 10)
         let tabItemAppearance = UITabBarItemAppearance()
         tabItemAppearance.normal.titleTextAttributes = [.font: tabFont]
@@ -203,6 +210,7 @@ enum AppFonts {
         UITabBar.appearance().standardAppearance = tabAppearance
         UITabBar.appearance().scrollEdgeAppearance = tabAppearance
     }
+    #endif
 
     // MARK: - On-Demand Font Download
 
@@ -210,10 +218,10 @@ enum AppFonts {
     /// 在 App 啟動時呼叫一次即可，已下載過則立即返回。
     static func ensureSerifCJKAvailable() {
         let fontNames = ["STSongti-TC-Regular", "STSongti-TC-Bold"]
-        var descriptors: [UIFontDescriptor] = []
+        var descriptors: [PlatformFontDescriptor] = []
 
         for name in fontNames {
-            let desc = UIFontDescriptor(fontAttributes: [.name: name])
+            let desc = PlatformFontDescriptor(fontAttributes: [.name: name])
             // 檢查是否已可用
             let ctDesc = desc as CTFontDescriptor
             if CTFontDescriptorCopyAttribute(ctDesc, kCTFontURLAttribute) != nil {

@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import UIKit
 import ReadiumNavigator
@@ -136,3 +137,4 @@ extension ReadiumNavigatorView.Coordinator {
         _fontFaceCSS
     }
 }
+#endif

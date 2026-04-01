@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  TranslationVocabPresenter.swift
 //  BooksBrowser
@@ -295,3 +296,4 @@ struct TranslationVocabPresenter: View {
         }
     }
 }
+#endif

@@ -13,6 +13,7 @@ private struct SubscriptionManagerEnvironmentKey: EnvironmentKey {
     }
 }
 
+#if os(iOS)
 private struct ReadiumServiceEnvironmentKey: EnvironmentKey {
     nonisolated(unsafe) static let defaultValue: any ReadiumServing = MainActor.assumeIsolated {
         ReadiumService.shared
@@ -24,6 +25,7 @@ private struct BookshelfImportServiceEnvironmentKey: EnvironmentKey {
         BookshelfImportService(readiumService: ReadiumService.shared)
     }
 }
+#endif
 
 private struct AuthManagerEnvironmentKey: EnvironmentKey {
     nonisolated(unsafe) static let defaultValue: any AuthManaging = MainActor.assumeIsolated {
@@ -71,9 +73,11 @@ private struct SpeechServiceKey: EnvironmentKey {
     static let defaultValue: any Speaking = SpeechService.shared
 }
 
+#if os(iOS)
 private struct ReaderSettingsKey: EnvironmentKey {
     static let defaultValue: ReaderSettings = .shared
 }
+#endif
 
 extension EnvironmentValues {
     var iCloudDownloadManager: ICloudDownloadManager {
@@ -113,16 +117,19 @@ extension EnvironmentValues {
         get { self[SpeechServiceKey.self] }
         set { self[SpeechServiceKey.self] = newValue }
     }
+    #if os(iOS)
     var readerSettings: ReaderSettings {
         get { self[ReaderSettingsKey.self] }
         set { self[ReaderSettingsKey.self] = newValue }
     }
+    #endif
 
     var subscriptionManager: any SubscriptionManaging {
         get { self[SubscriptionManagerEnvironmentKey.self] }
         set { self[SubscriptionManagerEnvironmentKey.self] = newValue }
     }
 
+    #if os(iOS)
     var readiumService: any ReadiumServing {
         get { self[ReadiumServiceEnvironmentKey.self] }
         set { self[ReadiumServiceEnvironmentKey.self] = newValue }
@@ -132,4 +139,5 @@ extension EnvironmentValues {
         get { self[BookshelfImportServiceEnvironmentKey.self] }
         set { self[BookshelfImportServiceEnvironmentKey.self] = newValue }
     }
+    #endif
 }

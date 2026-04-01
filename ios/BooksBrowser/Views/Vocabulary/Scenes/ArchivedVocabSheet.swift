@@ -64,7 +64,7 @@ struct ArchivedVocabSheet: View {
             .animatePhaseChange(archivedEntries.isEmpty)
             .vocabCanvasBackground()
             .navigationTitle("封存".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .searchable(text: $searchText, prompt: "搜尋封存單字".localized)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct ReaderContentStyle: Equatable {
@@ -160,3 +161,4 @@ private extension ReaderContentStyle {
         )
     )
 }
+#endif

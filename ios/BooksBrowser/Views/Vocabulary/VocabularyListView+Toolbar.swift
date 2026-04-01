@@ -27,7 +27,7 @@ struct VocabularyListToolbar: ViewModifier {
         content
             .toolbar {
                 // Sync button
-                ToolbarItem(placement: .topBarLeading) {
+                ToolbarItem(placement: .cancellationAction) {
                     Button(action: onSync) {
                         VocabToolbarGlyph(
                             systemImage: "arrow.triangle.2.circlepath",
@@ -41,7 +41,7 @@ struct VocabularyListToolbar: ViewModifier {
                 // Force refresh (知識庫 tab only)
                 if selectedTab == 1 && isLoggedIn {
                     if knowledgeReviewCount > 0 {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        ToolbarItem(placement: .confirmationAction) {
                             Menu {
                                 if knowledgeDueEntriesCount > 0 {
                                     Button {
@@ -88,7 +88,7 @@ struct VocabularyListToolbar: ViewModifier {
 
                 // Export menu (only for local vocab tab)
                 if selectedTab == 0 && hasPendingEntries {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .confirmationAction) {
                         Menu {
                             Button {
                                 onExportCSV()

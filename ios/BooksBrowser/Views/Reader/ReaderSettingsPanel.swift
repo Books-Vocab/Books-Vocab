@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderSettingsPanel.swift
 //  BooksBrowser
@@ -146,3 +147,4 @@ private struct ReaderSettingsPanelPreviewHarness: View {
         )
     }
 }
+#endif

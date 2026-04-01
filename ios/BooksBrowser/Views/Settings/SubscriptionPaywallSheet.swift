@@ -8,11 +8,13 @@ struct SubscriptionPaywallSheet: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.kgService) private var kgService
 
+    #if os(iOS)
     private var windowScene: UIWindowScene? {
         UIApplication.shared.connectedScenes
             .compactMap { $0 as? UIWindowScene }
             .first
     }
+    #endif
 
     private var activeFeatures: [SettingsSubscriptionFeatureItem] {
         [
@@ -71,12 +73,12 @@ struct SubscriptionPaywallSheet: View {
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("訂閱".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .task {
                 await subscriptionManager.loadProducts()
             }
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }
                 }
             }
@@ -126,8 +128,12 @@ struct SubscriptionPaywallSheet: View {
                 if !isAdminGranted {
                     Button {
                         Task {
+                            #if os(iOS)
                             guard let scene = windowScene else { return }
                             try? await AppStore.showManageSubscriptions(in: scene)
+                            #elseif os(macOS)
+                            NSWorkspace.shared.open(URL(string: "https://apps.apple.com/account/subscriptions")!)
+                            #endif
                             await subscriptionManager.resyncAfterManagement(using: kgService, authManager: authManager)
                         }
                     } label: {

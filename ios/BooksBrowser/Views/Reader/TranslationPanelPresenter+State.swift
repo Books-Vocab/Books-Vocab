@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 // MARK: - State & Content Mode
@@ -174,3 +175,4 @@ enum TranslationPanelPreviewData {
         timerText: "", isSpeaking: false
     )
 }
+#endif
