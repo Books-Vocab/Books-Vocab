@@ -28,7 +28,7 @@
 | `deep-scan` | 每次對話自動 + `/deep-scan` | 全專案平行掃描 |
 | `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
 | `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
-| `debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
+| `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / status / logs | 運維操作參考 |
 
 ### Skill 規則
