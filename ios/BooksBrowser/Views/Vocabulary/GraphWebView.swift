@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 import WebKit
 
 // MARK: - GraphForces
@@ -20,6 +19,7 @@ struct GraphForces: Equatable, Encodable {
 
 // MARK: - GraphWebView
 
+#if os(iOS)
 struct GraphWebView: UIViewRepresentable {
     let nodes: [KnowledgeGraphNode]
     let edges: [KnowledgeGraphEdge]
@@ -37,15 +37,72 @@ struct GraphWebView: UIViewRepresentable {
     }
 
     func makeUIView(context: Context) -> WKWebView {
+        let webView = Self.createWebView(context: context)
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.backgroundColor = .clear
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        Self.updateWebView(webView, context: context, nodes: nodes, edges: edges,
+                           colorScheme: colorScheme, backgroundHex: backgroundHex,
+                           tierHexes: tierHexes, edgeHexes: edgeHexes, labelHex: labelHex,
+                           labelShadowHex: labelShadowHex, forces: forces, onNodeTap: onNodeTap)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        Self.dismantleWebView(webView, coordinator: coordinator)
+    }
+}
+#elseif os(macOS)
+struct GraphWebView: NSViewRepresentable {
+    let nodes: [KnowledgeGraphNode]
+    let edges: [KnowledgeGraphEdge]
+    let colorScheme: ColorScheme
+    let backgroundHex: String
+    let tierHexes: [String: String]
+    let edgeHexes: [String: String]
+    let labelHex: String
+    let labelShadowHex: String
+    let forces: GraphForces
+    var onNodeTap: (String) -> Void
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onNodeTap: onNodeTap)
+    }
+
+    func makeNSView(context: Context) -> WKWebView {
+        Self.createWebView(context: context)
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        Self.updateWebView(webView, context: context, nodes: nodes, edges: edges,
+                           colorScheme: colorScheme, backgroundHex: backgroundHex,
+                           tierHexes: tierHexes, edgeHexes: edgeHexes, labelHex: labelHex,
+                           labelShadowHex: labelShadowHex, forces: forces, onNodeTap: onNodeTap)
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        Self.dismantleWebView(webView, coordinator: coordinator)
+    }
+}
+#endif
+
+// MARK: - Shared implementation
+
+extension GraphWebView {
+    static func createWebView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "graphBridge")
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.bounces = false
-        webView.scrollView.backgroundColor = .clear
+        #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .clear
+        #elseif os(macOS)
+        webView.setValue(false, forKey: "drawsBackground")
+        #endif
         webView.navigationDelegate = context.coordinator
         context.coordinator.webView = webView
 
@@ -57,24 +114,35 @@ struct GraphWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    static func updateWebView(
+        _ webView: WKWebView, context: Context,
+        nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
+        colorScheme: ColorScheme, backgroundHex: String,
+        tierHexes: [String: String], edgeHexes: [String: String],
+        labelHex: String, labelShadowHex: String,
+        forces: GraphForces, onNodeTap: @escaping (String) -> Void
+    ) {
         let coord = context.coordinator
         coord.onNodeTap = onNodeTap
 
-        let sig = themeSignature
+        let sig = themeSignature(colorScheme: colorScheme, backgroundHex: backgroundHex,
+                                  labelHex: labelHex, labelShadowHex: labelShadowHex,
+                                  tierHexes: tierHexes, edgeHexes: edgeHexes)
         let themeChanged = coord.lastThemeSignature != sig || coord.lastColorScheme != colorScheme
         let dataChanged = coord.lastNodeCount != nodes.count || coord.lastLinkCount != edges.count
 
-        // Layer 1 + 3: theme or data change — build payload once and send
         if themeChanged || dataChanged {
             coord.lastThemeSignature = sig
             coord.lastColorScheme = colorScheme
             coord.lastNodeCount = nodes.count
             coord.lastLinkCount = edges.count
-            coord.sendInitGraph(buildPayload(), webView: webView)
+            let payload = buildPayload(nodes: nodes, edges: edges, colorScheme: colorScheme,
+                                        backgroundHex: backgroundHex, tierHexes: tierHexes,
+                                        edgeHexes: edgeHexes, labelHex: labelHex,
+                                        labelShadowHex: labelShadowHex, forces: forces)
+            coord.sendInitGraph(payload, webView: webView)
         }
 
-        // Layer 2: forces change (lightweight, separate JS call)
         if coord.lastForces != forces {
             coord.lastForces = forces
             let json = forces.toJSONString()
@@ -82,25 +150,26 @@ struct GraphWebView: UIViewRepresentable {
         }
     }
 
-    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func dismantleWebView(_ webView: WKWebView, coordinator: Coordinator) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
         coordinator.onNodeTap = nil
     }
 
     // MARK: - Payload builder
 
-    private func buildPayload() -> String {
+    private static func buildPayload(
+        nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
+        colorScheme: ColorScheme, backgroundHex: String,
+        tierHexes: [String: String], edgeHexes: [String: String],
+        labelHex: String, labelShadowHex: String, forces: GraphForces
+    ) -> String {
         let mode = colorScheme == .dark ? "dark" : "light"
-        let bg = backgroundHex
 
         let tierNames = ["gray", "archived"]
         var colorsDict: [String: [String: String]] = [:]
         for tierName in tierNames {
             let hex = tierHexes[tierName] ?? "#888888"
-            colorsDict[tierName] = [
-                "dark": hex,
-                "light": hex
-            ]
+            colorsDict[tierName] = ["dark": hex, "light": hex]
         }
 
         struct NodePayload: Encodable {
@@ -141,14 +210,8 @@ struct GraphWebView: UIViewRepresentable {
             let light = entry.value["light"] ?? dark
             partialResult[entry.key] = TierPair(dark: dark, light: light)
         }
-        let theme = ThemePayload(
-            mode: mode,
-            background: bg,
-            colors: colorPairs,
-            edges: edgeHexes,
-            label: labelHex,
-            labelShadow: labelShadowHex
-        )
+        let theme = ThemePayload(mode: mode, background: backgroundHex, colors: colorPairs,
+                                  edges: edgeHexes, label: labelHex, labelShadow: labelShadowHex)
         let payload = Payload(nodes: nodePayloads, links: linkPayloads, forces: forces, theme: theme)
 
         guard let data = try? JSONEncoder().encode(payload),
@@ -156,13 +219,15 @@ struct GraphWebView: UIViewRepresentable {
         return json
     }
 
-    private var themeSignature: String {
+    private static func themeSignature(
+        colorScheme: ColorScheme, backgroundHex: String,
+        labelHex: String, labelShadowHex: String,
+        tierHexes: [String: String], edgeHexes: [String: String]
+    ) -> String {
         let sortedTiers = tierHexes.sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "|")
+            .map { "\($0.key)=\($0.value)" }.joined(separator: "|")
         let sortedEdges = edgeHexes.sorted { $0.key < $1.key }
-            .map { "\($0.key)=\($0.value)" }
-            .joined(separator: "|")
+            .map { "\($0.key)=\($0.value)" }.joined(separator: "|")
         return "\(colorScheme)-\(backgroundHex)-\(labelHex)-\(labelShadowHex)-\(sortedTiers)-\(sortedEdges)"
     }
 

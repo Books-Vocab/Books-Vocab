@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import SwiftData
 import TipKit
@@ -13,8 +14,8 @@ import os
     func presentImporter()
     func presentSettings()
     func dismissError()
-    func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting)
-    func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging)
+    func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
+    func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
 }
 
 @Observable @MainActor
@@ -42,7 +43,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     func handleFileImport(
         _ result: Result<[URL], Error>,
         modelContext: ModelContext,
-        importService: any BookshelfImporting
+        importService: any BookshelfImporting,
+        toastCoordinator: AppToastCoordinator
     ) {
         switch result {
         case .success(let urls):
@@ -59,7 +61,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 showError = true
                 return
             }
-            performImport(url: url, modelContext: modelContext, method: importMethod)
+            performImport(url: url, modelContext: modelContext, method: importMethod, toastCoordinator: toastCoordinator)
         case .failure(let error):
             errorMessage = error.localizedDescription
             showError = true
@@ -69,7 +71,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     func deleteBook(
         _ book: Book,
         modelContext: ModelContext,
-        fileManager: any BookFileManaging
+        fileManager: any BookFileManaging,
+        toastCoordinator: AppToastCoordinator
     ) {
         // Manual cascade: clear bookId on related vocabulary entries
         let bookId = book.id
@@ -83,12 +86,16 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
         fileManager.deleteBookFile(named: book.epubFileName)
         modelContext.delete(book)
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除")
+        }
     }
 
     private func performImport(
         url: URL,
         modelContext: ModelContext,
-        method: @escaping (URL) async throws -> ImportedBookDraft
+        method: @escaping (URL) async throws -> ImportedBookDraft,
+        toastCoordinator: AppToastCoordinator
     ) {
         isLoading = true
         loadingMessage = L10n.string("正在匯入...")
@@ -112,9 +119,11 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 )
 
                 modelContext.insert(book)
-                modelContext.safeSave()
-                EPUBGuideTip().invalidate(reason: .actionPerformed)
-                AppLog.book.info("Book saved: \(book.title)")
+                if modelContext.safeSaveWithToast(toastCoordinator) {
+                    EPUBGuideTip().invalidate(reason: .actionPerformed)
+                    AppLog.book.info("Book saved: \(book.title)")
+                    toastCoordinator.success("已匯入")
+                }
 
                 isLoading = false
                 loadingMessage = ""
@@ -129,3 +138,4 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
     }
 }
+#endif

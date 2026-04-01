@@ -87,7 +87,7 @@ struct TodayReviewView: View {
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }
-        .sheet(item: $state.tappedLink) { link in
+        .toastSheet(item: $state.tappedLink) { link in
             LinkReasonSheet(link: link, onNavigate: { state.navigateToLinkedCard(link: link) })
                 .appSheet(.medium)
         }

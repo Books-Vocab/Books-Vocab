@@ -21,12 +21,12 @@ struct OverviewTab: View {
             if authManager.isLoggedIn || authManager.isDemoMode {
                 StatsPresenter(filter: filter)
                     .toolbar {
-                        ToolbarItem(placement: .topBarTrailing) {
+                        ToolbarItem(placement: .confirmationAction) {
                             NotebookFilterChip(filter: $filter)
                         }
                     }
                     .navigationTitle("總覽".localized)
-                    .navigationBarTitleDisplayMode(.large)
+                    .largeNavigationBarTitle()
             } else {
                 loggedOutState
             }
@@ -48,7 +48,7 @@ struct OverviewTab: View {
             .padding(.top, AppMetrics.spacingMedium)
         }
         .navigationTitle("總覽".localized)
-        .navigationBarTitleDisplayMode(.large)
+        .largeNavigationBarTitle()
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
         }

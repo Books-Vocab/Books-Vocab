@@ -15,6 +15,10 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.networkMonitor) private var networkMonitor
 
+    #if os(macOS)
+    @State private var showSettings = false
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
             if authManager.isDemoMode {
@@ -28,8 +32,10 @@ struct ContentView: View {
             }
 
             TabView {
+                #if os(iOS)
                 BookshelfView()
                     .tabItem { Label("書庫".localized, systemImage: "books.vertical") }
+                #endif
                 NotebookListView()
                     .tabItem { Label("單字本".localized, systemImage: "character.book.closed") }
                 OverviewTab()
@@ -38,6 +44,20 @@ struct ContentView: View {
         }
         .animatePhaseChange(networkMonitor.isConnected)
         .animatePhaseChange(authManager.isDemoMode)
+        #if os(macOS)
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        #endif
     }
 }
 

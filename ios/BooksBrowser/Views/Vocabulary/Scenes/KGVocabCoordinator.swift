@@ -8,13 +8,13 @@ import SwiftUI
     var selectedEntry: VocabularyEntry? { get set }
     func dismissBanner()
     func handleRowTap(_ entryID: UUID, syncedEntries: [VocabularyEntry])
-    func handleDeleteTap(_ entryID: UUID, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
+    func handleDeleteTap(_ entryID: UUID, syncedEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
     func loadInitialData(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
     func forceRefresh(kgService: any KGServing, modelContext: ModelContext) async
     func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
-    func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext)
-    func handleBatchArchive(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
-    func handleBatchMove(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], toNotebook: String, fromNotebook: String, kgService: any KGServing, modelContext: ModelContext) async throws
+    func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
+    func handleBatchArchive(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) async
+    func handleBatchMove(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], toNotebook: String, fromNotebook: String, kgService: any KGServing, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) async throws
 }
 
 @Observable @MainActor
@@ -34,11 +34,14 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     func handleDeleteTap(
         _ entryID: UUID,
         syncedEntries: [VocabularyEntry],
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        toastCoordinator: AppToastCoordinator
     ) {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
         entry.queueDelete()
-        modelContext.safeSave()
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除")
+        }
     }
 
     func loadInitialData(
@@ -123,20 +126,24 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     func handleBatchDelete(
         _ entryIDs: Set<UUID>,
         syncedEntries: [VocabularyEntry],
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        toastCoordinator: AppToastCoordinator
     ) {
         let entries = syncedEntries.filter { entryIDs.contains($0.id) }
         for entry in entries {
             entry.queueDelete()
         }
-        modelContext.safeSave()
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除 \(entries.count) 個")
+        }
     }
 
     func handleBatchArchive(
         _ entryIDs: Set<UUID>,
         syncedEntries: [VocabularyEntry],
         kgService: any KGServing,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        toastCoordinator: AppToastCoordinator
     ) async {
         let entries = syncedEntries.filter { entryIDs.contains($0.id) }
         var failCount = 0
@@ -167,10 +174,13 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 }
             }
         }
-        modelContext.safeSave()
-        if failCount > 0 {
-            let successCount = entries.count - failCount
-            errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            if failCount > 0 {
+                let successCount = entries.count - failCount
+                errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+            } else {
+                toastCoordinator.success("已封存 \(entries.count) 個")
+            }
         }
     }
 
@@ -180,7 +190,8 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         toNotebook: String,
         fromNotebook: String,
         kgService: any KGServing,
-        modelContext: ModelContext
+        modelContext: ModelContext,
+        toastCoordinator: AppToastCoordinator
     ) async throws {
         let entries = syncedEntries.filter { entryIDs.contains($0.id) }
         let words = entries.map(\.word)
@@ -188,6 +199,8 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         for entry in entries {
             entry.notebookId = toNotebook
         }
-        modelContext.safeSave()
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已移動 \(entries.count) 個")
+        }
     }
 }

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import ReadiumShared
 
@@ -8,7 +9,8 @@ extension ReaderView {
             modelContext: modelContext,
             book: book,
             currentLocator: currentLocator,
-            notebookId: book.resolvedNotebookId
+            notebookId: book.resolvedNotebookId,
+            toastCoordinator: toastCoordinator
         )
     }
 
@@ -115,3 +117,4 @@ extension ReaderView {
         }
     }
 }
+#endif

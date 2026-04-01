@@ -113,9 +113,9 @@ struct NotebookListView: View {
             }
             .background(skin.palette.pageBackground)
             .navigationTitle("單字本".localized)
-            .navigationBarTitleDisplayMode(.large)
+            .largeNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         showArchiveList = true
                     } label: {
@@ -123,7 +123,7 @@ struct NotebookListView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         showCreateSheet = true
                     } label: {
@@ -135,29 +135,47 @@ struct NotebookListView: View {
             .navigationDestination(for: String.self) { notebookId in
                 VocabularyListView(notebookId: notebookId)
             }
-            .sheet(isPresented: $showCreateSheet) {
+            .toastSheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { name, color in
                     Task { @MainActor in
-                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService)
+                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
                     }
                 }
             }
-            .sheet(item: $editingNotebook) { notebook in
+            .toastSheet(item: $editingNotebook) { notebook in
                 NotebookEditSheet(mode: .edit(name: notebook.name, color: notebook.color)) { name, color in
                     Task { @MainActor in
-                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService)
+                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
                     }
                 }
             }
-            .fullScreenCover(item: $activeReviewSession) { session in
+            #if os(iOS)
+            .platformFullScreenCover(item: $activeReviewSession) { session in
                 TodayReviewView(
                     entries: session.entries,
                     allEntries: allEntries,
                     currentUserID: authManager.userId,
                     onClose: { activeReviewSession = nil }
                 )
+                .toastOverlay()
             }
-            .sheet(isPresented: $showArchiveList) {
+            #elseif os(macOS)
+            .inspector(isPresented: Binding(
+                get: { activeReviewSession != nil },
+                set: { if !$0 { activeReviewSession = nil } }
+            )) {
+                if let session = activeReviewSession {
+                    TodayReviewView(
+                        entries: session.entries,
+                        allEntries: allEntries,
+                        currentUserID: authManager.userId,
+                        onClose: { activeReviewSession = nil }
+                    )
+                    .inspectorColumnWidth(min: 380, ideal: 420, max: 500)
+                }
+            }
+            #endif
+            .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
             }
             .task(id: authManager.isLoggedIn) {

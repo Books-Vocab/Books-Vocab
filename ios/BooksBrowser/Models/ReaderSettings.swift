@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderSettings.swift
 //  BooksBrowser
@@ -208,3 +209,4 @@ final class ReaderSettings {
         )
     }
 }
+#endif

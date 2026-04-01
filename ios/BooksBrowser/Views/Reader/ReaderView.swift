@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderView.swift
 //  BooksBrowser
@@ -48,6 +49,7 @@ struct ReaderView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) private var subscriptionManager
+    @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.readerSettings) var settings
 
     @Environment(\.colorScheme) private var colorScheme
@@ -83,7 +85,7 @@ struct ReaderView: View {
         .tint(.secondary)
         .toolbar(.hidden, for: .tabBar)
         .toolbar(.hidden, for: .navigationBar)
-        .sheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
+        .toastSheet(isPresented: Binding(get: { readerState.showTableOfContents }, set: { readerState.showTableOfContents = $0 })) {
             if let publication = publication {
                 TOCView(
                     publication: publication,
@@ -116,13 +118,13 @@ struct ReaderView: View {
                 handler.clearHighlightTrigger = UUID()
             }
         }
-        .sheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
+        .toastSheet(isPresented: Binding(get: { readerState.showSubscriptionPaywall }, set: { readerState.showSubscriptionPaywall = $0 })) {
             SubscriptionPaywallSheet()
         }
-        .sheet(item: Binding(get: { readerState.detailEntry }, set: { readerState.detailEntry = $0 })) { entry in
+        .toastSheet(item: Binding(get: { readerState.detailEntry }, set: { readerState.detailEntry = $0 })) { entry in
             WordDetailSheet(entry: entry, allEntries: allVocabulary)
         }
-        .sheet(isPresented: $showNotebookPicker) {
+        .toastSheet(isPresented: $showNotebookPicker) {
             ReaderNotebookPicker(book: book)
                 .appSheet(.adaptive)
         }
@@ -175,3 +177,4 @@ struct ReaderView: View {
         }
     }
 }
+#endif

@@ -64,7 +64,7 @@ struct NotebookEditSheet: View {
                 }
             }
             .navigationTitle(isCreating ? "新增單字本".localized : "編輯單字本".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消".localized) { dismiss() }

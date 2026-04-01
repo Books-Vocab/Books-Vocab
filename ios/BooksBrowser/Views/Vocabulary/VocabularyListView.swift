@@ -25,6 +25,7 @@ struct VocabularyListView: View {
     @Environment(\.subscriptionManager) var subscriptionManager
     @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.appTheme) var appTheme
+    @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.syncCoordinator) var syncCoordinator
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var coordinator = VocabularyListCoordinator()
@@ -55,7 +56,7 @@ struct VocabularyListView: View {
             routedContent(classified: classified)
         }
         .navigationTitle(notebookName)
-        .navigationBarTitleDisplayMode(.large)
+        .largeNavigationBarTitle()
         .modifier(VocabularyListToolbar(
             selectedTab: selectedTab,
             isLoggedIn: authManager.isLoggedIn,
@@ -67,9 +68,9 @@ struct VocabularyListView: View {
             onStartDueReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
             onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
             onStartAllReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) },
-            onExportCSV: { coordinator.exportCSV(entries: pendingEntries) },
-            onExportJSON: { coordinator.exportJSON(entries: pendingEntries) },
-            onExportAnki: { coordinator.exportAnki(entries: pendingEntries) },
+            onExportCSV: { coordinator.exportCSV(entries: pendingEntries, toastCoordinator: toastCoordinator) },
+            onExportJSON: { coordinator.exportJSON(entries: pendingEntries, toastCoordinator: toastCoordinator) },
+            onExportAnki: { coordinator.exportAnki(entries: pendingEntries, toastCoordinator: toastCoordinator) },
             hasPendingEntries: !pendingEntries.isEmpty,
             knowledgeDueEntriesCount: classified.dueCount,
             knowledgeUnlearnedEntriesCount: classified.unlearnedCount

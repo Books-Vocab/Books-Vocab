@@ -67,7 +67,7 @@ struct NotebookPickerSheet: View {
                 }
             }
             .navigationTitle("移動到...".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消".localized) { dismiss() }

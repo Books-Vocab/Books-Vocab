@@ -6,6 +6,7 @@ struct ArchivedVocabSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.vocabSkin) private var vocabSkin
 
     @Query(
@@ -63,14 +64,14 @@ struct ArchivedVocabSheet: View {
             .animatePhaseChange(archivedEntries.isEmpty)
             .vocabCanvasBackground()
             .navigationTitle("封存".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .searchable(text: $searchText, prompt: "搜尋封存單字".localized)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("關閉".localized) { dismiss() }
                 }
             }
-            .sheet(item: $selectedEntry) { entry in
+            .toastSheet(item: $selectedEntry) { entry in
                 WordDetailSheet(entry: entry)
                     .appSheet(.large)
             }
@@ -100,7 +101,9 @@ struct ArchivedVocabSheet: View {
             do {
                 try await kgService.archiveCard(word: entry.word, archived: false, notebookId: entry.notebookId)
                 entry.isArchived = false
-                modelContext.safeSave()
+                if modelContext.safeSaveWithToast(toastCoordinator) {
+                    toastCoordinator.success("已取消封存")
+                }
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
                 await MainActor.run {

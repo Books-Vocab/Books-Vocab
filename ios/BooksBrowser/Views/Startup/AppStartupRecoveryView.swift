@@ -78,7 +78,7 @@ struct AppStartupRecoveryView: View {
             }
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
             .navigationTitle(L10n.string("啟動保護模式"))
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
         }
     }
 }

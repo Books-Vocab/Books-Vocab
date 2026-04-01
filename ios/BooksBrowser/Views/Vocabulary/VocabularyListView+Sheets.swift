@@ -12,20 +12,26 @@ struct VocabularyListSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $coordinator.showSyncView) {
+            .toastSheet(isPresented: $coordinator.showSyncView) {
                 SyncView()
             }
-            .sheet(isPresented: $coordinator.showSettings) {
+            .toastSheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
-            .sheet(item: $coordinator.exportURL) { url in
+            .toastSheet(item: $coordinator.exportURL) { url in
+                #if os(iOS)
                 ShareSheet(url: url)
+                #elseif os(macOS)
+                ShareLink(item: url)
+                    .padding()
+                #endif
             }
-            .sheet(item: $coordinator.selectedEntry) { entry in
+            .toastSheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry, allEntries: allEntries)
                     .appSheet(.large)
             }
-            .fullScreenCover(item: Binding(
+            #if os(iOS)
+            .platformFullScreenCover(item: Binding(
                 get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
                 set: { coordinator.activeReviewSession = $0 }
             )) { session in
@@ -35,8 +41,9 @@ struct VocabularyListSheets: ViewModifier {
                     currentUserID: AuthManager.shared.userId,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
+                .toastOverlay()
             }
-            .sheet(item: Binding(
+            .toastSheet(item: Binding(
                 get: { sizeClass == .regular ? coordinator.activeReviewSession : nil },
                 set: { coordinator.activeReviewSession = $0 }
             )) { session in
@@ -48,11 +55,28 @@ struct VocabularyListSheets: ViewModifier {
                 )
                 .appSheet(.large)
             }
+            #elseif os(macOS)
+            .inspector(isPresented: Binding(
+                get: { coordinator.activeReviewSession != nil },
+                set: { if !$0 { coordinator.activeReviewSession = nil } }
+            )) {
+                if let session = coordinator.activeReviewSession {
+                    TodayReviewView(
+                        entries: session.entries,
+                        allEntries: allEntries,
+                        currentUserID: AuthManager.shared.userId,
+                        onClose: { coordinator.activeReviewSession = nil }
+                    )
+                    .inspectorColumnWidth(min: 380, ideal: 420, max: 500)
+                }
+            }
+            #endif
     }
 }
 
 // MARK: - ShareSheet
 
+#if os(iOS)
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
 
@@ -62,6 +86,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#endif
 
 // MARK: - URL Identifiable
 

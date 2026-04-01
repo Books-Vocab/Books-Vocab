@@ -14,6 +14,7 @@ struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Binding var searchText: String
 
     let notebookId: String
@@ -61,7 +62,7 @@ struct KGVocabView: View {
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
-        .sheet(item: $coordinator.selectedEntry) { entry in
+        .toastSheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
                 .appSheet(.large)
         }
@@ -158,7 +159,7 @@ struct KGVocabView: View {
                 }
             }
         }
-        .sheet(isPresented: $showNotebookPicker) {
+        .toastSheet(isPresented: $showNotebookPicker) {
             NotebookPickerSheet(excludeNotebookId: notebookId) { notebook in
                 handleBatchMove(to: notebook)
             }
@@ -259,7 +260,8 @@ struct KGVocabView: View {
         coordinator.handleBatchDelete(
             selectionState.selectedIDs,
             syncedEntries: syncedEntries,
-            modelContext: modelContext
+            modelContext: modelContext,
+            toastCoordinator: toastCoordinator
         )
         selectionState.exit()
     }
@@ -272,7 +274,8 @@ struct KGVocabView: View {
                 ids,
                 syncedEntries: syncedEntries,
                 kgService: kgService,
-                modelContext: modelContext
+                modelContext: modelContext,
+                toastCoordinator: toastCoordinator
             )
         }
     }
@@ -288,7 +291,8 @@ struct KGVocabView: View {
                     toNotebook: notebook.remoteId,
                     fromNotebook: notebookId,
                     kgService: kgService,
-                    modelContext: modelContext
+                    modelContext: modelContext,
+                    toastCoordinator: toastCoordinator
                 )
             } catch {
                 coordinator.errorMessage = error.localizedDescription

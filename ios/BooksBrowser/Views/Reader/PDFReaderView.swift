@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  PDFReaderView.swift
 //  BooksBrowser
@@ -22,6 +23,7 @@ struct PDFReaderView: View {
 
     @Environment(\.modelContext) private var modelContext
     @Environment(\.authManager) private var authManager
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Environment(\.dismiss) private var dismiss
 
     @Query(
@@ -41,7 +43,8 @@ struct PDFReaderView: View {
             modelContext: modelContext,
             book: book,
             currentLocator: nil,
-            notebookId: book.resolvedNotebookId
+            notebookId: book.resolvedNotebookId,
+            toastCoordinator: toastCoordinator
         )
     }
 
@@ -371,3 +374,4 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
     }
 }
+#endif

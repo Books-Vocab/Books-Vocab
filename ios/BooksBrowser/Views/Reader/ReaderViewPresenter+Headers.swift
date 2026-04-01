@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 extension ReaderViewPresenter {
@@ -86,3 +87,4 @@ extension ReaderViewPresenter {
         .transition(.headerSwap)
     }
 }
+#endif

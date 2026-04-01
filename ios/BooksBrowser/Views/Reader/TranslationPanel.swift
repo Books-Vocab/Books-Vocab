@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  TranslationPanel.swift
 //  BooksBrowser
@@ -211,3 +212,4 @@ private struct TranslationPanelPreviewScene: View {
         )
     }
 }
+#endif
