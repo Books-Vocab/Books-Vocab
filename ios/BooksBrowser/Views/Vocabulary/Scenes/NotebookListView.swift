@@ -137,14 +137,14 @@ struct NotebookListView: View {
             .toastSheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { name, color in
                     Task { @MainActor in
-                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService)
+                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
                     }
                 }
             }
             .toastSheet(item: $editingNotebook) { notebook in
                 NotebookEditSheet(mode: .edit(name: notebook.name, color: notebook.color)) { name, color in
                     Task { @MainActor in
-                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService)
+                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
                     }
                 }
             }
