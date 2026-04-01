@@ -314,7 +314,9 @@ struct NotebookListView: View {
             WordDetailSheet(
                 entry: entry,
                 allEntries: macDetail.contextEntries,
-                wrapInNavigation: false
+                wrapInNavigation: false,
+                showsInlineChrome: true,
+                onClose: { macDetail.dismiss() }
             )
         }
     }
