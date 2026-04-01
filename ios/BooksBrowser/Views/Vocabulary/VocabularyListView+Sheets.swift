@@ -26,6 +26,7 @@ struct VocabularyListSheets: ViewModifier {
                     .padding()
                 #endif
             }
+            // macOS: selectedEntry/review 透過 onChange → macInspector 上浮到 NotebookListView 的 inspector
             #if os(iOS)
             .toastSheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry, allEntries: allEntries)

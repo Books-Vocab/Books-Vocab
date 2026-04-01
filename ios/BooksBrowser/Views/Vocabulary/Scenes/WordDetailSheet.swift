@@ -4,6 +4,9 @@ import SwiftData
 struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kgService) private var kgService
+    #if os(macOS)
+    @Environment(\.macDetail) private var macDetail
+    #endif
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
     @State private var showAddLink = false
@@ -13,17 +16,23 @@ struct WordDetailSheet: View {
     @Bindable var entry: VocabularyEntry
     let allEntries: [VocabularyEntry]
     private let wrapInNavigation: Bool
+    private let showsInlineChrome: Bool
+    private let onInlineClose: (() -> Void)?
     private let externalLinkedCardStack: Binding<[VocabularyEntry]>?
 
     init(
         entry: VocabularyEntry,
         allEntries: [VocabularyEntry] = [],
         wrapInNavigation: Bool = true,
+        showsInlineChrome: Bool? = nil,
+        onClose: (() -> Void)? = nil,
         linkedCardStack: Binding<[VocabularyEntry]>? = nil
     ) {
         self.entry = entry
         self.allEntries = allEntries
         self.wrapInNavigation = wrapInNavigation
+        self.showsInlineChrome = showsInlineChrome ?? wrapInNavigation
+        self.onInlineClose = onClose
         self.externalLinkedCardStack = linkedCardStack
     }
 
@@ -32,8 +41,8 @@ struct WordDetailSheet: View {
             if let presenterState {
                 WordDetailPresenter(
                     state: presenterState,
-                    wrapInNavigation: wrapInNavigation,
-                    onClose: wrapInNavigation ? { dismiss() } : nil,
+                    showsChrome: showsInlineChrome,
+                    onClose: showsInlineChrome ? { handleClose() } : nil,
                     onEdit: { isEditing = true },
                     onLinkTapped: handleLinkTap,
                     onToggleExcludeFromReader: { entry.isExcludedFromReader.toggle() },
@@ -73,7 +82,7 @@ struct WordDetailSheet: View {
             presenterState = state
         }
         .overlay {
-            if wrapInNavigation {
+            if shouldUseLinkedOverlayStack {
                 LinkedCardOverlayStack(stack: linkedCardStack, allEntries: allEntries)
             }
         }
@@ -93,9 +102,31 @@ struct WordDetailSheet: View {
         externalLinkedCardStack ?? $localLinkedCardStack
     }
 
+    private var shouldUseLinkedOverlayStack: Bool {
+        #if os(macOS)
+        wrapInNavigation || macDetail == nil
+        #else
+        wrapInNavigation
+        #endif
+    }
+
+    private func handleClose() {
+        if let onInlineClose {
+            onInlineClose()
+        } else {
+            dismiss()
+        }
+    }
+
     private func handleLinkTap(_ link: KGCardLinkSummary) {
         let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
         guard let target = entry.linkedEntry(for: link, lookup: lookup) else { return }
+        #if os(macOS)
+        if !wrapInNavigation, let macDetail {
+            macDetail.showWordDetail(target, allEntries: allEntries)
+            return
+        }
+        #endif
         linkedCardStack.wrappedValue.append(target)
     }
 

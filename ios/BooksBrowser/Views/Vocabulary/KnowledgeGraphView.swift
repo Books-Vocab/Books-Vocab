@@ -5,6 +5,9 @@ struct KnowledgeGraphView: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    #if os(macOS)
+    @Environment(\.macDetail) private var macDetail
+    #endif
     let allEntries: [VocabularyEntry]
     @State private var coordinator = KnowledgeGraphCoordinator()
 
@@ -25,10 +28,26 @@ struct KnowledgeGraphView: View {
             onNodeTapped: handleNodeTap
         )
         .task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
+        #if os(macOS)
+        .onChange(of: coordinator.selectedEntry) { _, entry in
+            if let entry, let macDetail {
+                macDetail.showWordDetail(entry, allEntries: allEntries)
+                coordinator.selectedEntry = nil
+            }
+        }
+        .toastSheet(item: Binding(
+            get: { macDetail == nil ? coordinator.selectedEntry : nil },
+            set: { coordinator.selectedEntry = $0 }
+        )) { entry in
+            WordDetailSheet(entry: entry, allEntries: allEntries)
+                .appSheet(.large)
+        }
+        #else
         .toastSheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: allEntries)
                 .appSheet(.large)
         }
+        #endif
     }
 
     private var presenterState: KnowledgeGraphPresenter.State {

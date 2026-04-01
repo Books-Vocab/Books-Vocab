@@ -18,6 +18,8 @@ struct KGVocabView: View {
     @Binding var searchText: String
 
     let notebookId: String
+    /// macOS: word detail 由父頁的 split panel 顯示，透過此 callback 傳出
+    var onEntrySelected: ((VocabularyEntry) -> Void)?
 
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
@@ -30,9 +32,10 @@ struct KGVocabView: View {
     @State private var showLoginSheet = false
     @Query private var pendingDeletes: [VocabularyEntry]
 
-    init(searchText: Binding<String>, notebookId: String = "default") {
+    init(searchText: Binding<String>, notebookId: String = "default", onEntrySelected: ((VocabularyEntry) -> Void)? = nil) {
         self._searchText = searchText
         self.notebookId = notebookId
+        self.onEntrySelected = onEntrySelected
         let nbId = notebookId
         let syncedFilter = #Predicate<VocabularyEntry> {
             $0.syncStatus == 1 &&
@@ -62,7 +65,16 @@ struct KGVocabView: View {
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
-        .toastSheet(item: $coordinator.selectedEntry) { entry in
+        .onChange(of: coordinator.selectedEntry) { _, entry in
+            if let entry, let callback = onEntrySelected {
+                callback(entry)
+                coordinator.selectedEntry = nil
+            }
+        }
+        .toastSheet(item: Binding(
+            get: { onEntrySelected == nil ? coordinator.selectedEntry : nil },
+            set: { coordinator.selectedEntry = $0 }
+        )) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
                 .appSheet(.large)
         }

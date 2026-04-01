@@ -21,7 +21,7 @@ struct WordDetailPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     let state: State
-    let wrapInNavigation: Bool
+    let showsChrome: Bool
     let onClose: (() -> Void)?
     let onEdit: (() -> Void)?
     let onLinkTapped: (KGCardLinkSummary) -> Void
@@ -33,7 +33,7 @@ struct WordDetailPresenter: View {
 
     var body: some View {
         Group {
-            if wrapInNavigation {
+            if showsChrome {
                 VStack(spacing: 0) {
                     VocabOverlayHeader(
                         title: state.title,
