@@ -24,6 +24,7 @@ final class AuthBackendVerifier: AuthVerifying {
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        let requestID = RequestObservation.attachRequestID(to: &request)
 
         let payload: [String: Any] = [
             "provider": provider,
@@ -33,7 +34,11 @@ final class AuthBackendVerifier: AuthVerifying {
 
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
 
-        let (data, _) = try await sharedURLSession.data(for: request)
+        let (data, response) = try await sharedURLSession.data(for: request)
+        if let httpResponse = response as? HTTPURLResponse, !(200...299).contains(httpResponse.statusCode) {
+            let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
+            AppLog.auth.error("Auth verify failed [\(httpResponse.statusCode)] request_id=\(responseRequestID)")
+        }
         guard !data.isEmpty else {
             throw AuthVerificationError.emptyResponse
         }

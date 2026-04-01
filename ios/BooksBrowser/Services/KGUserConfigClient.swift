@@ -44,6 +44,7 @@ final class KGUserConfigClient: KGUserConfigRemoteHandling {
 
     private static func applyAuth(to request: inout URLRequest, token: String) {
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        _ = RequestObservation.attachRequestID(to: &request)
     }
 
     private func perform(_ request: URLRequest) async throws -> KGUserConfig {

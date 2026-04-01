@@ -254,19 +254,23 @@ final class TranslationService: Translating {
         ]
 
         request.httpBody = try JSONEncoder().encode(body)
+        let requestID = RequestObservation.attachRequestID(to: &request)
 
         let (data, response) = try await sharedURLSession.data(for: request)
 
         guard let httpResponse = response as? HTTPURLResponse else {
             throw TranslationError.apiError(L10n.string("無法取得 HTTP 回應"))
         }
+        let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
 
         // Update quota from response headers (before status check)
         quotaStore.update(from: httpResponse)
 
         guard httpResponse.statusCode == 200 else {
             let errorBody = String(data: data, encoding: .utf8) ?? L10n.string("(無法讀取)")
-            AppLog.translation.error("Backend API error [\(httpResponse.statusCode)]: \(errorBody)")
+            AppLog.translation.error(
+                "Backend API error [\(httpResponse.statusCode)] request_id=\(responseRequestID): \(errorBody)"
+            )
 
             if httpResponse.statusCode == 401 {
                 throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))
