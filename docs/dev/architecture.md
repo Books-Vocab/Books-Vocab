@@ -3,11 +3,15 @@ tier: structural
 scope:
   - ios/BooksBrowser
   - backend/src/kg
-verified_against: 471deda
+verified_against: 05acfbf
 -->
-# 🏗 BooksBrowser Architecture (Offline-First & Multi-User)
+# BooksBrowser Architecture (Offline-First & Multi-User)
 
 BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝置端的 `SwiftData` 為唯一資訊來源 (Single Source of Truth)，並透過背景同步與遠端 Knowledge Graph (KG) 伺服器保持資料一致。完整的帳戶隔離機制確保多用戶與多設備場景下的資料安全。
+
+**平台**：iOS 17+ / macOS 15.0+（macOS Reader 暫不啟用，其餘功能共用）
+
+**Client 端**：iOS/macOS app、Chrome Extension（side panel 選詞翻譯）
 
 ---
 
@@ -16,10 +20,12 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 ### 多帳戶認證架構
 
 **AuthManager** (`AuthManager.swift`) 負責全應用的認證與帳號管理：
-- **isLoggedIn**: 用戶是否已登入（Google Sign-In 或自訂 User ID）
-- **userId**: 當前活躍帳戶的 ID（Google ID 或自訂密語），儲存於 Keychain
-- **token**: 不透明的認證令牌，用於 KG API 呼叫的 `Authorization: Bearer` 標頭
-- **Google Sign-In 支持**：整合 GoogleSignIn SDK，支援多設備無縫切換
+- **isLoggedIn**: 用戶是否已登入（Apple / Google Sign-In）
+- **userId**: 當前活躍帳戶的 ID，儲存於 Keychain
+- **token**: JWT 認證令牌，用於 KG API 呼叫的 `Authorization: Bearer` 標頭
+- **Apple Sign-In**：原生 `ASAuthorization` 流程
+- **Google Sign-In**：整合 GoogleSignIn SDK，支援多設備無縫切換
+- **Web Auth**：後端提供 `/login` → Google/Apple OAuth callback → cookie-based admin session
 - **Guest Mode**：未登入時仍允許查詞與本地儲存，帳號切換時自動清除舊帳號資料
 
 ### 生詞條目狀態管理
@@ -44,47 +50,64 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ---
 
-## 📖 閱讀器 (ReaderView) 的離線運作
+## 閱讀器 (ReaderView) 的離線運作
+
+支援格式：EPUB、TXT、MD、PDF（`BookshelfImportService` 統一入口，TXT/MD 經 `EPUBConverter` 轉 EPUB 後閱讀，PDF 走 `PDFReaderView` 獨立路徑）。macOS 端 Reader 暫不啟用（以 `#if os(iOS)` 隔離）。
 
 1. **底線渲染 (Underline Rendering)**:
-   打開 EPUB 書籍時，`ReaderView` 會直接發起一個 `@Query`，撈出所有 `actionType != "delete"` 的 `VocabularyEntry`。
-   這包字串陣列被送到 `ReadiumNavigatorView` 的 WebView 裡注入 JS。因此，只要是資料庫裡有的單字，即使沒有網路也能立刻出現藍色底線。
+   打開書籍時，撈出所有非刪除的 `VocabularyEntry`，注入 JS 顯示底線。離線亦可。
 
 2. **點擊單字 (Word Selection)**:
-   - **已存在於本地 (命中 Query)**: 點擊時，從該筆 `VocabularyEntry` 取出 `translation`, `partOfSpeech`, `explanation` 瞬間顯示在面板上，這是一個 `O(1)` 的無網路操作。
-   - **全新單字 (未命中 Query)**: 面板彈出，並行觸發 Gemini API 獲取 AI 翻譯，以及 Dictionary API 獲取預設發音。儲存時寫入一筆 `syncStatus = 0` 的 `VocabularyEntry`。
+   - **已存在於本地**: 從 `VocabularyEntry` 取出翻譯/詞性/解釋瞬間顯示，`O(1)` 無網路。
+   - **全新單字**: 並行觸發 Gemini API 翻譯 + Dictionary API 發音。翻譯時自動擷取 context sentence（書籍原文上下文）。儲存時寫入 `syncStatus = 0` 的 `VocabularyEntry`。
 
 ---
 
-## 🔄 雙向同步機制 (SyncView & KGService)
+## 雙向同步機制 (BackgroundSyncActor & KGService)
 
-為了保持本地的離線資料與遠端 KG 伺服器一致，App 實作了雙向同步流程 (Two-way Sync Pipeline)：
+App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背景執行緒）驅動：
 
-1. **上傳刪除 (Upload Deletes)**
-   App 找出所有 `actionType == "delete"` 的項目，呼叫 API 請 KG 後端刪除該單字。成功後，把這筆紀錄從手機徹底刪除。
-2. **上傳新增 (Upload Adds)**
-   App 找出所有 `syncStatus == 0` 的項目，這些是剛在書本裡查到的新單字。呼叫 API 送去 KG，成功後 KG 會開始背景 Pipeline（AI Enrichment -> Link -> Difficulty -> Optional External Sync）。
-3. **觸發 AI 處理 (Fire-and-Forget)**
-   呼叫 `/api/pipeline` 交由伺服器在背景 (`BackgroundTasks`) 處理（AI Enrichment -> Link -> Difficulty -> Optional External Sync），App 收回控制權準備進入第四步。同步頁目前只顯示本地工作流進度，不再維持 SSE 連線監看伺服器內部步驟。
-4. **下載遠端知識庫 (Pull & Merge)**
-   這也是最關鍵的最後一步！當遠端處理完畢後，執行 `pullCardsToLocal`：
-   - 帶上本地儲存的 `kg_last_incremental_sync` 時間戳記，發起 `api/vocab` 將遠端伺服器 *異動過* 的 KGCard 抓下來（**增量同步 Incremental Sync**）。
-   - 在**背景執行緒 (Background Context)** 遍歷所有下載的卡片，將最新的翻譯、AI 詞性、難易度 `difficultyTier`，甚至是軟刪除標記 (`isDeleted`) **合併與覆寫**進本地的 `VocabularyEntry`。
-   - 確保他們的 `syncStatus` 統一設為 `1`。
-   - **清理孤兒 (Orphan Cleanup)**：只有在進行**全量同步 (Full Sync)** 時，如果本地有 `syncStatus == 1` 的資料，但在抓下來的 KGCard 列表裡找不到，代表它在遠端被物理刪除，手機本地也會立刻觸發 `context.delete()` 來保持資料同步。
+1. **Push Review State** — 推送本地複習狀態（`review_count`、`next_review_date` 等），LWW 策略以 `last_reviewed_at` 判定
+2. **Push Daily Stats** — 推送每日複習統計
+3. **Upload Deletes** — 找出 `actionType == "delete"` 項目，呼叫 API 刪除
+4. **Upload Adds** — 找出 `syncStatus == 0` 新詞，POST 到 KG
+5. **Fire-and-Forget Pipeline** — 呼叫 `/api/pipeline` 觸發背景 AI 處理（Enrich → Embed → Link → Difficulty）
+6. **Pull & Merge** — `pullCardsToLocal`：
+   - 增量同步（`since` 時間戳），只拉異動過的 KGCard
+   - 背景執行緒合併翻譯、詞性、難度、graph links
+   - 全量同步時做 Orphan Cleanup（安全閾值 50 筆 / ratio < 0.8 保護）
+
+### Bilateral Optimistic Sync（hide/unhide/delete links）
+
+Graph link 操作採用 bilateral optimistic 策略：
+- 使用者操作 → **立即本地修改** → 排入 `bilateralOps` queue
+- 下次 sync 時 `flushPendingOperations` 批量 POST 到 server
+- Server 端 hide/unhide 是 idempotent，重複推送安全
+- Blocked pairs：hard delete link 時寫入 blocked pair，防止 pipeline 重新生成
+
+### Chrome Extension Sync
+
+Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
+- `POST /api/vocab` + `POST /api/pipeline`（fire-and-forget）
+- Auth token 從 options page 設定，存 `chrome.storage.local`
 
 ---
 
-## 🎨 莫蘭迪 UI 視覺系統
+## 莫蘭迪 UI 視覺系統
 
-系統透過 CSS 與 JS 注入到 Readium，實行了極簡的莫蘭迪色調 (Morandi Aesthetic)：
+系統透過 CSS 與 JS 注入到 Readium，實行極簡的莫蘭迪色調 (Morandi Aesthetic)：
 
-- **字體 (Typography)**: 預設英文字體為 `Athelas` (Apple 原生高品質字體)，搭配 `Biotif` 作為中性且清晰的介面與等寬字型。
-- **透明度控制 (Underline Opacity)**:
-  透過 `ReaderSettings` 面板可調節 `--vocab-opacity` 這個 CSS Variable，最高可把底線調整為 0% (完全隱藏)。
-  這個設定值保存在 `UserDefaults`，每次翻頁或設定異動時會透過 JS 即時套用至 DOM，不再需要重新 reload 書本。
-- **介面隱形化 (Invisible UI)**:
-  底線不使用強烈的 border，改用柔和的 `linear-gradient` 底色覆蓋；點擊高亮 (Active Word) 不採用深色 Highlight，而是利用低對比度的粗邊框與 4% Alpha 的底色框住單字，達成「克制的存在感」。
+- **字體 (Typography)**: 英文 `Athelas` + `Biotif`，中文 `STSongti-SC`。
+- **透明度控制**: `ReaderSettings` 面板調節 `--vocab-opacity` CSS Variable。
+- **介面隱形化**: 底線用柔和 `linear-gradient`，高亮用低對比度邊框 + 4% Alpha 底色。
+
+### Toast Notification System
+
+全 app 操作回饋走 `AppToastCoordinator`（EnvironmentKey 注入）：
+- `AppToast`：capsule 形狀，支援 swipe dismiss，4 種 style（success/info/warning/error）
+- `toastSheet` / `toastFullScreenCover`：自動注入 `toastOverlay()` 的 sheet wrapper
+- `safeSaveWithToast()`：`ModelContext` 安全存檔 + toast 回饋
+- 22 個 View 已接入
 
 ### Motion Layer
 

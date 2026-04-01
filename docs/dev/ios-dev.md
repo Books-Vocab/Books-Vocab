@@ -3,7 +3,7 @@ tier: operational
 scope:
   - ios/BooksBrowser
   - ops
-verified_against: 471deda
+verified_against: 05acfbf
 -->
 # BooksBrowser iOS 開發技能
 
@@ -12,7 +12,8 @@ verified_against: 471deda
 - **專案路徑**: `ios/BooksBrowser.xcodeproj`
 - **Scheme**: `BooksBrowser`
 - **工作目錄**: `projects/kg/`
-- **最低支援**: iOS（參考 Info.plist，當前目標為現代 iOS）
+- **Destinations**: iOS 17+ / macOS 15.0+（macOS Reader 暫不啟用）
+- **平台抽象**: `Platform/PlatformRepresentable.swift`、`Platform/PlatformCompatibility.swift`
 
 ---
 
@@ -54,16 +55,24 @@ verified_against: 471deda
 | Service | 職責 |
 |---------|------|
 | `AuthManager.swift` | 單例，Apple/Google SSO、Keychain token、登入狀態 |
-| `KGService.swift` | 所有後端 API 呼叫（vocab CRUD、pipeline、config） |
-| `BackgroundSyncActor` | Swift actor，把遠端單字寫入 SwiftData（增量/全量） |
+| `KGService.swift` | 後端 API 呼叫（分拆為 +Graph/+Notebook/+Stats/+Sync/+UserConfig/+VocabCRUD） |
+| `BackgroundSyncActor` | `@ModelActor`，背景同步（push review/stats、pull cards、flush bilateral ops） |
+| `SyncCoordinator` | 同步協調（手動同步入口、orphan cleanup） |
+| `BookshelfImportService` | Multi-format import（EPUB/TXT/MD/PDF） |
+| `AppToastCoordinator` | Toast notification 管理（EnvironmentKey 注入） |
 
 ### 主要 Views
 
 | View | 說明 |
 |------|------|
-| `Settings/SettingsView` | 登入登出、伺服器設定、可選第三方整合設定 |
-| `Reader/ReaderView` | EPUB 閱讀器，查詞 → batchAdd → triggerPipeline |
-| `Vocabulary/` | 單字瀏覽、知識圖譜視覺化、手動同步 |
+| `Settings/SettingsView` | 登入登出、伺服器設定、第三方整合 |
+| `Reader/ReaderView` | EPUB 閱讀器（iOS only），查詞 → batchAdd → triggerPipeline |
+| `Reader/PDFReaderView` | PDF 閱讀器（iOS only） |
+| `Vocabulary/` | 單字瀏覽、知識圖譜視覺化、手動同步、hide/unhide links |
+| `Vocabulary/Scenes/StatsPresenter` | 統計總覽 + graph thumbnail + health blob |
+| `Vocabulary/Scenes/TodayReviewPresenter` | 每日複習 |
+| `Bookshelf/BookshelfView` | 書架 + multi-format import |
+| `Welcome/WelcomeView` | 首次啟動 / guest 引導（含 login entry points） |
 
 ### iOS 資料同步流程
 
@@ -89,9 +98,8 @@ Apple/Google SSO
 
 ## 參考文件
 
-- **UI 設計相關** → `bb-ui-design` skill（iOS 26 Liquid Glass 完整 API）
-- `docs/ui-design.md` — Liquid Glass + motion contract + shared UI motion 語意層
-- `docs/backend-dev.md` — backend 開發主入口；跨前後端資料流問題時一起看
+- `docs/dev/ui-design.md` — Motion Contract + 設計系統規範
+- `docs/dev/backend-dev.md` — backend 開發主入口；跨前後端資料流問題時一起看
 - `docs/references/ui_component_pattern_inventory.md` — 現有 component / pattern inventory，開新 UI 前先查
 - `docs/references/ui_state_matrix.md` — 各主畫面 state coverage matrix，補 UX 時先查有哪些狀態不能漏
-- `docs/architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
+- `docs/dev/architecture.md` — 完整 iOS ↔ 後端同步協議、認證架構、資料模型詳解
