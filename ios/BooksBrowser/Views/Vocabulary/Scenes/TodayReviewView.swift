@@ -2,6 +2,21 @@ import SwiftUI
 import SwiftData
 import os
 
+enum ReviewIntent {
+    case reveal
+    case collapse
+    case forgot
+    case remembered
+    case previous
+    case next
+    case shuffle
+    case showDetail
+    case toggleAutoplay
+    case toggleAutoplayPause
+    case close
+    case showHelp
+}
+
 struct TodayReviewSession: Identifiable, Equatable {
     static func == (lhs: TodayReviewSession, rhs: TodayReviewSession) -> Bool { lhs.id == rhs.id }
     let id = UUID()
@@ -38,6 +53,10 @@ struct TodayReviewView: View {
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
 
+    @State private var isHelpPresented = false
+    @State private var hasConsumedShortcutHint = false
+    @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
+
     private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
 
@@ -59,30 +78,29 @@ struct TodayReviewView: View {
     var body: some View {
         TodayReviewPresenter(
             state: state.presenterState,
-            onClose: onClose,
+            isHelpPresented: isHelpPresented,
+            showFirstRunHint: shouldShowFirstRunHint,
+            onClose: { perform(.close) },
             onAdvanceReveal: {
-                withAnimation(AppMotion.reviewRevealSpring) {
-                    state.advanceReveal()
-                }
+                perform(.reveal)
             },
             onCollapseReveal: {
-                withAnimation(AppMotion.reviewRevealSpring) {
-                    state.retractReveal()
-                }
+                perform(.collapse)
             },
-            onShuffle: state.shuffleQueue,
-            onPrevious: state.goPrevious,
-            onNext: state.goNext,
+            onShuffle: { perform(.shuffle) },
+            onPrevious: { perform(.previous) },
+            onNext: { perform(.next) },
             onForgot: {
-                state.submit(.forgot, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+                perform(.forgot)
             },
             onRemembered: {
-                state.submit(.remembered, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+                perform(.remembered)
             },
             onLinkTap: state.handleLinkTap,
-            onToggleAutoPlay: state.toggleAutoPlay,
-            onToggleAutoPlayPause: state.toggleAutoPlayPause,
-            onDetailTap: state.handleDetailTap
+            onToggleAutoPlay: { perform(.toggleAutoplay) },
+            onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
+            onDetailTap: { perform(.showDetail) },
+            onToggleHelp: { perform(.showHelp) }
         )
         .toastOverlay()
         .overlay {
@@ -111,7 +129,131 @@ struct TodayReviewView: View {
                 await kgService.pushReviewQuietly(container: modelContext.container)
             }
         }
+        #if os(macOS)
+        .macKeyResponder(active: state.linkedCardStack.isEmpty) { key in
+            handleMacKeyPress(key)
+        }
+        .onAppear {
+            guard !hasShownShortcutHint else { return }
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+                hasConsumedShortcutHint = true
+                hasShownShortcutHint = true
+            }
+        }
+        #endif
     }
+
+    private var shouldShowFirstRunHint: Bool {
+        #if os(macOS)
+        return !hasShownShortcutHint && !hasConsumedShortcutHint && !state.isAutoPlaying && state.currentIndex < min(state.queue.count, 3)
+        #else
+        return false
+        #endif
+    }
+
+    @discardableResult
+    private func perform(_ intent: ReviewIntent) -> Bool {
+        switch intent {
+        case .reveal:
+            guard state.revealStage == .front, state.currentEntry != nil else { return false }
+            withAnimation(AppMotion.reviewRevealSpring) {
+                state.advanceReveal()
+            }
+            return true
+
+        case .collapse:
+            guard state.revealStage == .back, state.currentEntry != nil else { return false }
+            withAnimation(AppMotion.reviewRevealSpring) {
+                state.retractReveal()
+            }
+            return true
+
+        case .forgot:
+            guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
+            state.submit(.forgot, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            return true
+
+        case .remembered:
+            guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
+            state.submit(.remembered, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            return true
+
+        case .previous:
+            guard state.currentIndex > 0 else { return false }
+            state.goPrevious()
+            return true
+
+        case .next:
+            guard state.currentIndex < state.queue.count - 1 else { return false }
+            state.goNext()
+            return true
+
+        case .shuffle:
+            guard !state.isAutoPlaying, state.queue.count - state.currentIndex > 1 else { return false }
+            state.shuffleQueue()
+            return true
+
+        case .showDetail:
+            guard state.currentEntry != nil else { return false }
+            state.handleDetailTap()
+            return true
+
+        case .toggleAutoplay:
+            state.toggleAutoPlay()
+            return true
+
+        case .toggleAutoplayPause:
+            guard state.isAutoPlaying else { return false }
+            state.toggleAutoPlayPause()
+            return true
+
+        case .close:
+            onClose()
+            return true
+
+        case .showHelp:
+            isHelpPresented.toggle()
+            return true
+        }
+    }
+
+    #if os(macOS)
+    private func handleMacKeyPress(_ key: MacKeyPress) -> Bool {
+        guard state.linkedCardStack.isEmpty else { return false }
+
+        switch key {
+        case .space:
+            return perform(state.revealStage == .front ? .reveal : .collapse)
+        case .leftArrow:
+            return perform(state.isAutoPlaying ? .previous : .forgot)
+        case .rightArrow:
+            return perform(state.isAutoPlaying ? .next : .remembered)
+        case .upArrow:
+            return perform(.previous)
+        case .downArrow:
+            return perform(.next)
+        case .escape:
+            if isHelpPresented {
+                isHelpPresented = false
+                return true
+            }
+            return perform(.close)
+        case .character(let chars):
+            switch chars {
+            case "d":
+                return perform(.showDetail)
+            case "s":
+                return perform(.shuffle)
+            case "p":
+                return perform(state.isAutoPlaying ? .toggleAutoplayPause : .toggleAutoplay)
+            case "?", "/":
+                return perform(.showHelp)
+            default:
+                return false
+            }
+        }
+    }
+    #endif
 }
 
 // MARK: - Preview

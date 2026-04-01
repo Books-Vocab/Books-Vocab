@@ -142,8 +142,9 @@ enum TodayReviewPresenterPreviewData {
         onLinkTap: (KGCardLinkSummary) -> Void,
         onToggleAutoPlay: () -> Void,
         onToggleAutoPlayPause: () -> Void,
-        onDetailTap: () -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {})
+        onDetailTap: () -> Void,
+        onToggleHelp: () -> Void
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {})
 }
 
 #Preview("Today Review / Front") {
@@ -151,11 +152,13 @@ enum TodayReviewPresenterPreviewData {
     AppThemeContainer {
         TodayReviewPresenter(
             state: TodayReviewPresenterPreviewData.state(stage: .front),
+            isHelpPresented: false,
+            showFirstRunHint: true,
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
     }
 }
@@ -165,11 +168,13 @@ enum TodayReviewPresenterPreviewData {
     AppThemeContainer {
         TodayReviewPresenter(
             state: TodayReviewPresenterPreviewData.state(stage: .back),
+            isHelpPresented: false,
+            showFirstRunHint: false,
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
     }
 }
@@ -179,11 +184,13 @@ enum TodayReviewPresenterPreviewData {
     AppThemeContainer {
         TodayReviewPresenter(
             state: TodayReviewPresenterPreviewData.completedState,
+            isHelpPresented: false,
+            showFirstRunHint: false,
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
     }
 }
@@ -193,11 +200,13 @@ enum TodayReviewPresenterPreviewData {
     AppThemeContainer {
         TodayReviewPresenter(
             state: TodayReviewPresenterPreviewData.autoplayState(),
+            isHelpPresented: false,
+            showFirstRunHint: false,
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
     }
 }
