@@ -27,6 +27,9 @@ struct VocabularyListView: View {
     @Environment(\.appTheme) var appTheme
     @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.syncCoordinator) var syncCoordinator
+    #if os(macOS)
+    @Environment(\.macDetail) var macDetail
+    #endif
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var coordinator = VocabularyListCoordinator()
 
@@ -80,20 +83,6 @@ struct VocabularyListView: View {
             allEntries: allEntries,
             sizeClass: sizeClass
         ))
-        #if os(macOS)
-        .inspector(isPresented: Binding(
-            get: { coordinator.selectedEntry != nil || coordinator.activeReviewSession != nil },
-            set: { isPresented in
-                if !isPresented {
-                    coordinator.activeReviewSession = nil
-                    coordinator.selectedEntry = nil
-                }
-            }
-        )) {
-            macInspectorContent
-                .inspectorColumnWidth(min: 350, ideal: 420, max: 600)
-        }
-        #endif
         .task {
             guard !authManager.isDemoMode else { return }
             await kgService.healthCheck()
@@ -115,30 +104,22 @@ struct VocabularyListView: View {
                 // Task cancelled — 使用者繼續輸入，忽略
             }
         }
+        #if os(macOS)
+        .onChange(of: coordinator.selectedEntry) { _, entry in
+            if let entry, let macDetail {
+                macDetail.showWordDetail(entry, allEntries: allEntries)
+                coordinator.selectedEntry = nil
+            }
+        }
+        .onChange(of: coordinator.activeReviewSession) { _, session in
+            if let session, let macDetail {
+                macDetail.showReview(session, allEntries: allEntries)
+                coordinator.activeReviewSession = nil
+            }
+        }
+        #endif
     }
 
-    #if os(macOS)
-    @ViewBuilder
-    private var macInspectorContent: some View {
-        if let session = coordinator.activeReviewSession {
-            TodayReviewView(
-                entries: session.entries,
-                allEntries: allEntries,
-                currentUserID: AuthManager.shared.userId,
-                onClose: {
-                    coordinator.activeReviewSession = nil
-                    coordinator.selectedEntry = nil
-                }
-            )
-        } else if let entry = coordinator.selectedEntry {
-            WordDetailSheet(
-                entry: entry,
-                allEntries: allEntries,
-                wrapInNavigation: false
-            )
-        }
-    }
-    #endif
 }
 
 #Preview {
