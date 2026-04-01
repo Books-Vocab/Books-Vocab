@@ -7,10 +7,10 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
-		AA000001READIUM01 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; productRef = AA000004READIUM04 /* ReadiumShared */; };
-		AA000002READIUM02 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000005READIUM05 /* ReadiumStreamer */; };
-		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
-		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
+		AA000001READIUM01 /* ReadiumShared in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000004READIUM04 /* ReadiumShared */; };
+		AA000002READIUM02 /* ReadiumStreamer in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000005READIUM05 /* ReadiumStreamer */; };
+		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
+		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
 		E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E9677BD92F6056C80095D2E1 /* StoreKit.framework */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
@@ -366,6 +366,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
 				MTL_FAST_MATH = YES;
 				ONLY_ACTIVE_ARCH = YES;
@@ -426,6 +427,7 @@
 				GCC_WARN_UNUSED_VARIABLE = YES;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
 				LOCALIZATION_PREFERS_STRING_CATALOGS = YES;
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MTL_ENABLE_DEBUG_INFO = NO;
 				MTL_FAST_MATH = YES;
 				SDKROOT = iphoneos;
@@ -459,9 +461,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -492,9 +497,12 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.6;
 				PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
+				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
+				SUPPORTS_MAC_DESIGNED_FOR_IPHONE_IPAD = NO;
 				SWIFT_EMIT_LOC_STRINGS = YES;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -637,21 +645,25 @@
 		AA000004READIUM04 /* ReadiumShared */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			platformFilter = ios;
 			productName = ReadiumShared;
 		};
 		AA000005READIUM05 /* ReadiumStreamer */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			platformFilter = ios;
 			productName = ReadiumStreamer;
 		};
 		AA000006READIUM06 /* ReadiumNavigator */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			platformFilter = ios;
 			productName = ReadiumNavigator;
 		};
 		AA000009READIUM09 /* ReadiumAdapterGCDWebServer */ = {
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
+			platformFilter = ios;
 			productName = ReadiumAdapterGCDWebServer;
 		};
 		E9D331AE2F521D2D00D4355C /* GoogleSignIn */ = {

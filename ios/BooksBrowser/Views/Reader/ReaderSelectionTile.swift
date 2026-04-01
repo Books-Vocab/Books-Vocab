@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct ReaderSelectionTile<Content: View>: View {
@@ -17,3 +18,4 @@ struct ReaderSelectionTile<Content: View>: View {
         }
     }
 }
+#endif

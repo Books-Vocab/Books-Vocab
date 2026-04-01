@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import SwiftData
 import ReadiumShared
@@ -86,3 +87,4 @@ struct ReaderVocabularyContext {
         }
     }
 }
+#endif

@@ -28,8 +28,10 @@ struct ContentView: View {
             }
 
             TabView {
+                #if os(iOS)
                 BookshelfView()
                     .tabItem { Label("書庫".localized, systemImage: "books.vertical") }
+                #endif
                 NotebookListView()
                     .tabItem { Label("單字本".localized, systemImage: "character.book.closed") }
                 OverviewTab()

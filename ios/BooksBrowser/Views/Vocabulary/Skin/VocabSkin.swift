@@ -610,6 +610,7 @@ extension VocabSkin {
     )
 }
 
+#if os(iOS)
 extension VocabSkin {
     func readerThemeSwatchColor(_ theme: ReaderTheme) -> Color {
         switch theme {
@@ -622,6 +623,7 @@ extension VocabSkin {
         }
     }
 }
+#endif
 
 private struct VocabSkinEnvironmentKey: EnvironmentKey {
     static let defaultValue = VocabSkin.themed(.light)

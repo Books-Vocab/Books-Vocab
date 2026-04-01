@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ReadiumNavigator
 import ReadiumShared
@@ -96,3 +97,4 @@ extension ReadiumNavigatorView.Coordinator {
         )
     }
 }
+#endif

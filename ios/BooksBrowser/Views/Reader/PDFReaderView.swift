@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  PDFReaderView.swift
 //  BooksBrowser
@@ -368,3 +369,4 @@ private struct PDFKitRepresentable: UIViewRepresentable {
             .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
     }
 }
+#endif

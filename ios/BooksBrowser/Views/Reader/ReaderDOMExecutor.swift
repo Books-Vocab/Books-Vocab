@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ReadiumNavigator
 
@@ -55,3 +56,4 @@ struct ReaderDOMExecutor {
         return data.flatMap { String(data: $0, encoding: .utf8) } ?? "\"\""
     }
 }
+#endif

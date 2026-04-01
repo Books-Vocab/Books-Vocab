@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  BookshelfView.swift
 //  BooksBrowser
@@ -52,7 +53,7 @@ struct BookshelfView: View {
                 }
             }
             .navigationTitle("書庫".localized)
-            .navigationBarTitleDisplayMode(.large)
+            .largeNavigationBarTitle()
             .animatePhaseChange(books.isEmpty)
             .animateContentFade(coordinator.isLoading)
             .toolbar {
@@ -243,7 +244,7 @@ struct BookCard: View {
     @Environment(\.iCloudDownloadManager) private var downloadManager
     let book: Book
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
-    @State private var decodedCoverImage: UIImage?
+    @State private var decodedCoverImage: PlatformImage?
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
@@ -300,8 +301,8 @@ struct BookCard: View {
 
     @ViewBuilder
     private var coverView: some View {
-        if let uiImage = decodedCoverImage {
-            Image(uiImage: uiImage)
+        if let coverImage = decodedCoverImage {
+            platformCoverImage(coverImage)
                 .resizable()
                 .aspectRatio(2/3, contentMode: .fill)
                 .frame(height: coverHeight)
@@ -343,13 +344,21 @@ struct BookCard: View {
         }
     }
 
+    private func platformCoverImage(_ image: PlatformImage) -> Image {
+        #if os(iOS)
+        Image(uiImage: image)
+        #elseif os(macOS)
+        Image(nsImage: image)
+        #endif
+    }
+
     private func decodeCoverImage() async {
         guard let coverData = book.coverImageData else {
             decodedCoverImage = nil
             return
         }
         let image = await Task.detached {
-            UIImage(data: coverData)
+            PlatformImage(data: coverData)
         }.value
         guard !Task.isCancelled else { return }
         withAnimation(AppMotion.contentFade) {
@@ -544,3 +553,4 @@ private struct BookshelfLoadingPreview: View {
         }
     }
 }
+#endif

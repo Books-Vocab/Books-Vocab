@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import UIKit
 import ReadiumShared
@@ -97,3 +98,4 @@ private let activeSelectionWrapScript = """
     }
 })();
 """
+#endif

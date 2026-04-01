@@ -1,6 +1,10 @@
 import Foundation
 import SwiftData
+#if os(iOS)
 import UIKit
+#elseif os(macOS)
+import AppKit
+#endif
 import AuthenticationServices
 import os
 
@@ -95,6 +99,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {
+        #if os(iOS)
         let window = UIApplication.shared.connectedScenes
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
             .first { $0.isKeyWindow }
@@ -106,5 +111,8 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
             preconditionFailure("No UIWindowScene available for ASAuthorizationController")
         }
         return UIWindow(windowScene: scene)
+        #elseif os(macOS)
+        return NSApplication.shared.keyWindow ?? NSWindow()
+        #endif
     }
 }

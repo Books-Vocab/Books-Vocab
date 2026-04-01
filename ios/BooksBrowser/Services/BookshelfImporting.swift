@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import PDFKit
 
@@ -138,3 +139,4 @@ enum BookshelfImportError: LocalizedError {
         }
     }
 }
+#endif

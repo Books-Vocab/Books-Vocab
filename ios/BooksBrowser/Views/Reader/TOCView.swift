@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import ReadiumShared
 import os
@@ -203,3 +204,4 @@ private struct TOCViewPreviewScene: View {
         )
     }
 }
+#endif

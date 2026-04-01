@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import WebKit
 import os
@@ -102,3 +103,4 @@ extension ReadiumNavigatorView.Coordinator: WKScriptMessageHandler {
         }
     }
 }
+#endif
