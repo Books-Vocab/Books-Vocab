@@ -236,16 +236,26 @@ struct NotebookListView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        VocabSceneShell(phase: .empty(
-            title: "還沒有單字本".localized,
-            systemImage: "books.vertical",
-            description: "登入後自動建立預設單字本".localized,
-            action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
-        )) {
-            EmptyView()
-        }
-        .sheet(isPresented: $showLoginSheet) {
-            LoginSheet()
+        if authManager.isLoggedIn {
+            VocabSceneShell(phase: .empty(
+                title: "還沒有單字本".localized,
+                systemImage: "books.vertical",
+                description: "同步完成後會自動建立預設單字本".localized
+            )) {
+                EmptyView()
+            }
+        } else {
+            VocabSceneShell(phase: .empty(
+                title: "還沒有單字本".localized,
+                systemImage: "books.vertical",
+                description: "登入後自動建立預設單字本".localized,
+                action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+            )) {
+                EmptyView()
+            }
+            .sheet(isPresented: $showLoginSheet) {
+                LoginSheet()
+            }
         }
     }
 

@@ -66,6 +66,7 @@ struct LoginSheet: View {
                     )
                 }
                 .buttonStyle(.pressable)
+                .accessibilityLabel("使用 Google 帳號登入".localized)
 
                 Button {
                     authManager.loginWithApple(modelContainer: modelContext.container)
@@ -77,6 +78,7 @@ struct LoginSheet: View {
                     )
                 }
                 .buttonStyle(.pressable)
+                .accessibilityLabel("使用 Apple 帳號登入".localized)
             }
             .padding(.horizontal, AppMetrics.spacingMedium)
             .padding(.bottom, AppMetrics.spacingLarge)
@@ -102,8 +104,10 @@ struct LoginSheet: View {
                             .foregroundStyle(vocabSkin.palette.secondaryText)
                     }
                 }
+                .transition(.contentSwap)
             }
         }
+        .animatePhaseChange(authManager.isAuthenticating)
     }
 
     private func loginButtonLabel(title: String, systemImage: String?, isGoogle: Bool) -> some View {
@@ -112,13 +116,13 @@ struct LoginSheet: View {
                 Text("G")
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(AppBrandColors.googleRed)
-                    .frame(width: 24, height: 24)
+                    .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
                     .background(Circle().fill(vocabSkin.palette.cardBackground))
             } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(vocabSkin.typography.iconTiny)
                     .foregroundStyle(vocabSkin.palette.pageBackground)
-                    .frame(width: 24, height: 24)
+                    .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
                     .background(Circle().fill(AppBrandColors.appleBlack))
             }
 
