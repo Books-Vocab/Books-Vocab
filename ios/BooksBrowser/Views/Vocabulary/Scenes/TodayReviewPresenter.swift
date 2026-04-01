@@ -103,6 +103,8 @@ struct TodayReviewPresenter: View {
     }
 
     let state: TodayReviewPresenterState
+    let isHelpPresented: Bool
+    let showFirstRunHint: Bool
     let onClose: () -> Void
     let onAdvanceReveal: () -> Void
     let onCollapseReveal: () -> Void
@@ -115,6 +117,7 @@ struct TodayReviewPresenter: View {
     let onToggleAutoPlay: () -> Void
     let onToggleAutoPlayPause: () -> Void
     let onDetailTap: () -> Void
+    let onToggleHelp: () -> Void
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {
@@ -151,6 +154,17 @@ struct TodayReviewPresenter: View {
                     completionState
                 }
             }
+            #if os(macOS)
+            .overlay(alignment: .top) {
+                if isHelpPresented {
+                    shortcutHelpOverlay
+                        .padding(.top, vocabSkin.metrics.reviewTopBarTopInset + 8)
+                        .padding(.horizontal, vocabSkin.metrics.reviewTopBarHorizontalInset)
+                        .transition(.overlayFade)
+                        .zIndex(2)
+                }
+            }
+            #endif
             #if os(iOS)
             .frame(maxWidth: 600)
             .frame(maxWidth: .infinity)
@@ -169,6 +183,7 @@ struct TodayReviewPresenter: View {
                 containerWidth = newWidth
             }
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
+            .animation(AppMotion.panelState, value: isHelpPresented)
         }
     }
 
@@ -229,6 +244,13 @@ struct TodayReviewPresenter: View {
             )
             .opacity(cardOpacity)
             .simultaneousGesture(swipeDragGesture)
+            #if os(macOS)
+            .contentShape(Rectangle())
+            .onTapGesture {
+                guard isCardInteractive, state.revealStage == .front else { return }
+                onAdvanceReveal()
+            }
+            #endif
         }
     }
 
