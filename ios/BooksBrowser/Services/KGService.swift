@@ -224,6 +224,7 @@ final class KGService: KGServing, LocalDataClearing {
             request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         }
         request.httpBody = body
+        let requestID = RequestObservation.attachRequestID(to: &request)
 
         var lastError: Error?
         var retryAfterOverride: TimeInterval? = nil
@@ -247,12 +248,13 @@ final class KGService: KGServing, LocalDataClearing {
                 guard let httpResponse = response as? HTTPURLResponse else {
                     throw KGError.serverError("Invalid response from \(path)")
                 }
+                let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
 
                 if httpResponse.statusCode == 401 {
                     // 嘗試刷新 token 一次；若已刷新過仍 401 則放棄
                     if !didRefreshToken {
                         didRefreshToken = true
-                        AppLog.kg.info("401 received for \(path), attempting token refresh")
+                        AppLog.kg.info("401 received for \(path) request_id=\(responseRequestID), attempting token refresh")
                         let newToken = try await currentAuthToken()
                         if newToken != token {
                             token = newToken
