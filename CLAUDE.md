@@ -122,11 +122,12 @@ Safe entrypoint：`./ops/devops_kg_safe.sh`
 
 動手前先對照，確認不重複建造。
 
-- **iOS**（`ios/BooksBrowser`）：auth flows、bookshelf + reader、translation/explanation、vocabulary capture/list/detail/sync/graph views、settings + account deletion、app-intent/background sync、preview matrix
-- **Backend**（`backend/src/kg`）：auth/user identity、user config/account lifecycle、vocabulary/graph-link APIs、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、static pages
+- **iOS**（`ios/BooksBrowser`）：auth flows（Apple/Google SSO）、bookshelf + reader（EPUB/TXT/MD/PDF multi-format import）、translation/explanation（context sentence extraction）、vocabulary capture/list/detail/sync/graph views、hide/unhide links + bilateral optimistic sync、toast notification system（capsule toast + sheet overlay）、graph thumbnail + health blob、today review、stats overview、settings + account deletion、onboarding empty-state login entry points、app-intent/background sync、preview matrix、**macOS multiplatform (macOS 15.0+)**
+- **Backend**（`backend/src/kg`）：auth/user identity（Apple/Google + web auth + cookie admin session）、user config/account lifecycle、vocabulary/graph-link APIs（hide/unhide/blocked pairs）、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、multi-format import parsing、query path perf（incremental sync/zipf cache/filter-before-sort）、write path perf（batch ops/N+1 elimination）、static pages、system observability（`/api/system/info` + VERSION tracking + deploy.log）
+- **Chrome Extension**（`chrome-extension/`）：side panel vocab lookup、閱讀選詞翻譯、auth token 整合、woff2 字型
 - **Admin**：dashboard (`/admin`)、logs/stats APIs (`/api/admin/*`)、test-matrix (`/admin/tests`)、in-memory log capture
-- **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix
-- **Ops**：safe wrapper、preflight/backup/deploy/restart/status/logs/migration workflows
+- **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix、auth provider tests（Apple/Google）、text_utils/enrich modules
+- **Ops**：safe wrapper、preflight/backup/deploy/restart/status/logs/migration workflows、system observability（version tracking + deploy log）
 
 ## Reference Docs（按需讀取）
 
