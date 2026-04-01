@@ -15,4 +15,14 @@ extension ModelContext {
             return false
         }
     }
+
+    @MainActor @discardableResult
+    func safeSaveWithToast(
+        _ toastCoordinator: AppToastCoordinator,
+        file: String = #file, line: Int = #line
+    ) -> Bool {
+        let ok = safeSave(file: file, line: line)
+        if !ok { toastCoordinator.error("儲存失敗") }
+        return ok
+    }
 }
