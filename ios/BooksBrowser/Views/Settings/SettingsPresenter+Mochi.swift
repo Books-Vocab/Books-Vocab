@@ -55,6 +55,8 @@ extension SettingsPresenter {
                                 ? "切回正式站前，請確認本地 API 與 app schema 保持同步。".localized
                                 : "目前 app 會直接連到正式環境，請避免在這裡做破壞性測試。".localized
                         )
+
+                        observationPreview(debug.observation)
                     }
                     .padding(vocabSkin.spacing.cardPadding)
                 }
@@ -82,6 +84,39 @@ extension SettingsPresenter {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
+    }
+
+    private func observationPreview(_ observation: SettingsPresenterState.KGSection.ObservationSection) -> some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+            HStack {
+                Text("最近觀測事件".localized)
+                    .font(vocabSkin.typography.captionStrong)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                Spacer()
+                Text("buffer \(observation.totalCount)".localized)
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            }
+
+            if observation.previewLines.isEmpty {
+                Text("尚未捕捉到 app 端 analytics 事件。".localized)
+                    .font(vocabSkin.typography.caption)
+                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+            } else {
+                VStack(alignment: .leading, spacing: 4) {
+                    ForEach(Array(observation.previewLines.enumerated()), id: \.offset) { _, line in
+                        Text(line)
+                            .font(vocabSkin.typography.monoLabel)
+                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .lineLimit(2)
+                    }
+                }
+                .padding(vocabSkin.spacing.cardPadding)
+                .background(vocabSkin.palette.secondaryBackground)
+                .clipShape(RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous))
+            }
+        }
     }
     #endif
 }

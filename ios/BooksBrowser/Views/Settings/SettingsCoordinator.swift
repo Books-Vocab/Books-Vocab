@@ -39,6 +39,8 @@ final class SettingsCoordinator: SettingsCoordinating {
     var deleteAccountError: String?
     var manualLoginUserId = ""
     var debugLocalServerURL = ""
+    var observationPreviewLines: [String] = []
+    var observationTotalCount = 0
     var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
     var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
     @ObservationIgnored private var saveTask: Task<Void, Never>?
@@ -55,12 +57,14 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     func handleAppear() {
         iconBreathing = true
+        refreshObservationPreview()
     }
 
     func loadData(
         authManager: any AuthManaging,
         kgService: any KGServing
     ) async {
+        refreshObservationPreview()
         await kgService.healthCheck()
         connectionPulse.toggle()
 
@@ -94,6 +98,12 @@ final class SettingsCoordinator: SettingsCoordinating {
             fetchedKey = ""
             optionalIntegrationApiKey = ""
         }
+    }
+
+    func refreshObservationPreview() {
+        let preview = AppObservationStore.shared.preview()
+        observationPreviewLines = preview.entries.map(\.previewLine)
+        observationTotalCount = preview.totalCount
     }
 
     func scheduleOptionalIntegrationSave(
@@ -201,6 +211,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         await kgService.backgroundSync(container: modelContext.container)
         try? modelContext.container.mainContext.save()
         await kgService.healthCheck()
+        refreshObservationPreview()
     }
 
     #if DEBUG
@@ -211,6 +222,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         KGService.useProductionServer()
         debugLocalServerURL = KGService.getDebugLocalServerURL()
         await loadData(authManager: authManager, kgService: kgService)
+        refreshObservationPreview()
     }
 
     func useLocalBackend(
@@ -221,6 +233,7 @@ final class SettingsCoordinator: SettingsCoordinating {
         KGService.useLocalServer()
         debugLocalServerURL = KGService.getDebugLocalServerURL()
         await loadData(authManager: authManager, kgService: kgService)
+        refreshObservationPreview()
     }
     #endif
 }

@@ -78,6 +78,14 @@ enum AppAnalytics {
 
     private static let signposter = OSSignposter(logHandle: signpostLog)
 
+    static func recordObservation(
+        level: AppObservationLevel,
+        category: String = "analytics",
+        message: String
+    ) {
+        AppObservationStore.shared.record(level: level, category: category, message: message)
+    }
+
     // MARK: - Track Event
 
     static func track(_ event: AnalyticsEvent) {
@@ -85,58 +93,99 @@ enum AppAnalytics {
 
         // — Translation —
         case .translationRequested(let word, let type):
+            recordObservation(
+                level: .info,
+                message: "event=translation_requested word=\(word) type=\(type.rawValue)"
+            )
             logger.info("event=translation_requested word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public)")
 
         case .translationCompleted(let word, let type, let latencyMs):
+            recordObservation(
+                level: .info,
+                message: "event=translation_completed word=\(word) type=\(type.rawValue) latency_ms=\(latencyMs)"
+            )
             logger.info("event=translation_completed word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public) latency_ms=\(latencyMs)")
 
         case .translationFailed(let word, let type, let error):
+            recordObservation(
+                level: .warning,
+                message: "event=translation_failed word=\(word) type=\(type.rawValue) error=\(error)"
+            )
             logger.warning("event=translation_failed word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public) error=\(error, privacy: .public)")
 
         // — Sync —
         case .syncStarted:
+            recordObservation(level: .info, message: "event=sync_started")
             logger.info("event=sync_started")
 
         case .syncStepCompleted(let step, let durationMs, let success):
+            recordObservation(
+                level: .info,
+                message: "event=sync_step_completed step=\(step) duration_ms=\(durationMs) success=\(success)"
+            )
             logger.info("event=sync_step_completed step=\(step, privacy: .public) duration_ms=\(durationMs) success=\(success)")
 
         case .syncCompleted(let durationMs, let outcome):
+            recordObservation(
+                level: .info,
+                message: "event=sync_completed duration_ms=\(durationMs) outcome=\(outcome.rawValue)"
+            )
             logger.info("event=sync_completed duration_ms=\(durationMs) outcome=\(outcome.rawValue, privacy: .public)")
 
         // — Review —
         case .reviewSessionStarted(let cardCount):
+            recordObservation(level: .info, message: "event=review_session_started card_count=\(cardCount)")
             logger.info("event=review_session_started card_count=\(cardCount)")
 
         case .reviewCardSubmitted(let feedback, let cardIndex, let totalCards):
+            recordObservation(
+                level: .info,
+                message: "event=review_card_submitted feedback=\(feedback) index=\(cardIndex) total=\(totalCards)"
+            )
             logger.info("event=review_card_submitted feedback=\(feedback, privacy: .public) index=\(cardIndex) total=\(totalCards)")
 
         case .reviewSessionEnded(let remembered, let forgot, let completed, let durationMs):
+            recordObservation(
+                level: .info,
+                message: "event=review_session_ended remembered=\(remembered) forgot=\(forgot) completed=\(completed) duration_ms=\(durationMs)"
+            )
             logger.info("event=review_session_ended remembered=\(remembered) forgot=\(forgot) completed=\(completed) duration_ms=\(durationMs)")
 
         // — Auth —
         case .loginCompleted(let provider):
+            recordObservation(level: .info, message: "event=login_completed provider=\(provider)")
             logger.info("event=login_completed provider=\(provider, privacy: .public)")
 
         case .loginFailed(let provider, let error):
+            recordObservation(level: .warning, message: "event=login_failed provider=\(provider) error=\(error)")
             logger.warning("event=login_failed provider=\(provider, privacy: .public) error=\(error, privacy: .public)")
 
         case .logoutPerformed(let reason):
+            recordObservation(level: .info, message: "event=logout_performed reason=\(reason)")
             logger.info("event=logout_performed reason=\(reason, privacy: .public)")
 
         case .accountSwitchDetected:
+            recordObservation(level: .info, message: "event=account_switch_detected")
             logger.info("event=account_switch_detected")
 
         // — App Lifecycle —
         case .appSessionStarted:
+            recordObservation(level: .info, message: "event=app_session_started")
             logger.info("event=app_session_started")
 
         case .appEnteredBackground:
+            recordObservation(level: .info, message: "event=app_entered_background")
             logger.info("event=app_entered_background")
 
         case .backgroundSyncTriggered:
+            recordObservation(level: .info, message: "event=background_sync_triggered")
             logger.info("event=background_sync_triggered")
 
         case .backgroundSyncCompleted(let durationMs, let success):
+            recordObservation(
+                level: .info,
+                message: "event=background_sync_completed duration_ms=\(durationMs) success=\(success)"
+            )
             logger.info("event=background_sync_completed duration_ms=\(durationMs) success=\(success)")
         }
 
@@ -248,6 +297,20 @@ struct SessionSnapshot {
 
     func logSummary() {
         guard translationCount > 0 || syncCount > 0 || reviewCardsTotal > 0 else { return }
+        let message = """
+            event=session_summary \
+            translations=\(translationCount) \
+            translation_failures=\(translationFailures) \
+            translation_avg_ms=\(translationAvgLatencyMs) \
+            syncs=\(syncCount) \
+            sync_failures=\(syncFailures) \
+            review_cards=\(reviewCardsTotal) \
+            review_remembered=\(reviewRemembered) \
+            review_forgot=\(reviewForgot) \
+            review_sessions_completed=\(reviewSessionsCompleted) \
+            review_sessions_abandoned=\(reviewSessionsAbandoned)
+            """
+        AppAnalytics.recordObservation(level: .info, message: message)
         AppAnalytics.logger.info("""
             event=session_summary \
             translations=\(translationCount) \
