@@ -151,8 +151,12 @@ struct TodayReviewPresenter: View {
                     completionState
                 }
             }
+            #if os(iOS)
             .frame(maxWidth: 600)
             .frame(maxWidth: .infinity)
+            #else
+            .frame(maxWidth: .infinity)
+            #endif
             .vocabCanvasBackground()
             #if os(iOS)
             .toolbar(.hidden, for: .navigationBar)
