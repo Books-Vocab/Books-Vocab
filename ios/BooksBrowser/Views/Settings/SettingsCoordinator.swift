@@ -16,13 +16,13 @@ import os
     var translationTargetLang: TranslationLanguage { get set }
     func handleAppear()
     func loadData(authManager: any AuthManaging, kgService: any KGServing) async
-    func scheduleOptionalIntegrationSave(authManager: any AuthManaging, kgService: any KGServing)
+    func scheduleOptionalIntegrationSave(authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator)
     func requestDeleteAccount()
     func clearDeleteAccountError()
     func presentOptionalIntegrationInfo()
     func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
-    func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing)
+    func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator)
 }
 
 @Observable @MainActor
@@ -98,7 +98,8 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     func scheduleOptionalIntegrationSave(
         authManager: any AuthManaging,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) {
         guard optionalIntegrationApiKey != fetchedKey else { return }
         saveTask?.cancel()
@@ -118,6 +119,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                         optionalIntegrationApiKey = ""
                     }
                 } catch {
+                    toastCoordinator.error("儲存失敗")
                     AppLog.kg.error("updateUserConfig (API key) failed: \(error.localizedDescription)")
                     return
                 }
@@ -162,7 +164,8 @@ final class SettingsCoordinator: SettingsCoordinating {
         source: TranslationLanguage,
         target: TranslationLanguage,
         authManager: any AuthManaging,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) {
         translationSourceLang = source
         translationTargetLang = target
@@ -179,6 +182,7 @@ final class SettingsCoordinator: SettingsCoordinating {
                     )
                 )
             } catch {
+                toastCoordinator.error("設定儲存失敗")
                 AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
             }
         }

@@ -26,7 +26,7 @@ struct SyncView: View {
                 onCancel: coordinator.cancelSync,
                 onShowSettings: { showSettings = true }
             )
-            .sheet(isPresented: $showSettings) {
+            .toastSheet(isPresented: $showSettings) {
                 SettingsView()
             }
             .task {
