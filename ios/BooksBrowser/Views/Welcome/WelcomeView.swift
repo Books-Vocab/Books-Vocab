@@ -7,28 +7,34 @@ struct WelcomeView: View {
     let onStart: () -> Void
     let onTryDemo: () -> Void
 
-    private let pages: [WelcomePage] = [
-        WelcomePage(
+    private var pages: [WelcomePage] {
+        var result: [WelcomePage] = []
+        #if os(iOS)
+        result.append(WelcomePage(
             icon: "book.fill",
             title: "閱讀原文書",
             subtitle: "匯入 EPUB 電子書，沉浸式閱讀"
-        ),
-        WelcomePage(
-            icon: "text.bubble.fill",
-            title: "即時翻譯",
-            subtitle: "長按查詞，AI 依語境精準翻譯"
-        ),
-        WelcomePage(
-            icon: "rectangle.stack.fill",
-            title: "智慧複習",
-            subtitle: "間隔重複演算法，滑動歸類卡片"
-        ),
-        WelcomePage(
-            icon: "point.3.connected.trianglepath.dotted",
-            title: "知識圖譜",
-            subtitle: "同義、混淆、衍生關係一目了然"
-        ),
-    ]
+        ))
+        #endif
+        result.append(contentsOf: [
+            WelcomePage(
+                icon: "text.bubble.fill",
+                title: "即時翻譯",
+                subtitle: "長按查詞，AI 依語境精準翻譯"
+            ),
+            WelcomePage(
+                icon: "rectangle.stack.fill",
+                title: "智慧複習",
+                subtitle: "間隔重複演算法，滑動歸類卡片"
+            ),
+            WelcomePage(
+                icon: "point.3.connected.trianglepath.dotted",
+                title: "知識圖譜",
+                subtitle: "同義、混淆、衍生關係一目了然"
+            ),
+        ])
+        return result
+    }
 
     init(initialPage: Int = 0, onStart: @escaping () -> Void, onTryDemo: @escaping () -> Void) {
         self.onStart = onStart
