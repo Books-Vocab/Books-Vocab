@@ -25,7 +25,7 @@ struct KnowledgeGraphView: View {
             onNodeTapped: handleNodeTap
         )
         .task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
-        .sheet(item: $coordinator.selectedEntry) { entry in
+        .toastSheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: allEntries)
                 .appSheet(.large)
         }
