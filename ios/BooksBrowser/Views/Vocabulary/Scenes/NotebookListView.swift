@@ -173,7 +173,7 @@ struct NotebookListView: View {
                         currentUserID: authManager.userId,
                         onClose: { activeReviewSession = nil }
                     )
-                    .inspectorColumnWidth(min: 380, ideal: 420, max: 500)
+                    .inspectorColumnWidth(min: 350, ideal: 420, max: 600)
                 }
             }
             #endif

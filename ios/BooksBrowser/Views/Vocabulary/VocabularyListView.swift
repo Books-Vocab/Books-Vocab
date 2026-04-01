@@ -125,7 +125,10 @@ struct VocabularyListView: View {
                 entries: session.entries,
                 allEntries: allEntries,
                 currentUserID: AuthManager.shared.userId,
-                onClose: { coordinator.activeReviewSession = nil }
+                onClose: {
+                    coordinator.activeReviewSession = nil
+                    coordinator.selectedEntry = nil
+                }
             )
         } else if let entry = coordinator.selectedEntry {
             WordDetailSheet(
