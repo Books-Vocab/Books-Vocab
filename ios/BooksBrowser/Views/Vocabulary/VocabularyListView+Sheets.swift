@@ -12,20 +12,20 @@ struct VocabularyListSheets: ViewModifier {
 
     func body(content: Content) -> some View {
         content
-            .sheet(isPresented: $coordinator.showSyncView) {
+            .toastSheet(isPresented: $coordinator.showSyncView) {
                 SyncView()
             }
-            .sheet(isPresented: $coordinator.showSettings) {
+            .toastSheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
-            .sheet(item: $coordinator.exportURL) { url in
+            .toastSheet(item: $coordinator.exportURL) { url in
                 ShareSheet(url: url)
             }
-            .sheet(item: $coordinator.selectedEntry) { entry in
+            .toastSheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry, allEntries: allEntries)
                     .appSheet(.large)
             }
-            .fullScreenCover(item: Binding(
+            .toastFullScreenCover(item: Binding(
                 get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
                 set: { coordinator.activeReviewSession = $0 }
             )) { session in
@@ -36,7 +36,7 @@ struct VocabularyListSheets: ViewModifier {
                     onClose: { coordinator.activeReviewSession = nil }
                 )
             }
-            .sheet(item: Binding(
+            .toastSheet(item: Binding(
                 get: { sizeClass == .regular ? coordinator.activeReviewSession : nil },
                 set: { coordinator.activeReviewSession = $0 }
             )) { session in
