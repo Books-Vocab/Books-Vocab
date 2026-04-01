@@ -148,6 +148,7 @@ struct NotebookListView: View {
                     }
                 }
             }
+            #if os(iOS)
             .platformFullScreenCover(item: $activeReviewSession) { session in
                 TodayReviewView(
                     entries: session.entries,
@@ -157,6 +158,22 @@ struct NotebookListView: View {
                 )
                 .toastOverlay()
             }
+            #elseif os(macOS)
+            .inspector(isPresented: Binding(
+                get: { activeReviewSession != nil },
+                set: { if !$0 { activeReviewSession = nil } }
+            )) {
+                if let session = activeReviewSession {
+                    TodayReviewView(
+                        entries: session.entries,
+                        allEntries: allEntries,
+                        currentUserID: authManager.userId,
+                        onClose: { activeReviewSession = nil }
+                    )
+                    .inspectorColumnWidth(min: 380, ideal: 420, max: 500)
+                }
+            }
+            #endif
             .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
             }
