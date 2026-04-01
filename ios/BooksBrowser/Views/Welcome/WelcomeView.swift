@@ -5,6 +5,7 @@ struct WelcomeView: View {
     @State private var currentPage = 0
 
     let onStart: () -> Void
+    let onLogin: () -> Void
     let onTryDemo: () -> Void
 
     private let pages: [WelcomePage] = [
@@ -30,8 +31,9 @@ struct WelcomeView: View {
         ),
     ]
 
-    init(initialPage: Int = 0, onStart: @escaping () -> Void, onTryDemo: @escaping () -> Void) {
+    init(initialPage: Int = 0, onStart: @escaping () -> Void, onLogin: @escaping () -> Void, onTryDemo: @escaping () -> Void) {
         self.onStart = onStart
+        self.onLogin = onLogin
         self.onTryDemo = onTryDemo
         self._currentPage = State(initialValue: initialPage)
     }
@@ -64,6 +66,11 @@ struct WelcomeView: View {
             VStack(spacing: AppMetrics.spacingSmall) {
                 Button("開始使用".localized, action: onStart)
                     .buttonStyle(.appAction(.primary))
+
+                Button(action: onLogin) {
+                    Label("登入帳號".localized, systemImage: "person.crop.circle")
+                }
+                .buttonStyle(.appAction(.outline))
 
                 Button(action: onTryDemo) {
                     HStack(spacing: 6) {
@@ -121,7 +128,7 @@ private struct WelcomePreviewScene: View {
 
     var body: some View {
         AppThemeContainer {
-            WelcomeView(initialPage: initialPage, onStart: {}, onTryDemo: {})
+            WelcomeView(initialPage: initialPage, onStart: {}, onLogin: {}, onTryDemo: {})
         }
         .preferredColorScheme(preferredColorScheme)
     }

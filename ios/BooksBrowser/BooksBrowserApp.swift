@@ -136,6 +136,7 @@ struct BooksBrowserApp: App {
     @State private var showWelcome =
         !ProcessInfo.processInfo.arguments.contains("-skipWelcome") &&
         !UserDefaults.standard.bool(forKey: "hasSeenWelcome")
+    @State private var showLoginFromWelcome = false
 
     var body: some Scene {
         WindowGroup {
@@ -267,12 +268,20 @@ struct BooksBrowserApp: App {
                             UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
                             showWelcome = false
                         },
+                        onLogin: {
+                            UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
+                            showWelcome = false
+                            showLoginFromWelcome = true
+                        },
                         onTryDemo: {
                             UserDefaults.standard.set(true, forKey: "hasSeenWelcome")
                             showWelcome = false
                             authManager.enterDemoMode(modelContainer: modelContainer)
                         }
                     )
+                }
+                .sheet(isPresented: $showLoginFromWelcome) {
+                    LoginSheet()
                 }
         }
     }
