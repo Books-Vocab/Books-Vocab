@@ -137,11 +137,71 @@ function draw() {
         }
     }
 
-    // Fade in thumbnail once simulation has converged
-    if (isThumbnail && canvas.style.opacity === '0' && sim && sim.alpha() < 0.15) {
-        canvas.style.opacity = '1';
+    // Thumbnail: check convergence for fade-in
+    if (isThumbnail) {
+        if (canvas.style.opacity === '0') {
+            if (sim && sim.alpha() < 0.15) {
+                canvas.style.opacity = '1';
+            } else {
+                return; // Skip drawing while hidden — no one can see it
+            }
+        }
+        drawThumbnail();
+        return;
     }
 
+    drawFull();
+}
+
+// ── Thumbnail fast path (no glow, no labels, no batching overhead) ───────────
+function drawThumbnail() {
+    ctx.clearRect(0, 0, W, H);
+
+    ctx.save();
+    ctx.translate(transform.x, transform.y);
+    ctx.scale(transform.k, transform.k);
+
+    // Edges — single pass, uniform opacity 0.08
+    const screenLineWidth = (forces.linkThickness || 1.0) / transform.k;
+    ctx.globalAlpha = 0.08;
+    ctx.lineWidth = screenLineWidth;
+    ctx.strokeStyle = '#888888';
+    ctx.beginPath();
+    for (const l of links) {
+        const s = l.source, t = l.target;
+        if (!s || !t || s.x == null || t.x == null) continue;
+        ctx.moveTo(s.x, s.y);
+        ctx.lineTo(t.x, t.y);
+    }
+    ctx.stroke();
+
+    // Nodes — batched by color, uniform baseOpacity
+    const nodeGroups = new Map();
+    for (const d of nodes) {
+        const r = nodeRadius(d);
+        const color = nodeColor(d);
+        const opacity = baseOpacityForNode(d);
+        const key = color + '_' + opacity.toFixed(2);
+        if (!nodeGroups.has(key)) nodeGroups.set(key, { color, opacity, arcs: [] });
+        nodeGroups.get(key).arcs.push(d.x, d.y, r);
+    }
+    for (const [, g] of nodeGroups) {
+        ctx.fillStyle = g.color;
+        ctx.globalAlpha = g.opacity;
+        ctx.beginPath();
+        const arcs = g.arcs;
+        for (let i = 0; i < arcs.length; i += 3) {
+            ctx.moveTo(arcs[i] + arcs[i + 2], arcs[i + 1]);
+            ctx.arc(arcs[i], arcs[i + 1], arcs[i + 2], 0, 2 * Math.PI);
+        }
+        ctx.fill();
+    }
+
+    ctx.restore();
+}
+
+// ── Full interactive draw ────────────────────────────────────────────────────
+function drawFull() {
     ctx.clearRect(0, 0, W, H);
     if (backgroundColor !== 'transparent') {
         ctx.fillStyle = backgroundColor;
@@ -180,18 +240,16 @@ function draw() {
     }
 
     // Draw nodes — two passes: glow textures first, then fills batched by style
-    // Pass 1: glow halos (skip in thumbnail)
-    if (!isThumbnail) {
-        for (const d of nodes) {
-            const interactOpacity = opacityForNode(d.id);
-            if (interactOpacity < 0.1) continue;
-            const r = nodeRadius(d);
-            const color = nodeColor(d);
-            const opacity = interactOpacity * baseOpacityForNode(d);
-            const { tex, size } = getGlowTexture(color, r);
-            ctx.globalAlpha = opacity;
-            ctx.drawImage(tex, d.x - size / 2, d.y - size / 2, size, size);
-        }
+    // Pass 1: glow halos
+    for (const d of nodes) {
+        const interactOpacity = opacityForNode(d.id);
+        if (interactOpacity < 0.1) continue;
+        const r = nodeRadius(d);
+        const color = nodeColor(d);
+        const opacity = interactOpacity * baseOpacityForNode(d);
+        const { tex, size } = getGlowTexture(color, r);
+        ctx.globalAlpha = opacity;
+        ctx.drawImage(tex, d.x - size / 2, d.y - size / 2, size, size);
     }
 
     // Pass 2: node fills batched by color + opacity
@@ -219,37 +277,35 @@ function draw() {
     }
 
     // Draw labels (batched by font size, double-pass fillText)
-    if (!isThumbnail) {
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        const baseMul = currentMode === 'dark' ? 0.90 : 0.82;
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'top';
+    const baseMul = currentMode === 'dark' ? 0.90 : 0.82;
 
-        // Batch: small labels (8px) then large labels (10px)
-        for (let pass = 0; pass < 2; pass++) {
-            const fontSize = pass === 0 ? 8 : 10;
-            const degreeTest = pass === 0 ? (deg) => deg <= 3 : (deg) => deg > 3;
-            ctx.font = `${fontSize}px -apple-system, sans-serif`;
+    // Batch: small labels (8px) then large labels (10px)
+    for (let pass = 0; pass < 2; pass++) {
+        const fontSize = pass === 0 ? 8 : 10;
+        const degreeTest = pass === 0 ? (deg) => deg <= 3 : (deg) => deg > 3;
+        ctx.font = `${fontSize}px -apple-system, sans-serif`;
 
-            for (const d of nodes) {
-                if (!degreeTest(d.degree)) continue;
-                const opacity = opacityForNode(d.id);
-                if (opacity < 0.2) continue;
-                const r = nodeRadius(d);
+        for (const d of nodes) {
+            if (!degreeTest(d.degree)) continue;
+            const opacity = opacityForNode(d.id);
+            if (opacity < 0.2) continue;
+            const r = nodeRadius(d);
 
-                // Shadow pass
-                ctx.fillStyle = labelShadowColor;
-                ctx.globalAlpha = 0.6 * opacity;
-                ctx.fillText(d.word, d.x + 1, d.y + r + 4);
+            // Shadow pass
+            ctx.fillStyle = labelShadowColor;
+            ctx.globalAlpha = 0.6 * opacity;
+            ctx.fillText(d.word, d.x + 1, d.y + r + 4);
 
-                // Main pass (cached rgba)
-                const labelAlpha = baseMul * opacity;
-                const cacheKey = labelColor + '_' + labelAlpha.toFixed(3);
-                let rgba = _rgbaCache.get(cacheKey);
-                if (!rgba) { rgba = hexToRGBA(labelColor, labelAlpha); _rgbaCache.set(cacheKey, rgba); }
-                ctx.fillStyle = rgba;
-                ctx.globalAlpha = 1;
-                ctx.fillText(d.word, d.x, d.y + r + 3);
-            }
+            // Main pass (cached rgba)
+            const labelAlpha = baseMul * opacity;
+            const cacheKey = labelColor + '_' + labelAlpha.toFixed(3);
+            let rgba = _rgbaCache.get(cacheKey);
+            if (!rgba) { rgba = hexToRGBA(labelColor, labelAlpha); _rgbaCache.set(cacheKey, rgba); }
+            ctx.fillStyle = rgba;
+            ctx.globalAlpha = 1;
+            ctx.fillText(d.word, d.x, d.y + r + 3);
         }
     }
 
@@ -430,7 +486,7 @@ window.initGraph = function(jsonStr) {
         .force('y',       d3.forceY(cy).strength(gravity))
         .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 2))
         .on('tick', () => {
-            qt = d3.quadtree(nodes, d => d.x, d => d.y);
+            if (!isThumbnail) qt = d3.quadtree(nodes, d => d.x, d => d.y);
             draw();
         });
 
