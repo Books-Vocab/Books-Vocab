@@ -43,6 +43,7 @@ struct NotebookListView: View {
     @State private var navigationPath = NavigationPath()
     #if os(macOS)
     @State private var macDetail = MacDetailState()
+    @State private var isEditingMacDetailEntry = false
     #endif
 
     var body: some View {
@@ -228,6 +229,19 @@ struct NotebookListView: View {
         .onChange(of: navigationPath) { _, path in
             if path.isEmpty { macDetail.dismiss() }
         }
+        .onChange(of: macDetail.selectedEntry?.id) { _, entryID in
+            if entryID == nil {
+                isEditingMacDetailEntry = false
+            }
+        }
+        .toastSheet(isPresented: Binding(
+            get: { isEditingMacDetailEntry && macDetail.selectedEntry != nil },
+            set: { isEditingMacDetailEntry = $0 }
+        )) {
+            if let entry = macDetail.selectedEntry {
+                WordEditSheet(entry: entry)
+            }
+        }
         #endif
     }
 
@@ -311,13 +325,27 @@ struct NotebookListView: View {
                 onClose: { macDetail.dismiss() }
             )
         } else if let entry = macDetail.selectedEntry {
-            WordDetailSheet(
-                entry: entry,
-                allEntries: macDetail.contextEntries,
-                wrapInNavigation: false,
-                showsInlineChrome: true,
-                onClose: { macDetail.dismiss() }
-            )
+            VStack(spacing: 0) {
+                VocabOverlayHeader(
+                    title: entry.word,
+                    systemImage: "character.book.closed",
+                    onClose: { macDetail.dismiss() },
+                    trailing: {
+                        VocabChromeIconButton(
+                            systemImage: "pencil",
+                            label: "編輯".localized,
+                            action: { isEditingMacDetailEntry = true }
+                        )
+                    }
+                )
+
+                WordDetailSheet(
+                    entry: entry,
+                    allEntries: macDetail.contextEntries,
+                    wrapInNavigation: false,
+                    showsInlineChrome: false
+                )
+            }
         }
     }
     #endif
