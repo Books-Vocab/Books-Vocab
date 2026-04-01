@@ -248,6 +248,7 @@ struct BooksBrowserApp: App {
                         }
                     case .background:
                         SessionMetrics.shared.snapshot().logSummary()
+                        SessionMetrics.shared.reset()
                         AppAnalytics.track(.appEnteredBackground)
                         Task {
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }

@@ -154,7 +154,11 @@ extension SettingsView {
 #if DEBUG
         .init(
             isUsingLocalServer: KGService.getDebugServerMode() == .local,
-            localServerURL: coordinator.debugLocalServerURL
+            localServerURL: coordinator.debugLocalServerURL,
+            observation: .init(
+                previewLines: coordinator.observationPreviewLines,
+                totalCount: coordinator.observationTotalCount
+            )
         )
 #else
         nil

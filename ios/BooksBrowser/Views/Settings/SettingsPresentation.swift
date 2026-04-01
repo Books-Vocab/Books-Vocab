@@ -18,9 +18,15 @@ struct SettingsPresenterState {
     }
 
     struct KGSection {
+        struct ObservationSection {
+            let previewLines: [String]
+            let totalCount: Int
+        }
+
         struct DebugSection {
             let isUsingLocalServer: Bool
             let localServerURL: String
+            let observation: ObservationSection
         }
 
         let serverURL: String

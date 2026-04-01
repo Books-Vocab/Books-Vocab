@@ -9,6 +9,16 @@ import Foundation
 
 enum AppDateFormatters {
 
+    // MARK: - Time Only (HH:mm:ss)
+
+    static let hhmmss: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "HH:mm:ss"
+        f.locale = Locale(identifier: "en_US_POSIX")
+        f.timeZone = .current
+        return f
+    }()
+
     // MARK: - Day Key (yyyy-MM-dd)
 
     /// "yyyy-MM-dd" 格式，用於 ReviewRecord.dayKey、活動統計、日曆等。
