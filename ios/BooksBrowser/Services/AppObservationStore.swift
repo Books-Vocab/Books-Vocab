@@ -56,4 +56,10 @@ final class AppObservationStore: @unchecked Sendable {
         defer { lock.unlock() }
         return AppObservationPreview(entries: Array(entries.suffix(limit)), totalCount: entries.count)
     }
+
+    func clear() {
+        lock.lock()
+        defer { lock.unlock() }
+        entries.removeAll(keepingCapacity: false)
+    }
 }

@@ -11,6 +11,56 @@ import Testing
 @testable import BooksBrowser
 
 struct BooksBrowserTests {
+    @Test func appObservationStoreCapsPreviewToMostRecentEntries() async throws {
+        let store = AppObservationStore.shared
+        store.clear()
+        defer { store.clear() }
+
+        for index in 0..<12 {
+            store.record(level: .info, category: "test", message: "event=\(index)")
+        }
+
+        let preview = store.preview(limit: 5)
+
+        #expect(preview.totalCount == 12)
+        #expect(preview.entries.count == 5)
+        #expect(preview.entries.first?.message == "event=7")
+        #expect(preview.entries.last?.message == "event=11")
+    }
+
+    @Test func analyticsObservationPreviewRedactsSensitiveWordContent() async throws {
+        let store = AppObservationStore.shared
+        store.clear()
+        defer { store.clear() }
+
+        AppAnalytics.track(.translationRequested(word: "secret", type: .quick))
+
+        let preview = store.preview(limit: 1)
+        let message = try #require(preview.entries.first?.message)
+
+        #expect(message.contains("event=translation_requested"))
+        #expect(message.contains("chars=6"))
+        #expect(message.contains("secret") == false)
+    }
+
+    @Test func sessionMetricsResetClearsAggregatesBetweenSnapshots() async throws {
+        let metrics = SessionMetrics.shared
+        metrics.reset()
+
+        metrics.record(.syncCompleted(durationMs: 320, outcome: .success))
+        metrics.record(.reviewCardSubmitted(feedback: "remembered", cardIndex: 0, totalCards: 1))
+        let first = metrics.snapshot()
+
+        #expect(first.syncCount == 1)
+        #expect(first.reviewCardsTotal == 1)
+
+        metrics.reset()
+        let second = metrics.snapshot()
+
+        #expect(second.syncCount == 0)
+        #expect(second.reviewCardsTotal == 0)
+    }
+
     @Test @MainActor func todayReviewStateRestoresProgressAcrossSessionReload() async throws {
         TodayReviewSessionSnapshotStore.clear(for: nil)
         let container = try ModelContainer(
