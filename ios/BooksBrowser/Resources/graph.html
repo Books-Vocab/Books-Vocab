@@ -16,6 +16,7 @@ canvas { display: block; touch-action: none; background: transparent; }
 let sim, nodes = [], links = [], forces = {};
 let transform = d3.zoomIdentity;
 let hoveredId = null, selectedId = null;
+let isThumbnail = false;
 let TIER_COLORS = { dark: {}, light: {} };
 let EDGE_COLORS = {};
 let adjCache = new Map();
@@ -119,15 +120,17 @@ function draw() {
         const baseOp = baseOpacityForNode(d);
         const opacity = interactOpacity * baseOp;
 
-        // Glow halo
-        ctx.beginPath();
-        ctx.arc(d.x, d.y, r * 2.2, 0, 2 * Math.PI);
-        const grad = ctx.createRadialGradient(d.x, d.y, r * 0.4, d.x, d.y, r * 2.2);
-        grad.addColorStop(0, color + '30');
-        grad.addColorStop(1, color + '00');
-        ctx.fillStyle = grad;
-        ctx.globalAlpha = opacity;
-        ctx.fill();
+        // Glow halo (skip in thumbnail — too small, becomes color blob)
+        if (!isThumbnail) {
+            ctx.beginPath();
+            ctx.arc(d.x, d.y, r * 2.2, 0, 2 * Math.PI);
+            const grad = ctx.createRadialGradient(d.x, d.y, r * 0.4, d.x, d.y, r * 2.2);
+            grad.addColorStop(0, color + '30');
+            grad.addColorStop(1, color + '00');
+            ctx.fillStyle = grad;
+            ctx.globalAlpha = opacity;
+            ctx.fill();
+        }
 
         // Node fill
         ctx.beginPath();
@@ -137,22 +140,24 @@ function draw() {
         ctx.fill();
     }
 
-    // Draw labels
-    ctx.globalAlpha = 1;
-    for (const d of nodes) {
-        const r = nodeRadius(d);
-        const opacity = opacityForNode(d.id);
-        if (opacity < 0.2) continue;
-        const fontSize = d.degree > 3 ? 10 : 8;
-        ctx.font = `${fontSize}px -apple-system, sans-serif`;
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'top';
-        ctx.shadowColor = labelShadowColor;
-        ctx.shadowBlur = 4;
-        ctx.fillStyle = hexToRGBA(labelColor, currentMode === 'dark' ? 0.90 * opacity : 0.82 * opacity);
-        ctx.fillText(d.word, d.x, d.y + r + 3);
+    // Draw labels (skip in thumbnail — too small to read)
+    if (!isThumbnail) {
+        ctx.globalAlpha = 1;
+        for (const d of nodes) {
+            const r = nodeRadius(d);
+            const opacity = opacityForNode(d.id);
+            if (opacity < 0.2) continue;
+            const fontSize = d.degree > 3 ? 10 : 8;
+            ctx.font = `${fontSize}px -apple-system, sans-serif`;
+            ctx.textAlign = 'center';
+            ctx.textBaseline = 'top';
+            ctx.shadowColor = labelShadowColor;
+            ctx.shadowBlur = 4;
+            ctx.fillStyle = hexToRGBA(labelColor, currentMode === 'dark' ? 0.90 * opacity : 0.82 * opacity);
+            ctx.fillText(d.word, d.x, d.y + r + 3);
+        }
+        ctx.shadowBlur = 0;
     }
-    ctx.shadowBlur = 0;
 
     ctx.restore();
 }
@@ -185,78 +190,83 @@ function hexToRGBA(hex, alpha) {
     return `rgba(${r},${g},${b},${alpha})`;
 }
 
-// ── Zoom ──────────────────────────────────────────────────────────────────────
-const zoom = d3.zoom()
-    .scaleExtent([0.1, 8])
-    .on('zoom', e => { transform = e.transform; draw(); });
-d3.select(canvas).call(zoom);
+// ── Interactions (bound once by initGraph, skipped in thumbnail) ─────────────
+let interactionsBound = false;
 
-// ── Drag ──────────────────────────────────────────────────────────────────────
-const drag = d3.drag()
-    .subject(function(event) {
-        return findNode(event.x, event.y) || null;
-    })
-    .on('start', function(event) {
-        if (!event.subject) return;
-        const d = event.subject;
-        d.fx = d.x; d.fy = d.y;
-        if (sim) sim.alphaTarget(0.3).restart();
-    })
-    .on('drag', function(event) {
-        if (!event.subject) return;
-        const d = event.subject;
-        d.fx = (event.x - transform.x) / transform.k;
-        d.fy = (event.y - transform.y) / transform.k;
-    })
-    .on('end', function(event) {
-        if (!event.subject) return;
-        const d = event.subject;
-        d.fx = null; d.fy = null;
-        if (sim) sim.alphaTarget(0);
-    });
-d3.select(canvas).call(drag);
+function bindInteractions() {
+    if (interactionsBound || isThumbnail) return;
+    interactionsBound = true;
 
-// ── Click ─────────────────────────────────────────────────────────────────────
-canvas.addEventListener('click', function(e) {
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const node = findNode(x, y);
-    if (node) {
-        if (selectedId === node.id) {
-            selectedId = null;
+    const zoom = d3.zoom()
+        .scaleExtent([0.1, 8])
+        .on('zoom', e => { transform = e.transform; draw(); });
+    d3.select(canvas).call(zoom);
+
+    const drag = d3.drag()
+        .subject(function(event) {
+            return findNode(event.x, event.y) || null;
+        })
+        .on('start', function(event) {
+            if (!event.subject) return;
+            const d = event.subject;
+            d.fx = d.x; d.fy = d.y;
+            if (sim) sim.alphaTarget(0.3).restart();
+        })
+        .on('drag', function(event) {
+            if (!event.subject) return;
+            const d = event.subject;
+            d.fx = (event.x - transform.x) / transform.k;
+            d.fy = (event.y - transform.y) / transform.k;
+        })
+        .on('end', function(event) {
+            if (!event.subject) return;
+            const d = event.subject;
+            d.fx = null; d.fy = null;
+            if (sim) sim.alphaTarget(0);
+        });
+    d3.select(canvas).call(drag);
+
+    canvas.addEventListener('click', function(e) {
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const node = findNode(x, y);
+        if (node) {
+            if (selectedId === node.id) {
+                selectedId = null;
+            } else {
+                selectedId = node.id;
+                postBridge({ type: 'nodeClick', nodeId: node.id });
+            }
         } else {
-            selectedId = node.id;
-            postBridge({ type: 'nodeClick', nodeId: node.id });
+            selectedId = null;
         }
-    } else {
-        selectedId = null;
-    }
-    draw();
-});
-
-// ── Hover ─────────────────────────────────────────────────────────────────────
-canvas.addEventListener('pointermove', function(e) {
-    if (e.buttons !== 0) return;
-    const rect = canvas.getBoundingClientRect();
-    const x = e.clientX - rect.left;
-    const y = e.clientY - rect.top;
-    const node = findNode(x, y);
-    const newId = node ? node.id : null;
-    if (newId !== hoveredId) {
-        hoveredId = newId;
         draw();
-    }
-});
+    });
 
-canvas.addEventListener('pointerleave', function() {
-    if (hoveredId !== null) { hoveredId = null; draw(); }
-});
+    canvas.addEventListener('pointermove', function(e) {
+        if (e.buttons !== 0) return;
+        const rect = canvas.getBoundingClientRect();
+        const x = e.clientX - rect.left;
+        const y = e.clientY - rect.top;
+        const node = findNode(x, y);
+        const newId = node ? node.id : null;
+        if (newId !== hoveredId) {
+            hoveredId = newId;
+            draw();
+        }
+    });
+
+    canvas.addEventListener('pointerleave', function() {
+        if (hoveredId !== null) { hoveredId = null; draw(); }
+    });
+}
 
 // ── initGraph ─────────────────────────────────────────────────────────────────
 window.initGraph = function(jsonStr) {
     const data = JSON.parse(jsonStr);
     forces = data.forces || {};
+    isThumbnail = !!data.thumbnail;
 
     // Cache tier colors
     const colors = data.theme?.colors || {};
@@ -282,7 +292,9 @@ window.initGraph = function(jsonStr) {
 
     nodes = (data.nodes || []).map(n => {
         const old = posMap.get(n.id);
-        const radius = Math.random() * 80 + 20;
+        const spawnR = isThumbnail ? 30 : 80;
+        const spawnMin = isThumbnail ? 10 : 20;
+        const radius = Math.random() * spawnR + spawnMin;
         const angle  = Math.random() * 2 * Math.PI;
         return Object.assign(n, {
             x:  old ? old.x  : Math.cos(angle) * radius + W / 2,
@@ -313,7 +325,12 @@ window.initGraph = function(jsonStr) {
         .force('collide', d3.forceCollide().radius(d => nodeRadius(d) + 2))
         .on('tick', draw);
 
+    if (isThumbnail) {
+        sim.alphaDecay(0.08).alphaMin(0.05).velocityDecay(0.6);
+    }
+
     draw();
+    bindInteractions();
 };
 
 // ── updateForces ──────────────────────────────────────────────────────────────
