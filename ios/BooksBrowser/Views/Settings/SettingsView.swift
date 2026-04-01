@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Environment(\.subscriptionManager) var subscriptionManager
     @Environment(\.openURL) var openURL
     @Environment(\.requestReview) var requestReview
+    @Environment(\.toastCoordinator) var toastCoordinator
     @EnvironmentObject var appLanguage: AppLanguageStore
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
@@ -37,7 +38,8 @@ struct SettingsView: View {
                     source: source,
                     target: target,
                     authManager: authManager,
-                    kgService: kgService
+                    kgService: kgService,
+                    toastCoordinator: toastCoordinator
                 )
             },
             manualLoginUserId: manualLoginBinding,
@@ -62,7 +64,7 @@ struct SettingsView: View {
             }
         }
         .onChange(of: coordinator.optionalIntegrationApiKey) { _, _ in
-            coordinator.scheduleOptionalIntegrationSave(authManager: authManager, kgService: kgService)
+            coordinator.scheduleOptionalIntegrationSave(authManager: authManager, kgService: kgService, toastCoordinator: toastCoordinator)
         }
         .onAppear {
             coordinator.handleAppear()

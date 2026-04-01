@@ -18,14 +18,16 @@ import SwiftData
         name: String,
         color: String?,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) async
     func updateNotebook(
         _ notebook: Notebook,
         name: String,
         color: String?,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) async
     func deleteNotebook(
         _ notebook: Notebook,
@@ -77,15 +79,18 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         name: String,
         color: String?,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) async {
         do {
             let remote = try await kgService.createNotebook(name: name, color: color)
             let nb = Notebook(remoteId: remote.id, name: remote.name, color: remote.color)
             nb.syncStatus = 1
             modelContext.insert(nb)
-            modelContext.safeSave()
+            modelContext.safeSaveWithToast(toastCoordinator)
+            toastCoordinator.success("已建立")
         } catch {
+            toastCoordinator.error("建立失敗")
             AppLog.kg.error("createNotebook failed: \(error.localizedDescription)")
         }
     }
@@ -95,15 +100,18 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         name: String,
         color: String?,
         modelContext: ModelContext,
-        kgService: any KGServing
+        kgService: any KGServing,
+        toastCoordinator: AppToastCoordinator
     ) async {
         do {
             let remote = try await kgService.updateNotebook(id: notebook.remoteId, name: name, color: color)
             notebook.name = remote.name
             notebook.color = remote.color
             notebook.updatedAt = Date()
-            modelContext.safeSave()
+            modelContext.safeSaveWithToast(toastCoordinator)
+            toastCoordinator.success("已更新")
         } catch {
+            toastCoordinator.error("更新失敗")
             AppLog.kg.error("updateNotebook failed: \(error.localizedDescription)")
         }
     }
@@ -123,7 +131,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
             notebook.isDeleted = true
             notebook.updatedAt = Date()
-            modelContext.safeSave()
+            modelContext.safeSaveWithToast(toastCoordinator)
         } catch {
             toastCoordinator.error("刪除失敗")
             AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")

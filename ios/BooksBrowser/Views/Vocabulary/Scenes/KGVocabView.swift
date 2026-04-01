@@ -14,6 +14,7 @@ struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Binding var searchText: String
 
     let notebookId: String
@@ -254,7 +255,8 @@ struct KGVocabView: View {
         coordinator.handleBatchDelete(
             selectionState.selectedIDs,
             syncedEntries: syncedEntries,
-            modelContext: modelContext
+            modelContext: modelContext,
+            toastCoordinator: toastCoordinator
         )
         selectionState.exit()
     }
@@ -267,7 +269,8 @@ struct KGVocabView: View {
                 ids,
                 syncedEntries: syncedEntries,
                 kgService: kgService,
-                modelContext: modelContext
+                modelContext: modelContext,
+                toastCoordinator: toastCoordinator
             )
         }
     }
@@ -283,7 +286,8 @@ struct KGVocabView: View {
                     toNotebook: notebook.remoteId,
                     fromNotebook: notebookId,
                     kgService: kgService,
-                    modelContext: modelContext
+                    modelContext: modelContext,
+                    toastCoordinator: toastCoordinator
                 )
             } catch {
                 coordinator.errorMessage = error.localizedDescription
