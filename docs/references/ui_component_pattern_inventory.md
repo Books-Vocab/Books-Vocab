@@ -3,11 +3,11 @@ tier: reference
 scope:
   - ios/BooksBrowser/UIComponents
   - ios/BooksBrowser/Views
-verified_against: 4eaa92b
+verified_against: 05acfbf
 -->
 # UI Component & Pattern Inventory
 
-Date: 2026-03-09
+Date: 2026-04-01
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
@@ -58,8 +58,23 @@ Scope: `ios/BooksBrowser`
 - `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 是全畫面頂端固定欄而非 panel 內 transient 訊息
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
 
+#### Toast 子系統
+
+主要檔案：
+- `ios/BooksBrowser/UIComponents/AppToast.swift`
+- `ios/BooksBrowser/UIComponents/AppToastCoordinator.swift`
+- `ios/BooksBrowser/UIComponents/View+ToastSheet.swift`
+- `ios/BooksBrowser/Services/ModelContext+SafeSave.swift`
+
+核心元件：
+- `AppToast` — capsule 形狀 toast UI，支援 swipe dismiss
+- `AppToastCoordinator` — toast 管理器 + `AppToastItem` 資料模型（style: success/info/warning/error）
+- `toastSheet` — 自動在 sheet 內注入 `toastOverlay()` 的 view modifier
+- `toastFullScreenCover` — 同上，用於 fullScreenCover
+- `safeSaveWithToast()` — `ModelContext` 安全存檔 + toast 回饋
+
 責任：
-- app-wide card / empty state / message / tab / search / row / action chrome / banner / sheet presentation
+- app-wide card / empty state / message / tab / search / row / action chrome / banner / sheet presentation / toast notification
 
 不該做的事：
 - feature-specific 視覺語言不應直接塞回這層
@@ -92,9 +107,10 @@ Scope: `ios/BooksBrowser`
 - `VocabTimelineRow`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
+- `GraphThumbnailWebView` — 雙平台（iOS `UIViewRepresentable` / macOS `NSViewRepresentable`）小型圖譜預覽，用於 StatsPresenter
 
 責任：
-- vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層
+- vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層、graph thumbnail
 
 ### Reader Layer
 
@@ -116,16 +132,18 @@ Scope: `ios/BooksBrowser`
 - `ReaderSettingsPanelPresenter`
 - `ReaderSettingsVocabPresenter`
 - `ReaderViewPresenter`
-- `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter，以 variant enum 分派 glass / vocab 佈局，取代呼叫端直接判斷兩條分支
+- `ReaderSettingsPresenter` — 閱讀器設定的頂層 presenter（vocab 單一模式，glass 分支已移除）
+- `PDFReaderView` — PDF 格式閱讀器（iOS only）
 
 責任：
-- reader glass / vocab 兩條 visual branch
 - reader loading / overlay / header / translation / settings panel
-- variant enum 分派，隔離呼叫端對視覺分支的感知
+- PDF reader 獨立路徑
+- 整層以 `#if os(iOS)` 隔離，macOS 暫不啟用
 
 目前狀態：
 - motion 已大幅收斂
-- state presentation 已開始透過 shared state message 語法統一
+- state presentation 已透過 shared state message 語法統一
+- glass 分支已完全移除，僅保留 vocab 模式
 
 ### Settings Layer
 
@@ -338,24 +356,24 @@ Scope: `ios/BooksBrowser`
 影響：
 - 可用，但長期容易維持兩套語言
 
-### Gap 2: Reader 仍有 glass / vocab 雙 presenter 分支
+### Gap 2: Raw spacing magic numbers 大量存在
 
 現況：
-- 視覺語言一致度已提高
-- 但 presenter 結構仍是雙分支
+- Color / Font / Animation token 覆蓋率良好
+- 但 spacing / padding 仍有 200+ 處直接使用數字
+- 主要集中在 UIComponents、ReaderSettings、TranslationVocab、StatsPresenter
 
 影響：
-- 重用仍高於完全手刻
-- 但維護成本仍高於單一 state shell
+- spacing 不一致，難以全局調整
 
-### Gap 3: Top-level state matrix 仍未成文
+### Gap 3: 28 個 View 缺少 #Preview
 
 現況：
-- state message component 已開始形成
-- 但每個畫面有哪些狀態還沒做 matrix
+- 核心場景（KGVocab、Bookshelf、TodayReview、Settings）有 Preview
+- 但 AddLinkSheet、WordDetailPresenter、StatsPresenter、NotebookListView 等 28 個 View 缺少
 
 影響：
-- 未來新增功能時，還是可能漏掉 empty / retry / partial failure
+- 開發時無法快速預覽，UI 變更驗證效率低
 
 ---
 
