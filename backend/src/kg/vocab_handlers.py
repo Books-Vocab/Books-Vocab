@@ -22,23 +22,27 @@ from .api_models import (
     VocabEntry,
 )
 from .notebook import validate_notebook_access
-from .vocab_service import (
-    add_vocab_entries,
+from .vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
     batch_delete_vocab_words,
-    create_manual_link,
-    delete_graph_link,
     delete_vocab_word,
-    graph_links_payload,
-    hide_graph_link,
     list_vocab_cards,
     lookup_vocab_word,
     move_vocab_words,
+)
+from .vocab_graph import graph_links_payload
+from .vocab_graph_ops import (
+    create_manual_link,
+    delete_graph_link,
+    hide_graph_link,
+    unhide_graph_link,
+)
+from .vocab_intake import add_vocab_entries
+from .vocab_review import (
     pull_daily_review_stats,
     push_daily_review_stats,
     push_review_states,
-    unhide_graph_link,
 )
 
 
