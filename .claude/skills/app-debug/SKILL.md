@@ -1,6 +1,7 @@
 ---
 name: debug
 description: "Use when encountering any bug, test failure, or unexpected behavior — root cause investigation with parallel hypothesis testing via opus agents."
+user-invocable: true
 ---
 
 # Debug: 根因優先 + 平行假說驗證
