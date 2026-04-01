@@ -3,7 +3,7 @@ import SwiftUI
 /// Vocabulary 場景四態
 enum VocabScenePhase {
     case loading(title: String, systemImage: String)
-    case empty(title: String, systemImage: String, description: String)
+    case empty(title: String, systemImage: String, description: String, action: AppEmptyStateAction? = nil)
     case error(title: String, systemImage: String, retryAction: () -> Void)
     case content
 }
@@ -38,12 +38,13 @@ struct VocabSceneShell<Content: View>: View {
                 }
             }
 
-        case .empty(let title, let systemImage, let description):
+        case .empty(let title, let systemImage, let description, let action):
             centeredWrapper {
                 VocabEmptyStateCard(
                     title: title,
                     systemImage: systemImage,
-                    description: description
+                    description: description,
+                    action: action
                 )
             }
 
