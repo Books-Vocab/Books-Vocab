@@ -557,6 +557,16 @@ tr.expanded td { background: #f0ece4; border-bottom-color: transparent; }
   text-overflow: ellipsis;
   white-space: nowrap;
 }
+.log-rid {
+  color: var(--ink-light);
+  flex-shrink: 0;
+  font-size: 10px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  border: 1px dashed var(--border);
+  border-radius: 2px;
+  padding: 1px 4px;
+  background: #faf8f2;
+}
 .log-msg { color: var(--ink); word-break: break-all; }
 .log-empty {
   padding: 40px;
@@ -1005,13 +1015,18 @@ function renderLogs() {
   const box = document.getElementById('log-box');
   let rows = _logs;
   if (_logLevel) rows = rows.filter(r => r.level === _logLevel);
-  if (q) rows = rows.filter(r => r.msg.toLowerCase().includes(q) || r.name.toLowerCase().includes(q));
+  if (q) rows = rows.filter(r =>
+    r.msg.toLowerCase().includes(q) ||
+    r.name.toLowerCase().includes(q) ||
+    (r.request_id || '').toLowerCase().includes(q)
+  );
   if (!rows.length) { box.innerHTML = '<div class="log-empty">無符合的日誌</div>'; return; }
   box.innerHTML = [...rows].reverse().map(r =>
     `<div class="log-entry lv-${r.level}">
       <span class="log-ts">${r.ts}</span>
       <span class="log-lv">${r.level}</span>
       <span class="log-name" title="${r.name}">${r.name.replace('kg.','')}</span>
+      ${r.request_id && r.request_id !== '-' ? `<span class="log-rid" title="request_id">${r.request_id}</span>` : ''}
       <span class="log-msg">${r.msg.replace(/</g,'&lt;')}</span>
     </div>`
   ).join('');

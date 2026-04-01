@@ -239,7 +239,15 @@ enum SettingsPresenterPreviewData {
             lastSyncDescription: "剛剛",
             debug: .init(
                 isUsingLocalServer: true,
-                localServerURL: "http://127.0.0.1:8000"
+                localServerURL: "http://127.0.0.1:8000",
+                observation: .init(
+                    previewLines: [
+                        "12:30:02 [INFO] event=app_session_started",
+                        "12:30:05 [INFO] event=background_sync_triggered",
+                        "12:30:07 [INFO] event=background_sync_completed duration_ms=1820 success=true"
+                    ],
+                    totalCount: 24
+                )
             )
         ),
         subscription: nil,
