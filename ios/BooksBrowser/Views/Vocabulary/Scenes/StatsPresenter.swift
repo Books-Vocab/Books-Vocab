@@ -10,6 +10,9 @@ import SwiftData
 
 struct StatsPresenter: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.kgService) private var kgService
+    @Environment(\.authManager) private var authManager
+    @Environment(\.colorScheme) private var colorScheme
 
     let filter: NotebookFilter
 
@@ -27,6 +30,7 @@ struct StatsPresenter: View {
     @State private var summary: StatsPresentation.Summary?
     @State private var showCalendar = false
     @State private var contentReady = false
+    @State private var graphLinks: [KGGraphLink]?
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
@@ -73,12 +77,12 @@ struct StatsPresenter: View {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
-            let result = StatsPresentation.buildSummary(
+            summary = StatsPresentation.buildSummary(
                 from: entries,
                 reviewRecords: records,
                 forecastDays: days
             )
-            summary = result
+            graphLinks = await loadGraphLinks()
         }
         .sheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
@@ -99,6 +103,14 @@ struct StatsPresenter: View {
             : reviewRecords
     }
 
+    private func loadGraphLinks() async -> [KGGraphLink] {
+        if authManager.isDemoMode {
+            return DemoDataProvider.demoGraphLinks
+        }
+        guard authManager.isLoggedIn else { return [] }
+        return (try? await kgService.pullGraphLinks()) ?? []
+    }
+
     private var recomputeKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
@@ -114,22 +126,74 @@ struct StatsPresenter: View {
         NavigationLink {
             KnowledgeGraphView(allEntries: filteredEntries)
         } label: {
-            VocabCard {
-                HStack(spacing: vocabSkin.spacing.inlineGap) {
-                    Image(systemName: "point.3.connected.trianglepath.dotted")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(vocabSkin.palette.accent)
-                    Text("關聯圖".localized)
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
-                    Spacer()
-                    Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconSmall)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+            VocabCard(padding: 0) {
+                VStack(spacing: 0) {
+                    graphEntryHeader
+                        .padding(vocabSkin.metrics.cardBlockPadding)
+
+                    graphEntryBody
+                        .frame(height: 140)
                 }
             }
         }
         .buttonStyle(.liftable)
+    }
+
+    private var graphEntryHeader: some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            Image(systemName: "point.3.connected.trianglepath.dotted")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.accent)
+            Text("關聯圖".localized)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+            Spacer()
+            if let graphLinks, !graphLinks.isEmpty {
+                let nodes = graphThumbnailNodes
+                Text("\(nodes.count) 詞 · \(graphLinks.count) 連結")
+                    .font(vocabSkin.typography.monoLabel)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
+            Image(systemName: "chevron.right")
+                .font(vocabSkin.typography.iconSmall)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+        }
+    }
+
+    @ViewBuilder
+    private var graphEntryBody: some View {
+        if let graphLinks {
+            let nodes = graphThumbnailNodes
+            let nodeIDs = Set(nodes.map(\.id))
+            let edges = KnowledgeGraphPresentation.edges(from: graphLinks, validNodeIDs: nodeIDs)
+
+            if nodes.isEmpty {
+                VocabStateMessageCard(
+                    title: "探索單字建立連結".localized,
+                    systemImage: "point.3.connected.trianglepath.dotted"
+                )
+            } else {
+                GraphThumbnailWebView(
+                    nodes: nodes,
+                    edges: edges,
+                    theme: KnowledgeGraphPresentation.theme(for: vocabSkin),
+                    colorScheme: colorScheme
+                )
+            }
+        } else {
+            ProgressView()
+                .controlSize(.small)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
+    private var graphThumbnailNodes: [KnowledgeGraphNode] {
+        guard let graphLinks else { return [] }
+        return KnowledgeGraphPresentation.nodes(
+            from: filteredEntries,
+            links: graphLinks,
+            showIsolatedNodes: false
+        )
     }
 
     // MARK: - Sections
