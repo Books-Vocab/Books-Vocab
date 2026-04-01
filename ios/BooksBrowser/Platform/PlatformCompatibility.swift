@@ -123,6 +123,7 @@ private struct MacKeyResponderRepresentable: NSViewRepresentable {
 private final class MacKeyResponderView: NSView {
     var onKeyPress: ((MacKeyPress) -> Bool)?
     private var isActive = true
+    private var pendingFirstResponder: DispatchWorkItem?
 
     override var acceptsFirstResponder: Bool { true }
 
@@ -144,16 +145,24 @@ private final class MacKeyResponderView: NSView {
     }
 
     func setActive(_ active: Bool) {
+        pendingFirstResponder?.cancel()
+        pendingFirstResponder = nil
         isActive = active
-        ensureFirstResponder()
+        if active {
+            ensureFirstResponder()
+        } else if let window, window.firstResponder === self {
+            window.makeFirstResponder(nil)
+        }
     }
 
     private func ensureFirstResponder() {
         guard isActive, let window, window.firstResponder !== self else { return }
-        DispatchQueue.main.async { [weak self] in
+        let item = DispatchWorkItem { [weak self] in
             guard let self, self.isActive else { return }
             self.window?.makeFirstResponder(self)
         }
+        pendingFirstResponder = item
+        DispatchQueue.main.async(execute: item)
     }
 
     private func map(_ event: NSEvent) -> MacKeyPress? {
