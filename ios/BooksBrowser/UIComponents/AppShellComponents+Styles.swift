@@ -74,7 +74,7 @@ extension AppSearchFieldStyle {
             clearButtonFont: skin.typography.iconMedium,
             clearButtonColor: skin.palette.quaternaryText,
             background: skin.palette.mutedFill,
-            border: .clear,
+            border: skin.palette.divider,
             cornerRadius: skin.radii.control
         )
     }

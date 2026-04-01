@@ -2,7 +2,8 @@ import SwiftUI
 import SwiftData
 import os
 
-struct TodayReviewSession: Identifiable {
+struct TodayReviewSession: Identifiable, Equatable {
+    static func == (lhs: TodayReviewSession, rhs: TodayReviewSession) -> Bool { lhs.id == rhs.id }
     let id = UUID()
     let entries: [VocabularyEntry]
 }
