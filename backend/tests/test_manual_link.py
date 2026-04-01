@@ -66,7 +66,7 @@ class TestFindLinkBetween:
 import pytest
 from unittest.mock import MagicMock
 from kg.judge import ManualLinkJudge
-from kg.vocab_service import create_manual_link
+from kg.vocab_graph_ops import create_manual_link
 
 
 class FakeCard:
