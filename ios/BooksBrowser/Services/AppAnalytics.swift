@@ -78,6 +78,10 @@ enum AppAnalytics {
 
     private static let signposter = OSSignposter(logHandle: signpostLog)
 
+    private static func redactedTextSummary(_ text: String) -> String {
+        "chars=\(text.count)"
+    }
+
     static func recordObservation(
         level: AppObservationLevel,
         category: String = "analytics",
@@ -95,23 +99,23 @@ enum AppAnalytics {
         case .translationRequested(let word, let type):
             recordObservation(
                 level: .info,
-                message: "event=translation_requested word=\(word) type=\(type.rawValue)"
+                message: "event=translation_requested word=\(redactedTextSummary(word)) type=\(type.rawValue)"
             )
-            logger.info("event=translation_requested word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public)")
+            logger.info("event=translation_requested word=\(word, privacy: .private(mask: .hash)) type=\(type.rawValue, privacy: .public)")
 
         case .translationCompleted(let word, let type, let latencyMs):
             recordObservation(
                 level: .info,
-                message: "event=translation_completed word=\(word) type=\(type.rawValue) latency_ms=\(latencyMs)"
+                message: "event=translation_completed word=\(redactedTextSummary(word)) type=\(type.rawValue) latency_ms=\(latencyMs)"
             )
-            logger.info("event=translation_completed word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public) latency_ms=\(latencyMs)")
+            logger.info("event=translation_completed word=\(word, privacy: .private(mask: .hash)) type=\(type.rawValue, privacy: .public) latency_ms=\(latencyMs)")
 
         case .translationFailed(let word, let type, let error):
             recordObservation(
                 level: .warning,
-                message: "event=translation_failed word=\(word) type=\(type.rawValue) error=\(error)"
+                message: "event=translation_failed word=\(redactedTextSummary(word)) type=\(type.rawValue) error=redacted"
             )
-            logger.warning("event=translation_failed word=\(word, privacy: .public) type=\(type.rawValue, privacy: .public) error=\(error, privacy: .public)")
+            logger.warning("event=translation_failed word=\(word, privacy: .private(mask: .hash)) type=\(type.rawValue, privacy: .public) error=\(error, privacy: .private(mask: .hash))")
 
         // — Sync —
         case .syncStarted:
@@ -157,8 +161,8 @@ enum AppAnalytics {
             logger.info("event=login_completed provider=\(provider, privacy: .public)")
 
         case .loginFailed(let provider, let error):
-            recordObservation(level: .warning, message: "event=login_failed provider=\(provider) error=\(error)")
-            logger.warning("event=login_failed provider=\(provider, privacy: .public) error=\(error, privacy: .public)")
+            recordObservation(level: .warning, message: "event=login_failed provider=\(provider) error=redacted")
+            logger.warning("event=login_failed provider=\(provider, privacy: .public) error=\(error, privacy: .private(mask: .hash))")
 
         case .logoutPerformed(let reason):
             recordObservation(level: .info, message: "event=logout_performed reason=\(reason)")
