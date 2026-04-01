@@ -11,20 +11,28 @@ struct AppEmptyStateStyle {
     let verticalPadding: CGFloat
 }
 
+struct AppEmptyStateAction {
+    let title: String
+    let systemImage: String?
+    let handler: () -> Void
+}
+
 struct AppEmptyStateContent: View {
     @Environment(\.appTheme) private var appTheme
     let title: String
     let systemImage: String
     let description: String
     let guidanceText: String?
+    let action: AppEmptyStateAction?
     let customStyle: AppEmptyStateStyle?
     let symbolBounce: Bool
 
-    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, symbolBounce: Bool = false, style: AppEmptyStateStyle? = nil) {
+    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, action: AppEmptyStateAction? = nil, symbolBounce: Bool = false, style: AppEmptyStateStyle? = nil) {
         self.title = title
         self.systemImage = systemImage
         self.description = description
         self.guidanceText = guidanceText
+        self.action = action
         self.symbolBounce = symbolBounce
         self.customStyle = style
     }
@@ -52,6 +60,13 @@ struct AppEmptyStateContent: View {
                     .foregroundStyle(style.descriptionColor.opacity(0.7))
                     .multilineTextAlignment(.center)
             }
+
+            if let action {
+                Button(action: action.handler) {
+                    Label(action.title, systemImage: action.systemImage ?? "arrow.right")
+                }
+                .buttonStyle(.appAction(.outline))
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -62,6 +77,7 @@ struct AppEmptyStateCard: View {
     let title: String
     let systemImage: String
     let description: String
+    let action: AppEmptyStateAction?
     let customCardStyle: AppSectionCardStyle?
     let customContentStyle: AppEmptyStateStyle?
 
@@ -69,12 +85,14 @@ struct AppEmptyStateCard: View {
         title: String,
         systemImage: String,
         description: String,
+        action: AppEmptyStateAction? = nil,
         cardStyle: AppSectionCardStyle? = nil,
         contentStyle: AppEmptyStateStyle? = nil
     ) {
         self.title = title
         self.systemImage = systemImage
         self.description = description
+        self.action = action
         self.customCardStyle = cardStyle
         self.customContentStyle = contentStyle
     }
@@ -88,6 +106,7 @@ struct AppEmptyStateCard: View {
                 title: title,
                 systemImage: systemImage,
                 description: description,
+                action: action,
                 style: contentStyle
             )
             .padding(.vertical, contentStyle.verticalPadding)
