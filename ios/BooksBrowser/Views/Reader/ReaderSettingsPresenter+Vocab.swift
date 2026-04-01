@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 // MARK: - Vocab Layout & Sections
@@ -223,3 +224,4 @@ extension ReaderSettingsPresenter {
         .buttonStyle(.plain)
     }
 }
+#endif

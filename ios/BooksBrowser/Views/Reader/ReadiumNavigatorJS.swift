@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReadiumNavigatorJS.swift
 //  BooksBrowser
@@ -598,3 +599,4 @@ enum ReadiumNavigatorJS {
         """
     }
 }
+#endif

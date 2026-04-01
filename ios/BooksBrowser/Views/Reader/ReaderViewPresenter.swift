@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
@@ -58,3 +59,4 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
         }
     }
 }
+#endif

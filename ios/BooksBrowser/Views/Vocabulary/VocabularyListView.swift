@@ -56,7 +56,7 @@ struct VocabularyListView: View {
             routedContent(classified: classified)
         }
         .navigationTitle(notebookName)
-        .navigationBarTitleDisplayMode(.large)
+        .largeNavigationBarTitle()
         .modifier(VocabularyListToolbar(
             selectedTab: selectedTab,
             isLoggedIn: authManager.isLoggedIn,

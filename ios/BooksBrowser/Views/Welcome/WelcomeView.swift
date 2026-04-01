@@ -55,7 +55,9 @@ struct WelcomeView: View {
                         .tag(index)
                 }
             }
+            #if os(iOS)
             .tabViewStyle(.page(indexDisplayMode: .always))
+            #endif
             .frame(height: AppWelcomeMetrics.pageHeight)
 
             Spacer()

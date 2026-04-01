@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct QuotaBar: View {
@@ -49,3 +50,4 @@ struct QuotaBar: View {
             .padding()
     }
 }
+#endif

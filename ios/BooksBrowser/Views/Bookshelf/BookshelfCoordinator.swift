@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import SwiftData
 import TipKit
@@ -137,3 +138,4 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
     }
 }
+#endif

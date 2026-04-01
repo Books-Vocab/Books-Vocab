@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import ReadiumShared
 
@@ -115,3 +116,4 @@ extension ReaderView {
         }
     }
 }
+#endif

@@ -17,7 +17,7 @@ struct SettingsReviewSection: View {
         }
         .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("複習節奏".localized)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBarTitle()
     }
 
     // MARK: - Mode Section

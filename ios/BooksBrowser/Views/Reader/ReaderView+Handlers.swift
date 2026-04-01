@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import ReadiumShared
 
@@ -92,3 +93,4 @@ extension ReaderView {
         return true
     }
 }
+#endif

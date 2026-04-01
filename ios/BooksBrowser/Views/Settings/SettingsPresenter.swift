@@ -63,9 +63,9 @@ struct SettingsPresenter: View {
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("設定".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized, action: actions.dismiss)
                         .fontWeight(.semibold)
                 }
@@ -102,7 +102,7 @@ struct SettingsPresenter: View {
                     }
                     .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
                     .navigationTitle("訂閱".localized)
-                    .navigationBarTitleDisplayMode(.inline)
+                    .inlineNavigationBarTitle()
                 }
             }
         }

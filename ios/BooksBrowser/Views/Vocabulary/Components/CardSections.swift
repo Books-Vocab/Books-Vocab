@@ -107,7 +107,7 @@ struct CardHeroSection: View {
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = card.word
+                PlatformClipboard.copy(card.word)
                 copyTrigger.toggle()
                 toastCoordinator.success("已複製")
             }
@@ -151,7 +151,7 @@ struct CardExamplesSection: View {
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = examples.joined(separator: "\n")
+                PlatformClipboard.copy(examples.joined(separator: "\n"))
                 copyTrigger.toggle()
                 toastCoordinator.success("已複製")
             }
@@ -194,7 +194,7 @@ struct CardSourceSection: View {
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = copyText
+                PlatformClipboard.copy(copyText)
                 copyTrigger.toggle()
                 toastCoordinator.success("已複製")
             }
@@ -235,7 +235,7 @@ struct CardExplanationSection: View {
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = explanation
+                PlatformClipboard.copy(explanation)
                 copyTrigger.toggle()
                 toastCoordinator.success("已複製")
             }
@@ -272,7 +272,7 @@ struct CardFormsSection: View {
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
-                UIPasteboard.general.string = forms.joined(separator: ", ")
+                PlatformClipboard.copy(forms.joined(separator: ", "))
                 copyTrigger.toggle()
                 toastCoordinator.success("已複製")
             }

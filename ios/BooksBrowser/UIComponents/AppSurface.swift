@@ -99,7 +99,7 @@ extension View {
         in shape: some Shape = Capsule(),
         interactive: Bool = false
     ) -> some View {
-        if #available(iOS 26.0, *) {
+        if #available(iOS 26.0, macOS 26.0, *) {
             let g: Glass = interactive ? .regular.interactive() : .regular
             self.glassEffect(g, in: shape)
         } else {

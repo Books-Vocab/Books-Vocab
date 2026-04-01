@@ -1,6 +1,7 @@
 import SwiftUI
 import WebKit
 
+#if os(iOS)
 struct GraphThumbnailWebView: UIViewRepresentable {
     let nodes: [KnowledgeGraphNode]
     let edges: [KnowledgeGraphEdge]
@@ -10,16 +11,59 @@ struct GraphThumbnailWebView: UIViewRepresentable {
     func makeCoordinator() -> Coordinator { Coordinator() }
 
     func makeUIView(context: Context) -> WKWebView {
+        let webView = Self.createWebView(context: context)
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.backgroundColor = .clear
+        return webView
+    }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        Self.performUpdate(webView, context: context, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+        Self.performDismantle(webView)
+    }
+}
+#elseif os(macOS)
+struct GraphThumbnailWebView: NSViewRepresentable {
+    let nodes: [KnowledgeGraphNode]
+    let edges: [KnowledgeGraphEdge]
+    let theme: KnowledgeGraphTheme
+    let colorScheme: ColorScheme
+
+    func makeCoordinator() -> Coordinator { Coordinator() }
+
+    func makeNSView(context: Context) -> WKWebView {
+        Self.createWebView(context: context)
+    }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        Self.performUpdate(webView, context: context, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
+        Self.performDismantle(webView)
+    }
+}
+#endif
+
+// MARK: - Shared implementation
+
+extension GraphThumbnailWebView {
+    static func createWebView(context: Context) -> WKWebView {
         let config = WKWebViewConfiguration()
         config.userContentController.add(context.coordinator, name: "graphBridge")
 
         let webView = WKWebView(frame: .zero, configuration: config)
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.bounces = false
-        webView.scrollView.backgroundColor = .clear
+        #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.isUserInteractionEnabled = false
+        #elseif os(macOS)
+        webView.setValue(false, forKey: "drawsBackground")
+        #endif
         context.coordinator.webView = webView
 
         guard let htmlURL = Bundle.main.url(forResource: "graph", withExtension: "html") else {
@@ -29,7 +73,9 @@ struct GraphThumbnailWebView: UIViewRepresentable {
         return webView
     }
 
-    func updateUIView(_ webView: WKWebView, context: Context) {
+    static func performUpdate(_ webView: WKWebView, context: Context,
+                               nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
+                               theme: KnowledgeGraphTheme, colorScheme: ColorScheme) {
         let coord = context.coordinator
         var hasher = Hasher()
         hasher.combine(colorScheme == .dark)
@@ -42,16 +88,17 @@ struct GraphThumbnailWebView: UIViewRepresentable {
         let sig = "\(hasher.finalize())"
         guard coord.lastSignature != sig else { return }
         coord.lastSignature = sig
-        coord.sendInitGraph(buildPayload(), webView: webView)
+        coord.sendInitGraph(buildPayload(nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme), webView: webView)
     }
 
-    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
+    static func performDismantle(_ webView: WKWebView) {
         webView.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
     }
 
     // MARK: - Payload
 
-    private func buildPayload() -> String {
+    private static func buildPayload(nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
+                                      theme: KnowledgeGraphTheme, colorScheme: ColorScheme) -> String {
         struct NodePayload: Encodable {
             let id: String; let word: String; let tier: String
             let color: String?; let ratio: Double?; let degree: Int

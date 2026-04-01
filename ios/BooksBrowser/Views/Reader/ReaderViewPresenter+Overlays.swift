@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 extension ReaderViewPresenter {
@@ -120,3 +121,4 @@ private struct VocabLoadingOverlayChrome: ViewModifier {
         }
     }
 }
+#endif
