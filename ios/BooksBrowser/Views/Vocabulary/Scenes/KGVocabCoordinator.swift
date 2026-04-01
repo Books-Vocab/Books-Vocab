@@ -39,8 +39,9 @@ final class KGVocabCoordinator: KGVocabCoordinating {
     ) {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
         entry.queueDelete()
-        modelContext.safeSaveWithToast(toastCoordinator)
-        toastCoordinator.success("已刪除")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除")
+        }
     }
 
     func loadInitialData(
@@ -132,8 +133,9 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         for entry in entries {
             entry.queueDelete()
         }
-        modelContext.safeSaveWithToast(toastCoordinator)
-        toastCoordinator.success("已刪除 \(entries.count) 個")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除 \(entries.count) 個")
+        }
     }
 
     func handleBatchArchive(
@@ -172,12 +174,13 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 }
             }
         }
-        modelContext.safeSaveWithToast(toastCoordinator)
-        if failCount > 0 {
-            let successCount = entries.count - failCount
-            errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
-        } else {
-            toastCoordinator.success("已封存 \(entries.count) 個")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            if failCount > 0 {
+                let successCount = entries.count - failCount
+                errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
+            } else {
+                toastCoordinator.success("已封存 \(entries.count) 個")
+            }
         }
     }
 
@@ -196,7 +199,8 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         for entry in entries {
             entry.notebookId = toNotebook
         }
-        modelContext.safeSaveWithToast(toastCoordinator)
-        toastCoordinator.success("已移動 \(entries.count) 個")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已移動 \(entries.count) 個")
+        }
     }
 }
