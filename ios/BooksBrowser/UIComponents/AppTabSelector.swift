@@ -158,7 +158,7 @@ extension AppTabSelectorStyle {
             unselectedBorder: .clear,
             selectedOuterBorder: .clear,
             unselectedOuterBorder: .clear,
-            containerBackground: .clear,
+            containerBackground: skin.palette.stageBackground,
             controlRadius: skin.radii.control,
             containerRadius: skin.radii.control + 4,
             outerBorderInset: 0
