@@ -133,7 +133,9 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
             notebook.isDeleted = true
             notebook.updatedAt = Date()
-            modelContext.safeSaveWithToast(toastCoordinator)
+            if modelContext.safeSaveWithToast(toastCoordinator) {
+                toastCoordinator.success("已刪除")
+            }
         } catch {
             toastCoordinator.error("刪除失敗")
             AppLog.kg.error("deleteNotebook failed: \(error.localizedDescription)")
