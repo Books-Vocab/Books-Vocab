@@ -83,7 +83,8 @@ struct BookshelfView: View {
                 coordinator.handleFileImport(
                     result,
                     modelContext: modelContext,
-                    importService: bookshelfImportService
+                    importService: bookshelfImportService,
+                    toastCoordinator: toastCoordinator
                 )
             }
             .alert("匯入錯誤".localized, isPresented: $coordinator.showError) {
