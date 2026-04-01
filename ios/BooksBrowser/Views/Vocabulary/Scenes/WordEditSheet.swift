@@ -39,7 +39,7 @@ struct WordEditSheet: View {
                 }
             }
             .navigationTitle(entry.word)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消".localized) { dismiss() }

@@ -54,7 +54,7 @@ struct TranslationLanguageSettingsView: View {
         }
         .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("翻譯語言")
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBarTitle()
     }
 
     private func languageRow(

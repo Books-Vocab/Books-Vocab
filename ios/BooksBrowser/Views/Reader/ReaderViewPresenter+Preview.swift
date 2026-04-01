@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 private struct ReaderChromePreviewScene: View {
@@ -198,3 +199,4 @@ private struct ReaderChromePreviewScene: View {
         showsErrorCard: false
     )
 }
+#endif

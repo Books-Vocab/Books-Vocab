@@ -102,7 +102,7 @@ struct NotebookFilterPickerSheet: View {
                 }
             }
             .navigationTitle("篩選單字本".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }

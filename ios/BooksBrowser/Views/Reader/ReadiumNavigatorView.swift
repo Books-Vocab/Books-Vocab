@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReadiumNavigatorView.swift
 //  BooksBrowser
@@ -247,3 +248,4 @@ struct ReadiumNavigatorView: UIViewControllerRepresentable {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import os
 
@@ -83,3 +84,4 @@ extension ReaderTranslationHandler {
         }
     }
 }
+#endif

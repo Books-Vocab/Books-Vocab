@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ReadiumShared
 import ReadiumAdapterGCDWebServer
@@ -13,3 +14,4 @@ protocol ReadiumServing: AnyObject {
     func extractCover(from publication: Publication) async -> Data?
     func extractUniqueWords(from publication: Publication) async -> Set<String>
 }
+#endif

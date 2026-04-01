@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ReadiumNavigator
 import ReadiumShared
@@ -151,3 +152,4 @@ struct BridgePlanner {
         return []
     }
 }
+#endif

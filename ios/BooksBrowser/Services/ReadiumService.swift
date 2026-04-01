@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReadiumService.swift
 //  BooksBrowser
@@ -182,3 +183,4 @@ fileprivate extension URL {
         preconditionFailure("URL cannot be converted to FileURL: \(self)")
     }
 }
+#endif

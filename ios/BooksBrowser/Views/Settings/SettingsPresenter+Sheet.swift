@@ -58,9 +58,9 @@ struct OptionalIntegrationInfoSheetView: View {
                 .padding(vocabSkin.spacing.sheetPadding)
             }
             .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }
                 }
             }

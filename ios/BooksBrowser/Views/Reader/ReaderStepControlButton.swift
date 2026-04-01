@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct ReaderStepControlButton: View {
@@ -23,3 +24,4 @@ struct ReaderStepControlButton: View {
         .disabled(!enabled)
     }
 }
+#endif
