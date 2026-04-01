@@ -85,8 +85,9 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
         fileManager.deleteBookFile(named: book.epubFileName)
         modelContext.delete(book)
-        modelContext.safeSaveWithToast(toastCoordinator)
-        toastCoordinator.success("已刪除")
+        if modelContext.safeSaveWithToast(toastCoordinator) {
+            toastCoordinator.success("已刪除")
+        }
     }
 
     private func performImport(
@@ -117,10 +118,11 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 )
 
                 modelContext.insert(book)
-                modelContext.safeSave()
-                EPUBGuideTip().invalidate(reason: .actionPerformed)
-                AppLog.book.info("Book saved: \(book.title)")
-                toastCoordinator.success("已匯入")
+                if modelContext.safeSaveWithToast(toastCoordinator) {
+                    EPUBGuideTip().invalidate(reason: .actionPerformed)
+                    AppLog.book.info("Book saved: \(book.title)")
+                    toastCoordinator.success("已匯入")
+                }
 
                 isLoading = false
                 loadingMessage = ""
