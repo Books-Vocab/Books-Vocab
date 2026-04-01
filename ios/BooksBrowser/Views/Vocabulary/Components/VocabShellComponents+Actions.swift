@@ -148,7 +148,7 @@ struct VocabSortPill: View {
             .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
             .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
                     .fill(vocabSkin.palette.mutedFill)
             )
         }
