@@ -77,7 +77,9 @@ struct NotebookListView: View {
                                     color: notebook.color.flatMap { Color(hex: $0) }
                                 )
                             }
+                            #if os(iOS)
                             .buttonStyle(.pressable)
+                            #endif
                             .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                             .contextMenu {
                                 Button {

@@ -1,4 +1,3 @@
-#if os(iOS)
 //
 //  LoginSheet.swift
 //  BooksBrowser
@@ -19,7 +18,7 @@ struct LoginSheet: View {
         NavigationStack {
             content
                 .navigationTitle("登入帳號".localized)
-                .navigationBarTitleDisplayMode(.inline)
+                .inlineNavigationBarTitle()
                 .toolbar {
                     ToolbarItem(placement: .cancellationAction) {
                         Button("取消".localized) { dismiss() }
@@ -153,4 +152,3 @@ struct LoginSheet: View {
         LoginSheet()
     }
 }
-#endif
