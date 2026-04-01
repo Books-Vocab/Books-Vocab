@@ -60,7 +60,7 @@ struct KGVocabView: View {
         }
         .animatePhaseChange(coordinator.isLoading)
         .animatePhaseChange(coordinator.errorMessage == nil)
-        .sheet(item: $coordinator.selectedEntry) { entry in
+        .toastSheet(item: $coordinator.selectedEntry) { entry in
             WordDetailSheet(entry: entry, allEntries: syncedEntries)
                 .appSheet(.large)
         }
@@ -157,7 +157,7 @@ struct KGVocabView: View {
                 }
             }
         }
-        .sheet(isPresented: $showNotebookPicker) {
+        .toastSheet(isPresented: $showNotebookPicker) {
             NotebookPickerSheet(excludeNotebookId: notebookId) { notebook in
                 handleBatchMove(to: notebook)
             }
