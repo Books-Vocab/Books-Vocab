@@ -44,6 +44,7 @@ struct ReaderView: View {
 
     // 單字本選擇
     @State private var showNotebookPicker = false
+    @State var showLoginSheet = false
 
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) var authManager
@@ -126,6 +127,9 @@ struct ReaderView: View {
         .toastSheet(isPresented: $showNotebookPicker) {
             ReaderNotebookPicker(book: book)
                 .appSheet(.adaptive)
+        }
+        .sheet(isPresented: $showLoginSheet) {
+            LoginSheet()
         }
     }
 

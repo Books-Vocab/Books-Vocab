@@ -125,12 +125,21 @@ struct VocabEmptyStateCard: View {
     let title: String
     let systemImage: String
     let description: String
+    let action: AppEmptyStateAction?
+
+    init(title: String, systemImage: String, description: String, action: AppEmptyStateAction? = nil) {
+        self.title = title
+        self.systemImage = systemImage
+        self.description = description
+        self.action = action
+    }
 
     var body: some View {
         AppEmptyStateCard(
             title: title,
             systemImage: systemImage,
             description: description,
+            action: action,
             cardStyle: .vocab(vocabSkin),
             contentStyle: .vocab(vocabSkin)
         )

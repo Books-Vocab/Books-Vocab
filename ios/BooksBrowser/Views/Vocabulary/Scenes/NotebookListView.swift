@@ -21,6 +21,7 @@ struct NotebookListView: View {
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var coordinator = NotebookListCoordinator()
+    @State private var showLoginSheet = false
 
     init() {
         let knowledgePredicate = #Predicate<VocabularyEntry> {
@@ -253,12 +254,26 @@ struct NotebookListView: View {
 
     @ViewBuilder
     private var emptyState: some View {
-        VocabSceneShell(phase: .empty(
-            title: "還沒有單字本".localized,
-            systemImage: "books.vertical",
-            description: "登入後自動建立預設單字本".localized
-        )) {
-            EmptyView()
+        if authManager.isLoggedIn {
+            VocabSceneShell(phase: .empty(
+                title: "還沒有單字本".localized,
+                systemImage: "books.vertical",
+                description: "同步完成後會自動建立預設單字本".localized
+            )) {
+                EmptyView()
+            }
+        } else {
+            VocabSceneShell(phase: .empty(
+                title: "還沒有單字本".localized,
+                systemImage: "books.vertical",
+                description: "登入後自動建立預設單字本".localized,
+                action: .init(title: "登入帳號", systemImage: "person.crop.circle", handler: { showLoginSheet = true })
+            )) {
+                EmptyView()
+            }
+            .sheet(isPresented: $showLoginSheet) {
+                LoginSheet()
+            }
         }
     }
 

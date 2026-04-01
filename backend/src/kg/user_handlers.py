@@ -28,12 +28,13 @@ def _build_user_config_response(config: dict[str, Any], jwt_secret: str = "") ->
     mochi_api_key = resolve_mochi_api_key_from_config(config, jwt_secret)
 
     translation_data = config.get("translation")
-    translation = None
     if isinstance(translation_data, dict):
         translation = TranslationLanguageConfig(
             source_lang=translation_data.get("source_lang", "en"),
             target_lang=translation_data.get("target_lang", "zh-Hant"),
         )
+    else:
+        translation = TranslationLanguageConfig()
 
     return UserConfigResponse(
         integrations=UserIntegrationsResponseConfig(
