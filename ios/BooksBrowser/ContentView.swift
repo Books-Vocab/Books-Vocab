@@ -15,6 +15,10 @@ struct ContentView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.networkMonitor) private var networkMonitor
 
+    #if os(macOS)
+    @State private var showSettings = false
+    #endif
+
     var body: some View {
         VStack(spacing: 0) {
             if authManager.isDemoMode {
@@ -40,6 +44,20 @@ struct ContentView: View {
         }
         .animatePhaseChange(networkMonitor.isConnected)
         .animatePhaseChange(authManager.isDemoMode)
+        #if os(macOS)
+        .toolbar {
+            ToolbarItem(placement: .automatic) {
+                Button {
+                    showSettings = true
+                } label: {
+                    Image(systemName: "gearshape")
+                }
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView()
+        }
+        #endif
     }
 }
 
