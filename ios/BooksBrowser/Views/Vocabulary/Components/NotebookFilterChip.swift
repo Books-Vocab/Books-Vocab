@@ -32,7 +32,7 @@ struct NotebookFilterChip: View {
                 in: RoundedRectangle(cornerRadius: skin.radii.chip)
             )
         }
-        .sheet(isPresented: $showPicker) {
+        .toastSheet(isPresented: $showPicker) {
             NotebookFilterPickerSheet(
                 filter: $filter,
                 notebooks: notebooks.filter { !$0.isDeleted }

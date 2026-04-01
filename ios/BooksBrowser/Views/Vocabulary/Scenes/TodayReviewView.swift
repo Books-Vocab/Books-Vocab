@@ -83,11 +83,10 @@ struct TodayReviewView: View {
             onToggleAutoPlayPause: state.toggleAutoPlayPause,
             onDetailTap: state.handleDetailTap
         )
-        .toastOverlay()
         .overlay {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }
-        .sheet(item: $state.tappedLink) { link in
+        .toastSheet(item: $state.tappedLink) { link in
             LinkReasonSheet(link: link, onNavigate: { state.navigateToLinkedCard(link: link) })
                 .appSheet(.medium)
         }

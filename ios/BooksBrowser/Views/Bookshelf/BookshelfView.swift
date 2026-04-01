@@ -90,7 +90,7 @@ struct BookshelfView: View {
             } message: {
                 Text((coordinator.errorMessage ?? "未知錯誤").localized)
             }
-            .sheet(isPresented: $coordinator.showSettings) {
+            .toastSheet(isPresented: $coordinator.showSettings) {
                 SettingsView()
             }
         }

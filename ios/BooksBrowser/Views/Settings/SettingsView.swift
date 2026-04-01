@@ -67,10 +67,10 @@ struct SettingsView: View {
         .onAppear {
             coordinator.handleAppear()
         }
-        .sheet(isPresented: $coordinator.showOptionalIntegrationInfo) {
+        .toastSheet(isPresented: $coordinator.showOptionalIntegrationInfo) {
             OptionalIntegrationInfoSheetView()
         }
-        .sheet(isPresented: $coordinator.showSubscriptionPaywall) {
+        .toastSheet(isPresented: $coordinator.showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
         }
         .alert("刪除帳號與雲端資料？".localized, isPresented: $coordinator.showDeleteAccountConfirm) {

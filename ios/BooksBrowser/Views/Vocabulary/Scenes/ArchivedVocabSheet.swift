@@ -70,7 +70,7 @@ struct ArchivedVocabSheet: View {
                     Button("關閉".localized) { dismiss() }
                 }
             }
-            .sheet(item: $selectedEntry) { entry in
+            .toastSheet(item: $selectedEntry) { entry in
                 WordDetailSheet(entry: entry)
                     .appSheet(.large)
             }
