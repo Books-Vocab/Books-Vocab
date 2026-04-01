@@ -19,13 +19,18 @@ struct VocabularyListSheets: ViewModifier {
                 SettingsView()
             }
             .toastSheet(item: $coordinator.exportURL) { url in
+                #if os(iOS)
                 ShareSheet(url: url)
+                #elseif os(macOS)
+                ShareLink(item: url)
+                    .padding()
+                #endif
             }
             .toastSheet(item: $coordinator.selectedEntry) { entry in
                 WordDetailSheet(entry: entry, allEntries: allEntries)
                     .appSheet(.large)
             }
-            .toastFullScreenCover(item: Binding(
+            .platformFullScreenCover(item: Binding(
                 get: { sizeClass == .compact ? coordinator.activeReviewSession : nil },
                 set: { coordinator.activeReviewSession = $0 }
             )) { session in
@@ -35,6 +40,7 @@ struct VocabularyListSheets: ViewModifier {
                     currentUserID: AuthManager.shared.userId,
                     onClose: { coordinator.activeReviewSession = nil }
                 )
+                .toastOverlay()
             }
             .toastSheet(item: Binding(
                 get: { sizeClass == .regular ? coordinator.activeReviewSession : nil },
@@ -53,6 +59,7 @@ struct VocabularyListSheets: ViewModifier {
 
 // MARK: - ShareSheet
 
+#if os(iOS)
 struct ShareSheet: UIViewControllerRepresentable {
     let url: URL
 
@@ -62,6 +69,7 @@ struct ShareSheet: UIViewControllerRepresentable {
 
     func updateUIViewController(_ uiViewController: UIActivityViewController, context: Context) {}
 }
+#endif
 
 // MARK: - URL Identifiable
 

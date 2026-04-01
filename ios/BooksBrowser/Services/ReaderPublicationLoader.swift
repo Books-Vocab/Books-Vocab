@@ -1,3 +1,4 @@
+#if os(iOS)
 import Foundation
 import ReadiumShared
 
@@ -97,3 +98,4 @@ struct ReaderPublicationLoader {
         )
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderTranslationHandler.swift
 //  BooksBrowser
@@ -63,3 +64,4 @@ final class ReaderTranslationHandler {
         currentTranslationTask = task
     }
 }
+#endif

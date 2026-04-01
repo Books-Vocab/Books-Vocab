@@ -73,9 +73,9 @@ struct ReviewCalendarPresenter: View {
             }
             .vocabCanvasBackground()
             .navigationTitle("學習日曆".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }
                         .font(vocabSkin.typography.captionStrong)
                 }

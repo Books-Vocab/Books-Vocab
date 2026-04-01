@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderView.swift
 //  BooksBrowser
@@ -172,3 +173,4 @@ struct ReaderView: View {
         }
     }
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 /// 閱讀器 UI 狀態容器，整合原本散落在 ReaderView 的 @State 屬性
@@ -18,3 +19,4 @@ final class ReaderViewState {
     var showSubscriptionPaywall = false
     var detailEntry: VocabularyEntry?
 }
+#endif

@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 import TipKit
 import os
@@ -267,3 +268,4 @@ extension ReaderTranslationHandler {
         replaceCurrentTranslationTask(with: task)
     }
 }
+#endif

@@ -27,9 +27,15 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
 
     var icon: String {
         if self == .system { return "circle.lefthalf.filled" }
-        return readerTheme.icon
+        switch self {
+        case .system: return "circle.lefthalf.filled"
+        case .light: return "sun.max"
+        case .sepia: return "book"
+        case .dark: return "moon"
+        }
     }
 
+    #if os(iOS)
     /// 對應的 ReaderTheme（供 Readium 使用）；system 時 fallback light，實際由 resolved 決定
     var readerTheme: ReaderTheme {
         switch self {
@@ -48,6 +54,7 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
         case .dark: self = .dark
         }
     }
+    #endif
 }
 
 final class AppAppearanceStore: ObservableObject {
@@ -96,6 +103,7 @@ final class AppAppearanceStore: ObservableObject {
         selection.colorScheme
     }
 
+    #if os(iOS)
     /// 解析最終的 ReaderTheme — system 模式依賴外部提供的 systemColorScheme
     func resolvedReaderTheme(systemColorScheme: ColorScheme) -> ReaderTheme {
         if selection == .system {
@@ -103,6 +111,7 @@ final class AppAppearanceStore: ObservableObject {
         }
         return selection.readerTheme
     }
+    #endif
 
     func setAppearance(_ mode: AppAppearanceMode) {
         guard selection != mode else { return }

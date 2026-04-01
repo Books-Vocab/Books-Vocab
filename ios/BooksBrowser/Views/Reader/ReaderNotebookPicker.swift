@@ -1,3 +1,4 @@
+#if os(iOS)
 //
 //  ReaderNotebookPicker.swift
 //  BooksBrowser
@@ -119,3 +120,4 @@ struct ReaderNotebookPicker: View {
         }
     }
 }
+#endif

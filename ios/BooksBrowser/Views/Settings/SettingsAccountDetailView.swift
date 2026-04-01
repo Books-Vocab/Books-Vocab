@@ -41,7 +41,7 @@ struct SettingsAccountDetailView: View {
         }
         .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("帳號詳情".localized)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBarTitle()
     }
 
     private var accountInfoCard: some View {

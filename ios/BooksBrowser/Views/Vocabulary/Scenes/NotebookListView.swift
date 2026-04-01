@@ -112,9 +112,9 @@ struct NotebookListView: View {
             }
             .background(skin.palette.pageBackground)
             .navigationTitle("單字本".localized)
-            .navigationBarTitleDisplayMode(.large)
+            .largeNavigationBarTitle()
             .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         showArchiveList = true
                     } label: {
@@ -122,7 +122,7 @@ struct NotebookListView: View {
                     }
                 }
 
-                ToolbarItem(placement: .topBarTrailing) {
+                ToolbarItem(placement: .confirmationAction) {
                     Button {
                         showCreateSheet = true
                     } label: {
@@ -148,13 +148,14 @@ struct NotebookListView: View {
                     }
                 }
             }
-            .toastFullScreenCover(item: $activeReviewSession) { session in
+            .platformFullScreenCover(item: $activeReviewSession) { session in
                 TodayReviewView(
                     entries: session.entries,
                     allEntries: allEntries,
                     currentUserID: authManager.userId,
                     onClose: { activeReviewSession = nil }
                 )
+                .toastOverlay()
             }
             .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()

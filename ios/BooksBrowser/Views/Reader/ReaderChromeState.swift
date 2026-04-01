@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 enum HeaderState: Equatable {
@@ -33,3 +34,4 @@ struct ReaderViewPresenterState {
     let totalProgression: Double
     let bookTitle: String
 }
+#endif

@@ -60,7 +60,7 @@ struct KnowledgeGraphPresenter: View {
                 }
                 .animateSpring(state.showsSettings)
                 .toolbar {
-                    ToolbarItem(placement: .topBarTrailing) {
+                    ToolbarItem(placement: .confirmationAction) {
                         Button(action: onToggleSettings) {
                             VocabToolbarGlyph(
                                 systemImage: state.showsSettings ? "xmark.circle.fill" : "slider.horizontal.3"

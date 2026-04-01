@@ -84,7 +84,7 @@ struct AddLinkSheet: View {
             }
             .vocabCanvasBackground()
             .navigationTitle("新增連結".localized)
-            .navigationBarTitleDisplayMode(.inline)
+            .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("取消".localized) { dismiss() }
@@ -107,7 +107,9 @@ struct AddLinkSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             TextField("搜尋單字…".localized, text: $searchText)
+                #if os(iOS)
                 .textInputAutocapitalization(.never)
+                #endif
                 .autocorrectionDisabled()
         }
         .padding(vocabSkin.metrics.cardBlockInnerGap * 1.5)

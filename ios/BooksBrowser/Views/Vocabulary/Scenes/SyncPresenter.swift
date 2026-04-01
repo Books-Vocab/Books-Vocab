@@ -64,12 +64,12 @@ struct SyncPresenter: View {
         .vocabCanvasBackground()
         .animatePhaseChange(state.summaryText.isEmpty)
         .navigationTitle("同步".localized)
-        .navigationBarTitleDisplayMode(.inline)
+        .inlineNavigationBarTitle()
         .sensoryFeedback(.success, trigger: state.phase == .completed)
         .sensoryFeedback(.warning, trigger: state.failureKind == .partial)
         .sensoryFeedback(.error, trigger: state.failureKind == .full || state.failureKind == .cancelled)
         .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
+            ToolbarItem(placement: .confirmationAction) {
                 Button("關閉".localized) { dismiss() }
             }
         }
