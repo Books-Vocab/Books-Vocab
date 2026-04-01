@@ -179,28 +179,42 @@ function draw() {
         ctx.stroke();
     }
 
-    // Draw nodes (with pre-rendered glow textures)
-    for (const d of nodes) {
-        const interactOpacity = opacityForNode(d.id);
-        if (interactOpacity < 0.1) continue;
-
-        const r = nodeRadius(d);
-        const color = nodeColor(d);
-        const baseOp = baseOpacityForNode(d);
-        const opacity = interactOpacity * baseOp;
-
-        // Glow halo via cached texture (skip in thumbnail)
-        if (!isThumbnail) {
+    // Draw nodes — two passes: glow textures first, then fills batched by style
+    // Pass 1: glow halos (skip in thumbnail)
+    if (!isThumbnail) {
+        for (const d of nodes) {
+            const interactOpacity = opacityForNode(d.id);
+            if (interactOpacity < 0.1) continue;
+            const r = nodeRadius(d);
+            const color = nodeColor(d);
+            const opacity = interactOpacity * baseOpacityForNode(d);
             const { tex, size } = getGlowTexture(color, r);
             ctx.globalAlpha = opacity;
             ctx.drawImage(tex, d.x - size / 2, d.y - size / 2, size, size);
         }
+    }
 
-        // Node fill
+    // Pass 2: node fills batched by color + opacity
+    const nodeGroups = new Map();
+    for (const d of nodes) {
+        const interactOpacity = opacityForNode(d.id);
+        if (interactOpacity < 0.1) continue;
+        const r = nodeRadius(d);
+        const color = nodeColor(d);
+        const opacity = interactOpacity * baseOpacityForNode(d);
+        const key = color + '_' + opacity.toFixed(2);
+        if (!nodeGroups.has(key)) nodeGroups.set(key, { color, opacity, arcs: [] });
+        nodeGroups.get(key).arcs.push(d.x, d.y, r);
+    }
+    for (const [, g] of nodeGroups) {
+        ctx.fillStyle = g.color;
+        ctx.globalAlpha = g.opacity;
         ctx.beginPath();
-        ctx.arc(d.x, d.y, r, 0, 2 * Math.PI);
-        ctx.fillStyle = color;
-        ctx.globalAlpha = opacity;
+        const arcs = g.arcs;
+        for (let i = 0; i < arcs.length; i += 3) {
+            ctx.moveTo(arcs[i] + arcs[i + 2], arcs[i + 1]);
+            ctx.arc(arcs[i], arcs[i + 1], arcs[i + 2], 0, 2 * Math.PI);
+        }
         ctx.fill();
     }
 
