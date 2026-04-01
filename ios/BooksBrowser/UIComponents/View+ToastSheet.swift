@@ -26,7 +26,7 @@ extension View {
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping () -> Content
     ) -> some View {
-        fullScreenCover(isPresented: isPresented, onDismiss: onDismiss) {
+        platformFullScreenCover(isPresented: isPresented, onDismiss: onDismiss) {
             content().toastOverlay()
         }
     }
@@ -36,7 +36,7 @@ extension View {
         onDismiss: (() -> Void)? = nil,
         @ViewBuilder content: @escaping (Item) -> Content
     ) -> some View {
-        fullScreenCover(item: item, onDismiss: onDismiss) { value in
+        platformFullScreenCover(item: item, onDismiss: onDismiss) { value in
             content(value).toastOverlay()
         }
     }
