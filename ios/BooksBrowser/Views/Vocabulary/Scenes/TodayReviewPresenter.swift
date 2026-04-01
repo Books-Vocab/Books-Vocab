@@ -155,15 +155,18 @@ struct TodayReviewPresenter: View {
                 }
             }
             #if os(macOS)
-            .overlay(alignment: .top) {
+            .overlay {
                 if isHelpPresented {
+                    vocabSkin.palette.shadow.opacity(0.25)
+                        .ignoresSafeArea()
+                        .onTapGesture { onToggleHelp() }
+                        .transition(.opacity)
+
                     shortcutHelpOverlay
-                        .padding(.top, vocabSkin.metrics.reviewTopBarTopInset + 8)
-                        .padding(.horizontal, vocabSkin.metrics.reviewTopBarHorizontalInset)
                         .transition(.overlayFade)
-                        .zIndex(2)
                 }
             }
+            .animation(AppMotion.panelState, value: isHelpPresented)
             #endif
             #if os(iOS)
             .frame(maxWidth: 600)
