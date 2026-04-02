@@ -80,6 +80,7 @@ struct TodayReviewPresenterState {
 
 struct TodayReviewPresenter: View {
     // internal — extension files 需要存取
+    @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.vocabSkin) var vocabSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.speechService) private var speechService
@@ -168,7 +169,7 @@ struct TodayReviewPresenter: View {
             }
             .animation(AppMotion.panelState, value: isHelpPresented)
             #endif
-            .platformContentMaxWidth()
+            .platformContentMaxWidth(for: LayoutMode(horizontalSizeClass: sizeClass))
             .vocabCanvasBackground()
             .platformHideNavigationBar()
             .onGeometryChange(for: CGFloat.self) { proxy in

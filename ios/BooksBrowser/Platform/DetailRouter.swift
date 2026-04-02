@@ -2,7 +2,7 @@
 //  DetailRouter.swift
 //  BooksBrowser
 //
-//  統一 detail 呈現路由 — iOS sheet vs macOS inspector
+//  統一 detail 呈現路由 — compact sheet vs regular inspector
 //
 
 import SwiftUI
@@ -19,11 +19,10 @@ protocol DetailRouting: AnyObject, Observable {
     func dismiss()
 }
 
-// MARK: - iOS Implementation
+// MARK: - Concrete Implementation
 
-#if os(iOS)
 @Observable @MainActor
-final class SheetDetailRouter: DetailRouting {
+final class DetailRouter: DetailRouting {
     var selectedEntry: VocabularyEntry?
     var activeReviewSession: TodayReviewSession?
     var contextEntries: [VocabularyEntry] = []
@@ -48,7 +47,6 @@ final class SheetDetailRouter: DetailRouting {
         contextEntries = []
     }
 }
-#endif
 
 // MARK: - Environment Key
 
