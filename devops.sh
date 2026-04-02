@@ -18,9 +18,9 @@ CONTAINER="knowledge-graph-api"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
 BACKUP_DIR="$(cd "$(dirname "$0")" && pwd)/backups"
 
-SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes )
+SSH_OPTS=( -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 SSH_CMD=( ssh "${SSH_OPTS[@]}" "$SERVER" )
-SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=no -o BatchMode=yes )
+SCP_CMD=( scp -T -i "$SSH_KEY" -o StrictHostKeyChecking=accept-new -o BatchMode=yes )
 
 # 必要環境變數清單（deploy 前自動檢查）
 REQUIRED_ENV_KEYS=(
@@ -142,7 +142,7 @@ def parse_local_env(path: Path):
 
 def parse_remote_env(path: str):
     proc = subprocess.run(
-        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_default.pem"), "-o", "StrictHostKeyChecking=no", "-o", "BatchMode=yes", "ubuntu@54.95.189.179", f"cat {path}"],
+        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_default.pem"), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "ubuntu@54.95.189.179", f"cat {path}"],
         capture_output=True,
         text=True,
         check=False,
@@ -222,7 +222,7 @@ cmd_deploy() {
 
   section "Step 1/3: 同步代碼"
   rsync -az --stats \
-    -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=no -o BatchMode=yes" \
+    -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
     --exclude '.venv' \
     --exclude '__pycache__' \
     --exclude '.git' \

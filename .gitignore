@@ -2,6 +2,13 @@
 backups/
 plan/
 
+# Secrets
+.env
+.env.*
+*.p8
+*.pem
+certs/
+
 # IDE/user-specific
 *.xcuserstate
 *.xcworkspace/xcuserdata/
