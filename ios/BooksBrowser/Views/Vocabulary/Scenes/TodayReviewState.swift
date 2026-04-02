@@ -157,14 +157,28 @@ final class TodayReviewState {
         guard let entry = currentEntry else { return }
         entry.mutateLink(id: link.id) { $0.withHidden(true) }
         linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(true) }
-        rebuildCacheForCurrentEntry()
+        rebuildCacheForEntry(entry)
     }
 
-    func unhideLink(_ link: KGCardLinkSummary) {
-        guard let entry = currentEntry else { return }
-        entry.mutateLink(id: link.id) { $0.withHidden(false) }
-        linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(false) }
-        rebuildCacheForCurrentEntry()
+    func rebuildCacheForEntry(_ entry: VocabularyEntry) {
+        let card = CardPresentation(entry: entry)
+        let compactGroups = card.activeLinkGroups.map { fullGroup in
+            let limited = fullGroup.limited(to: 2)
+            return TodayReviewPresenterState.LinkGroup(
+                id: fullGroup.id,
+                label: fullGroup.label,
+                items: limited.items,
+                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
+            )
+        }
+        let backDoc = card.document.reviewBackSubset()
+        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDoc)
+        preparedCardCache[entry.id] = .init(
+            card: card,
+            linkGroups: compactGroups,
+            backDocument: backDoc,
+            postExampleMetrics: metrics
+        )
     }
 
     func handleDetailTap() {
@@ -379,14 +393,6 @@ final class TodayReviewState {
         entries.reduce(into: [String: VocabularyEntry]()) { lookup, entry in
             guard let cardID = entry.kgCardId else { return }
             lookup[cardID] = entry
-        }
-    }
-
-    private func rebuildCacheForCurrentEntry() {
-        guard let entry = currentEntry else { return }
-        let rebuilt = Self.buildPreparedCardCache(from: [entry])
-        if let card = rebuilt[entry.id] {
-            preparedCardCache[entry.id] = card
         }
     }
 

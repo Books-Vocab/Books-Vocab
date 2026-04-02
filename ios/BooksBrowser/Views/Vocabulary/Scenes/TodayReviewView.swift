@@ -111,13 +111,17 @@ struct TodayReviewView: View {
                 link: link,
                 onNavigate: { state.navigateToLinkedCard(link: link) },
                 onHide: {
-                    let notebookId = state.currentEntry?.notebookId ?? "default"
+                    guard let entry = state.currentEntry else { return }
+                    let notebookId = entry.notebookId
+                    let peer = state.linkedEntryLookup[link.cardId]
                     state.hideLink(link)
                     Task {
                         do {
                             try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
                         } catch {
-                            state.unhideLink(link)
+                            entry.mutateLink(id: link.id) { $0.withHidden(false) }
+                            peer?.mutateLink(id: link.id) { $0.withHidden(false) }
+                            state.rebuildCacheForEntry(entry)
                         }
                     }
                 }
