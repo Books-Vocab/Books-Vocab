@@ -218,6 +218,7 @@ struct BooksBrowserApp: App {
                     Task {
                         AppLog.kg.info("Post-login sync triggered")
                         await kgService.backgroundSync(container: modelContainer)
+                        await kgService.fetchQuota()
                         // Poke main context so @Query picks up background actor's save
                         try? modelContainer.mainContext.save()
                         if let error = kgService.lastBackgroundSyncError {
@@ -236,6 +237,7 @@ struct BooksBrowserApp: App {
                             AppAnalytics.track(.backgroundSyncTriggered)
                             let syncStart = Date()
                             await kgService.backgroundSync(container: modelContainer)
+                            await kgService.fetchQuota()
                             // Poke main context so @Query picks up background actor's save
                             try? modelContainer.mainContext.save()
                             let durationMs = Int(Date().timeIntervalSince(syncStart) * 1000)
