@@ -42,6 +42,6 @@ struct EPUBGuideTip: Tip {
     var options: [TipOption] { [Tips.MaxDisplayCount(1)] }
 
     var actions: [Action] {
-        [Action(id: "查看指南", title: "查看指南")]
+        [Action(id: "epub_guide_action", title: L10n.string("tip_epub_guide_action"))]
     }
 }
