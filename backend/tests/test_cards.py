@@ -385,6 +385,30 @@ class TestBuildContentLookupNoFullScan:
         assert all_call_count == 1, f"Expected 1 full-scan, got {all_call_count}"
 
 
+class TestSoftDeleteByNotebook:
+    def test_soft_deletes_all_cards_in_notebook(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+        store.add(content="banana", meaning="香蕉", notebook_id="nb1")
+        store.add(content="cherry", meaning="櫻桃", notebook_id="nb2")
+        count = store.soft_delete_by_notebook("nb1")
+        assert count == 2
+        assert list(store.all(notebook_id="nb1")) == []
+        assert len(list(store.all(notebook_id="nb2"))) == 1
+
+    def test_skips_already_deleted(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        c = store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+        store.delete(c.id)
+        count = store.soft_delete_by_notebook("nb1")
+        assert count == 0
+
+    def test_empty_notebook_returns_zero(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        count = store.soft_delete_by_notebook("nonexistent")
+        assert count == 0
+
+
 class TestMoveVocabWordsNoExtraScan:
     """Verify move_vocab_words doesn't do an extra full scan for target notebook."""
 
