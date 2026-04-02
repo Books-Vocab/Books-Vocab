@@ -70,14 +70,6 @@ struct MacDividerHandle: View {
     }
 }
 
-/// ContainerWidthKey — 用 PreferenceKey 把容器寬度傳給 parent。
-struct ContainerWidthKey: PreferenceKey {
-    static let defaultValue: CGFloat = 800
-    static func reduce(value: inout CGFloat, nextValue: () -> CGFloat) {
-        value = nextValue()
-    }
-}
-
 private extension CGFloat {
     func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
         Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
