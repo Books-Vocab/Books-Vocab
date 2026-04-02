@@ -9,6 +9,7 @@ from kg.api_models import TranslateRequest
 from kg.translate_service import (
     _parse_json_payload as parse_json_payload,
 )
+from kg.tracked_llm import TrackedLLM
 from kg.translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -64,7 +65,7 @@ async def test_run_quick_translate_returns_expected_shape():
     result = await run_quick_translate(
         req,
         {"id": "u_test"},
-        client=_fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}'),
+        llm=TrackedLLM(_fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}'), "u_test"),
         logger=SimpleNamespace(error=lambda *args, **kwargs: None),
     )
     assert result.t == "喚起"
@@ -79,13 +80,13 @@ async def test_run_phrase_and_explain_translate_return_expected_shapes():
     phrase = await run_phrase_translate(
         req,
         {"id": "u_test"},
-        client=_fake_async_client('{"t":"受審"}'),
+        llm=TrackedLLM(_fake_async_client('{"t":"受審"}'), "u_test"),
     )
     assert phrase == {"t": "受審"}
 
     explain = await run_explain_translate(
         req,
         {"id": "u_test"},
-        client=_fake_async_client('{"e":"這裡表示因案件而受審。"}'),
+        llm=TrackedLLM(_fake_async_client('{"e":"這裡表示因案件而受審。"}'), "u_test"),
     )
     assert explain.e == "這裡表示因案件而受審。"
