@@ -475,54 +475,6 @@ class GraphStore:
             self._flush_candidates(snapshot)
         return removed
 
-    # ------------------------------------------------------------------
-    # Merge
-    # ------------------------------------------------------------------
-
-    def merge_from(self, source: "GraphStore") -> None:
-        """Merge all links and candidates from *source* into this store.
-
-        - Links whose card pair already exists in target are skipped (no duplicates).
-        - After merge, source is emptied and its files are saved (now empty).
-        """
-        # Acquire source lock first, then target lock (fixed order prevents deadlock).
-        with source._lock:
-            with self._lock:
-                # Merge links
-                for lk in list(source._links.values()):
-                    if not self._has_link_unlocked(lk.from_id, lk.to_id):
-                        self._links[lk.id] = lk
-                        self._index_link(lk)
-
-                # Merge candidates using _candidate_set for O(1) checks
-                for c in source._candidates:
-                    norm = self._normalize_pair(c.from_id, c.to_id)
-                    if norm not in self._candidate_set and not self._has_link_unlocked(c.from_id, c.to_id):
-                        self._candidates.append(c)
-                        self._candidate_set.add(norm)
-
-                # Merge blocked pairs
-                self._blocked_pairs |= source._blocked_pairs
-
-                target_links_snap = self._links_to_serializable()
-                target_cands_snap = self._candidates_to_serializable()
-                target_blocked_snap = self._blocked_to_serializable()
-
-            # Clear source (still under source._lock, target lock released)
-            source._links.clear()
-            source._candidates.clear()
-            source._candidate_set.clear()
-            source._rebuild_index()
-            src_links_snap = source._links_to_serializable()
-            src_cands_snap = source._candidates_to_serializable()
-
-        # All disk writes outside any lock
-        self._flush_links(target_links_snap)
-        self._flush_candidates(target_cands_snap)
-        self._flush_blocked(target_blocked_snap)
-        self._atomic_json_write(source.links_path, src_links_snap)
-        self._atomic_json_write(source.candidates_path, src_cands_snap)
-
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
         """Deprecate links + remove candidates (+ blocked pairs if deleting)."""
         dep_count = self.deprecate_links_for(card_id)

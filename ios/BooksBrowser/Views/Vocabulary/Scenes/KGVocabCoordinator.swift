@@ -14,7 +14,6 @@ import SwiftUI
     func retryPendingDeletes(pendingDeletes: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext) async
     func handleBatchDelete(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], modelContext: ModelContext, toastCoordinator: AppToastCoordinator)
     func handleBatchArchive(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], kgService: any KGServing, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) async
-    func handleBatchMove(_ entryIDs: Set<UUID>, syncedEntries: [VocabularyEntry], toNotebook: String, fromNotebook: String, kgService: any KGServing, modelContext: ModelContext, toastCoordinator: AppToastCoordinator) async throws
 }
 
 @Observable @MainActor
@@ -184,23 +183,4 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         }
     }
 
-    func handleBatchMove(
-        _ entryIDs: Set<UUID>,
-        syncedEntries: [VocabularyEntry],
-        toNotebook: String,
-        fromNotebook: String,
-        kgService: any KGServing,
-        modelContext: ModelContext,
-        toastCoordinator: AppToastCoordinator
-    ) async throws {
-        let entries = syncedEntries.filter { entryIDs.contains($0.id) }
-        let words = entries.map(\.word)
-        try await kgService.moveCards(words: words, fromNotebook: fromNotebook, toNotebook: toNotebook)
-        for entry in entries {
-            entry.notebookId = toNotebook
-        }
-        if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success("已移動 \(entries.count) 個")
-        }
-    }
 }
