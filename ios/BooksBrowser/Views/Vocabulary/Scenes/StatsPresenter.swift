@@ -52,9 +52,21 @@ struct StatsPresenter: View {
             if let summary {
                 ScrollView {
                     VStack(spacing: vocabSkin.spacing.sectionGap) {
+                        #if os(macOS)
+                        HStack(alignment: .top, spacing: vocabSkin.spacing.sectionGap) {
+                            graphEntrySection
+                                .frame(maxWidth: .infinity)
+                            VStack(spacing: vocabSkin.spacing.sectionGap) {
+                                streakSection(summary)
+                                heatmapSection(summary)
+                            }
+                            .frame(maxWidth: .infinity)
+                        }
+                        #else
                         graphEntrySection
                         streakSection(summary)
                         heatmapSection(summary)
+                        #endif
                         forecastSection(summary)
                         totalsFooter(summary)
                     }
@@ -138,7 +150,11 @@ struct StatsPresenter: View {
                         .padding(vocabSkin.metrics.cardBlockPadding)
 
                     graphEntryBody(nodes: nodes, edges: edges)
+                        #if os(macOS)
+                        .frame(minHeight: 280)
+                        #else
                         .frame(height: 140)
+                        #endif
 
                     if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
                         healthBar(ratio: avgRatio)
