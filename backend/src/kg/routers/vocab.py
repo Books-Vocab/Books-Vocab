@@ -262,7 +262,8 @@ def add_vocab(
     return add_vocab_response(
         entries, user,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
-        graph_store_factory=_graph_store, logger=logger,
+        graph_store_factory=_graph_store, gemini_client_factory=_gemini_client,
+        logger=logger,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )

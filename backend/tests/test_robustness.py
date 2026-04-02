@@ -405,8 +405,9 @@ class TestBatchA_NoPrintInModules:
         """A failing pipeline step must emit >=1 ERROR log record."""
         client, user_id, headers, data_dir = user_env
 
-        # _embedding_store calls _gemini_client internally; force Step 1b to blow up
-        with patch.object(deps_mod, "_gemini_client", side_effect=Exception("API down")):
+        # Force gemini_client_factory() to blow up inside pipeline steps
+        import kg.routers.pipeline as pipeline_router_mod
+        with patch.object(pipeline_router_mod, "_gemini_client", side_effect=Exception("API down")):
             with caplog.at_level(logging.ERROR, logger="kg.api"):
                 r = client.post("/api/pipeline", headers=headers)
                 assert r.status_code == 200  # always returns "queued"

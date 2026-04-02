@@ -9,6 +9,7 @@ from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .exceptions import ExternalServiceError
+from .tracked_llm import TrackedLLM
 from .translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -26,9 +27,9 @@ async def _safe_translate(
     logger: Logger | None = None,
     model: str | None = None,
 ):
-    client = gemini_client_factory()
+    llm = TrackedLLM(gemini_client_factory(), user["id"])
     try:
-        kw: dict[str, Any] = {"client": client}
+        kw: dict[str, Any] = {"llm": llm}
         if logger:
             kw["logger"] = logger
         if model:
