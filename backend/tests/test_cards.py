@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
+from unittest.mock import patch, call
 
 import pytest
 
@@ -199,3 +200,228 @@ def test_get_batch_missing_ids(tmp_path):
     c1 = store.add("hello", meaning="你好")
     result = store.get_batch({c1.id, "nonexistent"})
     assert set(result.keys()) == {c1.id}
+
+
+class TestBatchUpdateNoN1:
+    """Verify batch_update uses a single WHERE IN query, not N individual SELECTs."""
+
+    def test_batch_update_uses_single_query_not_n_selects(self, store, tmp_path):
+        """N+1 regression: batch_update must fetch all cards with one WHERE IN, not session.get() per card."""
+        c1 = store.add(content="alpha", meaning="first")
+        c2 = store.add(content="beta", meaning="second")
+        c3 = store.add(content="gamma", meaning="third")
+
+        select_call_count = 0
+        original_exec = store.engine.connect().__class__.execute
+
+        # Track how many DB SELECT round-trips happen via sqlalchemy event
+        from sqlalchemy import event
+
+        queries = []
+
+        @event.listens_for(store.engine, "before_cursor_execute")
+        def before_execute(conn, cursor, statement, params, context, executemany):
+            if statement.strip().upper().startswith("SELECT"):
+                queries.append(statement)
+
+        updates = [
+            (c1.id, {"difficulty": 0.1}),
+            (c2.id, {"difficulty": 0.2}),
+            (c3.id, {"difficulty": 0.3}),
+        ]
+        store.batch_update(updates)
+
+        select_queries = [q for q in queries if "card" in q.lower()]
+        # Must be exactly 1 SELECT (the WHERE IN batch fetch), not 3 individual SELECTs
+        assert len(select_queries) == 1, (
+            f"Expected 1 SELECT query (batch WHERE IN), got {len(select_queries)}. "
+            f"Queries: {select_queries}"
+        )
+
+    def test_batch_update_intake_consistency(self, store):
+        """Functional correctness unchanged after N+1 fix."""
+        c1 = store.add(content="alpha", meaning="first")
+        c2 = store.add(content="beta", meaning="second")
+        count = store.batch_update([(c1.id, {"difficulty": 0.5}), (c2.id, {"difficulty": 0.7})])
+        assert count == 2
+        assert store.get(c1.id).difficulty == 0.5
+        assert store.get(c2.id).difficulty == 0.7
+
+
+class TestVocabIntakeNoN1:
+    """Verify add_vocab_entries doesn't call find_by_content per duplicate (N+1)."""
+
+    def test_duplicate_lookup_uses_dict_not_db(self):
+        """vocab_intake N+1 regression: duplicate words must be resolved from in-memory dict."""
+        from types import SimpleNamespace
+        from kg.vocab_intake import add_vocab_entries
+        from kg.api_models import VocabEntry
+
+        db_lookup_calls = []
+
+        class TrackingCardsStore:
+            def __init__(self):
+                self._cards = [
+                    SimpleNamespace(id="c1", content="ephemeral", meaning="short-lived",
+                                    is_deleted=False, is_archived=False,
+                                    embed_text=lambda: "ephemeral: short-lived")
+                ]
+
+            def all(self, include_deleted=False, notebook_id=None):
+                return list(self._cards)
+
+            def find_by_content(self, content, notebook_id=None):
+                db_lookup_calls.append(content)
+                for c in self._cards:
+                    if c.content.lower() == content.lower():
+                        return c
+                return None
+
+            def add(self, content, meaning, **kwargs):
+                c = SimpleNamespace(id=f"new_{content}", content=content, meaning=meaning,
+                                    is_deleted=False, is_archived=False,
+                                    embed_text=lambda: f"{content}: {meaning}")
+                self._cards.append(c)
+                return c
+
+            def get(self, card_id):
+                for c in self._cards:
+                    if c.id == card_id:
+                        return c
+                return None
+
+        class TrackingEmbeddings:
+            def has(self, card_id): return False
+            def add(self, card_id, vec): pass
+            def add_batch(self, items): pass
+
+        entries = [
+            VocabEntry(word="ephemeral", translation="短暫的"),  # duplicate
+            VocabEntry(word="lucid", translation="清晰的"),        # new
+        ]
+
+        result = add_vocab_entries(
+            entries,
+            user={},
+            cards=TrackingCardsStore(),
+            embeddings=TrackingEmbeddings(),
+            graph=SimpleNamespace(find_candidates=lambda *a, **k: [], batch_add_candidates=lambda *a: None),
+            logger=__import__("logging").getLogger("test"),
+        )
+
+        assert result.skipped == 1
+        assert result.created == 1
+        # After fix: find_by_content must NOT be called for duplicates (resolved from dict)
+        assert db_lookup_calls == [], (
+            f"Expected 0 DB calls for duplicate lookup, got {len(db_lookup_calls)}: {db_lookup_calls}"
+        )
+
+
+class TestBuildContentLookupNoFullScan:
+    """Verify _build_content_lookup full-table-scan is not triggered multiple times per request."""
+
+    def test_vocab_crud_batch_delete_single_scan(self):
+        """batch_delete_vocab_words must call cards_store.all() exactly once."""
+        from types import SimpleNamespace
+        from kg.vocab_crud import batch_delete_vocab_words
+
+        all_call_count = 0
+
+        class CountingCardsStore:
+            def __init__(self):
+                self._cards = [
+                    SimpleNamespace(id="c1", content="evoke", is_deleted=False, is_archived=False),
+                    SimpleNamespace(id="c2", content="lucid", is_deleted=False, is_archived=False),
+                ]
+
+            def all(self, include_deleted=False, notebook_id=None):
+                nonlocal all_call_count
+                all_call_count += 1
+                return [c for c in self._cards if not c.is_deleted]
+
+            def delete(self, card_id):
+                for c in self._cards:
+                    if c.id == card_id:
+                        c.is_deleted = True
+
+        result = batch_delete_vocab_words(
+            ["evoke", "lucid"],
+            cards_store=CountingCardsStore(),
+        )
+        assert result["deleted"] == 2
+        assert all_call_count == 1, f"Expected 1 full-scan, got {all_call_count}"
+
+    def test_vocab_crud_batch_archive_single_scan(self):
+        """batch_archive_vocab_words must call cards_store.all() exactly once."""
+        from types import SimpleNamespace
+        from kg.vocab_crud import batch_archive_vocab_words
+
+        all_call_count = 0
+
+        class CountingCardsStore:
+            def __init__(self):
+                self._cards = [
+                    SimpleNamespace(id="c1", content="evoke", is_deleted=False, is_archived=False),
+                    SimpleNamespace(id="c2", content="lucid", is_deleted=False, is_archived=False),
+                ]
+
+            def all(self, include_deleted=False, notebook_id=None):
+                nonlocal all_call_count
+                all_call_count += 1
+                return [c for c in self._cards if not c.is_deleted]
+
+            def update(self, card_id, **kwargs):
+                for c in self._cards:
+                    if c.id == card_id:
+                        for k, v in kwargs.items():
+                            setattr(c, k, v)
+
+        result = batch_archive_vocab_words(
+            ["evoke", "lucid"],
+            archived=True,
+            cards_store=CountingCardsStore(),
+        )
+        assert result["updated"] == 2
+        assert all_call_count == 1, f"Expected 1 full-scan, got {all_call_count}"
+
+
+class TestMoveVocabWordsNoExtraScan:
+    """Verify move_vocab_words doesn't do an extra full scan for target notebook."""
+
+    def test_move_vocab_words_target_scan_is_precise(self):
+        """After fix: fetching target notebook cards should NOT full-scan all notebooks."""
+        from types import SimpleNamespace
+        from kg.vocab_crud import move_vocab_words
+
+        notebook_ids_scanned = []
+
+        class TrackingCardsStore:
+            def __init__(self):
+                self._cards = [
+                    SimpleNamespace(id="c1", content="evoke", notebook_id="nb1",
+                                    is_deleted=False, is_archived=False),
+                ]
+
+            def all(self, include_deleted=False, notebook_id=None):
+                notebook_ids_scanned.append(notebook_id)
+                return [c for c in self._cards
+                        if not c.is_deleted and (notebook_id is None or c.notebook_id == notebook_id)]
+
+            def move_cards(self, words, from_notebook_id, to_notebook_id):
+                for c in self._cards:
+                    if c.content in words and c.notebook_id == from_notebook_id:
+                        c.notebook_id = to_notebook_id
+                return len([c for c in self._cards if c.notebook_id == to_notebook_id])
+
+        result = move_vocab_words(
+            ["evoke"],
+            from_notebook_id="nb1",
+            to_notebook_id="nb2",
+            cards_store=TrackingCardsStore(),
+            target_graph=None,
+        )
+        assert result["moved"] == 1
+        # After fix: must NOT do an unfiltered all() call (notebook_id=None)
+        assert None not in notebook_ids_scanned, (
+            f"Unfiltered full-scan detected. Scanned notebook_ids: {notebook_ids_scanned}"
+        )
