@@ -140,10 +140,7 @@ struct AppSearchField: View {
                 .foregroundStyle(style.iconColor)
 
             TextField(prompt.localized, text: $text)
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .autocorrectionDisabled()
+                .platformTextInputConfig()
                 .font(style.textFont)
                 .foregroundStyle(style.textColor)
 
