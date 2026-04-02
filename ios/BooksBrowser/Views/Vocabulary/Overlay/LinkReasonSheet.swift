@@ -6,6 +6,7 @@ struct LinkReasonSheet: View {
 
     let link: KGCardLinkSummary
     let onNavigate: () -> Void
+    var onHide: (() -> Void)?
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
@@ -33,18 +34,35 @@ struct LinkReasonSheet: View {
 
             Spacer()
 
-            Button {
-                dismiss()
-                onNavigate()
-            } label: {
-                HStack(spacing: 6) {
-                    Text("查看詳情".localized)
-                    Image(systemName: "arrow.up.right")
-                        .font(vocabSkin.typography.iconTiny)
+            VStack(spacing: vocabSkin.spacing.inlineGap) {
+                Button {
+                    dismiss()
+                    onNavigate()
+                } label: {
+                    HStack(spacing: 6) {
+                        Text("查看詳情".localized)
+                        Image(systemName: "arrow.up.right")
+                            .font(vocabSkin.typography.iconTiny)
+                    }
+                    .frame(maxWidth: .infinity)
                 }
-                .frame(maxWidth: .infinity)
+                .buttonStyle(.ghost(vocabSkin.palette.primaryText))
+
+                if let onHide {
+                    Button {
+                        dismiss()
+                        onHide()
+                    } label: {
+                        HStack(spacing: 6) {
+                            Image(systemName: "eye.slash")
+                                .font(vocabSkin.typography.iconTiny)
+                            Text("隱藏此連結".localized)
+                        }
+                        .frame(maxWidth: .infinity)
+                    }
+                    .buttonStyle(.ghost(vocabSkin.palette.destructive))
+                }
             }
-            .buttonStyle(.ghost(vocabSkin.palette.primaryText))
         }
         .padding(vocabSkin.metrics.cardBlockPadding)
         .vocabCanvasBackground()

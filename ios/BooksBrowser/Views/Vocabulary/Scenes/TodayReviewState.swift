@@ -152,6 +152,35 @@ final class TodayReviewState {
         linkedCardStack.append(target)
     }
 
+    func hideLink(_ link: KGCardLinkSummary) {
+        tappedLink = nil
+        guard let entry = currentEntry else { return }
+        entry.mutateLink(id: link.id) { $0.withHidden(true) }
+        linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(true) }
+        rebuildCacheForEntry(entry)
+    }
+
+    func rebuildCacheForEntry(_ entry: VocabularyEntry) {
+        let card = CardPresentation(entry: entry)
+        let compactGroups = card.activeLinkGroups.map { fullGroup in
+            let limited = fullGroup.limited(to: 2)
+            return TodayReviewPresenterState.LinkGroup(
+                id: fullGroup.id,
+                label: fullGroup.label,
+                items: limited.items,
+                overflowCount: limited.overflowed(relativeToFullGroup: fullGroup)
+            )
+        }
+        let backDoc = card.document.reviewBackSubset()
+        let metrics = TodayReviewPresenterState.PostExampleMetrics.from(backDoc)
+        preparedCardCache[entry.id] = .init(
+            card: card,
+            linkGroups: compactGroups,
+            backDocument: backDoc,
+            postExampleMetrics: metrics
+        )
+    }
+
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)
@@ -337,7 +366,8 @@ final class TodayReviewState {
         for entry in entries {
             let card = CardPresentation(entry: entry)
             let compactGroups = card.activeLinkGroups.map { fullGroup in
-                let limited = fullGroup.limited(to: 2)
+                let shuffled = fullGroup.shuffled()
+                let limited = shuffled.limited(to: 2)
                 return TodayReviewPresenterState.LinkGroup(
                     id: fullGroup.id,
                     label: fullGroup.label,
