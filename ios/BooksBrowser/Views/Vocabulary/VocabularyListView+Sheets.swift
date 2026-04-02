@@ -8,7 +8,6 @@ import SwiftUI
 struct VocabularyListSheets: ViewModifier {
     @Bindable var coordinator: VocabularyListCoordinator
     let allEntries: [VocabularyEntry]
-    let sizeClass: UserInterfaceSizeClass?
 
     func body(content: Content) -> some View {
         content

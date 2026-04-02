@@ -16,6 +16,8 @@ struct BookshelfView: View {
     @Environment(\.appTheme) private var appTheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.modelContext) private var modelContext
+
+    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -23,16 +25,9 @@ struct BookshelfView: View {
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
 
-    private var columns: [GridItem] {
-        let item: GridItem = sizeClass == .regular
-            ? GridItem(.adaptive(minimum: 180, maximum: 240), spacing: AppShellMetrics.sectionSpacing)
-            : GridItem(.adaptive(minimum: 150, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
-        return [item]
-    }
+    private var columns: [GridItem] { [layoutMode.bookshelfGridItem] }
 
-    private var coverHeight: CGFloat {
-        sizeClass == .regular ? AppBookshelfMetrics.coverHeightRegular : AppBookshelfMetrics.coverHeightCompact
-    }
+    private var coverHeight: CGFloat { layoutMode.bookshelfCoverHeight }
 
     var body: some View {
         NavigationStack {
