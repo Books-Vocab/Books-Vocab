@@ -15,6 +15,7 @@ struct MacDividerHandle: View {
     var onDoubleClick: () -> Void
 
     @State private var dragStartWidth: CGFloat = 0
+    @State private var isHovering = false
 
     private var effectiveMax: CGFloat {
         min(
@@ -32,14 +33,21 @@ struct MacDividerHandle: View {
                 Divider()
             }
             .onHover { hovering in
+                isHovering = hovering
                 if hovering {
                     NSCursor.resizeLeftRight.push()
                 } else {
                     NSCursor.pop()
                 }
             }
+            .onDisappear {
+                if isHovering {
+                    NSCursor.pop()
+                    isHovering = false
+                }
+            }
             .gesture(
-                DragGesture(minimumDistance: 1, coordinateSpace: .global)
+                DragGesture(minimumDistance: 3, coordinateSpace: .global)
                     .onChanged { value in
                         if dragWidth == nil {
                             dragStartWidth = panelWidth
