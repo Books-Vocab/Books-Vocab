@@ -7,6 +7,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from kg.api_models import TranslateRequest
+from kg.tracked_llm import TrackedLLM
 from kg.translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -34,7 +35,7 @@ async def test_run_quick_translate_returns_expected_shape():
     result = await run_quick_translate(
         req,
         {"id": "u_test"},
-        client=client,
+        llm=TrackedLLM(client, "u_test"),
         logger=SimpleNamespace(error=lambda *args, **kwargs: None),
     )
     assert result.t == "喚起"
@@ -46,7 +47,7 @@ async def test_run_quick_translate_returns_expected_shape():
 async def test_run_phrase_translate_returns_expected_shape():
     req = TranslateRequest(word="on trial", context="He was on trial for fraud.")
     client = _fake_async_client('{"t":"受審"}')
-    result = await run_phrase_translate(req, {"id": "u_test"}, client=client)
+    result = await run_phrase_translate(req, {"id": "u_test"}, llm=TrackedLLM(client, "u_test"))
     assert result == {"t": "受審"}
 
 
@@ -54,7 +55,7 @@ async def test_run_phrase_translate_returns_expected_shape():
 async def test_run_explain_translate_returns_expected_shape():
     req = TranslateRequest(word="on trial", context="He was on trial for fraud.")
     client = _fake_async_client('{"e":"這裡表示因案件而受審。"}')
-    result = await run_explain_translate(req, {"id": "u_test"}, client=client)
+    result = await run_explain_translate(req, {"id": "u_test"}, llm=TrackedLLM(client, "u_test"))
     assert result.e == "這裡表示因案件而受審。"
 
 
@@ -71,7 +72,7 @@ async def test_run_quick_translate_raises_on_empty_choices():
     logger = MagicMock()
     from kg.exceptions import ExternalServiceError
     with pytest.raises(ExternalServiceError) as exc_info:
-        await run_quick_translate(req, {"id": "u_test"}, client=client, logger=logger)
+        await run_quick_translate(req, {"id": "u_test"}, llm=TrackedLLM(client, "u_test"), logger=logger)
     assert exc_info.value.status_code == 502
     logger.error.assert_called_once()
 

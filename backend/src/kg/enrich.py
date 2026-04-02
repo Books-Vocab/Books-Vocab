@@ -9,8 +9,6 @@ import asyncio
 import json
 from concurrent.futures import ThreadPoolExecutor
 
-from openai import OpenAI
-
 from .cards import Card
 from .languages import LANGUAGE_NAMES
 from .retry import sync_retry
@@ -67,9 +65,10 @@ def _parse_enrich_response(raw_content: str) -> list[dict]:
     return []
 
 
-def _call_enrich_llm(client: OpenAI, batch: list[Card], model: str = "gemini-2.5-flash-lite"):
+def _call_enrich_llm(llm, batch: list[Card], model: str = "gemini-2.5-flash-lite"):
     """Single LLM call for enrichment. Returns the raw response object."""
-    return client.chat.completions.create(
+    return llm.chat(
+        "enrich",
         model=model,
         messages=[
             {"role": "system", "content": SYSTEM_PROMPT},
@@ -91,35 +90,29 @@ def _get_enrich_retryable() -> tuple[type[Exception], ...]:
     return _ENRICH_RETRYABLE
 
 
-def enrich_cards(client: OpenAI, cards: list[Card], user_id: str | None = None, model: str = "gemini-2.5-flash-lite") -> list[dict]:
+def enrich_cards(llm, cards: list[Card], model: str = "gemini-2.5-flash-lite") -> list[dict]:
     """Enrich a batch of cards via a single LLM call.
 
     Returns a list of dicts with keys: word, pos, note.
+    Token usage is recorded automatically by TrackedLLM.
     """
     if not cards:
         return []
 
     response = sync_retry(
-        _call_enrich_llm, client, cards, model,
+        _call_enrich_llm, llm, cards, model,
         max_attempts=4,
         base_delay=2.0,
         retryable_exceptions=_get_enrich_retryable(),
         step_name="Enrich LLM",
     )
 
-    if user_id and response.usage:
-        from .token_tracker import record
-        record(user_id, "enrich",
-               getattr(response.usage, "prompt_tokens", 0) or 0,
-               getattr(response.usage, "completion_tokens", 0) or 0)
-
     return _parse_enrich_response(response.choices[0].message.content)
 
 
 async def enrich_cards_stream(
-    client: OpenAI,
+    llm,
     cards: list[Card],
-    user_id: str | None = None,
     batch_size: int = 20,
     max_workers: int = 5,
     model: str = "gemini-2.5-flash-lite",
@@ -151,7 +144,7 @@ async def enrich_cards_stream(
 
         try:
             response = sync_retry(
-                _call_enrich_llm, client, batch, model,
+                _call_enrich_llm, llm, batch, model,
                 max_attempts=4,
                 base_delay=2.0,
                 retryable_exceptions=_get_enrich_retryable(),
@@ -159,13 +152,7 @@ async def enrich_cards_stream(
                 step_name="Enrich stream",
             )
             results = _parse_enrich_response(response.choices[0].message.content)
-            usage_data = None
-            if response.usage:
-                usage_data = {
-                    "input": getattr(response.usage, "prompt_tokens", 0) or 0,
-                    "output": getattr(response.usage, "completion_tokens", 0) or 0,
-                }
-            loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch), "usage": usage_data})
+            loop.call_soon_threadsafe(queue.put_nowait, {"type": "success", "results": results, "count": len(batch)})
         except (OpenAIError, json.JSONDecodeError, KeyError, TypeError, OSError) as e:
             loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
 
@@ -188,9 +175,6 @@ async def enrich_cards_stream(
             if msg["type"] == "success":
                 completed_cards += msg["count"]
                 tasks_remaining -= 1
-                if user_id and msg.get("usage"):
-                    from .token_tracker import record
-                    record(user_id, "enrich", msg["usage"]["input"], msg["usage"]["output"])
                 yield {
                     "status": "running",
                     "current": completed_cards,

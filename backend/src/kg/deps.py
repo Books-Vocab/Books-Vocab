@@ -127,8 +127,8 @@ def _gemini_async_client():
     return create_async_gemini_client()
 
 
-def _embedding_store(user_dir: Path, user_id: str | None = None, notebook_id: str = "default"):
-    return create_embedding_store(user_dir, gemini_client_factory=_gemini_client, user_id=user_id, notebook_id=notebook_id)
+def _embedding_store(user_dir: Path, *, llm, notebook_id: str = "default"):
+    return create_embedding_store(user_dir, llm=llm, notebook_id=notebook_id)
 
 
 def _build_links_by_kind(
