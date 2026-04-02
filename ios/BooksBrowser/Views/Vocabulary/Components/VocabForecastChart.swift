@@ -2,7 +2,7 @@
 //  VocabForecastChart.swift
 //  BooksBrowser
 //
-//  Lollipop chart for review schedule forecast.
+//  Bar chart for review schedule forecast.
 //
 
 import SwiftUI
@@ -14,8 +14,6 @@ struct VocabForecastChart: View {
     @State private var tappedIndex: Int?
     @State private var dismissTask: Task<Void, Never>?
 
-    private let dotSize: CGFloat = 8
-
     private var isCompact: Bool { buckets.count > 14 }
 
     private var maxCount: Int { buckets.map(\.count).max() ?? 1 }
@@ -26,6 +24,7 @@ struct VocabForecastChart: View {
                 let labelHeight: CGFloat = 16
                 let countLabelHeight: CGFloat = isCompact ? 0 : 14
                 let chartHeight = geo.size.height - labelHeight - countLabelHeight - vocabSkin.spacing.inlineGap
+                let columnWidth = geo.size.width / CGFloat(buckets.count)
 
                 ZStack(alignment: .bottom) {
                     // Baseline
@@ -34,10 +33,10 @@ struct VocabForecastChart: View {
                         .frame(height: 1)
                         .offset(y: -labelHeight)
 
-                    // Lollipops
+                    // Bars
                     HStack(alignment: .bottom, spacing: 0) {
                         ForEach(Array(buckets.enumerated()), id: \.element.id) { index, bucket in
-                            lollipopColumn(index: index, bucket: bucket, chartHeight: chartHeight, labelHeight: labelHeight)
+                            barColumn(index: index, bucket: bucket, chartHeight: chartHeight, labelHeight: labelHeight, columnWidth: columnWidth)
                                 .frame(maxWidth: .infinity)
                         }
                     }
@@ -52,14 +51,14 @@ struct VocabForecastChart: View {
         }
     }
 
-    // MARK: - Lollipop Column
+    // MARK: - Bar Column
 
     @ViewBuilder
-    private func lollipopColumn(index: Int, bucket: StatsPresentation.ForecastBucket, chartHeight: CGFloat, labelHeight: CGFloat) -> some View {
-        let effectiveDotSize = isCompact ? dotSize * 0.7 : dotSize
-        let stemHeight: CGFloat = bucket.count > 0
-            ? max(chartHeight * CGFloat(bucket.count) / CGFloat(max(maxCount, 1)), effectiveDotSize)
+    private func barColumn(index: Int, bucket: StatsPresentation.ForecastBucket, chartHeight: CGFloat, labelHeight: CGFloat, columnWidth: CGFloat) -> some View {
+        let barHeight: CGFloat = bucket.count > 0
+            ? max(chartHeight * CGFloat(bucket.count) / CGFloat(max(maxCount, 1)), 4)
             : 0
+        let barWidth = columnWidth * 0.5
 
         VStack(spacing: 0) {
             // Count label
@@ -73,20 +72,16 @@ struct VocabForecastChart: View {
                     .frame(height: isCompact ? 0 : 14)
             }
 
-            // Dot + Stem
+            // Bar area
             VStack(spacing: 0) {
                 Spacer(minLength: 0)
 
                 if bucket.count > 0 {
-                    dotView(index: index, bucket: bucket, size: effectiveDotSize)
-
-                    Rectangle()
-                        .fill(vocabSkin.palette.accent.opacity(0.3))
-                        .frame(width: 1, height: max(stemHeight - effectiveDotSize, 0))
-                } else {
-                    Circle()
-                        .fill(vocabSkin.palette.mutedFill)
-                        .frame(width: 3, height: 3)
+                    RoundedRectangle(cornerRadius: 3, style: .continuous)
+                        .fill(index == 0
+                              ? vocabSkin.palette.accent
+                              : vocabSkin.palette.accent.opacity(0.35))
+                        .frame(width: barWidth, height: barHeight)
                 }
             }
             .frame(height: chartHeight)
@@ -105,28 +100,6 @@ struct VocabForecastChart: View {
                 guard !Task.isCancelled else { return }
                 withAnimation(AppMotion.contentFade) { tappedIndex = nil }
             }
-        }
-    }
-
-    // MARK: - Dot
-
-    @ViewBuilder
-    private func dotView(index: Int, bucket: StatsPresentation.ForecastBucket, size: CGFloat) -> some View {
-        if index == 0 {
-            // Today: filled accent with muted halo
-            ZStack {
-                Circle()
-                    .fill(vocabSkin.palette.mutedFill)
-                    .frame(width: size * 1.8, height: size * 1.8)
-                Circle()
-                    .fill(vocabSkin.palette.accent)
-                    .frame(width: size, height: size)
-            }
-        } else {
-            // Stroke-only circle
-            Circle()
-                .strokeBorder(vocabSkin.palette.accent.opacity(0.55), lineWidth: 1.5)
-                .frame(width: size, height: size)
         }
     }
 
