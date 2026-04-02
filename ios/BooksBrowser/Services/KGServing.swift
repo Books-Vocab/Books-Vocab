@@ -41,4 +41,5 @@ protocol KGServing: AnyObject {
     func backgroundSync(container: ModelContainer) async
     func pushReviewQuietly(container: ModelContainer) async
     func clearLocalData(container: ModelContainer, reason: String) async
+    func fetchQuota() async
 }

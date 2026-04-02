@@ -210,6 +210,10 @@
 "%@ / month · %@ 天免費試用" = "%1$@ / month · %2$@-day free trial";
 "%@ · 到期 %@" = "%1$@ · expires %@";
 "預設提供 %@ 天免費試用" = "Includes a default %@-day free trial";
+"%@ / month" = "%@ / month";
+"包含 %@ 天免費試用" = "Includes %@-day free trial";
+"免費試用 %@ 天，之後 %@/月" = "Free for %1$@ days, then %2$@/mo";
+"訂閱 — %@/月" = "Subscribe — %@/mo";
 "下次 %@" = "Next %@";
 "沒有待收錄的生詞" = "No Pending Words";
 "目前沒有尚未進入複習流程的卡片。" = "There are currently no cards that have not entered the review flow.";
