@@ -316,16 +316,55 @@ private struct DetailPresentation: ViewModifier {
     @Binding var isEditingDetailEntry: Bool
     @Binding var navigationPath: NavigationPath
 
+    #if os(macOS)
+    @AppStorage("kg_mac_detail_panel_width") private var macPanelWidth: Double = Double(AppMetrics.MacDetailPanel.defaultWidth)
+    @State private var macDragWidth: CGFloat?
+    @State private var macContainerWidth: CGFloat = 800
+
+    private var effectiveMacPanelWidth: CGFloat {
+        let desired = CGFloat(macPanelWidth)
+        let maxAllowed = macContainerWidth - AppMetrics.MacDetailPanel.leftMinWidth
+        return min(desired, max(maxAllowed, AppMetrics.MacDetailPanel.minWidth))
+    }
+    #endif
+
     func body(content: Content) -> some View {
         Group {
             if layoutMode.usesInlineDetail {
                 content
+                    #if os(macOS)
+                    .overlay {
+                        GeometryReader { geo in
+                            Color.clear
+                                .preference(key: ContainerWidthKey.self, value: geo.size.width)
+                        }
+                    }
+                    .onPreferenceChange(ContainerWidthKey.self) { macContainerWidth = $0 }
+                    #endif
                     .safeAreaInset(edge: .trailing, spacing: 0) {
                         if detailState.hasDetail {
                             HStack(spacing: 0) {
+                                #if os(macOS)
+                                MacDividerHandle(
+                                    panelWidth: Binding(
+                                        get: { CGFloat(macPanelWidth) },
+                                        set: { macPanelWidth = Double($0) }
+                                    ),
+                                    dragWidth: $macDragWidth,
+                                    containerWidth: macContainerWidth,
+                                    onDoubleClick: {
+                                        withAnimation(AppMotion.standardSpring) {
+                                            macPanelWidth = Double(AppMetrics.MacDetailPanel.defaultWidth)
+                                        }
+                                    }
+                                )
+                                inlineDetailPanel
+                                    .frame(width: macDragWidth ?? effectiveMacPanelWidth)
+                                #else
                                 Divider()
                                 inlineDetailPanel
                                     .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
+                                #endif
                             }
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
