@@ -41,12 +41,8 @@ struct NotebookListView: View {
     @State private var notebookToDelete: Notebook?
     @State private var showArchiveList = false
     @State private var navigationPath = NavigationPath()
-    #if os(macOS)
-    @State private var macDetail = MacDetailState()
-    @State private var isEditingMacDetailEntry = false
-    #elseif os(iOS)
-    @State private var sheetRouter = SheetDetailRouter()
-    #endif
+    @State private var detailState = DetailRouter()
+    @State private var isEditingDetailEntry = false
 
     var body: some View {
         // Single-pass: compute cardCounts & dueCounts together
@@ -157,11 +153,7 @@ struct NotebookListView: View {
             }
             .onChange(of: activeReviewSession) { _, session in
                 if let session {
-                    #if os(macOS)
-                    macDetail.showReview(session, allEntries: allEntries)
-                    #elseif os(iOS)
-                    sheetRouter.showReview(session, allEntries: allEntries)
-                    #endif
+                    detailState.showReview(session, allEntries: allEntries)
                     activeReviewSession = nil
                 }
             }
@@ -203,66 +195,15 @@ struct NotebookListView: View {
                 Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
             }
         }
-        #if os(iOS)
-        .environment(\.detailRouter, sheetRouter)
-        .toastSheet(item: $sheetRouter.selectedEntry) { entry in
-            WordDetailSheet(entry: entry, allEntries: sheetRouter.contextEntries)
-                .appSheet(.large)
-        }
-        .platformFullScreenCover(item: Binding(
-            get: { sizeClass == .compact ? sheetRouter.activeReviewSession : nil },
-            set: { if $0 == nil { sheetRouter.dismiss() } }
-        )) { session in
-            TodayReviewView(
-                entries: session.entries,
-                allEntries: sheetRouter.contextEntries.isEmpty ? allEntries : sheetRouter.contextEntries,
-                currentUserID: authManager.userId,
-                onClose: { sheetRouter.dismiss() }
-            )
-            .toastOverlay()
-        }
-        .toastSheet(item: Binding(
-            get: { sizeClass == .regular ? sheetRouter.activeReviewSession : nil },
-            set: { if $0 == nil { sheetRouter.dismiss() } }
-        )) { session in
-            TodayReviewView(
-                entries: session.entries,
-                allEntries: sheetRouter.contextEntries.isEmpty ? allEntries : sheetRouter.contextEntries,
-                currentUserID: authManager.userId,
-                onClose: { sheetRouter.dismiss() }
-            )
-            .appSheet(.large)
-        }
-        #elseif os(macOS)
-        .environment(\.detailRouter, macDetail)
-        .safeAreaInset(edge: .trailing, spacing: 0) {
-            if macDetail.hasDetail {
-                HStack(spacing: 0) {
-                    Divider()
-                    macDetailPanel
-                        .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
-                }
-                .transition(.move(edge: .trailing).combined(with: .opacity))
-            }
-        }
-        .animation(AppMotion.standardSpring, value: macDetail.hasDetail)
-        .onChange(of: navigationPath) { _, path in
-            if path.isEmpty { macDetail.dismiss() }
-        }
-        .onChange(of: macDetail.selectedEntry?.id) { _, entryID in
-            if entryID == nil {
-                isEditingMacDetailEntry = false
-            }
-        }
-        .toastSheet(isPresented: Binding(
-            get: { isEditingMacDetailEntry && macDetail.selectedEntry != nil },
-            set: { isEditingMacDetailEntry = $0 }
-        )) {
-            if let entry = macDetail.selectedEntry {
-                WordEditSheet(entry: entry)
-            }
-        }
-        #endif
+        .environment(\.detailRouter, detailState)
+        .modifier(DetailPresentation(
+            detailState: detailState,
+            layoutMode: LayoutMode(horizontalSizeClass: sizeClass),
+            allEntries: allEntries,
+            currentUserID: authManager.userId,
+            isEditingDetailEntry: $isEditingDetailEntry,
+            navigationPath: $navigationPath
+        ))
     }
 
     // MARK: - Review Banner
@@ -334,42 +275,6 @@ struct NotebookListView: View {
         activeReviewSession = TodayReviewSession(entries: entries)
     }
 
-    #if os(macOS)
-    @ViewBuilder
-    private var macDetailPanel: some View {
-        if let session = macDetail.activeReviewSession {
-            TodayReviewView(
-                entries: session.entries,
-                allEntries: macDetail.contextEntries.isEmpty ? allEntries : macDetail.contextEntries,
-                currentUserID: authManager.userId,
-                onClose: { macDetail.dismiss() }
-            )
-        } else if let entry = macDetail.selectedEntry {
-            VStack(spacing: 0) {
-                VocabOverlayHeader(
-                    title: entry.word,
-                    systemImage: "character.book.closed",
-                    onClose: { macDetail.dismiss() },
-                    trailing: {
-                        VocabChromeIconButton(
-                            systemImage: "pencil",
-                            label: "編輯".localized,
-                            action: { isEditingMacDetailEntry = true }
-                        )
-                    }
-                )
-
-                WordDetailSheet(
-                    entry: entry,
-                    allEntries: macDetail.contextEntries,
-                    wrapInNavigation: false,
-                    showsInlineChrome: false
-                )
-            }
-        }
-    }
-    #endif
-
     // MARK: - Card Count Helpers (single-pass O(n))
 
     /// Returns (cardCounts, dueCounts) in one iteration over allEntries.
@@ -399,4 +304,108 @@ struct NotebookListView: View {
         UserDefaults.standard.set(id, forKey: "activeNotebookId")
     }
 
+}
+
+// MARK: - Detail Presentation
+
+private struct DetailPresentation: ViewModifier {
+    let detailState: DetailRouter
+    let layoutMode: LayoutMode
+    let allEntries: [VocabularyEntry]
+    let currentUserID: String?
+    @Binding var isEditingDetailEntry: Bool
+    @Binding var navigationPath: NavigationPath
+
+    func body(content: Content) -> some View {
+        Group {
+            if layoutMode.usesInlineDetail {
+                content
+                    .safeAreaInset(edge: .trailing, spacing: 0) {
+                        if detailState.hasDetail {
+                            HStack(spacing: 0) {
+                                Divider()
+                                inlineDetailPanel
+                                    .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
+                            }
+                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                        }
+                    }
+                    .animation(AppMotion.standardSpring, value: detailState.hasDetail)
+                    .onChange(of: navigationPath) { _, path in
+                        if path.isEmpty { detailState.dismiss() }
+                    }
+                    .onChange(of: detailState.selectedEntry?.id) { _, entryID in
+                        if entryID == nil { isEditingDetailEntry = false }
+                    }
+                    .toastSheet(isPresented: Binding(
+                        get: { isEditingDetailEntry && detailState.selectedEntry != nil },
+                        set: { isEditingDetailEntry = $0 }
+                    )) {
+                        if let entry = detailState.selectedEntry {
+                            WordEditSheet(entry: entry)
+                        }
+                    }
+            } else {
+                content
+                    .toastSheet(item: Binding(
+                        get: { detailState.selectedEntry },
+                        set: { if $0 == nil { detailState.dismiss() } }
+                    )) { entry in
+                        WordDetailSheet(entry: entry, allEntries: detailState.contextEntries)
+                            .appSheet(.large)
+                    }
+                    .platformFullScreenCover(item: Binding(
+                        get: { detailState.activeReviewSession },
+                        set: { if $0 == nil { detailState.dismiss() } }
+                    )) { session in
+                        TodayReviewView(
+                            entries: session.entries,
+                            allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
+                            currentUserID: currentUserID,
+                            onClose: { detailState.dismiss() }
+                        )
+                        .toastOverlay()
+                    }
+            }
+        }
+        .onChange(of: layoutMode) { _, newMode in
+            if !newMode.usesInlineDetail {
+                detailState.dismiss()
+                isEditingDetailEntry = false
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var inlineDetailPanel: some View {
+        if let session = detailState.activeReviewSession {
+            TodayReviewView(
+                entries: session.entries,
+                allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
+                currentUserID: currentUserID,
+                onClose: { detailState.dismiss() }
+            )
+        } else if let entry = detailState.selectedEntry {
+            VStack(spacing: 0) {
+                VocabOverlayHeader(
+                    title: entry.word,
+                    systemImage: "character.book.closed",
+                    onClose: { detailState.dismiss() },
+                    trailing: {
+                        VocabChromeIconButton(
+                            systemImage: "pencil",
+                            label: "編輯".localized,
+                            action: { isEditingDetailEntry = true }
+                        )
+                    }
+                )
+                WordDetailSheet(
+                    entry: entry,
+                    allEntries: detailState.contextEntries,
+                    wrapInNavigation: false,
+                    showsInlineChrome: false
+                )
+            }
+        }
+    }
 }
