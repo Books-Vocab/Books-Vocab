@@ -15,7 +15,6 @@ from .api_models import (
     DailyReviewStatsResponse,
     GraphLinkResponse,
     ManualLinkRequest,
-    MoveWordsRequest,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
@@ -29,7 +28,6 @@ from .vocab_crud import (
     delete_vocab_word,
     list_vocab_cards,
     lookup_vocab_word,
-    move_vocab_words,
 )
 from .vocab_graph import graph_links_payload
 from .vocab_graph_ops import (
@@ -129,31 +127,6 @@ def archive_word_response(
         notebook_store_factory=notebook_store_factory,
     )
     return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
-
-
-def move_words_response(
-    req: MoveWordsRequest,
-    user: dict[str, Any],
-    *,
-    card_store_factory: Callable[[Path], Any],
-    graph_store_factory: Callable[..., Any] | None = None,
-    notebook_store_factory: Callable[[Path], Any] | None = None,
-    notebook_id: str = "default",
-) -> dict[str, int]:
-    if notebook_store_factory is not None:
-        validate_notebook_access(notebook_store_factory(user["dir"]), notebook_id)
-        validate_notebook_access(notebook_store_factory(user["dir"]), req.to_notebook_id)
-    cards = card_store_factory(user["dir"])
-    source_graph = graph_store_factory(user["dir"], notebook_id=notebook_id) if graph_store_factory else None
-    target_graph = graph_store_factory(user["dir"], notebook_id=req.to_notebook_id) if graph_store_factory else None
-    return move_vocab_words(
-        words=req.words,
-        from_notebook_id=notebook_id,
-        to_notebook_id=req.to_notebook_id,
-        cards_store=cards,
-        source_graph=source_graph,
-        target_graph=target_graph,
-    )
 
 
 def delete_word_response(
