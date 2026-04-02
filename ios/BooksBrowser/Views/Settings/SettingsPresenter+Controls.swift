@@ -75,10 +75,7 @@ struct SettingsTextInputModifier: ViewModifier {
         content
             .font(vocabSkin.typography.monoLabel)
             .multilineTextAlignment(alignment)
-            .autocorrectionDisabled()
-            #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
+            .platformTextInputConfig()
     }
 }
 

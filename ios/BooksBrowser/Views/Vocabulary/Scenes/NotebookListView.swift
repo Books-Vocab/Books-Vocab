@@ -44,6 +44,8 @@ struct NotebookListView: View {
     #if os(macOS)
     @State private var macDetail = MacDetailState()
     @State private var isEditingMacDetailEntry = false
+    #elseif os(iOS)
+    @State private var sheetRouter = SheetDetailRouter()
     #endif
 
     var body: some View {
@@ -81,11 +83,7 @@ struct NotebookListView: View {
                                     color: notebook.color.flatMap { Color(hex: $0) }
                                 )
                             }
-                            #if os(iOS)
-                            .buttonStyle(.pressable)
-                            #else
-                            .buttonStyle(.plain)
-                            #endif
+                            .platformListButtonStyle()
                             .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                             .contextMenu {
                                 Button {
@@ -157,24 +155,16 @@ struct NotebookListView: View {
                     }
                 }
             }
-            #if os(iOS)
-            .platformFullScreenCover(item: $activeReviewSession) { session in
-                TodayReviewView(
-                    entries: session.entries,
-                    allEntries: allEntries,
-                    currentUserID: authManager.userId,
-                    onClose: { activeReviewSession = nil }
-                )
-                .toastOverlay()
-            }
-            #elseif os(macOS)
             .onChange(of: activeReviewSession) { _, session in
                 if let session {
+                    #if os(macOS)
                     macDetail.showReview(session, allEntries: allEntries)
+                    #elseif os(iOS)
+                    sheetRouter.showReview(session, allEntries: allEntries)
+                    #endif
                     activeReviewSession = nil
                 }
             }
-            #endif
             .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
             }
@@ -213,8 +203,38 @@ struct NotebookListView: View {
                 Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
             }
         }
-        #if os(macOS)
-        .environment(\.macDetail, macDetail)
+        #if os(iOS)
+        .environment(\.detailRouter, sheetRouter)
+        .toastSheet(item: $sheetRouter.selectedEntry) { entry in
+            WordDetailSheet(entry: entry, allEntries: sheetRouter.contextEntries)
+                .appSheet(.large)
+        }
+        .platformFullScreenCover(item: Binding(
+            get: { sizeClass == .compact ? sheetRouter.activeReviewSession : nil },
+            set: { if $0 == nil { sheetRouter.dismiss() } }
+        )) { session in
+            TodayReviewView(
+                entries: session.entries,
+                allEntries: sheetRouter.contextEntries.isEmpty ? allEntries : sheetRouter.contextEntries,
+                currentUserID: authManager.userId,
+                onClose: { sheetRouter.dismiss() }
+            )
+            .toastOverlay()
+        }
+        .toastSheet(item: Binding(
+            get: { sizeClass == .regular ? sheetRouter.activeReviewSession : nil },
+            set: { if $0 == nil { sheetRouter.dismiss() } }
+        )) { session in
+            TodayReviewView(
+                entries: session.entries,
+                allEntries: sheetRouter.contextEntries.isEmpty ? allEntries : sheetRouter.contextEntries,
+                currentUserID: authManager.userId,
+                onClose: { sheetRouter.dismiss() }
+            )
+            .appSheet(.large)
+        }
+        #elseif os(macOS)
+        .environment(\.detailRouter, macDetail)
         .safeAreaInset(edge: .trailing, spacing: 0) {
             if macDetail.hasDetail {
                 HStack(spacing: 0) {
