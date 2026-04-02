@@ -42,10 +42,10 @@ struct NotebookListView: View {
     @State private var showArchiveList = false
     @State private var navigationPath = NavigationPath()
     #if os(macOS)
-    @State private var macDetail = MacDetailState()
+    @State private var macDetail = DetailRouter()
     @State private var isEditingMacDetailEntry = false
     #elseif os(iOS)
-    @State private var sheetRouter = SheetDetailRouter()
+    @State private var sheetRouter = DetailRouter()
     #endif
 
     var body: some View {
