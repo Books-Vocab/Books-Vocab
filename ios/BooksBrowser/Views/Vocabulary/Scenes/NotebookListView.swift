@@ -44,6 +44,9 @@ struct NotebookListView: View {
     #if os(macOS)
     @State private var macDetail = MacDetailState()
     @State private var isEditingMacDetailEntry = false
+    @AppStorage("kg_mac_detail_panel_width") private var macPanelWidth: Double = Double(AppMetrics.MacDetailPanel.defaultWidth)
+    @State private var macDragWidth: CGFloat?
+    @State private var macContainerWidth: CGFloat = 800
     #elseif os(iOS)
     @State private var sheetRouter = SheetDetailRouter()
     #endif
@@ -235,12 +238,31 @@ struct NotebookListView: View {
         }
         #elseif os(macOS)
         .environment(\.detailRouter, macDetail)
+        .overlay {
+            GeometryReader { geo in
+                Color.clear
+                    .preference(key: ContainerWidthKey.self, value: geo.size.width)
+            }
+        }
+        .onPreferenceChange(ContainerWidthKey.self) { macContainerWidth = $0 }
         .safeAreaInset(edge: .trailing, spacing: 0) {
             if macDetail.hasDetail {
                 HStack(spacing: 0) {
-                    Divider()
+                    MacDividerHandle(
+                        panelWidth: Binding(
+                            get: { CGFloat(macPanelWidth) },
+                            set: { macPanelWidth = Double($0) }
+                        ),
+                        dragWidth: $macDragWidth,
+                        containerWidth: macContainerWidth,
+                        onDoubleClick: {
+                            withAnimation(AppMotion.standardSpring) {
+                                macPanelWidth = Double(AppMetrics.MacDetailPanel.defaultWidth)
+                            }
+                        }
+                    )
                     macDetailPanel
-                        .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
+                        .frame(width: macDragWidth ?? effectiveMacPanelWidth)
                 }
                 .transition(.move(edge: .trailing).combined(with: .opacity))
             }
@@ -335,6 +357,12 @@ struct NotebookListView: View {
     }
 
     #if os(macOS)
+    private var effectiveMacPanelWidth: CGFloat {
+        let desired = CGFloat(macPanelWidth)
+        let maxAllowed = macContainerWidth - AppMetrics.MacDetailPanel.leftMinWidth
+        return min(desired, max(maxAllowed, AppMetrics.MacDetailPanel.minWidth))
+    }
+
     @ViewBuilder
     private var macDetailPanel: some View {
         if let session = macDetail.activeReviewSession {
