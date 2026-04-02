@@ -54,6 +54,7 @@ struct TodayReviewView: View {
     @Environment(\.authManager) private var authManager
 
     @State private var isHelpPresented = false
+    @State private var showAddLink = false
     @State private var hasConsumedShortcutHint = false
     @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
 
@@ -97,6 +98,7 @@ struct TodayReviewView: View {
                 perform(.remembered)
             },
             onLinkTap: state.handleLinkTap,
+            onAddLink: { showAddLink = true },
             onToggleAutoPlay: { perform(.toggleAutoplay) },
             onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
             onDetailTap: { perform(.showDetail) },
@@ -127,6 +129,15 @@ struct TodayReviewView: View {
                 }
             )
             .appSheet(.medium)
+        }
+        .toastSheet(isPresented: $showAddLink) {
+            if let entry = state.currentEntry {
+                AddLinkSheet(
+                    sourceEntry: entry,
+                    allEntries: allEntries,
+                    onSelect: { target in handleAddLink(target, for: entry) }
+                )
+            }
         }
         .onDisappear {
             if state.currentIndex < state.queue.count {
@@ -167,6 +178,46 @@ struct TodayReviewView: View {
         #else
         return false
         #endif
+    }
+
+    private func handleAddLink(_ target: VocabularyEntry, for entry: VocabularyEntry) {
+        guard let fromId = entry.kgCardId, let toId = target.kgCardId else { return }
+        let allLinks = entry.graphLinksByKind.values.flatMap { $0 }
+        guard !allLinks.contains(where: { $0.cardId == toId }) else { return }
+        let notebookId = entry.notebookId
+
+        // Optimistic insert — placeholder
+        let placeholderId = "pending-\(UUID().uuidString)"
+        let placeholder = KGCardLinkSummary.pending(id: placeholderId, cardId: toId, word: target.word)
+        var current = entry.graphLinksByKind
+        current[placeholder.kind, default: []].append(placeholder)
+        entry.graphLinksByKind = current
+        state.rebuildCacheForEntry(entry)
+
+        // Backend call — replace placeholder on success, rollback on failure
+        Task {
+            do {
+                let link = try await kgService.createManualLink(fromId: fromId, toId: toId, notebookId: notebookId)
+                let summary = KGCardLinkSummary(
+                    id: link.id, cardId: toId, word: target.word,
+                    kind: link.kind,
+                    label: link.kind == "contrasts_with" ? "對比" : "相關",
+                    confidence: link.confidence, reason: link.reason, hidden: false
+                )
+                var updated = entry.graphLinksByKind
+                updated[placeholder.kind]?.removeAll { $0.id == placeholderId }
+                if updated[placeholder.kind]?.isEmpty == true { updated.removeValue(forKey: placeholder.kind) }
+                updated[link.kind, default: []].append(summary)
+                entry.graphLinksByKind = updated
+                state.rebuildCacheForEntry(entry)
+            } catch {
+                var rollback = entry.graphLinksByKind
+                rollback[placeholder.kind]?.removeAll { $0.id == placeholderId }
+                if rollback[placeholder.kind]?.isEmpty == true { rollback.removeValue(forKey: placeholder.kind) }
+                entry.graphLinksByKind = rollback
+                state.rebuildCacheForEntry(entry)
+            }
+        }
     }
 
     @discardableResult

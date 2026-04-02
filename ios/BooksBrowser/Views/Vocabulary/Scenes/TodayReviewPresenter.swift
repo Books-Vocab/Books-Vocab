@@ -115,6 +115,7 @@ struct TodayReviewPresenter: View {
     let onForgot: () -> Void
     let onRemembered: () -> Void
     let onLinkTap: (KGCardLinkSummary) -> Void
+    let onAddLink: () -> Void
     let onToggleAutoPlay: () -> Void
     let onToggleAutoPlayPause: () -> Void
     let onDetailTap: () -> Void
