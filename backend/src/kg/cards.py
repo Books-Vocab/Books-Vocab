@@ -369,30 +369,6 @@ class CardStore:
             session.commit()
             return len(cards)
 
-    def move_cards(self, words: list[str], from_notebook_id: str, to_notebook_id: str) -> int:
-        """Move specific cards by word from one notebook to another. Returns count moved."""
-        if not words:
-            return 0
-        now = datetime.now(UTC)
-        moved = 0
-        with Session(self.engine) as session:
-            for word in words:
-                norm = normalize_nfc(word)
-                row = session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                    (norm, from_notebook_id),
-                ).first()
-                if row:
-                    card = session.get(Card, row[0])
-                    if card:
-                        card.notebook_id = to_notebook_id
-                        card.updated_at = now
-                        session.add(card)
-                        moved += 1
-            session.commit()
-        return moved
-
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""
         with Session(self.engine) as session:
