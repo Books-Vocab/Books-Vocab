@@ -352,7 +352,8 @@ final class TodayReviewState {
         for entry in entries {
             let card = CardPresentation(entry: entry)
             let compactGroups = card.activeLinkGroups.map { fullGroup in
-                let limited = fullGroup.limited(to: 2)
+                let shuffled = fullGroup.shuffled()
+                let limited = shuffled.limited(to: 2)
                 return TodayReviewPresenterState.LinkGroup(
                     id: fullGroup.id,
                     label: fullGroup.label,
