@@ -20,21 +20,26 @@ final class TodayReviewState {
     var tappedLink: KGCardLinkSummary?
     var preparedCardCache: [UUID: TodayReviewPresenterState.CurrentCard] = [:]
 
-    // MARK: - Scoring
+    // MARK: - Delegated concerns
 
-    var submittedAnswers: [Int: SubmittedAnswer] = [:]
-    var rememberedFeedbackTrigger = 0
-    var forgotFeedbackTrigger = 0
-    private(set) var forgotCount = 0
-    private(set) var rememberedCount = 0
+    let scoring = ReviewScoringState()
+
+    // MARK: - Scoring (forwarded projections — keep external API stable)
+
+    var submittedAnswers: [Int: SubmittedAnswer] { scoring.submittedAnswers }
+    var rememberedFeedbackTrigger: Int { scoring.rememberedFeedbackTrigger }
+    var forgotFeedbackTrigger: Int { scoring.forgotFeedbackTrigger }
+    var forgotCount: Int { scoring.forgotCount }
+    var rememberedCount: Int { scoring.rememberedCount }
 
     // MARK: - Autoplay
+    // NOTE: autoplay is kept here because its loop body directly mutates
+    // navigation state (currentIndex, revealStage). Extracting it would
+    // require bidirectional coupling — less safe than keeping it co-located.
 
     var isAutoPlaying = false
     var isAutoPlayPaused = false
     var autoplayTask: Task<Void, Never>?
-
-    // MARK: - Persistence
 
     // MARK: - Analytics
 
@@ -50,13 +55,13 @@ final class TodayReviewState {
     init(entries: [VocabularyEntry], allEntries: [VocabularyEntry], currentUserID: String?) {
         self.currentUserID = currentUserID
         let ordered = ReviewSessionStore.loadOrder(availableEntries: entries) ?? entries
-        let restored = Self.restoreSnapshotIfPossible(
+        let restored = ReviewSessionPersistence.restoreSnapshotIfPossible(
             orderedEntries: ordered,
             userId: currentUserID
         )
         queue = ordered
-        queuePersistenceIDs = ordered.map(Self.persistenceID(for:))
-        queueBaselines = ordered.map(Self.makeBaseline(from:))
+        queuePersistenceIDs = ordered.map(ReviewSessionPersistence.persistenceID(for:))
+        queueBaselines = ordered.map(ReviewSessionPersistence.makeBaseline(from:))
         sessionStartTime = restored?.sessionStartTime ?? Date()
         linkedEntryLookup = Self.buildLinkedEntryLookup(from: allEntries)
         if let restored {
@@ -64,9 +69,11 @@ final class TodayReviewState {
             queuePersistenceIDs = restored.persistenceIDs
             queueBaselines = restored.baselines
             currentIndex = restored.currentIndex
-            submittedAnswers = restored.submittedAnswers
-            rememberedCount = restored.rememberedCount
-            forgotCount = restored.forgotCount
+            scoring.restore(
+                submittedAnswers: restored.submittedAnswers,
+                rememberedCount: restored.rememberedCount,
+                forgotCount: restored.forgotCount
+            )
         }
         if let first = queue.first {
             preparedCardCache = Self.buildPreparedCardCache(from: [first])
@@ -265,25 +272,12 @@ final class TodayReviewState {
         reviewSettings: ReviewSettings
     ) {
         guard currentEntry != nil else { return }
-        if submittedAnswers[currentIndex] != nil {
+        if scoring.hasAnswer(at: currentIndex) {
             advancePastAlreadyScoredCard()
             return
         }
 
-        let answer = SubmittedAnswer(
-            feedback: feedback,
-            answeredAt: Date(),
-            reviewRecordID: UUID()
-        )
-        submittedAnswers[currentIndex] = answer
-        switch feedback {
-        case .remembered:
-            rememberedFeedbackTrigger += 1
-            rememberedCount += 1
-        case .forgot:
-            forgotFeedbackTrigger += 1
-            forgotCount += 1
-        }
+        scoring.record(feedback, at: currentIndex)
 
         AppAnalytics.track(.reviewCardSubmitted(
             feedback: feedback == .remembered ? "remembered" : "forgot",
@@ -291,8 +285,11 @@ final class TodayReviewState {
             totalCards: queue.count
         ))
 
-        flushSubmittedAnswer(
+        ReviewSessionPersistence.flushSubmittedAnswer(
             at: currentIndex,
+            queuePersistenceIDs: queuePersistenceIDs,
+            queueBaselines: queueBaselines,
+            submittedAnswers: scoring.submittedAnswers,
             container: container,
             reviewSettings: reviewSettings
         )
@@ -315,79 +312,19 @@ final class TodayReviewState {
 
     func persistSnapshot() {
         guard let currentUserID else { return }
-        guard !queue.isEmpty else {
-            TodayReviewSessionSnapshotStore.clear(for: currentUserID)
-            return
-        }
-
-        let submissions = submittedAnswers.mapValues { answer in
-            TodayReviewSessionSnapshotStore.Snapshot.SubmittedAnswer(
-                feedbackRaw: answer.feedback.rawValue,
-                answeredAt: answer.answeredAt,
-                reviewRecordID: answer.reviewRecordID
-            )
-        }
-        let queueItems = zip(queuePersistenceIDs, queueBaselines).map { persistenceID, baseline in
-            TodayReviewSessionSnapshotStore.Snapshot.QueueItem(
-                persistenceID: persistenceID,
-                baseline: baseline
-            )
-        }
-
-        TodayReviewSessionSnapshotStore.save(.init(
+        ReviewSessionPersistence.persistSnapshot(
             userId: currentUserID,
             sessionStartTime: sessionStartTime,
-            currentIndex: min(currentIndex, queue.count),
-            queue: queueItems,
-            submissions: submissions,
-            updatedAt: Date()
-        ))
+            currentIndex: currentIndex,
+            queueCount: queue.count,
+            queuePersistenceIDs: queuePersistenceIDs,
+            queueBaselines: queueBaselines,
+            submittedAnswers: scoring.submittedAnswers
+        )
     }
 
     func clearSnapshot() {
-        TodayReviewSessionSnapshotStore.clear(for: currentUserID)
-    }
-
-    // MARK: - Background Persistence (idempotent per answer)
-
-    func flushSubmittedAnswer(
-        at index: Int,
-        container: ModelContainer,
-        reviewSettings: ReviewSettings
-    ) {
-        guard index < queuePersistenceIDs.count,
-              index < queueBaselines.count,
-              let answer = submittedAnswers[index] else { return }
-
-        let persistenceID = queuePersistenceIDs[index]
-        let baseline = queueBaselines[index]
-        Task.detached(priority: .utility) {
-            let ctx = ModelContext(container)
-            guard let entry = try? Self.fetchEntry(for: persistenceID, in: ctx) else { return }
-
-            Self.applySubmittedAnswer(
-                answer,
-                baseline: baseline,
-                to: entry,
-                reviewSettings: reviewSettings
-            )
-
-            if (try? Self.fetchReviewRecord(id: answer.reviewRecordID, in: ctx)) == nil {
-                let record = ReviewRecord(
-                    word: entry.word,
-                    entryID: entry.id,
-                    feedback: answer.feedback.rawValue,
-                    reviewedAt: answer.answeredAt
-                )
-                record.id = answer.reviewRecordID
-                record.notebookId = entry.notebookId
-                ctx.insert(record)
-            }
-
-            if !ctx.safeSave() {
-                AppLog.data.error("flushSubmittedAnswer: failed to save review result for \(entry.word)")
-            }
-        }
+        ReviewSessionPersistence.clearSnapshot(for: currentUserID)
     }
 
     // MARK: - Cache Builders
@@ -430,8 +367,8 @@ final class TodayReviewState {
     }
 
     private func syncQueueMetadata() {
-        queuePersistenceIDs = queue.map(Self.persistenceID(for:))
-        queueBaselines = queue.map(Self.makeBaseline(from:))
+        queuePersistenceIDs = queue.map(ReviewSessionPersistence.persistenceID(for:))
+        queueBaselines = queue.map(ReviewSessionPersistence.makeBaseline(from:))
     }
 
     private func advancePastAlreadyScoredCard() {
@@ -440,149 +377,5 @@ final class TodayReviewState {
             currentIndex += 1
         }
         persistSnapshot()
-    }
-
-    private static func persistenceID(for entry: VocabularyEntry) -> String {
-        if let kgCardId = entry.kgCardId, !kgCardId.isEmpty {
-            return "kg:\(kgCardId)"
-        }
-        return "local:\(entry.id.uuidString)"
-    }
-
-    private static func makeBaseline(
-        from entry: VocabularyEntry
-    ) -> TodayReviewSessionSnapshotStore.ReviewBaseline {
-        .init(
-            reviewIntervalHours: entry.reviewIntervalHours,
-            nextReviewAt: entry.nextReviewAt,
-            lastReviewedAt: entry.lastReviewedAt,
-            reviewCount: entry.reviewCount,
-            lapseCount: entry.lapseCount,
-            reviewStreak: entry.reviewStreak,
-            lastReviewFeedbackRaw: entry.lastReviewFeedbackRaw
-        )
-    }
-
-    nonisolated private static func fetchEntry(
-        for persistenceID: String,
-        in context: ModelContext
-    ) throws -> VocabularyEntry? {
-        if persistenceID.hasPrefix("kg:") {
-            let kgCardID = String(persistenceID.dropFirst(3))
-            var descriptor = FetchDescriptor<VocabularyEntry>(
-                predicate: #Predicate<VocabularyEntry> { $0.kgCardId == kgCardID }
-            )
-            descriptor.fetchLimit = 1
-            return try context.fetch(descriptor).first
-        }
-
-        guard persistenceID.hasPrefix("local:"),
-              let rawID = persistenceID.split(separator: ":", maxSplits: 1).last,
-              let entryID = UUID(uuidString: String(rawID)) else {
-            return nil
-        }
-
-        var descriptor = FetchDescriptor<VocabularyEntry>(
-            predicate: #Predicate<VocabularyEntry> { $0.id == entryID }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
-    }
-
-    nonisolated private static func fetchReviewRecord(id: UUID, in context: ModelContext) throws -> ReviewRecord? {
-        var descriptor = FetchDescriptor<ReviewRecord>(
-            predicate: #Predicate<ReviewRecord> { $0.id == id }
-        )
-        descriptor.fetchLimit = 1
-        return try context.fetch(descriptor).first
-    }
-
-    nonisolated private static func applySubmittedAnswer(
-        _ answer: SubmittedAnswer,
-        baseline: TodayReviewSessionSnapshotStore.ReviewBaseline,
-        to entry: VocabularyEntry,
-        reviewSettings: ReviewSettings
-    ) {
-        let minInterval = reviewSettings.effectiveMinimumIntervalHours
-        let baseInterval = baseline.reviewCount == 0
-            ? reviewSettings.effectiveInitialIntervalHours
-            : max(baseline.reviewIntervalHours, minInterval)
-        let updatedInterval = VocabularyReviewPolicy.nextIntervalHours(
-            currentIntervalHours: baseInterval,
-            feedback: answer.feedback,
-            settings: reviewSettings
-        )
-
-        entry.reviewIntervalHours = updatedInterval
-        entry.nextReviewAt = answer.answeredAt.addingTimeInterval(updatedInterval * 3600)
-        entry.lastReviewedAt = answer.answeredAt
-        entry.reviewCount = baseline.reviewCount + 1
-        entry.lastReviewFeedbackRaw = answer.feedback.rawValue
-        switch answer.feedback {
-        case .remembered:
-            entry.reviewStreak = baseline.reviewStreak + 1
-            entry.lapseCount = baseline.lapseCount
-        case .forgot:
-            entry.reviewStreak = 0
-            entry.lapseCount = baseline.lapseCount + 1
-        }
-    }
-
-    private static func restoreSnapshotIfPossible(
-        orderedEntries: [VocabularyEntry],
-        userId: String?
-    ) -> (
-        queue: [VocabularyEntry],
-        persistenceIDs: [String],
-        baselines: [TodayReviewSessionSnapshotStore.ReviewBaseline],
-        currentIndex: Int,
-        submittedAnswers: [Int: SubmittedAnswer],
-        rememberedCount: Int,
-        forgotCount: Int,
-        sessionStartTime: Date
-    )? {
-        guard let userId,
-              let snapshot = TodayReviewSessionSnapshotStore.load(for: userId) else {
-            return nil
-        }
-
-        let entryMap = Dictionary(uniqueKeysWithValues: orderedEntries.map { (persistenceID(for: $0), $0) })
-        let restoredQueue = snapshot.queue.compactMap { entryMap[$0.persistenceID] }
-        guard restoredQueue.count == snapshot.queue.count else {
-            TodayReviewSessionSnapshotStore.clear(for: userId)
-            return nil
-        }
-
-        let restoredIDs = snapshot.queue.map(\.persistenceID)
-        let restoredIDSet = Set(restoredIDs)
-        let appendedEntries = orderedEntries.filter { !restoredIDSet.contains(persistenceID(for: $0)) }
-        let queue = restoredQueue + appendedEntries
-        let persistenceIDs = restoredIDs + appendedEntries.map(persistenceID(for:))
-        let baselines = snapshot.queue.map(\.baseline) + appendedEntries.map(makeBaseline(from:))
-
-        var submittedAnswers: [Int: SubmittedAnswer] = [:]
-        var rememberedCount = 0
-        var forgotCount = 0
-        for (index, answer) in snapshot.submissions {
-            guard index < queue.count,
-                  let feedback = ReviewFeedback(rawValue: answer.feedbackRaw) else { continue }
-            submittedAnswers[index] = SubmittedAnswer(
-                feedback: feedback,
-                answeredAt: answer.answeredAt,
-                reviewRecordID: answer.reviewRecordID
-            )
-            if feedback == .remembered { rememberedCount += 1 } else { forgotCount += 1 }
-        }
-
-        return (
-            queue: queue,
-            persistenceIDs: persistenceIDs,
-            baselines: baselines,
-            currentIndex: min(snapshot.currentIndex, queue.count),
-            submittedAnswers: submittedAnswers,
-            rememberedCount: rememberedCount,
-            forgotCount: forgotCount,
-            sessionStartTime: snapshot.sessionStartTime
-        )
     }
 }
