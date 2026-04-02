@@ -23,7 +23,6 @@ struct VocabularyListView: View {
     @Environment(\.kgService) var kgService
     @Environment(\.authManager) var authManager
     @Environment(\.subscriptionManager) var subscriptionManager
-    @Environment(\.horizontalSizeClass) var sizeClass
     @Environment(\.appTheme) var appTheme
     @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.syncCoordinator) var syncCoordinator
@@ -78,8 +77,7 @@ struct VocabularyListView: View {
         ))
         .modifier(VocabularyListSheets(
             coordinator: coordinator,
-            allEntries: allEntries,
-            sizeClass: sizeClass
+            allEntries: allEntries
         ))
         .task {
             guard !authManager.isDemoMode else { return }
