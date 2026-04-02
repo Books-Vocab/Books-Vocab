@@ -227,16 +227,27 @@ def test_patch_no_fields_returns_400(isolated_api):
 
 
 def test_delete_non_default_notebook(isolated_api):
+    """Deleting a notebook should hard-delete its cards, not reassign to default."""
     client = isolated_api.client
     h = isolated_api.headers
 
     nb_id = client.post("/api/notebooks", json={"name": "ToDelete", "color": "#ff0000"}, headers=h).json()["id"]
 
+    # Add vocab cards to this notebook
+    client.post("/api/vocab", json=[{"word": "apple", "translation": "蘋果"}], params={"notebook_id": nb_id}, headers=h)
+    client.post("/api/vocab", json=[{"word": "banana", "translation": "香蕉"}], params={"notebook_id": nb_id}, headers=h)
+
     r = client.delete(f"/api/notebooks/{nb_id}", headers=h)
     assert r.status_code == 200, r.text
     body = r.json()
     assert body["deleted"] == nb_id
-    assert "cardsReassigned" in body
+    assert "cardsDeleted" in body
+    assert body["cardsDeleted"] == 2
+    # Cards must NOT appear in default notebook
+    r_vocab = client.get("/api/vocab", params={"notebook_id": "default"}, headers=h)
+    default_words = [c["content"] for c in r_vocab.json()]
+    assert "apple" not in default_words
+    assert "banana" not in default_words
 
 
 def test_delete_default_notebook_fails(isolated_api):
@@ -252,7 +263,7 @@ def test_delete_nonexistent_notebook_fails(isolated_api):
 
 
 def test_delete_idempotent(isolated_api):
-    """Second delete on an already-deleted notebook returns 200 with cardsReassigned=0.
+    """Second delete on an already-deleted notebook returns 200 with cardsDeleted=0.
 
     store.delete returns None when notebook is already soft-deleted;
     the router treats None as idempotent success (not False → no 400).
@@ -268,4 +279,4 @@ def test_delete_idempotent(isolated_api):
     r2 = client.delete(f"/api/notebooks/{nb_id}", headers=h)
     assert r2.status_code == 200, r2.text
     assert r2.json()["deleted"] == nb_id
-    assert r2.json()["cardsReassigned"] == 0
+    assert r2.json()["cardsDeleted"] == 0
