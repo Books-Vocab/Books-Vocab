@@ -107,10 +107,7 @@ struct AddLinkSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
             TextField("搜尋單字…".localized, text: $searchText)
-                #if os(iOS)
-                .textInputAutocapitalization(.never)
-                #endif
-                .autocorrectionDisabled()
+                .platformTextInputConfig()
         }
         .padding(vocabSkin.metrics.cardBlockInnerGap * 1.5)
         .background(vocabSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))

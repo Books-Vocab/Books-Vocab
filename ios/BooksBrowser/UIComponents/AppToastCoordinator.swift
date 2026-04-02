@@ -43,17 +43,7 @@ final class AppToastCoordinator {
         withAnimation(AppMotion.panelState) {
             current = item
         }
-        #if os(iOS)
-        if UIAccessibility.isVoiceOverRunning {
-            UIAccessibility.post(notification: .announcement, argument: item.message)
-            return
-        }
-        #elseif os(macOS)
-        if NSWorkspace.shared.isVoiceOverEnabled {
-            NSAccessibility.post(element: NSApp as Any, notification: .announcementRequested, userInfo: [.announcement: item.message])
-            return
-        }
-        #endif
+        guard !PlatformAccessibility.announceIfVoiceOver(item.message) else { return }
         dismissTask = Task {
             try? await Task.sleep(for: .seconds(item.duration))
             guard !Task.isCancelled else { return }

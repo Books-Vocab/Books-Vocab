@@ -4,9 +4,7 @@ import SwiftData
 struct WordDetailSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kgService) private var kgService
-    #if os(macOS)
-    @Environment(\.macDetail) private var macDetail
-    #endif
+    @Environment(\.detailRouter) private var detailRouter
     @State private var localLinkedCardStack: [VocabularyEntry] = []
     @State private var isEditing = false
     @State private var showAddLink = false
@@ -105,11 +103,7 @@ struct WordDetailSheet: View {
     private var shouldUseLinkedOverlayStack: Bool {
         // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
         guard externalLinkedCardStack == nil else { return false }
-        #if os(macOS)
-        return wrapInNavigation || macDetail == nil
-        #else
-        return wrapInNavigation
-        #endif
+        return wrapInNavigation || detailRouter == nil
     }
 
     private func handleClose() {
@@ -123,12 +117,10 @@ struct WordDetailSheet: View {
     private func handleLinkTap(_ link: KGCardLinkSummary) {
         let lookup = VocabularyEntry.buildCardIdLookup(from: allEntries)
         guard let target = entry.linkedEntry(for: link, lookup: lookup) else { return }
-        #if os(macOS)
-        if !wrapInNavigation, let macDetail {
-            macDetail.showWordDetail(target, allEntries: allEntries)
+        if !wrapInNavigation, let detailRouter {
+            detailRouter.showWordDetail(target, allEntries: allEntries)
             return
         }
-        #endif
         linkedCardStack.wrappedValue.append(target)
     }
 

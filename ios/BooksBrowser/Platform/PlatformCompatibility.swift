@@ -6,6 +6,7 @@
 //
 
 import SwiftUI
+import StoreKit
 #if os(macOS)
 import AppKit
 #endif
@@ -87,6 +88,51 @@ extension View {
         self
         #endif
     }
+
+    @ViewBuilder
+    func platformTextInputConfig() -> some View {
+        #if os(iOS)
+        self.textInputAutocapitalization(.never).autocorrectionDisabled()
+        #else
+        self.autocorrectionDisabled()
+        #endif
+    }
+
+    @ViewBuilder
+    func platformListButtonStyle() -> some View {
+        #if os(iOS)
+        self.buttonStyle(.pressable)
+        #else
+        self.buttonStyle(.plain)
+        #endif
+    }
+
+    @ViewBuilder
+    func platformContentMaxWidth(_ width: CGFloat = 600) -> some View {
+        #if os(iOS)
+        self.frame(maxWidth: width).frame(maxWidth: .infinity)
+        #else
+        self.frame(maxWidth: .infinity)
+        #endif
+    }
+
+    @ViewBuilder
+    func platformHideNavigationBar() -> some View {
+        #if os(iOS)
+        self.toolbar(.hidden, for: .navigationBar)
+        #else
+        self
+        #endif
+    }
+
+    @ViewBuilder
+    func platformRefreshable(action: @escaping () async -> Void) -> some View {
+        #if os(iOS)
+        self.refreshable { await action() }
+        #else
+        self
+        #endif
+    }
 }
 
 // MARK: - Cross-platform Clipboard
@@ -101,6 +147,70 @@ enum PlatformClipboard {
         #endif
     }
 }
+
+// MARK: - Cross-platform Accessibility
+
+enum PlatformAccessibility {
+    /// VoiceOver 開啟時發送 announcement，回傳是否已處理。
+    @discardableResult
+    static func announceIfVoiceOver(_ message: String) -> Bool {
+        #if os(iOS)
+        guard UIAccessibility.isVoiceOverRunning else { return false }
+        UIAccessibility.post(notification: .announcement, argument: message)
+        return true
+        #elseif os(macOS)
+        guard NSWorkspace.shared.isVoiceOverEnabled else { return false }
+        NSAccessibility.post(
+            element: NSApp as Any,
+            notification: .announcementRequested,
+            userInfo: [.announcement: message]
+        )
+        return true
+        #endif
+    }
+}
+
+// MARK: - Cross-platform Store
+
+enum PlatformStore {
+    @MainActor
+    static func manageSubscriptions() async {
+        #if os(iOS)
+        guard let scene = UIApplication.shared.connectedScenes
+            .compactMap({ $0 as? UIWindowScene }).first else { return }
+        try? await AppStore.showManageSubscriptions(in: scene)
+        #elseif os(macOS)
+        if let url = URL(string: "https://apps.apple.com/account/subscriptions") {
+            NSWorkspace.shared.open(url)
+        }
+        #endif
+    }
+}
+
+// MARK: - Cross-platform Share
+
+struct PlatformShareView: View {
+    let url: URL
+    var body: some View {
+        #if os(iOS)
+        PlatformShareSheet(url: url)
+        #else
+        ShareLink(item: url).padding()
+        #endif
+    }
+}
+
+#if os(iOS)
+private struct PlatformShareSheet: UIViewControllerRepresentable {
+    let url: URL
+    func makeUIViewController(context: Context) -> UIActivityViewController {
+        UIActivityViewController(activityItems: [url], applicationActivities: nil)
+    }
+    func updateUIViewController(_ vc: UIActivityViewController, context: Context) {}
+}
+#endif
+
+// MARK: - macOS Key Responder
 
 #if os(macOS)
 private struct MacKeyResponderRepresentable: NSViewRepresentable {
