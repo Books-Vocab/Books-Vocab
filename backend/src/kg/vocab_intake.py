@@ -75,7 +75,13 @@ def add_vocab_entries(
     if len(entries) > MAX_BATCH_SIZE:
         raise ValidationError(f"Batch size {len(entries)} exceeds maximum of {MAX_BATCH_SIZE}")
     all_cards = list(cards.all(notebook_id=notebook_id))
-    existing = {_normalize_word(card.content) for card in all_cards}
+    # Build content→card dict once; eliminates per-duplicate find_by_content() DB call
+    existing_by_norm: dict[str, Any] = {}
+    for card in all_cards:
+        key = _normalize_word(card.content)
+        if key not in existing_by_norm:
+            existing_by_norm[key] = card
+    existing = set(existing_by_norm.keys())
 
     created = 0
     skipped = 0
@@ -84,10 +90,11 @@ def add_vocab_entries(
 
     for entry in entries:
         word = _clean_content(entry.word)
-        if _normalize_word(word) in existing:
+        norm = _normalize_word(word)
+        if norm in existing:
             skipped += 1
             duplicates.append(word)
-            existing_card = cards.find_by_content(word, notebook_id=notebook_id)
+            existing_card = existing_by_norm.get(norm)
             if existing_card:
                 card_ids[word] = existing_card.id
             continue
