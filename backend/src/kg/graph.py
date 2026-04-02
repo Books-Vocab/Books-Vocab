@@ -50,19 +50,41 @@ class CandidatePair(BaseModel):
 
 
 class GraphStore:
-    """JSON-based graph storage."""
+    """JSON-based graph storage.
+
+    Locking strategy (fine-grained):
+    - The lock protects in-memory state only (_links, _candidates, _candidate_set,
+      _from_index, _to_index, _blocked_pairs).
+    - Disk I/O (_atomic_json_write) always happens *outside* the lock to avoid
+      blocking readers during slow fsync operations.
+    - Pattern for every write method:
+        1. Acquire lock -> mutate memory -> take snapshot -> release lock
+        2. Call _atomic_json_write(snapshot) -- no lock held
+    - _candidate_set is a canonical set[tuple[str,str]] (normalised: smaller id
+      first) kept in sync with _candidates for O(1) duplicate detection.
+    """
 
     def __init__(self, links_path: Path, candidates_path: Path, blocked_path: Path | None = None) -> None:
         self.links_path = links_path
         self.candidates_path = candidates_path
         self.blocked_path = blocked_path
         self._lock = threading.Lock()
+        # Per-file write locks: serialise concurrent _atomic_json_write calls
+        # so that tmp->bak->replace sequence is always consistent on disk.
+        self._links_write_lock = threading.Lock()
+        self._candidates_write_lock = threading.Lock()
+        self._blocked_write_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
         self._candidates: list[CandidatePair] = []
+        self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
         self._blocked_pairs: set[tuple[str, str]] = set()
-        self._from_index: dict[str, set[str]] = {}  # card_id → set of link_ids
-        self._to_index: dict[str, set[str]] = {}    # card_id → set of link_ids
+        self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
+        self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
         self._load()
+
+    # ------------------------------------------------------------------
+    # Internal helpers
+    # ------------------------------------------------------------------
 
     def _index_link(self, link: GraphLink) -> None:
         self._from_index.setdefault(link.from_id, set()).add(link.id)
@@ -77,6 +99,12 @@ class GraphStore:
         self._to_index = {}
         for link in self._links.values():
             self._index_link(link)
+
+    def _rebuild_candidate_set(self) -> None:
+        self._candidate_set = {
+            self._normalize_pair(c.from_id, c.to_id)
+            for c in self._candidates
+        }
 
     # Link kinds removed from the enum; silently drop on load.
     _RETIRED_KINDS: set[str] = {"confusable"}
@@ -96,7 +124,7 @@ class GraphStore:
                 if lk.get("kind") in self._RETIRED_KINDS:
                     dirty = True
                     continue
-                # Migrate rejected → blocked
+                # Migrate rejected -> blocked
                 if lk.get("status") == "rejected":
                     dirty = True
                     self._blocked_pairs.add(
@@ -112,10 +140,11 @@ class GraphStore:
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
         self._rebuild_index()
+        self._rebuild_candidate_set()
 
     @staticmethod
     def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None:
-        """Atomic JSON write: tmp → bak → replace."""
+        """Atomic JSON write: tmp -> bak -> replace."""
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
         tmp.write_text(json.dumps(data, indent=indent, ensure_ascii=False))
@@ -123,21 +152,49 @@ class GraphStore:
             path.replace(path.with_suffix(".json.bak"))
         tmp.replace(path)
 
+    # Snapshot helpers -- call inside lock, return serialisable data
+    def _links_to_serializable(self) -> list[dict]:
+        return [lk.model_dump(mode="json") for lk in self._links.values()]
+
+    def _candidates_to_serializable(self) -> list[dict]:
+        return [c.model_dump(mode="json") for c in self._candidates]
+
+    def _blocked_to_serializable(self) -> list[list[str]]:
+        return [list(pair) for pair in self._blocked_pairs]
+
+    # Per-file serialised write helpers.
+    # These acquire the file-level write lock so concurrent threads writing to
+    # the same file don't race on the tmp->bak->replace sequence.
+    def _flush_links(self, snapshot: list[dict]) -> None:
+        with self._links_write_lock:
+            self._atomic_json_write(self.links_path, snapshot)
+
+    def _flush_candidates(self, snapshot: list[dict]) -> None:
+        with self._candidates_write_lock:
+            self._atomic_json_write(self.candidates_path, snapshot)
+
+    def _flush_blocked(self, snapshot: list[list[str]]) -> None:
+        if self.blocked_path is None:
+            return
+        with self._blocked_write_lock:
+            self._atomic_json_write(self.blocked_path, snapshot, indent=None)
+
+    # These internal _save_* are still used from _load (dirty migration path)
+    # where we are NOT inside a concurrent context yet.
     def _save_links(self) -> None:
-        data = [lk.model_dump(mode="json") for lk in self._links.values()]
-        self._atomic_json_write(self.links_path, data)
+        self._flush_links(self._links_to_serializable())
 
     def _save_candidates(self) -> None:
-        data = [c.model_dump(mode="json") for c in self._candidates]
-        self._atomic_json_write(self.candidates_path, data)
+        self._flush_candidates(self._candidates_to_serializable())
 
     def _save_blocked(self) -> None:
         if self.blocked_path is None:
             return
-        data = [list(pair) for pair in self._blocked_pairs]
-        self._atomic_json_write(self.blocked_path, data, indent=None)
+        self._flush_blocked(self._blocked_to_serializable())
 
-    # --- Links ---
+    # ------------------------------------------------------------------
+    # Links
+    # ------------------------------------------------------------------
 
     def add_link(
         self,
@@ -147,7 +204,7 @@ class GraphStore:
         confidence: float,
         reason: str,
     ) -> GraphLink:
-        """Create and store a new link."""
+        """Create and store a new link. Disk write happens outside the lock."""
         link = GraphLink(
             from_id=from_id,
             to_id=to_id,
@@ -158,7 +215,8 @@ class GraphStore:
         with self._lock:
             self._links[link.id] = link
             self._index_link(link)
-            self._save_links()
+            snapshot = self._links_to_serializable()
+        self._flush_links(snapshot)
         return link
 
     def batch_add_links(
@@ -179,8 +237,9 @@ class GraphStore:
                 self._links[link.id] = link
                 self._index_link(link)
                 created.append(link)
-            if created:
-                self._save_links()
+            snapshot = self._links_to_serializable() if created else None
+        if snapshot is not None:
+            self._flush_links(snapshot)
         return created
 
     def get_links_for(self, card_id: str) -> list[GraphLink]:
@@ -235,7 +294,8 @@ class GraphStore:
                 if key not in ALLOWED:
                     raise ValueError(f"Cannot update attribute: {key}")
                 setattr(lk, key, value)
-            self._save_links()
+            snapshot = self._links_to_serializable()
+        self._flush_links(snapshot)
         return lk
 
     def hide_link(self, link_id: str) -> None:
@@ -245,7 +305,8 @@ class GraphStore:
             if lk is None:
                 raise KeyError(link_id)
             lk.status = "hidden"
-            self._save_links()
+            snapshot = self._links_to_serializable()
+        self._flush_links(snapshot)
 
     def unhide_link(self, link_id: str) -> None:
         """Set link status back to active. Raises KeyError if not found."""
@@ -254,7 +315,8 @@ class GraphStore:
             if lk is None:
                 raise KeyError(link_id)
             lk.status = "active"
-            self._save_links()
+            snapshot = self._links_to_serializable()
+        self._flush_links(snapshot)
 
     def hard_delete_link(self, link_id: str) -> tuple[str, str]:
         """Delete a link and add the pair to blocked list. Returns (from_id, to_id)."""
@@ -266,8 +328,10 @@ class GraphStore:
             self._unindex_link(lk)
             del self._links[link_id]
             self._blocked_pairs.add(self._normalize_pair(from_id, to_id))
-            self._save_links()
-            self._save_blocked()
+            links_snapshot = self._links_to_serializable()
+            blocked_snapshot = self._blocked_to_serializable()
+        self._flush_links(links_snapshot)
+        self._flush_blocked(blocked_snapshot)
         return (from_id, to_id)
 
     def is_blocked(self, from_id: str, to_id: str) -> bool:
@@ -281,13 +345,15 @@ class GraphStore:
                 pair for pair in self._blocked_pairs
                 if card_id not in pair
             }
-            self._save_blocked()
+            snapshot = self._blocked_to_serializable()
+        self._flush_blocked(snapshot)
 
     def unblock_pair(self, from_id: str, to_id: str) -> None:
         """Remove a specific blocked pair."""
         with self._lock:
             self._blocked_pairs.discard(self._normalize_pair(from_id, to_id))
-            self._save_blocked()
+            snapshot = self._blocked_to_serializable()
+        self._flush_blocked(snapshot)
 
     def all_links(self) -> Iterator[GraphLink]:
         yield from self._links.values()
@@ -295,64 +361,70 @@ class GraphStore:
     def link_count(self) -> int:
         return sum(1 for lk in self._links.values() if lk.status == "active")
 
-    # --- Candidates ---
+    # ------------------------------------------------------------------
+    # Candidates
+    # ------------------------------------------------------------------
 
     def add_candidate(self, from_id: str, to_id: str, similarity: float) -> None:
-        """Add a candidate pair for LLM judgement."""
+        """Add a candidate pair for LLM judgement.
+
+        Uses _candidate_set for O(1) duplicate detection. Disk write outside lock.
+        """
+        norm = self._normalize_pair(from_id, to_id)
         with self._lock:
             # Skip if already exists or link exists
             if self._has_link_unlocked(from_id, to_id):
                 return
-            for c in self._candidates:
-                if (c.from_id == from_id and c.to_id == to_id) or (
-                    c.from_id == to_id and c.to_id == from_id
-                ):
-                    return
+            if norm in self._candidate_set:
+                return
             self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
-            self._save_candidates()
+            self._candidate_set.add(norm)
+            snapshot = self._candidates_to_serializable()
+        self._flush_candidates(snapshot)
 
     def batch_add_candidates(self, items: list[tuple[str, str, float]]) -> int:
         """Add multiple candidate pairs with a single disk write. Returns count added."""
         with self._lock:
-            # Build a set of existing pairs for O(1) lookup
-            existing: set[tuple[str, str]] = set()
-            for c in self._candidates:
-                existing.add((c.from_id, c.to_id))
-                existing.add((c.to_id, c.from_id))
-
             added = 0
             for from_id, to_id, similarity in items:
-                if self.has_link(from_id, to_id):
+                if self._has_link_unlocked(from_id, to_id):
                     continue
-                if (from_id, to_id) in existing:
+                norm = self._normalize_pair(from_id, to_id)
+                if norm in self._candidate_set:
                     continue
                 self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
-                existing.add((from_id, to_id))
-                existing.add((to_id, from_id))
+                self._candidate_set.add(norm)
                 added += 1
-
-            if added:
-                self._save_candidates()
-            return added
+            snapshot = self._candidates_to_serializable() if added else None
+        if snapshot is not None:
+            self._flush_candidates(snapshot)
+        return added
 
     def pop_candidates(self) -> list[CandidatePair]:
         """Get and clear all pending candidates."""
         with self._lock:
             result = self._candidates[:]
             self._candidates.clear()
-            self._save_candidates()
+            self._candidate_set.clear()
+            snapshot = self._candidates_to_serializable()
+        self._flush_candidates(snapshot)
         return result
 
     def requeue_candidates(self, candidates: list[CandidatePair]) -> None:
         """Push unprocessed candidates back onto the list."""
         with self._lock:
-            self._candidates.extend(candidates)
-            self._save_candidates()
+            for c in candidates:
+                self._candidates.append(c)
+                self._candidate_set.add(self._normalize_pair(c.from_id, c.to_id))
+            snapshot = self._candidates_to_serializable()
+        self._flush_candidates(snapshot)
 
     def candidate_count(self) -> int:
         return len(self._candidates)
 
-    # --- Cleanup ---
+    # ------------------------------------------------------------------
+    # Cleanup
+    # ------------------------------------------------------------------
 
     def deprecate_links_for(self, card_id: str) -> int:
         """Deprecate all active links involving a card. Returns count of deprecated links."""
@@ -364,8 +436,9 @@ class GraphStore:
                 if lk and lk.status == "active":
                     lk.status = "deprecated"
                     count += 1
-            if count:
-                self._save_links()
+            snapshot = self._links_to_serializable() if count else None
+        if snapshot is not None:
+            self._flush_links(snapshot)
         return count
 
     def restore_links_for(self, card_id: str, cards_store) -> int:
@@ -381,8 +454,9 @@ class GraphStore:
                     if other_card and not other_card.is_deleted and not other_card.is_archived:
                         lk.status = "active"
                         count += 1
-            if count:
-                self._save_links()
+            snapshot = self._links_to_serializable() if count else None
+        if snapshot is not None:
+            self._flush_links(snapshot)
         return count
 
     def remove_candidates_for(self, card_id: str) -> int:
@@ -395,10 +469,15 @@ class GraphStore:
             ]
             removed = before - len(self._candidates)
             if removed:
-                self._save_candidates()
+                self._rebuild_candidate_set()
+            snapshot = self._candidates_to_serializable() if removed else None
+        if snapshot is not None:
+            self._flush_candidates(snapshot)
         return removed
 
-    # --- Merge ---
+    # ------------------------------------------------------------------
+    # Merge
+    # ------------------------------------------------------------------
 
     def merge_from(self, source: "GraphStore") -> None:
         """Merge all links and candidates from *source* into this store.
@@ -415,31 +494,34 @@ class GraphStore:
                         self._links[lk.id] = lk
                         self._index_link(lk)
 
-                # Merge candidates — skip pairs that already have a link or candidate in target
-                existing_pairs: set[tuple[str, str]] = set()
-                for c in self._candidates:
-                    existing_pairs.add((c.from_id, c.to_id))
-                    existing_pairs.add((c.to_id, c.from_id))
-
+                # Merge candidates using _candidate_set for O(1) checks
                 for c in source._candidates:
-                    if (c.from_id, c.to_id) not in existing_pairs and not self._has_link_unlocked(c.from_id, c.to_id):
+                    norm = self._normalize_pair(c.from_id, c.to_id)
+                    if norm not in self._candidate_set and not self._has_link_unlocked(c.from_id, c.to_id):
                         self._candidates.append(c)
-                        existing_pairs.add((c.from_id, c.to_id))
-                        existing_pairs.add((c.to_id, c.from_id))
+                        self._candidate_set.add(norm)
 
                 # Merge blocked pairs
                 self._blocked_pairs |= source._blocked_pairs
 
-                self._save_links()
-                self._save_candidates()
-                self._save_blocked()
+                target_links_snap = self._links_to_serializable()
+                target_cands_snap = self._candidates_to_serializable()
+                target_blocked_snap = self._blocked_to_serializable()
 
             # Clear source (still under source._lock, target lock released)
             source._links.clear()
             source._candidates.clear()
+            source._candidate_set.clear()
             source._rebuild_index()
-            source._save_links()
-            source._save_candidates()
+            src_links_snap = source._links_to_serializable()
+            src_cands_snap = source._candidates_to_serializable()
+
+        # All disk writes outside any lock
+        self._flush_links(target_links_snap)
+        self._flush_candidates(target_cands_snap)
+        self._flush_blocked(target_blocked_snap)
+        self._atomic_json_write(source.links_path, src_links_snap)
+        self._atomic_json_write(source.candidates_path, src_cands_snap)
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
         """Deprecate links + remove candidates (+ blocked pairs if deleting)."""
