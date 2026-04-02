@@ -129,7 +129,7 @@ struct SyncPresenter: View {
         case .done:
             Image(systemName: "checkmark.circle.fill")
                 .foregroundStyle(vocabSkin.palette.success)
-                .symbolEffect(.bounce)
+                .symbolEffect(.bounce, value: true)
         case .skipped:
             Image(systemName: "minus.circle.fill")
                 .foregroundStyle(vocabSkin.palette.secondaryText)
