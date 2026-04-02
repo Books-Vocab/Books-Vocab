@@ -45,12 +45,13 @@ async def _step_enrich(
         return
 
     from .enrich import enrich_cards_stream
+    from .tracked_llm import TrackedLLM
 
-    client = gemini_client_factory()
+    llm = TrackedLLM(gemini_client_factory(), uid)
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
-    async for msg in enrich_cards_stream(client, targets, user_id=uid, batch_size=20, max_workers=5, model=gemini_model):
+    async for msg in enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=gemini_model):
         if msg.get("status") == "error":
             logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
 
