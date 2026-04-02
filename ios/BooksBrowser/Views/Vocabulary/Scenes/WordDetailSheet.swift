@@ -103,10 +103,12 @@ struct WordDetailSheet: View {
     }
 
     private var shouldUseLinkedOverlayStack: Bool {
+        // 有外部 stack binding 時，overlay 由外部 LinkedCardOverlayStack 管理，不重複渲染
+        guard externalLinkedCardStack == nil else { return false }
         #if os(macOS)
-        wrapInNavigation || macDetail == nil
+        return wrapInNavigation || macDetail == nil
         #else
-        wrapInNavigation
+        return wrapInNavigation
         #endif
     }
 
