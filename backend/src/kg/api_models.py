@@ -405,15 +405,6 @@ class BatchArchiveResponse(BaseModel):
     not_found: list[str]
 
 
-class MoveWordsRequest(BaseModel):
-    words: list[str] = Field(min_length=1, max_length=500)
-    to_notebook_id: str
-
-
-class MoveWordsResponse(BaseModel):
-    moved: int
-
-
 class ArchiveWordResponse(BaseModel):
     word: str
     id: str
