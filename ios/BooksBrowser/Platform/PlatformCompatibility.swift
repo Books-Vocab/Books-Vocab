@@ -123,17 +123,16 @@ private struct MacKeyResponderRepresentable: NSViewRepresentable {
 private final class MacKeyResponderView: NSView {
     var onKeyPress: ((MacKeyPress) -> Bool)?
     private var isActive = true
-    private var pendingFirstResponder: DispatchWorkItem?
 
     override var acceptsFirstResponder: Bool { true }
 
     override func viewDidMoveToWindow() {
         super.viewDidMoveToWindow()
-        ensureFirstResponder()
+        claimFirstResponderIfNeeded()
     }
 
     override func mouseDown(with event: NSEvent) {
-        ensureFirstResponder()
+        claimFirstResponderIfNeeded()
         super.mouseDown(with: event)
     }
 
@@ -145,24 +144,18 @@ private final class MacKeyResponderView: NSView {
     }
 
     func setActive(_ active: Bool) {
-        pendingFirstResponder?.cancel()
-        pendingFirstResponder = nil
         isActive = active
-        if active {
-            ensureFirstResponder()
-        } else if let window, window.firstResponder === self {
-            window.makeFirstResponder(nil)
-        }
+        if active { claimFirstResponderIfNeeded() }
+        // inactive 時不 resign — keyDown 已有 isActive guard，留著當 first responder 無害
     }
 
-    private func ensureFirstResponder() {
+    private func claimFirstResponderIfNeeded() {
         guard isActive, let window, window.firstResponder !== self else { return }
-        let item = DispatchWorkItem { [weak self] in
-            guard let self, self.isActive else { return }
-            self.window?.makeFirstResponder(self)
+        DispatchQueue.main.async { [weak self] in
+            guard let self, self.isActive, let window = self.window,
+                  window.firstResponder !== self else { return }
+            window.makeFirstResponder(self)
         }
-        pendingFirstResponder = item
-        DispatchQueue.main.async(execute: item)
     }
 
     private func map(_ event: NSEvent) -> MacKeyPress? {
