@@ -45,12 +45,13 @@ async def _step_enrich(
         return
 
     from .enrich import enrich_cards_stream
+    from .tracked_llm import TrackedLLM
 
-    client = gemini_client_factory()
+    llm = TrackedLLM(gemini_client_factory(), uid)
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
-    async for msg in enrich_cards_stream(client, targets, user_id=uid, batch_size=20, max_workers=5, model=gemini_model):
+    async for msg in enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=gemini_model):
         if msg.get("status") == "error":
             logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
 
@@ -123,11 +124,14 @@ async def _step_embed(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
     embedding_store_factory: Callable[..., Any],
+    gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     notebook_id: str = "default",
 ) -> None:
     cards = card_store_factory(user["dir"])
-    embeddings = embedding_store_factory(user["dir"], user_id=uid, notebook_id=notebook_id)
+    from .tracked_llm import TrackedLLM
+    llm = TrackedLLM(gemini_client_factory(), uid)
+    embeddings = embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
     missing = [card for card in cards.all(notebook_id=notebook_id) if not embeddings.has(card.id) and not card.is_archived]
 
@@ -163,9 +167,10 @@ async def _step_link(
         return
 
     from .judge import Judge
+    from .tracked_llm import TrackedLLM
 
-    client = gemini_client_factory()
-    judge = Judge(client, model=gemini_model)
+    llm = TrackedLLM(gemini_client_factory(), uid)
+    judge = Judge(llm, model=gemini_model)
     cards = card_store_factory(user["dir"])
     pending_links: list[tuple[str, str, Any, float, str]] = []
     index = 0
@@ -188,7 +193,7 @@ async def _step_link(
             result = await loop.run_in_executor(
                 None,
                 lambda a=card_a, b=card_b: judge.evaluate(
-                    a.content, a.meaning, b.content, b.meaning, user_id=uid
+                    a.content, a.meaning, b.content, b.meaning,
                 ),
             )
 
@@ -346,6 +351,7 @@ async def run_pipeline_background(
                 card_store_factory=card_store_factory,
                 graph_store_factory=graph_store_factory,
                 embedding_store_factory=embedding_store_factory,
+                gemini_client_factory=gemini_client_factory,
                 logger=logger,
                 notebook_id=notebook_id,
             ), logger=logger, retry=True)

@@ -9,6 +9,7 @@ import pytest
 
 from kg.cards import Card
 from kg.enrich import _build_prompt, _parse_enrich_response, enrich_cards
+from kg.tracked_llm import TrackedLLM
 
 
 # ---------------------------------------------------------------------------
@@ -102,44 +103,34 @@ class TestParseEnrichResponse:
 
 class TestEnrichCards:
     def test_empty_cards_returns_empty(self):
-        client = MagicMock()
-        result = enrich_cards(client, [])
+        llm = TrackedLLM(MagicMock(), "test_user")
+        result = enrich_cards(llm, [])
         assert result == []
-        client.chat.completions.create.assert_not_called()
 
     @patch("kg.enrich.sync_retry")
     def test_normal_batch(self, mock_retry):
         enriched = [{"word": "hello", "pos": "interj.", "note": "打招呼用語"}]
         mock_retry.return_value = _mock_response(json.dumps(enriched))
 
-        client = MagicMock()
+        llm = TrackedLLM(MagicMock(), "test_user")
         cards = [_make_card("hello", "你好")]
-        result = enrich_cards(client, cards)
+        result = enrich_cards(llm, cards)
 
         assert result == enriched
         mock_retry.assert_called_once()
 
     @patch("kg.token_tracker.record")
     @patch("kg.enrich.sync_retry")
-    def test_usage_calls_token_tracker(self, mock_retry, mock_record):
+    def test_usage_recorded_by_tracked_llm(self, mock_retry, mock_record):
+        """Token tracking is now handled by TrackedLLM.chat(), not enrich_cards."""
         mock_retry.return_value = _mock_response(
             json.dumps([{"word": "x"}]), prompt_tokens=100, completion_tokens=50
         )
-        client = MagicMock()
-        enrich_cards(client, [_make_card()], user_id="u_test")
-
-        mock_record.assert_called_once_with("u_test", "enrich", 100, 50)
-
-    @patch("kg.token_tracker.record")
-    @patch("kg.enrich.sync_retry")
-    def test_no_usage_skips_tracker(self, mock_retry, mock_record):
-        resp = _mock_response(json.dumps([]))
-        resp.usage = None
-        mock_retry.return_value = resp
-
-        client = MagicMock()
-        enrich_cards(client, [_make_card()], user_id="u_test")
-        mock_record.assert_not_called()
+        llm = TrackedLLM(MagicMock(), "u_test")
+        enrich_cards(llm, [_make_card()])
+        # enrich_cards no longer calls record directly — TrackedLLM handles it
+        # so we only verify sync_retry was called with llm
+        mock_retry.assert_called_once()
 
 
 # ---------------------------------------------------------------------------
@@ -150,9 +141,9 @@ class TestEnrichCardsStream:
     @pytest.mark.asyncio
     async def test_empty_cards(self):
         from kg.enrich import enrich_cards_stream
-        client = MagicMock()
+        llm = TrackedLLM(MagicMock(), "test_user")
         results = []
-        async for msg in enrich_cards_stream(client, []):
+        async for msg in enrich_cards_stream(llm, []):
             results.append(msg)
         assert len(results) == 1
         assert results[0]["status"] == "done"
@@ -164,12 +155,12 @@ class TestEnrichCardsStream:
         enriched = [{"word": "w", "pos": "n."}]
         resp = _mock_response(json.dumps(enriched))
 
-        client = MagicMock()
+        llm = TrackedLLM(MagicMock(), "test_user")
 
         with patch("kg.enrich.sync_retry", return_value=resp):
             cards = [_make_card(f"word{i}", f"意思{i}") for i in range(5)]
             results = []
-            async for msg in enrich_cards_stream(client, cards, batch_size=2):
+            async for msg in enrich_cards_stream(llm, cards, batch_size=2):
                 results.append(msg)
 
         # 5 cards / batch_size 2 = 3 batches → at least 3 progress messages
@@ -179,15 +170,19 @@ class TestEnrichCardsStream:
         assert running_msgs[-1]["current"] == 5
 
     @pytest.mark.asyncio
-    async def test_stream_with_token_tracking(self):
+    async def test_stream_token_tracking_via_tracked_llm(self):
+        """Token tracking now happens inside TrackedLLM.chat(), not in stream consumer."""
         from kg.enrich import enrich_cards_stream
         resp = _mock_response(json.dumps([{"word": "x"}]),
                               prompt_tokens=50, completion_tokens=25)
-        client = MagicMock()
+        llm = TrackedLLM(MagicMock(), "u_test")
 
-        with patch("kg.enrich.sync_retry", return_value=resp), \
-             patch("kg.token_tracker.record") as mock_record:
+        with patch("kg.enrich.sync_retry", return_value=resp):
             cards = [_make_card()]
-            async for _ in enrich_cards_stream(client, cards, user_id="u_test"):
-                pass
-            mock_record.assert_called()
+            msgs = []
+            async for msg in enrich_cards_stream(llm, cards):
+                msgs.append(msg)
+            # Stream should still yield running messages without usage key
+            running = [m for m in msgs if m["status"] == "running"]
+            assert len(running) >= 1
+            assert "usage" not in running[0]

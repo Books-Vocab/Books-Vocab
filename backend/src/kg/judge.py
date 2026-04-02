@@ -4,10 +4,10 @@ from __future__ import annotations
 
 import logging
 
-from openai import OpenAI
 from pydantic import BaseModel
 
 from .graph import LinkKind
+from .tracked_llm import TrackedLLM
 
 logger = logging.getLogger(__name__)
 
@@ -44,8 +44,8 @@ class Judgement(BaseModel):
 class Judge:
     """LLM-based relationship judge."""
 
-    def __init__(self, client: OpenAI, model: str = "gemini-2.5-flash-lite") -> None:
-        self.client = client
+    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite") -> None:
+        self.llm = llm
         self.model = model
 
     def evaluate(
@@ -54,7 +54,6 @@ class Judge:
         meaning_a: str,
         word_b: str,
         meaning_b: str,
-        user_id: str | None = None,
     ) -> Judgement | None:
         """Evaluate relationship between two words.
 
@@ -67,7 +66,8 @@ class Judge:
             meaning_b=meaning_b,
         )
 
-        resp = self.client.chat.completions.create(
+        resp = self.llm.chat(
+            "judge",
             model=self.model,
             messages=[
                 {"role": "system", "content": SYSTEM_PROMPT},
@@ -76,12 +76,6 @@ class Judge:
             response_format={"type": "json_object"},
             temperature=0.1,
         )
-
-        if user_id and resp.usage:
-            from .token_tracker import record
-            record(user_id, "judge",
-                   getattr(resp.usage, "prompt_tokens", 0) or 0,
-                   getattr(resp.usage, "completion_tokens", 0) or 0)
 
         content = resp.choices[0].message.content
         if not content:
@@ -107,7 +101,8 @@ class Judge:
         except (json.JSONDecodeError, ValueError, TypeError) as e:
             logger.warning("Failed to parse LLM judgement after cleanup (%s), retrying. Raw: %r", e, content)
             # Retry once
-            resp2 = self.client.chat.completions.create(
+            resp2 = self.llm.chat(
+                "judge",
                 model=self.model,
                 messages=[
                     {"role": "system", "content": SYSTEM_PROMPT},
@@ -168,8 +163,8 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
 class ManualLinkJudge:
     """LLM judge for user-initiated links. Never returns None."""
 
-    def __init__(self, client: OpenAI, model: str = "gemini-2.5-flash-lite") -> None:
-        self.client = client
+    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite") -> None:
+        self.llm = llm
         self.model = model
 
     def evaluate(
@@ -178,14 +173,14 @@ class ManualLinkJudge:
         meaning_a: str,
         word_b: str,
         meaning_b: str,
-        user_id: str | None = None,
     ) -> Judgement:
         user_msg = USER_TEMPLATE.format(
             word_a=word_a, meaning_a=meaning_a,
             word_b=word_b, meaning_b=meaning_b,
         )
 
-        resp = self.client.chat.completions.create(
+        resp = self.llm.chat(
+            "manual_link_judge",
             model=self.model,
             messages=[
                 {"role": "system", "content": MANUAL_LINK_SYSTEM_PROMPT},
@@ -194,12 +189,6 @@ class ManualLinkJudge:
             response_format={"type": "json_object"},
             temperature=0.1,
         )
-
-        if user_id and resp.usage:
-            from .token_tracker import record
-            record(user_id, "manual_link_judge",
-                   getattr(resp.usage, "prompt_tokens", 0) or 0,
-                   getattr(resp.usage, "completion_tokens", 0) or 0)
 
         content = resp.choices[0].message.content or ""
 

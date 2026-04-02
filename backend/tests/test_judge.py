@@ -5,6 +5,7 @@ from unittest.mock import MagicMock
 import pytest
 
 from kg.judge import Judge, Judgement
+from kg.tracked_llm import TrackedLLM
 
 
 def _make_client(content: str | None):
@@ -19,7 +20,7 @@ def _make_client(content: str | None):
 
 
 def _judge_with(content: str | None) -> Judge:
-    return Judge(client=_make_client(content))
+    return Judge(llm=TrackedLLM(_make_client(content), "test_user"))
 
 
 VALID_JSON = '{"link": "contrasts_with", "confidence": 0.9, "reason": "opposite meanings"}'
@@ -70,7 +71,7 @@ class TestJudgeRegexFallback:
         mock_resp2.usage = None
 
         mock_client.chat.completions.create.side_effect = [mock_resp1, mock_resp2]
-        judge = Judge(client=mock_client)
+        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
         result = judge.evaluate("affect", "influence", "effect", "result")
         assert isinstance(result, Judgement)
 
@@ -118,7 +119,7 @@ class TestJudgeAPIFailure:
     def test_consecutive_api_failures_return_none(self):
         mock_client = MagicMock()
         mock_client.chat.completions.create.side_effect = Exception("API error")
-        judge = Judge(client=mock_client)
+        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
         with pytest.raises(Exception):  # noqa: B017
             judge.evaluate("a", "meaning a", "b", "meaning b")
 
@@ -129,7 +130,7 @@ class TestJudgeAPIFailure:
         bad_resp.choices[0].message.content = "completely unparseable !!!"
         bad_resp.usage = None
         mock_client.chat.completions.create.return_value = bad_resp
-        judge = Judge(client=mock_client)
+        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
         result = judge.evaluate("a", "meaning a", "b", "meaning b")
         assert result is None
 
