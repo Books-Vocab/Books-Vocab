@@ -42,7 +42,7 @@ extension ReaderSettingsPresenter {
 
     var vocabHeaderBlock: some View {
         HStack(alignment: .top, spacing: vocabSkin.metrics.readerSettingsHeaderSpacing) {
-            Text("閱讀設定")
+            Text("閱讀設定".localized)
                 .font(vocabSkin.typography.sectionTitle)
                 .foregroundStyle(vocabSkin.palette.primaryText)
             Spacer()
@@ -102,7 +102,7 @@ extension ReaderSettingsPresenter {
                     vocabControlSurface {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
-                                Text("字體")
+                                Text("字體".localized)
                                     .font(vocabSkin.typography.captionStrong)
                                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                                 Text(bindings.font.wrappedValue.rawValue)
@@ -156,10 +156,10 @@ extension ReaderSettingsPresenter {
         vocabSettingsSection(title: "開發者與除錯".localized) {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
-                    Text("顯示點擊熱區")
+                    Text("顯示點擊熱區".localized)
                         .font(vocabSkin.typography.body.weight(.medium))
                         .foregroundStyle(vocabSkin.palette.primaryText)
-                    Text("用於校正閱讀器點擊熱區。")
+                    Text("用於校正閱讀器點擊熱區。".localized)
                         .font(vocabSkin.typography.caption)
                         .foregroundStyle(vocabSkin.palette.tertiaryText)
                 }
