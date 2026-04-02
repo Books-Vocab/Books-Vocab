@@ -335,46 +335,22 @@ class CardStore:
             ).all()
             return {nb_id: cnt for nb_id, cnt in rows}
 
-    def reassign_notebook(self, from_notebook_id: str, to_notebook_id: str) -> int:
-        """Move all non-deleted cards from one notebook to another. Returns count."""
+    def soft_delete_by_notebook(self, notebook_id: str) -> int:
+        """Soft-delete all non-deleted cards in a notebook. Returns count."""
         now = datetime.now(UTC)
         with Session(self.engine) as session:
             cards = session.exec(
                 select(Card).where(
-                    Card.notebook_id == from_notebook_id,
+                    Card.notebook_id == notebook_id,
                     Card.is_deleted.is_(False),
                 )
             ).all()
             for card in cards:
-                card.notebook_id = to_notebook_id
+                card.is_deleted = True
                 card.updated_at = now
                 session.add(card)
             session.commit()
             return len(cards)
-
-    def move_cards(self, words: list[str], from_notebook_id: str, to_notebook_id: str) -> int:
-        """Move specific cards by word from one notebook to another. Returns count moved."""
-        if not words:
-            return 0
-        now = datetime.now(UTC)
-        moved = 0
-        with Session(self.engine) as session:
-            for word in words:
-                norm = normalize_nfc(word)
-                row = session.connection().exec_driver_sql(
-                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
-                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
-                    (norm, from_notebook_id),
-                ).first()
-                if row:
-                    card = session.get(Card, row[0])
-                    if card:
-                        card.notebook_id = to_notebook_id
-                        card.updated_at = now
-                        session.add(card)
-                        moved += 1
-            session.commit()
-        return moved
 
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""

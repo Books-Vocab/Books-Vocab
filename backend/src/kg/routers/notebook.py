@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import logging
-
 from fastapi import APIRouter, Depends
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
-from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, _gemini_client, get_current_user
-from ..tracked_llm import TrackedLLM
+from ..deps import _notebook_store, _card_store, get_current_user
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
@@ -81,24 +78,20 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
     result = store.delete(nb_id)
     if result is False:
         raise BadRequestError("Cannot delete: notebook not found or is default")
-    # 只在首次刪除時搬移卡片並合併 graph/embedding；冪等重試時已無資料需搬
-    reassigned = 0
+    cards_deleted = 0
     if result is True:
-        reassigned = cards.reassign_notebook(nb_id, "default")
-        # Merge graph links/candidates and embeddings into default notebook
-        # Failures are non-fatal: cards are already reassigned, graph/embedding
-        # data can be reconciled later.
-        try:
-            src_graph = _graph_store(user["dir"], notebook_id=nb_id)
-            tgt_graph = _graph_store(user["dir"], notebook_id="default")
-            tgt_graph.merge_from(src_graph)
-        except Exception:
-            logging.warning("Failed to merge graph data from notebook %s", nb_id, exc_info=True)
-        try:
-            llm = TrackedLLM(_gemini_client(), user["id"])
-            src_emb = _embedding_store(user["dir"], llm=llm, notebook_id=nb_id)
-            tgt_emb = _embedding_store(user["dir"], llm=llm, notebook_id="default")
-            tgt_emb.merge_from(src_emb)
-        except Exception:
-            logging.warning("Failed to merge embedding data from notebook %s", nb_id, exc_info=True)
-    return {"deleted": nb_id, "cardsReassigned": reassigned}
+        cards_deleted = cards.soft_delete_by_notebook(nb_id)
+        # Delete graph files
+        for pattern in [
+            f"graph_{nb_id}.json", f"candidates_{nb_id}.json", f"blocked_{nb_id}.json",
+        ]:
+            for suffix in ("", ".bak", ".tmp"):
+                (user["dir"] / (pattern + suffix)).unlink(missing_ok=True)
+        # Delete embedding files
+        for pattern in [f"embeddings_{nb_id}.npy", f"card_ids_{nb_id}.json"]:
+            for suffix in ("", ".bak", ".tmp"):
+                (user["dir"] / (pattern + suffix)).unlink(missing_ok=True)
+        # Evict cached stores
+        from ..service_factories import evict_notebook_cache
+        evict_notebook_cache(user["dir"], nb_id)
+    return {"deleted": nb_id, "cardsDeleted": cards_deleted}

@@ -43,6 +43,16 @@ def _get_cached(key: str, factory):
         return instance
 
 
+def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
+    """Remove cached graph and embedding stores for a deleted notebook."""
+    with _STORE_CACHE_LOCK:
+        for prefix in ("graph", "embedding"):
+            key = f"{prefix}:{user_dir}:{notebook_id}"
+            store = _STORE_CACHE.pop(key, None)
+            if store is not None:
+                _close_store(store)
+
+
 def clear_store_cache() -> None:
     with _STORE_CACHE_LOCK:
         for store in _STORE_CACHE.values():

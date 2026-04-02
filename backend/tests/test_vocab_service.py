@@ -14,7 +14,6 @@ from kg.vocab_crud import (
     delete_vocab_word,
     list_vocab_cards,
     lookup_vocab_word,
-    move_vocab_words,
 )
 from kg.vocab_graph import graph_links_payload
 from kg.vocab_intake import add_vocab_entries
@@ -572,45 +571,3 @@ def test_incremental_query_resolves_neighbour_links(tmp_path):
     assert results[0].linksByKind["shares_usage"][0].word == "apple"
 
 
-class _FakeMoveCardsStore:
-    """Fake store for move_vocab_words that supports all() and move_cards()."""
-    def __init__(self, cards):
-        self._cards = list(cards)
-        self.moved = None
-
-    def all(self, include_deleted=False, notebook_id=None):
-        return [c for c in self._cards if not c.is_deleted]
-
-    def move_cards(self, words, from_notebook_id, to_notebook_id):
-        self.moved = (words, from_notebook_id, to_notebook_id)
-        return len(words)
-
-    def find_by_content(self, content, notebook_id=None):
-        raise AssertionError("find_by_content should not be called")
-
-
-class TestMoveVocabWordsNoNPlusOne:
-    """move_vocab_words should not call find_by_content in a loop."""
-
-    def test_no_find_by_content_calls(self):
-        from test_move_cards import _FakeGraphStore
-        cards = _FakeMoveCardsStore([
-            _FakeCard(id="c1", content="apple"),
-            _FakeCard(id="c2", content="book"),
-        ])
-        src_graph = _FakeGraphStore()
-        call_count = 0
-        original_find = cards.find_by_content
-        def counting_find(*a, **kw):
-            nonlocal call_count
-            call_count += 1
-            return original_find(*a, **kw)
-        cards.find_by_content = counting_find
-        move_vocab_words(
-            words=["apple", "book"],
-            from_notebook_id="nb1",
-            to_notebook_id="nb2",
-            cards_store=cards,
-            source_graph=src_graph,
-        )
-        assert call_count == 0, f"find_by_content called {call_count} times, expected 0"

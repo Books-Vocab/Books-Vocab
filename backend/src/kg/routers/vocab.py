@@ -17,8 +17,6 @@ from ..api_models import (
     DeleteWordResponse,
     GraphLinkResponse,
     ManualLinkRequest,
-    MoveWordsRequest,
-    MoveWordsResponse,
     ReviewStatePushRequest,
     ReviewStatePushResponse,
     VocabAddResponse,
@@ -47,7 +45,6 @@ from ..vocab_handlers import (
     hide_graph_link_response,
     list_vocab_response,
     lookup_word_response,
-    move_words_response,
     pull_daily_stats_response,
     push_daily_stats_response,
     push_review_response,
@@ -153,20 +150,6 @@ def lookup_word(
         notebook_id=notebook_id,
     )
 
-
-@router.patch("/api/vocab/move", response_model=MoveWordsResponse)
-def move_words(
-    req: MoveWordsRequest,
-    notebook_id: str = Query("default"),
-    user: dict = Depends(get_current_user),
-):
-    return move_words_response(
-        req, user,
-        card_store_factory=_card_store,
-        graph_store_factory=_graph_store,
-        notebook_store_factory=_notebook_store,
-        notebook_id=notebook_id,
-    )
 
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
