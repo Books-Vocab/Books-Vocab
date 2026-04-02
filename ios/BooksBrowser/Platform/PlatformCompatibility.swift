@@ -108,12 +108,9 @@ extension View {
     }
 
     @ViewBuilder
-    func platformContentMaxWidth(_ width: CGFloat = 600) -> some View {
-        #if os(iOS)
-        self.frame(maxWidth: width).frame(maxWidth: .infinity)
-        #else
-        self.frame(maxWidth: .infinity)
-        #endif
+    func platformContentMaxWidth(for layoutMode: LayoutMode) -> some View {
+        self.frame(maxWidth: layoutMode.contentMaxWidth)
+            .frame(maxWidth: .infinity)
     }
 
     @ViewBuilder
