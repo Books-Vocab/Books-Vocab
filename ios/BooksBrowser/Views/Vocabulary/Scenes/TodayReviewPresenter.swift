@@ -168,16 +168,9 @@ struct TodayReviewPresenter: View {
             }
             .animation(AppMotion.panelState, value: isHelpPresented)
             #endif
-            #if os(iOS)
-            .frame(maxWidth: 600)
-            .frame(maxWidth: .infinity)
-            #else
-            .frame(maxWidth: .infinity)
-            #endif
+            .platformContentMaxWidth()
             .vocabCanvasBackground()
-            #if os(iOS)
-            .toolbar(.hidden, for: .navigationBar)
-            #endif
+            .platformHideNavigationBar()
             .onGeometryChange(for: CGFloat.self) { proxy in
                 proxy.size.width
             } action: { newWidth in

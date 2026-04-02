@@ -126,11 +126,9 @@ struct KGVocabPresenter: View {
             .padding(.bottom, vocabSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
-        #if os(iOS)
-        .refreshable { [onRefresh] in
+        .platformRefreshable { [onRefresh] in
             await onRefresh?()
         }
-        #endif
         .animateSpring(state.banner == nil)
     }
 }

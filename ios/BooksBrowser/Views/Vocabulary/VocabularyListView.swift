@@ -27,9 +27,7 @@ struct VocabularyListView: View {
     @Environment(\.appTheme) var appTheme
     @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.syncCoordinator) var syncCoordinator
-    #if os(macOS)
-    @Environment(\.macDetail) var macDetail
-    #endif
+    @Environment(\.detailRouter) var detailRouter
     @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var coordinator = VocabularyListCoordinator()
 
@@ -104,20 +102,18 @@ struct VocabularyListView: View {
                 // Task cancelled — 使用者繼續輸入，忽略
             }
         }
-        #if os(macOS)
         .onChange(of: coordinator.selectedEntry) { _, entry in
-            if let entry, let macDetail {
-                macDetail.showWordDetail(entry, allEntries: allEntries)
+            if let entry, let detailRouter {
+                detailRouter.showWordDetail(entry, allEntries: allEntries)
                 coordinator.selectedEntry = nil
             }
         }
         .onChange(of: coordinator.activeReviewSession) { _, session in
-            if let session, let macDetail {
-                macDetail.showReview(session, allEntries: allEntries)
+            if let session, let detailRouter {
+                detailRouter.showReview(session, allEntries: allEntries)
                 coordinator.activeReviewSession = nil
             }
         }
-        #endif
     }
 
 }
