@@ -107,8 +107,22 @@ struct TodayReviewView: View {
             LinkedCardOverlayStack(stack: $state.linkedCardStack, allEntries: allEntries)
         }
         .toastSheet(item: $state.tappedLink) { link in
-            LinkReasonSheet(link: link, onNavigate: { state.navigateToLinkedCard(link: link) })
-                .appSheet(.medium)
+            LinkReasonSheet(
+                link: link,
+                onNavigate: { state.navigateToLinkedCard(link: link) },
+                onHide: {
+                    let notebookId = state.currentEntry?.notebookId ?? "default"
+                    state.hideLink(link)
+                    Task {
+                        do {
+                            try await kgService.hideLink(linkId: link.id, notebookId: notebookId)
+                        } catch {
+                            state.unhideLink(link)
+                        }
+                    }
+                }
+            )
+            .appSheet(.medium)
         }
         .onDisappear {
             if state.currentIndex < state.queue.count {

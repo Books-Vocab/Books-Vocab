@@ -152,6 +152,21 @@ final class TodayReviewState {
         linkedCardStack.append(target)
     }
 
+    func hideLink(_ link: KGCardLinkSummary) {
+        tappedLink = nil
+        guard let entry = currentEntry else { return }
+        entry.mutateLink(id: link.id) { $0.withHidden(true) }
+        linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(true) }
+        rebuildCacheForCurrentEntry()
+    }
+
+    func unhideLink(_ link: KGCardLinkSummary) {
+        guard let entry = currentEntry else { return }
+        entry.mutateLink(id: link.id) { $0.withHidden(false) }
+        linkedEntryLookup[link.cardId]?.mutateLink(id: link.id) { $0.withHidden(false) }
+        rebuildCacheForCurrentEntry()
+    }
+
     func handleDetailTap() {
         guard let current = currentEntry else { return }
         linkedCardStack.append(current)
@@ -363,6 +378,14 @@ final class TodayReviewState {
         entries.reduce(into: [String: VocabularyEntry]()) { lookup, entry in
             guard let cardID = entry.kgCardId else { return }
             lookup[cardID] = entry
+        }
+    }
+
+    private func rebuildCacheForCurrentEntry() {
+        guard let entry = currentEntry else { return }
+        let rebuilt = Self.buildPreparedCardCache(from: [entry])
+        if let card = rebuilt[entry.id] {
+            preparedCardCache[entry.id] = card
         }
     }
 
