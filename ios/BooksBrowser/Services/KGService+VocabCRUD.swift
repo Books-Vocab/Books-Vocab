@@ -74,16 +74,6 @@ extension KGService {
         )
     }
 
-    func moveCards(words: [String], fromNotebook: String, toNotebook: String) async throws {
-        let body: [String: Any] = ["words": words, "to_notebook_id": toNotebook]
-        try await authenticatedVoid(
-            path: "api/vocab/move",
-            method: "PATCH",
-            queryItems: [URLQueryItem(name: "notebook_id", value: fromNotebook)],
-            body: try JSONSerialization.data(withJSONObject: body)
-        )
-    }
-
     func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
         let payload = entries.map { entry in
             KGVocabEntry(
