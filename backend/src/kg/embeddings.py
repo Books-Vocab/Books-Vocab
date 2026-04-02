@@ -65,8 +65,10 @@ class EmbeddingStore:
         for attempt in range(3):
             try:
                 response = self.llm.embed("embed", input=texts, model=EMBEDDING_MODEL)
-                # response.data may not be sorted by index; sort to match input order
-                sorted_data = sorted(response.data, key=lambda d: d.index)
+                # response.data may not be sorted by index; sort to match input order.
+                # Gemini's OpenAI-compat layer sometimes returns index=None for
+                # the first element — coerce to 0 so sorting doesn't crash.
+                sorted_data = sorted(response.data, key=lambda d: d.index if d.index is not None else 0)
                 vecs = np.array([d.embedding for d in sorted_data], dtype=np.float32)
                 return vecs
             except OpenAIError as e:
