@@ -85,15 +85,16 @@ final class SyncCoordinator: SyncCoordinating {
         AppAnalytics.track(.syncStarted)
         let syncStartTime = Date()
 
-        pipelineTask = Task {
-            defer { pipelineTask = nil }
+        pipelineTask = Task { [weak self] in
+            defer { self?.pipelineTask = nil }
+            guard let self else { return }
             do {
                 let deletes = pendingEntries.filter { $0.syncAction == .delete && $0.shouldUploadOnNextSync }
                 let adds = pendingEntries.filter { $0.syncAction == .add && $0.shouldUploadOnNextSync }
                 var encounteredFailure = false
 
                 if !deletes.isEmpty {
-                    updateStep("upload_delete", status: .running, total: deletes.count)
+                    self.updateStep("upload_delete", status: .running, total: deletes.count)
                     deletes.forEach { $0.prepareForRetryAttempt() }
 
                     // Group by notebook and batch-delete
@@ -117,7 +118,7 @@ final class SyncCoordinator: SyncCoordinating {
                                     failedWords.append(entry.word)
                                 }
                             }
-                            updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
+                            self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                         } catch {
                             // Batch failed — fallback to per-word delete
                             if Task.isCancelled { break }
@@ -127,7 +128,7 @@ final class SyncCoordinator: SyncCoordinating {
                                     try await kgService.deleteCard(word: entry.word, notebookId: entry.notebookId)
                                     modelContext.delete(entry)
                                     deleted += 1
-                                    updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
+                                    self.updateStep("upload_delete", status: .running, current: deleted, total: deletes.count)
                                 } catch {
                                     if Task.isCancelled { break }
                                     entry.markSyncFailed()
@@ -141,7 +142,7 @@ final class SyncCoordinator: SyncCoordinating {
                     modelContext.safeSave()
 
                     if failedWords.isEmpty {
-                        updateStep(
+                        self.updateStep(
                             "upload_delete",
                             status: .done,
                             current: deleted,
@@ -149,7 +150,7 @@ final class SyncCoordinator: SyncCoordinating {
                             detail: L10n.format("已刪除 %@ 個單字", "\(deleted)")
                         )
                     } else {
-                        updateStep(
+                        self.updateStep(
                             "upload_delete",
                             status: .error,
                             current: deleted,
@@ -160,7 +161,7 @@ final class SyncCoordinator: SyncCoordinating {
                 }
 
                 if !adds.isEmpty {
-                    updateStep("upload_add", status: .running, total: adds.count)
+                    self.updateStep("upload_add", status: .running, total: adds.count)
 
                     let grouped = Dictionary(grouping: adds, by: \.notebookId)
                     var totalCreated = 0
@@ -189,7 +190,7 @@ final class SyncCoordinator: SyncCoordinating {
 
                     if batchFailed {
                         let failedCount = adds.filter(\.isFailed).count
-                        updateStep(
+                        self.updateStep(
                             "upload_add",
                             status: .error,
                             current: adds.count - failedCount,
@@ -197,7 +198,7 @@ final class SyncCoordinator: SyncCoordinating {
                             detail: L10n.format("部分上傳失敗（%@ 筆）", "\(failedCount)")
                         )
                     } else {
-                        updateStep(
+                        self.updateStep(
                             "upload_add",
                             status: .done,
                             current: adds.count,
@@ -207,31 +208,31 @@ final class SyncCoordinator: SyncCoordinating {
                     }
                 }
 
-                updateStep("trigger", status: .running)
+                self.updateStep("trigger", status: .running)
                 do {
                     let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
                     let notebookIds = affectedNotebookIds.isEmpty ? ["default"] : Array(affectedNotebookIds)
                     for nbId in notebookIds {
                         try await kgService.triggerPipeline(notebookId: nbId)
                     }
-                    updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
+                    self.updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
                 } catch {
                     encounteredFailure = true
-                    updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
+                    self.updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
                 }
 
                 // Push review state + daily stats before pull
-                updateStep("push_review", status: .running)
+                self.updateStep("push_review", status: .running)
                 do {
                     let result = try await kgService.pushReviewStates(container: modelContext.container)
                     _ = try? await kgService.pushDailyStats(container: modelContext.container)
-                    updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
+                    self.updateStep("push_review", status: .done, detail: L10n.format("已同步 %@ 筆複習紀錄", "\(result.updated)"))
                 } catch {
                     encounteredFailure = true
-                    updateStep("push_review", status: .error, detail: error.localizedDescription)
+                    self.updateStep("push_review", status: .error, detail: error.localizedDescription)
                 }
 
-                updateStep("pull", status: .running, detail: L10n.string("正在下載單字..."))
+                self.updateStep("pull", status: .running, detail: L10n.string("正在下載單字..."))
                 var pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: { [weak self] detail, current, total in
                     Task { @MainActor in
                         self?.updateStep("pull", status: .running, current: current, total: total, detail: detail)
@@ -241,7 +242,7 @@ final class SyncCoordinator: SyncCoordinating {
                 var retryCount = 0
                 while pipelinePending && retryCount < 3 {
                     retryCount += 1
-                    updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
+                    self.updateStep("pull", status: .running, detail: L10n.format("等待 AI 處理完成（%@/3）...", "\(retryCount)"))
                     try await Task.sleep(for: .seconds(10))
                     if Task.isCancelled { break }
                     pipelinePending = try await kgService.pullCardsToLocal(container: modelContext.container, progress: nil, notebookId: nil)
@@ -250,24 +251,24 @@ final class SyncCoordinator: SyncCoordinating {
                 // Also pull daily stats from server
                 try? await kgService.pullDailyStats(container: modelContext.container)
 
-                updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
+                self.updateStep("pull", status: .done, current: 1, total: 1, detail: L10n.string("本地單字已建立完成"))
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
                 if encounteredFailure {
-                    summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
-                    failureKind = .partial
-                    phase = .failed
+                    self.summaryText = L10n.string("部分項目未成功同步，可直接再次重試。")
+                    self.failureKind = .partial
+                    self.phase = .failed
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .partial))
                 } else {
-                    phase = .completed
+                    self.phase = .completed
                     await SyncPendingTip.syncCompleted.donate()
                     SyncPendingTip().invalidate(reason: .actionPerformed)
                     AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .success))
                 }
             } catch {
                 let syncDurationMs = Int(Date().timeIntervalSince(syncStartTime) * 1000)
-                summaryText = error.localizedDescription
-                failureKind = .full
-                phase = .failed
+                self.summaryText = error.localizedDescription
+                self.failureKind = .full
+                self.phase = .failed
                 AppAnalytics.track(.syncCompleted(durationMs: syncDurationMs, outcome: .failed))
             }
         }
