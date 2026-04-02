@@ -97,13 +97,9 @@ extension VocabularyListView {
             } else if !authManager.isLoggedIn {
                 loggedOutState
             } else {
-                #if os(macOS)
                 KGVocabView(searchText: $debouncedSearchText, notebookId: notebookId) { entry in
-                    coordinator.selectedEntry = entry
+                    detailRouter?.showWordDetail(entry, allEntries: allEntries)
                 }
-                #else
-                KGVocabView(searchText: $debouncedSearchText, notebookId: notebookId)
-                #endif
             }
         }
         .transition(.contentSwap)
