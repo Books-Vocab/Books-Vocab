@@ -192,7 +192,7 @@ struct NotebookListView: View {
                     }
                 }
             } message: {
-                Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
+                Text("此單字本及所有單字將被永久刪除，無法復原。".localized)
             }
         }
         .environment(\.detailRouter, detailState)
