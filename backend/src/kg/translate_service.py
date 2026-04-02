@@ -107,24 +107,11 @@ def _parse_json_payload(raw: str | None) -> dict[str, Any]:
     return data
 
 
-def track_usage(user_id: str, operation: str, response: Any) -> None:
-    if not getattr(response, "usage", None):
-        return
-    from .token_tracker import record as track
-
-    track(
-        user_id,
-        operation,
-        getattr(response.usage, "prompt_tokens", 0) or 0,
-        getattr(response.usage, "completion_tokens", 0) or 0,
-    )
-
-
 async def _run_llm_translate(
     *,
     req: TranslateRequest,
     user: dict[str, Any],
-    client: Any,
+    llm: Any,
     model: str,
     prompt_fn: Callable,
     operation: str,
@@ -132,7 +119,8 @@ async def _run_llm_translate(
 ) -> dict:
     """Common LLM translate flow: resolve langs -> call -> parse -> track."""
     source_lang, target_lang = resolve_translation_langs(req, user)
-    response = await client.chat.completions.create(
+    response = await llm.chat_async(
+        operation,
         model=model,
         messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang)}],
         temperature=0.3,
@@ -142,20 +130,19 @@ async def _run_llm_translate(
         if logger:
             logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
         raise ExternalServiceError("Gemini returned empty response")
-    track_usage(user["id"], operation, response)
     return _parse_json_payload(response.choices[0].message.content)
 
 
-async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
-    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=quick_translate_prompt, operation="translate_quick", logger=logger)
+async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=quick_translate_prompt, operation="translate_quick", logger=logger)
     return QuickTranslateResponse(t=data.get("t", ""), p=_normalize_pos(data.get("p")), r=data.get("r"))
 
 
-async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
-    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=phrase_translate_prompt, operation="translate_phrase", logger=logger)
+async def run_phrase_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> dict[str, str]:
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=phrase_translate_prompt, operation="translate_phrase", logger=logger)
     return {"t": data.get("t", "")}
 
 
-async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, client: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
-    data = await _run_llm_translate(req=req, user=user, client=client, model=model, prompt_fn=explain_translate_prompt, operation="translate_explain", logger=logger)
+async def run_explain_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger | None = None, model: str = "gemini-2.5-flash-lite") -> ExplainResponse:
+    data = await _run_llm_translate(req=req, user=user, llm=llm, model=model, prompt_fn=explain_translate_prompt, operation="translate_explain", logger=logger)
     return ExplainResponse(e=data.get("e", ""))

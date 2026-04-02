@@ -9,7 +9,7 @@ from pathlib import Path
 import numpy as np
 
 logger = logging.getLogger(__name__)
-from openai import OpenAI, OpenAIError
+from openai import OpenAIError
 
 EMBEDDING_MODEL = "gemini-embedding-2-preview"
 EMBEDDING_DIM = 3072
@@ -18,11 +18,10 @@ EMBEDDING_DIM = 3072
 class EmbeddingStore:
     """Numpy-based embedding storage with similarity search."""
 
-    def __init__(self, embeddings_path: Path, ids_path: Path, client: OpenAI, user_id: str | None = None) -> None:
+    def __init__(self, embeddings_path: Path, ids_path: Path, llm) -> None:
         self.embeddings_path = embeddings_path
         self.ids_path = ids_path
-        self.client = client
-        self.user_id = user_id
+        self.llm = llm
         self._embeddings: np.ndarray | None = None
         self._ids: list[str] = []
         self._id_set: set[str] = set()
@@ -64,15 +63,7 @@ class EmbeddingStore:
         import time
         for attempt in range(3):
             try:
-                response = self.client.embeddings.create(
-                    input=texts,
-                    model=EMBEDDING_MODEL
-                )
-                if self.user_id and response.usage:
-                    from .token_tracker import record
-                    record(self.user_id, "embed",
-                           getattr(response.usage, "prompt_tokens", 0) or getattr(response.usage, "total_tokens", 0) or 0,
-                           0)
+                response = self.llm.embed("embed", input=texts, model=EMBEDDING_MODEL)
                 # response.data may not be sorted by index; sort to match input order
                 sorted_data = sorted(response.data, key=lambda d: d.index)
                 vecs = np.array([d.embedding for d in sorted_data], dtype=np.float32)

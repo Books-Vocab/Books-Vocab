@@ -213,7 +213,8 @@ def _make_judge(response_json: str):
     resp.choices = [choice]
     resp.usage = None
     client.chat.completions.create.return_value = resp
-    return ManualLinkJudge(client)
+    from kg.tracked_llm import TrackedLLM
+    return ManualLinkJudge(TrackedLLM(client, "test_user"))
 
 
 class TestHideGraphLinkService:

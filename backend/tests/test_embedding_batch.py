@@ -10,10 +10,11 @@ import numpy as np
 import pytest
 
 from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
+from kg.tracked_llm import TrackedLLM
 
 
 def _make_store(tmp_path: Path, *, preload_ids: list[str] | None = None) -> tuple[EmbeddingStore, MagicMock]:
-    """Create an EmbeddingStore with a mock OpenAI client."""
+    """Create an EmbeddingStore with a mock OpenAI client wrapped in TrackedLLM."""
     emb_path = tmp_path / "embeddings.npy"
     ids_path = tmp_path / "ids.json"
 
@@ -23,7 +24,8 @@ def _make_store(tmp_path: Path, *, preload_ids: list[str] | None = None) -> tupl
         ids_path.write_text(json.dumps(preload_ids))
 
     client = MagicMock()
-    store = EmbeddingStore(emb_path, ids_path, client)
+    llm = TrackedLLM(client, "test_user")
+    store = EmbeddingStore(emb_path, ids_path, llm)
     return store, client
 
 

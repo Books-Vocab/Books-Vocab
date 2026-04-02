@@ -173,17 +173,11 @@ async def reset_async_gemini_client() -> None:
 def create_embedding_store(
     user_dir: Path,
     *,
-    gemini_client_factory,
-    user_id: str | None = None,
+    llm,
     notebook_id: str = "default",
 ) -> EmbeddingStore:
     emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
         ("embeddings_{nb}.npy", "embeddings.npy"),
         ("card_ids_{nb}.json", "card_ids.json"),
     ])
-    return EmbeddingStore(
-        emb_path,
-        ids_path,
-        gemini_client_factory(),
-        user_id=user_id,
-    )
+    return EmbeddingStore(emb_path, ids_path, llm)

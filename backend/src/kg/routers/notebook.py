@@ -5,7 +5,8 @@ import logging
 from fastapi import APIRouter, Depends
 
 from ..api_models import NotebookCreateRequest, NotebookResponse, NotebookUpdateRequest
-from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, get_current_user
+from ..deps import _notebook_store, _card_store, _graph_store, _embedding_store, _gemini_client, get_current_user
+from ..tracked_llm import TrackedLLM
 from ..exceptions import BadRequestError, NotFoundError
 from ..vocab_shared import _dt_to_iso
 
@@ -94,8 +95,9 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
         except Exception:
             logging.warning("Failed to merge graph data from notebook %s", nb_id, exc_info=True)
         try:
-            src_emb = _embedding_store(user["dir"], notebook_id=nb_id)
-            tgt_emb = _embedding_store(user["dir"], notebook_id="default")
+            llm = TrackedLLM(_gemini_client(), user["id"])
+            src_emb = _embedding_store(user["dir"], llm=llm, notebook_id=nb_id)
+            tgt_emb = _embedding_store(user["dir"], llm=llm, notebook_id="default")
             tgt_emb.merge_from(src_emb)
         except Exception:
             logging.warning("Failed to merge embedding data from notebook %s", nb_id, exc_info=True)
