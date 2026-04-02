@@ -1,82 +1,122 @@
 import SwiftUI
 import WebKit
 
-#if os(iOS)
-struct GraphThumbnailWebView: UIViewRepresentable {
-    let nodes: [KnowledgeGraphNode]
-    let edges: [KnowledgeGraphEdge]
-    let theme: KnowledgeGraphTheme
-    let colorScheme: ColorScheme
+// MARK: - Persistent holder — survives tab switches
 
-    func makeCoordinator() -> Coordinator { Coordinator() }
+final class GraphThumbnailHolder {
+    let webView: WKWebView
+    let coordinator: GraphThumbnailCoordinator
 
-    func makeUIView(context: Context) -> WKWebView {
-        let webView = Self.createWebView(context: context)
-        webView.scrollView.isScrollEnabled = false
-        webView.scrollView.bounces = false
-        webView.scrollView.backgroundColor = .clear
-        return webView
-    }
-
-    func updateUIView(_ webView: WKWebView, context: Context) {
-        Self.performUpdate(webView, context: context, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
-    }
-
-    static func dismantleUIView(_ webView: WKWebView, coordinator: Coordinator) {
-        Self.performDismantle(webView)
-    }
-}
-#elseif os(macOS)
-struct GraphThumbnailWebView: NSViewRepresentable {
-    let nodes: [KnowledgeGraphNode]
-    let edges: [KnowledgeGraphEdge]
-    let theme: KnowledgeGraphTheme
-    let colorScheme: ColorScheme
-
-    func makeCoordinator() -> Coordinator { Coordinator() }
-
-    func makeNSView(context: Context) -> WKWebView {
-        Self.createWebView(context: context)
-    }
-
-    func updateNSView(_ webView: WKWebView, context: Context) {
-        Self.performUpdate(webView, context: context, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
-    }
-
-    static func dismantleNSView(_ webView: WKWebView, coordinator: Coordinator) {
-        Self.performDismantle(webView)
-    }
-}
-#endif
-
-// MARK: - Shared implementation
-
-extension GraphThumbnailWebView {
-    static func createWebView(context: Context) -> WKWebView {
+    init() {
+        let coordinator = GraphThumbnailCoordinator()
         let config = WKWebViewConfiguration()
-        config.userContentController.add(context.coordinator, name: "graphBridge")
+        config.userContentController.add(coordinator, name: "graphBridge")
 
         let webView = WKWebView(frame: .zero, configuration: config)
         #if os(iOS)
         webView.isOpaque = false
         webView.backgroundColor = .clear
         webView.isUserInteractionEnabled = false
+        webView.scrollView.isScrollEnabled = false
+        webView.scrollView.bounces = false
+        webView.scrollView.backgroundColor = .clear
         #elseif os(macOS)
         webView.setValue(false, forKey: "drawsBackground")
         #endif
-        context.coordinator.webView = webView
+        coordinator.webView = webView
 
-        guard let htmlURL = Bundle.main.url(forResource: "graph", withExtension: "html") else {
-            return webView
+        self.webView = webView
+        self.coordinator = coordinator
+
+        if let htmlURL = Bundle.main.url(forResource: "graph", withExtension: "html") {
+            webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
         }
-        webView.loadFileURL(htmlURL, allowingReadAccessTo: htmlURL.deletingLastPathComponent())
-        return webView
     }
 
-    static func performUpdate(_ webView: WKWebView, context: Context,
+    deinit {
+        webView.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
+    }
+}
+
+// MARK: - Coordinator (message handler + signature dedup)
+
+final class GraphThumbnailCoordinator: NSObject, WKScriptMessageHandler {
+    var graphBridgeReady = false
+    var pendingPayload: String?
+    var lastSignature: String?
+    weak var webView: WKWebView?
+
+    func sendInitGraph(_ json: String, webView: WKWebView) {
+        guard graphBridgeReady else { pendingPayload = json; return }
+        let escaped = json
+            .replacingOccurrences(of: "\\", with: "\\\\")
+            .replacingOccurrences(of: "'", with: "\\'")
+        webView.evaluateJavaScript("initGraph('\(escaped)')", completionHandler: nil)
+    }
+
+    func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
+        guard message.name == "graphBridge",
+              let body = message.body as? [String: Any],
+              let type = body["type"] as? String,
+              type == "ready" else { return }
+        graphBridgeReady = true
+        if let pending = pendingPayload, let wv = webView {
+            pendingPayload = nil
+            sendInitGraph(pending, webView: wv)
+        }
+    }
+}
+
+// MARK: - SwiftUI representable (reuses holder's WKWebView)
+
+#if os(iOS)
+struct GraphThumbnailWebView: UIViewRepresentable {
+    let holder: GraphThumbnailHolder
+    let nodes: [KnowledgeGraphNode]
+    let edges: [KnowledgeGraphEdge]
+    let theme: KnowledgeGraphTheme
+    let colorScheme: ColorScheme
+
+    func makeCoordinator() -> GraphThumbnailCoordinator { holder.coordinator }
+
+    func makeUIView(context: Context) -> WKWebView { holder.webView }
+
+    func updateUIView(_ webView: WKWebView, context: Context) {
+        Self.performUpdate(webView, coordinator: holder.coordinator, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
+    }
+
+    static func dismantleUIView(_ webView: WKWebView, coordinator: GraphThumbnailCoordinator) {
+        // No-op: holder owns the webview lifecycle
+    }
+}
+#elseif os(macOS)
+struct GraphThumbnailWebView: NSViewRepresentable {
+    let holder: GraphThumbnailHolder
+    let nodes: [KnowledgeGraphNode]
+    let edges: [KnowledgeGraphEdge]
+    let theme: KnowledgeGraphTheme
+    let colorScheme: ColorScheme
+
+    func makeCoordinator() -> GraphThumbnailCoordinator { holder.coordinator }
+
+    func makeNSView(context: Context) -> WKWebView { holder.webView }
+
+    func updateNSView(_ webView: WKWebView, context: Context) {
+        Self.performUpdate(webView, coordinator: holder.coordinator, nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme)
+    }
+
+    static func dismantleNSView(_ webView: WKWebView, coordinator: GraphThumbnailCoordinator) {
+        // No-op: holder owns the webview lifecycle
+    }
+}
+#endif
+
+// MARK: - Shared update + payload
+
+extension GraphThumbnailWebView {
+    static func performUpdate(_ webView: WKWebView, coordinator: GraphThumbnailCoordinator,
                                nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
                                theme: KnowledgeGraphTheme, colorScheme: ColorScheme) {
-        let coord = context.coordinator
         var hasher = Hasher()
         hasher.combine(colorScheme == .dark)
         for n in nodes {
@@ -86,16 +126,10 @@ extension GraphThumbnailWebView {
         }
         hasher.combine(edges.count)
         let sig = "\(hasher.finalize())"
-        guard coord.lastSignature != sig else { return }
-        coord.lastSignature = sig
-        coord.sendInitGraph(buildPayload(nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme), webView: webView)
+        guard coordinator.lastSignature != sig else { return }
+        coordinator.lastSignature = sig
+        coordinator.sendInitGraph(buildPayload(nodes: nodes, edges: edges, theme: theme, colorScheme: colorScheme), webView: webView)
     }
-
-    static func performDismantle(_ webView: WKWebView) {
-        webView.configuration.userContentController.removeScriptMessageHandler(forName: "graphBridge")
-    }
-
-    // MARK: - Payload
 
     private static func buildPayload(nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
                                       theme: KnowledgeGraphTheme, colorScheme: ColorScheme) -> String {
@@ -147,34 +181,5 @@ extension GraphThumbnailWebView {
         guard let data = try? JSONEncoder().encode(payload),
               let json = String(data: data, encoding: .utf8) else { return "{}" }
         return json
-    }
-
-    // MARK: - Coordinator
-
-    class Coordinator: NSObject, WKScriptMessageHandler {
-        var graphBridgeReady = false
-        var pendingPayload: String?
-        var lastSignature: String?
-        weak var webView: WKWebView?
-
-        func sendInitGraph(_ json: String, webView: WKWebView) {
-            guard graphBridgeReady else { pendingPayload = json; return }
-            let escaped = json
-                .replacingOccurrences(of: "\\", with: "\\\\")
-                .replacingOccurrences(of: "'", with: "\\'")
-            webView.evaluateJavaScript("initGraph('\(escaped)')", completionHandler: nil)
-        }
-
-        func userContentController(_ controller: WKUserContentController, didReceive message: WKScriptMessage) {
-            guard message.name == "graphBridge",
-                  let body = message.body as? [String: Any],
-                  let type = body["type"] as? String,
-                  type == "ready" else { return }
-            graphBridgeReady = true
-            if let pending = pendingPayload, let wv = webView {
-                pendingPayload = nil
-                sendInitGraph(pending, webView: wv)
-            }
-        }
     }
 }
