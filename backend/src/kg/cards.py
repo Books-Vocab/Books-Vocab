@@ -434,19 +434,28 @@ class CardStore:
         if not updates:
             return 0
         changed = 0
+        card_ids = {card_id for card_id, _ in updates}
+        kwargs_by_id = {card_id: kwargs for card_id, kwargs in updates}
+        now = datetime.now(UTC)
         with Session(self.engine) as session:
-            for card_id, kwargs in updates:
-                card = session.get(Card, card_id)
-                if card and not card.is_deleted:
-                    has_changes = False
-                    for key, value in kwargs.items():
-                        if hasattr(card, key) and getattr(card, key) != value:
-                            setattr(card, key, value)
-                            has_changes = True
-                    if has_changes:
-                        card.updated_at = datetime.now(UTC)
-                        session.add(card)
-                        changed += 1
+            # Single WHERE IN query instead of N individual session.get() calls
+            cards_by_id = {
+                card.id: card
+                for card in session.exec(select(Card).where(Card.id.in_(card_ids))).all()
+            }
+            for card_id, card in cards_by_id.items():
+                if card.is_deleted:
+                    continue
+                kwargs = kwargs_by_id[card_id]
+                has_changes = False
+                for key, value in kwargs.items():
+                    if hasattr(card, key) and getattr(card, key) != value:
+                        setattr(card, key, value)
+                        has_changes = True
+                if has_changes:
+                    card.updated_at = now
+                    session.add(card)
+                    changed += 1
             session.commit()
         return changed
 
