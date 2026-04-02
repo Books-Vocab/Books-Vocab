@@ -145,8 +145,8 @@ struct SettingsPresenter: View {
                     SettingsDivider()
                 }
 
-                // 今日額度 (only when logged in and used)
-                if quotaStore.fraction < 1.0, state.auth.isLoggedIn {
+                // 今日額度 (always when logged in)
+                if state.auth.isLoggedIn {
                     quotaRow
                     SettingsDivider()
                 }
