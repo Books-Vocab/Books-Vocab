@@ -47,6 +47,18 @@ enum AppMetrics {
     static let sectionInset: CGFloat = 20
 }
 
+#if os(macOS)
+extension AppMetrics {
+    enum MacDetailPanel {
+        static let defaultWidth: CGFloat = 420
+        static let minWidth: CGFloat = 280
+        static let maxWidth: CGFloat = 600
+        static let leftMinWidth: CGFloat = 300
+        static let hitAreaWidth: CGFloat = 8
+    }
+}
+#endif
+
 enum AppTagMetrics {
     static let horizontalPadding: CGFloat = 10
     static let verticalPadding: CGFloat = 5
