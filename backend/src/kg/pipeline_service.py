@@ -4,6 +4,7 @@ import asyncio
 import logging
 import threading
 from collections.abc import Callable
+from concurrent.futures import ThreadPoolExecutor
 from typing import Any
 
 from openai import OpenAIError
@@ -182,21 +183,34 @@ async def _step_link(
         _all_candidate_ids.add(c.to_id)
     cards_cache = cards.get_batch(_all_candidate_ids) if _all_candidate_ids else {}
 
+    # Filter valid candidates first, preserving original index for error requeue
+    valid_pairs: list[tuple[int, Any, Any, Any]] = []
+    for idx, candidate in enumerate(candidates):
+        card_a = cards_cache.get(candidate.from_id)
+        card_b = cards_cache.get(candidate.to_id)
+        if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted or card_a.is_archived or card_b.is_archived:
+            continue
+        valid_pairs.append((idx, candidate, card_a, card_b))
+
+    executor = ThreadPoolExecutor(max_workers=8)
+    loop = asyncio.get_running_loop()
+    # Submit all judge tasks concurrently up front
+    futures: list[tuple[int, Any, asyncio.Future]] = [
+        (idx, candidate, loop.run_in_executor(
+            executor,
+            lambda a=card_a, b=card_b: judge.evaluate(
+                a.content, a.meaning, b.content, b.meaning,
+            ),
+        ))
+        for idx, candidate, card_a, card_b in valid_pairs
+    ]
+    # Track how many futures have been awaited for requeue on error
+    awaited_count = 0
     try:
-        for index, candidate in enumerate(candidates):  # noqa: B007
-            card_a = cards_cache.get(candidate.from_id)
-            card_b = cards_cache.get(candidate.to_id)
-            if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted or card_a.is_archived or card_b.is_archived:
-                continue
-
-            loop = asyncio.get_running_loop()
-            result = await loop.run_in_executor(
-                None,
-                lambda a=card_a, b=card_b: judge.evaluate(
-                    a.content, a.meaning, b.content, b.meaning,
-                ),
-            )
-
+        for idx, candidate, fut in futures:
+            index = idx
+            result = await fut
+            awaited_count += 1
             if result:
                 pending_links.append((
                     candidate.from_id,
@@ -206,11 +220,16 @@ async def _step_link(
                     result.reason,
                 ))
     except (OpenAIError, OSError, ValueError, RuntimeError):
-        # Flush accumulated links before requeuing
+        # Flush accumulated links before requeuing un-awaited candidates
         if pending_links:
             graph.batch_add_links(pending_links)
-        graph.requeue_candidates(candidates[index:])
+        # Requeue candidates whose futures we haven't yet awaited
+        not_yet_awaited = [c for _, c, _ in futures[awaited_count:]]
+        if not_yet_awaited:
+            graph.requeue_candidates(not_yet_awaited)
         raise
+    finally:
+        executor.shutdown(wait=False)
 
     # Single disk write for all judged links
     created = graph.batch_add_links(pending_links) if pending_links else []
