@@ -352,23 +352,6 @@ class CardStore:
             session.commit()
             return len(cards)
 
-    def reassign_notebook(self, from_notebook_id: str, to_notebook_id: str) -> int:
-        """Move all non-deleted cards from one notebook to another. Returns count."""
-        now = datetime.now(UTC)
-        with Session(self.engine) as session:
-            cards = session.exec(
-                select(Card).where(
-                    Card.notebook_id == from_notebook_id,
-                    Card.is_deleted.is_(False),
-                )
-            ).all()
-            for card in cards:
-                card.notebook_id = to_notebook_id
-                card.updated_at = now
-                session.add(card)
-            session.commit()
-            return len(cards)
-
     def delete(self, card_id: str) -> bool:
         """Soft deletes the card to support incremental sync."""
         with Session(self.engine) as session:
