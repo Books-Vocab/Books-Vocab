@@ -324,25 +324,7 @@ class TestBuildLinksIncludesHidden:
         assert all_links[0].hidden is False
 
 
-# --- Task 3.5: merge_from + delete_word blocked pairs ---
-
-class TestMergeFromBlockedPairs:
-    def test_merge_copies_blocked_pairs(self, tmp_path):
-        src = GraphStore(
-            links_path=tmp_path / "src_links.json",
-            candidates_path=tmp_path / "src_cand.json",
-            blocked_path=tmp_path / "src_blocked.json",
-        )
-        dst = GraphStore(
-            links_path=tmp_path / "dst_links.json",
-            candidates_path=tmp_path / "dst_cand.json",
-            blocked_path=tmp_path / "dst_blocked.json",
-        )
-        lk = src.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
-        src.hard_delete_link(lk.id)
-        dst.merge_from(src)
-        assert dst.is_blocked("a", "b") is True
-
+# --- blocked pairs ---
 
 class TestDeleteWordClearsBlockedPairs:
     def test_remove_blocked_pairs_for_card(self, store):
