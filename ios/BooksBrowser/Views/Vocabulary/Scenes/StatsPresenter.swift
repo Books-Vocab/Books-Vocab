@@ -31,6 +31,7 @@ struct StatsPresenter: View {
     @State private var showCalendar = false
     @State private var contentReady = false
     @State private var graphLinks: [KGGraphLink]?
+    @State private var graphHolder = GraphThumbnailHolder()
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
@@ -197,6 +198,7 @@ struct StatsPresenter: View {
                 )
             } else {
                 GraphThumbnailWebView(
+                    holder: graphHolder,
                     nodes: nodes,
                     edges: edges,
                     theme: KnowledgeGraphPresentation.theme(for: vocabSkin),
