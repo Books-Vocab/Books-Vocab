@@ -383,6 +383,21 @@ final class KGService: KGServing, LocalDataClearing {
         }
     }
 
+    // MARK: - Quota
+
+    func fetchQuota() async {
+        guard NetworkMonitor.shared.isConnected, await authSession.isLoggedIn else { return }
+        do {
+            let (data, httpResponse) = try await authenticatedRequest(path: "api/user/quota")
+            guard httpResponse.statusCode == 200 else { return }
+            struct QuotaPayload: Decodable { let fraction: Double; let reset_seconds: Int }
+            let payload = try JSONDecoder().decode(QuotaPayload.self, from: data)
+            await MainActor.run { QuotaStore.shared.update(fraction: payload.fraction, resetSeconds: payload.reset_seconds) }
+        } catch {
+            AppLog.kg.warning("fetchQuota failed: \(error.localizedDescription)")
+        }
+    }
+
     // MARK: - Server URL Management
 
     static func setServerURL(_ url: String) {

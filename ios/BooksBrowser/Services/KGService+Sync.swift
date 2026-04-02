@@ -213,6 +213,7 @@ extension KGService {
 
         if failures.isEmpty {
             lastBackgroundSyncError = nil
+            lastSyncDate = .now
         } else {
             lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failures.joined(separator: ", "))
         }
