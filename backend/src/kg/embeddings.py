@@ -26,6 +26,7 @@ class EmbeddingStore:
         self._ids: list[str] = []
         self._id_set: set[str] = set()
         self._norms: np.ndarray | None = None  # cached L2 norms
+        self._dirty: bool = False
         self._load()
 
     def _load(self) -> None:
@@ -106,7 +107,11 @@ class EmbeddingStore:
         self._save()
 
     def update(self, card_id: str, text: str) -> None:
-        """Update existing embedding."""
+        """Update existing embedding.
+
+        Only updates the in-memory vector and marks the store dirty.
+        Call flush() to persist to disk (e.g. at end of request).
+        """
         if card_id not in self._id_set:
             self.add(card_id, text)
             return
@@ -115,7 +120,17 @@ class EmbeddingStore:
         vecs = self._embed([text])
         self._embeddings[idx] = vecs[0]
         self._invalidate_norms()
+        self._dirty = True
+
+    def flush(self) -> None:
+        """Persist any dirty (deferred) writes to disk.
+
+        No-op if the store has not been modified since last save.
+        """
+        if not self._dirty:
+            return
         self._save()
+        self._dirty = False
 
     def find_similar(self, card_id: str, k: int = 10) -> list[tuple[str, float]]:
         """Find k most similar cards (excluding self).

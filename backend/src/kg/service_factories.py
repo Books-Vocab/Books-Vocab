@@ -176,8 +176,9 @@ def create_embedding_store(
     llm,
     notebook_id: str = "default",
 ) -> EmbeddingStore:
+    key = f"embedding:{user_dir}:{notebook_id}"
     emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
         ("embeddings_{nb}.npy", "embeddings.npy"),
         ("card_ids_{nb}.json", "card_ids.json"),
     ])
-    return EmbeddingStore(emb_path, ids_path, llm)
+    return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm))
