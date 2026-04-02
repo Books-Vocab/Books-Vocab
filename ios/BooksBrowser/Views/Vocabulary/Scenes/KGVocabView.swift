@@ -28,7 +28,6 @@ struct KGVocabView: View {
     @State private var selectedReviewStates: Set<VocabularyReviewState> = []
     @State private var sortOption: KGVocabSortOption = .default
     @State private var selectionState = SelectionModeState()
-    @State private var showNotebookPicker = false
     @State private var showLoginSheet = false
     @Query private var pendingDeletes: [VocabularyEntry]
 
@@ -141,7 +140,6 @@ struct KGVocabView: View {
             if selectionState.isSelecting {
                 SelectionToolbar(
                     selectionCount: selectionState.selectionCount,
-                    onMove: { showNotebookPicker = true },
                     onArchive: { handleBatchArchive() },
                     onDelete: { handleBatchDelete() }
                 )
@@ -186,12 +184,6 @@ struct KGVocabView: View {
                 .help("重新整理".localized)
             }
             #endif
-        }
-        .toastSheet(isPresented: $showNotebookPicker) {
-            NotebookPickerSheet(excludeNotebookId: notebookId) { notebook in
-                handleBatchMove(to: notebook)
-            }
-            .appSheet(.medium)
         }
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
@@ -305,26 +297,6 @@ struct KGVocabView: View {
                 modelContext: modelContext,
                 toastCoordinator: toastCoordinator
             )
-        }
-    }
-
-    private func handleBatchMove(to notebook: Notebook) {
-        let ids = selectionState.selectedIDs
-        selectionState.exit()
-        Task {
-            do {
-                try await coordinator.handleBatchMove(
-                    ids,
-                    syncedEntries: syncedEntries,
-                    toNotebook: notebook.remoteId,
-                    fromNotebook: notebookId,
-                    kgService: kgService,
-                    modelContext: modelContext,
-                    toastCoordinator: toastCoordinator
-                )
-            } catch {
-                coordinator.errorMessage = error.localizedDescription
-            }
         }
     }
 

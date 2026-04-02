@@ -385,43 +385,27 @@ class TestBuildContentLookupNoFullScan:
         assert all_call_count == 1, f"Expected 1 full-scan, got {all_call_count}"
 
 
-class TestMoveVocabWordsNoExtraScan:
-    """Verify move_vocab_words doesn't do an extra full scan for target notebook."""
+class TestSoftDeleteByNotebook:
+    def test_soft_deletes_all_cards_in_notebook(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+        store.add(content="banana", meaning="香蕉", notebook_id="nb1")
+        store.add(content="cherry", meaning="櫻桃", notebook_id="nb2")
+        count = store.soft_delete_by_notebook("nb1")
+        assert count == 2
+        assert list(store.all(notebook_id="nb1")) == []
+        assert len(list(store.all(notebook_id="nb2"))) == 1
 
-    def test_move_vocab_words_target_scan_is_precise(self):
-        """After fix: fetching target notebook cards should NOT full-scan all notebooks."""
-        from types import SimpleNamespace
-        from kg.vocab_crud import move_vocab_words
+    def test_skips_already_deleted(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        c = store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+        store.delete(c.id)
+        count = store.soft_delete_by_notebook("nb1")
+        assert count == 0
 
-        notebook_ids_scanned = []
+    def test_empty_notebook_returns_zero(self, tmp_path):
+        store = CardStore(tmp_path / "cards.db")
+        count = store.soft_delete_by_notebook("nonexistent")
+        assert count == 0
 
-        class TrackingCardsStore:
-            def __init__(self):
-                self._cards = [
-                    SimpleNamespace(id="c1", content="evoke", notebook_id="nb1",
-                                    is_deleted=False, is_archived=False),
-                ]
 
-            def all(self, include_deleted=False, notebook_id=None):
-                notebook_ids_scanned.append(notebook_id)
-                return [c for c in self._cards
-                        if not c.is_deleted and (notebook_id is None or c.notebook_id == notebook_id)]
-
-            def move_cards(self, words, from_notebook_id, to_notebook_id):
-                for c in self._cards:
-                    if c.content in words and c.notebook_id == from_notebook_id:
-                        c.notebook_id = to_notebook_id
-                return len([c for c in self._cards if c.notebook_id == to_notebook_id])
-
-        result = move_vocab_words(
-            ["evoke"],
-            from_notebook_id="nb1",
-            to_notebook_id="nb2",
-            cards_store=TrackingCardsStore(),
-            target_graph=None,
-        )
-        assert result["moved"] == 1
-        # After fix: must NOT do an unfiltered all() call (notebook_id=None)
-        assert None not in notebook_ids_scanned, (
-            f"Unfiltered full-scan detected. Scanned notebook_ids: {notebook_ids_scanned}"
-        )

@@ -1,4 +1,4 @@
-"""Vocabulary CRUD operations: list, lookup, archive, delete, batch, move."""
+"""Vocabulary CRUD operations: list, lookup, archive, delete, batch."""
 
 from __future__ import annotations
 
@@ -178,44 +178,3 @@ def batch_archive_vocab_words(
     return {"updated": len(updated_words), "updated_words": updated_words, "not_found": not_found}
 
 
-def move_vocab_words(
-    words: list[str],
-    *,
-    from_notebook_id: str,
-    to_notebook_id: str,
-    cards_store: Any,
-    source_graph: Any = None,
-    target_graph: Any = None,
-) -> dict[str, int]:
-    """Move specific cards between notebooks. Deprecates graph links in source, adds candidates in target."""
-    if not words:
-        raise ValidationError("No words provided")
-    if from_notebook_id == to_notebook_id:
-        raise ValidationError("Source and target notebook are the same")
-
-    # Find card IDs before move (for graph cleanup) — single bulk lookup
-    lookup = _build_content_lookup(cards_store, notebook_id=from_notebook_id)
-    card_ids = []
-    for word in words:
-        card = lookup.get(_normalize_word(word))
-        if card:
-            card_ids.append(card.id)
-
-    moved = cards_store.move_cards(words, from_notebook_id=from_notebook_id, to_notebook_id=to_notebook_id)
-
-    # Deprecate graph links in source notebook
-    if source_graph is not None:
-        for card_id in card_ids:
-            source_graph.cleanup_for_card(card_id)
-
-    # Add candidates in target notebook so pipeline regenerates links
-    if target_graph is not None:
-        target_ids = [c.id for c in (cards_store.all(notebook_id=to_notebook_id) or []) if c.id not in card_ids and not c.is_deleted and not c.is_archived]
-        candidate_pairs = []
-        for card_id in card_ids:
-            for other_id in target_ids[:20]:
-                candidate_pairs.append((card_id, other_id, 0.0))
-        if candidate_pairs:
-            target_graph.batch_add_candidates(candidate_pairs)
-
-    return {"moved": moved}
