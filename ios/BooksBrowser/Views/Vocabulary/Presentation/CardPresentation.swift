@@ -15,6 +15,10 @@ struct CardLinkGroupPresentation: Identifiable {
         )
     }
 
+    func shuffled() -> CardLinkGroupPresentation {
+        CardLinkGroupPresentation(id: id, label: label, items: items.shuffled())
+    }
+
     func overflowed(relativeToFullGroup fullGroup: CardLinkGroupPresentation) -> Int {
         max(0, fullGroup.items.count - items.count)
     }

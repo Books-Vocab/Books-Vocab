@@ -140,11 +140,12 @@ enum TodayReviewPresenterPreviewData {
         onForgot: () -> Void,
         onRemembered: () -> Void,
         onLinkTap: (KGCardLinkSummary) -> Void,
+        onAddLink: () -> Void,
         onToggleAutoPlay: () -> Void,
         onToggleAutoPlayPause: () -> Void,
         onDetailTap: () -> Void,
         onToggleHelp: () -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {})
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {})
 }
 
 #Preview("Today Review / Front") {
@@ -157,6 +158,7 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
@@ -173,6 +175,7 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
@@ -189,6 +192,7 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
@@ -205,6 +209,7 @@ enum TodayReviewPresenterPreviewData {
             onClose: cb.onClose, onAdvanceReveal: cb.onAdvanceReveal, onCollapseReveal: cb.onCollapseReveal,
             onShuffle: cb.onShuffle, onPrevious: cb.onPrevious, onNext: cb.onNext,
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
+            onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
             onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
         )
