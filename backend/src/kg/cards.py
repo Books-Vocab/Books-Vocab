@@ -335,6 +335,23 @@ class CardStore:
             ).all()
             return {nb_id: cnt for nb_id, cnt in rows}
 
+    def soft_delete_by_notebook(self, notebook_id: str) -> int:
+        """Soft-delete all non-deleted cards in a notebook. Returns count."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            cards = session.exec(
+                select(Card).where(
+                    Card.notebook_id == notebook_id,
+                    Card.is_deleted.is_(False),
+                )
+            ).all()
+            for card in cards:
+                card.is_deleted = True
+                card.updated_at = now
+                session.add(card)
+            session.commit()
+            return len(cards)
+
     def reassign_notebook(self, from_notebook_id: str, to_notebook_id: str) -> int:
         """Move all non-deleted cards from one notebook to another. Returns count."""
         now = datetime.now(UTC)
