@@ -332,15 +332,6 @@ private struct DetailPresentation: ViewModifier {
         Group {
             if layoutMode.usesInlineDetail {
                 content
-                    #if os(macOS)
-                    .overlay {
-                        GeometryReader { geo in
-                            Color.clear
-                                .preference(key: ContainerWidthKey.self, value: geo.size.width)
-                        }
-                    }
-                    .onPreferenceChange(ContainerWidthKey.self) { macContainerWidth = $0 }
-                    #endif
                     .safeAreaInset(edge: .trailing, spacing: 0) {
                         if detailState.hasDetail {
                             HStack(spacing: 0) {
@@ -370,6 +361,13 @@ private struct DetailPresentation: ViewModifier {
                         }
                     }
                     .animation(AppMotion.standardSpring, value: detailState.hasDetail)
+                    #if os(macOS)
+                    .onGeometryChange(for: CGFloat.self) { geo in
+                        geo.size.width
+                    } action: { newWidth in
+                        macContainerWidth = newWidth
+                    }
+                    #endif
                     .onChange(of: navigationPath) { _, path in
                         if path.isEmpty { detailState.dismiss() }
                     }
