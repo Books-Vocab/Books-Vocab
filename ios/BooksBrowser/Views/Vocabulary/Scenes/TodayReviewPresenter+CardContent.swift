@@ -124,9 +124,11 @@ extension TodayReviewPresenter {
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
 
+            CardSectionDivider(horizontalPadding: 0)
             if hasLinks {
-                CardSectionDivider(horizontalPadding: 0)
                 reviewLinkStrip(currentCard.linkGroups)
+            } else {
+                addLinkPrompt
             }
 
             if !currentCard.backDocument.blocks.isEmpty {
@@ -177,8 +179,30 @@ extension TodayReviewPresenter {
                     }
                 }
             }
+
+            Spacer()
+
+            Button(action: onAddLink) {
+                Image(systemName: "plus")
+                    .font(vocabSkin.typography.iconSmall)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+            }
+            .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private var addLinkPrompt: some View {
+        Button(action: onAddLink) {
+            HStack(spacing: vocabSkin.spacing.inlineGap) {
+                Image(systemName: "plus")
+                    .font(vocabSkin.typography.iconTiny)
+                Text("新增連結".localized)
+                    .font(vocabSkin.typography.caption)
+            }
+            .foregroundStyle(vocabSkin.palette.tertiaryText)
+        }
+        .buttonStyle(.plain)
     }
 
     // MARK: - Dynamic Example Budget
@@ -195,8 +219,6 @@ extension TodayReviewPresenter {
         containerHeight: CGFloat,
         currentCard: TodayReviewPresenterState.CurrentCard
     ) -> Int {
-        let hasLinks = !currentCard.linkGroups.isEmpty
-
         // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
         let answerBudget = containerHeight
             - vocabSkin.metrics.reviewCardTopInset
@@ -209,11 +231,8 @@ extension TodayReviewPresenter {
             + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
-
-        if hasLinks {
-            coreHeight += AppMetrics.dividerThin + gap                          // CardSectionDivider
-                + 24 + gap                                                      // link strip + gap before CardDocumentView
-        }
+            + AppMetrics.dividerThin + gap                                      // CardSectionDivider (always shown)
+            + 24 + gap                                                          // link strip / addLinkPrompt + gap
 
         // ③ Post-example blocks — pre-computed in CurrentCard, O(1) lookup
         coreHeight += currentCard.postExampleMetrics.totalHeight(gap: gap)
