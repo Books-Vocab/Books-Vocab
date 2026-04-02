@@ -5,18 +5,11 @@ struct SelectionToolbar: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
     let selectionCount: Int
-    let onMove: () -> Void
     let onArchive: () -> Void
     let onDelete: () -> Void
 
     var body: some View {
         HStack(spacing: vocabSkin.spacing.sectionGap) {
-            toolbarButton(
-                label: "移動".localized,
-                systemImage: "folder",
-                tone: appTheme.palette.accent,
-                action: onMove
-            )
             toolbarButton(
                 label: "封存".localized,
                 systemImage: "archivebox",
@@ -60,7 +53,6 @@ struct SelectionToolbar: View {
             Spacer()
             SelectionToolbar(
                 selectionCount: 3,
-                onMove: {},
                 onArchive: {},
                 onDelete: {}
             )
