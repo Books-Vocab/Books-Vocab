@@ -1,37 +1,85 @@
-#if os(macOS)
 import SwiftUI
-import AppKit
 
-/// macOS 專用可拖曳分隔線。
-/// 8pt 透明 hit area，中間 1pt 視覺線，hover 切換 resize 游標。
+/// 跨平台可拖曳分隔線 — macOS/iPad regular size class 共用。
+/// 8pt 透明 hit area，中間 1pt 視覺線，拖曳時加亮。
 ///
 /// 寬度 state 由 parent 持有：
 /// - `panelWidth`: 持久化寬度（@AppStorage），僅 onEnded 寫入
 /// - `dragWidth`: 拖曳中即時寬度，nil = 未拖曳
-struct MacDividerHandle: View {
+struct DraggableDivider: View {
     @Binding var panelWidth: CGFloat
     @Binding var dragWidth: CGFloat?
     let containerWidth: CGFloat
-    var onDoubleClick: () -> Void
+    var onDoubleClick: () -> Void = {}
 
     @State private var dragStartWidth: CGFloat = 0
-    @State private var isHovering = false
+    @GestureState private var isActiveDrag = false
+
+    @Environment(\.appTheme) private var theme
 
     private var effectiveMax: CGFloat {
-        min(
-            AppMetrics.MacDetailPanel.maxWidth,
-            containerWidth - AppMetrics.MacDetailPanel.leftMinWidth
-        )
+        let max = containerWidth - AppMetrics.MacDetailPanel.leftMinWidth
+        return min(AppMetrics.MacDetailPanel.maxWidth, Swift.max(max, AppMetrics.MacDetailPanel.minWidth))
     }
 
     var body: some View {
         Rectangle()
-            .fill(Color.clear)
+            .fill(isActiveDrag ? theme.palette.divider.opacity(5) : Color.clear)
             .frame(width: AppMetrics.MacDetailPanel.hitAreaWidth)
             .contentShape(Rectangle())
-            .overlay {
-                Divider()
+            .overlay(alignment: .center) {
+                Rectangle()
+                    .fill(theme.palette.divider.opacity(isActiveDrag ? 5 : 2))
+                    .frame(width: 1)
             }
+            #if os(macOS)
+            .modifier(CursorModifier())
+            #endif
+            .highPriorityGesture(dragGesture)
+            .onChange(of: isActiveDrag) { _, active in
+                if !active && dragWidth != nil {
+                    panelWidth = dragWidth!
+                    dragWidth = nil
+                }
+            }
+            #if os(macOS)
+            .onTapGesture(count: 2) { onDoubleClick() }
+            #endif
+    }
+
+    private var dragGesture: some Gesture {
+        DragGesture(minimumDistance: 3, coordinateSpace: .global)
+            .updating($isActiveDrag) { _, state, _ in
+                state = true
+            }
+            .onChanged { value in
+                if dragWidth == nil {
+                    dragStartWidth = panelWidth
+                }
+                let newWidth = dragStartWidth - value.translation.width
+                dragWidth = newWidth.clamped(
+                    to: AppMetrics.MacDetailPanel.minWidth...effectiveMax
+                )
+            }
+            .onEnded { _ in
+                if let finalWidth = dragWidth {
+                    panelWidth = finalWidth
+                }
+                dragWidth = nil
+            }
+    }
+}
+
+// MARK: - macOS Cursor
+
+#if os(macOS)
+import AppKit
+
+private struct CursorModifier: ViewModifier {
+    @State private var isHovering = false
+
+    func body(content: Content) -> some View {
+        content
             .onHover { hovering in
                 isHovering = hovering
                 if hovering {
@@ -46,33 +94,14 @@ struct MacDividerHandle: View {
                     isHovering = false
                 }
             }
-            .gesture(
-                DragGesture(minimumDistance: 3, coordinateSpace: .global)
-                    .onChanged { value in
-                        if dragWidth == nil {
-                            dragStartWidth = panelWidth
-                        }
-                        let newWidth = dragStartWidth - value.translation.width
-                        dragWidth = newWidth.clamped(
-                            to: AppMetrics.MacDetailPanel.minWidth...effectiveMax
-                        )
-                    }
-                    .onEnded { _ in
-                        if let finalWidth = dragWidth {
-                            panelWidth = finalWidth
-                        }
-                        dragWidth = nil
-                    }
-            )
-            .onTapGesture(count: 2) {
-                onDoubleClick()
-            }
     }
 }
+#endif
+
+// MARK: - Helpers
 
 private extension CGFloat {
     func clamped(to range: ClosedRange<CGFloat>) -> CGFloat {
         Swift.min(Swift.max(self, range.lowerBound), range.upperBound)
     }
 }
-#endif

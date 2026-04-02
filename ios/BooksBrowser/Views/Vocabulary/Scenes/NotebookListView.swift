@@ -192,7 +192,7 @@ struct NotebookListView: View {
                     }
                 }
             } message: {
-                Text("單字本內的單字不會被刪除，將移至預設單字本。".localized)
+                Text("此單字本及所有單字將被永久刪除，無法復原。".localized)
             }
         }
         .environment(\.detailRouter, detailState)
@@ -316,17 +316,15 @@ private struct DetailPresentation: ViewModifier {
     @Binding var isEditingDetailEntry: Bool
     @Binding var navigationPath: NavigationPath
 
-    #if os(macOS)
-    @AppStorage("kg_mac_detail_panel_width") private var macPanelWidth: Double = Double(AppMetrics.MacDetailPanel.defaultWidth)
-    @State private var macDragWidth: CGFloat?
-    @State private var macContainerWidth: CGFloat = 800
+    @AppStorage("kg_detail_panel_width") private var panelWidth: Double = Double(AppMetrics.MacDetailPanel.defaultWidth)
+    @State private var dragWidth: CGFloat?
+    @State private var containerWidth: CGFloat = 800
 
-    private var effectiveMacPanelWidth: CGFloat {
-        let desired = CGFloat(macPanelWidth)
-        let maxAllowed = macContainerWidth - AppMetrics.MacDetailPanel.leftMinWidth
+    private var effectivePanelWidth: CGFloat {
+        let desired = CGFloat(panelWidth)
+        let maxAllowed = containerWidth - AppMetrics.MacDetailPanel.leftMinWidth
         return min(desired, max(maxAllowed, AppMetrics.MacDetailPanel.minWidth))
     }
-    #endif
 
     func body(content: Content) -> some View {
         Group {
@@ -335,39 +333,32 @@ private struct DetailPresentation: ViewModifier {
                     .safeAreaInset(edge: .trailing, spacing: 0) {
                         if detailState.hasDetail {
                             HStack(spacing: 0) {
-                                #if os(macOS)
-                                MacDividerHandle(
+                                DraggableDivider(
                                     panelWidth: Binding(
-                                        get: { CGFloat(macPanelWidth) },
-                                        set: { macPanelWidth = Double($0) }
+                                        get: { CGFloat(panelWidth) },
+                                        set: { panelWidth = Double($0) }
                                     ),
-                                    dragWidth: $macDragWidth,
-                                    containerWidth: macContainerWidth,
+                                    dragWidth: $dragWidth,
+                                    containerWidth: containerWidth,
                                     onDoubleClick: {
                                         withAnimation(AppMotion.standardSpring) {
-                                            macPanelWidth = Double(AppMetrics.MacDetailPanel.defaultWidth)
+                                            panelWidth = Double(AppMetrics.MacDetailPanel.defaultWidth)
                                         }
                                     }
                                 )
                                 inlineDetailPanel
-                                    .frame(width: macDragWidth ?? effectiveMacPanelWidth)
-                                #else
-                                Divider()
-                                inlineDetailPanel
-                                    .frame(minWidth: 350, idealWidth: 420, maxWidth: 600)
-                                #endif
+                                    .frame(width: dragWidth ?? effectivePanelWidth)
                             }
                             .transition(.move(edge: .trailing).combined(with: .opacity))
                         }
                     }
                     .animation(AppMotion.standardSpring, value: detailState.hasDetail)
-                    #if os(macOS)
                     .onGeometryChange(for: CGFloat.self) { geo in
                         geo.size.width
                     } action: { newWidth in
-                        macContainerWidth = newWidth
+                        containerWidth = newWidth
                     }
-                    #endif
+                    .onAppear { dragWidth = nil }
                     .onChange(of: navigationPath) { _, path in
                         if path.isEmpty { detailState.dismiss() }
                     }
