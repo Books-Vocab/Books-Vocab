@@ -38,9 +38,7 @@ extension ReaderViewPresenter {
                     .font(vocabSkin.typography.captionStrong)
                     .foregroundStyle(vocabSkin.palette.tertiaryText)
                     .lineLimit(1)
-                    .frame(maxWidth: sizeClass == .regular
-                        ? ReaderPresentationMetrics.Header.titleMaxWidthRegular
-                        : ReaderPresentationMetrics.Header.titleMaxWidth)
+                    .frame(maxWidth: LayoutMode(horizontalSizeClass: sizeClass).readerTitleMaxWidth)
 
                 Spacer()
 
