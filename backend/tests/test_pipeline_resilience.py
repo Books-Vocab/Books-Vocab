@@ -76,6 +76,12 @@ class _GraphOk:
     def pop_candidates(self):
         return []
 
+    def pop_pending_judge(self):
+        return []
+
+    def add_pending_judge(self, card_ids):
+        pass
+
     def add_candidate(self, *args):
         pass
 
