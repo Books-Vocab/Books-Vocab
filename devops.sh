@@ -263,7 +263,7 @@ cmd_deploy() {
 
   # ── Step 1: 同步代碼 ──
   section "同步代碼"
-  rsync -az --stats \
+  rsync -az --stats --delete \
     -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
     --exclude '.venv' \
     --exclude '__pycache__' \
