@@ -37,6 +37,23 @@ Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/differ
 Respond as a JSON array, one object per candidate (in order):
 [{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}, ...]"""
 
+SELECTIVE_BATCH_SYSTEM_PROMPT = """Judge vocabulary relationships for the TARGET word.
+You have {n} candidates but should select at most {max_links} with the MOST valuable learning relationships.
+
+Selection criteria (in order):
+1. Genuine contrasts — opposite or clearly different nuances of a similar concept
+2. Strong usage pairs — consistently fill the same grammatical role or appear in the same contexts
+3. REJECT vague connections — "both are body movements" or "both are adjectives" is NOT enough
+
+For the best {max_links} candidates, respond:
+{{"word": "<candidate>", "link": "contrasts_with" or "shares_usage", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}}
+
+For the rest, respond:
+{{"word": "<candidate>", "link": "not_applicable", "confidence": 0.0, "reason": ""}}
+
+Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
+Respond as a JSON array, one object per candidate (in order)."""
+
 BATCH_USER_TEMPLATE = """TARGET: {target_word} ({target_meaning})
 
 Candidates:
@@ -170,6 +187,7 @@ class Judge:
         *,
         from_id: str = "",
         similarities: dict[str, float] | None = None,
+        max_links: int | None = None,
     ) -> dict[str, Judgement | None]:
         """Evaluate target against multiple candidates in a single LLM call.
 
@@ -184,10 +202,10 @@ class Judge:
             merged: dict[str, Judgement | None] = {}
             for start in range(0, len(candidates), MAX_BATCH_SIZE):
                 chunk = candidates[start:start + MAX_BATCH_SIZE]
-                merged.update(self._call_batch(target_word, target_meaning, chunk, from_id=from_id, similarities=similarities))
+                merged.update(self._call_batch(target_word, target_meaning, chunk, from_id=from_id, similarities=similarities, max_links=max_links))
             return merged
 
-        return self._call_batch(target_word, target_meaning, candidates, from_id=from_id, similarities=similarities)
+        return self._call_batch(target_word, target_meaning, candidates, from_id=from_id, similarities=similarities, max_links=max_links)
 
     def _call_batch(
         self,
@@ -197,6 +215,7 @@ class Judge:
         *,
         from_id: str = "",
         similarities: dict[str, float] | None = None,
+        max_links: int | None = None,
     ) -> dict[str, Judgement | None]:
         """Single LLM call for a batch of candidates."""
         cand_lines = "\n".join(
@@ -209,11 +228,18 @@ class Judge:
             candidate_list=cand_lines,
         )
 
+        if max_links is not None and len(candidates) >= 5:
+            system_prompt = SELECTIVE_BATCH_SYSTEM_PROMPT.format(
+                n=len(candidates), max_links=max_links,
+            )
+        else:
+            system_prompt = BATCH_SYSTEM_PROMPT
+
         resp = self.llm.chat(
             "judge",
             model=self.model,
             messages=[
-                {"role": "system", "content": BATCH_SYSTEM_PROMPT},
+                {"role": "system", "content": system_prompt},
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
