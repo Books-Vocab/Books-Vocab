@@ -249,14 +249,15 @@ class Judge:
         similarity: float | None = None,
     ) -> Judgement | None:
         """Single-pair evaluate (backward compatible)."""
-        sims = {"_single": similarity} if similarity is not None else None
+        key = to_id or "_single"
+        sims = {key: similarity} if similarity is not None else None
         results = self.evaluate_batch(
             word_a, meaning_a,
-            [("_single", word_b, meaning_b)],
+            [(key, word_b, meaning_b)],
             from_id=from_id,
             similarities=sims,
         )
-        return results.get("_single")
+        return results.get(key)
 
 
 # ── ManualLinkJudge (unchanged, separate prompt) ─────────────

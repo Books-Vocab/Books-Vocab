@@ -82,7 +82,7 @@ def test_single_evaluate_logs():
     rows = judge_log.get_log("u1")
     assert len(rows) == 1
     assert rows[0]["from_id"] == "f1"
-    assert rows[0]["to_id"] == "_single"  # thin wrapper uses _single as card_id
+    assert rows[0]["to_id"] == "c1"  # uses actual to_id when provided
 
 
 # ── ManualLinkJudge ──────────────────────────────────────
