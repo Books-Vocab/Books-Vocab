@@ -8,8 +8,8 @@ from typing import Any
 from .api_models import GraphLinkResponse
 
 
-SIMILARITY_THRESHOLD = 0.70
-CANDIDATE_K = 20
+SIMILARITY_THRESHOLD = 0.78
+CANDIDATE_K = 12
 
 
 def embed_and_link_new_cards(
