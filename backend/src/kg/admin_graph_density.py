@@ -28,18 +28,20 @@ def compute_graph_density(
     cards_db = user_dir / "cards.db"
     if cards_db.exists():
         engine = create_engine(f"sqlite:///{cards_db.absolute()}")
-        with engine.connect() as conn:
-            rows = conn.execute(
-                text(
-                    "SELECT id, created_at FROM card "
-                    "WHERE is_deleted = 0 AND notebook_id = :nb"
-                ),
-                {"nb": notebook_id},
-            ).fetchall()
-        for _id, created_at in rows:
-            ts = _parse_ts(created_at)
-            events.append((ts, "card"))
-        engine.dispose()
+        try:
+            with engine.connect() as conn:
+                rows = conn.execute(
+                    text(
+                        "SELECT id, created_at FROM card "
+                        "WHERE is_deleted = 0 AND notebook_id = :nb"
+                    ),
+                    {"nb": notebook_id},
+                ).fetchall()
+            for _id, created_at in rows:
+                ts = _parse_ts(created_at)
+                events.append((ts, "card"))
+        finally:
+            engine.dispose()
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"
