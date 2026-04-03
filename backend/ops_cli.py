@@ -23,6 +23,26 @@ def _token_usage_db() -> Path:
     return DATA_DIR / "token_usage.db"
 
 
+def _resolve_uid(partial: str) -> str:
+    """部分 ID 模糊匹配。支援前綴或子字串。"""
+    users_dir = DATA_DIR / "users"
+    if not users_dir.exists():
+        return partial  # fallback，讓後續步驟報錯
+    # 精確匹配
+    if (users_dir / partial).exists():
+        return partial
+    # 前綴/子字串匹配
+    matches = [d.name for d in users_dir.iterdir() if d.is_dir() and partial in d.name]
+    if len(matches) == 1:
+        return matches[0]
+    if len(matches) > 1:
+        print(f"多個用戶匹配 '{partial}'：", file=sys.stderr)
+        for m in matches:
+            print(f"  {m}", file=sys.stderr)
+        sys.exit(1)
+    return partial  # 無匹配，讓後續步驟報錯
+
+
 def _cards_db(uid: str) -> Path:
     return DATA_DIR / "users" / uid / "cards.db"
 
@@ -68,7 +88,7 @@ def _print_table(headers: list[str], rows: list[list]) -> None:
 
 def cmd_user_quota(args: argparse.Namespace) -> None:
     """24h 額度 + 逐時明細。"""
-    uid = args.uid
+    uid = _resolve_uid(args.uid)
     cutoff = _cutoff_iso(24)
     pro_limit = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
     free_limit = float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03"))
@@ -111,7 +131,7 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
 def cmd_user_stats(args: argparse.Namespace) -> None:
     """單字庫統計。"""
-    uid = args.uid
+    uid = _resolve_uid(args.uid)
     db_path = _cards_db(uid)
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
@@ -204,7 +224,7 @@ def cmd_active_users(args: argparse.Namespace) -> None:
 
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
-    uid = args.uid
+    uid = _resolve_uid(args.uid)
     sql = args.sql
     db_path = _cards_db(uid)
     if not db_path.exists():
