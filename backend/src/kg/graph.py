@@ -64,20 +64,29 @@ class GraphStore:
       first) kept in sync with _candidates for O(1) duplicate detection.
     """
 
-    def __init__(self, links_path: Path, candidates_path: Path, blocked_path: Path | None = None) -> None:
+    def __init__(
+        self,
+        links_path: Path,
+        candidates_path: Path,
+        blocked_path: Path | None = None,
+        pending_judge_path: Path | None = None,
+    ) -> None:
         self.links_path = links_path
         self.candidates_path = candidates_path
         self.blocked_path = blocked_path
+        self.pending_judge_path = pending_judge_path
         self._lock = threading.Lock()
         # Per-file write locks: serialise concurrent _atomic_json_write calls
         # so that tmp->bak->replace sequence is always consistent on disk.
         self._links_write_lock = threading.Lock()
         self._candidates_write_lock = threading.Lock()
         self._blocked_write_lock = threading.Lock()
+        self._pending_judge_write_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
         self._candidates: list[CandidatePair] = []
         self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
         self._blocked_pairs: set[tuple[str, str]] = set()
+        self._pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
         self._load()
@@ -139,6 +148,18 @@ class GraphStore:
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
+        # Load pending_judge
+        if self.pending_judge_path and self.pending_judge_path.exists():
+            pj_data = json.loads(self.pending_judge_path.read_text())
+            self._pending_judge = set(pj_data)
+        # Migrate old candidates -> pending_judge (only when pending_judge_path is set)
+        if self.pending_judge_path and self._candidates:
+            for c in self._candidates:
+                self._pending_judge.add(c.from_id)
+                self._pending_judge.add(c.to_id)
+            self._candidates.clear()
+            self._save_candidates()
+            self._save_pending_judge()
         self._rebuild_index()
         self._rebuild_candidate_set()
 
@@ -191,6 +212,17 @@ class GraphStore:
         if self.blocked_path is None:
             return
         self._flush_blocked(self._blocked_to_serializable())
+
+    def _flush_pending_judge(self, snapshot: list[str]) -> None:
+        if self.pending_judge_path is None:
+            return
+        with self._pending_judge_write_lock:
+            self._atomic_json_write(self.pending_judge_path, snapshot, indent=None)
+
+    def _save_pending_judge(self) -> None:
+        if self.pending_judge_path is None:
+            return
+        self._flush_pending_judge(list(self._pending_judge))
 
     # ------------------------------------------------------------------
     # Links
@@ -420,7 +452,42 @@ class GraphStore:
         self._flush_candidates(snapshot)
 
     def candidate_count(self) -> int:
-        return len(self._candidates)
+        return len(self._candidates) + len(self._pending_judge)
+
+    # ------------------------------------------------------------------
+    # Pending Judge
+    # ------------------------------------------------------------------
+
+    def add_pending_judge(self, card_id: str) -> None:
+        """Add a card ID to the pending judge set. Dedup by set semantics."""
+        with self._lock:
+            if card_id in self._pending_judge:
+                return
+            self._pending_judge.add(card_id)
+            snapshot = list(self._pending_judge)
+        self._flush_pending_judge(snapshot)
+
+    def pop_pending_judge(self) -> set[str]:
+        """Get and clear all pending judge card IDs."""
+        with self._lock:
+            result = self._pending_judge.copy()
+            self._pending_judge.clear()
+            snapshot: list[str] = []
+        self._flush_pending_judge(snapshot)
+        return result
+
+    def remove_pending_judge_for(self, card_id: str) -> int:
+        """Remove a specific card ID from pending judge. Returns 1 if removed, 0 otherwise."""
+        with self._lock:
+            if card_id not in self._pending_judge:
+                return 0
+            self._pending_judge.discard(card_id)
+            snapshot = list(self._pending_judge)
+        self._flush_pending_judge(snapshot)
+        return 1
+
+    def pending_judge_count(self) -> int:
+        return len(self._pending_judge)
 
     # ------------------------------------------------------------------
     # Cleanup
@@ -476,9 +543,10 @@ class GraphStore:
         return removed
 
     def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dict:
-        """Deprecate links + remove candidates (+ blocked pairs if deleting)."""
+        """Deprecate links + remove candidates + remove pending_judge (+ blocked pairs if deleting)."""
         dep_count = self.deprecate_links_for(card_id)
         cand_count = self.remove_candidates_for(card_id)
+        pj_count = self.remove_pending_judge_for(card_id)
         if remove_blocked:
             self.remove_blocked_pairs_for(card_id)
-        return {"deprecated": dep_count, "candidates_removed": cand_count}
+        return {"deprecated": dep_count, "candidates_removed": cand_count, "pending_judge_removed": pj_count}
