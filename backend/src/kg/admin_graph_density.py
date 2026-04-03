@@ -47,7 +47,8 @@ def compute_graph_density(
     graph_path = user_dir / f"graph_{notebook_id}.json"
     if graph_path.exists():
         raw = json.loads(graph_path.read_text())
-        for link in raw.values():
+        links = raw if isinstance(raw, list) else raw.values()
+        for link in links:
             if link.get("status") != "active":
                 continue
             ts = _parse_ts(link["created_at"])
