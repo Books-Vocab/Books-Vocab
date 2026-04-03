@@ -328,7 +328,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         build_entitlements_response_fn=_build_entitlements_response,
         current_admin_grant_record_fn=_current_admin_grant_record,
     )
-    app.include_router(build_admin_router(**admin_handlers))
+    login_r, html_r, api_r = build_admin_router(
+        **admin_handlers, runtime_settings_fn=_settings_fn,
+    )
+    app.include_router(login_r)
+    app.include_router(html_r)
+    app.include_router(api_r)
 
     return app
 

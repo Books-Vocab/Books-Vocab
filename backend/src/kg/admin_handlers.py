@@ -10,7 +10,7 @@ from typing import Any
 logger = logging.getLogger(__name__)
 
 from fastapi import HTTPException
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, RedirectResponse
 from filelock import FileLock
 
 from .api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
@@ -70,6 +70,74 @@ def _set_admin_cookie(response: HTMLResponse, admin_token: str) -> HTMLResponse:
         max_age=60 * 60 * 24 * 30,  # 30 days
     )
     return response
+
+
+ADMIN_LOGIN_HTML = """<!DOCTYPE html>
+<html lang="zh-Hant"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Admin Login</title>
+<style>
+body{{font-family:system-ui,sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0;background:#f5f5f5}}
+.card{{background:#fff;padding:2rem;border-radius:8px;box-shadow:0 2px 8px rgba(0,0,0,.1);width:100%;max-width:360px}}
+h1{{font-size:1.25rem;margin:0 0 1.5rem;text-align:center;color:#333}}
+label{{display:block;margin-bottom:.5rem;font-size:.875rem;color:#555}}
+input[type=password]{{width:100%;padding:.5rem;border:1px solid #ccc;border-radius:4px;font-size:1rem;box-sizing:border-box}}
+button{{width:100%;padding:.625rem;margin-top:1rem;border:none;border-radius:4px;background:#333;color:#fff;font-size:1rem;cursor:pointer}}
+button:hover{{background:#555}}
+.error{{color:#c00;font-size:.875rem;margin-top:.75rem;text-align:center}}
+.info{{color:#666;font-size:.875rem;margin-top:.75rem;text-align:center}}
+</style></head><body>
+<div class="card">
+<h1>KG Admin</h1>
+{content}
+</div></body></html>"""
+
+
+def admin_login_page(error: str = "", password_enabled: bool = True) -> HTMLResponse:
+    """Render the admin login page."""
+    if not password_enabled:
+        content = '<p class="info">密碼登入未啟用，請使用 token 認證。</p>'
+    else:
+        error_html = f'<p class="error">{error}</p>' if error else ""
+        content = (
+            '<form method="post" action="/admin/login">'
+            '<label for="password">管理員密碼</label>'
+            '<input type="password" id="password" name="password" autofocus required>'
+            '<button type="submit">登入</button>'
+            f'{error_html}</form>'
+        )
+    return HTMLResponse(ADMIN_LOGIN_HTML.format(content=content))
+
+
+def admin_login_post(password: str, *, admin_password: str, admin_token: str) -> HTMLResponse | RedirectResponse:
+    """Verify password and redirect on success, or show error on failure."""
+    if not admin_password:
+        return HTMLResponse(
+            ADMIN_LOGIN_HTML.format(content='<p class="error">密碼登入未啟用。</p>'),
+            status_code=403,
+        )
+    if not hmac.compare_digest(password, admin_password):
+        return admin_login_page(error="密碼錯誤，請重試。")
+    resp = RedirectResponse("/admin", status_code=302)
+    _set_admin_cookie(resp, admin_token)
+    return resp
+
+
+def check_admin_auth(
+    *,
+    token: str | None,
+    authorization: str | None,
+    cookie_token: str | None,
+    admin_token: str,
+) -> bool:
+    """Return True if the request carries valid admin credentials, False otherwise."""
+    if not admin_token:
+        return False
+    resolved = _resolve_admin_token(token, authorization)
+    if resolved is not None:
+        return hmac.compare_digest(resolved, admin_token)
+    if cookie_token and _verify_cookie(cookie_token, admin_token):
+        return True
+    return False
 
 
 def admin_ui_response(
