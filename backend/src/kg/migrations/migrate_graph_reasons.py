@@ -30,7 +30,19 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
     """Migrate all notebook graphs for one user. Returns count of updated links."""
     from kg.cards import CardStore
     from kg.graph import GraphStore
-    from kg.judge import SYSTEM_PROMPT, USER_TEMPLATE, Judgement
+    from kg.judge import Judgement
+
+    # Inline prompts (originally from judge.py, inlined for migration stability)
+    _MIGRATE_SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
+- contrasts_with: Genuinely opposite or contrasting meanings
+- shares_usage: Used in similar contexts or fill similar grammatical roles
+- not_applicable: No meaningful learning relationship
+
+Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
+
+Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
+
+    _MIGRATE_USER_TEMPLATE = "Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
     import json
     import re
@@ -68,7 +80,7 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
                 logger.warning("    Skipping link %s: missing card(s)", link.id)
                 continue
 
-            user_msg = USER_TEMPLATE.format(
+            user_msg = _MIGRATE_USER_TEMPLATE.format(
                 word_a=card_a.content,
                 meaning_a=card_a.meaning,
                 word_b=card_b.content,
@@ -79,7 +91,7 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
                 resp = client.chat.completions.create(
                     model=model,
                     messages=[
-                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "system", "content": _MIGRATE_SYSTEM_PROMPT},
                         {"role": "user", "content": user_msg},
                     ],
                     response_format={"type": "json_object"},
