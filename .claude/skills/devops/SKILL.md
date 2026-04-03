@@ -53,6 +53,7 @@ ops-cli user-stats <uid>        # 單字庫統計
 ops-cli quota-overview           # 全用戶額度總覽
 ops-cli active-users [hours]    # 近 N 小時活躍用戶
 ops-cli db-query <uid> "SQL"    # 對用戶 DB 跑 SQL
+ops-cli analyze <uid> [level]  # 深度分析（1-6 或 all）
 ```
 
 ### data_inspect（本地用）

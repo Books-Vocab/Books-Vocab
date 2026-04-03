@@ -247,6 +247,14 @@ def cmd_db_query(args: argparse.Namespace) -> None:
         conn.close()
 
 
+def cmd_analyze(args: argparse.Namespace) -> None:
+    """委派給 ops_analyze.py。"""
+    import subprocess
+    script = Path(__file__).resolve().parent / "ops_analyze.py"
+    cmd = [sys.executable, str(script), args.uid, args.level]
+    sys.exit(subprocess.call(cmd))
+
+
 # ── CLI 進入點 ──────────────────────────────────────────
 
 
@@ -281,6 +289,12 @@ def main() -> None:
     p.add_argument("uid", help="User ID")
     p.add_argument("sql", help="SQL 查詢語句")
     p.set_defaults(func=cmd_db_query)
+
+    # analyze
+    p = sub.add_parser("analyze", help="深度分析（圖譜拓撲/連結品質/嵌入/異常）")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("level", nargs="?", default="all", help="1-6 或 all（預設 all）")
+    p.set_defaults(func=cmd_analyze)
 
     args = parser.parse_args()
     args.func(args)
