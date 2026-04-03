@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import threading
 import uuid
 from collections.abc import Iterator
@@ -12,6 +13,8 @@ from pathlib import Path
 from typing import Any, Literal
 
 from pydantic import BaseModel, Field
+
+logger = logging.getLogger(__name__)
 
 
 class LinkKind(StrEnum):
@@ -151,7 +154,11 @@ class GraphStore:
         # Load pending_judge
         if self.pending_judge_path and self.pending_judge_path.exists():
             pj_data = json.loads(self.pending_judge_path.read_text())
-            self._pending_judge = set(pj_data)
+            if isinstance(pj_data, list):
+                self._pending_judge = {x for x in pj_data if isinstance(x, str)}
+            else:
+                logger.warning("Invalid pending_judge format, resetting: %s", type(pj_data).__name__)
+                self._pending_judge = set()
         # Migrate old candidates -> pending_judge (only when pending_judge_path is set)
         if self.pending_judge_path and self._candidates:
             migrated_ids = {c.from_id for c in self._candidates}
@@ -484,7 +491,7 @@ class GraphStore:
             if card_id not in self._pending_judge:
                 return 0
             self._pending_judge.discard(card_id)
-            snapshot = list(self._pending_judge)
+            snapshot = sorted(self._pending_judge)
         self._flush_pending_judge(snapshot)
         return 1
 
