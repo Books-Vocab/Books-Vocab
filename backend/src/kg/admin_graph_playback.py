@@ -1,14 +1,13 @@
 """Graph playback data — full nodes + edges with timestamps for time-based visualization."""
 from __future__ import annotations
 
-import json
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
 from sqlmodel import create_engine
 
-from .admin_graph_density import _parse_ts
+from .admin_graph_density import _parse_ts, _read_graph_links
 
 
 def compute_graph_playback(
@@ -52,21 +51,26 @@ def compute_graph_playback(
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"
-    if graph_path.exists():
-        raw = json.loads(graph_path.read_text())
-        links = raw if isinstance(raw, list) else raw.values()
-        for link in links:
-            if link.get("status") != "active":
-                continue
-            ts = _parse_ts(link["created_at"])
-            edges.append({
-                "from_id": link["from_id"],
-                "to_id": link["to_id"],
-                "kind": link["kind"],
-                "confidence": link["confidence"],
-                "reason": link.get("reason", ""),
-                "created_at": ts.isoformat(),
-            })
+    for link in _read_graph_links(graph_path):
+        if link.get("status") != "active":
+            continue
+        created_at = link.get("created_at")
+        from_id = link.get("from_id")
+        to_id = link.get("to_id")
+        if not created_at or not from_id or not to_id:
+            continue
+        try:
+            ts = _parse_ts(created_at)
+        except (ValueError, TypeError):
+            continue
+        edges.append({
+            "from_id": from_id,
+            "to_id": to_id,
+            "kind": link.get("kind", ""),
+            "confidence": link.get("confidence", 0),
+            "reason": link.get("reason", ""),
+            "created_at": ts.isoformat(),
+        })
 
     # ── sort by created_at ─────────────────────────────────────────────
     nodes.sort(key=lambda n: n["created_at"])
