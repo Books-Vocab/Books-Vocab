@@ -714,7 +714,6 @@ let _autoTimer = null;
 let _usersData = [];
 let _providerFilter = 'all';
 let _proFilter = 'all';
-let _expandedUid = null;
 
 /* ── Tabs ── */
 function switchTab(tab) {
@@ -829,77 +828,6 @@ async function revokePro(userId) {
   await loadStats();
 }
 
-/* ── Expand detail ── */
-function toggleDetail(uid) {
-  if (_expandedUid === uid) {
-    _expandedUid = null;
-  } else {
-    _expandedUid = uid;
-  }
-  applyFilters();
-}
-
-function buildDetailRow(u, colSpan) {
-  const pro = u.pro || {};
-  const ag = u.admin_grant || {};
-  const sub = pro;
-  return `<tr class="detail-row"><td colspan="${colSpan}"><div class="detail-inner">
-    <div class="detail-section">
-      <div class="detail-section-title">帳戶資訊</div>
-      <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
-      <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
-      <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
-      <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
-      <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">訂閱狀態</div>
-      <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${sub.is_active ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(sub.status || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(sub.source || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(sub.plan_name || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(sub.price_display || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(sub.expires_at)}</span></div>
-      <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${sub.is_trial ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${sub.will_renew ? '是' : '否'}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Admin Grant</div>
-      <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(ag.status || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
-      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">每日翻譯額度（24h）</div>
-      ${(() => {
-        const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
-        const pctUsed = Math.round(q.fraction_used * 100);
-        let html = '<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">$' + q.used_usd.toFixed(4) + ' / $' + q.limit_usd.toFixed(2) + ' (' + pctUsed + '%)</span></div>';
-        html += '<div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ' + quotaColor(q.fraction_used) + '" style="width:' + pctUsed + '%"></div></div></div>';
-        const calls = q.calls || {};
-        const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',embed:'embed'};
-        for (const [t, label] of Object.entries(typeLabels)) {
-          const c = calls[t];
-          if (c) html += '<div class="detail-kv"><span class="detail-k">' + label + '</span><span class="detail-v">&times;' + c.count + ' = $' + c.cost_usd.toFixed(4) + '</span></div>';
-        }
-        if (!Object.keys(calls).length) html += '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
-        return html;
-      })()}
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Token 消耗明細</div>
-      ${Object.entries(u.tokens || {}).map(([t, d]) =>
-        `<div class="detail-kv"><span class="detail-k">${escapeHtml(t)}</span><span class="detail-v">${fmt(d.input_tokens)}↑ ${fmt(d.output_tokens)}↓ ×${d.calls}</span></div>`
-      ).join('') || '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無紀錄</span></div>'}
-      <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
-    </div>
-  </div></td></tr>`;
-}
-
 /* ── Load & Render ── */
 async function loadStats() {
   document.getElementById('loading').style.display = '';
@@ -941,7 +869,6 @@ function quotaColor(frac) {
 
 function renderUserRows(users) {
   const maxTok=Math.max(...users.map(u=>u.total_input+u.total_output),1);
-  const colSpan = 10;
   document.getElementById('rows').innerHTML=users.map(u=>{
     const pc=u.provider||'manual';
     const total=u.total_input+u.total_output;
@@ -950,11 +877,10 @@ function renderUserRows(users) {
     const adminGrant=u.admin_grant||{is_active:false};
     const proBadgeClass=pro.is_active?'badge-pro-active':'badge-pro-inactive';
     const proLabel=pro.is_active?(pro.source==='admin'?'Admin Grant':pro.status||'active'):'inactive';
-    const isExpanded = _expandedUid === u.user_id;
     const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
     const qPct = Math.round(q.fraction_used * 100);
     const qLabel = q.used_usd > 0 ? '$' + q.used_usd.toFixed(4) : '—';
-    return `<tr class="expandable${isExpanded?' expanded':''}" onclick="toggleDetail('${escapeHtml(u.user_id)}')">
+    return `<tr class="expandable" onclick="location.href='/admin/user/${encodeURIComponent(u.user_id)}'">
       <td><div class="uid">${escapeHtml(u.user_id)}</div>${u.email?`<div class="email">${escapeHtml(u.email)}</div>`:''}</td>
       <td><span class="badge b-${pc}">${pc}</span></td>
       <td style="color:var(--ink-light);font-size:12px">${fmtDate(u.last_login)}</td>
@@ -983,7 +909,7 @@ function renderUserRows(users) {
         <div class="bar-wrap"><div class="bar"><div class="bar-fill" style="width:${pct}%"></div></div><span class="bar-label">${fmt(total)}</span></div>
       </td>
       <td class="cost">$${u.est_cost_usd.toFixed(4)}</td>
-    </tr>${isExpanded ? buildDetailRow(u, colSpan) : ''}`;
+    </tr>`;
   }).join('');
 }
 

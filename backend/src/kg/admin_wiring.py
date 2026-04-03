@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from collections.abc import Callable
 
-from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML
+from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
     admin_grant_pro_access_response,
     admin_last_test_run_response,
@@ -132,6 +132,29 @@ def create_admin_handlers(
             admin_token=runtime_settings_fn().admin_token,
         )
 
+    def admin_graph_density(user_id: str, notebook_id: str = "default"):
+        """Return time-series graph density data for a user."""
+        from .admin_graph_density import compute_graph_density
+
+        settings = runtime_settings_fn()
+        user_dir = settings.data_dir / "users" / user_id
+        return compute_graph_density(user_dir, notebook_id, user_id=user_id)
+
+    def admin_graph_playback(user_id: str, notebook_id: str = "default"):
+        """Return full graph nodes + edges with timestamps for playback."""
+        from .admin_graph_playback import compute_graph_playback
+
+        settings = runtime_settings_fn()
+        user_dir = settings.data_dir / "users" / user_id
+        return compute_graph_playback(user_dir, notebook_id, user_id=user_id)
+
+    def admin_user_detail_ui():
+        """User detail page UI."""
+        return admin_ui_response(
+            admin_html=ADMIN_USER_DETAIL_HTML,
+            admin_token=runtime_settings_fn().admin_token,
+        )
+
     return {
         "admin_ui": admin_ui,
         "admin_stats": admin_stats,
@@ -143,4 +166,7 @@ def create_admin_handlers(
         "admin_last_test_run": admin_last_test_run,
         "admin_test_catalog": admin_test_catalog,
         "admin_tests_ui": admin_tests_ui,
+        "admin_graph_density": admin_graph_density,
+        "admin_graph_playback": admin_graph_playback,
+        "admin_user_detail_ui": admin_user_detail_ui,
     }
