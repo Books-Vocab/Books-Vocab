@@ -84,6 +84,7 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
         # Delete graph files
         for pattern in [
             f"graph_{nb_id}.json", f"candidates_{nb_id}.json", f"blocked_{nb_id}.json",
+            f"pending_judge_{nb_id}.json",
         ]:
             for suffix in ("", ".bak", ".tmp"):
                 (user["dir"] / (pattern + suffix)).unlink(missing_ok=True)
