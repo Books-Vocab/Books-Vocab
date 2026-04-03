@@ -62,6 +62,21 @@ python3 ops/data_inspect.py [command]
 # overview / sample N / gaps / graph / notes / search <keyword> / card <id> / sql "..."
 ```
 
+## Deploy 機制
+
+`deploy` 自動偵測改動範圍，決定路徑：
+
+| 偵測結果 | 路徑 | 耗時 |
+|----------|------|------|
+| 只有 .py / .html / 靜態檔 | **fast**: rsync → restart → health | ~15s |
+| Dockerfile / docker-compose / pyproject.toml | **full**: backup → env-check → rsync → build → migrate → health → env-drift | ~2min |
+| 無上次 deploy 記錄 / sha 不存在 | **full** | ~2min |
+
+偵測依據：`git diff <last_deploy_sha>..HEAD -- backend/`，last_deploy_sha 來自 `deploy.log`。
+
+- `DEPLOY_FULL=1 ./ops/devops_kg_safe.sh deploy` — 強制完整部署
+- `./ops/devops_kg_safe.sh restart` — 最快，僅重啟容器不 rsync（程式碼未變時用）
+
 ## 高頻操作範例
 
 ```bash
@@ -77,11 +92,9 @@ python3 ops/data_inspect.py [command]
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
 
-# 標準部署流程
-preflight → backup → deploy → status → smoke test
+# 部署（自動偵測 fast/full）
+./ops/devops_kg_safe.sh deploy
 ```
-
-**Golden rule**：`restart` 比 `deploy` 快 10x。只在程式碼有變更時才 `deploy`。
 
 ## 快速診斷流程
 
