@@ -147,3 +147,65 @@ class TestParseBatchResponse:
         content = '{"link": "shares_usage", "confidence": 0.8, "reason": "r"}'
         results = _parse_batch_response(content, [("id1", "a", "ma")])
         assert results["id1"].link == "shares_usage"
+
+
+class TestJudgeChunking:
+    def test_large_batch_splits_into_chunks(self):
+        """20 candidates should be split into 2 chunks (15 + 5)."""
+        from unittest.mock import MagicMock, call
+        from kg.tracked_llm import TrackedLLM
+        from kg.judge import MAX_BATCH_SIZE
+
+        call_count = 0
+        chunk_sizes = []
+
+        def fake_create(**kwargs):
+            nonlocal call_count
+            call_count += 1
+            # Count candidates from user message
+            user_msg = kwargs["messages"][1]["content"]
+            n = user_msg.count("\n") - 1  # candidate lines
+            chunk_sizes.append(n)
+            # Return array of correct size
+            import json
+            items = [{"link": "shares_usage", "confidence": 0.8, "reason": "r"} for _ in range(n)]
+            resp = MagicMock()
+            resp.choices = [MagicMock()]
+            resp.choices[0].message.content = json.dumps(items)
+            resp.usage = None
+            return resp
+
+        mock_client = MagicMock()
+        mock_client.chat.completions.create.side_effect = fake_create
+        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
+
+        candidates = [(f"id{i}", f"word{i}", f"meaning{i}") for i in range(20)]
+        results = judge.evaluate_batch("target", "target_meaning", candidates)
+
+        assert call_count == 2  # 15 + 5
+        assert len(results) == 20
+        # All should have results (shares_usage with conf 0.8)
+        for cid in [f"id{i}" for i in range(20)]:
+            assert cid in results
+
+    def test_exact_max_batch_no_split(self):
+        """Exactly MAX_BATCH_SIZE candidates → no split."""
+        from unittest.mock import MagicMock
+        from kg.tracked_llm import TrackedLLM
+        from kg.judge import MAX_BATCH_SIZE
+        import json
+
+        items = [{"link": "shares_usage", "confidence": 0.8, "reason": "r"} for _ in range(MAX_BATCH_SIZE)]
+        mock_client = MagicMock()
+        resp = MagicMock()
+        resp.choices = [MagicMock()]
+        resp.choices[0].message.content = json.dumps(items)
+        resp.usage = None
+        mock_client.chat.completions.create.return_value = resp
+
+        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
+        candidates = [(f"id{i}", f"w{i}", f"m{i}") for i in range(MAX_BATCH_SIZE)]
+        results = judge.evaluate_batch("t", "tm", candidates)
+
+        assert mock_client.chat.completions.create.call_count == 1
+        assert len(results) == MAX_BATCH_SIZE

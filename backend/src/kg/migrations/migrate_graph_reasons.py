@@ -33,7 +33,7 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
     from kg.judge import Judgement
 
     # Inline prompts (originally from judge.py, inlined for migration stability)
-    _MIGRATE__MIGRATE_SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
+    _MIGRATE_SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
 - contrasts_with: Genuinely opposite or contrasting meanings
 - shares_usage: Used in similar contexts or fill similar grammatical roles
 - not_applicable: No meaningful learning relationship
@@ -42,7 +42,7 @@ Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND hig
 
 Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
 
-    _MIGRATE__MIGRATE_USER_TEMPLATE = "Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
+    _MIGRATE_USER_TEMPLATE = "Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
     import json
     import re
