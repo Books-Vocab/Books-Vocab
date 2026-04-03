@@ -211,7 +211,7 @@ def cmd_db_query(args: argparse.Namespace) -> None:
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
         sys.exit(1)
 
-    conn = sqlite3.connect(str(db_path))
+    conn = _connect_ro(db_path)
     try:
         cursor = conn.execute(sql)
         if cursor.description:

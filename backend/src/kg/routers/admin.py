@@ -14,22 +14,20 @@ from ..deps import get_admin_user
 # Login router — no auth required
 # ---------------------------------------------------------------------------
 
-login_router = APIRouter()
-
-
 def build_login_routes(
     *,
     runtime_settings_fn: Callable,
 ) -> APIRouter:
     """Create login routes with injected settings accessor."""
+    router = APIRouter()
 
-    @login_router.get("/admin/login", response_class=HTMLResponse, include_in_schema=False)
+    @router.get("/admin/login", response_class=HTMLResponse, include_in_schema=False)
     async def admin_login_get(request: Request):
         from ..admin_handlers import admin_login_page
         settings = runtime_settings_fn()
         return admin_login_page(password_enabled=bool(settings.admin_password))
 
-    @login_router.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
+    @router.post("/admin/login", response_class=HTMLResponse, include_in_schema=False)
     async def admin_login_submit(request: Request):
         from ..admin_handlers import admin_login_post
         form = await request.form()
@@ -41,7 +39,7 @@ def build_login_routes(
             admin_token=settings.admin_token,
         )
 
-    return login_router
+    return router
 
 
 # ---------------------------------------------------------------------------

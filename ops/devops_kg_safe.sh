@@ -106,16 +106,14 @@ main() {
     ops-cli)
       preflight
       shift
-      local raw="${*:-}"
-      [[ -n "$raw" ]] || { echo "✗ usage: $0 ops-cli <subcommand> [args...]" >&2; exit 1; }
-      "$BASE" ops-cli "$raw"
+      [[ -n "${1:-}" ]] || { echo "✗ usage: $0 ops-cli <subcommand> [args...]" >&2; exit 1; }
+      "$BASE" ops-cli "$@"
       ;;
     container-script)
       preflight
       shift
-      local raw="${*:-}"
-      [[ -n "$raw" ]] || { echo "✗ usage: $0 container-script <script> [args...]" >&2; exit 1; }
-      "$BASE" container-script "$raw"
+      [[ -n "${1:-}" ]] || { echo "✗ usage: $0 container-script <script> [args...]" >&2; exit 1; }
+      "$BASE" container-script "$@"
       ;;
     setup|push-env|delete-user|ssh)
       echo "✗ blocked in safe wrapper: $sub" >&2

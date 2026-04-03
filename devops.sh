@@ -515,7 +515,10 @@ cmd_container_script() {
   "${SCP_CMD[@]}" "$script" "$SERVER:$remote_tmp"
   run_remote "docker cp $remote_tmp $CONTAINER:$remote_tmp"
   shift
-  run_remote "docker exec $CONTAINER python3 $remote_tmp $@"
+  local interp
+  [[ "$ext" == "py" ]] && interp="python3" || interp="bash"
+  run_remote "docker exec $CONTAINER $interp $remote_tmp $@"
+  run_remote "docker exec $CONTAINER rm -f $remote_tmp"
   run_remote "rm -f $remote_tmp"
 }
 

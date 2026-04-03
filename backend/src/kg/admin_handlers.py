@@ -97,7 +97,8 @@ def admin_login_page(error: str = "", password_enabled: bool = True) -> HTMLResp
     if not password_enabled:
         content = '<p class="info">密碼登入未啟用，請使用 token 認證。</p>'
     else:
-        error_html = f'<p class="error">{error}</p>' if error else ""
+        import html as _html
+        error_html = f'<p class="error">{_html.escape(error)}</p>' if error else ""
         content = (
             '<form method="post" action="/admin/login">'
             '<label for="password">管理員密碼</label>'
