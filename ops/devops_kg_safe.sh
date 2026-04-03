@@ -25,6 +25,8 @@ usage:
   $0 run "<remote command>"
   $0 container-run "<cmd>"
   $0 migrate-run "<cmd>"
+  $0 ops-cli <subcommand> [args...]
+  $0 container-script <script> [args...]
 
 blocked by default:
   setup / push-env / delete-user / ssh / any destructive run command
@@ -100,6 +102,20 @@ main() {
         exit 1
       fi
       "$BASE" migrate-run "$raw"
+      ;;
+    ops-cli)
+      preflight
+      shift
+      local raw="${*:-}"
+      [[ -n "$raw" ]] || { echo "✗ usage: $0 ops-cli <subcommand> [args...]" >&2; exit 1; }
+      "$BASE" ops-cli "$raw"
+      ;;
+    container-script)
+      preflight
+      shift
+      local raw="${*:-}"
+      [[ -n "$raw" ]] || { echo "✗ usage: $0 container-script <script> [args...]" >&2; exit 1; }
+      "$BASE" container-script "$raw"
       ;;
     setup|push-env|delete-user|ssh)
       echo "✗ blocked in safe wrapper: $sub" >&2
