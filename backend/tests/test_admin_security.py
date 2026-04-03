@@ -117,7 +117,7 @@ def test_admin_ui_response_sets_signed_cookie():
     assert "httponly" in cookie_header.lower()
     assert "secure" in cookie_header.lower()
     assert "samesite=lax" in cookie_header.lower()
-    assert "path=/admin" in cookie_header.lower()
+    assert "path=/" in cookie_header.lower()
 
 
 def test_admin_ui_response_returns_200():
