@@ -1,0 +1,1028 @@
+<!DOCTYPE html>
+<html lang="zh-TW">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>用戶詳情 — WordNexus Admin</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;400&display=swap" rel="stylesheet">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-force@3/dist/d3-force.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-quadtree@3/dist/d3-quadtree.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-dispatch@3/dist/d3-dispatch.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/d3-timer@3/dist/d3-timer.min.js"></script>
+<style>
+:root {
+  --bg: #f8f7f4;
+  --surface: #fcfbfa;
+  --border: #dbd6cd;
+  --border-l: #e8e4db;
+  --ink: #2a2520;
+  --sub: #7a756c;
+  --ink-light: #5a5550;
+  --dev: #c0392b;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  font-family: 'Noto Sans TC', sans-serif;
+  background: var(--bg);
+  color: var(--ink);
+  font-size: 14px;
+  line-height: 1.86;
+  min-height: 100vh;
+}
+/* Top nav */
+.nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  height: 52px;
+  padding: 0 16px;
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+.nav-left { display: flex; align-items: center; gap: 12px; }
+.back-link {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--ink-light);
+  text-decoration: none;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+}
+.back-link:hover { color: var(--ink); }
+.brand {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+.dev-dot {
+  margin-left: 8px;
+  color: var(--dev);
+  border: 1px solid var(--dev);
+  padding: 1px 5px;
+  border-radius: 2px;
+  font-size: 10px;
+}
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: transparent;
+  color: var(--ink-light);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .10em;
+  text-transform: uppercase;
+  text-decoration: none;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btn:hover { border-color: var(--ink); color: var(--ink); }
+.btn-mini { height: 28px; padding: 0 10px; font-size: 10px; }
+.btn-danger { border-color: var(--dev); color: var(--dev); }
+.btn-danger:hover { background: var(--dev); color: #fff; }
+/* Main layout */
+.main {
+  max-width: 1320px;
+  padding: 16px;
+  margin: 0 auto 42px;
+}
+/* Loading */
+#loading {
+  text-align: center;
+  padding: 60px 16px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  color: var(--sub);
+  letter-spacing: .08em;
+}
+/* User header */
+.user-header {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  margin-bottom: 20px;
+  flex-wrap: wrap;
+}
+.user-header-id {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 16px;
+  letter-spacing: .04em;
+  word-break: break-all;
+}
+.user-header-email {
+  font-size: 13px;
+  color: var(--sub);
+}
+.badge {
+  display: inline-block;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  padding: 1px 7px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  color: var(--ink-light);
+}
+.badge-pro-active {
+  background: #e8f5e9;
+  border-color: #81c784;
+  color: #2e7d32;
+}
+.badge-pro-inactive {
+  background: transparent;
+  border-color: var(--border);
+  color: var(--sub);
+}
+.user-header-meta {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+}
+.user-header-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+}
+/* Detail sections grid */
+.info-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+  gap: 16px;
+  margin-bottom: 32px;
+}
+.detail-section {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 12px 14px;
+}
+.detail-section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  margin-bottom: 8px;
+}
+.detail-kv {
+  display: flex;
+  justify-content: space-between;
+  padding: 3px 0;
+  font-size: 12px;
+  border-bottom: 1px solid var(--border-l);
+}
+.detail-kv:last-child { border-bottom: none; }
+.detail-k {
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.detail-v {
+  color: var(--ink);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  text-align: right;
+  word-break: break-all;
+  max-width: 60%;
+}
+.bar { height: 5px; border: 1px solid var(--border); background: var(--surface); border-radius: 3px; overflow: hidden; }
+.bar-fill { height: 100%; transition: width .3s ease; }
+.quota-fill-low { background: var(--ink-light); }
+.quota-fill-mid { background: #f0a030; }
+.quota-fill-high { background: #c0392b; }
+/* Section blocks */
+.section-block {
+  margin-bottom: 32px;
+}
+.section-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .14em;
+  margin-bottom: 12px;
+}
+.chart-wrap {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 16px;
+}
+/* Playback */
+.playback-wrap {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 16px;
+}
+.playback-canvas-container {
+  position: relative;
+  width: 100%;
+  height: 600px;
+  background: var(--bg);
+  border: 1px solid var(--border-l);
+  border-radius: 2px;
+  margin-bottom: 12px;
+  overflow: hidden;
+}
+.playback-canvas-container canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+}
+.playback-controls {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.playback-controls button {
+  height: 32px;
+  width: 40px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  font-size: 14px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.playback-controls button:hover { border-color: var(--ink); }
+.playback-controls select {
+  height: 32px;
+  padding: 0 8px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.playback-slider {
+  flex: 1;
+  min-width: 120px;
+}
+.playback-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+  white-space: nowrap;
+}
+/* Tooltip */
+.graph-tooltip {
+  display: none;
+  position: absolute;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 8px 10px;
+  pointer-events: none;
+  z-index: 20;
+  max-width: 260px;
+}
+.graph-tooltip .tt-word {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--ink);
+}
+.graph-tooltip .tt-meaning {
+  font-size: 12px;
+  color: var(--ink-light);
+  margin-top: 2px;
+}
+.graph-tooltip .tt-time {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  margin-top: 4px;
+}
+/* No data */
+.no-data {
+  color: var(--sub);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  letter-spacing: .05em;
+  padding: 20px;
+  text-align: center;
+}
+/* Grant modal */
+.modal-overlay {
+  display: none;
+  position: fixed;
+  inset: 0;
+  background: rgba(42,37,32,.45);
+  z-index: 100;
+  align-items: center;
+  justify-content: center;
+}
+.modal-overlay.open { display: flex; }
+.modal {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 24px;
+  width: 400px;
+  max-width: 90vw;
+}
+.modal-title {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 13px;
+  letter-spacing: .08em;
+  text-transform: uppercase;
+  margin-bottom: 16px;
+}
+.modal-field { margin-bottom: 12px; }
+.modal-label {
+  display: block;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .08em;
+  margin-bottom: 4px;
+}
+.modal-input {
+  width: 100%;
+  padding: 6px 10px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 13px;
+  font-family: 'Noto Sans TC', sans-serif;
+  color: var(--ink);
+  outline: none;
+  background: var(--bg);
+}
+.modal-input:focus { border-color: var(--ink); }
+.modal-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 16px;
+}
+</style>
+</head>
+<body>
+
+<div class="nav">
+  <div class="nav-left">
+    <a href="/admin" class="back-link">← 返回用戶列表</a>
+    <span class="brand">WordNexus Admin<span class="dev-dot">用戶詳情</span></span>
+  </div>
+</div>
+
+<div class="main">
+  <div id="loading">載入中…</div>
+  <div id="app" style="display:none">
+
+    <!-- User header -->
+    <div class="user-header" id="user-header"></div>
+
+    <!-- Info cards -->
+    <div class="info-grid" id="info-grid"></div>
+
+    <!-- Graph Density -->
+    <div class="section-block">
+      <div class="section-title">Graph Density</div>
+      <div class="chart-wrap">
+        <canvas id="density-chart" height="300"></canvas>
+        <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
+      </div>
+    </div>
+
+    <!-- Graph Playback -->
+    <div class="section-block">
+      <div class="section-title">Graph Playback</div>
+      <div class="playback-wrap">
+        <div class="playback-canvas-container" id="playback-container">
+          <canvas id="playback-canvas"></canvas>
+          <div class="graph-tooltip" id="tooltip"></div>
+        </div>
+        <div class="playback-controls" id="playback-controls">
+          <button id="btn-play" title="Play/Pause">▶</button>
+          <select id="speed-select">
+            <option value="1">1x</option>
+            <option value="5">5x</option>
+            <option value="10">10x</option>
+          </select>
+          <input type="range" id="timeline-slider" class="playback-slider" min="0" max="0" value="0">
+          <span class="playback-label" id="event-counter">0 / 0 events</span>
+          <span class="playback-label" id="time-label">—</span>
+        </div>
+        <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+
+<!-- Grant Modal -->
+<div class="modal-overlay" id="grant-modal">
+  <div class="modal">
+    <div class="modal-title">Grant Pro Access</div>
+    <input type="hidden" id="grant-uid">
+    <div class="modal-field">
+      <label class="modal-label">原因</label>
+      <input class="modal-input" id="grant-reason" placeholder="選填">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">到期日</label>
+      <input class="modal-input" id="grant-expires" type="date">
+    </div>
+    <div class="modal-field">
+      <label class="modal-label">授權者</label>
+      <input class="modal-input" id="grant-by" value="admin">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-mini" onclick="closeGrantModal()">取消</button>
+      <button class="btn btn-mini" onclick="submitGrant()">確認授權</button>
+    </div>
+  </div>
+</div>
+
+<script>
+/* ── Auth ── */
+const _urlToken = new URLSearchParams(location.search).get('token');
+if (_urlToken) {
+    sessionStorage.setItem('admin_token', _urlToken);
+    history.replaceState(null, '', location.pathname);
+}
+const TOKEN = sessionStorage.getItem('admin_token') || '';
+
+function adminFetch(url, options = {}) {
+    const headers = { ...options.headers };
+    if (TOKEN) headers['Authorization'] = 'Bearer ' + TOKEN;
+    return fetch(url, { ...options, credentials: 'same-origin', headers });
+}
+
+/* ── Extract user_id from URL ── */
+const pathParts = location.pathname.split('/');
+const USER_ID = decodeURIComponent(pathParts[pathParts.length - 1]);
+
+/* ── Helpers ── */
+function escapeHtml(text) {
+  return String(text ?? '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+function fmt(n) {
+  n = n || 0;
+  if (n >= 1e6) return (n/1e6).toFixed(2)+'M';
+  if (n >= 1000) return (n/1000).toFixed(1)+'k';
+  return n.toLocaleString();
+}
+function fmtDateFull(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',year:'numeric',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit',second:'2-digit'});
+}
+function fmtDate(iso) {
+  if (!iso) return '—';
+  return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
+}
+function quotaColor(frac) {
+  if (frac >= 0.8) return 'quota-fill-high';
+  if (frac >= 0.5) return 'quota-fill-mid';
+  return 'quota-fill-low';
+}
+
+/* ── Grant Modal ── */
+function openGrantModal(userId) {
+  document.getElementById('grant-uid').value = userId;
+  document.getElementById('grant-reason').value = '';
+  document.getElementById('grant-expires').value = '';
+  document.getElementById('grant-by').value = 'admin';
+  document.getElementById('grant-modal').classList.add('open');
+}
+function closeGrantModal() {
+  document.getElementById('grant-modal').classList.remove('open');
+}
+async function submitGrant() {
+  const userId = document.getElementById('grant-uid').value;
+  const reason = document.getElementById('grant-reason').value.trim() || null;
+  const expiresVal = document.getElementById('grant-expires').value;
+  const expiresAt = expiresVal ? new Date(expiresVal + 'T23:59:59Z').toISOString() : null;
+  const grantedBy = document.getElementById('grant-by').value.trim() || 'admin';
+  const r = await adminFetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({ reason, expires_at: expiresAt, granted_by: grantedBy }),
+  });
+  closeGrantModal();
+  if (!r.ok) { window.alert('Grant 失敗: ' + await r.text()); return; }
+  location.reload();
+}
+async function revokePro(userId) {
+  if (!window.confirm('確定撤銷 ' + userId + ' 的管理員 Pro 權限？')) return;
+  const r = await adminFetch('/api/admin/users/' + encodeURIComponent(userId) + '/admin-grant', { method: 'DELETE' });
+  if (!r.ok) { window.alert('Revoke 失敗: ' + await r.text()); return; }
+  location.reload();
+}
+
+/* ── Render user info ── */
+function renderUserInfo(u) {
+  const pro = u.pro || {};
+  const ag = u.admin_grant || {};
+  const proBadgeClass = pro.is_active ? 'badge-pro-active' : 'badge-pro-inactive';
+  const proLabel = pro.is_active ? (pro.source === 'admin' ? 'Admin Grant' : pro.status || 'active') : 'inactive';
+
+  document.getElementById('user-header').innerHTML = `
+    <div>
+      <div class="user-header-id">${escapeHtml(u.user_id)}</div>
+      ${u.email ? `<div class="user-header-email">${escapeHtml(u.email)}</div>` : ''}
+    </div>
+    <span class="badge">${escapeHtml(u.provider || 'manual')}</span>
+    <span class="badge ${proBadgeClass}">${escapeHtml(proLabel)}</span>
+    <span class="user-header-meta">最後登入 ${fmtDateFull(u.last_login)}</span>
+    <div class="user-header-actions">
+      ${ag.is_active
+        ? `<button class="btn btn-mini btn-danger" onclick="revokePro('${escapeHtml(u.user_id)}')">Revoke Pro</button>`
+        : `<button class="btn btn-mini" onclick="openGrantModal('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
+    </div>
+  `;
+
+  const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
+  const pctUsed = Math.round(q.fraction_used * 100);
+  const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',embed:'embed'};
+  let quotaHtml = `<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctUsed}%)</span></div>`;
+  quotaHtml += `<div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctUsed}%"></div></div></div>`;
+  const calls = q.calls || {};
+  for (const [t, label] of Object.entries(typeLabels)) {
+    const c = calls[t];
+    if (c) quotaHtml += `<div class="detail-kv"><span class="detail-k">${label}</span><span class="detail-v">&times;${c.count} = $${c.cost_usd.toFixed(4)}</span></div>`;
+  }
+  if (!Object.keys(calls).length) quotaHtml += `<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>`;
+
+  document.getElementById('info-grid').innerHTML = `
+    <div class="detail-section">
+      <div class="detail-section-title">帳戶資訊</div>
+      <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
+      <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
+      <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
+      <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
+      <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">訂閱狀態</div>
+      <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${pro.is_active ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(pro.status || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(pro.source || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(pro.plan_name || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(pro.price_display || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(pro.expires_at)}</span></div>
+      <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${pro.is_trial ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${pro.will_renew ? '是' : '否'}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Admin Grant</div>
+      <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
+      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(ag.status || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
+      <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
+      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">每日翻譯額度（24h）</div>
+      ${quotaHtml}
+    </div>
+    <div class="detail-section">
+      <div class="detail-section-title">Token 消耗明細</div>
+      ${Object.entries(u.tokens || {}).map(([t, d]) =>
+        `<div class="detail-kv"><span class="detail-k">${escapeHtml(t)}</span><span class="detail-v">${fmt(d.input_tokens)}↑ ${fmt(d.output_tokens)}↓ ×${d.calls}</span></div>`
+      ).join('') || '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無紀錄</span></div>'}
+      <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
+    </div>
+  `;
+}
+
+/* ── Density Chart ── */
+let _densityChart = null;
+function renderDensityChart(data) {
+  const canvas = document.getElementById('density-chart');
+  const noData = document.getElementById('density-no-data');
+  if (!data || !data.points || data.points.length === 0) {
+    canvas.style.display = 'none';
+    noData.style.display = '';
+    return;
+  }
+  noData.style.display = 'none';
+  canvas.style.display = '';
+
+  const labels = data.points.map(p => p.cum_cards);
+  const densities = data.points.map(p => p.density);
+
+  if (_densityChart) _densityChart.destroy();
+  _densityChart = new Chart(canvas, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [{
+        label: 'Density (links/cards)',
+        data: densities,
+        borderColor: '#2a2520',
+        backgroundColor: 'rgba(42,37,32,0.08)',
+        fill: true,
+        pointRadius: 2,
+        pointHoverRadius: 5,
+        borderWidth: 1.5,
+        tension: 0.3,
+      }],
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          callbacks: {
+            title: (items) => {
+              const i = items[0].dataIndex;
+              const p = data.points[i];
+              return fmtDate(p.ts);
+            },
+            label: (item) => {
+              const i = item.dataIndex;
+              const p = data.points[i];
+              return `density: ${p.density.toFixed(4)}  (${p.event})`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          title: { display: true, text: 'Cumulative Cards', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+          ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } },
+        },
+        y: {
+          title: { display: true, text: 'Density', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+          ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+}
+
+/* ── Graph Playback ── */
+let _playbackData = null;
+let _timeline = [];       // merged sorted events
+let _currentIdx = 0;
+let _playing = false;
+let _playTimer = null;
+let _simNodes = [];
+let _simEdges = [];
+let _nodeMap = {};         // word -> node obj
+let _simulation = null;
+let _transform = { x: 0, y: 0, k: 1 };  // zoom/pan
+let _dragState = null;
+let _hoveredNode = null;
+let _canvasW = 0;
+let _canvasH = 0;
+
+function initPlayback(data) {
+  _playbackData = data;
+  if (!data || (!data.nodes.length && !data.edges.length)) {
+    document.getElementById('playback-controls').style.display = 'none';
+    document.getElementById('playback-no-data').style.display = '';
+    document.getElementById('playback-container').style.display = 'none';
+    return;
+  }
+
+  // Build merged timeline — map API fields to internal names
+  const nodeEvents = data.nodes.map(n => ({ type: 'node', data: { id: n.id, word: n.label, meaning: n.meaning, created_at: n.created_at }, time: n.created_at || '' }));
+  const edgeEvents = data.edges.map(e => ({ type: 'edge', data: { source: e.from_id, target: e.to_id, kind: e.kind, created_at: e.created_at }, time: e.created_at || '' }));
+  _timeline = [...nodeEvents, ...edgeEvents].sort((a, b) => a.time.localeCompare(b.time));
+
+  const slider = document.getElementById('timeline-slider');
+  slider.max = _timeline.length;
+  slider.value = 0;
+  updateEventCounter();
+
+  // Setup canvas
+  const container = document.getElementById('playback-container');
+  const canvas = document.getElementById('playback-canvas');
+  const dpr = window.devicePixelRatio || 1;
+  _canvasW = container.clientWidth;
+  _canvasH = container.clientHeight;
+  canvas.width = _canvasW * dpr;
+  canvas.height = _canvasH * dpr;
+  const ctx = canvas.getContext('2d');
+  ctx.scale(dpr, dpr);
+
+  // Init transform centered
+  _transform = { x: _canvasW / 2, y: _canvasH / 2, k: 1 };
+
+  // d3-force simulation
+  _simNodes = [];
+  _simEdges = [];
+  _nodeMap = {};
+  _simulation = d3.forceSimulation(_simNodes)
+    .force('link', d3.forceLink(_simEdges).id(d => d.id).distance(80))
+    .force('charge', d3.forceManyBody().strength(-120))
+    .force('center', d3.forceCenter(0, 0))
+    .force('collide', d3.forceCollide(20))
+    .on('tick', () => drawGraph(ctx));
+
+  // Mouse events for zoom/pan/hover
+  canvas.addEventListener('wheel', (e) => {
+    e.preventDefault();
+    const factor = e.deltaY > 0 ? 0.9 : 1.1;
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    _transform.x = mx - (mx - _transform.x) * factor;
+    _transform.y = my - (my - _transform.y) * factor;
+    _transform.k *= factor;
+    drawGraph(ctx);
+  }, { passive: false });
+
+  canvas.addEventListener('mousedown', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    _dragState = { startX: e.clientX, startY: e.clientY, origX: _transform.x, origY: _transform.y };
+  });
+  canvas.addEventListener('mousemove', (e) => {
+    const rect = canvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    if (_dragState) {
+      _transform.x = _dragState.origX + (e.clientX - _dragState.startX);
+      _transform.y = _dragState.origY + (e.clientY - _dragState.startY);
+      drawGraph(ctx);
+    }
+    // Hover detection
+    const gx = (mx - _transform.x) / _transform.k;
+    const gy = (my - _transform.y) / _transform.k;
+    let found = null;
+    for (const n of _simNodes) {
+      const dx = n.x - gx, dy = n.y - gy;
+      if (dx * dx + dy * dy < 100) { found = n; break; }
+    }
+    _hoveredNode = found;
+    const tooltip = document.getElementById('tooltip');
+    if (found) {
+      tooltip.style.display = 'block';
+      tooltip.style.left = (mx + 12) + 'px';
+      tooltip.style.top = (my - 10) + 'px';
+      tooltip.innerHTML = `<div class="tt-word">${escapeHtml(found.word)}</div>` +
+        (found.meaning ? `<div class="tt-meaning">${escapeHtml(found.meaning)}</div>` : '') +
+        `<div class="tt-time">${fmtDate(found.created_at)}</div>`;
+    } else {
+      tooltip.style.display = 'none';
+    }
+    if (!_dragState) drawGraph(ctx);
+  });
+  canvas.addEventListener('mouseup', () => { _dragState = null; });
+  canvas.addEventListener('mouseleave', () => {
+    _dragState = null;
+    _hoveredNode = null;
+    document.getElementById('tooltip').style.display = 'none';
+  });
+
+  // Controls
+  document.getElementById('btn-play').onclick = togglePlay;
+  document.getElementById('speed-select').onchange = () => {
+    if (_playing) { stopPlay(); startPlay(); }
+  };
+  document.getElementById('timeline-slider').oninput = (e) => {
+    const target = parseInt(e.target.value);
+    scrubTo(target, ctx);
+  };
+
+  drawGraph(ctx);
+}
+
+function togglePlay() {
+  if (_playing) stopPlay(); else startPlay();
+}
+
+function startPlay() {
+  if (_currentIdx >= _timeline.length) {
+    _currentIdx = 0;
+    scrubTo(0, getCtx());
+  }
+  _playing = true;
+  document.getElementById('btn-play').textContent = '⏸';
+  scheduleNext();
+}
+
+function stopPlay() {
+  _playing = false;
+  document.getElementById('btn-play').textContent = '▶';
+  if (_playTimer) { clearTimeout(_playTimer); _playTimer = null; }
+}
+
+function getSpeed() {
+  const v = parseInt(document.getElementById('speed-select').value) || 1;
+  if (v === 10) return 50;
+  if (v === 5) return 100;
+  return 500;
+}
+
+function scheduleNext() {
+  if (!_playing || _currentIdx >= _timeline.length) { stopPlay(); return; }
+  _playTimer = setTimeout(() => {
+    addEvent(_currentIdx);
+    _currentIdx++;
+    document.getElementById('timeline-slider').value = _currentIdx;
+    updateEventCounter();
+    scheduleNext();
+  }, getSpeed());
+}
+
+function addEvent(idx) {
+  const evt = _timeline[idx];
+  if (evt.type === 'node') {
+    const d = evt.data;
+    if (_nodeMap[d.id]) return;
+    const n = {
+      id: d.id,
+      word: d.word,
+      meaning: d.meaning || '',
+      created_at: d.created_at,
+      x: (Math.random() - 0.5) * 60,
+      y: (Math.random() - 0.5) * 60,
+      _pulse: 1.0,
+    };
+    _simNodes.push(n);
+    _nodeMap[d.id] = n;
+    restartSim();
+  } else {
+    const d = evt.data;
+    const src = _nodeMap[d.source];
+    const tgt = _nodeMap[d.target];
+    if (!src || !tgt) return;
+    _simEdges.push({ source: src, target: tgt, created_at: d.created_at });
+    _simulation.force('link').links(_simEdges);
+    _simulation.alpha(0.3).restart();
+  }
+}
+
+function restartSim() {
+  _simulation.nodes(_simNodes);
+  _simulation.force('link').links(_simEdges);
+  _simulation.alpha(0.5).restart();
+}
+
+function scrubTo(targetIdx, ctx) {
+  // Rebuild state up to targetIdx
+  _simNodes.length = 0;
+  _simEdges.length = 0;
+  _nodeMap = {};
+  for (let i = 0; i < targetIdx; i++) {
+    const evt = _timeline[i];
+    if (evt.type === 'node') {
+      const d = evt.data;
+      if (_nodeMap[d.id]) continue;
+      const n = {
+        id: d.id,
+        word: d.word,
+        meaning: d.meaning || '',
+        created_at: d.created_at,
+        x: (Math.random() - 0.5) * 100,
+        y: (Math.random() - 0.5) * 100,
+      };
+      _simNodes.push(n);
+      _nodeMap[d.id] = n;
+    } else {
+      const d = evt.data;
+      const src = _nodeMap[d.source];
+      const tgt = _nodeMap[d.target];
+      if (src && tgt) {
+        _simEdges.push({ source: src, target: tgt, created_at: d.created_at });
+      }
+    }
+  }
+  _currentIdx = targetIdx;
+  updateEventCounter();
+  restartSim();
+}
+
+function updateEventCounter() {
+  document.getElementById('event-counter').textContent = _currentIdx + ' / ' + _timeline.length + ' events';
+  if (_currentIdx > 0 && _currentIdx <= _timeline.length) {
+    document.getElementById('time-label').textContent = fmtDate(_timeline[_currentIdx - 1].time);
+  } else {
+    document.getElementById('time-label').textContent = '—';
+  }
+}
+
+function getCtx() {
+  return document.getElementById('playback-canvas').getContext('2d');
+}
+
+function drawGraph(ctx) {
+  ctx.save();
+  ctx.clearRect(0, 0, _canvasW, _canvasH);
+  // background
+  ctx.fillStyle = '#f8f7f4';
+  ctx.fillRect(0, 0, _canvasW, _canvasH);
+  // apply transform
+  ctx.translate(_transform.x, _transform.y);
+  ctx.scale(_transform.k, _transform.k);
+  // edges
+  ctx.strokeStyle = '#dbd6cd';
+  ctx.lineWidth = 1 / _transform.k;
+  for (const e of _simEdges) {
+    if (e.source.x == null || e.target.x == null) continue;
+    ctx.beginPath();
+    ctx.moveTo(e.source.x, e.source.y);
+    ctx.lineTo(e.target.x, e.target.y);
+    ctx.stroke();
+  }
+  // nodes
+  for (const n of _simNodes) {
+    if (n.x == null) continue;
+    const isHovered = _hoveredNode === n;
+    let r = 6;
+    // pulse animation for newly added
+    if (n._pulse && n._pulse > 0) {
+      r = 6 + n._pulse * 6;
+      n._pulse -= 0.05;
+      if (n._pulse < 0) n._pulse = 0;
+    }
+    ctx.beginPath();
+    ctx.arc(n.x, n.y, r / _transform.k * (isHovered ? 1.4 : 1), 0, Math.PI * 2);
+    ctx.fillStyle = isHovered ? '#5a5550' : '#2a2520';
+    ctx.fill();
+    ctx.strokeStyle = '#fcfbfa';
+    ctx.lineWidth = 1.5 / _transform.k;
+    ctx.stroke();
+    // label
+    const fontSize = Math.max(8, 10 / _transform.k);
+    ctx.font = `${fontSize}px 'JetBrains Mono', monospace`;
+    ctx.fillStyle = '#5a5550';
+    ctx.textAlign = 'center';
+    ctx.fillText(n.word, n.x, n.y + r / _transform.k + fontSize + 2);
+  }
+  ctx.restore();
+}
+
+/* ── Load all data ── */
+async function loadPage() {
+  try {
+    const [statsR, densityR, playbackR] = await Promise.all([
+      adminFetch('/api/admin/stats'),
+      adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
+      adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
+    ]);
+
+    if (!statsR.ok) {
+      document.getElementById('loading').textContent = 'Error ' + statsR.status + ': ' + await statsR.text();
+      return;
+    }
+    const statsData = await statsR.json();
+    const user = statsData.users.find(u => u.user_id === USER_ID);
+    if (!user) {
+      document.getElementById('loading').textContent = '找不到用戶: ' + USER_ID;
+      return;
+    }
+
+    document.getElementById('loading').style.display = 'none';
+    document.getElementById('app').style.display = '';
+    document.title = user.email || user.user_id;
+
+    renderUserInfo(user);
+
+    // Density chart
+    if (densityR.ok) {
+      const densityData = await densityR.json();
+      renderDensityChart(densityData);
+    } else {
+      renderDensityChart(null);
+    }
+
+    // Graph playback
+    if (playbackR.ok) {
+      const playbackData = await playbackR.json();
+      initPlayback(playbackData);
+    } else {
+      initPlayback(null);
+    }
+
+  } catch (e) {
+    document.getElementById('loading').textContent = 'Error: ' + e;
+  }
+}
+
+document.getElementById('grant-modal').addEventListener('click', function(e) {
+  if (e.target === this) closeGrantModal();
+});
+
+loadPage();
+</script>
+</body>
+</html>
