@@ -13,7 +13,7 @@ from openai import OpenAIError
 from .retry import async_retry
 from .types import UserRecord
 from .user_store import resolve_mochi_api_key_from_config
-from .vocab_graph import CANDIDATE_K, SIMILARITY_THRESHOLD
+from .vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
 _PIPELINE_RUNNING: dict[str, bool] = {}
 _PIPELINE_RUNNING_LOCK = threading.Lock()
@@ -249,6 +249,163 @@ async def _step_link(
     logger.info("[%s] Created %d links from %d groups", uid, len(created), len(group_items))
 
 
+async def _step_embed_and_judge(
+    uid: str,
+    user: UserRecord,
+    *,
+    card_store_factory: Callable[[Any], Any],
+    graph_store_factory: Callable[..., Any],
+    embedding_store_factory: Callable[..., Any],
+    gemini_client_factory: Callable[[], Any],
+    logger: logging.Logger,
+    link_kind_enum: Any,
+    notebook_id: str = "default",
+    gemini_model: str = "gemini-2.5-flash-lite",
+) -> None:
+    """Combined embed + judge step. Replaces _step_embed + _step_link."""
+    from .judge import Judge
+    from .tracked_llm import TrackedLLM
+
+    cards = card_store_factory(user["dir"])
+    llm = TrackedLLM(gemini_client_factory(), uid)
+    embeddings = embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
+    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
+
+    # ── Phase 1: Embed missing cards ──
+    missing = [
+        card for card in cards.all(notebook_id=notebook_id)
+        if not embeddings.has(card.id) and not card.is_archived
+    ]
+    newly_embedded: list[str] = []
+    if missing:
+        logger.info("[%s] Embedding %d cards", uid, len(missing))
+        items = [(card.id, card.embed_text()) for card in missing]
+        loop = asyncio.get_running_loop()
+        try:
+            await loop.run_in_executor(None, embeddings.add_batch, items)
+            newly_embedded = [card.id for card in missing if embeddings.has(card.id)]
+        except (OpenAIError, OSError, ValueError) as exc:
+            logger.warning("[%s] Batch embedding failed: %s", uid, exc)
+
+        # Add newly embedded cards to pending_judge
+        if newly_embedded:
+            graph.add_pending_judge(newly_embedded)
+            logger.info("[%s] Embedded %d cards, added to pending judge", uid, len(newly_embedded))
+
+    # ── Phase 2: Judge pending cards ──
+    pending = graph.pop_pending_judge()
+    if not pending:
+        logger.info("[%s] No pending cards to judge", uid)
+        return
+
+    logger.info("[%s] Judging %d pending cards", uid, len(pending))
+    judge = Judge(llm, model=gemini_model, user_id=uid, notebook_id=notebook_id)
+
+    # Pre-fetch pending cards
+    cards_cache = cards.get_batch(set(pending))
+
+    all_links: list[tuple[str, str, Any, float, str]] = []
+
+    # ── Phase 2a: Prepare judge tasks ──
+    judge_tasks: list[tuple[str, Any, list, dict, int | None]] = []
+    for card_id in pending:
+        card = cards_cache.get(card_id)
+        if not card or card.is_deleted or card.is_archived:
+            continue
+
+        current_degree = len(graph.get_links_for(card_id))
+        if current_degree >= MAX_DEGREE:
+            continue
+        available = MAX_DEGREE - current_degree
+
+        similar = embeddings.find_similar(card_id, k=CANDIDATE_K)
+
+        other_ids_needed: set[str] = set()
+        for other_id, score in similar:
+            if score <= SIMILARITY_THRESHOLD:
+                continue
+            if graph.has_link(card_id, other_id):
+                continue
+            other_ids_needed.add(other_id)
+
+        if not other_ids_needed:
+            continue
+
+        others = cards.get_batch(other_ids_needed)
+        filtered: list[tuple[str, str, str, float]] = []
+        for other_id, score in similar:
+            if other_id not in other_ids_needed:
+                continue
+            other = others.get(other_id)
+            if not other or other.is_deleted or other.is_archived:
+                continue
+            if len(graph.get_links_for(other_id)) >= MAX_DEGREE:
+                continue
+            filtered.append((other_id, other.content, other.meaning, score))
+
+        if not filtered:
+            continue
+
+        batch_cands = [(oid, w, m) for oid, w, m, _ in filtered]
+        sims = {oid: s for oid, _, _, s in filtered}
+        max_links = available if len(filtered) >= 5 else None
+        judge_tasks.append((card_id, card, batch_cands, sims, max_links))
+
+    if not judge_tasks:
+        logger.info("[%s] No cards need judging after filtering", uid)
+        return
+
+    # ── Phase 2b: Parallel judge ──
+    executor = ThreadPoolExecutor(max_workers=8)
+    loop = asyncio.get_running_loop()
+
+    futures: list[tuple[str, asyncio.Future]] = []
+    for card_id, card, batch_cands, sims, max_links in judge_tasks:
+        futures.append((
+            card_id,
+            loop.run_in_executor(
+                executor,
+                lambda c=card, bc=batch_cands, s=sims, ml=max_links, fid=card_id: judge.evaluate_batch(
+                    c.content, c.meaning, bc,
+                    from_id=fid, similarities=s, max_links=ml,
+                ),
+            ),
+        ))
+
+    processed = 0
+    try:
+        for card_id, fut in futures:
+            results = await fut
+            processed += 1
+            for other_id, judgement in results.items():
+                if judgement is None:
+                    continue
+                if len(graph.get_links_for(other_id)) >= MAX_DEGREE:
+                    continue
+                all_links.append((
+                    card_id, other_id,
+                    link_kind_enum(judgement.link),
+                    judgement.confidence,
+                    judgement.reason,
+                ))
+    except Exception:
+        # Requeue unprocessed cards
+        unprocessed_ids = [cid for cid, _ in futures[processed:]]
+        if unprocessed_ids:
+            graph.add_pending_judge(unprocessed_ids)
+        logger.warning("[%s] Judge interrupted at %d/%d, requeued %d",
+                      uid, processed, len(futures), len(unprocessed_ids))
+        if all_links:
+            graph.batch_add_links(all_links)
+        raise
+    finally:
+        executor.shutdown(wait=False)
+
+    # Batch create all links
+    created = graph.batch_add_links(all_links) if all_links else []
+    logger.info("[%s] Created %d links from %d cards", uid, len(created), len(pending))
+
+
 async def _step_difficulty(
     uid: str,
     user: UserRecord,
@@ -378,20 +535,11 @@ async def run_pipeline_background(
                 gemini_model=gemini_model,
             ), logger=logger, retry=True)
 
-            await _run_step(uid, "Embed", lambda: _step_embed(
+            await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
                 uid, user,
                 card_store_factory=card_store_factory,
                 graph_store_factory=graph_store_factory,
                 embedding_store_factory=embedding_store_factory,
-                gemini_client_factory=gemini_client_factory,
-                logger=logger,
-                notebook_id=notebook_id,
-            ), logger=logger, retry=True)
-
-            await _run_step(uid, "Link", lambda: _step_link(
-                uid, user,
-                card_store_factory=card_store_factory,
-                graph_store_factory=graph_store_factory,
                 gemini_client_factory=gemini_client_factory,
                 logger=logger,
                 link_kind_enum=link_kind_enum,
