@@ -108,3 +108,23 @@ def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) 
         d["accepted"] = bool(d["accepted"])
         result.append(d)
     return result
+
+
+def get_acceptance_stats() -> dict:
+    """Return global judge acceptance stats. Safe to call even if DB doesn't exist yet."""
+    if not DB_PATH.exists():
+        return {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) AS total, SUM(accepted) AS accepted FROM judge_log WHERE source = 'auto'"
+        ).fetchone()
+    total = row[0] or 0
+    accepted = row[1] or 0
+    rejected = total - accepted
+    return {
+        "total": total,
+        "accepted": accepted,
+        "rejected": rejected,
+        "rate": round(accepted / total, 4) if total > 0 else None,
+    }

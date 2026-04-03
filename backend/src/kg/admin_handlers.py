@@ -209,7 +209,14 @@ def admin_stats_response(
         )
 
     result.sort(key=lambda item: item["vocab_count"], reverse=True)
-    return {"users": result}
+
+    try:
+        from .judge_log import get_acceptance_stats
+        judge_stats = get_acceptance_stats()
+    except Exception:
+        judge_stats = {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
+
+    return {"users": result, "judge": judge_stats}
 
 
 def admin_logs_response(
