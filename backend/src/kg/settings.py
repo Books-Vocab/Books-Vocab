@@ -22,6 +22,7 @@ class KGSettings:
     app_store_allow_unsigned_sync: bool = False
     app_store_allow_unsigned_notifications: bool = False
     admin_token: str = ""
+    admin_password: str = ""
 
     # Quota (USD)
     pro_daily_limit_usd: float = 0.30
@@ -93,6 +94,7 @@ def load_settings() -> KGSettings:
         app_store_allow_unsigned_sync=_env_truthy("APP_STORE_ALLOW_UNSIGNED_SYNC"),
         app_store_allow_unsigned_notifications=app_store_allow_unsigned_notifications,
         admin_token=os.getenv("ADMIN_TOKEN", ""),
+        admin_password=os.getenv("ADMIN_PASSWORD", ""),
         pro_daily_limit_usd=float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30")),
         free_daily_limit_usd=float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03")),
         cors_origins=tuple(
