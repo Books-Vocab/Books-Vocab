@@ -155,3 +155,24 @@ class TestComputeGraphDensity:
         result = compute_graph_density(tmp_path, "default")
         assert result["points"][0]["event"] == "link"
         assert result["points"][1]["event"] == "card"
+
+    def test_graph_json_as_list(self, tmp_path: Path):
+        """Graph JSON stored as list (production format) should work."""
+        from kg.admin_graph_density import compute_graph_density
+
+        _make_cards_db(tmp_path, [
+            {"id": "c1", "content": "hello", "meaning": "你好",
+             "notebook_id": "default", "is_deleted": False,
+             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
+        ])
+        # Write as list (production format), not dict
+        links = [
+            {"id": "l1", "from_id": "c1", "to_id": "c2",
+             "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
+             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
+        ]
+        (tmp_path / "graph_default.json").write_text(json.dumps(links))
+
+        result = compute_graph_density(tmp_path, "default")
+        assert len(result["points"]) == 2
+        assert result["points"][1]["event"] == "link"
