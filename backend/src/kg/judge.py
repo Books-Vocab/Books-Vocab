@@ -75,15 +75,32 @@ def _parse_batch_response(
     if not isinstance(data, list):
         data = []
 
-    # Match by position (prompt says "in order")
-    results: dict[str, Judgement | None] = {}
-    for i, (cid, _, _) in enumerate(candidates):
-        if i >= len(data):
-            results[cid] = None
-            continue
+    # Build word→item fallback index for reorder detection
+    _word_index: dict[str, dict] = {}
+    for item in data:
+        if isinstance(item, dict):
+            w = item.get("word", "")
+            if w:
+                _word_index[w] = item
 
-        item = data[i]
-        if not isinstance(item, dict):
+    # Match by position first; cross-check word, fallback to word-keyed lookup
+    results: dict[str, Judgement | None] = {}
+    for i, (cid, word, _) in enumerate(candidates):
+        item = None
+        if i < len(data) and isinstance(data[i], dict):
+            pos_item = data[i]
+            pos_word = pos_item.get("word", "")
+            if not pos_word or pos_word == word:
+                item = pos_item  # positional match confirmed
+            else:
+                # Positional mismatch — LLM reordered, use word-keyed fallback
+                item = _word_index.get(word)
+                if item:
+                    logger.debug("Judge reorder detected: pos %d expected '%s' got '%s', used word fallback", i, word, pos_word)
+        else:
+            item = _word_index.get(word)  # beyond response length, try word lookup
+
+        if not item:
             results[cid] = None
             continue
 

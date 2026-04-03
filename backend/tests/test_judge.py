@@ -148,6 +148,35 @@ class TestParseBatchResponse:
         results = _parse_batch_response(content, [("id1", "a", "ma")])
         assert results["id1"].link == "shares_usage"
 
+    def test_reordered_response_uses_word_fallback(self):
+        """LLM returns items in wrong order — word-keyed fallback should fix."""
+        content = (
+            '[{"word": "beta", "link": "contrasts_with", "confidence": 0.9, "reason": "r2"},'
+            ' {"word": "alpha", "link": "shares_usage", "confidence": 0.8, "reason": "r1"}]'
+        )
+        results = _parse_batch_response(content, [
+            ("id1", "alpha", "ma"),
+            ("id2", "beta", "mb"),
+        ])
+        # Despite reversed order, word fallback assigns correctly
+        assert results["id1"].link == "shares_usage"
+        assert results["id2"].link == "contrasts_with"
+
+    def test_missing_middle_item_uses_word_fallback(self):
+        """LLM skips an item — remaining items matched by word."""
+        content = (
+            '[{"word": "alpha", "link": "shares_usage", "confidence": 0.8, "reason": "r1"},'
+            ' {"word": "gamma", "link": "contrasts_with", "confidence": 0.9, "reason": "r3"}]'
+        )
+        results = _parse_batch_response(content, [
+            ("id1", "alpha", "ma"),
+            ("id2", "beta", "mb"),
+            ("id3", "gamma", "mc"),
+        ])
+        assert results["id1"].link == "shares_usage"
+        assert results["id2"] is None  # beta missing from response
+        assert results["id3"].link == "contrasts_with"  # found via word fallback
+
 
 class TestJudgeChunking:
     def test_large_batch_splits_into_chunks(self):
