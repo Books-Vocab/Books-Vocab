@@ -20,7 +20,7 @@
 3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
 4. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
 
-## Skill 系統（5 個 skill）
+## Skill 系統（6 個 skill）
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
@@ -29,6 +29,7 @@
 | `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
+| `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 
 ### Skill 規則
 
