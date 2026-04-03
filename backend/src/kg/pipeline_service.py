@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -183,7 +184,6 @@ async def _step_link(
     cards_cache = cards.get_batch(_all_candidate_ids) if _all_candidate_ids else {}
 
     # Group candidates by from_id (target word) for batch judge
-    from collections import defaultdict
     groups: dict[str, list[tuple[int, Any, Any]]] = defaultdict(list)
     for idx, candidate in enumerate(candidates):
         card_a = cards_cache.get(candidate.from_id)
@@ -199,7 +199,9 @@ async def _step_link(
     group_items = list(groups.items())
     futures: list[tuple[str, list[tuple[int, Any, Any]], asyncio.Future]] = []
     for from_id, group in group_items:
-        card_a = cards_cache[from_id]
+        card_a = cards_cache.get(from_id)
+        if not card_a:
+            continue
         batch_candidates = [
             (cand.to_id, card_b.content, card_b.meaning)
             for _, cand, card_b in group

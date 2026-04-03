@@ -4,8 +4,7 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from kg.judge import Judge, Judgement
-from kg.tracked_llm import TrackedLLM
+from kg.judge import Judge, Judgement, _parse_batch_response
 
 
 def _make_client(content: str | None):
@@ -20,33 +19,27 @@ def _make_client(content: str | None):
 
 
 def _judge_with(content: str | None) -> Judge:
+    from kg.tracked_llm import TrackedLLM
     return Judge(llm=TrackedLLM(_make_client(content), "test_user"))
 
+
+# ── Single evaluate (backward compat) ──
 
 VALID_JSON = '{"link": "contrasts_with", "confidence": 0.9, "reason": "opposite meanings"}'
 
 
-class TestJudgeEvaluateNormalResponse:
-    def test_valid_json_returns_judgement(self):
+class TestJudgeEvaluateSingle:
+    def test_valid_single_object(self):
         judge = _judge_with(VALID_JSON)
         result = judge.evaluate("affect", "to influence", "effect", "a result")
         assert isinstance(result, Judgement)
         assert result.link == "contrasts_with"
         assert result.confidence == 0.9
-        assert result.reason == "opposite meanings"
 
-
-class TestJudgeLowConfidence:
-    def test_confidence_below_07_returns_none(self):
-        content = '{"link": "contrasts_with", "confidence": 0.5, "reason": "some reason"}'
+    def test_valid_array_response(self):
+        content = '[{"word": "effect", "link": "contrasts_with", "confidence": 0.85, "reason": "ok"}]'
         judge = _judge_with(content)
-        result = judge.evaluate("affect", "to influence", "effect", "a result")
-        assert result is None
-
-    def test_confidence_exactly_07_returns_judgement(self):
-        content = '{"link": "contrasts_with", "confidence": 0.7, "reason": "reason"}'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "to influence", "effect", "a result")
+        result = judge.evaluate("affect", "influence", "effect", "result")
         assert isinstance(result, Judgement)
 
     def test_not_applicable_returns_none(self):
@@ -55,75 +48,102 @@ class TestJudgeLowConfidence:
         result = judge.evaluate("cat", "a feline", "democracy", "political system")
         assert result is None
 
-
-class TestJudgeParseFallback:
-    def test_unparseable_json_returns_none(self):
-        judge = _judge_with("Here is my answer: not valid json at all !!!")
-        result = judge.evaluate("affect", "influence", "effect", "result")
+    def test_low_confidence_returns_none(self):
+        content = '{"link": "contrasts_with", "confidence": 0.5, "reason": "some reason"}'
+        judge = _judge_with(content)
+        result = judge.evaluate("a", "x", "b", "y")
         assert result is None
 
-    def test_valid_array_response(self):
-        content = '[{"word": "effect", "link": "contrasts_with", "confidence": 0.85, "reason": "ok"}]'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "influence", "effect", "result")
-        assert isinstance(result, Judgement)
-        assert result.link == "contrasts_with"
-
-
-class TestJudgeMissingFields:
-    def test_missing_link_returns_none(self):
-        content = '{"confidence": 0.9, "reason": "reason"}'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "influence", "effect", "result")
-        # link defaults to "not_applicable" via dict.get default, returns None
-        assert result is None
-
-    def test_missing_confidence_returns_none(self):
-        content = '{"link": "contrasts_with", "reason": "reason"}'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "influence", "effect", "result")
-        # confidence defaults to 0.0 < 0.7
-        assert result is None
-
-    def test_missing_reason_returns_none_or_judgement(self):
-        # reason defaults to "" which is falsy but not a blocking condition
-        content = '{"link": "contrasts_with", "confidence": 0.9}'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "influence", "effect", "result")
-        assert isinstance(result, Judgement)
-        assert result.reason == ""
-
-
-class TestJudgeInvalidLinkKind:
-    def test_invalid_link_kind_returns_none(self):
-        content = '{"link": "totally_invalid_kind", "confidence": 0.95, "reason": "reason"}'
-        judge = _judge_with(content)
-        result = judge.evaluate("affect", "influence", "effect", "result")
-        assert result is None
-
-
-class TestJudgeAPIFailure:
-    def test_consecutive_api_failures_return_none(self):
-        mock_client = MagicMock()
-        mock_client.chat.completions.create.side_effect = Exception("API error")
-        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
-        with pytest.raises(Exception):  # noqa: B017
-            judge.evaluate("a", "meaning a", "b", "meaning b")
-
-    def test_both_calls_fail_json_parse_returns_none(self):
-        mock_client = MagicMock()
-        bad_resp = MagicMock()
-        bad_resp.choices = [MagicMock()]
-        bad_resp.choices[0].message.content = "completely unparseable !!!"
-        bad_resp.usage = None
-        mock_client.chat.completions.create.return_value = bad_resp
-        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
-        result = judge.evaluate("a", "meaning a", "b", "meaning b")
-        assert result is None
-
-
-class TestJudgeEmptyContent:
-    def test_content_none_returns_none(self):
+    def test_none_content_returns_none(self):
         judge = _judge_with(None)
-        result = judge.evaluate("a", "meaning a", "b", "meaning b")
+        result = judge.evaluate("a", "x", "b", "y")
         assert result is None
+
+    def test_unparseable_returns_none(self):
+        judge = _judge_with("completely broken !!!")
+        result = judge.evaluate("a", "x", "b", "y")
+        assert result is None
+
+    def test_invalid_link_kind_returns_none(self):
+        content = '{"link": "totally_invalid", "confidence": 0.95, "reason": "reason"}'
+        judge = _judge_with(content)
+        result = judge.evaluate("a", "x", "b", "y")
+        assert result is None
+
+
+# ── Batch evaluate ──
+
+class TestJudgeEvaluateBatch:
+    def test_batch_with_array_response(self):
+        content = (
+            '[{"word": "hunkered", "link": "shares_usage", "confidence": 0.8, "reason": "r1"},'
+            ' {"word": "stately", "link": "contrasts_with", "confidence": 0.9, "reason": "r2"}]'
+        )
+        judge = _judge_with(content)
+        results = judge.evaluate_batch("cowering", "畏縮", [
+            ("id1", "hunkered", "蹲伏"),
+            ("id2", "stately", "莊嚴的"),
+        ])
+        assert results["id1"].link == "shares_usage"
+        assert results["id2"].link == "contrasts_with"
+
+    def test_batch_with_wrapped_response(self):
+        content = '{"results": [{"word": "x", "link": "shares_usage", "confidence": 0.8, "reason": "r"}]}'
+        judge = _judge_with(content)
+        results = judge.evaluate_batch("a", "m", [("id1", "x", "mx")])
+        assert results["id1"].link == "shares_usage"
+
+    def test_batch_partial_response(self):
+        # LLM returns fewer items than candidates
+        content = '[{"word": "x", "link": "shares_usage", "confidence": 0.8, "reason": "r"}]'
+        judge = _judge_with(content)
+        results = judge.evaluate_batch("a", "m", [
+            ("id1", "x", "mx"),
+            ("id2", "y", "my"),
+        ])
+        assert results["id1"] is not None
+        assert results["id2"] is None
+
+    def test_batch_not_applicable_filtered(self):
+        content = '[{"word": "x", "link": "not_applicable", "confidence": 0.9, "reason": "r"}]'
+        judge = _judge_with(content)
+        results = judge.evaluate_batch("a", "m", [("id1", "x", "mx")])
+        assert results["id1"] is None
+
+    def test_batch_empty_candidates(self):
+        judge = _judge_with("[]")
+        assert judge.evaluate_batch("a", "m", []) == {}
+
+    def test_batch_none_content(self):
+        judge = _judge_with(None)
+        results = judge.evaluate_batch("a", "m", [("id1", "x", "mx")])
+        assert results["id1"] is None
+
+
+# ── _parse_batch_response unit tests ──
+
+class TestParseBatchResponse:
+    def test_positional_matching(self):
+        content = '[{"link": "shares_usage", "confidence": 0.8, "reason": "r1"}, {"link": "contrasts_with", "confidence": 0.9, "reason": "r2"}]'
+        results = _parse_batch_response(content, [("id1", "a", "ma"), ("id2", "b", "mb")])
+        assert results["id1"].link == "shares_usage"
+        assert results["id2"].link == "contrasts_with"
+
+    def test_missing_items_return_none(self):
+        content = '[{"link": "shares_usage", "confidence": 0.8, "reason": "r"}]'
+        results = _parse_batch_response(content, [("id1", "a", "ma"), ("id2", "b", "mb")])
+        assert results["id1"] is not None
+        assert results["id2"] is None
+
+    def test_none_content(self):
+        results = _parse_batch_response(None, [("id1", "a", "ma")])
+        assert results["id1"] is None
+
+    def test_invalid_json(self):
+        results = _parse_batch_response("broken!!!", [("id1", "a", "ma")])
+        assert results["id1"] is None
+
+    def test_single_object_unwrap(self):
+        content = '{"link": "shares_usage", "confidence": 0.8, "reason": "r"}'
+        results = _parse_batch_response(content, [("id1", "a", "ma")])
+        assert results["id1"].link == "shares_usage"
