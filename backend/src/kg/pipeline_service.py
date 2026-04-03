@@ -306,6 +306,9 @@ async def _step_embed_and_judge(
 
     all_links: list[tuple[str, str, Any, float, str]] = []
 
+    def _active_degree(cid: str) -> int:
+        return sum(1 for lk in graph.get_links_for(cid) if lk.status == "active")
+
     # ── Phase 2a: Prepare judge tasks ──
     judge_tasks: list[tuple[str, Any, list, dict, int | None]] = []
     for card_id in pending:
@@ -313,7 +316,7 @@ async def _step_embed_and_judge(
         if not card or card.is_deleted or card.is_archived:
             continue
 
-        current_degree = len(graph.get_links_for(card_id))
+        current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
             continue
         available = MAX_DEGREE - current_degree
@@ -343,7 +346,7 @@ async def _step_embed_and_judge(
             other = others.get(other_id)
             if not other or other.is_deleted or other.is_archived:
                 continue
-            if len(graph.get_links_for(other_id)) >= MAX_DEGREE:
+            if _active_degree(other_id) >= MAX_DEGREE:
                 continue
             filtered.append((other_id, other.content, other.meaning, score))
 
@@ -386,13 +389,13 @@ async def _step_embed_and_judge(
             processed += 1
             # Initialize from-side count if not tracked yet
             if card_id not in from_link_counts:
-                from_link_counts[card_id] = len(graph.get_links_for(card_id))
+                from_link_counts[card_id] = _active_degree(card_id)
             for other_id, judgement in results.items():
                 if judgement is None:
                     continue
                 if from_link_counts[card_id] >= MAX_DEGREE:
                     break  # card_id already at cap
-                if len(graph.get_links_for(other_id)) >= MAX_DEGREE:
+                if _active_degree(other_id) >= MAX_DEGREE:
                     continue
                 all_links.append((
                     card_id, other_id,
