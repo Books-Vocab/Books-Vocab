@@ -11,28 +11,6 @@ from .tracked_llm import TrackedLLM
 
 logger = logging.getLogger(__name__)
 
-SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:
-- contrasts_with: Genuinely opposite or contrasting meanings
-  YES: unkempt/primped, hunkered/loped, meticulous/sloppy
-  NO: bust/midriff (different body parts, not opposites)
-- shares_usage: Used in similar contexts or fill similar grammatical roles
-  YES: luster/resplendent, haggling/extorting, cacophony/clang
-- not_applicable: No meaningful learning relationship
-
-Write "reason" in 繁體中文 (1-2 sentences). Explain the relationship AND highlight the nuance/difference between the two words to help learners distinguish them.
-Example: "都形容光彩奪目，但 luster 偏指物體表面的光澤質感，resplendent 則強調整體華麗壯觀的視覺效果。"
-
-Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}"""
-
-USER_TEMPLATE = """Word A: {word_a}
-Meaning A: {meaning_a}
-
-Word B: {word_b}
-Meaning B: {meaning_b}
-
-Determine the relationship type and your confidence (0.0-1.0)."""
-
-
 class Judgement(BaseModel):
     """LLM judgement result."""
 
@@ -41,36 +19,58 @@ class Judgement(BaseModel):
     reason: str
 
 
+BATCH_SYSTEM_PROMPT = """Judge vocabulary relationships for the TARGET word against each CANDIDATE.
+For each candidate, choose ONE type:
+- contrasts_with: Genuinely opposite or contrasting meanings
+- shares_usage: Used in similar contexts or fill similar grammatical roles
+- not_applicable: No meaningful learning relationship
+
+Write each "reason" in 繁體中文 (1-2 sentences). Highlight the nuance/difference to help learners.
+
+Respond as a JSON array, one object per candidate (in order):
+[{"word": "<candidate>", "link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中文>"}, ...]"""
+
+BATCH_USER_TEMPLATE = """TARGET: {target_word} ({target_meaning})
+
+Candidates:
+{candidate_list}"""
+
+
 class Judge:
-    """LLM-based relationship judge."""
+    """LLM-based relationship judge (batch mode)."""
 
     def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite") -> None:
         self.llm = llm
         self.model = model
 
-    def evaluate(
+    def evaluate_batch(
         self,
-        word_a: str,
-        meaning_a: str,
-        word_b: str,
-        meaning_b: str,
-    ) -> Judgement | None:
-        """Evaluate relationship between two words.
+        target_word: str,
+        target_meaning: str,
+        candidates: list[tuple[str, str, str]],  # [(card_id, word, meaning), ...]
+    ) -> dict[str, Judgement | None]:
+        """Evaluate target against multiple candidates in a single LLM call.
 
-        Returns None if not_applicable or low confidence.
+        Returns {card_id: Judgement | None} for each candidate.
         """
-        user_msg = USER_TEMPLATE.format(
-            word_a=word_a,
-            meaning_a=meaning_a,
-            word_b=word_b,
-            meaning_b=meaning_b,
+        if not candidates:
+            return {}
+
+        cand_lines = "\n".join(
+            f"{i+1}. {word} ({meaning})"
+            for i, (_, word, meaning) in enumerate(candidates)
+        )
+        user_msg = BATCH_USER_TEMPLATE.format(
+            target_word=target_word,
+            target_meaning=target_meaning,
+            candidate_list=cand_lines,
         )
 
         resp = self.llm.chat(
             "judge",
             model=self.model,
             messages=[
-                {"role": "system", "content": SYSTEM_PROMPT},
+                {"role": "system", "content": BATCH_SYSTEM_PROMPT},
                 {"role": "user", "content": user_msg},
             ],
             response_format={"type": "json_object"},
@@ -79,72 +79,97 @@ class Judge:
 
         content = resp.choices[0].message.content
         if not content:
-            return None
+            return {cid: None for cid, _, _ in candidates}
 
         import json
-        import re
-
-        def _extract_json(raw: str) -> dict:
-            # Try direct parse first
-            try:
-                return json.loads(raw)
-            except (json.JSONDecodeError, ValueError):
-                pass
-            # Regex: grab first {...} block
-            m = re.search(r'\{[^{}]*\}', raw, re.DOTALL)
-            if m:
-                return json.loads(m.group())
-            raise ValueError("No JSON object found")
 
         try:
-            data = _extract_json(content)
-        except (json.JSONDecodeError, ValueError, TypeError) as e:
-            logger.warning("Failed to parse LLM judgement after cleanup (%s), retrying. Raw: %r", e, content)
-            # Retry once
-            resp2 = self.llm.chat(
-                "judge",
-                model=self.model,
-                messages=[
-                    {"role": "system", "content": SYSTEM_PROMPT},
-                    {"role": "user", "content": user_msg},
-                ],
-                response_format={"type": "json_object"},
-                temperature=0.1,
+            data = json.loads(content)
+        except (json.JSONDecodeError, ValueError):
+            logger.warning("Failed to parse batch judgement. Raw: %r", content[:200])
+            return {cid: None for cid, _, _ in candidates}
+
+        # Handle {"results": [...]} or bare array or single object
+        if isinstance(data, dict):
+            for key in ("results", "judgements", "items", "candidates"):
+                if key in data and isinstance(data[key], list):
+                    data = data[key]
+                    break
+            else:
+                # Single object (has link/confidence keys) → wrap in list
+                if "link" in data:
+                    data = [data]
+                else:
+                    data = []
+        if not isinstance(data, list):
+            data = []
+
+        # Build word→item index from response; fallback to positional matching
+        response_by_word: dict[str, dict] = {}
+        response_by_pos: list[dict] = []
+        for item in data:
+            if isinstance(item, dict):
+                w = item.get("word", "")
+                if w:
+                    response_by_word[w] = item
+                response_by_pos.append(item)
+
+        # Match response items back to candidate card_ids
+        results: dict[str, Judgement | None] = {}
+        for i, (cid, word, _) in enumerate(candidates):
+            item = response_by_word.get(word)
+            if not item and i < len(response_by_pos):
+                item = response_by_pos[i]  # positional fallback
+            if not item:
+                results[cid] = None
+                continue
+
+            try:
+                link_val = item.get("link", "not_applicable")
+                confidence = float(item.get("confidence", 0.0))
+                reason_val = item.get("reason", "")
+            except (ValueError, TypeError):
+                results[cid] = None
+                continue
+
+            if link_val == "not_applicable" or confidence < 0.7:
+                results[cid] = None
+                continue
+
+            try:
+                LinkKind(link_val)
+            except ValueError:
+                results[cid] = None
+                continue
+
+            results[cid] = Judgement(
+                link=link_val,
+                confidence=confidence,
+                reason=reason_val,
             )
-            content2 = resp2.choices[0].message.content or ""
-            try:
-                data = _extract_json(content2)
-            except (json.JSONDecodeError, ValueError, TypeError) as e2:
-                logger.warning("Retry also failed (%s). Raw: %r", e2, content2)
-                return None
 
-        try:
-            confidence = float(data.get("confidence", 0.0))
-            link_val = data.get("link", "not_applicable")
-            reason_val = data.get("reason", "")
-        except (ValueError, TypeError) as e:
-            logger.warning("Failed to extract fields from judgement (%s): %r", e, data)
-            return None
+        return results
 
-        judgement = Judgement(
-            link=link_val,
-            confidence=confidence,
-            reason=reason_val,
+    # Keep single evaluate for backward compatibility
+    def evaluate(
+        self,
+        word_a: str,
+        meaning_a: str,
+        word_b: str,
+        meaning_b: str,
+    ) -> Judgement | None:
+        """Single-pair evaluate (legacy wrapper)."""
+        results = self.evaluate_batch(
+            word_a, meaning_a,
+            [("_single", word_b, meaning_b)],
         )
-
-        # Early exit conditions
-        if judgement.link == "not_applicable":
-            return None
-        if judgement.confidence < 0.7:
-            return None
-
-        # Validate link kind
-        try:
-            LinkKind(judgement.link)
-        except ValueError:
-            return None
-
-        return judgement
+        # evaluate_batch matches by word, not card_id
+        if "_single" in results:
+            return results["_single"]
+        # Fallback: return the first non-None result if any
+        for v in results.values():
+            return v
+        return None
 
 
 MANUAL_LINK_SYSTEM_PROMPT = """The user believes these two vocabulary words are related. Your job is to classify the relationship and explain it.
@@ -174,10 +199,7 @@ class ManualLinkJudge:
         word_b: str,
         meaning_b: str,
     ) -> Judgement:
-        user_msg = USER_TEMPLATE.format(
-            word_a=word_a, meaning_a=meaning_a,
-            word_b=word_b, meaning_b=meaning_b,
-        )
+        user_msg = f"Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
         resp = self.llm.chat(
             "manual_link_judge",

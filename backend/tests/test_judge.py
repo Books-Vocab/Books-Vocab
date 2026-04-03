@@ -56,27 +56,14 @@ class TestJudgeLowConfidence:
         assert result is None
 
 
-class TestJudgeRegexFallback:
-    def test_json_embedded_in_text_uses_regex_fallback(self):
-        # First call fails to parse (wrapped in text), second call (retry) returns clean JSON
-        mock_client = MagicMock()
-        mock_resp1 = MagicMock()
-        mock_resp1.choices = [MagicMock()]
-        mock_resp1.choices[0].message.content = "Here is my answer: not valid json at all !!!"
-        mock_resp1.usage = None
-
-        mock_resp2 = MagicMock()
-        mock_resp2.choices = [MagicMock()]
-        mock_resp2.choices[0].message.content = VALID_JSON
-        mock_resp2.usage = None
-
-        mock_client.chat.completions.create.side_effect = [mock_resp1, mock_resp2]
-        judge = Judge(llm=TrackedLLM(mock_client, "test_user"))
+class TestJudgeParseFallback:
+    def test_unparseable_json_returns_none(self):
+        judge = _judge_with("Here is my answer: not valid json at all !!!")
         result = judge.evaluate("affect", "influence", "effect", "result")
-        assert isinstance(result, Judgement)
+        assert result is None
 
-    def test_json_object_embedded_in_prose(self):
-        content = 'Sure! {"link": "contrasts_with", "confidence": 0.85, "reason": "ok"} done.'
+    def test_valid_array_response(self):
+        content = '[{"word": "effect", "link": "contrasts_with", "confidence": 0.85, "reason": "ok"}]'
         judge = _judge_with(content)
         result = judge.evaluate("affect", "influence", "effect", "result")
         assert isinstance(result, Judgement)
