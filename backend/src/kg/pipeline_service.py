@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
 from typing import Any
@@ -174,7 +175,6 @@ async def _step_link(
     judge = Judge(llm, model=gemini_model)
     cards = card_store_factory(user["dir"])
     pending_links: list[tuple[str, str, Any, float, str]] = []
-    index = 0
 
     # Pre-fetch all candidate cards in one batch
     _all_candidate_ids = set()
@@ -183,57 +183,69 @@ async def _step_link(
         _all_candidate_ids.add(c.to_id)
     cards_cache = cards.get_batch(_all_candidate_ids) if _all_candidate_ids else {}
 
-    # Filter valid candidates first, preserving original index for error requeue
-    valid_pairs: list[tuple[int, Any, Any, Any]] = []
+    # Group candidates by from_id (target word) for batch judge
+    groups: dict[str, list[tuple[int, Any, Any]]] = defaultdict(list)
     for idx, candidate in enumerate(candidates):
         card_a = cards_cache.get(candidate.from_id)
         card_b = cards_cache.get(candidate.to_id)
         if not card_a or not card_b or card_a.is_deleted or card_b.is_deleted or card_a.is_archived or card_b.is_archived:
             continue
-        valid_pairs.append((idx, candidate, card_a, card_b))
+        groups[candidate.from_id].append((idx, candidate, card_b))
 
+    # Batch judge: one LLM call per target word, parallel across targets
     executor = ThreadPoolExecutor(max_workers=8)
     loop = asyncio.get_running_loop()
-    # Submit all judge tasks concurrently up front
-    futures: list[tuple[int, Any, asyncio.Future]] = [
-        (idx, candidate, loop.run_in_executor(
-            executor,
-            lambda a=card_a, b=card_b: judge.evaluate(
-                a.content, a.meaning, b.content, b.meaning,
+
+    group_items = list(groups.items())
+    futures: list[tuple[str, list[tuple[int, Any, Any]], asyncio.Future]] = []
+    for from_id, group in group_items:
+        card_a = cards_cache.get(from_id)
+        if not card_a:
+            continue
+        batch_candidates = [
+            (cand.to_id, card_b.content, card_b.meaning)
+            for _, cand, card_b in group
+        ]
+        futures.append((
+            from_id,
+            group,
+            loop.run_in_executor(
+                executor,
+                lambda a=card_a, bc=batch_candidates: judge.evaluate_batch(
+                    a.content, a.meaning, bc,
+                ),
             ),
         ))
-        for idx, candidate, card_a, card_b in valid_pairs
-    ]
-    # Track how many futures have been awaited for requeue on error
-    awaited_count = 0
+
+    processed_groups = 0
     try:
-        for idx, candidate, fut in futures:
-            index = idx
-            result = await fut
-            awaited_count += 1
-            if result:
-                pending_links.append((
-                    candidate.from_id,
-                    candidate.to_id,
-                    link_kind_enum(result.link),
-                    result.confidence,
-                    result.reason,
-                ))
+        for from_id, group, fut in futures:
+            batch_results = await fut
+            processed_groups += 1
+            for _, candidate, card_b in group:
+                result = batch_results.get(candidate.to_id)
+                if result:
+                    pending_links.append((
+                        candidate.from_id,
+                        candidate.to_id,
+                        link_kind_enum(result.link),
+                        result.confidence,
+                        result.reason,
+                    ))
     except (OpenAIError, OSError, ValueError, RuntimeError):
-        # Flush accumulated links before requeuing un-awaited candidates
         if pending_links:
             graph.batch_add_links(pending_links)
-        # Requeue candidates whose futures we haven't yet awaited
-        not_yet_awaited = [c for _, c, _ in futures[awaited_count:]]
-        if not_yet_awaited:
-            graph.requeue_candidates(not_yet_awaited)
+        # Requeue candidates from unprocessed groups
+        for _, group, _ in futures[processed_groups:]:
+            unprocessed = [cand for _, cand, _ in group]
+            graph.requeue_candidates(unprocessed)
         raise
     finally:
         executor.shutdown(wait=False)
 
     # Single disk write for all judged links
     created = graph.batch_add_links(pending_links) if pending_links else []
-    logger.info("[%s] Created %d links", uid, len(created))
+    logger.info("[%s] Created %d links from %d groups", uid, len(created), len(group_items))
 
 
 async def _step_difficulty(
