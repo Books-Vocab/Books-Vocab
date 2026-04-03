@@ -2,12 +2,31 @@
 from __future__ import annotations
 
 import json
+import logging
 from datetime import datetime
 from pathlib import Path
 from typing import Any
 
 from sqlalchemy import text
 from sqlmodel import create_engine
+
+logger = logging.getLogger(__name__)
+
+
+def _read_graph_links(graph_path: Path) -> list[dict]:
+    """Read graph JSON, handling both list and dict formats. Returns [] on error."""
+    if not graph_path.exists():
+        return []
+    try:
+        raw = json.loads(graph_path.read_text())
+    except (json.JSONDecodeError, ValueError):
+        logger.warning("Malformed graph JSON: %s", graph_path)
+        return []
+    if isinstance(raw, list):
+        return raw
+    if isinstance(raw, dict):
+        return list(raw.values())
+    return []
 
 
 def compute_graph_density(
@@ -45,14 +64,17 @@ def compute_graph_density(
 
     # ── links from graph JSON ──────────────────────────────────────────
     graph_path = user_dir / f"graph_{notebook_id}.json"
-    if graph_path.exists():
-        raw = json.loads(graph_path.read_text())
-        links = raw if isinstance(raw, list) else raw.values()
-        for link in links:
-            if link.get("status") != "active":
-                continue
-            ts = _parse_ts(link["created_at"])
-            events.append((ts, "link"))
+    for link in _read_graph_links(graph_path):
+        if link.get("status") != "active":
+            continue
+        created_at = link.get("created_at")
+        if not created_at:
+            continue
+        try:
+            ts = _parse_ts(created_at)
+        except (ValueError, TypeError):
+            continue
+        events.append((ts, "link"))
 
     # ── sort & cumulative scan ─────────────────────────────────────────
     events.sort(key=lambda e: e[0])
@@ -87,6 +109,8 @@ def _parse_ts(value: Any) -> datetime:
 
     if isinstance(value, datetime):
         ts = value
+    elif isinstance(value, (int, float)):
+        ts = datetime.fromtimestamp(value, tz=UTC)
     else:
         ts = datetime.fromisoformat(str(value))
     # Normalize naive datetimes (e.g. from SQLite) to UTC

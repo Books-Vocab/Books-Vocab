@@ -27,11 +27,8 @@ def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
 
 
 def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> None:
-    """Write a graph_{notebook_id}.json with given link dicts."""
-    data = {}
-    for link in links:
-        data[link["id"]] = link
-    (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(data))
+    """Write a graph_{notebook_id}.json as list (production format)."""
+    (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(links))
 
 
 # ---------------------------------------------------------------------------
@@ -156,8 +153,8 @@ class TestComputeGraphDensity:
         assert result["points"][0]["event"] == "link"
         assert result["points"][1]["event"] == "card"
 
-    def test_graph_json_as_list(self, tmp_path: Path):
-        """Graph JSON stored as list (production format) should work."""
+    def test_graph_json_as_dict_fallback(self, tmp_path: Path):
+        """Graph JSON stored as dict (legacy format) should also work."""
         from kg.admin_graph_density import compute_graph_density
 
         _make_cards_db(tmp_path, [
@@ -165,14 +162,48 @@ class TestComputeGraphDensity:
              "notebook_id": "default", "is_deleted": False,
              "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
         ])
-        # Write as list (production format), not dict
-        links = [
-            {"id": "l1", "from_id": "c1", "to_id": "c2",
+        # Write as dict (legacy format)
+        links = {"l1": {"id": "l1", "from_id": "c1", "to_id": "c2",
              "kind": "contrasts_with", "confidence": 0.9, "reason": "test",
-             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
-        ]
+             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"}}
         (tmp_path / "graph_default.json").write_text(json.dumps(links))
 
         result = compute_graph_density(tmp_path, "default")
         assert len(result["points"]) == 2
         assert result["points"][1]["event"] == "link"
+
+    def test_malformed_graph_json(self, tmp_path: Path):
+        """Malformed or empty graph JSON should not crash."""
+        from kg.admin_graph_density import compute_graph_density
+
+        _make_cards_db(tmp_path, [
+            {"id": "c1", "content": "hello", "meaning": "你好",
+             "notebook_id": "default", "is_deleted": False,
+             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
+        ])
+        (tmp_path / "graph_default.json").write_text("")
+        result = compute_graph_density(tmp_path, "default")
+        assert len(result["points"]) == 1  # card only
+
+    def test_link_missing_created_at(self, tmp_path: Path):
+        """Links missing created_at should be skipped, not crash."""
+        from kg.admin_graph_density import compute_graph_density
+
+        _make_cards_db(tmp_path, [
+            {"id": "c1", "content": "hello", "meaning": "你好",
+             "notebook_id": "default", "is_deleted": False,
+             "created_at": datetime(2025, 1, 1, tzinfo=UTC)},
+        ])
+        links = [
+            {"id": "l1", "from_id": "c1", "to_id": "c2",
+             "kind": "contrasts_with", "confidence": 0.9, "reason": "ok",
+             "created_at": "2025-01-02T00:00:00+00:00", "status": "active"},
+            {"id": "l2", "from_id": "c1", "to_id": "c3",
+             "kind": "contrasts_with", "confidence": 0.5, "reason": "bad",
+             "status": "active"},  # no created_at
+        ]
+        (tmp_path / "graph_default.json").write_text(json.dumps(links))
+
+        result = compute_graph_density(tmp_path, "default")
+        link_events = [p for p in result["points"] if p["event"] == "link"]
+        assert len(link_events) == 1

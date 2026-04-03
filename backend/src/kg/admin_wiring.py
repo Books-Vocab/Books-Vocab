@@ -132,21 +132,24 @@ def create_admin_handlers(
             admin_token=runtime_settings_fn().admin_token,
         )
 
+    def _safe_user_dir(uid: str) -> Path:
+        """Resolve user directory, rejecting path traversal."""
+        users_root = runtime_settings_fn().data_dir / "users"
+        user_dir = (users_root / uid).resolve()
+        if not str(user_dir).startswith(str(users_root.resolve())):
+            from fastapi import HTTPException
+            raise HTTPException(status_code=400, detail="Invalid user_id")
+        return user_dir
+
     def admin_graph_density(user_id: str, notebook_id: str = "default"):
         """Return time-series graph density data for a user."""
         from .admin_graph_density import compute_graph_density
-
-        settings = runtime_settings_fn()
-        user_dir = settings.data_dir / "users" / user_id
-        return compute_graph_density(user_dir, notebook_id, user_id=user_id)
+        return compute_graph_density(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
     def admin_graph_playback(user_id: str, notebook_id: str = "default"):
         """Return full graph nodes + edges with timestamps for playback."""
         from .admin_graph_playback import compute_graph_playback
-
-        settings = runtime_settings_fn()
-        user_dir = settings.data_dir / "users" / user_id
-        return compute_graph_playback(user_dir, notebook_id, user_id=user_id)
+        return compute_graph_playback(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
     def admin_user_detail_ui():
         """User detail page UI."""
