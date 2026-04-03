@@ -201,12 +201,49 @@ PY
 }
 
 # ── 指令：deploy ──────────────────────────────────────────────────────────────
+# 自動偵測改動範圍，決定 fast path 或 full path：
+#   fast: rsync → restart → health check           (~15s)
+#   full: backup → env-check → rsync → build → migrate → health → env-drift (~2min)
+#
+# 觸發 full 的條件（任一命中）：
+#   - Dockerfile / docker-compose.yml / pyproject.toml 有改動
+#   - 無法取得上次 deploy sha（首次 deploy 或 VERSION 遺失）
+#   - DEPLOY_FULL=1 環境變數強制
 cmd_deploy() {
   preflight
-  cmd_backup
-  cmd_env_check
 
-  # 檢查 working tree 是否與 HEAD 一致（防止 rsync 推送未 commit 的差異）
+  local deploy_sha
+  deploy_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+
+  # ── 偵測改動範圍 ──
+  local last_sha=""
+  local deploy_log="$BACKUP_DIR/deploy.log"
+  if [[ -f "$deploy_log" ]]; then
+    last_sha=$(tail -1 "$deploy_log" | sed -n 's/.*sha=\([^ ]*\).*/\1/p')
+  fi
+
+  local needs_full=false
+  if [[ "${DEPLOY_FULL:-0}" == "1" ]]; then
+    needs_full=true
+    info "DEPLOY_FULL=1 強制完整部署"
+  elif [[ -z "$last_sha" ]]; then
+    needs_full=true
+    info "無上次部署記錄，執行完整部署"
+  else
+    local changed
+    changed=$(cd "$LOCAL_DIR" && git diff --name-only "$last_sha"..HEAD -- . 2>/dev/null || echo "UNKNOWN")
+    if [[ "$changed" == "UNKNOWN" ]]; then
+      needs_full=true
+      info "無法比較改動（sha $last_sha 不存在），執行完整部署"
+    elif echo "$changed" | grep -qE '(Dockerfile|docker-compose|pyproject\.toml)'; then
+      needs_full=true
+      info "偵測到 infra 變更（Dockerfile/compose/pyproject），執行完整部署"
+    else
+      info "偵測到僅程式碼變更，執行快速部署 (fast path)"
+    fi
+  fi
+
+  # ── 檢查 working tree 是否與 HEAD 一致 ──
   local dirty
   dirty=$(cd "$LOCAL_DIR" && git diff --name-only HEAD -- . 2>/dev/null || true)
   if [[ -n "$dirty" ]]; then
@@ -215,12 +252,17 @@ cmd_deploy() {
     confirm "繼續部署？"
   fi
 
-  # 寫入部署版本標記
-  local deploy_sha
-  deploy_sha=$(git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+  # ── Full path: backup + env-check ──
+  if [[ "$needs_full" == "true" ]]; then
+    cmd_backup
+    cmd_env_check
+  fi
+
+  # ── 寫入部署版本標記 ──
   echo "$deploy_sha" > "$LOCAL_DIR/VERSION"
 
-  section "Step 1/3: 同步代碼"
+  # ── Step 1: 同步代碼 ──
+  section "同步代碼"
   rsync -az --stats \
     -e "ssh -T -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
     --exclude '.venv' \
@@ -233,17 +275,23 @@ cmd_deploy() {
     --exclude '*.pyc' \
     "$LOCAL_DIR/" "$SERVER:$REMOTE_DIR/"
 
-  section "Step 2/3: 重新編譯並啟動容器"
-  # 確保 data/ 目錄權限匹配容器內 appuser (UID 1000)
-  run_remote "sudo chown -R 1000:1000 $REMOTE_DIR/data 2>/dev/null || true"
-  run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
+  # ── Step 2: 重啟或重建 ──
+  if [[ "$needs_full" == "true" ]]; then
+    section "重新編譯並啟動容器"
+    run_remote "sudo chown -R 1000:1000 $REMOTE_DIR/data 2>/dev/null || true"
+    run_remote "cd $REMOTE_DIR && docker compose up -d --build 2>&1 | tail -20"
 
-  section "Step 3/3: DB Migration"
-  cmd_migrate
+    section "DB Migration"
+    cmd_migrate
+  else
+    section "重啟容器"
+    run_remote "docker compose -f $REMOTE_DIR/docker-compose.yml restart"
+  fi
 
-  section "Step 4/4: 健康驗證"
+  # ── Step 3: 健康驗證 ──
+  section "健康驗證"
   local max_attempts=5
-  local delay=5
+  local delay=3
   local url="http://localhost:8000/docs"
   local http_code=""
   for i in $(seq 1 $max_attempts); do
@@ -260,16 +308,22 @@ cmd_deploy() {
     err "部署後健康檢查失敗 (HTTP $http_code)，請確認日誌"
   fi
 
-  section "Step 5/5: .env 一致性驗證"
-  cmd_env_drift
+  # ── Full path: env-drift ──
+  if [[ "$needs_full" == "true" ]]; then
+    section ".env 一致性驗證"
+    cmd_env_drift
+  fi
 
-  # 記錄部署日誌
-  local deploy_log="$BACKUP_DIR/deploy.log"
+  # ── 記錄部署日誌 ──
   mkdir -p "$BACKUP_DIR"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
   info "部署記錄已追加至 $deploy_log"
 
-  ok "部署完成 (version: $deploy_sha)。"
+  if [[ "$needs_full" == "true" ]]; then
+    ok "完整部署完成 (version: $deploy_sha)。"
+  else
+    ok "快速部署完成 (version: $deploy_sha)。"
+  fi
 }
 
 # ── 指令：migrate ─────────────────────────────────────────────────────────────
