@@ -113,6 +113,7 @@ def build_api_admin_router(
     admin_run_tests: Callable[..., Any],
     admin_last_test_run: Callable[..., Any],
     admin_test_catalog: Callable[..., Any],
+    admin_graph_density: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
@@ -123,6 +124,8 @@ def build_api_admin_router(
     router.post("/api/admin/tests/run", include_in_schema=False)(admin_run_tests)
     router.get("/api/admin/tests/last", include_in_schema=False)(admin_last_test_run)
     router.get("/api/admin/tests/catalog", include_in_schema=False)(admin_test_catalog)
+    if admin_graph_density is not None:
+        router.get("/api/admin/graph-density", include_in_schema=False)(admin_graph_density)
     return router
 
 
@@ -142,6 +145,7 @@ def build_admin_router(
     admin_last_test_run: Callable[..., Any],
     admin_test_catalog: Callable[..., Any],
     admin_tests_ui: Callable[..., Any],
+    admin_graph_density: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
     """Build all three admin routers. Returns (login_router, html_router, api_router)."""
@@ -160,5 +164,6 @@ def build_admin_router(
         admin_run_tests=admin_run_tests,
         admin_last_test_run=admin_last_test_run,
         admin_test_catalog=admin_test_catalog,
+        admin_graph_density=admin_graph_density,
     )
     return login, html, api
