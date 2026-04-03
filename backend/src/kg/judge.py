@@ -46,6 +46,8 @@ Candidates:
 def _parse_batch_response(
     content: str | None,
     candidates: list[tuple[str, str, str]],
+    *,
+    raw_decisions: list[dict] | None = None,
 ) -> dict[str, Judgement | None]:
     """Parse LLM batch response, matching back to candidate card_ids.
 
@@ -53,12 +55,18 @@ def _parse_batch_response(
     Response items matched by position (array order matches candidate order).
     """
     if not content:
+        if raw_decisions is not None:
+            for cid, _, _ in candidates:
+                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
         return {cid: None for cid, _, _ in candidates}
 
     try:
         data = json.loads(content)
     except (json.JSONDecodeError, ValueError):
         logger.warning("Failed to parse batch judgement. Raw: %r", content[:200])
+        if raw_decisions is not None:
+            for cid, _, _ in candidates:
+                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
         return {cid: None for cid, _, _ in candidates}
 
     # Unwrap: {"results": [...]} or bare array or single object
@@ -101,6 +109,8 @@ def _parse_batch_response(
             item = _word_index.get(word)  # beyond response length, try word lookup
 
         if not item:
+            if raw_decisions is not None:
+                raw_decisions.append({"to_id": cid, "verdict": "no_response", "confidence": 0.0, "accepted": 0, "reject_reason": "no_response", "reason": ""})
             results[cid] = None
             continue
 
@@ -109,23 +119,34 @@ def _parse_batch_response(
             confidence = float(item.get("confidence", 0.0))
             reason_val = item.get("reason", "")
         except (ValueError, TypeError):
+            if raw_decisions is not None:
+                raw_decisions.append({"to_id": cid, "verdict": "parse_error", "confidence": 0.0, "accepted": 0, "reject_reason": "parse_error", "reason": ""})
             results[cid] = None
             continue
 
         if link_val == "not_applicable" or confidence < 0.7:
+            reject = "not_applicable" if link_val == "not_applicable" else "low_confidence"
+            if raw_decisions is not None:
+                raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 0, "reject_reason": reject, "reason": reason_val})
             results[cid] = None
             continue
 
         try:
             LinkKind(link_val)
         except ValueError:
+            if raw_decisions is not None:
+                raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 0, "reject_reason": "invalid_kind", "reason": reason_val})
             results[cid] = None
             continue
 
+        if raw_decisions is not None:
+            raw_decisions.append({"to_id": cid, "verdict": link_val, "confidence": confidence, "accepted": 1, "reject_reason": None, "reason": reason_val})
         results[cid] = Judgement(link=link_val, confidence=confidence, reason=reason_val)
 
     # Any candidates beyond response length → None
     for cid, _, _ in candidates[len(data):]:
+        if raw_decisions is not None and cid not in {d["to_id"] for d in raw_decisions}:
+            raw_decisions.append({"to_id": cid, "verdict": "no_response", "confidence": 0.0, "accepted": 0, "reject_reason": "no_response", "reason": ""})
         results.setdefault(cid, None)
 
     return results
@@ -134,15 +155,21 @@ def _parse_batch_response(
 class Judge:
     """LLM-based relationship judge (batch mode)."""
 
-    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite") -> None:
+    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite",
+                 *, user_id: str = "", notebook_id: str = "default") -> None:
         self.llm = llm
         self.model = model
+        self.user_id = user_id
+        self.notebook_id = notebook_id
 
     def evaluate_batch(
         self,
         target_word: str,
         target_meaning: str,
         candidates: list[tuple[str, str, str]],
+        *,
+        from_id: str = "",
+        similarities: dict[str, float] | None = None,
     ) -> dict[str, Judgement | None]:
         """Evaluate target against multiple candidates in a single LLM call.
 
@@ -157,16 +184,19 @@ class Judge:
             merged: dict[str, Judgement | None] = {}
             for start in range(0, len(candidates), MAX_BATCH_SIZE):
                 chunk = candidates[start:start + MAX_BATCH_SIZE]
-                merged.update(self._call_batch(target_word, target_meaning, chunk))
+                merged.update(self._call_batch(target_word, target_meaning, chunk, from_id=from_id, similarities=similarities))
             return merged
 
-        return self._call_batch(target_word, target_meaning, candidates)
+        return self._call_batch(target_word, target_meaning, candidates, from_id=from_id, similarities=similarities)
 
     def _call_batch(
         self,
         target_word: str,
         target_meaning: str,
         candidates: list[tuple[str, str, str]],
+        *,
+        from_id: str = "",
+        similarities: dict[str, float] | None = None,
     ) -> dict[str, Judgement | None]:
         """Single LLM call for a batch of candidates."""
         cand_lines = "\n".join(
@@ -191,7 +221,24 @@ class Judge:
         )
 
         content = resp.choices[0].message.content
-        return _parse_batch_response(content, candidates)
+        raw_decisions: list[dict] = []
+        result = _parse_batch_response(content, candidates, raw_decisions=raw_decisions)
+        if self.user_id and raw_decisions:
+            try:
+                from . import judge_log
+                for d in raw_decisions:
+                    judge_log.record(
+                        user_id=self.user_id, notebook_id=self.notebook_id,
+                        from_id=from_id, to_id=d["to_id"],
+                        similarity=(similarities or {}).get(d["to_id"]),
+                        verdict=d["verdict"], confidence=d["confidence"],
+                        accepted=bool(d["accepted"]),
+                        reject_reason=d.get("reject_reason"),
+                        reason=d.get("reason", ""), source="auto",
+                    )
+            except Exception:
+                logger.warning("Failed to write judge_log", exc_info=True)
+        return result
 
     def evaluate(
         self,
@@ -199,13 +246,21 @@ class Judge:
         meaning_a: str,
         word_b: str,
         meaning_b: str,
+        *,
+        from_id: str = "",
+        to_id: str = "",
+        similarity: float | None = None,
     ) -> Judgement | None:
         """Single-pair evaluate (backward compatible)."""
+        key = to_id or "_single"
+        sims = {key: similarity} if similarity is not None else None
         results = self.evaluate_batch(
             word_a, meaning_a,
-            [("_single", word_b, meaning_b)],
+            [(key, word_b, meaning_b)],
+            from_id=from_id,
+            similarities=sims,
         )
-        return results.get("_single")
+        return results.get(key)
 
 
 # ── ManualLinkJudge (unchanged, separate prompt) ─────────────
@@ -226,9 +281,27 @@ Respond JSON: {"link": "<type>", "confidence": <0.0-1.0>, "reason": "<繁體中�
 class ManualLinkJudge:
     """LLM judge for user-initiated links. Never returns None."""
 
-    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite") -> None:
+    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite",
+                 *, user_id: str = "", notebook_id: str = "default") -> None:
         self.llm = llm
         self.model = model
+        self.user_id = user_id
+        self.notebook_id = notebook_id
+
+    def _log(self, *, from_id: str, to_id: str, judgement: Judgement) -> None:
+        if not self.user_id:
+            return
+        try:
+            from . import judge_log
+            judge_log.record(
+                user_id=self.user_id, notebook_id=self.notebook_id,
+                from_id=from_id, to_id=to_id, similarity=None,
+                verdict=judgement.link, confidence=judgement.confidence,
+                accepted=True, reject_reason=None,
+                reason=judgement.reason, source="manual",
+            )
+        except Exception:
+            logger.warning("Failed to write judge_log (manual)", exc_info=True)
 
     def evaluate(
         self,
@@ -236,6 +309,9 @@ class ManualLinkJudge:
         meaning_a: str,
         word_b: str,
         meaning_b: str,
+        *,
+        from_id: str = "",
+        to_id: str = "",
     ) -> Judgement:
         user_msg = f"Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
@@ -262,9 +338,13 @@ class ManualLinkJudge:
                 try:
                     data = json.loads(m.group())
                 except (json.JSONDecodeError, ValueError):
-                    return Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+                    j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+                    self._log(from_id=from_id, to_id=to_id, judgement=j)
+                    return j
             else:
-                return Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+                j = Judgement(link="shares_usage", confidence=1.0, reason="使用者認為這兩個詞相關。")
+                self._log(from_id=from_id, to_id=to_id, judgement=j)
+                return j
 
         link_val = data.get("link", "shares_usage")
         reason_val = data.get("reason", "使用者認為這兩個詞相關。")
@@ -272,4 +352,6 @@ class ManualLinkJudge:
         if link_val not in ("contrasts_with", "shares_usage"):
             link_val = "shares_usage"
 
-        return Judgement(link=link_val, confidence=1.0, reason=reason_val)
+        j = Judgement(link=link_val, confidence=1.0, reason=reason_val)
+        self._log(from_id=from_id, to_id=to_id, judgement=j)
+        return j
