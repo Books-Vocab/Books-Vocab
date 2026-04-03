@@ -213,7 +213,7 @@ def test_embed_and_judge_respects_max_degree():
     embeddings = _FakeEmbeddings(has_ids={"c1", "c2"}, similar_map=similar_map)
 
     # c1 already at MAX_DEGREE
-    fake_links = [SimpleNamespace(id=f"link{i}") for i in range(MAX_DEGREE)]
+    fake_links = [SimpleNamespace(id=f"link{i}", status="active") for i in range(MAX_DEGREE)]
     graph = _FakeGraph(pending=["c1"], links={"c1": fake_links})
     logger = _FakeLogger()
 
