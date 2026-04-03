@@ -310,7 +310,10 @@ async def _step_embed_and_judge(
         return sum(1 for lk in graph.get_links_for(cid) if lk.status == "active")
 
     # ── Phase 2a: Prepare judge tasks ──
-    judge_tasks: list[tuple[str, Any, list, dict, int | None]] = []
+    # Pass 1: collect all other_ids from find_similar across all pending cards
+    # to do ONE batch fetch instead of per-card get_batch (fixes C2 N+1 query).
+    per_card_similar: list[tuple[str, Any, int, list[tuple[str, float]]]] = []
+    all_other_ids: set[str] = set()
     for card_id in pending:
         card = cards_cache.get(card_id)
         if not card or card.is_deleted or card.is_archived:
@@ -319,7 +322,6 @@ async def _step_embed_and_judge(
         current_degree = _active_degree(card_id)
         if current_degree >= MAX_DEGREE:
             continue
-        available = MAX_DEGREE - current_degree
 
         try:
             similar = embeddings.find_similar(card_id, k=CANDIDATE_K)
@@ -327,23 +329,30 @@ async def _step_embed_and_judge(
             logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
             continue
 
-        other_ids_needed: set[str] = set()
+        candidates: list[tuple[str, float]] = []
         for other_id, score in similar:
             if score <= SIMILARITY_THRESHOLD:
                 continue
             if graph.has_link(card_id, other_id):
                 continue
-            other_ids_needed.add(other_id)
+            candidates.append((other_id, score))
+            all_other_ids.add(other_id)
 
-        if not other_ids_needed:
-            continue
+        if candidates:
+            per_card_similar.append((card_id, card, current_degree, candidates))
 
-        others = cards.get_batch(other_ids_needed)
+    # Single batch fetch for ALL other_ids across all pending cards
+    others_cache = cards.get_batch(all_other_ids) if all_other_ids else {}
+
+    # Pass 2: filter candidates using the shared cache, build judge_tasks.
+    # Include current_degree in the tuple so Phase 2b can initialize
+    # from_link_counts without redundant get_links_for calls (fixes W3).
+    judge_tasks: list[tuple[str, Any, list, dict, int | None, int]] = []
+    for card_id, card, current_degree, candidates in per_card_similar:
+        available = MAX_DEGREE - current_degree
         filtered: list[tuple[str, str, str, float]] = []
-        for other_id, score in similar:
-            if other_id not in other_ids_needed:
-                continue
-            other = others.get(other_id)
+        for other_id, score in candidates:
+            other = others_cache.get(other_id)
             if not other or other.is_deleted or other.is_archived:
                 continue
             if _active_degree(other_id) >= MAX_DEGREE:
@@ -356,7 +365,7 @@ async def _step_embed_and_judge(
         batch_cands = [(oid, w, m) for oid, w, m, _ in filtered]
         sims = {oid: s for oid, _, _, s in filtered}
         max_links = available if len(filtered) >= 5 else None
-        judge_tasks.append((card_id, card, batch_cands, sims, max_links))
+        judge_tasks.append((card_id, card, batch_cands, sims, max_links, current_degree))
 
     if not judge_tasks:
         logger.info("[%s] No cards need judging after filtering", uid)
@@ -367,7 +376,7 @@ async def _step_embed_and_judge(
     loop = asyncio.get_running_loop()
 
     futures: list[tuple[str, asyncio.Future]] = []
-    for card_id, card, batch_cands, sims, max_links in judge_tasks:
+    for card_id, card, batch_cands, sims, max_links, _deg in judge_tasks:
         futures.append((
             card_id,
             loop.run_in_executor(
@@ -379,23 +388,31 @@ async def _step_embed_and_judge(
             ),
         ))
 
-    # Track per-card link count to enforce MAX_DEGREE on the from-side
-    from_link_counts: dict[str, int] = {}
+    # Track per-card link count to enforce MAX_DEGREE on both sides.
+    # from_link_counts: from-side — seeded from current_degree computed in
+    #   Phase 2a to avoid redundant get_links_for calls (W3 fix).
+    # to_link_counts: to-side (the other_id being linked TO) — tracks
+    #   in-flight links so multiple pending cards don't exceed MAX_DEGREE
+    #   on a shared target (C1 fix).
+    from_link_counts: dict[str, int] = {
+        cid: deg for cid, _, _, _, _, deg in judge_tasks
+    }
+    to_link_counts: dict[str, int] = {}
 
     processed = 0
     try:
         for card_id, fut in futures:
             results = await fut
             processed += 1
-            # Initialize from-side count if not tracked yet
-            if card_id not in from_link_counts:
-                from_link_counts[card_id] = _active_degree(card_id)
             for other_id, judgement in results.items():
                 if judgement is None:
                     continue
                 if from_link_counts[card_id] >= MAX_DEGREE:
                     break  # card_id already at cap
-                if _active_degree(other_id) >= MAX_DEGREE:
+                # Initialize to-side count on first access
+                if other_id not in to_link_counts:
+                    to_link_counts[other_id] = _active_degree(other_id)
+                if to_link_counts[other_id] >= MAX_DEGREE:
                     continue
                 all_links.append((
                     card_id, other_id,
@@ -404,8 +421,11 @@ async def _step_embed_and_judge(
                     judgement.reason,
                 ))
                 from_link_counts[card_id] += 1
+                to_link_counts[other_id] += 1
     except Exception:
-        # Requeue unprocessed cards
+        # Requeue unprocessed cards. `processed` is incremented AFTER a
+        # successful `await`, so on exception it still points to the card
+        # that failed — `futures[processed:]` correctly includes it.
         unprocessed_ids = [cid for cid, _ in futures[processed:]]
         if unprocessed_ids:
             graph.add_pending_judge(unprocessed_ids)
