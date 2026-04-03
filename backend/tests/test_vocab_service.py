@@ -170,11 +170,8 @@ class _FakeEmbeddings:
 
 
 class _FakeGraph:
-    def add_candidate(self, *args, **kwargs):
+    def add_pending_judge(self, card_ids):
         pass
-
-    def batch_add_candidates(self, items):
-        return 0
 
 
 def test_add_vocab_entries_rejects_oversized_batch():
