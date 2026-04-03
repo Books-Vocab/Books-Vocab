@@ -66,7 +66,7 @@ def _set_admin_cookie(response: HTMLResponse, admin_token: str) -> HTMLResponse:
         httponly=True,
         secure=True,
         samesite="lax",
-        path="/admin",
+        path="/",
         max_age=60 * 60 * 24 * 30,  # 30 days
     )
     return response
