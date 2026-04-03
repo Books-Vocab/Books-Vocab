@@ -810,7 +810,9 @@ function renderStats(data) {
     <div class="stat"><div class="v">${fmt(ti+to)}</div><div class="l">總 Token 用量</div></div>
     <div class="stat"><div class="v">${fmt(ti)}</div><div class="l">輸入 tokens</div></div>
     <div class="stat"><div class="v">${fmt(to)}</div><div class="l">輸出 tokens</div></div>
-    <div class="stat"><div class="v">$${tc.toFixed(4)}</div><div class="l">預估費用 USD</div></div>`;
+    <div class="stat"><div class="v">$${tc.toFixed(4)}</div><div class="l">預估費用 USD</div></div>
+    ${data.judge && data.judge.total > 0 ? `
+    <div class="stat"><div class="v">${(data.judge.rate * 100).toFixed(1)}%</div><div class="l">Judge 通過率 (${data.judge.accepted}/${data.judge.total})</div></div>` : ''}`;
   applyFilters();
 }
 
