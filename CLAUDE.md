@@ -18,8 +18,7 @@
 1. **Deep Scan** — 立即 `Skill("deep-scan")`，dispatch 5-7 個 opus agent 平行掃描全專案。不等結果，繼續下一步。
 2. **掃描 skill 觸發條件** — 對照使用者的第一句話，凡符合已註冊 skill 的觸發描述，立即載入。「不確定是否符合」= 符合。
 3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
-4. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`；deploy/migration 前再加 backup：`./ops/devops_kg_safe.sh backup`。
-5. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
+4. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
 
 ## Skill 系統（5 個 skill）
 
@@ -29,7 +28,7 @@
 | `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
 | `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
-| `devops` | 部署 / status / logs | 運維操作參考 |
+| `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 
 ### Skill 規則
 
@@ -49,20 +48,6 @@
 - Monorepo：`.git` 涵蓋 iOS app、backend API、ops/docs
 - Commit prefix：`ios:` / `api:` / `ops:` / `docs:`
 - **Worktree 強制**：程式碼修改一律在隔離 worktree 中進行 → commit → 開 PR。禁止直接在 main 上改，除非使用者明確指示。
-
-## 生產環境操作
-
-Safe entrypoint：`./ops/devops_kg_safe.sh`
-
-| 允許 | `deploy` `restart` `status` `logs` `backup` `env-check` `migrate` `users` `user-info` `run` `container-run` `migrate-run` |
-|------|---|
-| **封鎖** | `setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串 |
-
-常用：
-- `./ops/devops_kg_safe.sh status`
-- `./ops/devops_kg_safe.sh logs 120`
-- `./ops/devops_kg_safe.sh deploy`
-- `python3 ops/data_inspect.py [command]` — `overview` / `sample N` / `gaps` / `graph` / `notes` / `search <keyword>` / `card <id>` / `sql "..."`
 
 ## iOS 編譯（強制）
 
