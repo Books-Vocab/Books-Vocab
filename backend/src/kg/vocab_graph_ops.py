@@ -43,6 +43,7 @@ def create_manual_link(
     judgement = judge.evaluate(
         card_a.content, card_a.meaning,
         card_b.content, card_b.meaning,
+        from_id=from_id, to_id=to_id,
     )
 
     link = graph.add_link(
