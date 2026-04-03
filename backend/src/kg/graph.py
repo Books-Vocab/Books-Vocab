@@ -154,10 +154,10 @@ class GraphStore:
             self._pending_judge = set(pj_data)
         # Migrate old candidates -> pending_judge (only when pending_judge_path is set)
         if self.pending_judge_path and self._candidates:
-            for c in self._candidates:
-                self._pending_judge.add(c.from_id)
-                self._pending_judge.add(c.to_id)
+            migrated_ids = {c.from_id for c in self._candidates}
+            self._pending_judge.update(migrated_ids)
             self._candidates.clear()
+            self._candidate_set.clear()
             self._save_candidates()
             self._save_pending_judge()
         self._rebuild_index()
@@ -458,22 +458,24 @@ class GraphStore:
     # Pending Judge
     # ------------------------------------------------------------------
 
-    def add_pending_judge(self, card_id: str) -> None:
-        """Add a card ID to the pending judge set. Dedup by set semantics."""
+    def add_pending_judge(self, card_ids: list[str] | str) -> None:
+        """Add card ID(s) to the pending judge set. Dedup by set semantics."""
+        if isinstance(card_ids, str):
+            card_ids = [card_ids]
         with self._lock:
-            if card_id in self._pending_judge:
+            before = len(self._pending_judge)
+            self._pending_judge.update(card_ids)
+            if len(self._pending_judge) == before:
                 return
-            self._pending_judge.add(card_id)
-            snapshot = list(self._pending_judge)
+            snapshot = sorted(self._pending_judge)
         self._flush_pending_judge(snapshot)
 
-    def pop_pending_judge(self) -> set[str]:
-        """Get and clear all pending judge card IDs."""
+    def pop_pending_judge(self) -> list[str]:
+        """Get and clear all pending judge card IDs. Returns sorted list."""
         with self._lock:
-            result = self._pending_judge.copy()
+            result = sorted(self._pending_judge)
             self._pending_judge.clear()
-            snapshot: list[str] = []
-        self._flush_pending_judge(snapshot)
+        self._flush_pending_judge([])
         return result
 
     def remove_pending_judge_for(self, card_id: str) -> int:

@@ -21,27 +21,30 @@ def store(tmp_path):
 
 class TestAddAndPopPendingJudge:
     def test_add_and_pop(self, store):
-        store.add_pending_judge("card_a")
-        store.add_pending_judge("card_b")
+        store.add_pending_judge(["card_a", "card_b"])
         assert store.pending_judge_count() == 2
 
         popped = store.pop_pending_judge()
-        assert popped == {"card_a", "card_b"}
+        assert set(popped) == {"card_a", "card_b"}
         assert store.pending_judge_count() == 0
+
+    def test_add_single_string(self, store):
+        store.add_pending_judge("card_a")
+        assert store.pending_judge_count() == 1
 
     def test_pop_empty(self, store):
         popped = store.pop_pending_judge()
-        assert popped == set()
+        assert popped == []
 
 
 class TestPendingJudgeDedup:
     def test_adding_same_id_twice(self, store):
-        store.add_pending_judge("card_a")
-        store.add_pending_judge("card_a")
+        store.add_pending_judge(["card_a"])
+        store.add_pending_judge(["card_a"])
         assert store.pending_judge_count() == 1
 
         popped = store.pop_pending_judge()
-        assert popped == {"card_a"}
+        assert set(popped) == {"card_a"}
 
 
 class TestPendingJudgePersistence:
@@ -53,8 +56,7 @@ class TestPendingJudgePersistence:
             blocked_path=tmp_path / "blocked.json",
             pending_judge_path=pj_path,
         )
-        store1.add_pending_judge("card_x")
-        store1.add_pending_judge("card_y")
+        store1.add_pending_judge(["card_x", "card_y"])
 
         # Reload from disk
         store2 = GraphStore(
@@ -64,27 +66,24 @@ class TestPendingJudgePersistence:
             pending_judge_path=pj_path,
         )
         assert store2.pending_judge_count() == 2
-        assert store2.pop_pending_judge() == {"card_x", "card_y"}
+        assert set(store2.pop_pending_judge()) == {"card_x", "card_y"}
 
 
 class TestRemovePendingJudgeFor:
     def test_remove_specific_card(self, store):
-        store.add_pending_judge("card_a")
-        store.add_pending_judge("card_b")
-        store.add_pending_judge("card_c")
+        store.add_pending_judge(["card_a", "card_b", "card_c"])
 
         store.remove_pending_judge_for("card_b")
         assert store.pending_judge_count() == 2
-        assert store.pop_pending_judge() == {"card_a", "card_c"}
+        assert set(store.pop_pending_judge()) == {"card_a", "card_c"}
 
     def test_remove_nonexistent_is_noop(self, store):
-        store.add_pending_judge("card_a")
+        store.add_pending_judge(["card_a"])
         store.remove_pending_judge_for("card_z")
         assert store.pending_judge_count() == 1
 
     def test_cleanup_for_card_removes_pending(self, store):
-        store.add_pending_judge("card_a")
-        store.add_pending_judge("card_b")
+        store.add_pending_judge(["card_a", "card_b"])
         result = store.cleanup_for_card("card_a")
         assert result["pending_judge_removed"] == 1
         assert store.pending_judge_count() == 1
@@ -112,10 +111,10 @@ class TestMigrateCandidatesToPending:
             pending_judge_path=pj_path,
         )
 
-        # Old candidates should be migrated to pending_judge
-        assert store.pending_judge_count() >= 4  # card_a, card_b, card_c, card_d
+        # Old candidates from_ids should be migrated to pending_judge
+        assert store.pending_judge_count() == 2  # card_a, card_c (unique from_ids)
         popped = store.pop_pending_judge()
-        assert {"card_a", "card_b", "card_c", "card_d"} <= popped
+        assert set(popped) == {"card_a", "card_c"}
 
         # Old candidates should be cleared after migration
         assert store.candidate_count() == 0
