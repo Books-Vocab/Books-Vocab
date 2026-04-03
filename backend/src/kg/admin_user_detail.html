@@ -614,7 +614,7 @@ let _densityChart = null;
 function renderDensityChart(data) {
   const canvas = document.getElementById('density-chart');
   const noData = document.getElementById('density-no-data');
-  if (!data || !data.series || data.series.length === 0) {
+  if (!data || !data.points || data.points.length === 0) {
     canvas.style.display = 'none';
     noData.style.display = '';
     return;
@@ -622,8 +622,8 @@ function renderDensityChart(data) {
   noData.style.display = 'none';
   canvas.style.display = '';
 
-  const labels = data.series.map(p => p.cum_cards);
-  const densities = data.series.map(p => p.density);
+  const labels = data.points.map(p => p.cum_cards);
+  const densities = data.points.map(p => p.density);
 
   if (_densityChart) _densityChart.destroy();
   _densityChart = new Chart(canvas, {
@@ -651,13 +651,13 @@ function renderDensityChart(data) {
           callbacks: {
             title: (items) => {
               const i = items[0].dataIndex;
-              const p = data.series[i];
-              return fmtDate(p.timestamp);
+              const p = data.points[i];
+              return fmtDate(p.ts);
             },
             label: (item) => {
               const i = item.dataIndex;
-              const p = data.series[i];
-              return `density: ${p.density.toFixed(4)}  (${p.event_type})`;
+              const p = data.points[i];
+              return `density: ${p.density.toFixed(4)}  (${p.event})`;
             },
           },
         },
@@ -702,9 +702,9 @@ function initPlayback(data) {
     return;
   }
 
-  // Build merged timeline
-  const nodeEvents = data.nodes.map(n => ({ type: 'node', data: n, time: n.created_at || '' }));
-  const edgeEvents = data.edges.map(e => ({ type: 'edge', data: e, time: e.created_at || '' }));
+  // Build merged timeline — map API fields to internal names
+  const nodeEvents = data.nodes.map(n => ({ type: 'node', data: { id: n.id, word: n.label, meaning: n.meaning, created_at: n.created_at }, time: n.created_at || '' }));
+  const edgeEvents = data.edges.map(e => ({ type: 'edge', data: { source: e.from_id, target: e.to_id, kind: e.kind, created_at: e.created_at }, time: e.created_at || '' }));
   _timeline = [...nodeEvents, ...edgeEvents].sort((a, b) => a.time.localeCompare(b.time));
 
   const slider = document.getElementById('timeline-slider');
@@ -845,12 +845,11 @@ function scheduleNext() {
 
 function addEvent(idx) {
   const evt = _timeline[idx];
-  const ctx = getCtx();
   if (evt.type === 'node') {
     const d = evt.data;
-    if (_nodeMap[d.word]) return;
+    if (_nodeMap[d.id]) return;
     const n = {
-      id: d.word,
+      id: d.id,
       word: d.word,
       meaning: d.meaning || '',
       created_at: d.created_at,
@@ -859,7 +858,7 @@ function addEvent(idx) {
       _pulse: 1.0,
     };
     _simNodes.push(n);
-    _nodeMap[d.word] = n;
+    _nodeMap[d.id] = n;
     restartSim();
   } else {
     const d = evt.data;
@@ -887,9 +886,9 @@ function scrubTo(targetIdx, ctx) {
     const evt = _timeline[i];
     if (evt.type === 'node') {
       const d = evt.data;
-      if (_nodeMap[d.word]) continue;
+      if (_nodeMap[d.id]) continue;
       const n = {
-        id: d.word,
+        id: d.id,
         word: d.word,
         meaning: d.meaning || '',
         created_at: d.created_at,
@@ -897,7 +896,7 @@ function scrubTo(targetIdx, ctx) {
         y: (Math.random() - 0.5) * 100,
       };
       _simNodes.push(n);
-      _nodeMap[d.word] = n;
+      _nodeMap[d.id] = n;
     } else {
       const d = evt.data;
       const src = _nodeMap[d.source];
