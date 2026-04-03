@@ -85,3 +85,41 @@ def test_record_rejection(tmp_path, monkeypatch):
     assert len(rows3) == 0
 
     judge_log._reset()
+
+
+def test_acceptance_stats(tmp_path, monkeypatch):
+    """get_acceptance_stats returns correct rate from auto judge decisions."""
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+    import importlib
+    from kg import judge_log
+    importlib.reload(judge_log)
+    judge_log._reset()
+
+    # Empty DB
+    stats = judge_log.get_acceptance_stats()
+    assert stats["total"] == 0
+    assert stats["rate"] is None
+
+    # 2 accepted, 1 rejected
+    for accepted, verdict in [(True, "shares_usage"), (True, "contrasts_with"), (False, "not_applicable")]:
+        judge_log.record(
+            user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
+            similarity=0.8, verdict=verdict, confidence=0.9,
+            accepted=accepted, source="auto",
+        )
+
+    # 1 manual (should be excluded from stats)
+    judge_log.record(
+        user_id="u1", notebook_id="nb1", from_id="a", to_id="c",
+        similarity=None, verdict="shares_usage", confidence=1.0,
+        accepted=True, source="manual",
+    )
+
+    stats = judge_log.get_acceptance_stats()
+    assert stats["total"] == 3
+    assert stats["accepted"] == 2
+    assert stats["rejected"] == 1
+    assert abs(stats["rate"] - 0.6667) < 0.001
+
+    judge_log._reset()
