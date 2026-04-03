@@ -281,7 +281,10 @@ def create_manual_link_response(
 
     from .judge import ManualLinkJudge
     from .tracked_llm import TrackedLLM
-    judge = ManualLinkJudge(TrackedLLM(gemini_client_factory(), user["id"]))
+    judge = ManualLinkJudge(
+        TrackedLLM(gemini_client_factory(), user["id"]),
+        user_id=user["id"], notebook_id=notebook_id,
+    )
 
     link = create_manual_link(
         from_id=req.from_id, to_id=req.to_id,

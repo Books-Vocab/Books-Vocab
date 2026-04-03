@@ -212,7 +212,7 @@ def test_step_link_runs_judge_concurrently():
             def evaluate(self, wa, ma, wb, mb):
                 return fake_judge.evaluate(wa, ma, wb, mb)
 
-            def evaluate_batch(self, target_word, target_meaning, candidates):
+            def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
                 results = {}
                 for cid, word, meaning in candidates:
                     r = fake_judge.evaluate(target_word, target_meaning, word, meaning)
