@@ -27,11 +27,8 @@ def _make_cards_db(user_dir: Path, cards: list[dict]) -> None:
 
 
 def _make_graph_json(user_dir: Path, notebook_id: str, links: list[dict]) -> None:
-    """Write a graph_{notebook_id}.json with given link dicts."""
-    data = {}
-    for link in links:
-        data[link["id"]] = link
-    (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(data))
+    """Write a graph_{notebook_id}.json as list (production format)."""
+    (user_dir / f"graph_{notebook_id}.json").write_text(json.dumps(links))
 
 
 # ---------------------------------------------------------------------------
