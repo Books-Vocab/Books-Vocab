@@ -318,7 +318,11 @@ async def _step_embed_and_judge(
             continue
         available = MAX_DEGREE - current_degree
 
-        similar = embeddings.find_similar(card_id, k=CANDIDATE_K)
+        try:
+            similar = embeddings.find_similar(card_id, k=CANDIDATE_K)
+        except (OSError, ValueError) as exc:
+            logger.warning("[%s] find_similar failed for '%s': %s", uid, card_id, exc)
+            continue
 
         other_ids_needed: set[str] = set()
         for other_id, score in similar:
@@ -372,14 +376,22 @@ async def _step_embed_and_judge(
             ),
         ))
 
+    # Track per-card link count to enforce MAX_DEGREE on the from-side
+    from_link_counts: dict[str, int] = {}
+
     processed = 0
     try:
         for card_id, fut in futures:
             results = await fut
             processed += 1
+            # Initialize from-side count if not tracked yet
+            if card_id not in from_link_counts:
+                from_link_counts[card_id] = len(graph.get_links_for(card_id))
             for other_id, judgement in results.items():
                 if judgement is None:
                     continue
+                if from_link_counts[card_id] >= MAX_DEGREE:
+                    break  # card_id already at cap
                 if len(graph.get_links_for(other_id)) >= MAX_DEGREE:
                     continue
                 all_links.append((
@@ -388,6 +400,7 @@ async def _step_embed_and_judge(
                     judgement.confidence,
                     judgement.reason,
                 ))
+                from_link_counts[card_id] += 1
     except Exception:
         # Requeue unprocessed cards
         unprocessed_ids = [cid for cid, _ in futures[processed:]]

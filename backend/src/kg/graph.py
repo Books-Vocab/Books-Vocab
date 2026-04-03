@@ -222,7 +222,7 @@ class GraphStore:
     def _save_pending_judge(self) -> None:
         if self.pending_judge_path is None:
             return
-        self._flush_pending_judge(list(self._pending_judge))
+        self._flush_pending_judge(sorted(self._pending_judge))
 
     # ------------------------------------------------------------------
     # Links
