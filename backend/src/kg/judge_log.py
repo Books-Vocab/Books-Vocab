@@ -16,10 +16,7 @@ _conn: sqlite3.Connection | None = None
 
 
 def _get_conn() -> sqlite3.Connection:
-    global _conn, DB_PATH, DATA_DIR
-    # Re-read env each time in case it changed (tests)
-    DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
-    DB_PATH = DATA_DIR / "judge_log.db"
+    global _conn
     if _conn is None:
         DB_PATH.parent.mkdir(parents=True, exist_ok=True)
         _conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)

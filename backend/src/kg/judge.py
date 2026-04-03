@@ -224,17 +224,20 @@ class Judge:
         raw_decisions: list[dict] = []
         result = _parse_batch_response(content, candidates, raw_decisions=raw_decisions)
         if self.user_id and raw_decisions:
-            from . import judge_log
-            for d in raw_decisions:
-                judge_log.record(
-                    user_id=self.user_id, notebook_id=self.notebook_id,
-                    from_id=from_id, to_id=d["to_id"],
-                    similarity=(similarities or {}).get(d["to_id"]),
-                    verdict=d["verdict"], confidence=d["confidence"],
-                    accepted=bool(d["accepted"]),
-                    reject_reason=d.get("reject_reason"),
-                    reason=d.get("reason", ""), source="auto",
-                )
+            try:
+                from . import judge_log
+                for d in raw_decisions:
+                    judge_log.record(
+                        user_id=self.user_id, notebook_id=self.notebook_id,
+                        from_id=from_id, to_id=d["to_id"],
+                        similarity=(similarities or {}).get(d["to_id"]),
+                        verdict=d["verdict"], confidence=d["confidence"],
+                        accepted=bool(d["accepted"]),
+                        reject_reason=d.get("reject_reason"),
+                        reason=d.get("reason", ""), source="auto",
+                    )
+            except Exception:
+                logger.warning("Failed to write judge_log", exc_info=True)
         return result
 
     def evaluate(
@@ -288,14 +291,17 @@ class ManualLinkJudge:
     def _log(self, *, from_id: str, to_id: str, judgement: Judgement) -> None:
         if not self.user_id:
             return
-        from . import judge_log
-        judge_log.record(
-            user_id=self.user_id, notebook_id=self.notebook_id,
-            from_id=from_id, to_id=to_id, similarity=None,
-            verdict=judgement.link, confidence=judgement.confidence,
-            accepted=True, reject_reason=None,
-            reason=judgement.reason, source="manual",
-        )
+        try:
+            from . import judge_log
+            judge_log.record(
+                user_id=self.user_id, notebook_id=self.notebook_id,
+                from_id=from_id, to_id=to_id, similarity=None,
+                verdict=judgement.link, confidence=judgement.confidence,
+                accepted=True, reject_reason=None,
+                reason=judgement.reason, source="manual",
+            )
+        except Exception:
+            logger.warning("Failed to write judge_log (manual)", exc_info=True)
 
     def evaluate(
         self,
