@@ -1,84 +1,127 @@
 ---
 name: devops
-description: KG API dev operations - status, preflight, deploy, logs, debug, user management
-disable-model-invocation: true
+description: "KG 生產環境運維 — 部署、狀態、用戶查詢、額度、遠端操作、系統健康"
 allowed-tools: Bash, Read, Grep
 ---
 
 # KG DevOps Skill
 
 ## Identity
-- local: `projects/kg`
-- backend: `projects/kg/backend`
-- remote: `~/knowledge_graph_api`
-- domain: `wordnexus.lol`
-- container: `knowledge-graph-api`
-- port: `8000`
 
-## devops_kg_safe.sh Commands
+| key | value |
+|-----|-------|
+| server | `ubuntu@54.95.189.179` |
+| remote | `~/knowledge_graph_api` |
+| domain | `wordnexus.lol` |
+| container | `knowledge-graph-api` |
+| port | `8000` |
+
+## 安全規則
+
+1. **生產環境操作前**先跑 preflight：`./ops/devops_kg_safe.sh preflight`
+2. **deploy / migration 前**再加 backup：`./ops/devops_kg_safe.sh backup`
+3. 禁止封鎖指令：`setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串
+
+## 指令參考
+
+### Safe Wrapper（`./ops/devops_kg_safe.sh`）
+
 ```bash
-./ops/devops_kg_safe.sh preflight   # sanity check before any prod change
-./ops/devops_kg_safe.sh backup      # backup before deploy/migration
-./ops/devops_kg_safe.sh deploy      # rsync + build + migrate + health
-./ops/devops_kg_safe.sh restart     # restart container only (10x faster)
-./ops/devops_kg_safe.sh status      # container + HTTP health check
-./ops/devops_kg_safe.sh logs 120    # tail last 120 lines of container logs
-./ops/devops_kg_safe.sh env-check   # verify remote .env keys
-./ops/devops_kg_safe.sh migrate     # run DB migrations only
-./ops/devops_kg_safe.sh users       # list users + optional integrations
-./ops/devops_kg_safe.sh user-info <id>  # user vocab stats
+./ops/devops_kg_safe.sh preflight
+./ops/devops_kg_safe.sh backup
+./ops/devops_kg_safe.sh deploy
+./ops/devops_kg_safe.sh restart
+./ops/devops_kg_safe.sh status
+./ops/devops_kg_safe.sh logs [n]
+./ops/devops_kg_safe.sh env-check
+./ops/devops_kg_safe.sh env-drift
+./ops/devops_kg_safe.sh migrate
+./ops/devops_kg_safe.sh users
+./ops/devops_kg_safe.sh user-info <id>
+./ops/devops_kg_safe.sh run "<cmd>"
+./ops/devops_kg_safe.sh container-run "<cmd>"
+./ops/devops_kg_safe.sh migrate-run "<cmd>"
+./ops/devops_kg_safe.sh ops-cli <subcommand> [args]
+./ops/devops_kg_safe.sh container-script <script> [args]
 ```
 
-## Standard Deploy Workflow
+### ops-cli 子指令
+
+```bash
+ops-cli user-quota <uid>        # 24h 額度 + 逐時明細
+ops-cli user-stats <uid>        # 單字庫統計
+ops-cli quota-overview           # 全用戶額度總覽
+ops-cli active-users [hours]    # 近 N 小時活躍用戶
+ops-cli db-query <uid> "SQL"    # 對用戶 DB 跑 SQL
 ```
+
+### data_inspect（本地用）
+
+```bash
+python3 ops/data_inspect.py [command]
+# overview / sample N / gaps / graph / notes / search <keyword> / card <id> / sql "..."
+```
+
+## 高頻操作範例
+
+```bash
+# 查用戶額度
+./ops/devops_kg_safe.sh ops-cli user-quota <uid>
+
+# 全用戶概覽
+./ops/devops_kg_safe.sh ops-cli quota-overview
+
+# 近 24h 活躍用戶
+./ops/devops_kg_safe.sh ops-cli active-users 24
+
+# 臨時分析腳本
+./ops/devops_kg_safe.sh container-script /tmp/my_script.py
+
+# 標準部署流程
 preflight → backup → deploy → status → smoke test
 ```
 
-**Golden rule**: `restart` is 10x faster than `deploy`. Only `deploy` when code actually changed.
+**Golden rule**：`restart` 比 `deploy` 快 10x。只在程式碼有變更時才 `deploy`。
 
-## 30-Second Quick Diagnosis
+## 快速診斷流程
+
 ```bash
-./ops/devops_kg_safe.sh status   # HTTP code determines root cause
+./ops/devops_kg_safe.sh status   # HTTP code 決定根因
 ./ops/devops_kg_safe.sh logs 50
 ```
 
 ```
-HTTP 200 → API OK, problem is iOS App or DNS
-HTTP 502 → Caddy OK, FastAPI down → check Docker logs
-HTTP 000 → Caddy down or firewall blocking
+HTTP 200 → API OK，問題在 iOS App 或 DNS
+HTTP 502 → Caddy OK，FastAPI down → 查 Docker logs
+HTTP 000 → Caddy down 或 firewall blocking
 DNS fail → DNS issue
 ```
 
-## Common Debug Commands
+### 常用 Debug 指令
+
 ```bash
 # Caddy
-./devops.sh run "sudo systemctl status caddy"
-./devops.sh run "cat /etc/caddy/Caddyfile"
+./ops/devops_kg_safe.sh run "sudo systemctl status caddy"
+./ops/devops_kg_safe.sh run "cat /etc/caddy/Caddyfile"
 
 # Docker
-./devops.sh run "docker ps"
-./devops.sh run "docker logs knowledge-graph-api -n 100"
+./ops/devops_kg_safe.sh run "docker ps"
+./ops/devops_kg_safe.sh run "docker logs knowledge-graph-api -n 100"
 
 # Resources
-./devops.sh run "df -h"
-./devops.sh run "free -m"
-./devops.sh run "docker stats --no-stream"
+./ops/devops_kg_safe.sh run "df -h"
+./ops/devops_kg_safe.sh run "free -m"
+./ops/devops_kg_safe.sh run "docker stats --no-stream"
 
 # Database
-./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
+./ops/devops_kg_safe.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<uid>/cards.db '.tables'"
 ```
 
-## User Management
-```bash
-./devops.sh users                         # list all users
-./devops.sh user-info <user_id>           # vocab stats
-./devops.sh delete-user <user_id> --yes   # delete account + all data (irreversible)
-```
+## 緊急恢復
 
-## Emergency Recovery
 ```bash
 # 1. Stop container
-./devops.sh run "cd ~/knowledge_graph_api && docker compose stop"
+./ops/devops_kg_safe.sh run "cd ~/knowledge_graph_api && docker compose stop"
 
 # 2. Backup broken data
 scp -i ~/.ssh/lightsail_default.pem -r \
@@ -91,10 +134,11 @@ scp -i ~/.ssh/lightsail_default.pem -r \
   ubuntu@54.95.189.179:~/knowledge_graph_api/data
 
 # 4. Restart
-./devops.sh restart
-./devops.sh status
+./ops/devops_kg_safe.sh restart
+./ops/devops_kg_safe.sh status
 ```
 
 ## Deep Reference
-- Full deploy guide: `docs/deploy.md`
-- Full debug guide: `docs/debug.md`
+
+- 完整部署指南：`docs/dev/deploy.md`
+- 除錯指南：`docs/dev/debug.md`

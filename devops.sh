@@ -496,6 +496,32 @@ cmd_migrate_run() {
   cmd_restart
 }
 
+# ── 指令：ops-cli <subcommand> [args] ───────────────────────────────────
+cmd_ops_cli() {
+  [[ -z "${1:-}" ]] && err "用法: $0 ops-cli <subcommand> [args...]"
+  cmd_container_run "python3 /app/ops_cli.py $*"
+}
+
+# ── 指令：container-script <local-script> [args] ────────────────────────
+cmd_container_script() {
+  local script="${1:-}"
+  [[ -z "$script" ]] && err "用法: $0 container-script <local-script.py> [args...]"
+  [[ ! -f "$script" ]] && err "檔案不存在: $script"
+  local ext="${script##*.}"
+  [[ "$ext" == "py" || "$ext" == "sh" ]] || err "只允許 .py 和 .sh: $script"
+  local base; base=$(basename "$script")
+  local remote_tmp="/tmp/$base"
+  info "上傳 $script → container"
+  "${SCP_CMD[@]}" "$script" "$SERVER:$remote_tmp"
+  run_remote "docker cp $remote_tmp $CONTAINER:$remote_tmp"
+  shift
+  local interp
+  [[ "$ext" == "py" ]] && interp="python3" || interp="bash"
+  run_remote "docker exec $CONTAINER $interp $remote_tmp $@"
+  run_remote "docker exec $CONTAINER rm -f $remote_tmp"
+  run_remote "rm -f $remote_tmp"
+}
+
 # ── 指令：ssh ─────────────────────────────────────────────────────────────────
 # 注意：此指令為互動式，agent 應使用 ./devops.sh run "<cmd>" 代替
 cmd_ssh() {
@@ -521,6 +547,8 @@ case "${1:-help}" in
   run)          cmd_run "${@:2}" ;;
   container-run) cmd_container_run "${@:2}" ;;
   migrate-run)  cmd_migrate_run "${@:2}" ;;
+  ops-cli)          cmd_ops_cli "${@:2}" ;;
+  container-script) cmd_container_script "${@:2}" ;;
   ssh)          cmd_ssh ;;
   help|--help|-h|*)
     echo ""
@@ -545,6 +573,8 @@ case "${1:-help}" in
     echo "  run \"<cmd>\"             在遠端 host 執行任意指令"
     echo "  container-run \"<cmd>\"   在 Docker 容器內執行指令"
     echo "  migrate-run \"<cmd>\"     container-run + 自動重啟（清 cache）"
+    echo "  ops-cli <sub> [args]    在容器內執行 ops_cli.py <sub> [args]"
+    echo "  container-script <file> [args]  上傳本地腳本到容器內執行（.py/.sh）"
     echo "  ssh                     開啟互動式 SSH（人工用，agent 改用 run）"
     echo ""
     echo "Agent 環境變數:"

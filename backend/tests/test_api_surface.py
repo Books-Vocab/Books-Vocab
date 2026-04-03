@@ -569,8 +569,8 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
     _swap_settings(replace(original_settings, admin_token="adm-secret"))
     try:
         with patch("kg.token_tracker.get_all_stats", return_value=usage):
-            # Admin HTML pages now require auth
-            assert client.get("/admin").status_code == 403
+            # Admin HTML pages now redirect to login when unauthenticated
+            assert client.get("/admin", follow_redirects=False).status_code == 302
             assert client.get("/admin", params={"token": "adm-secret"}).status_code == 200
             assert client.get("/api/admin/stats").status_code == 403
             assert client.get("/api/admin/logs").status_code == 403
@@ -668,8 +668,8 @@ def test_admin_test_matrix_endpoints(isolated_api):
     _swap_settings(replace(original_settings, admin_token="adm-secret"))
     try:
         with patch("kg.admin_wiring.run_pytest_matrix", run_mock):
-            # Admin HTML pages require auth
-            assert client.get("/admin/tests").status_code == 403
+            # Admin HTML pages redirect to login when unauthenticated
+            assert client.get("/admin/tests", follow_redirects=False).status_code == 302
             r_ui = client.get("/admin/tests", params={"token": "adm-secret"})
             assert r_ui.status_code == 200
             assert "WordNexus Admin" in r_ui.text
