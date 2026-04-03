@@ -172,7 +172,7 @@ async def _step_link(
     from .tracked_llm import TrackedLLM
 
     llm = TrackedLLM(gemini_client_factory(), uid)
-    judge = Judge(llm, model=gemini_model)
+    judge = Judge(llm, model=gemini_model, user_id=uid, notebook_id=notebook_id)
     cards = card_store_factory(user["dir"])
     pending_links: list[tuple[str, str, Any, float, str]] = []
 
@@ -206,13 +206,14 @@ async def _step_link(
             (cand.to_id, card_b.content, card_b.meaning)
             for _, cand, card_b in group
         ]
+        sims = {cand.to_id: getattr(cand, "similarity", 0.0) for _, cand, _ in group}
         futures.append((
             from_id,
             group,
             loop.run_in_executor(
                 executor,
-                lambda a=card_a, bc=batch_candidates: judge.evaluate_batch(
-                    a.content, a.meaning, bc,
+                lambda a=card_a, bc=batch_candidates, fid=from_id, s=sims: judge.evaluate_batch(
+                    a.content, a.meaning, bc, from_id=fid, similarities=s,
                 ),
             ),
         ))
