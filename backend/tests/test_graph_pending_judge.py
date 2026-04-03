@@ -89,6 +89,49 @@ class TestRemovePendingJudgeFor:
         assert store.pending_judge_count() == 1
 
 
+class TestPendingJudgeLoadValidation:
+    """W11: pending_judge JSON load must validate type."""
+
+    def _make_store(self, tmp_path, pj_path):
+        return GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+
+    def test_dict_json_resets_to_empty(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        pj_path.write_text(json.dumps({"bad": "data"}))
+        store = self._make_store(tmp_path, pj_path)
+        assert store.pending_judge_count() == 0
+
+    def test_int_json_resets_to_empty(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        pj_path.write_text(json.dumps(42))
+        store = self._make_store(tmp_path, pj_path)
+        assert store.pending_judge_count() == 0
+
+    def test_string_json_resets_to_empty(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        pj_path.write_text(json.dumps("not a list"))
+        store = self._make_store(tmp_path, pj_path)
+        assert store.pending_judge_count() == 0
+
+    def test_list_with_non_string_elements_filters(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        pj_path.write_text(json.dumps(["card_a", 123, None, "card_b"]))
+        store = self._make_store(tmp_path, pj_path)
+        assert store.pending_judge_count() == 2
+        assert store._pending_judge == {"card_a", "card_b"}
+
+    def test_valid_list_loads_normally(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        pj_path.write_text(json.dumps(["card_x", "card_y"]))
+        store = self._make_store(tmp_path, pj_path)
+        assert store.pending_judge_count() == 2
+
+
 class TestMigrateCandidatesToPending:
     def test_migrate_old_candidates(self, tmp_path):
         """Old candidates.json data gets migrated to pending_judge on load."""

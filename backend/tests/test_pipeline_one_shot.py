@@ -300,3 +300,71 @@ def test_embed_and_judge_error_recovery():
     # Note: ThreadPoolExecutor submits all tasks concurrently, so all may execute,
     # but futures not yet awaited at exception time get their card IDs requeued.
     assert len(graph.added_pending) > 0
+
+
+def test_to_side_max_degree_tracked_for_inflight_links():
+    """C1: Multiple pending cards linking to the same other_id must not push
+    its to-side degree above MAX_DEGREE, even when those links are still in-flight
+    (not yet persisted to graph)."""
+    from kg.pipeline_service import _step_embed_and_judge
+    from kg.vocab_graph import MAX_DEGREE
+
+    # Setup: other_id "target" already has MAX_DEGREE - 1 links.
+    # Two pending cards (c1, c2) both want to link to "target".
+    # Only the first should succeed; the second must be blocked by to-side tracking.
+    cards_list = [
+        _make_card("c1", "evoke", "to bring to mind"),
+        _make_card("c2", "invoke", "to call upon"),
+        _make_card("target", "provoke", "to anger"),
+    ]
+    cards = _FakeCards(cards_list)
+
+    # Both c1 and c2 find "target" as similar
+    similar_map = {
+        "c1": [("target", 0.90)],
+        "c2": [("target", 0.88)],
+    }
+    embeddings = _FakeEmbeddings(has_ids={"c1", "c2", "target"}, similar_map=similar_map)
+
+    # "target" already has MAX_DEGREE - 1 links (one slot left)
+    existing_target_links = [SimpleNamespace(id=f"link{i}", status="active") for i in range(MAX_DEGREE - 1)]
+    graph = _FakeGraph(pending=["c1", "c2"], links={"target": existing_target_links})
+    logger = _FakeLogger()
+
+    # Judge approves both pairs
+    judge_results = {
+        "c1": {"target": Judgement(link="shares_usage", confidence=0.9, reason="related")},
+        "c2": {"target": Judgement(link="shares_usage", confidence=0.9, reason="related")},
+    }
+
+    import kg.judge as judge_mod
+    orig_judge = judge_mod.Judge
+    fake_judge = _FakeJudge(judge_results)
+
+    class PatchedJudge:
+        def __init__(self, llm, **kwargs):
+            pass
+        def evaluate_batch(self, *args, **kwargs):
+            return fake_judge.evaluate_batch(*args, **kwargs)
+
+    judge_mod.Judge = PatchedJudge
+    try:
+        asyncio.run(_step_embed_and_judge(
+            "u1", {"id": "u1", "dir": Path("/tmp/u1"), "config": {}},
+            card_store_factory=lambda d: cards,
+            graph_store_factory=lambda d, notebook_id="default": graph,
+            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+            gemini_client_factory=lambda: None,
+            logger=logger,
+            link_kind_enum=lambda v: v,
+        ))
+    finally:
+        judge_mod.Judge = orig_judge
+
+    # Only ONE link to "target" should be created (the first one fills the last slot).
+    # The second must be blocked by to-side degree tracking.
+    links_to_target = [lnk for lnk in graph.created_links if lnk[1] == "target"]
+    assert len(links_to_target) == 1, (
+        f"Expected 1 link to 'target' but got {len(links_to_target)}; "
+        f"to-side MAX_DEGREE was violated"
+    )
