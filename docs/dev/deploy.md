@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 6fd22c4
+verified_against: a5bcffc
 -->
 # 後端部署指南
 
@@ -214,7 +214,7 @@ data 目錄由容器 root 寫入，host ubuntu user 無法直接 rm，需進容�
 ## rsync 手動指令
 
 ```bash
-rsync -avz \
+rsync -avz --delete \
   -e "ssh -i ~/.ssh/lightsail_default.pem" \
   --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
   ~/MPSO/projects/kg/backend/ \

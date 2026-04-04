@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 6fd22c4
+verified_against: a5bcffc
 -->
 # 伺服器排障指南
 
@@ -137,11 +137,21 @@ Pipeline 有 per-user `asyncio.Lock`，crash 後可能鎖住。
 Step 1 Enrich → Gemini API key 無效/額度用完
   → ./devops.sh run "docker exec knowledge-graph-api env | grep GEMINI"
 
-Step 2 Link → candidates.json 格式問題
-  → ./devops.sh run "cat ~/knowledge_graph_api/data/users/<id>/candidates.json"
+Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
+  → 查 judge_log：./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<id>/cards.db 'SELECT * FROM judge_log ORDER BY created_at DESC LIMIT 20;'"
+  → 查 acceptance rate：admin dashboard 或 /api/admin/stats
 
-Step 4 Optional External Sync → Mochi API key 無效或未設定
+Step 3 Optional External Sync → Mochi API key 無效或未設定
   → ./devops.sh users
+```
+
+**Pipeline Telemetry 查詢**：
+```bash
+# 查 pipeline 執行歷史
+./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/pipeline_log.db 'SELECT * FROM runs ORDER BY started_at DESC LIMIT 10;'"
+
+# 查 translate_log（LLM 呼叫追蹤）
+./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<id>/cards.db 'SELECT * FROM translate_log ORDER BY created_at DESC LIMIT 20;'"
 ```
 
 ---
