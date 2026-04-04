@@ -30,6 +30,7 @@
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
+| `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
 
 ### Skill 規則
 
@@ -109,11 +110,11 @@
 動手前先對照，確認不重複建造。
 
 - **iOS**（`ios/BooksBrowser`）：auth flows（Apple/Google SSO）、bookshelf + reader（EPUB/TXT/MD/PDF multi-format import）、translation/explanation（context sentence extraction）、vocabulary capture/list/detail/sync/graph views、hide/unhide links + bilateral optimistic sync、toast notification system（capsule toast + sheet overlay）、graph thumbnail + health blob、today review、stats overview、settings + account deletion、onboarding empty-state login entry points、app-intent/background sync、preview matrix、**macOS multiplatform (macOS 15.0+)**
-- **Backend**（`backend/src/kg`）：auth/user identity（Apple/Google + web auth + cookie admin session）、user config/account lifecycle、vocabulary/graph-link APIs（hide/unhide/blocked pairs）、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、multi-format import parsing、query path perf（incremental sync/zipf cache/filter-before-sort）、write path perf（batch ops/N+1 elimination）、static pages、system observability（`/api/system/info` + VERSION tracking + deploy.log）、pipeline telemetry（`pipeline_log.db` — per-run/step timing + status + items，admin UI history view）
+- **Backend**（`backend/src/kg`）：auth/user identity（Apple/Google + web auth + cookie admin session）、user config/account lifecycle、vocabulary/graph-link APIs（hide/unhide/blocked pairs）、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、multi-format import parsing、query path perf（incremental sync/zipf cache/filter-before-sort）、write path perf（batch ops/N+1 elimination）、static pages、system observability（`/api/system/info` + VERSION tracking + deploy.log）、pipeline telemetry（`pipeline_log.db` — per-run/step timing + status + items，admin UI summary stats + stacked bar chart）、one-shot judge（pending_judge + selective prompt + degree cap + batch judge 86% token savings）、judge_log（complete decision tracking + acceptance rate）、translate_log（structured LLM call logging + cross-user cache）
 - **Chrome Extension**（`chrome-extension/`）：side panel vocab lookup、閱讀選詞翻譯、auth token 整合、woff2 字型
-- **Admin**：dashboard (`/admin`)、user detail page (`/admin/user/<uid>` — 帳戶/訂閱/grant/額度/token + graph density chart + graph playback + pipeline history)、password login (`/admin/login`)、logs/stats APIs (`/api/admin/*`)、test-matrix (`/admin/tests`)、in-memory log capture
+- **Admin**：dashboard (`/admin` — judge acceptance rate)、user detail page (`/admin/user/<uid>` — two-column layout：帳戶/訂閱/grant/額度/token + graph density chart + graph playback + pipeline waterfall + translate_log viewer)、password login (`/admin/login`)、logs/stats APIs (`/api/admin/*`)、test-matrix (`/admin/tests`)、in-memory log capture
 - **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix、auth provider tests（Apple/Google）、text_utils/enrich modules
-- **Ops**：safe wrapper、smart deploy（auto fast/full path）、ops-cli（container 內查詢工具）、container-script（本地腳本上傳執行）、preflight/backup/restart/status/logs/migration workflows、system observability（version tracking + deploy log）
+- **Ops**：safe wrapper、smart deploy（auto fast/full path + rsync --delete stale files）、ops-cli（container 內查詢工具）、container-script（本地腳本上傳執行）、ops_analyze.py（one-command deep graph analysis levels 1-6）、preflight/backup/restart/status/logs/migration workflows、system observability（version tracking + deploy log）
 
 ## Reference Docs（按需讀取）
 

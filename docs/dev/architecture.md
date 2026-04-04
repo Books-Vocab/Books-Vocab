@@ -3,7 +3,7 @@ tier: structural
 scope:
   - ios/BooksBrowser
   - backend/src/kg
-verified_against: 05acfbf
+verified_against: a5bcffc
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -71,7 +71,7 @@ App 實作了雙向同步流程，由 `BackgroundSyncActor`（`@ModelActor` 背�
 2. **Push Daily Stats** — 推送每日複習統計
 3. **Upload Deletes** — 找出 `actionType == "delete"` 項目，呼叫 API 刪除
 4. **Upload Adds** — 找出 `syncStatus == 0` 新詞，POST 到 KG
-5. **Fire-and-Forget Pipeline** — 呼叫 `/api/pipeline` 觸發背景 AI 處理（Enrich → Embed → Link → Difficulty）
+5. **Fire-and-Forget Pipeline** — 呼叫 `/api/pipeline` 觸發背景 AI 處理（Enrich → Embed → Judge → Difficulty），每次執行寫入 `pipeline_log.db` 記錄 per-run/step timing + status + items
 6. **Pull & Merge** — `pullCardsToLocal`：
    - 增量同步（`since` 時間戳），只拉異動過的 KGCard
    - 背景執行緒合併翻譯、詞性、難度、graph links
@@ -84,6 +84,22 @@ Graph link 操作採用 bilateral optimistic 策略：
 - 下次 sync 時 `flushPendingOperations` 批量 POST 到 server
 - Server 端 hide/unhide 是 idempotent，重複推送安全
 - Blocked pairs：hard delete link 時寫入 blocked pair，防止 pipeline 重新生成
+
+### One-Shot Judge 子系統
+
+Pipeline 的 Link 階段現由 one-shot judge 取代舊的 candidate queue：
+- **pending_judge**：embed 完成後，候選 link 寫入 `pending_judge` 而非直接建立
+- **Selective Prompt**：LLM 一次性判斷 pending pairs 是否值得連結，batch 模式節省 86% input tokens
+- **Degree Cap**：`MAX_DEGREE` 限制每個 node 的 to-side 連結數，hidden links 不計入
+- **judge_log**：完整記錄每次判斷的 accept/reject 決策，供 admin dashboard 顯示 acceptance rate
+- **Blocked pairs**：hard delete 時寫入 blocked pair，judge 不會重新提議
+
+### Translate Log
+
+翻譯/解釋路徑新增結構化 LLM 呼叫日誌：
+- 每次 LLM 呼叫記錄 prompt、response、token 消耗、latency
+- **Cross-user cache**：相同 word+context 命中快取時跳過 LLM 呼叫
+- Admin user detail page 可瀏覽 translate_log 記錄
 
 ### Chrome Extension Sync
 
@@ -126,4 +142,4 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。
 若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/references/ui_component_pattern_inventory.md`。
 若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/references/ui_state_matrix.md`。
-若要查 backend 部署、debug、測試與格式規範入口，查 `docs/backend-dev.md`。
+若要查 backend 部署、debug、測試與格式規範入口，查 `docs/dev/backend-dev.md`。
