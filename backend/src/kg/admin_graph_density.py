@@ -57,7 +57,10 @@ def compute_graph_density(
                     {"nb": notebook_id},
                 ).fetchall()
             for _id, created_at in rows:
-                ts = _parse_ts(created_at)
+                try:
+                    ts = _parse_ts(created_at)
+                except (ValueError, TypeError):
+                    continue
                 events.append((ts, "card"))
         finally:
             engine.dispose()
