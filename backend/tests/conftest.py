@@ -77,6 +77,18 @@ class _DummyEmbeddingStore:
         return []
 
 
+@pytest.fixture(autouse=True)
+def _isolate_translate_log():
+    """Clear translate_log between tests to prevent cache cross-contamination."""
+    import kg.translate_log as tl
+    tl._reset()
+    conn = tl._get_conn()
+    conn.execute("DELETE FROM translate_log")
+    conn.commit()
+    yield
+    tl._reset()
+
+
 @pytest.fixture()
 def isolated_api(tmp_path):
     import kg.api as api_mod
