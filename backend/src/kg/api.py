@@ -229,7 +229,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
 
     _RATE_LIMIT_EXEMPT = {
         "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
-        "/api/billing/app-store/notifications", "/admin",
+        "/api/billing/app-store/notifications",
         "/api/system/info",
     }
 

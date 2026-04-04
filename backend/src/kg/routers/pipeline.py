@@ -8,11 +8,13 @@ from ..deps import (
     _embedding_store,
     _gemini_client,
     _graph_store,
+    _notebook_store,
     get_user_lock,
     get_current_user,
     logger,
 )
 from ..graph import LinkKind
+from ..notebook import validate_notebook_access
 from ..pipeline_handlers import queue_pipeline_response
 from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..settings import KGSettings
@@ -40,6 +42,7 @@ async def run_pipeline(
     notebook_id: str = Query("default"),
 ):
     settings = request.app.state.kg_settings
+    validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
 
     async def _bg(u: dict) -> None:
         await _run_pipeline_background(u, settings=settings, force_enrich=force_enrich, notebook_id=notebook_id)
