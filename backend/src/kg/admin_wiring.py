@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from pathlib import Path
 
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
