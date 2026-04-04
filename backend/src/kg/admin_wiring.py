@@ -162,6 +162,11 @@ def create_admin_handlers(
         from .judge_log import get_acceptance_stats
         return get_acceptance_stats(user_id=user_id)
 
+    def admin_translate_history(user_id: str, limit: int = 50):
+        """Return translate/explain call history for a user."""
+        from .translate_log import get_log
+        return {"user_id": user_id, "history": get_log(user_id, limit=min(limit, 200))}
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -184,5 +189,6 @@ def create_admin_handlers(
         "admin_graph_playback": admin_graph_playback,
         "admin_pipeline_runs": admin_pipeline_runs,
         "admin_judge_stats": admin_judge_stats,
+        "admin_translate_history": admin_translate_history,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
