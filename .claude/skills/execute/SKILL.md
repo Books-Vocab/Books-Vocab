@@ -22,27 +22,34 @@ git worktree add .claude/worktrees/exec-<feature> -b worktree-<feature>
 
 讀 plan，提取所有 task 的完整文字與上下文。
 
-### Phase 2: Execute（自動）
+### Phase 2: Execute（pipeline 模式）
 
-對每個 task 依序：
+**所有 agent 一律 `run_in_background: true`。** 主流程不阻塞，靠通知驅動推進。
 
-1. **Dispatch opus implementer agent**（見 `implementer-prompt.md`）
-   - `isolation: "worktree"`（若 plan 中 task 可平行則平行 dispatch，否則依序）
-   - 所有 agent 用 `model: "opus"`
+#### 啟動
 
-2. **處理 implementer 回報**
-   - DONE → 進 review
-   - DONE_WITH_CONCERNS → 評估後進 review
-   - NEEDS_CONTEXT → 補充上下文，重 dispatch
-   - BLOCKED → 升級處理（拆小、補 context、escalate 使用者）
+依 plan 中的依賴關係，將所有無前置依賴的 task 同時 dispatch implementer（background）。
 
-3. **Dispatch opus spec reviewer**（見 `spec-reviewer-prompt.md`）
-   - ❌ → implementer 修 → 重 review
-   - ✅ → 進 code quality review
+#### Pipeline 規則
 
-4. **Dispatch opus code quality reviewer**（見 `code-quality-reviewer-prompt.md`）
-   - ❌ → implementer 修 → 重 review
-   - ✅ → mark task complete
+當收到任何 agent 完成通知，立即處理並 dispatch 後續：
+
+| 完成的 agent | 立即 dispatch（全部 background） |
+|---|---|
+| **Implementer（DONE / DONE_WITH_CONCERNS）** | ① spec reviewer（該 task）② 下一個可執行 task 的 implementer（若依賴已滿足） |
+| **Implementer（NEEDS_CONTEXT）** | 補充上下文，重 dispatch implementer |
+| **Implementer（BLOCKED）** | 升級處理（拆小、補 context、escalate 使用者） |
+| **Spec reviewer ✅** | code quality reviewer（該 task） |
+| **Spec reviewer ❌** | implementer 修復（該 task） |
+| **Code quality reviewer ✅** | mark task complete |
+| **Code quality reviewer ❌** | implementer 修復（該 task） |
+
+#### Agent 共通設定
+
+- `model: "opus"`
+- `run_in_background: true`
+- `isolation: "worktree"`（implementer 必須）
+- 單批不超過 7 個 agent，超過則排隊
 
 ### Phase 3: Final Review
 
@@ -83,10 +90,11 @@ git worktree prune
 
 ## 平行策略
 
-- Plan 中標記為獨立的 task：**同時 dispatch 多個 opus agent**（各自 worktree isolation）
-- 有依賴的 task：依序執行
-- 單批不超過 7 個 agent
-- 超過 7 個則分批
+- **Pipeline 並行**：implementation 與 review 交錯進行，不等整批完成
+- 無依賴的 task：implementer 同時 dispatch
+- 有依賴的 task：前置 task 的 implementer DONE 後才 dispatch
+- 同一時刻 in-flight agent 不超過 7 個，超過則排隊
+- 主流程靠 background 通知驅動，不 poll、不 sleep
 
 ## 關鍵原則
 
