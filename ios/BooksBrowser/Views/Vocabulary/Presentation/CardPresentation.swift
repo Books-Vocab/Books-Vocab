@@ -105,6 +105,10 @@ struct CardPresentation {
         )
     }
 
+    var hiddenLinks: [KGCardLinkSummary] {
+        linkGroups.flatMap(\.items).filter(\.isHidden)
+    }
+
     var totalLinkCount: Int {
         activeLinkGroups.reduce(0) { $0 + $1.items.count }
     }
