@@ -1128,8 +1128,8 @@ function renderWaterfall(run) {
 
   for (const step of steps) {
     const stepStart = step.started_at ? new Date(step.started_at).getTime() : runStart;
-    const leftPct = ((stepStart - runStart) / 1000) / totalDuration * 100;
-    const widthPct = (step.duration_s || 0) / totalDuration * 100;
+    const leftPct = Math.max(0, Math.min(100, ((stepStart - runStart) / 1000) / totalDuration * 100));
+    const widthPct = Math.min(100 - leftPct, (step.duration_s || 0) / totalDuration * 100);
     const statusClass = 's-' + (step.status || 'ok');
     const dur = step.duration_s != null ? step.duration_s.toFixed(1) + 's' : '—';
     const items = step.items ? step.items.toString() : '';

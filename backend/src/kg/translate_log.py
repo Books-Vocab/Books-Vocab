@@ -4,8 +4,10 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import UTC, datetime
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
+
+CACHE_TTL_DAYS = 30
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
@@ -51,11 +53,12 @@ def _reset() -> None:
             _conn = None
 
 def lookup(word: str, context_hash: str, source_lang: str, target_lang: str, operation: str) -> str | None:
+    cutoff = (datetime.now(UTC) - timedelta(days=CACHE_TTL_DAYS)).isoformat()
     with _lock:
         conn = _get_conn()
         row = conn.execute(
-            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? LIMIT 1",
-            (word, context_hash, source_lang, target_lang, operation),
+            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? AND created_at>? ORDER BY id DESC LIMIT 1",
+            (word, context_hash, source_lang, target_lang, operation, cutoff),
         ).fetchone()
     return row[0] if row else None
 
