@@ -39,6 +39,11 @@ def _get_conn() -> sqlite3.Connection:
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_user ON pipeline_runs(user_id)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_pr_started ON pipeline_runs(started_at)")
+        # Mark orphaned runs from previous crashes as interrupted
+        _conn.execute(
+            "UPDATE pipeline_runs SET status='interrupted', ended_at=? WHERE status='running'",
+            (datetime.now(UTC).isoformat(),),
+        )
         _conn.commit()
     return _conn
 

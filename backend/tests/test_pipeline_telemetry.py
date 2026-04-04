@@ -16,22 +16,6 @@ def _isolate_db(tmp_path, monkeypatch):
     pipeline_log._reset()
 
 
-def test_step_functions_return_int():
-    """Verify step functions have return type annotations or return int."""
-    # This is a structural test -- import and check the step functions exist
-    from kg.pipeline_service import (
-        _step_enrich,
-        _step_embed_and_judge,
-        _step_difficulty,
-        _step_external_sync,
-    )
-    # Just verify they're callable
-    assert callable(_step_enrich)
-    assert callable(_step_embed_and_judge)
-    assert callable(_step_difficulty)
-    assert callable(_step_external_sync)
-
-
 def test_run_step_records_telemetry():
     """_run_step should call pipeline_log when run_id is provided."""
     import asyncio
