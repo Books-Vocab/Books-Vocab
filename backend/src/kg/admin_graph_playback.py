@@ -39,7 +39,10 @@ def compute_graph_playback(
                     {"nb": notebook_id},
                 ).fetchall()
             for card_id, content, meaning, created_at in rows:
-                ts = _parse_ts(created_at)
+                try:
+                    ts = _parse_ts(created_at)
+                except (ValueError, TypeError):
+                    continue
                 nodes.append({
                     "id": card_id,
                     "label": content,
