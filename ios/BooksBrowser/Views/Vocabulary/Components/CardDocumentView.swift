@@ -272,7 +272,7 @@ private struct CardDocumentCollocationsBlock: View {
 // MARK: - Flow Layout
 
 /// 自動折行佈局 — 子視圖超出容器寬度時換行
-private struct CollocationFlowLayout: Layout {
+struct CollocationFlowLayout: Layout {
     var spacing: CGFloat
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
