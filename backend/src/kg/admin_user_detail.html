@@ -482,11 +482,19 @@ body {
       </div>
     </div>
 
-    <!-- Pipeline History -->
+    <!-- Pipeline Analytics -->
     <div class="section-block">
-      <div class="section-title">Pipeline History</div>
-      <div id="pipeline-history">
-        <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
+      <div class="section-title">Pipeline Analytics</div>
+      <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
+      <div id="pipeline-analytics" style="display:none">
+        <!-- Summary stats -->
+        <div class="stats" id="pipeline-summary" style="margin-bottom:16px"></div>
+        <!-- Step duration stacked bar chart -->
+        <div class="chart-wrap" style="margin-bottom:16px">
+          <canvas id="pipeline-chart" height="260"></canvas>
+        </div>
+        <!-- Run list -->
+        <div class="section-title" style="margin-top:8px">執行紀錄</div>
         <div id="pipeline-runs"></div>
       </div>
     </div>
@@ -1037,24 +1045,104 @@ function drawGraph(ctx) {
 }
 
 /* ── Load all data ── */
-/* ── Pipeline History ── */
-function renderPipelineHistory(data) {
-  const container = document.getElementById('pipeline-runs');
+/* ── Pipeline Analytics ── */
+let _pipelineChart = null;
+
+function renderPipelineAnalytics(data) {
   const noData = document.getElementById('pipeline-no-data');
+  const analytics = document.getElementById('pipeline-analytics');
+  const container = document.getElementById('pipeline-runs');
 
   if (!data || !data.runs || data.runs.length === 0) {
-    container.style.display = 'none';
+    analytics.style.display = 'none';
     noData.style.display = '';
     return;
   }
   noData.style.display = 'none';
-  container.style.display = '';
+  analytics.style.display = '';
 
-  container.innerHTML = data.runs.map((run, idx) => {
+  const runs = data.runs;
+  const total = runs.length;
+  const completed = runs.filter(r => r.status === 'completed').length;
+  const failed = runs.filter(r => r.status === 'failed').length;
+  const interrupted = runs.filter(r => r.status === 'interrupted').length;
+  const rate = total > 0 ? Math.round(completed / total * 100) : 0;
+  const avgDuration = runs.filter(r => r.duration_s != null).reduce((s, r, _, a) => s + r.duration_s / a.length, 0);
+  const totalItems = runs.reduce((s, r) => s + (r.steps || []).reduce((ss, st) => ss + (st.items || 0), 0), 0);
+
+  // Summary stats
+  document.getElementById('pipeline-summary').innerHTML = `
+    <div class="stat"><div class="v">${total}</div><div class="l">總執行數</div></div>
+    <div class="stat"><div class="v">${completed}</div><div class="l">成功</div></div>
+    <div class="stat"><div class="v">${failed}</div><div class="l">失敗</div></div>
+    <div class="stat"><div class="v">${rate}%</div><div class="l">成功率</div></div>
+    <div class="stat"><div class="v">${avgDuration.toFixed(1)}s</div><div class="l">平均耗時</div></div>
+    <div class="stat"><div class="v">${totalItems.toLocaleString()}</div><div class="l">總處理項目</div></div>
+  `;
+
+  // Stacked bar chart — step durations per run (newest 20)
+  const chartRuns = [...runs].reverse().slice(-20);
+  const stepNames = ['Enrich', 'EmbedAndJudge', 'Difficulty', 'ExternalSync'];
+  const stepColors = ['#2a2520', '#7a756c', '#b5ad9e', '#dbd6cd'];
+  const labels = chartRuns.map(r => fmtDate(r.started_at));
+
+  const datasets = stepNames.map((name, i) => ({
+    label: name,
+    data: chartRuns.map(r => {
+      const step = (r.steps || []).find(s => s.name === name);
+      return step && step.duration_s != null ? step.duration_s : 0;
+    }),
+    backgroundColor: stepColors[i],
+    borderWidth: 0,
+  }));
+
+  const canvas = document.getElementById('pipeline-chart');
+  if (_pipelineChart) _pipelineChart.destroy();
+  _pipelineChart = new Chart(canvas, {
+    type: 'bar',
+    data: { labels, datasets },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      plugins: {
+        legend: {
+          position: 'top',
+          labels: { font: { family: "'JetBrains Mono', monospace", size: 10 }, boxWidth: 12 },
+        },
+        tooltip: {
+          callbacks: {
+            label: (ctx) => {
+              const run = chartRuns[ctx.dataIndex];
+              const step = (run.steps || []).find(s => s.name === ctx.dataset.label);
+              const items = step && step.items ? ` (${step.items} items)` : '';
+              const status = step ? step.status : '—';
+              return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}s ${status}${items}`;
+            },
+          },
+        },
+      },
+      scales: {
+        x: {
+          stacked: true,
+          ticks: { font: { family: "'JetBrains Mono', monospace", size: 9 }, maxRotation: 45 },
+        },
+        y: {
+          stacked: true,
+          title: { display: true, text: '耗時 (秒)', font: { family: "'JetBrains Mono', monospace", size: 10 } },
+          ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } },
+          beginAtZero: true,
+        },
+      },
+    },
+  });
+
+  // Run list (existing expandable cards)
+  container.innerHTML = runs.map((run, idx) => {
     const statusClass = 's-' + run.status;
-    const statusIcon = run.status === 'completed' ? '✓' : run.status === 'failed' ? '✗' : '⏳';
+    const statusIcon = run.status === 'completed' ? '✓' : run.status === 'failed' ? '✗' : run.status === 'interrupted' ? '⚠' : '⏳';
     const duration = run.duration_s != null ? run.duration_s.toFixed(1) + 's' : '—';
     const time = fmtDate(run.started_at);
+    const runItems = (run.steps || []).reduce((s, st) => s + (st.items || 0), 0);
 
     const stepsHtml = (run.steps || []).map(step => {
       const sClass = 's-' + step.status;
@@ -1075,6 +1163,7 @@ function renderPipelineHistory(data) {
         <span class="pipeline-run-trigger">${escapeHtml(run.trigger)}</span>
         <span class="pipeline-run-time">${time}</span>
         <span class="pipeline-run-status ${statusClass}">${statusIcon} ${run.status}</span>
+        <span class="pipeline-run-items" style="color:var(--sub)">${runItems ? runItems + ' items' : ''}</span>
         <span class="pipeline-run-duration">${duration}</span>
       </div>
       <div class="pipeline-run-steps">${stepsHtml}</div>
@@ -1127,9 +1216,9 @@ async function loadPage() {
     // Pipeline history
     if (pipelineR.ok) {
       const pipelineData = await pipelineR.json();
-      renderPipelineHistory(pipelineData);
+      renderPipelineAnalytics(pipelineData);
     } else {
-      renderPipelineHistory(null);
+      renderPipelineAnalytics(null);
     }
 
   } catch (e) {
