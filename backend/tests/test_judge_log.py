@@ -123,3 +123,46 @@ def test_acceptance_stats(tmp_path, monkeypatch):
     assert abs(stats["rate"] - 0.6667) < 0.001
 
     judge_log._reset()
+
+
+def test_acceptance_stats_per_user(tmp_path, monkeypatch):
+    """get_acceptance_stats with user_id filters to that user only."""
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+
+    import importlib
+    from kg import judge_log
+    importlib.reload(judge_log)
+    judge_log._reset()
+
+    # u1: 2 accepted, 1 rejected
+    for accepted, verdict in [(True, "shares_usage"), (True, "contrasts_with"), (False, "not_applicable")]:
+        judge_log.record(
+            user_id="u1", notebook_id="nb1", from_id="a", to_id="b",
+            similarity=0.8, verdict=verdict, confidence=0.9,
+            accepted=accepted, source="auto",
+        )
+    # u2: 1 accepted
+    judge_log.record(
+        user_id="u2", notebook_id="nb1", from_id="x", to_id="y",
+        similarity=0.7, verdict="shares_usage", confidence=0.85,
+        accepted=True, source="auto",
+    )
+
+    s1 = judge_log.get_acceptance_stats(user_id="u1")
+    assert s1["total"] == 3
+    assert s1["accepted"] == 2
+    assert abs(s1["rate"] - 0.6667) < 0.001
+
+    s2 = judge_log.get_acceptance_stats(user_id="u2")
+    assert s2["total"] == 1
+    assert s2["accepted"] == 1
+    assert s2["rate"] == 1.0
+
+    sg = judge_log.get_acceptance_stats()
+    assert sg["total"] == 4
+
+    s3 = judge_log.get_acceptance_stats(user_id="u_nobody")
+    assert s3["total"] == 0
+    assert s3["rate"] is None
+
+    judge_log._reset()
