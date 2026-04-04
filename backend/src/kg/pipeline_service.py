@@ -3,6 +3,7 @@ from __future__ import annotations
 import asyncio
 import logging
 import threading
+import uuid
 from collections import defaultdict
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -44,7 +45,7 @@ async def _step_enrich(
 
     if not targets:
         logger.info("[%s] All cards already enriched", uid)
-        return
+        return 0
 
     from .enrich import enrich_cards_stream
     from .tracked_llm import TrackedLLM
@@ -82,6 +83,7 @@ async def _step_enrich(
                 updated += cards.batch_update(batch_updates)
 
     logger.info("[%s] Enriched %d cards", uid, updated)
+    return updated
 
 
 def _sync_embed_loop(
@@ -296,7 +298,7 @@ async def _step_embed_and_judge(
     pending = graph.pop_pending_judge()
     if not pending:
         logger.info("[%s] No pending cards to judge", uid)
-        return
+        return 0
 
     logger.info("[%s] Judging %d pending cards", uid, len(pending))
     judge = Judge(llm, model=gemini_model, user_id=uid, notebook_id=notebook_id)
@@ -369,7 +371,7 @@ async def _step_embed_and_judge(
 
     if not judge_tasks:
         logger.info("[%s] No cards need judging after filtering", uid)
-        return
+        return 0
 
     # ── Phase 2b: Parallel judge ──
     executor = ThreadPoolExecutor(max_workers=8)
@@ -440,6 +442,7 @@ async def _step_embed_and_judge(
     # Batch create all links
     created = graph.batch_add_links(all_links) if all_links else []
     logger.info("[%s] Created %d links from %d cards", uid, len(created), len(pending))
+    return len(created)
 
 
 async def _step_difficulty(
@@ -461,6 +464,7 @@ async def _step_difficulty(
             updates.append((card.id, {"difficulty": difficulty}))
     scored = cards.batch_update(updates)
     logger.info("[%s] Scored %d cards", uid, scored)
+    return scored
 
 
 async def _step_external_sync(
@@ -477,7 +481,7 @@ async def _step_external_sync(
     mochi_key = resolve_mochi_api_key_from_config(user["config"], jwt_secret)
     if not mochi_key:
         logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
-        return
+        return 0
 
     from .mochi import MochiClient, MochiSync
     from .renderer import RenderIntent
@@ -501,6 +505,7 @@ async def _step_external_sync(
         "[%s] Optional external sync (Mochi): %d created, %d updated, %d deleted",
         uid, stats["created"], stats["updated"], stats["deleted"],
     )
+    return stats["created"] + stats["updated"]
 
 
 _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError)
@@ -514,19 +519,39 @@ async def _run_step(
     logger: logging.Logger,
     retry: bool = False,
     retryable_exceptions: tuple = (OpenAIError, OSError),
+    run_id: str | None = None,
 ) -> None:
     """Execute a pipeline step with uniform error handling."""
+    if run_id:
+        try:
+            from . import pipeline_log
+            pipeline_log.start_step(run_id, name)
+        except Exception:
+            logger.warning("Failed to record pipeline telemetry", exc_info=True)
     try:
         if retry:
-            await async_retry(
+            result = await async_retry(
                 coro_fn, max_attempts=2,
                 retryable_exceptions=retryable_exceptions,
                 step_name=name, uid=uid,
             )
         else:
-            await coro_fn()
+            result = await coro_fn()
+        if run_id:
+            try:
+                from . import pipeline_log
+                items = result if isinstance(result, int) else 0
+                pipeline_log.end_step(run_id, name, status="ok", items=items)
+            except Exception:
+                logger.warning("Failed to record pipeline telemetry", exc_info=True)
     except _STEP_ERRORS as exc:
         logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
+        if run_id:
+            try:
+                from . import pipeline_log
+                pipeline_log.end_step(run_id, name, status="failed", error=str(exc))
+            except Exception:
+                logger.warning("Failed to record pipeline telemetry", exc_info=True)
 
 
 async def run_pipeline_background(
@@ -553,6 +578,13 @@ async def run_pipeline_background(
     async with lock:
         with _PIPELINE_RUNNING_LOCK:
             _PIPELINE_RUNNING[uid] = True
+        run_id = uuid.uuid4().hex[:12]
+        trigger = "manual" if force_enrich else "background"
+        try:
+            from . import pipeline_log
+            pipeline_log.start_run(run_id, uid, notebook_id, trigger)
+        except Exception:
+            logger.warning("Failed to record pipeline telemetry", exc_info=True)
         try:
             logger.info("[%s] Pipeline started.", uid)
 
@@ -569,7 +601,7 @@ async def run_pipeline_background(
                 force=force_enrich,
                 notebook_id=notebook_id,
                 gemini_model=gemini_model,
-            ), logger=logger, retry=True)
+            ), logger=logger, retry=True, run_id=run_id)
 
             await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
                 uid, user,
@@ -581,14 +613,14 @@ async def run_pipeline_background(
                 link_kind_enum=link_kind_enum,
                 notebook_id=notebook_id,
                 gemini_model=gemini_model,
-            ), logger=logger, retry=True)
+            ), logger=logger, retry=True, run_id=run_id)
 
             await _run_step(uid, "Difficulty", lambda: _step_difficulty(
                 uid, user,
                 card_store_factory=card_store_factory,
                 logger=logger,
                 notebook_id=notebook_id,
-            ), logger=logger)
+            ), logger=logger, run_id=run_id)
 
             # Core steps done — clear pending flag so iOS clients stop polling.
             # The asyncio lock remains held to prevent concurrent pipeline runs.
@@ -603,12 +635,22 @@ async def run_pipeline_background(
                 logger=logger,
                 jwt_secret=jwt_secret,
                 notebook_id=notebook_id,
-            ), logger=logger)
+            ), logger=logger, run_id=run_id)
 
             logger.info("[%s] Pipeline completed.", uid)
+            try:
+                from . import pipeline_log
+                pipeline_log.end_run(run_id, "completed")
+            except Exception:
+                logger.warning("Failed to record pipeline telemetry", exc_info=True)
 
         except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
             logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
+            try:
+                from . import pipeline_log
+                pipeline_log.end_run(run_id, "failed")
+            except Exception:
+                logger.warning("Failed to record pipeline telemetry", exc_info=True)
         finally:
             with _PIPELINE_RUNNING_LOCK:
                 _PIPELINE_RUNNING.pop(uid, None)
