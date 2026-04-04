@@ -157,13 +157,11 @@ body {
   display: flex;
   gap: 6px;
 }
-/* Detail sections grid */
-.info-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-  gap: 16px;
-  margin-bottom: 32px;
-}
+/* Two-column layout */
+.two-col { display: flex; gap: 24px; }
+.col-left { width: 340px; flex-shrink: 0; position: sticky; top: 52px; align-self: flex-start; max-height: calc(100vh - 68px); overflow-y: auto; }
+.col-left .detail-section + .detail-section { margin-top: 12px; }
+.col-right { flex: 1; min-width: 0; }
 .detail-section {
   border: 1px solid var(--border);
   border-radius: 3px;
@@ -429,6 +427,19 @@ body {
 .pipeline-step-duration { color: var(--sub); min-width: 60px; }
 .pipeline-step-items { color: var(--sub); }
 .pipeline-step-error { color: var(--dev); font-size: 10px; margin-top: 2px; word-break: break-all; }
+/* Waterfall */
+.waterfall { position: relative; margin: 8px 0; }
+.waterfall-axis { display: flex; justify-content: space-between; font-size: 9px; color: var(--sub); font-family: 'JetBrains Mono', monospace; border-bottom: 1px solid var(--border-l); padding-bottom: 4px; margin-bottom: 4px; }
+.waterfall-row { display: flex; align-items: center; gap: 8px; height: 24px; }
+.waterfall-label { width: 100px; font-size: 10px; font-family: 'JetBrains Mono', monospace; flex-shrink: 0; color: var(--ink); }
+.waterfall-track { flex: 1; position: relative; height: 16px; background: var(--border-l); border-radius: 2px; }
+.waterfall-bar { position: absolute; height: 100%; border-radius: 2px; min-width: 2px; }
+.waterfall-bar.s-ok { background: var(--ink); }
+.waterfall-bar.s-failed { background: var(--dev); }
+.waterfall-bar.s-skipped { background: var(--sub); }
+.waterfall-meta { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--sub); white-space: nowrap; width: 100px; flex-shrink: 0; text-align: right; }
+/* Sub-divider inside detail-section */
+.detail-divider { border-top: 1px solid var(--border); margin: 8px 0; padding-top: 6px; }
 </style>
 </head>
 <body>
@@ -447,55 +458,52 @@ body {
     <!-- User header -->
     <div class="user-header" id="user-header"></div>
 
-    <!-- Info cards -->
-    <div class="info-grid" id="info-grid"></div>
-
-    <!-- Graph Density -->
-    <div class="section-block">
-      <div class="section-title">Graph Density</div>
-      <div class="chart-wrap">
-        <canvas id="density-chart" height="300"></canvas>
-        <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
+    <!-- Two-column layout -->
+    <div class="two-col">
+      <div class="col-left">
+        <div class="detail-section" id="tbl-account"></div>
+        <div class="detail-section" id="tbl-subscription"></div>
+        <div class="detail-section" id="tbl-quota"></div>
       </div>
-    </div>
-
-    <!-- Graph Playback -->
-    <div class="section-block">
-      <div class="section-title">Graph Playback</div>
-      <div class="playback-wrap">
-        <div class="playback-canvas-container" id="playback-container">
-          <canvas id="playback-canvas"></canvas>
-          <div class="graph-tooltip" id="tooltip"></div>
+      <div class="col-right">
+        <!-- Pipeline Analytics -->
+        <div class="section-block">
+          <div class="section-title">Pipeline Analytics</div>
+          <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
+          <div id="pipeline-analytics" style="display:none">
+            <div id="pipeline-runs"></div>
+          </div>
         </div>
-        <div class="playback-controls" id="playback-controls">
-          <button id="btn-play" title="Play/Pause">▶</button>
-          <select id="speed-select">
-            <option value="1">1x</option>
-            <option value="5">5x</option>
-            <option value="10">10x</option>
-          </select>
-          <input type="range" id="timeline-slider" class="playback-slider" min="0" max="0" value="0">
-          <span class="playback-label" id="event-counter">0 / 0 events</span>
-          <span class="playback-label" id="time-label">—</span>
+        <!-- Graph Density -->
+        <div class="section-block">
+          <div class="section-title">Graph Density</div>
+          <div class="chart-wrap">
+            <canvas id="density-chart" height="300"></canvas>
+            <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
+          </div>
         </div>
-        <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
-      </div>
-    </div>
-
-    <!-- Pipeline Analytics -->
-    <div class="section-block">
-      <div class="section-title">Pipeline Analytics</div>
-      <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
-      <div id="pipeline-analytics" style="display:none">
-        <!-- Summary stats -->
-        <div class="stats" id="pipeline-summary" style="margin-bottom:16px"></div>
-        <!-- Step duration stacked bar chart -->
-        <div class="chart-wrap" style="margin-bottom:16px">
-          <canvas id="pipeline-chart" height="260"></canvas>
+        <!-- Graph Playback -->
+        <div class="section-block">
+          <div class="section-title">Graph Playback</div>
+          <div class="playback-wrap">
+            <div class="playback-canvas-container" id="playback-container">
+              <canvas id="playback-canvas"></canvas>
+              <div class="graph-tooltip" id="tooltip"></div>
+            </div>
+            <div class="playback-controls" id="playback-controls">
+              <button id="btn-play" title="Play/Pause">▶</button>
+              <select id="speed-select">
+                <option value="1">1x</option>
+                <option value="5">5x</option>
+                <option value="10">10x</option>
+              </select>
+              <input type="range" id="timeline-slider" class="playback-slider" min="0" max="0" value="0">
+              <span class="playback-label" id="event-counter">0 / 0 events</span>
+              <span class="playback-label" id="time-label">—</span>
+            </div>
+            <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
+          </div>
         </div>
-        <!-- Run list -->
-        <div class="section-title" style="margin-top:8px">執行紀錄</div>
-        <div id="pipeline-runs"></div>
       </div>
     </div>
 
@@ -626,59 +634,64 @@ function renderUserInfo(u) {
     </div>
   `;
 
+  // Table 1: 帳戶基本資訊
+  document.getElementById('tbl-account').innerHTML = `
+    <div class="detail-section-title">帳戶基本資訊</div>
+    <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
+    <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
+    <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
+    <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
+    <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
+  `;
+
+  // Table 2: 訂閱狀態（含 Admin Grant）
+  document.getElementById('tbl-subscription').innerHTML = `
+    <div class="detail-section-title">訂閱狀態</div>
+    <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${pro.is_active ? '是' : '否'}</span></div>
+    <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(pro.status || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(pro.source || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(pro.plan_name || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(pro.price_display || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(pro.expires_at)}</span></div>
+    <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${pro.is_trial ? '是' : '否'}</span></div>
+    <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${pro.will_renew ? '是' : '否'}</span></div>
+    <div class="detail-divider">
+      <div class="detail-section-title" style="margin-bottom:4px">Admin Grant</div>
+    </div>
+    <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
+    <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
+    <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
+    <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
+  `;
+
+  // Table 3: 額度使用狀態（合併額度 + Token）
   const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
   const pctUsed = Math.round(q.fraction_used * 100);
-  const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',embed:'embed'};
-  let quotaHtml = `<div class="detail-kv"><span class="detail-k">已使用</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctUsed}%)</span></div>`;
-  quotaHtml += `<div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctUsed}%"></div></div></div>`;
   const calls = q.calls || {};
-  for (const [t, label] of Object.entries(typeLabels)) {
+  const tokens = u.tokens || {};
+  const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',manual_link_judge:'manual_judge',embed:'embed'};
+  // Collect union of all type keys
+  const allTypes = new Set([...Object.keys(calls), ...Object.keys(tokens)]);
+  let usageRows = '';
+  for (const t of allTypes) {
+    const label = typeLabels[t] || t;
     const c = calls[t];
-    if (c) quotaHtml += `<div class="detail-kv"><span class="detail-k">${label}</span><span class="detail-v">&times;${c.count} = $${c.cost_usd.toFixed(4)}</span></div>`;
+    const tk = tokens[t];
+    const costPart = c ? `&times;${c.count} = $${c.cost_usd.toFixed(4)}` : '';
+    const tokenPart = tk ? `${fmt(tk.input_tokens)}↑ ${fmt(tk.output_tokens)}↓` : '';
+    const sep = costPart && tokenPart ? ' | ' : '';
+    usageRows += `<div class="detail-kv"><span class="detail-k">${escapeHtml(label)}</span><span class="detail-v">${costPart}${sep}${tokenPart}</span></div>`;
   }
-  if (!Object.keys(calls).length) quotaHtml += `<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>`;
+  if (!allTypes.size) usageRows = '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
 
-  document.getElementById('info-grid').innerHTML = `
-    <div class="detail-section">
-      <div class="detail-section-title">帳戶資訊</div>
-      <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
-      <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
-      <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
-      <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
-      <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">訂閱狀態</div>
-      <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${pro.is_active ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(pro.status || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(pro.source || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(pro.plan_name || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(pro.price_display || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(pro.expires_at)}</span></div>
-      <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${pro.is_trial ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${pro.will_renew ? '是' : '否'}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Admin Grant</div>
-      <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
-      <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(ag.status || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
-      <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
-      <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">每日翻譯額度（24h）</div>
-      ${quotaHtml}
-    </div>
-    <div class="detail-section">
-      <div class="detail-section-title">Token 消耗明細</div>
-      ${Object.entries(u.tokens || {}).map(([t, d]) =>
-        `<div class="detail-kv"><span class="detail-k">${escapeHtml(t)}</span><span class="detail-v">${fmt(d.input_tokens)}↑ ${fmt(d.output_tokens)}↓ ×${d.calls}</span></div>`
-      ).join('') || '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無紀錄</span></div>'}
-      <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
-    </div>
+  document.getElementById('tbl-quota').innerHTML = `
+    <div class="detail-section-title">額度使用狀態</div>
+    <div class="detail-kv"><span class="detail-k">已使用（24h）</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctUsed}%)</span></div>
+    <div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctUsed}%"></div></div></div>
+    ${usageRows}
+    <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
   `;
 }
 
@@ -1046,7 +1059,44 @@ function drawGraph(ctx) {
 
 /* ── Load all data ── */
 /* ── Pipeline Analytics ── */
-let _pipelineChart = null;
+function renderWaterfall(run) {
+  const totalDuration = run.duration_s || 1;
+  const runStart = new Date(run.started_at).getTime();
+  const steps = run.steps || [];
+  if (!steps.length) return '<div style="padding:8px;color:var(--sub);font-size:11px">無步驟資料</div>';
+
+  let html = '<div class="waterfall">';
+  html += '<div class="waterfall-axis">';
+  html += '<span>0s</span>';
+  html += `<span>${(totalDuration * 0.25).toFixed(1)}s</span>`;
+  html += `<span>${(totalDuration * 0.5).toFixed(1)}s</span>`;
+  html += `<span>${(totalDuration * 0.75).toFixed(1)}s</span>`;
+  html += `<span>${totalDuration.toFixed(1)}s</span>`;
+  html += '</div>';
+
+  for (const step of steps) {
+    const stepStart = step.started_at ? new Date(step.started_at).getTime() : runStart;
+    const leftPct = ((stepStart - runStart) / 1000) / totalDuration * 100;
+    const widthPct = (step.duration_s || 0) / totalDuration * 100;
+    const statusClass = 's-' + (step.status || 'ok');
+    const dur = step.duration_s != null ? step.duration_s.toFixed(1) + 's' : '—';
+    const items = step.items ? step.items.toString() : '';
+
+    html += '<div class="waterfall-row">';
+    html += `<span class="waterfall-label">${escapeHtml(step.name)}</span>`;
+    html += '<div class="waterfall-track">';
+    html += `<div class="waterfall-bar ${statusClass}" style="left:${leftPct.toFixed(1)}%;width:${Math.max(widthPct, 0.5).toFixed(1)}%"></div>`;
+    html += '</div>';
+    html += `<span class="waterfall-meta">${dur}${items ? '  ' + items : ''}</span>`;
+    html += '</div>';
+
+    if (step.error) {
+      html += `<div class="pipeline-step-error" style="margin-left:108px">${escapeHtml(step.error)}</div>`;
+    }
+  }
+  html += '</div>';
+  return html;
+}
 
 function renderPipelineAnalytics(data) {
   const noData = document.getElementById('pipeline-no-data');
@@ -1062,101 +1112,13 @@ function renderPipelineAnalytics(data) {
   analytics.style.display = '';
 
   const runs = data.runs;
-  const total = runs.length;
-  const completed = runs.filter(r => r.status === 'completed').length;
-  const failed = runs.filter(r => r.status === 'failed').length;
-  const interrupted = runs.filter(r => r.status === 'interrupted').length;
-  const rate = total > 0 ? Math.round(completed / total * 100) : 0;
-  const avgDuration = runs.filter(r => r.duration_s != null).reduce((s, r, _, a) => s + r.duration_s / a.length, 0);
-  const totalItems = runs.reduce((s, r) => s + (r.steps || []).reduce((ss, st) => ss + (st.items || 0), 0), 0);
 
-  // Summary stats
-  document.getElementById('pipeline-summary').innerHTML = `
-    <div class="stat"><div class="v">${total}</div><div class="l">總執行數</div></div>
-    <div class="stat"><div class="v">${completed}</div><div class="l">成功</div></div>
-    <div class="stat"><div class="v">${failed}</div><div class="l">失敗</div></div>
-    <div class="stat"><div class="v">${rate}%</div><div class="l">成功率</div></div>
-    <div class="stat"><div class="v">${avgDuration.toFixed(1)}s</div><div class="l">平均耗時</div></div>
-    <div class="stat"><div class="v">${totalItems.toLocaleString()}</div><div class="l">總處理項目</div></div>
-  `;
-
-  // Stacked bar chart — step durations per run (newest 20)
-  const chartRuns = [...runs].reverse().slice(-20);
-  const stepNames = ['Enrich', 'EmbedAndJudge', 'Difficulty', 'ExternalSync'];
-  const stepColors = ['#2a2520', '#7a756c', '#b5ad9e', '#dbd6cd'];
-  const labels = chartRuns.map(r => fmtDate(r.started_at));
-
-  const datasets = stepNames.map((name, i) => ({
-    label: name,
-    data: chartRuns.map(r => {
-      const step = (r.steps || []).find(s => s.name === name);
-      return step && step.duration_s != null ? step.duration_s : 0;
-    }),
-    backgroundColor: stepColors[i],
-    borderWidth: 0,
-  }));
-
-  const canvas = document.getElementById('pipeline-chart');
-  if (_pipelineChart) _pipelineChart.destroy();
-  _pipelineChart = new Chart(canvas, {
-    type: 'bar',
-    data: { labels, datasets },
-    options: {
-      responsive: true,
-      maintainAspectRatio: false,
-      plugins: {
-        legend: {
-          position: 'top',
-          labels: { font: { family: "'JetBrains Mono', monospace", size: 10 }, boxWidth: 12 },
-        },
-        tooltip: {
-          callbacks: {
-            label: (ctx) => {
-              const run = chartRuns[ctx.dataIndex];
-              const step = (run.steps || []).find(s => s.name === ctx.dataset.label);
-              const items = step && step.items ? ` (${step.items} items)` : '';
-              const status = step ? step.status : '—';
-              return `${ctx.dataset.label}: ${ctx.parsed.y.toFixed(1)}s ${status}${items}`;
-            },
-          },
-        },
-      },
-      scales: {
-        x: {
-          stacked: true,
-          ticks: { font: { family: "'JetBrains Mono', monospace", size: 9 }, maxRotation: 45 },
-        },
-        y: {
-          stacked: true,
-          title: { display: true, text: '耗時 (秒)', font: { family: "'JetBrains Mono', monospace", size: 10 } },
-          ticks: { font: { family: "'JetBrains Mono', monospace", size: 10 } },
-          beginAtZero: true,
-        },
-      },
-    },
-  });
-
-  // Run list (existing expandable cards)
   container.innerHTML = runs.map((run, idx) => {
     const statusClass = 's-' + run.status;
     const statusIcon = run.status === 'completed' ? '✓' : run.status === 'failed' ? '✗' : run.status === 'interrupted' ? '⚠' : '⏳';
     const duration = run.duration_s != null ? run.duration_s.toFixed(1) + 's' : '—';
     const time = fmtDate(run.started_at);
     const runItems = (run.steps || []).reduce((s, st) => s + (st.items || 0), 0);
-
-    const stepsHtml = (run.steps || []).map(step => {
-      const sClass = 's-' + step.status;
-      const sIcon = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : step.status === 'skipped' ? '—' : '⏳';
-      const sDuration = step.duration_s != null ? step.duration_s.toFixed(1) + 's' : '—';
-      const sItems = step.items ? step.items + ' items' : '';
-      const sError = step.error ? `<div class="pipeline-step-error">${escapeHtml(step.error)}</div>` : '';
-      return `<div class="pipeline-step">
-        <span class="pipeline-step-name">${escapeHtml(step.name)}</span>
-        <span class="pipeline-step-status ${sClass}">${sIcon} ${step.status}</span>
-        <span class="pipeline-step-duration">${sDuration}</span>
-        <span class="pipeline-step-items">${sItems}</span>
-      </div>${sError}`;
-    }).join('');
 
     return `<div class="pipeline-run" id="prun-${idx}">
       <div class="pipeline-run-header" onclick="document.getElementById('prun-${idx}').classList.toggle('open')">
@@ -1166,7 +1128,7 @@ function renderPipelineAnalytics(data) {
         <span class="pipeline-run-items" style="color:var(--sub)">${runItems ? runItems + ' items' : ''}</span>
         <span class="pipeline-run-duration">${duration}</span>
       </div>
-      <div class="pipeline-run-steps">${stepsHtml}</div>
+      <div class="pipeline-run-steps">${renderWaterfall(run)}</div>
     </div>`;
   }).join('');
 }
