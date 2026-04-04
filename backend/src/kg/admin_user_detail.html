@@ -373,6 +373,62 @@ body {
   gap: 8px;
   margin-top: 16px;
 }
+/* Pipeline history */
+.pipeline-run {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  margin-bottom: 8px;
+}
+.pipeline-run-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 10px 14px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.pipeline-run-header:hover { background: #f6f4ef; }
+.pipeline-run.open .pipeline-run-header { border-bottom: 1px solid var(--border-l); }
+.pipeline-run-trigger {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.pipeline-run-time { color: var(--sub); }
+.pipeline-run-status { font-weight: 500; }
+.pipeline-run-status.s-completed { color: var(--ink); }
+.pipeline-run-status.s-failed { color: var(--dev); }
+.pipeline-run-status.s-running { color: var(--ink-light); }
+.pipeline-run-duration { color: var(--sub); margin-left: auto; }
+.pipeline-run-steps {
+  display: none;
+  padding: 8px 14px;
+}
+.pipeline-run.open .pipeline-run-steps { display: block; }
+.pipeline-step {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 4px 0;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-l);
+}
+.pipeline-step:last-child { border-bottom: none; }
+.pipeline-step-name { min-width: 120px; color: var(--ink); }
+.pipeline-step-status { min-width: 50px; }
+.pipeline-step-status.s-ok { color: var(--ink); }
+.pipeline-step-status.s-failed { color: var(--dev); }
+.pipeline-step-status.s-skipped { color: var(--sub); }
+.pipeline-step-status.s-running { color: var(--ink-light); }
+.pipeline-step-duration { color: var(--sub); min-width: 60px; }
+.pipeline-step-items { color: var(--sub); }
+.pipeline-step-error { color: var(--dev); font-size: 10px; margin-top: 2px; word-break: break-all; }
 </style>
 </head>
 <body>
@@ -423,6 +479,15 @@ body {
           <span class="playback-label" id="time-label">—</span>
         </div>
         <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
+      </div>
+    </div>
+
+    <!-- Pipeline History -->
+    <div class="section-block">
+      <div class="section-title">Pipeline History</div>
+      <div id="pipeline-history">
+        <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
+        <div id="pipeline-runs"></div>
       </div>
     </div>
 
@@ -972,12 +1037,58 @@ function drawGraph(ctx) {
 }
 
 /* ── Load all data ── */
+/* ── Pipeline History ── */
+function renderPipelineHistory(data) {
+  const container = document.getElementById('pipeline-runs');
+  const noData = document.getElementById('pipeline-no-data');
+
+  if (!data || !data.runs || data.runs.length === 0) {
+    container.style.display = 'none';
+    noData.style.display = '';
+    return;
+  }
+  noData.style.display = 'none';
+  container.style.display = '';
+
+  container.innerHTML = data.runs.map((run, idx) => {
+    const statusClass = 's-' + run.status;
+    const statusIcon = run.status === 'completed' ? '✓' : run.status === 'failed' ? '✗' : '⏳';
+    const duration = run.duration_s != null ? run.duration_s.toFixed(1) + 's' : '—';
+    const time = fmtDate(run.started_at);
+
+    const stepsHtml = (run.steps || []).map(step => {
+      const sClass = 's-' + step.status;
+      const sIcon = step.status === 'ok' ? '✓' : step.status === 'failed' ? '✗' : step.status === 'skipped' ? '—' : '⏳';
+      const sDuration = step.duration_s != null ? step.duration_s.toFixed(1) + 's' : '—';
+      const sItems = step.items ? step.items + ' items' : '';
+      const sError = step.error ? `<div class="pipeline-step-error">${escapeHtml(step.error)}</div>` : '';
+      return `<div class="pipeline-step">
+        <span class="pipeline-step-name">${escapeHtml(step.name)}</span>
+        <span class="pipeline-step-status ${sClass}">${sIcon} ${step.status}</span>
+        <span class="pipeline-step-duration">${sDuration}</span>
+        <span class="pipeline-step-items">${sItems}</span>
+      </div>${sError}`;
+    }).join('');
+
+    return `<div class="pipeline-run" id="prun-${idx}">
+      <div class="pipeline-run-header" onclick="document.getElementById('prun-${idx}').classList.toggle('open')">
+        <span class="pipeline-run-trigger">${escapeHtml(run.trigger)}</span>
+        <span class="pipeline-run-time">${time}</span>
+        <span class="pipeline-run-status ${statusClass}">${statusIcon} ${run.status}</span>
+        <span class="pipeline-run-duration">${duration}</span>
+      </div>
+      <div class="pipeline-run-steps">${stepsHtml}</div>
+    </div>`;
+  }).join('');
+}
+
 async function loadPage() {
   try {
-    const [statsR, densityR, playbackR] = await Promise.all([
+    const [statsR, densityR, playbackR, pipelineR] = await Promise.all([
       adminFetch('/api/admin/stats'),
       adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
+      adminFetch('/api/admin/pipeline-runs?user_id=' + encodeURIComponent(USER_ID)),
     ]);
 
     if (!statsR.ok) {
@@ -1011,6 +1122,14 @@ async function loadPage() {
       initPlayback(playbackData);
     } else {
       initPlayback(null);
+    }
+
+    // Pipeline history
+    if (pipelineR.ok) {
+      const pipelineData = await pipelineR.json();
+      renderPipelineHistory(pipelineData);
+    } else {
+      renderPipelineHistory(null);
     }
 
   } catch (e) {
