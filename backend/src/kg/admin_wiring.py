@@ -157,6 +157,11 @@ def create_admin_handlers(
         from .pipeline_log import get_runs
         return {"user_id": user_id, "runs": get_runs(user_id, limit=min(limit, 100))}
 
+    def admin_judge_stats(user_id: str):
+        """Return per-user judge acceptance stats."""
+        from .judge_log import get_acceptance_stats
+        return get_acceptance_stats(user_id=user_id)
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -178,5 +183,6 @@ def create_admin_handlers(
         "admin_graph_density": admin_graph_density,
         "admin_graph_playback": admin_graph_playback,
         "admin_pipeline_runs": admin_pipeline_runs,
+        "admin_judge_stats": admin_judge_stats,
         "admin_user_detail_ui": admin_user_detail_ui,
     }

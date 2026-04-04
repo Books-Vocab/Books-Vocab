@@ -613,7 +613,7 @@ async function revokePro(userId) {
 }
 
 /* ── Render user info ── */
-function renderUserInfo(u) {
+function renderUserInfo(u, judgeStats) {
   const pro = u.pro || {};
   const ag = u.admin_grant || {};
   const proBadgeClass = pro.is_active ? 'badge-pro-active' : 'badge-pro-inactive';
@@ -686,10 +686,15 @@ function renderUserInfo(u) {
   }
   if (!allTypes.size) usageRows = '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
 
+  const judgeHtml = judgeStats && judgeStats.total > 0
+    ? `<div class="detail-kv"><span class="detail-k">Judge 通過率</span><span class="detail-v">${(judgeStats.rate * 100).toFixed(1)}% (${judgeStats.accepted}/${judgeStats.total})</span></div>`
+    : '';
+
   document.getElementById('tbl-quota').innerHTML = `
     <div class="detail-section-title">額度使用狀態</div>
     <div class="detail-kv"><span class="detail-k">已使用（24h）</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctUsed}%)</span></div>
     <div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctUsed}%"></div></div></div>
+    ${judgeHtml}
     ${usageRows}
     <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
   `;
@@ -1135,11 +1140,12 @@ function renderPipelineAnalytics(data) {
 
 async function loadPage() {
   try {
-    const [statsR, densityR, playbackR, pipelineR] = await Promise.all([
+    const [statsR, densityR, playbackR, pipelineR, judgeR] = await Promise.all([
       adminFetch('/api/admin/stats'),
       adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/pipeline-runs?user_id=' + encodeURIComponent(USER_ID)),
+      adminFetch('/api/admin/judge-stats?user_id=' + encodeURIComponent(USER_ID)),
     ]);
 
     if (!statsR.ok) {
@@ -1157,7 +1163,8 @@ async function loadPage() {
     document.getElementById('app').style.display = '';
     document.title = user.email || user.user_id;
 
-    renderUserInfo(user);
+    const judgeStats = judgeR.ok ? await judgeR.json() : null;
+    renderUserInfo(user, judgeStats);
 
     // Density chart
     if (densityR.ok) {
