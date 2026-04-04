@@ -35,7 +35,7 @@ async def _step_enrich(
     force: bool = False,
     notebook_id: str = "default",
     gemini_model: str = "gemini-2.5-flash-lite",
-) -> None:
+) -> int:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
     if force:
@@ -263,7 +263,7 @@ async def _step_embed_and_judge(
     link_kind_enum: Any,
     notebook_id: str = "default",
     gemini_model: str = "gemini-2.5-flash-lite",
-) -> None:
+) -> int:
     """Combined embed + judge step. Replaces _step_embed + _step_link."""
     from .judge import Judge
     from .tracked_llm import TrackedLLM
@@ -452,7 +452,7 @@ async def _step_difficulty(
     card_store_factory: Callable[[Any], Any],
     logger: logging.Logger,
     notebook_id: str = "default",
-) -> None:
+) -> int:
     logger.info("[%s] Step 3: Difficulty (notebook=%s)", uid, notebook_id)
     from .difficulty import get_zipf
 
@@ -476,7 +476,7 @@ async def _step_external_sync(
     logger: logging.Logger,
     jwt_secret: str = "",
     notebook_id: str = "default",
-) -> None:
+) -> int:
     logger.info("[%s] Step 4: Optional External Sync (notebook=%s)", uid, notebook_id)
     mochi_key = resolve_mochi_api_key_from_config(user["config"], jwt_secret)
     if not mochi_key:

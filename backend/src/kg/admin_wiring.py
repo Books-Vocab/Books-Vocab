@@ -154,7 +154,7 @@ def create_admin_handlers(
     def admin_pipeline_runs(user_id: str, limit: int = 20):
         """Return pipeline run history for a user."""
         from .pipeline_log import get_runs
-        return {"user_id": user_id, "runs": get_runs(user_id, limit=limit)}
+        return {"user_id": user_id, "runs": get_runs(user_id, limit=min(limit, 100))}
 
     def admin_user_detail_ui():
         """User detail page UI."""
