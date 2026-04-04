@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
+import time
 from collections.abc import Callable
 from typing import Any
 
+from . import translate_log
 from .exceptions import ExternalServiceError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
@@ -23,6 +26,10 @@ def _context_around_word(context: str, word: str, max_len: int = 300) -> str:
     start = max(0, pos - half)
     end = min(len(context), pos + len(word) + half)
     return context[start:end].strip()
+
+
+def _compute_context_hash(context: str) -> str:
+    return hashlib.sha256((context or "").encode()).hexdigest()[:16]
 
 
 def resolve_translation_langs(req: TranslateRequest, user: dict[str, Any]) -> tuple[str, str]:
@@ -117,8 +124,19 @@ async def _run_llm_translate(
     operation: str,
     logger: logging.Logger | None = None,
 ) -> dict:
-    """Common LLM translate flow: resolve langs -> call -> parse -> track."""
+    """Common LLM translate flow: resolve langs -> cache check -> call -> parse -> record."""
     source_lang, target_lang = resolve_translation_langs(req, user)
+    ctx = _context_around_word(req.context, req.word)
+    word_key = req.word.strip().lower()
+    ctx_hash = _compute_context_hash(ctx)
+
+    # Cache lookup
+    cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation)
+    if cached is not None:
+        return _parse_json_payload(cached)
+
+    # LLM call with latency tracking
+    t0 = time.monotonic()
     response = await llm.chat_async(
         operation,
         model=model,
@@ -126,11 +144,21 @@ async def _run_llm_translate(
         temperature=0.3,
         response_format={"type": "json_object"},
     )
+    latency_ms = int((time.monotonic() - t0) * 1000)
+
     if not response.choices:
         if logger:
             logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
         raise ExternalServiceError("Gemini returned empty response")
-    return _parse_json_payload(response.choices[0].message.content)
+
+    raw = response.choices[0].message.content
+    translate_log.record(
+        user_id=llm.user_id, operation=operation,
+        word=word_key, context=ctx, context_hash=ctx_hash,
+        source_lang=source_lang, target_lang=target_lang,
+        response_raw=raw or "", latency_ms=latency_ms,
+    )
+    return _parse_json_payload(raw)
 
 
 async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
