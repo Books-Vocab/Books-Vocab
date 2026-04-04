@@ -72,7 +72,7 @@ struct WordDetailPresenter: View {
                             .padding(vocabSkin.metrics.cardBlockPadding)
                         }
 
-                        if !state.card.linkGroups.isEmpty || onAddLink != nil {
+                        if !state.card.activeLinkGroups.isEmpty || !state.card.hiddenLinks.isEmpty || onAddLink != nil {
                             CardSectionDivider()
                             linksSection
                                 .padding(vocabSkin.metrics.cardBlockPadding)
@@ -121,7 +121,7 @@ struct WordDetailPresenter: View {
                 }
             }
 
-            ForEach(state.card.linkGroups) { group in
+            ForEach(state.card.activeLinkGroups) { group in
                 VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
                     Text(group.label.localized)
                         .font(vocabSkin.typography.caption)
@@ -137,6 +137,38 @@ struct WordDetailPresenter: View {
                             onHide: onHideLink != nil ? { onHideLink?(link) } : nil,
                             onUnhide: onUnhideLink != nil ? { onUnhideLink?(link) } : nil
                         )
+                    }
+                }
+            }
+
+            if !state.card.hiddenLinks.isEmpty {
+                CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                    ForEach(state.card.hiddenLinks) { link in
+                        Text(link.word)
+                            .font(vocabSkin.typography.monoBody)
+                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 4)
+                            .background(
+                                Capsule()
+                                    .fill(vocabSkin.palette.divider.opacity(0.5))
+                            )
+                            .contextMenu {
+                                if let onUnhide = onUnhideLink {
+                                    Button {
+                                        onUnhide(link)
+                                    } label: {
+                                        Label("恢復連結".localized, systemImage: "eye")
+                                    }
+                                }
+                                if let onDelete = onDeleteLink {
+                                    Button(role: .destructive) {
+                                        onDelete(link)
+                                    } label: {
+                                        Label("刪除連結".localized, systemImage: "trash")
+                                    }
+                                }
+                            }
                     }
                 }
             }
