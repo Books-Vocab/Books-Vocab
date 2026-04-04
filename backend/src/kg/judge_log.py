@@ -42,6 +42,7 @@ def _get_conn() -> sqlite3.Connection:
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_nb ON judge_log(user_id, notebook_id)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_created ON judge_log(created_at)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_jl_user_source ON judge_log(user_id, source)")
         _conn.commit()
     return _conn
 

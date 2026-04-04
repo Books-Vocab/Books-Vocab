@@ -65,3 +65,39 @@ def test_get_log():
     logs = get_log("u1")
     assert len(logs) == 1
     assert logs[0]["word"] == "evoke"
+
+
+def test_lookup_expired_cache(tmp_path, monkeypatch):
+    """Entries older than CACHE_TTL_DAYS should not be returned by lookup."""
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    _reset()
+
+    record(
+        user_id="u1", operation="translate_quick", word="old",
+        context="ctx", context_hash="hash1",
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"舊"}', latency_ms=100,
+    )
+
+    # Backdate the entry to 60 days ago
+    from datetime import datetime, timedelta, UTC
+    old_ts = (datetime.now(UTC) - timedelta(days=60)).isoformat()
+    from kg.translate_log import _get_conn, _lock
+    with _lock:
+        conn = _get_conn()
+        conn.execute("UPDATE translate_log SET created_at=? WHERE word='old'", (old_ts,))
+        conn.commit()
+
+    # Should miss (expired)
+    assert lookup("old", "hash1", "en", "zh-Hant", "translate_quick") is None
+
+    # Fresh entry should still hit
+    record(
+        user_id="u1", operation="translate_quick", word="new",
+        context="ctx", context_hash="hash2",
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"新"}', latency_ms=100,
+    )
+    assert lookup("new", "hash2", "en", "zh-Hant", "translate_quick") == '{"t":"新"}'
+
+    _reset()

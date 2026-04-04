@@ -152,13 +152,18 @@ async def _run_llm_translate(
         raise ExternalServiceError("Gemini returned empty response")
 
     raw = response.choices[0].message.content
-    translate_log.record(
-        user_id=llm.user_id, operation=operation,
-        word=word_key, context=ctx, context_hash=ctx_hash,
-        source_lang=source_lang, target_lang=target_lang,
-        response_raw=raw or "", latency_ms=latency_ms,
-    )
-    return _parse_json_payload(raw)
+    parsed = _parse_json_payload(raw)
+
+    # Only cache non-empty, meaningful responses
+    if raw and parsed and any(parsed.values()):
+        translate_log.record(
+            user_id=llm.user_id, operation=operation,
+            word=word_key, context=ctx, context_hash=ctx_hash,
+            source_lang=source_lang, target_lang=target_lang,
+            response_raw=raw, latency_ms=latency_ms,
+        )
+
+    return parsed
 
 
 async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
