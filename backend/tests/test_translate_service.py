@@ -151,3 +151,28 @@ async def test_cache_miss_calls_llm_and_records(tmp_path, monkeypatch):
     assert logs[0]["operation"] == "translate_quick"
 
     tl._reset()
+
+
+@pytest.mark.asyncio
+async def test_empty_llm_response_not_cached(tmp_path, monkeypatch):
+    """Empty or malformed LLM response should not be cached."""
+    import kg.translate_log as tl
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+
+    client = _fake_async_client('{}')
+    req = TranslateRequest(word="hollow", context="A hollow victory.")
+    result = await run_quick_translate(
+        req, {"id": "u_test"},
+        llm=TrackedLLM(client, "u_test"),
+        logger=SimpleNamespace(error=lambda *a, **kw: None),
+    )
+    assert result.t == ""  # parsed but empty
+
+    # Should NOT be cached
+    from kg.translate_service import _context_around_word
+    ctx = _context_around_word("A hollow victory.", "hollow")
+    ctx_hash = _compute_context_hash(ctx)
+    assert tl.lookup("hollow", ctx_hash, "en", "zh-Hant", "translate_quick") is None
+
+    tl._reset()
