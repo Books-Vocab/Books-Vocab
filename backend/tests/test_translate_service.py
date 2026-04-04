@@ -90,3 +90,64 @@ async def test_run_phrase_and_explain_translate_return_expected_shapes():
         llm=TrackedLLM(_fake_async_client('{"e":"這裡表示因案件而受審。"}'), "u_test"),
     )
     assert explain.e == "這裡表示因案件而受審。"
+
+
+import hashlib
+
+def _compute_context_hash(context: str) -> str:
+    return hashlib.sha256((context or "").encode()).hexdigest()[:16]
+
+@pytest.mark.asyncio
+async def test_cache_hit_skips_llm(tmp_path, monkeypatch):
+    """When translate_log has a cached result, LLM should not be called."""
+    import kg.translate_log as tl
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+
+    from kg.translate_service import _context_around_word
+    ctx = _context_around_word("The story evokes memories.", "evoke")
+    ctx_hash = _compute_context_hash(ctx)
+
+    tl.record(
+        user_id="u_other", operation="translate_quick", word="evoke",
+        context=ctx, context_hash=ctx_hash,
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"喚起","p":"v.","r":"evoke"}', latency_ms=100,
+    )
+
+    client = _fake_async_client('{"t":"SHOULD NOT BE CALLED"}')
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    result = await run_quick_translate(
+        req, {"id": "u_test"},
+        llm=TrackedLLM(client, "u_test"),
+        logger=SimpleNamespace(error=lambda *a, **kw: None),
+    )
+    assert result.t == "喚起"  # from cache, not LLM
+    client.chat.completions.create.assert_not_called()
+
+    tl._reset()
+
+@pytest.mark.asyncio
+async def test_cache_miss_calls_llm_and_records(tmp_path, monkeypatch):
+    """On cache miss, LLM is called and result is recorded to translate_log."""
+    import kg.translate_log as tl
+    monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
+    tl._reset()
+
+    client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    result = await run_quick_translate(
+        req, {"id": "u_test"},
+        llm=TrackedLLM(client, "u_test"),
+        logger=SimpleNamespace(error=lambda *a, **kw: None),
+    )
+    assert result.t == "喚起"
+    client.chat.completions.create.assert_called_once()
+
+    # Verify recorded
+    logs = tl.get_log("u_test")
+    assert len(logs) == 1
+    assert logs[0]["word"] == "evoke"
+    assert logs[0]["operation"] == "translate_quick"
+
+    tl._reset()
