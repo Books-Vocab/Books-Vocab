@@ -151,6 +151,11 @@ def create_admin_handlers(
         from .admin_graph_playback import compute_graph_playback
         return compute_graph_playback(_safe_user_dir(user_id), notebook_id, user_id=user_id)
 
+    def admin_pipeline_runs(user_id: str, limit: int = 20):
+        """Return pipeline run history for a user."""
+        from .pipeline_log import get_runs
+        return {"user_id": user_id, "runs": get_runs(user_id, limit=limit)}
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -171,5 +176,6 @@ def create_admin_handlers(
         "admin_tests_ui": admin_tests_ui,
         "admin_graph_density": admin_graph_density,
         "admin_graph_playback": admin_graph_playback,
+        "admin_pipeline_runs": admin_pipeline_runs,
         "admin_user_detail_ui": admin_user_detail_ui,
     }

@@ -129,6 +129,7 @@ def build_api_admin_router(
     admin_test_catalog: Callable[..., Any],
     admin_graph_density: Callable[..., Any] | None = None,
     admin_graph_playback: Callable[..., Any] | None = None,
+    admin_pipeline_runs: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
@@ -143,6 +144,8 @@ def build_api_admin_router(
         router.get("/api/admin/graph-density", include_in_schema=False)(admin_graph_density)
     if admin_graph_playback is not None:
         router.get("/api/admin/graph-playback", include_in_schema=False)(admin_graph_playback)
+    if admin_pipeline_runs is not None:
+        router.get("/api/admin/pipeline-runs", include_in_schema=False)(admin_pipeline_runs)
     return router
 
 
@@ -164,6 +167,7 @@ def build_admin_router(
     admin_tests_ui: Callable[..., Any],
     admin_graph_density: Callable[..., Any] | None = None,
     admin_graph_playback: Callable[..., Any] | None = None,
+    admin_pipeline_runs: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
@@ -186,5 +190,6 @@ def build_admin_router(
         admin_test_catalog=admin_test_catalog,
         admin_graph_density=admin_graph_density,
         admin_graph_playback=admin_graph_playback,
+        admin_pipeline_runs=admin_pipeline_runs,
     )
     return login, html, api
