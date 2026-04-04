@@ -309,7 +309,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
     with patch.object(translate_router_mod, "_gemini_async_client", return_value=failing_client):
         r = client.post(
             "/api/translate/quick",
-            json={"word": "evoke", "context": "The story can evoke deep memories."},
+            json={"word": "serendipity", "context": "A serendipity encounter changed everything."},
             headers=headers,
         )
         assert r.status_code == 500
