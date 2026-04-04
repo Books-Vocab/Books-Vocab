@@ -438,6 +438,45 @@ body {
 .waterfall-bar.s-failed { background: var(--dev); }
 .waterfall-bar.s-skipped { background: var(--sub); }
 .waterfall-meta { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--sub); white-space: nowrap; width: 100px; flex-shrink: 0; text-align: right; }
+/* Translate history */
+.translate-entry {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  margin-bottom: 6px;
+}
+.translate-entry-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  cursor: pointer;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.translate-entry-header:hover { background: #f6f4ef; }
+.translate-entry.open .translate-entry-header { border-bottom: 1px solid var(--border-l); }
+.translate-entry-op {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+}
+.translate-entry-word { font-weight: 600; color: var(--ink); }
+.translate-entry-time { color: var(--sub); }
+.translate-entry-latency { color: var(--sub); margin-left: auto; }
+.translate-entry-detail {
+  display: none;
+  padding: 10px 14px;
+  font-size: 12px;
+  line-height: 1.6;
+}
+.translate-entry.open .translate-entry-detail { display: block; }
+.translate-detail-row { display: flex; gap: 8px; margin-bottom: 4px; }
+.translate-detail-label { color: var(--sub); min-width: 80px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
+.translate-detail-value { color: var(--ink); word-break: break-word; }
 /* Sub-divider inside detail-section */
 .detail-divider { border-top: 1px solid var(--border); margin: 8px 0; padding-top: 6px; }
 </style>
@@ -472,6 +511,14 @@ body {
           <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
           <div id="pipeline-analytics" style="display:none">
             <div id="pipeline-runs"></div>
+          </div>
+        </div>
+        <!-- Translate History -->
+        <div class="section-block">
+          <div class="section-title">Translate History</div>
+          <div id="translate-no-data" class="no-data" style="display:none">無翻譯紀錄</div>
+          <div id="translate-history" style="display:none">
+            <div id="translate-entries"></div>
           </div>
         </div>
         <!-- Graph Density -->
@@ -1138,14 +1185,57 @@ function renderPipelineAnalytics(data) {
   }).join('');
 }
 
+/* ── Translate History ── */
+function renderTranslateHistory(data) {
+  const noData = document.getElementById('translate-no-data');
+  const section = document.getElementById('translate-history');
+  const container = document.getElementById('translate-entries');
+
+  if (!data || !data.history || data.history.length === 0) {
+    section.style.display = 'none';
+    noData.style.display = '';
+    return;
+  }
+  noData.style.display = 'none';
+  section.style.display = '';
+
+  const opLabel = { translate_quick: 'quick', translate_phrase: 'phrase', translate_explain: 'explain' };
+
+  container.innerHTML = data.history.map((entry, idx) => {
+    const op = opLabel[entry.operation] || entry.operation;
+    const time = fmtDate(entry.created_at);
+    const latency = entry.latency_ms != null ? entry.latency_ms + 'ms' : '—';
+    let parsed;
+    try { parsed = JSON.parse(entry.response_raw); } catch { parsed = {}; }
+    const result = parsed.t || parsed.e || '—';
+    const context = entry.context ? entry.context : '—';
+
+    return `<div class="translate-entry" id="tentry-${idx}">
+      <div class="translate-entry-header" onclick="document.getElementById('tentry-${idx}').classList.toggle('open')">
+        <span class="translate-entry-op">${op}</span>
+        <span class="translate-entry-word">${escapeHtml(entry.word)}</span>
+        <span style="color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">→ ${escapeHtml(result)}</span>
+        <span class="translate-entry-time">${time}</span>
+        <span class="translate-entry-latency">${latency}</span>
+      </div>
+      <div class="translate-entry-detail">
+        <div class="translate-detail-row"><span class="translate-detail-label">langs</span><span class="translate-detail-value">${escapeHtml(entry.source_lang)} → ${escapeHtml(entry.target_lang)}</span></div>
+        <div class="translate-detail-row"><span class="translate-detail-label">context</span><span class="translate-detail-value">${escapeHtml(context)}</span></div>
+        <div class="translate-detail-row"><span class="translate-detail-label">response</span><span class="translate-detail-value" style="font-family:'JetBrains Mono',monospace;font-size:11px">${escapeHtml(entry.response_raw)}</span></div>
+      </div>
+    </div>`;
+  }).join('');
+}
+
 async function loadPage() {
   try {
-    const [statsR, densityR, playbackR, pipelineR, judgeR] = await Promise.all([
+    const [statsR, densityR, playbackR, pipelineR, judgeR, translateR] = await Promise.all([
       adminFetch('/api/admin/stats'),
       adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/pipeline-runs?user_id=' + encodeURIComponent(USER_ID)),
       adminFetch('/api/admin/judge-stats?user_id=' + encodeURIComponent(USER_ID)),
+      adminFetch('/api/admin/translate-history?user_id=' + encodeURIComponent(USER_ID)),
     ]);
 
     if (!statsR.ok) {
@@ -1188,6 +1278,14 @@ async function loadPage() {
       renderPipelineAnalytics(pipelineData);
     } else {
       renderPipelineAnalytics(null);
+    }
+
+    // Translate history
+    if (translateR.ok) {
+      const translateData = await translateR.json();
+      renderTranslateHistory(translateData);
+    } else {
+      renderTranslateHistory(null);
     }
 
   } catch (e) {
