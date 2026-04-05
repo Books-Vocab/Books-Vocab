@@ -86,7 +86,7 @@ struct StatsPresenter: View {
             }
         }
         .animatePhaseChange(summary != nil)
-        .task(id: recomputeKey) {
+        .task(id: summaryKey) {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
@@ -95,6 +95,11 @@ struct StatsPresenter: View {
                 reviewRecords: records,
                 forecastDays: days
             )
+        }
+        .task(id: graphKey) {
+            // Bare task(id:) on appearance + auth changes. Refreshing on every
+            // view appearance catches hide/unhide, background sync, and judge
+            // results mutating account-level links without needing a notification.
             graphLinks = await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
@@ -124,12 +129,25 @@ struct StatsPresenter: View {
         return (try? await kgService.pullGraphLinks()) ?? []
     }
 
-    private var recomputeKey: Int {
+    private var summaryKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
         hasher.combine(reviewRecords.count)
         hasher.combine(filter.selectedIds)
         hasher.combine(forecastDays)
+        return hasher.finalize()
+    }
+
+    /// Graph thumbnail refresh trigger. Excludes `forecastDays` (irrelevant to
+    /// graph) and includes auth state so login/logout/demo toggles re-pull.
+    /// Bare `.task(id:)` also re-runs on every view appearance — that is the
+    /// primary mechanism that catches hide/unhide and sync-driven link changes.
+    private var graphKey: Int {
+        var hasher = Hasher()
+        hasher.combine(syncedEntries.count)
+        hasher.combine(filter.selectedIds)
+        hasher.combine(authManager.isLoggedIn)
+        hasher.combine(authManager.isDemoMode)
         return hasher.finalize()
     }
 
