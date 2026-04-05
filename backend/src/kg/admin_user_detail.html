@@ -137,21 +137,6 @@ body {
   text-transform: uppercase;
   color: var(--ink-light);
 }
-.badge-pro-active {
-  background: #e8f5e9;
-  border-color: #81c784;
-  color: #2e7d32;
-}
-.badge-pro-inactive {
-  background: transparent;
-  border-color: var(--border);
-  color: var(--sub);
-}
-.user-header-meta {
-  font-family: 'JetBrains Mono', monospace;
-  font-size: 11px;
-  color: var(--sub);
-}
 .user-header-actions {
   margin-left: auto;
   display: flex;
@@ -371,24 +356,37 @@ body {
   gap: 8px;
   margin-top: 16px;
 }
-/* Pipeline history */
-.pipeline-run {
+/* Pipeline history — compact scrollable list */
+#pipeline-runs, #translate-entries {
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface);
-  margin-bottom: 8px;
+  max-height: 360px;
+  overflow-y: auto;
 }
+#pipeline-runs::-webkit-scrollbar,
+#translate-entries::-webkit-scrollbar { width: 8px; }
+#pipeline-runs::-webkit-scrollbar-thumb,
+#translate-entries::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.pipeline-run {
+  border: none;
+  border-bottom: 1px solid var(--border-l);
+  border-radius: 0;
+  background: transparent;
+  margin-bottom: 0;
+}
+.pipeline-run:last-child { border-bottom: none; }
 .pipeline-run-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 10px 14px;
+  padding: 6px 12px;
   cursor: pointer;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
 }
 .pipeline-run-header:hover { background: #f6f4ef; }
-.pipeline-run.open .pipeline-run-header { border-bottom: 1px solid var(--border-l); }
+.pipeline-run.open .pipeline-run-header { border-bottom: 1px solid var(--border-l); background: #f6f4ef; }
 .pipeline-run-trigger {
   padding: 1px 6px;
   border: 1px solid var(--border);
@@ -438,24 +436,26 @@ body {
 .waterfall-bar.s-failed { background: var(--dev); }
 .waterfall-bar.s-skipped { background: var(--sub); }
 .waterfall-meta { font-size: 10px; font-family: 'JetBrains Mono', monospace; color: var(--sub); white-space: nowrap; width: 100px; flex-shrink: 0; text-align: right; }
-/* Translate history */
+/* Translate history — compact scrollable list */
 .translate-entry {
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  background: var(--surface);
-  margin-bottom: 6px;
+  border: none;
+  border-bottom: 1px solid var(--border-l);
+  border-radius: 0;
+  background: transparent;
+  margin-bottom: 0;
 }
+.translate-entry:last-child { border-bottom: none; }
 .translate-entry-header {
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
+  padding: 5px 12px;
   cursor: pointer;
   font-family: 'JetBrains Mono', monospace;
   font-size: 11px;
 }
 .translate-entry-header:hover { background: #f6f4ef; }
-.translate-entry.open .translate-entry-header { border-bottom: 1px solid var(--border-l); }
+.translate-entry.open .translate-entry-header { border-bottom: 1px solid var(--border-l); background: #f6f4ef; }
 .translate-entry-op {
   padding: 1px 6px;
   border: 1px solid var(--border);
@@ -545,6 +545,33 @@ body {
 }
 .section-chip strong { color: var(--ink); font-weight: 500; }
 .section-chip .dot { margin: 0 6px; color: var(--border); }
+.section-header-right {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+.range-tabs {
+  display: inline-flex;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  overflow: hidden;
+  background: var(--surface);
+}
+.range-tab {
+  border: none;
+  background: transparent;
+  padding: 3px 10px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  letter-spacing: .06em;
+  cursor: pointer;
+  border-right: 1px solid var(--border);
+  text-transform: lowercase;
+}
+.range-tab:last-child { border-right: none; }
+.range-tab:hover { background: #f6f4ef; color: var(--ink); }
+.range-tab.active { background: var(--ink); color: var(--surface); }
 /* Chevron for collapse */
 .chevron {
   display: inline-block;
@@ -644,7 +671,15 @@ body {
         <div class="section-block">
           <div class="section-header">
             <div class="section-title">Usage Breakdown</div>
-            <div class="section-chip" id="usage-chip"></div>
+            <div class="section-header-right">
+              <div class="range-tabs" id="usage-range-tabs" role="tablist">
+                <button class="range-tab active" data-range="24h">24h</button>
+                <button class="range-tab" data-range="7d">7d</button>
+                <button class="range-tab" data-range="30d">30d</button>
+                <button class="range-tab" data-range="all">All</button>
+              </div>
+              <div class="section-chip" id="usage-chip"></div>
+            </div>
           </div>
           <div class="usage-detail" id="usage-detail"></div>
         </div>
@@ -902,8 +937,30 @@ function renderUserInfo(u, judgeStats) {
     <div class="detail-kv"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
   `;
 
-  // ── Right-col: Usage Breakdown table ──
-  renderUsageTable(u, q);
+  // ── Right-col: Usage Breakdown table (initial 24h load) ──
+  loadUsageRange('24h');
+}
+
+let _currentUsageRange = '24h';
+async function loadUsageRange(range) {
+  _currentUsageRange = range;
+  // Update tab active state
+  document.querySelectorAll('#usage-range-tabs .range-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.range === range);
+  });
+  const container = document.getElementById('usage-detail');
+  container.innerHTML = '<div class="no-data">載入中…</div>';
+  try {
+    const r = await adminFetch('/api/admin/user-usage?user_id=' + encodeURIComponent(USER_ID) + '&range=' + range);
+    if (!r.ok) {
+      container.innerHTML = '<div class="no-data">載入失敗 (' + r.status + ')</div>';
+      return;
+    }
+    const data = await r.json();
+    renderUsageTable(data);
+  } catch (e) {
+    container.innerHTML = '<div class="no-data">錯誤: ' + escapeHtml(String(e)) + '</div>';
+  }
 }
 
 /* ── KPI row ── */
@@ -948,9 +1005,12 @@ function renderKpiRow(u, judgeStats) {
 }
 
 /* ── Usage breakdown table (right col) ── */
-function renderUsageTable(u, q) {
-  const calls = (q && q.calls) || {};
-  const tokens = u.tokens || {};
+function renderUsageTable(data) {
+  const calls = (data && data.calls) || {};
+  const tokens = (data && data.tokens) || {};
+  const range = (data && data.range) || _currentUsageRange;
+  const rangeLabelMap = {'24h': '近 24 小時', '7d': '近 7 天', '30d': '近 30 天', 'all': '全期'};
+  const rangeLabel = rangeLabelMap[range] || range;
   const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',manual_link_judge:'manual_judge',embed:'embed'};
   const order = ['translate_quick','translate_phrase','translate_explain','enrich','judge','manual_link_judge','embed'];
   const allTypes = new Set([...Object.keys(calls), ...Object.keys(tokens)]);
@@ -1011,7 +1071,7 @@ function renderUsageTable(u, q) {
         </tr>
       </tfoot>
     </table>
-    <div class="usage-legend">↑ input tokens · ↓ output tokens · 24h window (calls + cost) / 全期 (tokens)</div>
+    <div class="usage-legend">↑ input tokens · ↓ output tokens · 範圍：${escapeHtml(rangeLabel)}</div>
   `;
   chip.innerHTML = `<strong>${totalCalls}</strong> calls <span class="dot">·</span> <strong>$${totalCost.toFixed(4)}</strong> cost`;
 }
@@ -1613,6 +1673,14 @@ async function loadPage() {
 
 document.getElementById('grant-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGrantModal();
+});
+
+/* ── Range tab click handler ── */
+document.getElementById('usage-range-tabs').addEventListener('click', function(e) {
+  const btn = e.target.closest('.range-tab');
+  if (!btn) return;
+  const range = btn.dataset.range;
+  if (range && range !== _currentUsageRange) loadUsageRange(range);
 });
 
 /* ── Keyboard support for collapse headers ── */
