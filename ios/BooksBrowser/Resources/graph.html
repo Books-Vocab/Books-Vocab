@@ -79,7 +79,26 @@ function resize() {
     canvas.style.height = H + 'px';
     ctx.scale(dpr, dpr);
 }
-window.addEventListener('resize', () => { resize(); if (sim) sim.alpha(0.1).restart(); });
+window.addEventListener('resize', () => {
+    const oldW = W, oldH = H;
+    resize();
+    if (!sim) return;
+    const cx = W / 2, cy = H / 2;
+    // If we transitioned from a zero-sized canvas to a real one (first layout
+    // pass of WKWebView), nodes were spawned near (0,0) and forces target 0,0.
+    // Re-target center forces AND translate existing nodes so the graph lands
+    // in the new center instead of crawling there (thumbnail sim decays fast).
+    const wasDegenerate = oldW < 10 || oldH < 10;
+    if (wasDegenerate) {
+        const dx = cx - oldW / 2;
+        const dy = cy - oldH / 2;
+        nodes.forEach(n => { n.x += dx; n.y += dy; });
+    }
+    sim.force('center', d3.forceCenter(cx, cy));
+    const fx = sim.force('x'); if (fx) fx.x(cx);
+    const fy = sim.force('y'); if (fy) fy.y(cy);
+    sim.alpha(wasDegenerate ? 0.8 : 0.1).restart();
+});
 resize();
 
 // ── Node helpers ──────────────────────────────────────────────────────────────
