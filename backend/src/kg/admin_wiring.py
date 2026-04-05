@@ -167,6 +167,11 @@ def create_admin_handlers(
         from .translate_log import get_log
         return {"user_id": user_id, "history": get_log(user_id, limit=min(limit, 200))}
 
+    def admin_user_usage(user_id: str, range: str = "24h"):
+        """Return per-type usage breakdown for a user, filtered by time range."""
+        from .admin_handlers import admin_user_usage_response
+        return admin_user_usage_response(user_id, range_=range)
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -190,5 +195,6 @@ def create_admin_handlers(
         "admin_pipeline_runs": admin_pipeline_runs,
         "admin_judge_stats": admin_judge_stats,
         "admin_translate_history": admin_translate_history,
+        "admin_user_usage": admin_user_usage,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
