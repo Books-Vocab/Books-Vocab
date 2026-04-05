@@ -86,7 +86,7 @@ struct StatsPresenter: View {
             }
         }
         .animatePhaseChange(summary != nil)
-        .task(id: recomputeKey) {
+        .task(id: summaryKey) {
             let entries = filteredEntries
             let records = filteredReviewRecords
             let days = forecastDays
@@ -95,6 +95,16 @@ struct StatsPresenter: View {
                 reviewRecords: records,
                 forecastDays: days
             )
+        }
+        .task(id: graphKey) {
+            // Fetches account-level links. Re-runs only when graphKey changes
+            // (auth state or entries.count), NOT on every view appearance —
+            // appearance ≠ staleness. Known gap: hide/unhide while entries.count
+            // is stable will not auto-refresh the thumbnail until the next auth
+            // event or card add/remove. Long-term fix: promote KGGraphLink to
+            // @Model so @Query observers across stats/graph/word-detail views
+            // refresh automatically on any mutation (see spec:
+            // docs/superpowers/specs/ — SwiftData migration for KGGraphLink).
             graphLinks = await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
@@ -124,12 +134,26 @@ struct StatsPresenter: View {
         return (try? await kgService.pullGraphLinks()) ?? []
     }
 
-    private var recomputeKey: Int {
+    private var summaryKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
         hasher.combine(reviewRecords.count)
         hasher.combine(filter.selectedIds)
         hasher.combine(forecastDays)
+        return hasher.finalize()
+    }
+
+    /// Graph thumbnail refresh trigger. `pullGraphLinks` is an account-level
+    /// API — it returns ALL links regardless of notebook filter — so filter
+    /// changes must NOT invalidate this cache (filter only affects local node
+    /// filtering downstream). `forecastDays` is similarly irrelevant. Only
+    /// auth toggles and entries.count (new cards may trigger backend link
+    /// generation) should trigger a re-pull.
+    private var graphKey: Int {
+        var hasher = Hasher()
+        hasher.combine(syncedEntries.count)
+        hasher.combine(authManager.isLoggedIn)
+        hasher.combine(authManager.isDemoMode)
         return hasher.finalize()
     }
 
