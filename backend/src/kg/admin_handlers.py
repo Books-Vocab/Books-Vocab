@@ -219,6 +219,34 @@ def admin_stats_response(
     return {"users": result, "judge": judge_stats}
 
 
+def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, Any]:
+    """Return per-type usage (calls/cost/tokens) for a user, filtered by range.
+
+    range_: "24h" | "7d" | "30d" | "all"
+    """
+    from .quota_service import get_user_usage_range
+
+    range_seconds = {
+        "24h": 86400,
+        "7d": 604800,
+        "30d": 2592000,
+        "all": None,
+    }
+    if range_ not in range_seconds:
+        raise HTTPException(status_code=400, detail=f"invalid range: {range_}")
+
+    secs = range_seconds[range_]
+    if secs is None:
+        since_iso = None
+    else:
+        cutoff = datetime.now(UTC).timestamp() - secs
+        since_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+
+    data = get_user_usage_range(user_id, since_iso=since_iso)
+    data["range"] = range_
+    return data
+
+
 def admin_logs_response(
     *,
     log_getter: Callable[..., list[dict[str, Any]]],
