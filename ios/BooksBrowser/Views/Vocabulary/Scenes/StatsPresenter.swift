@@ -97,9 +97,14 @@ struct StatsPresenter: View {
             )
         }
         .task(id: graphKey) {
-            // Bare task(id:) on appearance + auth changes. Refreshing on every
-            // view appearance catches hide/unhide, background sync, and judge
-            // results mutating account-level links without needing a notification.
+            // Fetches account-level links. Re-runs only when graphKey changes
+            // (auth state or entries.count), NOT on every view appearance —
+            // appearance ≠ staleness. Known gap: hide/unhide while entries.count
+            // is stable will not auto-refresh the thumbnail until the next auth
+            // event or card add/remove. Long-term fix: promote KGGraphLink to
+            // @Model so @Query observers across stats/graph/word-detail views
+            // refresh automatically on any mutation (see spec:
+            // docs/superpowers/specs/ — SwiftData migration for KGGraphLink).
             graphLinks = await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
@@ -138,14 +143,15 @@ struct StatsPresenter: View {
         return hasher.finalize()
     }
 
-    /// Graph thumbnail refresh trigger. Excludes `forecastDays` (irrelevant to
-    /// graph) and includes auth state so login/logout/demo toggles re-pull.
-    /// Bare `.task(id:)` also re-runs on every view appearance — that is the
-    /// primary mechanism that catches hide/unhide and sync-driven link changes.
+    /// Graph thumbnail refresh trigger. `pullGraphLinks` is an account-level
+    /// API — it returns ALL links regardless of notebook filter — so filter
+    /// changes must NOT invalidate this cache (filter only affects local node
+    /// filtering downstream). `forecastDays` is similarly irrelevant. Only
+    /// auth toggles and entries.count (new cards may trigger backend link
+    /// generation) should trigger a re-pull.
     private var graphKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
-        hasher.combine(filter.selectedIds)
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
         return hasher.finalize()
