@@ -166,7 +166,7 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
                     .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
                     .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
                     .background(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                        Capsule(style: .continuous)
                             .fill(vocabSkin.palette.mutedFill)
                     )
             }

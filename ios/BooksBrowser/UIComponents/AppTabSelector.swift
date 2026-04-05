@@ -75,7 +75,7 @@ struct AppTabSelector<ID: Hashable>: View {
                                 .padding(.horizontal, 6)
                                 .padding(.vertical, 2)
                                 .background(
-                                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall - 1, style: .continuous)
+                                    Capsule(style: .continuous)
                                         .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
                                 )
                         }
@@ -84,18 +84,15 @@ struct AppTabSelector<ID: Hashable>: View {
                     .padding(.horizontal, 8)
                     .padding(.vertical, 8)
                     .background(
-                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                        Capsule(style: .continuous)
                             .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
                     )
                     .overlay(
-                        RoundedRectangle(cornerRadius: style.controlRadius, style: .continuous)
+                        Capsule(style: .continuous)
                             .stroke(selection == option.id ? style.selectedBorder : style.unselectedBorder, lineWidth: 1)
                     )
                     .overlay(
-                        RoundedRectangle(
-                            cornerRadius: style.controlRadius + style.outerBorderInset,
-                            style: .continuous
-                        )
+                        Capsule(style: .continuous)
                         .stroke(
                             selection == option.id ? style.selectedOuterBorder : style.unselectedOuterBorder,
                             lineWidth: 0.8
