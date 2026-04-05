@@ -113,6 +113,61 @@ def get_all_quota_usage() -> dict[str, dict]:
     return result
 
 
+def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
+    """Return per-type usage (calls + cost + tokens) for a user, filtered by time range.
+
+    If `since_iso` is None, returns all-time usage. Used by admin UI for range filter.
+    """
+    with _lock:
+        conn = _get_conn()
+        if since_iso is None:
+            rows = conn.execute(
+                """
+                SELECT call_type,
+                       COUNT(*)          AS cnt,
+                       SUM(input_tokens) AS total_in,
+                       SUM(output_tokens) AS total_out
+                FROM token_usage
+                WHERE user_id = ?
+                GROUP BY call_type
+                """,
+                (user_id,),
+            ).fetchall()
+        else:
+            rows = conn.execute(
+                """
+                SELECT call_type,
+                       COUNT(*)          AS cnt,
+                       SUM(input_tokens) AS total_in,
+                       SUM(output_tokens) AS total_out
+                FROM token_usage
+                WHERE user_id = ? AND created_at >= ?
+                GROUP BY call_type
+                """,
+                (user_id, since_iso),
+            ).fetchall()
+
+    calls: dict[str, dict] = {}
+    tokens: dict[str, dict] = {}
+    total_cost = 0.0
+    total_calls = 0
+    for call_type, cnt, total_in, total_out in rows:
+        ti = int(total_in or 0)
+        to = int(total_out or 0)
+        cost = token_cost_usd(call_type, ti, to)
+        calls[call_type] = {"count": int(cnt), "cost_usd": round(cost, 6)}
+        tokens[call_type] = {"input_tokens": ti, "output_tokens": to}
+        total_cost += cost
+        total_calls += int(cnt)
+
+    return {
+        "calls": calls,
+        "tokens": tokens,
+        "total_calls": total_calls,
+        "total_cost_usd": round(total_cost, 6),
+    }
+
+
 def check_quota(user_id: str, call_type: str, *, is_pro: bool = False) -> dict:
     """Pre-flight check before a translate call.
 
