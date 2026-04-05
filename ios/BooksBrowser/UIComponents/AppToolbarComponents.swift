@@ -44,11 +44,8 @@ struct AppToolbarGlyph: View {
                     .padding(.horizontal, AppShellMetrics.toolbarBadgeHorizontalPadding)
                     .padding(.vertical, AppShellMetrics.toolbarBadgeVerticalPadding)
                     .background(
-                        RoundedRectangle(
-                            cornerRadius: AppMetrics.cornerRadiusSmall - 1,
-                            style: .continuous
-                        )
-                        .fill(style.badgeBackground)
+                        Capsule(style: .continuous)
+                            .fill(style.badgeBackground)
                     )
             }
         }
