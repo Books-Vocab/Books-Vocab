@@ -159,7 +159,7 @@ body {
 }
 /* Two-column layout */
 .two-col { display: flex; gap: 24px; }
-.col-left { width: 340px; flex-shrink: 0; position: sticky; top: 52px; align-self: flex-start; max-height: calc(100vh - 68px); overflow-y: auto; }
+.col-left { width: 340px; flex-shrink: 0; position: sticky; top: 68px; align-self: flex-start; }
 .col-left .detail-section + .detail-section { margin-top: 12px; }
 .col-right { flex: 1; min-width: 0; }
 .detail-section {
@@ -479,6 +479,138 @@ body {
 .translate-detail-value { color: var(--ink); word-break: break-word; }
 /* Sub-divider inside detail-section */
 .detail-divider { border-top: 1px solid var(--border); margin: 8px 0; padding-top: 6px; }
+/* KPI row */
+.kpi-row {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 10px;
+  margin-bottom: 24px;
+}
+.kpi-card {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  padding: 12px 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-height: 72px;
+}
+.kpi-label {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  text-transform: uppercase;
+  letter-spacing: .10em;
+}
+.kpi-value {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 20px;
+  font-weight: 500;
+  color: var(--ink);
+  line-height: 1.2;
+}
+.kpi-value.kpi-dim { color: var(--sub); }
+.kpi-value.kpi-warn { color: #b8860b; }
+.kpi-value.kpi-bad { color: var(--dev); }
+.kpi-sub {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+}
+@media (max-width: 1080px) {
+  .kpi-row { grid-template-columns: repeat(3, 1fr); }
+}
+/* Section header (with summary chip) */
+.section-header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 12px;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--border);
+}
+.section-header .section-title {
+  font-size: 12px;
+  color: var(--ink);
+  letter-spacing: .16em;
+  margin-bottom: 0;
+}
+.section-chip {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  letter-spacing: .04em;
+}
+.section-chip strong { color: var(--ink); font-weight: 500; }
+.section-chip .dot { margin: 0 6px; color: var(--border); }
+/* Chevron for collapse */
+.chevron {
+  display: inline-block;
+  font-size: 9px;
+  color: var(--sub);
+  transition: transform .15s ease;
+  width: 10px;
+}
+.pipeline-run.open .chevron,
+.translate-entry.open .chevron { transform: rotate(90deg); }
+/* Usage detail table (right column) */
+.usage-detail {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.usage-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+}
+.usage-table th {
+  text-align: left;
+  padding: 10px 14px 8px;
+  font-weight: 400;
+  color: var(--sub);
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: .10em;
+  border-bottom: 1px solid var(--border);
+  background: var(--bg);
+}
+.usage-table th.num { text-align: right; }
+.usage-table td {
+  padding: 6px 14px;
+  color: var(--ink);
+  border-bottom: 1px solid var(--border-l);
+}
+.usage-table td.num { text-align: right; }
+.usage-table td.sub { color: var(--sub); }
+.usage-table tr:last-child td { border-bottom: none; }
+.usage-table tfoot td {
+  background: var(--bg);
+  border-top: 1px solid var(--border);
+  border-bottom: none;
+  font-weight: 500;
+  padding: 8px 14px;
+}
+.usage-legend {
+  padding: 6px 14px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--sub);
+  background: var(--bg);
+  border-top: 1px solid var(--border-l);
+}
+/* Empty state for subscription */
+.sub-empty {
+  text-align: center;
+  padding: 12px 0 6px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  color: var(--sub);
+}
 </style>
 </head>
 <body>
@@ -497,6 +629,9 @@ body {
     <!-- User header -->
     <div class="user-header" id="user-header"></div>
 
+    <!-- KPI row -->
+    <div class="kpi-row" id="kpi-row"></div>
+
     <!-- Two-column layout -->
     <div class="two-col">
       <div class="col-left">
@@ -505,9 +640,20 @@ body {
         <div class="detail-section" id="tbl-quota"></div>
       </div>
       <div class="col-right">
+        <!-- Usage Detail (per-type table) -->
+        <div class="section-block">
+          <div class="section-header">
+            <div class="section-title">Usage Breakdown</div>
+            <div class="section-chip" id="usage-chip"></div>
+          </div>
+          <div class="usage-detail" id="usage-detail"></div>
+        </div>
         <!-- Pipeline Analytics -->
         <div class="section-block">
-          <div class="section-title">Pipeline Analytics</div>
+          <div class="section-header">
+            <div class="section-title">Pipeline Analytics</div>
+            <div class="section-chip" id="pipeline-chip"></div>
+          </div>
           <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
           <div id="pipeline-analytics" style="display:none">
             <div id="pipeline-runs"></div>
@@ -515,7 +661,10 @@ body {
         </div>
         <!-- Translate History -->
         <div class="section-block">
-          <div class="section-title">Translate History</div>
+          <div class="section-header">
+            <div class="section-title">Translate History</div>
+            <div class="section-chip" id="translate-chip"></div>
+          </div>
           <div id="translate-no-data" class="no-data" style="display:none">無翻譯紀錄</div>
           <div id="translate-history" style="display:none">
             <div id="translate-entries"></div>
@@ -523,7 +672,10 @@ body {
         </div>
         <!-- Graph Density -->
         <div class="section-block">
-          <div class="section-title">Graph Density</div>
+          <div class="section-header">
+            <div class="section-title">Graph Density</div>
+            <div class="section-chip" id="density-chip"></div>
+          </div>
           <div class="chart-wrap">
             <canvas id="density-chart" height="300"></canvas>
             <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
@@ -531,7 +683,10 @@ body {
         </div>
         <!-- Graph Playback -->
         <div class="section-block">
-          <div class="section-title">Graph Playback</div>
+          <div class="section-header">
+            <div class="section-title">Graph Playback</div>
+            <div class="section-chip" id="playback-chip"></div>
+          </div>
           <div class="playback-wrap">
             <div class="playback-canvas-container" id="playback-container">
               <canvas id="playback-canvas"></canvas>
@@ -660,91 +815,205 @@ async function revokePro(userId) {
 }
 
 /* ── Render user info ── */
+function fmtPct(frac) {
+  if (frac == null) return '—';
+  const pct = frac * 100;
+  if (pct > 0 && pct < 1) return '<1%';
+  return Math.round(pct) + '%';
+}
+
 function renderUserInfo(u, judgeStats) {
   const pro = u.pro || {};
   const ag = u.admin_grant || {};
-  const proBadgeClass = pro.is_active ? 'badge-pro-active' : 'badge-pro-inactive';
-  const proLabel = pro.is_active ? (pro.source === 'admin' ? 'Admin Grant' : pro.status || 'active') : 'inactive';
+  const hasAdminGrant = !!ag.is_active;
+  const hasRealSubscription = !!(pro.is_active && pro.source && pro.source !== 'admin');
 
+  // ── Header: ID + email + actions only (no duplicate badges) ──
   document.getElementById('user-header').innerHTML = `
     <div>
       <div class="user-header-id">${escapeHtml(u.user_id)}</div>
       ${u.email ? `<div class="user-header-email">${escapeHtml(u.email)}</div>` : ''}
     </div>
-    <span class="badge">${escapeHtml(u.provider || 'manual')}</span>
-    <span class="badge ${proBadgeClass}">${escapeHtml(proLabel)}</span>
-    <span class="user-header-meta">最後登入 ${fmtDateFull(u.last_login)}</span>
     <div class="user-header-actions">
-      ${ag.is_active
+      ${hasAdminGrant
         ? `<button class="btn btn-mini btn-danger" onclick="revokePro('${escapeHtml(u.user_id)}')">Revoke Pro</button>`
         : `<button class="btn btn-mini" onclick="openGrantModal('${escapeHtml(u.user_id)}')">Grant Pro</button>`}
     </div>
   `;
 
-  // Table 1: 帳戶基本資訊
+  // ── KPI row ──
+  renderKpiRow(u, judgeStats);
+
+  // ── Table 1: 帳戶基本資訊 (keeps canonical details — header no longer duplicates these) ──
+  const proStatusLabel = hasAdminGrant
+    ? 'Admin Grant'
+    : (hasRealSubscription ? (pro.plan_name || pro.status || 'active') : '未訂閱');
   document.getElementById('tbl-account').innerHTML = `
     <div class="detail-section-title">帳戶基本資訊</div>
     <div class="detail-kv"><span class="detail-k">User ID</span><span class="detail-v">${escapeHtml(u.user_id)}</span></div>
     <div class="detail-kv"><span class="detail-k">Email</span><span class="detail-v">${escapeHtml(u.email || '—')}</span></div>
     <div class="detail-kv"><span class="detail-k">Provider</span><span class="detail-v">${escapeHtml(u.provider || 'manual')}</span></div>
+    <div class="detail-kv"><span class="detail-k">Pro 狀態</span><span class="detail-v">${escapeHtml(proStatusLabel)}</span></div>
     <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
     <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
     <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
   `;
 
-  // Table 2: 訂閱狀態（含 Admin Grant）
-  document.getElementById('tbl-subscription').innerHTML = `
-    <div class="detail-section-title">訂閱狀態</div>
-    <div class="detail-kv"><span class="detail-k">Pro 啟用</span><span class="detail-v">${pro.is_active ? '是' : '否'}</span></div>
-    <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(pro.status || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">來源</span><span class="detail-v">${escapeHtml(pro.source || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(pro.plan_name || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(pro.price_display || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(pro.expires_at)}</span></div>
-    <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${pro.is_trial ? '是' : '否'}</span></div>
-    <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${pro.will_renew ? '是' : '否'}</span></div>
-    <div class="detail-divider">
-      <div class="detail-section-title" style="margin-bottom:4px">Admin Grant</div>
-    </div>
-    <div class="detail-kv"><span class="detail-k">啟用</span><span class="detail-v">${ag.is_active ? '是' : '否'}</span></div>
-    <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
-    <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
-    <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(ag.expires_at)}</span></div>
-  `;
-
-  // Table 3: 額度使用狀態（合併額度 + Token）
-  const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
-  const pctUsed = Math.round(q.fraction_used * 100);
-  const calls = q.calls || {};
-  const tokens = u.tokens || {};
-  const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',manual_link_judge:'manual_judge',embed:'embed'};
-  // Collect union of all type keys
-  const allTypes = new Set([...Object.keys(calls), ...Object.keys(tokens)]);
-  let usageRows = '';
-  for (const t of allTypes) {
-    const label = typeLabels[t] || t;
-    const c = calls[t];
-    const tk = tokens[t];
-    const costPart = c ? `&times;${c.count} = $${c.cost_usd.toFixed(4)}` : '';
-    const tokenPart = tk ? `${fmt(tk.input_tokens)}↑ ${fmt(tk.output_tokens)}↓` : '';
-    const sep = costPart && tokenPart ? ' | ' : '';
-    usageRows += `<div class="detail-kv"><span class="detail-k">${escapeHtml(label)}</span><span class="detail-v">${costPart}${sep}${tokenPart}</span></div>`;
+  // ── Table 2: 訂閱狀態 — context-aware, only show fields that apply ──
+  let subHtml = '<div class="detail-section-title">訂閱狀態</div>';
+  if (!hasAdminGrant && !hasRealSubscription) {
+    subHtml += '<div class="sub-empty">未訂閱</div>';
+  } else {
+    if (hasAdminGrant) {
+      subHtml += `
+        <div class="detail-kv"><span class="detail-k">類型</span><span class="detail-v">Admin Grant</span></div>
+        <div class="detail-kv"><span class="detail-k">授權者</span><span class="detail-v">${escapeHtml(ag.granted_by || '—')}</span></div>
+        <div class="detail-kv"><span class="detail-k">原因</span><span class="detail-v">${escapeHtml(ag.reason || '—')}</span></div>
+        <div class="detail-kv"><span class="detail-k">授權時間</span><span class="detail-v">${fmtDateFull(ag.granted_at)}</span></div>
+        <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${ag.expires_at ? fmtDateFull(ag.expires_at) : '永久'}</span></div>
+      `;
+    }
+    if (hasRealSubscription) {
+      if (hasAdminGrant) subHtml += '<div class="detail-divider"><div class="detail-section-title" style="margin-bottom:4px">App Store 訂閱</div></div>';
+      subHtml += `
+        <div class="detail-kv"><span class="detail-k">方案</span><span class="detail-v">${escapeHtml(pro.plan_name || '—')}</span></div>
+        <div class="detail-kv"><span class="detail-k">價格</span><span class="detail-v">${escapeHtml(pro.price_display || '—')}</span></div>
+        <div class="detail-kv"><span class="detail-k">狀態</span><span class="detail-v">${escapeHtml(pro.status || '—')}</span></div>
+        <div class="detail-kv"><span class="detail-k">到期日</span><span class="detail-v">${fmtDateFull(pro.expires_at)}</span></div>
+        <div class="detail-kv"><span class="detail-k">試用</span><span class="detail-v">${pro.is_trial ? '是' : '否'}</span></div>
+        <div class="detail-kv"><span class="detail-k">自動續訂</span><span class="detail-v">${pro.will_renew ? '是' : '否'}</span></div>
+      `;
+    }
   }
-  if (!allTypes.size) usageRows = '<div class="detail-kv"><span class="detail-k">—</span><span class="detail-v">無使用紀錄</span></div>';
+  document.getElementById('tbl-subscription').innerHTML = subHtml;
 
+  // ── Table 3: 額度使用狀態（summary only — detail moved to right col） ──
+  const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0,calls:{}};
+  const pctDisplay = fmtPct(q.fraction_used);
+  const pctWidth = Math.min(100, Math.max(0, Math.round(q.fraction_used * 100)));
   const judgeHtml = judgeStats && judgeStats.total > 0
     ? `<div class="detail-kv"><span class="detail-k">Judge 通過率</span><span class="detail-v">${(judgeStats.rate * 100).toFixed(1)}% (${judgeStats.accepted}/${judgeStats.total})</span></div>`
     : '';
-
   document.getElementById('tbl-quota').innerHTML = `
     <div class="detail-section-title">額度使用狀態</div>
-    <div class="detail-kv"><span class="detail-k">已使用（24h）</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctUsed}%)</span></div>
-    <div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctUsed}%"></div></div></div>
+    <div class="detail-kv"><span class="detail-k">已使用（24h）</span><span class="detail-v">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)} (${pctDisplay})</span></div>
+    <div style="margin:6px 0"><div class="bar" style="min-width:100%"><div class="bar-fill ${quotaColor(q.fraction_used)}" style="width:${pctWidth}%"></div></div></div>
     ${judgeHtml}
-    ${usageRows}
-    <div class="detail-kv" style="border-top:1px solid var(--border);margin-top:4px;padding-top:6px"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
+    <div class="detail-kv"><span class="detail-k">預估費用</span><span class="detail-v">$${u.est_cost_usd.toFixed(4)}</span></div>
   `;
+
+  // ── Right-col: Usage Breakdown table ──
+  renderUsageTable(u, q);
+}
+
+/* ── KPI row ── */
+function renderKpiRow(u, judgeStats) {
+  const q = u.quota || {used_usd:0,limit_usd:0.30,fraction_used:0};
+  const pctDisplay = fmtPct(q.fraction_used);
+  const quotaCls = q.fraction_used >= 0.8 ? 'kpi-bad' : (q.fraction_used >= 0.5 ? 'kpi-warn' : '');
+  const judgeDisplay = judgeStats && judgeStats.total > 0
+    ? (judgeStats.rate * 100).toFixed(1) + '%'
+    : '—';
+  const judgeSub = judgeStats && judgeStats.total > 0
+    ? `${judgeStats.accepted}/${judgeStats.total} 全期`
+    : '無紀錄';
+
+  document.getElementById('kpi-row').innerHTML = `
+    <div class="kpi-card">
+      <div class="kpi-label">單字數</div>
+      <div class="kpi-value">${u.vocab_count.toLocaleString()}</div>
+      <div class="kpi-sub">notebook cards</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Judge 通過率</div>
+      <div class="kpi-value ${judgeDisplay === '—' ? 'kpi-dim' : ''}">${judgeDisplay}</div>
+      <div class="kpi-sub">${judgeSub}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">24h Quota</div>
+      <div class="kpi-value ${quotaCls}">${pctDisplay}</div>
+      <div class="kpi-sub">$${q.used_usd.toFixed(4)} / $${q.limit_usd.toFixed(2)}</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Graph Density</div>
+      <div class="kpi-value kpi-dim" id="kpi-density-value">—</div>
+      <div class="kpi-sub" id="kpi-density-sub">載入中…</div>
+    </div>
+    <div class="kpi-card">
+      <div class="kpi-label">Pipeline Avg</div>
+      <div class="kpi-value kpi-dim" id="kpi-pipeline-value">—</div>
+      <div class="kpi-sub" id="kpi-pipeline-sub">載入中…</div>
+    </div>
+  `;
+}
+
+/* ── Usage breakdown table (right col) ── */
+function renderUsageTable(u, q) {
+  const calls = (q && q.calls) || {};
+  const tokens = u.tokens || {};
+  const typeLabels = {translate_quick:'quick',translate_phrase:'phrase',translate_explain:'explain',enrich:'enrich',judge:'judge',manual_link_judge:'manual_judge',embed:'embed'};
+  const order = ['translate_quick','translate_phrase','translate_explain','enrich','judge','manual_link_judge','embed'];
+  const allTypes = new Set([...Object.keys(calls), ...Object.keys(tokens)]);
+  const sortedTypes = [...order.filter(t => allTypes.has(t)), ...[...allTypes].filter(t => !order.includes(t))];
+
+  const container = document.getElementById('usage-detail');
+  const chip = document.getElementById('usage-chip');
+  if (!sortedTypes.length) {
+    container.innerHTML = '<div class="no-data">無使用紀錄</div>';
+    chip.innerHTML = '';
+    return;
+  }
+
+  let totalCalls = 0;
+  let totalCost = 0;
+  let totalIn = 0;
+  let totalOut = 0;
+  const rows = sortedTypes.map(t => {
+    const label = typeLabels[t] || t;
+    const c = calls[t];
+    const tk = tokens[t];
+    const n = c ? c.count : 0;
+    const cost = c ? c.cost_usd : 0;
+    const ti = tk ? tk.input_tokens : 0;
+    const to = tk ? tk.output_tokens : 0;
+    totalCalls += n;
+    totalCost += cost;
+    totalIn += ti;
+    totalOut += to;
+    return `<tr>
+      <td>${escapeHtml(label)}</td>
+      <td class="num">${n ? n.toLocaleString() : '—'}</td>
+      <td class="num">${cost ? '$' + cost.toFixed(4) : '—'}</td>
+      <td class="num sub">${ti ? fmt(ti) : '—'}</td>
+      <td class="num sub">${to ? fmt(to) : '—'}</td>
+    </tr>`;
+  }).join('');
+
+  container.innerHTML = `
+    <table class="usage-table">
+      <thead>
+        <tr>
+          <th>Type</th>
+          <th class="num">Calls</th>
+          <th class="num">Cost</th>
+          <th class="num">Tok In ↑</th>
+          <th class="num">Tok Out ↓</th>
+        </tr>
+      </thead>
+      <tbody>${rows}</tbody>
+      <tfoot>
+        <tr>
+          <td>Total</td>
+          <td class="num">${totalCalls.toLocaleString()}</td>
+          <td class="num">$${totalCost.toFixed(4)}</td>
+          <td class="num sub">${fmt(totalIn)}</td>
+          <td class="num sub">${fmt(totalOut)}</td>
+        </tr>
+      </tfoot>
+    </table>
+    <div class="usage-legend">↑ input tokens · ↓ output tokens · 24h window (calls + cost) / 全期 (tokens)</div>
+  `;
+  chip.innerHTML = `<strong>${totalCalls}</strong> calls <span class="dot">·</span> <strong>$${totalCost.toFixed(4)}</strong> cost`;
 }
 
 /* ── Density Chart ── */
@@ -752,13 +1021,26 @@ let _densityChart = null;
 function renderDensityChart(data) {
   const canvas = document.getElementById('density-chart');
   const noData = document.getElementById('density-no-data');
+  const chip = document.getElementById('density-chip');
   if (!data || !data.points || data.points.length === 0) {
     canvas.style.display = 'none';
     noData.style.display = '';
+    chip.innerHTML = '';
+    updateKpi('kpi-density-value', '—', 'kpi-dim');
+    document.getElementById('kpi-density-sub').textContent = '無紀錄';
     return;
   }
   noData.style.display = 'none';
   canvas.style.display = '';
+
+  // Update KPI + chip from latest point
+  const latest = data.points[data.points.length - 1];
+  const first = data.points[0];
+  updateKpi('kpi-density-value', latest.density.toFixed(3), '');
+  document.getElementById('kpi-density-sub').textContent = `${latest.cum_cards} cards`;
+  const delta = latest.density - first.density;
+  const deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+  chip.innerHTML = `<strong>${latest.density.toFixed(3)}</strong> latest <span class="dot">·</span> ${deltaStr} from start`;
 
   const labels = data.points.map(p => p.cum_cards);
   const densities = data.points.map(p => p.density);
@@ -833,12 +1115,15 @@ let _canvasH = 0;
 
 function initPlayback(data) {
   _playbackData = data;
+  const chip = document.getElementById('playback-chip');
   if (!data || (!data.nodes.length && !data.edges.length)) {
     document.getElementById('playback-controls').style.display = 'none';
     document.getElementById('playback-no-data').style.display = '';
     document.getElementById('playback-container').style.display = 'none';
+    if (chip) chip.innerHTML = '';
     return;
   }
+  if (chip) chip.innerHTML = `<strong>${data.nodes.length}</strong> nodes <span class="dot">·</span> <strong>${data.edges.length}</strong> edges`;
 
   // Build merged timeline — map API fields to internal names
   const nodeEvents = data.nodes.map(n => ({ type: 'node', data: { id: n.id, word: n.label, meaning: n.meaning, created_at: n.created_at }, time: n.created_at || '' }));
@@ -1154,16 +1439,32 @@ function renderPipelineAnalytics(data) {
   const noData = document.getElementById('pipeline-no-data');
   const analytics = document.getElementById('pipeline-analytics');
   const container = document.getElementById('pipeline-runs');
+  const chip = document.getElementById('pipeline-chip');
 
   if (!data || !data.runs || data.runs.length === 0) {
     analytics.style.display = 'none';
     noData.style.display = '';
+    chip.innerHTML = '';
+    updateKpi('kpi-pipeline-value', '—', 'kpi-dim');
+    document.getElementById('kpi-pipeline-sub').textContent = '無紀錄';
     return;
   }
   noData.style.display = 'none';
   analytics.style.display = '';
 
   const runs = data.runs;
+
+  // Summary stats
+  const total = runs.length;
+  const completed = runs.filter(r => r.status === 'completed').length;
+  const successRate = total > 0 ? (completed / total * 100).toFixed(0) : 0;
+  const durations = runs.filter(r => r.duration_s != null).map(r => r.duration_s);
+  const avgDur = durations.length ? (durations.reduce((a,b)=>a+b,0) / durations.length) : 0;
+  chip.innerHTML = `<strong>${total}</strong> runs <span class="dot">·</span> <strong>${successRate}%</strong> success <span class="dot">·</span> avg <strong>${avgDur.toFixed(1)}s</strong>`;
+
+  // Update KPI
+  updateKpi('kpi-pipeline-value', avgDur.toFixed(1) + 's', '');
+  document.getElementById('kpi-pipeline-sub').textContent = `${total} runs · ${successRate}% ok`;
 
   container.innerHTML = runs.map((run, idx) => {
     const statusClass = 's-' + run.status;
@@ -1173,7 +1474,8 @@ function renderPipelineAnalytics(data) {
     const runItems = (run.steps || []).reduce((s, st) => s + (st.items || 0), 0);
 
     return `<div class="pipeline-run" id="prun-${idx}">
-      <div class="pipeline-run-header" onclick="document.getElementById('prun-${idx}').classList.toggle('open')">
+      <div class="pipeline-run-header" onclick="toggleCollapse('prun-${idx}', this)" role="button" tabindex="0" aria-expanded="false">
+        <span class="chevron">▸</span>
         <span class="pipeline-run-trigger">${escapeHtml(run.trigger)}</span>
         <span class="pipeline-run-time">${time}</span>
         <span class="pipeline-run-status ${statusClass}">${statusIcon} ${run.status}</span>
@@ -1185,19 +1487,34 @@ function renderPipelineAnalytics(data) {
   }).join('');
 }
 
+function updateKpi(id, value, cls) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.textContent = value;
+  el.className = 'kpi-value ' + (cls || '');
+}
+
 /* ── Translate History ── */
 function renderTranslateHistory(data) {
   const noData = document.getElementById('translate-no-data');
   const section = document.getElementById('translate-history');
   const container = document.getElementById('translate-entries');
+  const chip = document.getElementById('translate-chip');
 
   if (!data || !data.history || data.history.length === 0) {
     section.style.display = 'none';
     noData.style.display = '';
+    chip.innerHTML = '';
     return;
   }
   noData.style.display = 'none';
   section.style.display = '';
+
+  // Summary
+  const total = data.history.length;
+  const latencies = data.history.filter(e => e.latency_ms != null).map(e => e.latency_ms);
+  const avgLat = latencies.length ? Math.round(latencies.reduce((a,b)=>a+b,0) / latencies.length) : 0;
+  chip.innerHTML = `<strong>${total}</strong> ops <span class="dot">·</span> avg <strong>${avgLat}ms</strong>`;
 
   const opLabel = { translate_quick: 'quick', translate_phrase: 'phrase', translate_explain: 'explain' };
 
@@ -1211,7 +1528,8 @@ function renderTranslateHistory(data) {
     const context = entry.context ? entry.context : '—';
 
     return `<div class="translate-entry" id="tentry-${idx}">
-      <div class="translate-entry-header" onclick="document.getElementById('tentry-${idx}').classList.toggle('open')">
+      <div class="translate-entry-header" onclick="toggleCollapse('tentry-${idx}', this)" role="button" tabindex="0" aria-expanded="false">
+        <span class="chevron">▸</span>
         <span class="translate-entry-op">${op}</span>
         <span class="translate-entry-word">${escapeHtml(entry.word)}</span>
         <span style="color:var(--sub);flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">→ ${escapeHtml(result)}</span>
@@ -1296,6 +1614,25 @@ async function loadPage() {
 document.getElementById('grant-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGrantModal();
 });
+
+/* ── Keyboard support for collapse headers ── */
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Enter' && e.key !== ' ') return;
+  const t = e.target;
+  if (!t || !t.classList) return;
+  if (t.classList.contains('pipeline-run-header') || t.classList.contains('translate-entry-header')) {
+    e.preventDefault();
+    t.click();
+  }
+});
+
+/* ── Toggle helper: class + aria-expanded in one call ── */
+function toggleCollapse(containerId, header) {
+  const el = document.getElementById(containerId);
+  if (!el) return;
+  el.classList.toggle('open');
+  header.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
+}
 
 loadPage();
 </script>
