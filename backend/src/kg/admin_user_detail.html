@@ -361,7 +361,7 @@ body {
   border: 1px solid var(--border);
   border-radius: 3px;
   background: var(--surface);
-  max-height: 360px;
+  max-height: 320px;
   overflow-y: auto;
 }
 #pipeline-runs::-webkit-scrollbar,
@@ -521,16 +521,33 @@ body {
 @media (max-width: 1080px) {
   .kpi-row { grid-template-columns: repeat(3, 1fr); }
 }
-/* Section header (with summary chip) */
+/* Section header (with summary chip) — clickable for collapse */
 .section-header {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   margin-bottom: 12px;
-  padding-bottom: 6px;
+  padding: 4px 0 6px;
   border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
 }
+.section-header:hover { border-bottom-color: var(--ink); }
+.section-chevron {
+  display: inline-block;
+  font-size: 10px;
+  color: var(--sub);
+  transition: transform .15s ease;
+  width: 12px;
+  flex-shrink: 0;
+}
+.section-block:not(.collapsed) > .section-header .section-chevron { transform: rotate(90deg); }
+.section-block.collapsed > .section-header { margin-bottom: 0; }
+.section-block.collapsed .section-body { display: none; }
+.section-block.collapsed { margin-bottom: 12px; }
+.section-body { }
+.section-header .section-title { flex: 1; min-width: 0; }
 .section-header .section-title {
   font-size: 12px;
   color: var(--ink);
@@ -668,8 +685,9 @@ body {
       </div>
       <div class="col-right">
         <!-- Usage Detail (per-type table) -->
-        <div class="section-block">
+        <div class="section-block collapsed" data-section="usage">
           <div class="section-header">
+            <span class="section-chevron">▸</span>
             <div class="section-title">Usage Breakdown</div>
             <div class="section-header-right">
               <div class="range-tabs" id="usage-range-tabs" role="tablist">
@@ -681,64 +699,78 @@ body {
               <div class="section-chip" id="usage-chip"></div>
             </div>
           </div>
-          <div class="usage-detail" id="usage-detail"></div>
+          <div class="section-body">
+            <div class="usage-detail" id="usage-detail"></div>
+          </div>
         </div>
         <!-- Pipeline Analytics -->
-        <div class="section-block">
+        <div class="section-block collapsed" data-section="pipeline">
           <div class="section-header">
+            <span class="section-chevron">▸</span>
             <div class="section-title">Pipeline Analytics</div>
             <div class="section-chip" id="pipeline-chip"></div>
           </div>
-          <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
-          <div id="pipeline-analytics" style="display:none">
-            <div id="pipeline-runs"></div>
+          <div class="section-body">
+            <div id="pipeline-no-data" class="no-data" style="display:none">無 Pipeline 紀錄</div>
+            <div id="pipeline-analytics" style="display:none">
+              <div id="pipeline-runs"></div>
+            </div>
           </div>
         </div>
         <!-- Translate History -->
-        <div class="section-block">
+        <div class="section-block collapsed" data-section="translate">
           <div class="section-header">
+            <span class="section-chevron">▸</span>
             <div class="section-title">Translate History</div>
             <div class="section-chip" id="translate-chip"></div>
           </div>
-          <div id="translate-no-data" class="no-data" style="display:none">無翻譯紀錄</div>
-          <div id="translate-history" style="display:none">
-            <div id="translate-entries"></div>
+          <div class="section-body">
+            <div id="translate-no-data" class="no-data" style="display:none">無翻譯紀錄</div>
+            <div id="translate-history" style="display:none">
+              <div id="translate-entries"></div>
+            </div>
           </div>
         </div>
         <!-- Graph Density -->
-        <div class="section-block">
+        <div class="section-block collapsed" data-section="density">
           <div class="section-header">
+            <span class="section-chevron">▸</span>
             <div class="section-title">Graph Density</div>
             <div class="section-chip" id="density-chip"></div>
           </div>
-          <div class="chart-wrap">
-            <canvas id="density-chart" height="300"></canvas>
-            <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
+          <div class="section-body">
+            <div class="chart-wrap">
+              <canvas id="density-chart" height="300"></canvas>
+              <div id="density-no-data" class="no-data" style="display:none">無圖譜密度資料</div>
+            </div>
           </div>
         </div>
         <!-- Graph Playback -->
-        <div class="section-block">
+        <div class="section-block collapsed" data-section="playback">
           <div class="section-header">
+            <span class="section-chevron">▸</span>
             <div class="section-title">Graph Playback</div>
             <div class="section-chip" id="playback-chip"></div>
           </div>
-          <div class="playback-wrap">
-            <div class="playback-canvas-container" id="playback-container">
-              <canvas id="playback-canvas"></canvas>
-              <div class="graph-tooltip" id="tooltip"></div>
+          <div class="section-body">
+            <div class="playback-wrap">
+              <div class="playback-canvas-container" id="playback-container">
+                <canvas id="playback-canvas"></canvas>
+                <div class="graph-tooltip" id="tooltip"></div>
+              </div>
+              <div class="playback-controls" id="playback-controls">
+                <button id="btn-play" title="Play/Pause">▶</button>
+                <select id="speed-select">
+                  <option value="1">1x</option>
+                  <option value="5">5x</option>
+                  <option value="10">10x</option>
+                </select>
+                <input type="range" id="timeline-slider" class="playback-slider" min="0" max="0" value="0">
+                <span class="playback-label" id="event-counter">0 / 0 events</span>
+                <span class="playback-label" id="time-label">—</span>
+              </div>
+              <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
             </div>
-            <div class="playback-controls" id="playback-controls">
-              <button id="btn-play" title="Play/Pause">▶</button>
-              <select id="speed-select">
-                <option value="1">1x</option>
-                <option value="5">5x</option>
-                <option value="10">10x</option>
-              </select>
-              <input type="range" id="timeline-slider" class="playback-slider" min="0" max="0" value="0">
-              <span class="playback-label" id="event-counter">0 / 0 events</span>
-              <span class="playback-label" id="time-label">—</span>
-            </div>
-            <div id="playback-no-data" class="no-data" style="display:none">無圖譜播放資料</div>
           </div>
         </div>
       </div>
@@ -1074,6 +1106,52 @@ function renderUsageTable(data) {
     <div class="usage-legend">↑ input tokens · ↓ output tokens · 範圍：${escapeHtml(rangeLabel)}</div>
   `;
   chip.innerHTML = `<strong>${totalCalls}</strong> calls <span class="dot">·</span> <strong>$${totalCost.toFixed(4)}</strong> cost`;
+}
+
+/* ── Deferred rendering for canvas-based sections ── */
+let _deferredDensityData = null;
+let _deferredPlaybackData = null;
+let _densityRendered = false;
+let _playbackRendered = false;
+
+function previewDensity(data) {
+  const chip = document.getElementById('density-chip');
+  const noData = document.getElementById('density-no-data');
+  const canvas = document.getElementById('density-chart');
+  if (!data || !data.points || data.points.length === 0) {
+    chip.innerHTML = '';
+    if (canvas) canvas.style.display = 'none';
+    if (noData) noData.style.display = '';
+    updateKpi('kpi-density-value', '—', 'kpi-dim');
+    document.getElementById('kpi-density-sub').textContent = '無紀錄';
+    return;
+  }
+  const latest = data.points[data.points.length - 1];
+  const first = data.points[0];
+  updateKpi('kpi-density-value', latest.density.toFixed(3), '');
+  document.getElementById('kpi-density-sub').textContent = `${latest.cum_cards} cards`;
+  const delta = latest.density - first.density;
+  const deltaStr = (delta >= 0 ? '+' : '') + delta.toFixed(3);
+  chip.innerHTML = `<strong>${latest.density.toFixed(3)}</strong> latest <span class="dot">·</span> ${deltaStr} from start`;
+}
+
+function previewPlayback(data) {
+  const chip = document.getElementById('playback-chip');
+  if (!data || (!data.nodes.length && !data.edges.length)) {
+    if (chip) chip.innerHTML = '';
+    return;
+  }
+  if (chip) chip.innerHTML = `<strong>${data.nodes.length}</strong> nodes <span class="dot">·</span> <strong>${data.edges.length}</strong> edges`;
+}
+
+function onSectionExpand(section) {
+  if (section === 'density' && !_densityRendered) {
+    _densityRendered = true;
+    renderDensityChart(_deferredDensityData);
+  } else if (section === 'playback' && !_playbackRendered) {
+    _playbackRendered = true;
+    initPlayback(_deferredPlaybackData);
+  }
 }
 
 /* ── Density Chart ── */
@@ -1634,23 +1712,15 @@ async function loadPage() {
     const judgeStats = judgeR.ok ? await judgeR.json() : null;
     renderUserInfo(user, judgeStats);
 
-    // Density chart
-    if (densityR.ok) {
-      const densityData = await densityR.json();
-      renderDensityChart(densityData);
-    } else {
-      renderDensityChart(null);
-    }
+    // Density — stash data, update KPI/chip only; actual chart rendered on first expand
+    _deferredDensityData = densityR.ok ? await densityR.json() : null;
+    previewDensity(_deferredDensityData);
 
-    // Graph playback
-    if (playbackR.ok) {
-      const playbackData = await playbackR.json();
-      initPlayback(playbackData);
-    } else {
-      initPlayback(null);
-    }
+    // Playback — stash, preview only; canvas init deferred to first expand
+    _deferredPlaybackData = playbackR.ok ? await playbackR.json() : null;
+    previewPlayback(_deferredPlaybackData);
 
-    // Pipeline history
+    // Pipeline + Translate render into hidden containers fine (no canvas)
     if (pipelineR.ok) {
       const pipelineData = await pipelineR.json();
       renderPipelineAnalytics(pipelineData);
@@ -1658,7 +1728,6 @@ async function loadPage() {
       renderPipelineAnalytics(null);
     }
 
-    // Translate history
     if (translateR.ok) {
       const translateData = await translateR.json();
       renderTranslateHistory(translateData);
@@ -1675,12 +1744,30 @@ document.getElementById('grant-modal').addEventListener('click', function(e) {
   if (e.target === this) closeGrantModal();
 });
 
-/* ── Range tab click handler ── */
+/* ── Range tab click handler (stop propagation so section doesn't toggle) ── */
 document.getElementById('usage-range-tabs').addEventListener('click', function(e) {
+  e.stopPropagation();
   const btn = e.target.closest('.range-tab');
   if (!btn) return;
   const range = btn.dataset.range;
+  // Auto-open usage section if collapsed
+  const block = btn.closest('.section-block');
+  if (block && block.classList.contains('collapsed')) block.classList.remove('collapsed');
   if (range && range !== _currentUsageRange) loadUsageRange(range);
+});
+
+/* ── Section collapse toggle (click on section-header) ── */
+document.querySelectorAll('.col-right .section-block').forEach(block => {
+  const header = block.querySelector('.section-header');
+  if (!header) return;
+  header.addEventListener('click', () => {
+    const willOpen = block.classList.contains('collapsed');
+    block.classList.toggle('collapsed');
+    if (willOpen) {
+      const section = block.dataset.section;
+      if (section) onSectionExpand(section);
+    }
+  });
 });
 
 /* ── Keyboard support for collapse headers ── */
