@@ -252,7 +252,7 @@ private struct CardDocumentCollocationsBlock: View {
                         .padding(.horizontal, 8)
                         .padding(.vertical, 4)
                         .background(
-                            RoundedRectangle(cornerRadius: 6)
+                            Capsule()
                                 .fill(vocabSkin.palette.divider.opacity(0.5))
                         )
                 }

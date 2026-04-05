@@ -47,7 +47,7 @@ struct NotebookRow: View {
                             .foregroundStyle(skin.palette.accent)
                             .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
                             .padding(.vertical, skin.spacing.compactChipVerticalPadding)
-                            .background(skin.palette.accent.opacity(0.12), in: RoundedRectangle(cornerRadius: skin.radii.chip))
+                            .background(skin.palette.accent.opacity(0.12), in: Capsule())
                     }
                 }
 

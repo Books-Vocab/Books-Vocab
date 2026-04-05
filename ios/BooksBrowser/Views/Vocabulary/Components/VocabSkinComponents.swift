@@ -63,7 +63,7 @@ struct VocabToneChip: View {
             .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.08))
             .clipShape(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
+                Capsule(style: .continuous)
             )
             .accessibilityLabel("語氣標記".localized)
     }
@@ -83,7 +83,7 @@ struct VocabTierLabel: View {
             .background(
                 Group {
                     if prominent {
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                        Capsule(style: .continuous)
                             .fill(vocabSkin.tierColor(for: tier).opacity(0.08))
                     }
                 }
