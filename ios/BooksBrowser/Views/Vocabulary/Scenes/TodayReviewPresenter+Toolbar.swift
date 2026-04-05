@@ -18,7 +18,7 @@ extension TodayReviewPresenter {
                 .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
                 .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
                 .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    Capsule(style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
                 )
 
@@ -36,7 +36,7 @@ extension TodayReviewPresenter {
                 .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
                 .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
                 .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                    Capsule(style: .continuous)
                         .fill(vocabSkin.palette.mutedFill)
                 )
             }
