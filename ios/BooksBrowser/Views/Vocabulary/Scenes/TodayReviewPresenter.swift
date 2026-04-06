@@ -36,12 +36,13 @@ struct TodayReviewPresenterState {
                     if seenExample { fixedHeight += AppMetrics.dividerThin; gapCount += 1 }
                 case .meaning(let meaning):
                     if seenExample {
-                        let lineCount = meaning.paragraphs.isEmpty ? 0 : 3
+                        // fixedSize: 每段最多 3 行（lineLimit），多段累加
+                        let lineCount = meaning.paragraphs.count * 3
                         fixedHeight += CGFloat(lineCount) * 22; gapCount += 1
                     }
                 case .collocations(let items):
                     if seenExample {
-                        let rows = max(1, (items.count + 2) / 3)
+                        let rows = max(1, (items.count + 1) / 2)
                         fixedHeight += CGFloat(rows) * 32; gapCount += 1
                     }
                 default:
