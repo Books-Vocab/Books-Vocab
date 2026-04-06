@@ -132,7 +132,16 @@ extension TodayReviewPresenter {
             }
 
             if !currentCard.backDocument.blocks.isEmpty {
-                CardDocumentView(document: currentCard.backDocument, truncateRadius: exampleRadius, targetWord: card.word, compact: true)
+                CardDocumentView(
+                    document: currentCard.backDocument,
+                    truncateRadius: exampleRadius,
+                    targetWord: card.word,
+                    compact: true,
+                    collocationExplanations: collocationExplanations,
+                    onExplainCollocation: onExplainCollocation,
+                    onViewCollocationExplanation: onViewCollocationExplanation,
+                    onDeleteCollocationExplanation: onDeleteCollocationExplanation
+                )
             }
         }
         .padding(reviewCardPadding)
