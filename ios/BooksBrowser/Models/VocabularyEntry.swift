@@ -49,6 +49,7 @@ final class VocabularyEntry {
     var reviewModeRaw: String = VocabularyCardMode.recognition.rawValue
     var reviewExamples: [String] = []
     var collocations: [String] = []
+    var collocationExplanationsJSON: String = "{}"
     var graphLinksJSON: String = "{}"
     var isArchived: Bool = false
     var isExcludedFromReader: Bool = false
@@ -222,6 +223,19 @@ extension VocabularyEntry {
         var dict = graphLinksByKind
         dict[kind, default: []].append(link)
         graphLinksByKind = dict
+    }
+
+    var collocationExplanations: [String: String] {
+        get {
+            guard let data = collocationExplanationsJSON.data(using: .utf8),
+                  let dict = try? JSONDecoder().decode([String: String].self, from: data)
+            else { return [:] }
+            return dict
+        }
+        set {
+            collocationExplanationsJSON = (try? JSONEncoder().encode(newValue))
+                .flatMap { String(data: $0, encoding: .utf8) } ?? "{}"
+        }
     }
 
     var graphLinksByKind: [String: [KGCardLinkSummary]] {

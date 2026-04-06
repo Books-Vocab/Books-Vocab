@@ -92,6 +92,16 @@ async def test_run_phrase_and_explain_translate_return_expected_shapes():
     assert explain.e == "這裡表示因案件而受審。"
 
 
+def test_explain_prompt_concise():
+    """Verify the explain prompt requests 1-2 sentences, not 3-5."""
+    from kg.translate_service import explain_translate_prompt
+    req = TranslateRequest(word="progenitor", context="their progenitor")
+    prompt = explain_translate_prompt(req, "en", "zh-Hant")
+    assert "1-2 sentence" in prompt.lower() or "1–2 sentence" in prompt.lower()
+    assert "3-5" not in prompt
+    assert "bullet" not in prompt.lower()
+
+
 import hashlib
 
 def _compute_context_hash(context: str) -> str:

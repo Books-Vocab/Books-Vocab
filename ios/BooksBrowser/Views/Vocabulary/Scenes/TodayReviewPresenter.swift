@@ -121,6 +121,10 @@ struct TodayReviewPresenter: View {
     let onToggleAutoPlayPause: () -> Void
     let onDetailTap: () -> Void
     let onToggleHelp: () -> Void
+    let onExplainCollocation: (String) -> Void
+    let onViewCollocationExplanation: (String) -> Void
+    let onDeleteCollocationExplanation: (String) -> Void
+    var collocationExplanations: [String: String] = [:]
 
     /// 給 extension 判斷能否互動
     var isCardInteractive: Bool {
