@@ -89,12 +89,7 @@ Output pure JSON (no Markdown): {{ "t": "..." }}'''
 def explain_translate_prompt(req: TranslateRequest, source_lang: str, target_lang: str) -> str:
     src_name = SUPPORTED_LANGUAGES.get(source_lang, "English")
     tgt_name = SUPPORTED_LANGUAGES.get(target_lang, "Traditional Chinese")
-    return f'''You are a language tutor. Given a {src_name} word/phrase and its surrounding context, write a cohesive explanation in {tgt_name} that naturally weaves together:
-1. The meaning in this specific context
-2. Core {src_name} usage patterns (common collocations, typical sentence structures, register/formality)
-3. Nuances, connotations, or subtle distinctions from near-synonyms if relevant
-
-Write as a single flowing paragraph (3-5 sentences). Do NOT use section headers, bullet points, or numbered lists. The explanation should read like a knowledgeable tutor speaking naturally.
+    return f'''Explain what "{req.word}" means in the given context, then briefly break down the {src_name} components/structure. 1-2 sentences max, in {tgt_name} (use 繁體中文 characters, never 简体).
 
 Word: "{req.word}"
 Context: "{_context_around_word(req.context, req.word)}"

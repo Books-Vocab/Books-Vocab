@@ -7,6 +7,10 @@ struct CardDocumentView: View {
     var truncateRadius: Int? = nil
     var targetWord: String? = nil
     var compact: Bool = false
+    var collocationExplanations: [String: String] = [:]
+    var onExplainCollocation: ((String) -> Void)? = nil
+    var onViewCollocationExplanation: ((String) -> Void)? = nil
+    var onDeleteCollocationExplanation: ((String) -> Void)? = nil
 
     private var blockPadding: CGFloat { compact ? 0 : vocabSkin.metrics.cardBlockPadding }
     private var blockSpacing: CGFloat { compact ? vocabSkin.metrics.reviewFoldSectionSpacing : 0 }
@@ -35,8 +39,15 @@ struct CardDocumentView: View {
                         .padding(blockPadding)
 
                 case .collocations(let items):
-                    CardDocumentCollocationsBlock(items: items, compact: compact)
-                        .padding(blockPadding)
+                    CardDocumentCollocationsBlock(
+                        items: items,
+                        compact: compact,
+                        explanations: collocationExplanations,
+                        onExplain: onExplainCollocation,
+                        onView: onViewCollocationExplanation,
+                        onDelete: onDeleteCollocationExplanation
+                    )
+                    .padding(blockPadding)
 
                 case .source(let source):
                     CardDocumentSourceBlock(source: source)
@@ -236,10 +247,12 @@ private struct CardDocumentSourceBlock: View {
 
 private struct CardDocumentCollocationsBlock: View {
     @Environment(\.vocabSkin) private var vocabSkin
-    @Environment(\.toastCoordinator) private var toastCoordinator
-    @State private var copyTrigger = false
     let items: [String]
     var compact: Bool = false
+    var explanations: [String: String] = [:]
+    var onExplain: ((String) -> Void)? = nil
+    var onView: ((String) -> Void)? = nil
+    var onDelete: ((String) -> Void)? = nil
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
@@ -247,26 +260,44 @@ private struct CardDocumentCollocationsBlock: View {
 
             CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
-                    Text(item)
-                        .font(vocabSkin.typography.monoBody)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 4)
-                        .background(
-                            Capsule()
-                                .fill(vocabSkin.palette.divider.opacity(0.5))
-                        )
+                    collocationPill(item)
                 }
             }
         }
-        .contextMenu {
-            Button("複製".localized, systemImage: "doc.on.doc") {
-                PlatformClipboard.copy(items.joined(separator: ", "))
-                copyTrigger.toggle()
-                toastCoordinator.success("已複製")
+    }
+
+    private func collocationPill(_ item: String) -> some View {
+        let hasExplanation = explanations[item] != nil
+        return Text(item)
+            .font(vocabSkin.typography.monoBody)
+            .foregroundStyle(vocabSkin.palette.secondaryText)
+            .padding(.horizontal, 8)
+            .padding(.vertical, 4)
+            .background(
+                Capsule().fill(
+                    hasExplanation
+                        ? vocabSkin.palette.accent.opacity(0.12)
+                        : vocabSkin.palette.divider.opacity(0.5)
+                )
+            )
+            .overlay(alignment: .leading) {
+                if hasExplanation {
+                    Circle()
+                        .fill(vocabSkin.palette.accent)
+                        .frame(width: 4, height: 4)
+                        .offset(x: 2)
+                }
             }
-        }
-        .sensoryFeedback(.success, trigger: copyTrigger)
+            .contextMenu {
+                if hasExplanation {
+                    Button("查看".localized, systemImage: "text.bubble") { onView?(item) }
+                    Button("複製".localized, systemImage: "doc.on.doc") { PlatformClipboard.copy(item) }
+                    Button("刪除".localized, systemImage: "trash", role: .destructive) { onDelete?(item) }
+                } else {
+                    Button("解釋".localized, systemImage: "text.bubble") { onExplain?(item) }
+                    Button("複製".localized, systemImage: "doc.on.doc") { PlatformClipboard.copy(item) }
+                }
+            }
     }
 }
 
