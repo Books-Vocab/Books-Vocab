@@ -35,7 +35,7 @@ struct CardDocumentView: View {
                         .padding(blockPadding)
 
                 case .collocations(let items):
-                    CardDocumentCollocationsBlock(items: items)
+                    CardDocumentCollocationsBlock(items: items, compact: compact)
                         .padding(blockPadding)
 
                 case .source(let source):
@@ -133,7 +133,6 @@ private struct CardDocumentExampleBlock: View {
                     targetWord: targetWord
                 )
                 .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
-                .fixedSize(horizontal: false, vertical: true)
             } else {
                 CardInlineText(
                     paragraph: paragraph,
@@ -182,6 +181,7 @@ private struct CardDocumentMeaningBlock: View {
                     )
                     .lineSpacing(compact ? 5 : vocabSkin.metrics.detailLineSpacing)
                     .lineLimit(compact ? 3 : nil)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -239,12 +239,13 @@ private struct CardDocumentCollocationsBlock: View {
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let items: [String]
+    var compact: Bool = false
 
     var body: some View {
         VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
 
-            CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+            CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     Text(item)
                         .font(vocabSkin.typography.monoBody)
@@ -274,9 +275,11 @@ private struct CardDocumentCollocationsBlock: View {
 /// 自動折行佈局 — 子視圖超出容器寬度時換行
 struct CollocationFlowLayout: Layout {
     var spacing: CGFloat
+    var maxRows: Int? = nil
 
     func sizeThatFits(proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) -> CGSize {
-        let rows = computeRows(proposal: proposal, subviews: subviews)
+        let allRows = computeRows(proposal: proposal, subviews: subviews)
+        let rows = cappedRows(allRows)
         guard !rows.isEmpty else { return .zero }
         let height = rows.reduce(CGFloat(0)) { sum, row in
             sum + row.height
@@ -285,7 +288,8 @@ struct CollocationFlowLayout: Layout {
     }
 
     func placeSubviews(in bounds: CGRect, proposal: ProposedViewSize, subviews: Subviews, cache: inout ()) {
-        let rows = computeRows(proposal: proposal, subviews: subviews)
+        let allRows = computeRows(proposal: proposal, subviews: subviews)
+        let rows = cappedRows(allRows)
         var y = bounds.minY
         var subviewIndex = 0
         for row in rows {
@@ -298,6 +302,15 @@ struct CollocationFlowLayout: Layout {
             }
             y += row.height + spacing
         }
+        // 超出 maxRows 的子視圖放到畫面外
+        for i in subviewIndex..<subviews.count {
+            subviews[i].place(at: CGPoint(x: bounds.minX, y: bounds.maxY + 1000), proposal: .zero)
+        }
+    }
+
+    private func cappedRows(_ rows: [Row]) -> [Row] {
+        guard let maxRows, rows.count > maxRows else { return rows }
+        return Array(rows.prefix(maxRows))
     }
 
     private struct Row {
