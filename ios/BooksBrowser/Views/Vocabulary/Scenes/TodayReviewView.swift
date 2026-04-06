@@ -44,6 +44,13 @@ enum TodayReviewRevealStage: Int {
     }
 }
 
+struct CollocationExplainItem: Identifiable {
+    let id = UUID()
+    let collocation: String
+    let context: String
+    let existingExplanation: String?
+}
+
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
@@ -55,6 +62,7 @@ struct TodayReviewView: View {
 
     @State private var isHelpPresented = false
     @State private var showAddLink = false
+    @State private var explainSheetItem: CollocationExplainItem? = nil
     @State private var hasConsumedShortcutHint = false
     @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
 
@@ -102,7 +110,27 @@ struct TodayReviewView: View {
             onToggleAutoPlay: { perform(.toggleAutoplay) },
             onToggleAutoPlayPause: { perform(.toggleAutoplayPause) },
             onDetailTap: { perform(.showDetail) },
-            onToggleHelp: { perform(.showHelp) }
+            onToggleHelp: { perform(.showHelp) },
+            onExplainCollocation: { collocation in
+                guard let entry = state.currentEntry else { return }
+                explainSheetItem = CollocationExplainItem(
+                    collocation: collocation,
+                    context: entry.context,
+                    existingExplanation: nil
+                )
+            },
+            onViewCollocationExplanation: { collocation in
+                guard let entry = state.currentEntry else { return }
+                explainSheetItem = CollocationExplainItem(
+                    collocation: collocation,
+                    context: entry.context,
+                    existingExplanation: entry.collocationExplanations[collocation]
+                )
+            },
+            onDeleteCollocationExplanation: { collocation in
+                state.currentEntry?.collocationExplanations.removeValue(forKey: collocation)
+            },
+            collocationExplanations: state.currentEntry?.collocationExplanations ?? [:]
         )
         .toastOverlay()
         .overlay {
@@ -138,6 +166,20 @@ struct TodayReviewView: View {
                     onSelect: { target in handleAddLink(target, for: entry) }
                 )
             }
+        }
+        .toastSheet(item: $explainSheetItem) { item in
+            CollocationExplainSheet(
+                collocation: item.collocation,
+                context: item.context,
+                existingExplanation: item.existingExplanation,
+                onSave: { explanation in
+                    state.currentEntry?.collocationExplanations[item.collocation] = explanation
+                },
+                onDelete: {
+                    state.currentEntry?.collocationExplanations.removeValue(forKey: item.collocation)
+                }
+            )
+            .appSheet(.medium)
         }
         .onDisappear {
             if state.currentIndex < state.queue.count {

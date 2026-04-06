@@ -144,8 +144,11 @@ enum TodayReviewPresenterPreviewData {
         onToggleAutoPlay: () -> Void,
         onToggleAutoPlayPause: () -> Void,
         onDetailTap: () -> Void,
-        onToggleHelp: () -> Void
-    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {})
+        onToggleHelp: () -> Void,
+        onExplainCollocation: (String) -> Void,
+        onViewCollocationExplanation: (String) -> Void,
+        onDeleteCollocationExplanation: (String) -> Void
+    ) = ({}, {}, {}, {}, {}, {}, {}, {}, { _ in }, {}, {}, {}, {}, {}, { _ in }, { _ in }, { _ in })
 }
 
 #Preview("Today Review / Front") {
@@ -160,7 +163,10 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
+            onExplainCollocation: cb.onExplainCollocation,
+            onViewCollocationExplanation: cb.onViewCollocationExplanation,
+            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
 }
@@ -177,7 +183,10 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
+            onExplainCollocation: cb.onExplainCollocation,
+            onViewCollocationExplanation: cb.onViewCollocationExplanation,
+            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
 }
@@ -194,7 +203,10 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
+            onExplainCollocation: cb.onExplainCollocation,
+            onViewCollocationExplanation: cb.onViewCollocationExplanation,
+            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
 }
@@ -211,7 +223,10 @@ enum TodayReviewPresenterPreviewData {
             onForgot: cb.onForgot, onRemembered: cb.onRemembered, onLinkTap: cb.onLinkTap,
             onAddLink: cb.onAddLink,
             onToggleAutoPlay: cb.onToggleAutoPlay, onToggleAutoPlayPause: cb.onToggleAutoPlayPause,
-            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp
+            onDetailTap: cb.onDetailTap, onToggleHelp: cb.onToggleHelp,
+            onExplainCollocation: cb.onExplainCollocation,
+            onViewCollocationExplanation: cb.onViewCollocationExplanation,
+            onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
 }
