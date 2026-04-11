@@ -88,16 +88,84 @@ async def _locked_lock():
     return lock
 
 
-def test_pipeline_service_skips_when_lock_is_held():
+def test_pipeline_service_waits_when_lock_is_held():
+    """Regression guard for the 2026-04-11 incident's second root cause.
+
+    Previously: if another run held the per-user lock, the pipeline silently
+    skipped and returned 200 without doing any work — causing cards to sit
+    forever in pending_judge_<notebook>.json. With the fix, the pipeline
+    MUST wait on the lock instead of silently skipping, so concurrent
+    triggers for different notebooks under the same user all run.
+    """
     logger = _FakeLogger()
-    user = {"id": "u1", "dir": Path("/tmp/u1"), "config": {}}
-    lock = asyncio.run(_locked_lock())
+    user = {"id": "u_wait", "dir": Path("/tmp/u_wait"), "config": {}}
+
+    async def scenario():
+        external_lock = asyncio.Lock()
+        await external_lock.acquire()
+
+        async def get_user_lock_fn(user_id: str):
+            return external_lock
+
+        task = asyncio.create_task(
+            run_pipeline_background(
+                user,
+                get_user_lock_fn=get_user_lock_fn,
+                card_store_factory=lambda user_dir: _CardsOk(),
+                graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
+                embedding_store_factory=lambda user_dir, llm=None, notebook_id="default": _EmbeddingsBoom(),
+                gemini_client_factory=lambda: None,
+                logger=logger,
+                link_kind_enum=lambda value: value,
+            )
+        )
+
+        # Let the task progress to the point where it tries to acquire the lock.
+        await asyncio.sleep(0.05)
+
+        # Critical invariant: the task must NOT have returned early.
+        assert not task.done(), (
+            "Pipeline must wait on the lock, not silently skip. "
+            "This is the regression guard for the 2026-04-11 lock-skip bug."
+        )
+        # The old bug's signature log line must never appear again.
+        assert not any("Pipeline already running" in m for m in logger.info_messages), (
+            "'Pipeline already running, skipping' was the old bug's signature — must never appear."
+        )
+
+        # Release the external lock and let the queued pipeline run.
+        external_lock.release()
+        await task
+
+        assert any("Pipeline started." in m for m in logger.info_messages)
+        assert any("Pipeline completed." in m for m in logger.info_messages)
+
+    asyncio.run(scenario())
+
+
+def test_pipeline_service_concurrent_triggers_different_notebooks_all_run():
+    """Two concurrent triggers for the same user but different notebooks
+    must BOTH produce real work. This is the exact scenario of the
+    2026-04-11 evening incident: new notebook "Test" with one card +
+    default with a migrated orphan — previously only default's pipeline
+    ran while the second silently bounced off the lock.
+
+    To reliably exercise the contended-lock code path, the test itself
+    holds the shared lock until both tasks have queued up on it, then
+    releases. Without this, the mock-based pipeline (with `_CardsOk`'s
+    synchronous return path) completes end-to-end without ever yielding
+    control, so `asyncio.gather` would effectively serialize the two
+    calls and the contended branch would never be exercised.
+    """
+    logger = _FakeLogger()
+    user = {"id": "u_concurrent", "dir": Path("/tmp/u_concurrent"), "config": {}}
+    shared_lock = asyncio.Lock()
 
     async def get_user_lock_fn(user_id: str):
-        return lock
+        return shared_lock
 
-    asyncio.run(
-        run_pipeline_background(
+    def make_call(notebook_id: str):
+        return run_pipeline_background(
             user,
             get_user_lock_fn=get_user_lock_fn,
             card_store_factory=lambda user_dir: _CardsOk(),
@@ -106,10 +174,41 @@ def test_pipeline_service_skips_when_lock_is_held():
             gemini_client_factory=lambda: None,
             logger=logger,
             link_kind_enum=lambda value: value,
+            notebook_id=notebook_id,
         )
+
+    async def run_both():
+        # Force contention by pre-holding the lock before spawning the two tasks.
+        await shared_lock.acquire()
+        task_a = asyncio.create_task(make_call("default"))
+        task_b = asyncio.create_task(make_call("notebook_b"))
+        # Let both tasks progress up to the point where they try to acquire
+        # the lock (they will each log "lock held, queueing" before suspending).
+        await asyncio.sleep(0.05)
+        shared_lock.release()
+        await asyncio.gather(task_a, task_b)
+
+    asyncio.run(run_both())
+
+    # Both calls must reach "Pipeline started." — this is the core correctness
+    # property that the lock-skip bug violated.
+    started = [m for m in logger.info_messages if "Pipeline started." in m]
+    assert len(started) == 2, f"Expected 2 pipeline starts, got {len(started)}: {started}"
+
+    # Both must complete (the skip branch would return before logging this).
+    completed = [m for m in logger.info_messages if "Pipeline completed." in m]
+    assert len(completed) == 2, f"Expected 2 pipeline completions, got {len(completed)}"
+
+    # Must actually exercise the contended-lock path. Without this guard, a
+    # future refactor that serializes the two calls (e.g. removes all awaits
+    # before the work starts) would make the test pass without touching the
+    # queue path.
+    assert any("lock held, queueing" in m for m in logger.info_messages), (
+        "Test did not exercise the contended-lock path — queue codepath untested."
     )
 
-    assert any("skipping" in message.lower() for message in logger.info_messages)
+    # Regression guard: no silent skip.
+    assert not any("Pipeline already running" in m for m in logger.info_messages)
 
 
 def test_pipeline_service_logs_error_when_step_fails():
