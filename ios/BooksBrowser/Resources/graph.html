@@ -80,6 +80,13 @@ function resize() {
     ctx.scale(dpr, dpr);
 }
 window.addEventListener('resize', () => {
+    // Guard BEFORE resize(). Setting canvas.width/height clears the backing
+    // store even when assigning the same value, so running resize() on a
+    // no-op event would blank the thumbnail and no tick would redraw it.
+    // WKWebView emits resize on view hierarchy re-attachment (tab switch,
+    // navigation) with identical dimensions — skip those entirely.
+    const newW = window.innerWidth, newH = window.innerHeight;
+    if (newW === W && newH === H) return;
     const oldW = W, oldH = H;
     resize();
     if (!sim) return;

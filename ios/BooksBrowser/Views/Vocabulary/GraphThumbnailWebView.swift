@@ -117,12 +117,18 @@ extension GraphThumbnailWebView {
     static func performUpdate(_ webView: WKWebView, coordinator: GraphThumbnailCoordinator,
                                nodes: [KnowledgeGraphNode], edges: [KnowledgeGraphEdge],
                                theme: KnowledgeGraphTheme, colorScheme: ColorScheme) {
+        // Signature uses discrete visual features only. `n.ratio` is excluded
+        // because it derives from `Date()` in KnowledgeGraphPresentation.nodes
+        // and drifts on every body recomputation, causing spurious re-inits
+        // that reset the d3 simulation. colorHex rounds to 8-bit RGB
+        // (#RRGGBB) in ReviewGradient.cssHex, so sub-second ratio drift
+        // produces identical strings and visual meaning is preserved.
         var hasher = Hasher()
         hasher.combine(colorScheme == .dark)
         for n in nodes {
             hasher.combine(n.id)
             hasher.combine(n.colorHex)
-            hasher.combine(n.ratio)
+            hasher.combine(n.degree)
         }
         hasher.combine(edges.count)
         let sig = "\(hasher.finalize())"
