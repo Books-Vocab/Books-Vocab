@@ -45,7 +45,7 @@ extension ReaderViewPresenter {
                 HStack(spacing: 6) {
                     VocabChromeIconButton(systemImage: "list.bullet", label: "目錄".localized, action: onShowTableOfContents)
                     VocabChromeIconButton(systemImage: "textformat.size", label: "閱讀設定".localized, action: onShowReaderSettings)
-                    VocabChromeIconButton(systemImage: "notebook", label: "選擇單字本".localized, action: onShowNotebookPicker)
+                    VocabChromeIconButton(systemImage: "text.book.closed", label: "選擇單字本".localized, action: onShowNotebookPicker)
                     VocabChromeIconButton(systemImage: "chevron.up", label: "收起標題列".localized, action: onCollapseHeader)
                 }
             }
