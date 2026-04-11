@@ -441,9 +441,23 @@ async def run_pipeline_background(
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
+    # Previously: `if lock.locked(): return` silently dropped concurrent triggers,
+    # causing cards in a second notebook to sit forever in pending_judge_<nb>.json
+    # when iOS's post-2026-04-11 `triggerPipelinesIsolated` fires two triggers for
+    # different notebooks back-to-back (new notebook + migrated orphan into default).
+    # Now: queue naturally via `async with lock`. Each step already has an early-exit
+    # path ("All cards already enriched" / "No pending cards to judge" / etc.) so
+    # duplicate triggers for the same notebook degrade to cheap no-ops.
     if lock.locked():
-        logger.info("[%s] Pipeline already running, skipping.", uid)
-        return
+        logger.info("[%s] Pipeline lock held, queueing notebook=%s.", uid, notebook_id)
+        # Pre-set _PIPELINE_RUNNING so the `X-Pipeline-Pending` header stays sticky
+        # across the queue transition. Otherwise there is a window between the
+        # in-flight run's early flag-clear (before ExternalSync) and our own
+        # `async with lock` acquisition where iOS could see pending=false and stop
+        # polling while our notebook's work has not yet started — reintroducing the
+        # "second notebook looks stale" UX symptom of the original incident.
+        with _PIPELINE_RUNNING_LOCK:
+            _PIPELINE_RUNNING[uid] = True
 
     async with lock:
         with _PIPELINE_RUNNING_LOCK:
