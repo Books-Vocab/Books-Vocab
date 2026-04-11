@@ -125,6 +125,15 @@ final class NotebookListCoordinator: NotebookListCoordinating {
                 allEntries: allEntries,
                 modelContext: modelContext
             )
+            // 若全域 active notebook 指向剛被刪掉的 notebook（典型場景：跨裝置刪除），
+            // 必須清掉 UserDefaults，否則 `Book.resolvedNotebookId` 還會 fall through
+            // 到死 id，造成新建 entry 變孤兒。
+            let activeKey = "activeNotebookId"
+            if let active = UserDefaults.standard.string(forKey: activeKey),
+               newlyDeleted.contains(active) {
+                UserDefaults.standard.removeObject(forKey: activeKey)
+                AppLog.kg.warning("cleared stale activeNotebookId after remote delete: \(active)")
+            }
         }
 
         modelContext.safeSave()
@@ -214,6 +223,16 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
             notebook.isDeleted = true
             notebook.updatedAt = Date()
+
+            // Hard guarantee mirror of the reconcile-path UserDefaults cleanup:
+            // even if `setActiveNotebook` was a no-op (caller injection 不保證寫入)
+            // 或 `resolveFallbackNotebookId` 回傳 nil（only-notebook edge case），
+            // 直接清掉指向 deletedId 的 stale activeNotebookId，避免 Book.resolvedNotebookId
+            // 之後 fall through 到死 id。
+            if UserDefaults.standard.string(forKey: "activeNotebookId") == deletedId {
+                UserDefaults.standard.removeObject(forKey: "activeNotebookId")
+            }
+
             if modelContext.safeSaveWithToast(toastCoordinator) {
                 toastCoordinator.success("已刪除")
             }
