@@ -26,6 +26,10 @@ struct ReaderView: View {
     )
     var allVocabulary: [VocabularyEntry]  // 全域生詞（跨書）
 
+    // 用於驗證 book.preferredNotebookId 是否指向仍存在的 notebook
+    @Query(filter: #Predicate<Notebook> { !$0.isDeleted })
+    private var liveNotebooks: [Notebook]
+
     @State var publication: Publication?
     @State var readerState = ReaderViewState()
 
@@ -105,7 +109,11 @@ struct ReaderView: View {
             }
         }
         .task {
+            sanitizeStaleBoundNotebook()
             await loadPublication()
+        }
+        .onChange(of: liveNotebooks.map(\.remoteId)) { _, _ in
+            sanitizeStaleBoundNotebook()
         }
         .onChange(of: allVocabulary.count) { _, _ in
             handler.loadLookedUpWords(from: allVocabulary)
@@ -130,6 +138,16 @@ struct ReaderView: View {
         }
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
+        }
+    }
+
+    /// 若 book.preferredNotebookId 指向已刪除或不存在的 notebook，清除綁定以避免新單字存入孤兒 notebook。
+    /// 空列表代表 @Query 尚未 settle（首次啟動 / 剛登入）— 不清 bound，避免誤清仍合法的遠端 notebook。
+    private func sanitizeStaleBoundNotebook() {
+        guard let boundId = book.preferredNotebookId else { return }
+        guard !liveNotebooks.isEmpty else { return }
+        if !liveNotebooks.contains(where: { $0.remoteId == boundId }) {
+            book.preferredNotebookId = nil
         }
     }
 
