@@ -30,6 +30,8 @@ class KGSettings:
 
     # LLM
     gemini_model: str = "gemini-2.5-flash-lite"
+    embedding_model: str = "gemini-embedding-2-preview"
+    embedding_dim: int = 3072
     gemini_temperature: float = 0.3
     judge_temperature: float = 0.1
 
@@ -86,6 +88,8 @@ def load_settings() -> KGSettings:
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
         gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
+        embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview"),
+        embedding_dim=int(os.getenv("EMBEDDING_DIM", "3072")),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),
         google_client_secret=os.getenv("GOOGLE_CLIENT_SECRET", ""),
         google_redirect_uri=os.getenv("GOOGLE_REDIRECT_URI", "https://wordnexus.lol/auth/web/google/callback"),

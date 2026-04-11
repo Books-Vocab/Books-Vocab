@@ -18,10 +18,20 @@ EMBEDDING_DIM = 3072
 class EmbeddingStore:
     """Numpy-based embedding storage with similarity search."""
 
-    def __init__(self, embeddings_path: Path, ids_path: Path, llm) -> None:
+    def __init__(
+        self,
+        embeddings_path: Path,
+        ids_path: Path,
+        llm,
+        *,
+        model: str = EMBEDDING_MODEL,
+        dim: int = EMBEDDING_DIM,
+    ) -> None:
         self.embeddings_path = embeddings_path
         self.ids_path = ids_path
         self.llm = llm
+        self.model = model
+        self.dim = dim
         self._embeddings: np.ndarray | None = None
         self._ids: list[str] = []
         self._id_set: set[str] = set()
@@ -59,12 +69,12 @@ class EmbeddingStore:
     def _embed(self, texts: list[str]) -> np.ndarray:
         """Get embeddings for one or more texts via a single API call.
 
-        Returns an (N, EMBEDDING_DIM) float32 array.
+        Returns an (N, self.dim) float32 array.
         """
         import time
         for attempt in range(3):
             try:
-                response = self.llm.embed("embed", input=texts, model=EMBEDDING_MODEL)
+                response = self.llm.embed("embed", input=texts, model=self.model)
                 # response.data may not be sorted by index; sort to match input order.
                 # Gemini's OpenAI-compat layer sometimes returns index=None for
                 # the first element — coerce to 0 so sorting doesn't crash.
