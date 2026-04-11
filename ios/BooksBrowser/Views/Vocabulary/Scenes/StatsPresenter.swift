@@ -178,7 +178,7 @@ struct StatsPresenter: View {
                         #if os(macOS)
                         .frame(minHeight: 280)
                         #else
-                        .frame(height: 140)
+                        .aspectRatio(1, contentMode: .fit)
                         #endif
 
                     if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
