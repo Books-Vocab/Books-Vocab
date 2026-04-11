@@ -66,7 +66,10 @@ struct ReaderVocabularyContext {
         )
         entry.rootForm = rootForm
         entry.bookId = book.id
-        entry.notebookId = notebookId
+        // Defense-in-depth: 即使 ReaderView.sanitizeStaleBoundNotebook 漏網（race
+        // 或 .onChange 尚未 propagate），這裡的 chokepoint 會把指向已刪 notebook
+        // 的候選值 fallback 到 "default"，根除孤兒 entry。
+        entry.notebookId = VocabularyEntry.resolveNotebookId(notebookId, in: modelContext)
         modelContext.insert(entry)
         deferSave()
         return true

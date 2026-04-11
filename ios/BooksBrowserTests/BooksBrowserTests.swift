@@ -145,7 +145,7 @@ struct BooksBrowserTests {
     }
 
     @Test func readerBridgePlannerEmitsSingleWordHighlightCommand() async throws {
-        var planner = ReadiumNavigatorView.Coordinator.BridgePlanner()
+        var planner = BridgePlanner()
         let base = makeSnapshot(lookedUpWords: [])
         _ = planner.makeCommands(from: base)
 
@@ -158,7 +158,7 @@ struct BooksBrowserTests {
     }
 
     @Test func readerBridgePlannerClearsAndReappliesOnLargeRemoval() async throws {
-        var planner = ReadiumNavigatorView.Coordinator.BridgePlanner()
+        var planner = BridgePlanner()
         let originalWords = (0..<12).map { "word\($0)" }
         _ = planner.makeCommands(from: makeSnapshot(lookedUpWords: originalWords))
 
@@ -177,7 +177,7 @@ struct BooksBrowserTests {
     }
 
     @Test func readerBridgePlannerOnlyClearsHighlightOncePerTrigger() async throws {
-        var planner = ReadiumNavigatorView.Coordinator.BridgePlanner()
+        var planner = BridgePlanner()
         let trigger = UUID()
 
         let first = planner.makeCommands(from: makeSnapshot(lookedUpWords: [], clearHighlightTrigger: trigger))
@@ -483,6 +483,366 @@ struct BooksBrowserTests {
         #expect(a.graphLinksByKind["synonym"]?.first?.isHidden == true)
     }
 
+    // MARK: - Notebook orphan sync defense (incident 2026-04-11)
+
+    @MainActor
+    private func makeNotebookSandbox() throws -> ModelContext {
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        return ModelContext(container)
+    }
+
+    /// Helper: insert a sentinel notebook so the table is not empty,
+    /// satisfying `resolveNotebookId`'s cold-start guard. Without this,
+    /// resolver returns the candidate verbatim and tests asserting the
+    /// fallback behavior would silently pass for the wrong reason.
+    @MainActor
+    private func primeNotebookTable(_ ctx: ModelContext) throws {
+        let primer = Notebook(remoteId: "primer-\(UUID().uuidString)", name: "Primer", color: nil)
+        ctx.insert(primer)
+        try ctx.save()
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_emptyCandidate_returnsDefault() throws {
+        let ctx = try makeNotebookSandbox()
+        #expect(VocabularyEntry.resolveNotebookId("", in: ctx) == "default")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_defaultCandidate_returnsDefault() throws {
+        let ctx = try makeNotebookSandbox()
+        #expect(VocabularyEntry.resolveNotebookId("default", in: ctx) == "default")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_validNotebook_returnsItself() throws {
+        let ctx = try makeNotebookSandbox()
+        let nb = Notebook(remoteId: "live-abc", name: "Self", color: nil)
+        ctx.insert(nb)
+        try ctx.save()
+        #expect(VocabularyEntry.resolveNotebookId("live-abc", in: ctx) == "live-abc")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_unsavedNotebook_returnsItself() throws {
+        // Production race: notebook just created, not yet saved, then
+        // sync triggers. Resolver must see in-memory pending insert.
+        let ctx = try makeNotebookSandbox()
+        let nb = Notebook(remoteId: "fresh", name: "Fresh", color: nil)
+        ctx.insert(nb)
+        // intentionally NO try ctx.save()
+        #expect(VocabularyEntry.resolveNotebookId("fresh", in: ctx) == "fresh")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_deletedNotebook_returnsDefault() throws {
+        let ctx = try makeNotebookSandbox()
+        // Pair a live notebook to confirm the predicate's positive arm works
+        // (without this paired assertion, the test would also pass if the
+        // table simply contained no `ghost` row at all, hiding a regression
+        // where the `!$0.isDeleted` clause is removed).
+        let live = Notebook(remoteId: "live", name: "Live", color: nil)
+        ctx.insert(live)
+        try ctx.save()
+        #expect(VocabularyEntry.resolveNotebookId("live", in: ctx) == "live")
+
+        let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
+        ctx.insert(ghost)
+        ghost.isDeleted = true   // mutate after insert so it goes through persistent path
+        try ctx.save()
+
+        #expect(VocabularyEntry.resolveNotebookId("ghost", in: ctx) == "default")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_unknownNotebook_returnsDefault() throws {
+        let ctx = try makeNotebookSandbox()
+        try primeNotebookTable(ctx)  // satisfy cold-start guard
+        #expect(VocabularyEntry.resolveNotebookId("nonexistent", in: ctx) == "default")
+    }
+
+    @Test @MainActor
+    func resolveNotebookId_emptyNotebookTable_returnsCandidateUnchanged() throws {
+        // Cold-start guard: no notebooks fetched yet (first launch / fresh
+        // login). Resolver must NOT clobber a legitimately-bound id —
+        // returns it verbatim until reconcile populates the table.
+        let ctx = try makeNotebookSandbox()
+        #expect(VocabularyEntry.resolveNotebookId("possibly-real", in: ctx) == "possibly-real")
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_emptyArray_isNoOp() throws {
+        let ctx = try makeNotebookSandbox()
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [], modelContext: ctx)
+        // Reaching here without crash is the assertion.
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_orphanAdd_isReassignedToDefault() throws {
+        let ctx = try makeNotebookSandbox()
+        let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
+        ctx.insert(ghost)
+        ghost.isDeleted = true
+        try ctx.save()
+
+        let entry = VocabularyEntry(
+            word: "orphan",
+            translation: "孤兒",
+            context: "An orphan card.",
+            bookTitle: "Sample"
+        )
+        entry.notebookId = "ghost"
+        entry.restorePendingEntry()  // queue as pending add
+        ctx.insert(entry)
+        try ctx.save()
+
+        // Arrange-side guard: if `restorePendingEntry()` ever stops setting
+        // pending state, the test below would silently green-pass without
+        // exercising sanitize. Fail fast on the precondition.
+        #expect(entry.shouldUploadOnNextSync)
+        #expect(entry.syncAction == .add)
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        #expect(entry.notebookId == "default")
+        #expect(entry.syncAction == .add)  // still queued for upload
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_orphanDelete_isHardDeletedLocally() throws {
+        // Pending-delete orphan must NOT be rewritten to default — that
+        // could trigger a server delete of an unrelated card with the same
+        // word in default. Drop locally instead.
+        let ctx = try makeNotebookSandbox()
+        let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
+        ctx.insert(ghost)
+        ghost.isDeleted = true
+        try ctx.save()
+
+        let entry = VocabularyEntry(
+            word: "doomed",
+            translation: "註定",
+            context: "Doomed context.",
+            bookTitle: "Sample"
+        )
+        entry.notebookId = "ghost"
+        entry.markSynced()
+        entry.queueDelete()
+        ctx.insert(entry)
+        try ctx.save()
+        #expect(entry.shouldUploadOnNextSync)
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        // After sanitize, the entry should be hard-deleted from local store.
+        let remaining = (try? ctx.fetch(FetchDescriptor<VocabularyEntry>())) ?? []
+        #expect(remaining.contains(where: { $0.word == "doomed" }) == false)
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_validPendingEntry_isUnchanged() throws {
+        let ctx = try makeNotebookSandbox()
+        let valid = Notebook(remoteId: "live-xyz", name: "Live", color: nil)
+        ctx.insert(valid)
+        try ctx.save()
+
+        let entry = VocabularyEntry(
+            word: "good",
+            translation: "好",
+            context: "Good context.",
+            bookTitle: "Sample"
+        )
+        entry.notebookId = "live-xyz"
+        entry.restorePendingEntry()
+        ctx.insert(entry)
+        try ctx.save()
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        #expect(entry.notebookId == "live-xyz")
+        #expect(entry.syncState == .pending)
+        #expect(entry.syncAction == .add)
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_syncedOrphan_isNotTouched() throws {
+        // Synced entries are out of the outbox — sanitize must skip them
+        // even if their notebookId points to a deleted notebook. Mutating
+        // a synced entry's notebookId would drift local from server.
+        let ctx = try makeNotebookSandbox()
+        let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
+        ctx.insert(ghost)
+        ghost.isDeleted = true
+        try ctx.save()
+
+        let entry = VocabularyEntry(
+            word: "settled",
+            translation: "已定",
+            context: "Settled context.",
+            bookTitle: "Sample"
+        )
+        entry.notebookId = "ghost"
+        entry.markSynced()
+        ctx.insert(entry)
+        try ctx.save()
+        #expect(entry.shouldUploadOnNextSync == false)  // arrange guard
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        #expect(entry.notebookId == "ghost")  // unchanged
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_alreadyDefault_isUnchanged() throws {
+        let ctx = try makeNotebookSandbox()
+        try primeNotebookTable(ctx)
+
+        let entry = VocabularyEntry(
+            word: "anchor",
+            translation: "錨",
+            context: "Anchor context.",
+            bookTitle: "Sample"
+        )
+        // notebookId already "default"
+        entry.restorePendingEntry()
+        ctx.insert(entry)
+        try ctx.save()
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        #expect(entry.notebookId == "default")
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_emptyNotebookId_isReassignedToDefault() throws {
+        // Edge case: legacy entries (or post-migration noise) could have
+        // notebookId == "". Resolver short-circuits to "default", and
+        // sanitize must apply that fix.
+        let ctx = try makeNotebookSandbox()
+        try primeNotebookTable(ctx)
+
+        let entry = VocabularyEntry(
+            word: "blank",
+            translation: "空",
+            context: "Blank context.",
+            bookTitle: "Sample"
+        )
+        entry.notebookId = ""
+        entry.restorePendingEntry()
+        ctx.insert(entry)
+        try ctx.save()
+
+        SyncCoordinator.sanitizeOutbox(pendingEntries: [entry], modelContext: ctx)
+
+        #expect(entry.notebookId == "default")
+    }
+
+    @Test
+    func triggerPipelinesIsolated_failingNotebookDoesNotBlockOthers() async {
+        // Real regression guard: calls SyncCoordinator's actual static
+        // helper that startSync delegates to. If anyone refactors the
+        // production loop back to fail-fast, this test will catch it.
+        actor MockKG {
+            var calls: [String] = []
+            var failOn: Set<String> = []
+            func setFailing(_ ids: [String]) { failOn = Set(ids) }
+            func trigger(_ id: String) async throws {
+                calls.append(id)
+                if failOn.contains(id) {
+                    throw URLError(.userAuthenticationRequired)  // proxy for HTTP 403
+                }
+            }
+        }
+        let mock = MockKG()
+        await mock.setFailing(["4205d6bed3ed"])
+
+        // Worst-case ordering: failing notebook first.
+        let failures = await SyncCoordinator.triggerPipelinesIsolated(
+            notebookIds: ["4205d6bed3ed", "default"]
+        ) { nbId in
+            try await mock.trigger(nbId)
+        }
+
+        let calls = await mock.calls
+        #expect(calls == ["4205d6bed3ed", "default"])  // BOTH called
+        #expect(failures == ["4205d6bed3ed"])
+    }
+
+    @Test
+    func triggerPipelinesIsolated_allSuccess_returnsEmptyFailures() async {
+        actor MockKG {
+            var calls: [String] = []
+            func trigger(_ id: String) async { calls.append(id) }
+        }
+        let mock = MockKG()
+        let failures = await SyncCoordinator.triggerPipelinesIsolated(
+            notebookIds: ["default"]
+        ) { nbId in
+            await mock.trigger(nbId)
+        }
+        #expect(failures.isEmpty)
+        let calls = await mock.calls
+        #expect(calls == ["default"])
+    }
+
+    @Test
+    func triggerPipelinesIsolated_allFail_returnsAllFailures() async {
+        let failures = await SyncCoordinator.triggerPipelinesIsolated(
+            notebookIds: ["a", "b", "c"]
+        ) { _ in
+            throw URLError(.notConnectedToInternet)
+        }
+        #expect(failures == ["a", "b", "c"])
+    }
+
+    @Test @MainActor
+    func sanitizeOutbox_tombstonedOrphanDelete_isExcludedFromDownstreamFilters() throws {
+        // Regression guard for the tombstone-defense fix in startSync's
+        // deletes/adds filters. After sanitize hard-deletes an orphan-delete
+        // entry, that entry's PersistentModel.isDeleted becomes true. The
+        // caller's [VocabularyEntry] snapshot still references it. Filters
+        // that build the upload batches MUST exclude tombstones.
+        let ctx = try makeNotebookSandbox()
+        let ghost = Notebook(remoteId: "ghost", name: "Ghost", color: nil)
+        ctx.insert(ghost)
+        ghost.isDeleted = true
+        let live = Notebook(remoteId: "live", name: "Live", color: nil)
+        ctx.insert(live)
+        try ctx.save()
+
+        // Mix: one orphan delete (will be tombstoned by sanitize), one valid add
+        let orphanDelete = VocabularyEntry(
+            word: "doomed", translation: "註定", context: "ctx", bookTitle: "B"
+        )
+        orphanDelete.notebookId = "ghost"
+        orphanDelete.markSynced()
+        orphanDelete.queueDelete()
+        ctx.insert(orphanDelete)
+
+        let validAdd = VocabularyEntry(
+            word: "alive", translation: "活著", context: "ctx", bookTitle: "B"
+        )
+        validAdd.notebookId = "live"
+        validAdd.restorePendingEntry()
+        ctx.insert(validAdd)
+        try ctx.save()
+
+        let snapshot = [orphanDelete, validAdd]
+        SyncCoordinator.sanitizeOutbox(pendingEntries: snapshot, modelContext: ctx)
+
+        // Mirror the production filters from startSync. The orphanDelete is
+        // tombstoned and MUST be excluded; validAdd survives.
+        let deletes = snapshot.filter { !$0.isDeleted && $0.syncAction == .delete && $0.shouldUploadOnNextSync }
+        let adds = snapshot.filter { !$0.isDeleted && $0.syncAction == .add && $0.shouldUploadOnNextSync }
+
+        #expect(deletes.isEmpty)  // tombstone defense
+        #expect(adds.count == 1)
+        #expect(adds.first?.word == "alive")
+    }
+
     @Test func mutateLinkCleansUpEmptyGroup() {
         let entry = VocabularyEntry(word: "test", translation: "測試", context: "ctx", bookTitle: "B")
         let link1 = KGCardLinkSummary(id: "link-1", cardId: "c1", word: "alpha", kind: "synonym", label: "synonym", confidence: 0.9, reason: "test")
@@ -504,13 +864,15 @@ struct BooksBrowserTests {
         underlineOpacity: Double = 0.22,
         showHitTestingDebug: Bool = false
     ) -> ReadiumNavigatorView.BridgeSnapshot {
+        // ReaderViewConfiguration is built via ReaderSettings.viewConfiguration(systemColorScheme:);
+        // post-refactor `translationPanelMode` was removed from the struct.
+        let baseConfig = ReaderSettings.shared.viewConfiguration(systemColorScheme: .light)
         let configuration = ReaderViewConfiguration(
             paperColor: AppColors.paperSepia,
-            epubPreferences: ReaderSettings.shared.epubPreferences,
+            epubPreferences: baseConfig.epubPreferences,
             underlineOpacity: underlineOpacity,
             showHitTestingDebug: showHitTestingDebug,
-            swiftUIColorScheme: .light,
-            translationPanelMode: .glass
+            swiftUIColorScheme: .light
         )
 
         return .init(
