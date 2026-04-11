@@ -15,7 +15,9 @@ struct ReaderVocabularyContext {
 
     func existingEntry(matching word: String) -> VocabularyEntry? {
         let wordLower = word.lowercased()
+        let scope = notebookId
         return vocabulary.first { entry in
+            guard entry.notebookId == scope else { return false }
             let normalizedWord = entry.word.lowercased()
             if normalizedWord == wordLower { return true }
             if entry.rootForm?.lowercased() == wordLower { return true }

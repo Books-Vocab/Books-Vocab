@@ -53,8 +53,8 @@ struct ReaderNotebookPicker: View {
                                     .foregroundStyle(theme.palette.accent)
                             }
                         }
+                        .contentShape(Rectangle())
                     }
-                    .buttonStyle(.plain)
                 }
 
                 // Notebook 列表
@@ -89,8 +89,8 @@ struct ReaderNotebookPicker: View {
                                         .foregroundStyle(theme.palette.accent)
                                 }
                             }
+                            .contentShape(Rectangle())
                         }
-                        .buttonStyle(.plain)
                     }
                 } header: {
                     Text("單字本".localized)

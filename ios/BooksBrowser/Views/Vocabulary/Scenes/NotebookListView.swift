@@ -161,9 +161,10 @@ struct NotebookListView: View {
                 ArchivedVocabSheet()
             }
             .task(id: authManager.isLoggedIn) {
-                await coordinator.ensureDefaultNotebook(
+                await coordinator.reconcileNotebooks(
                     authManager: authManager,
                     currentNotebooks: notebooks,
+                    allEntries: allEntries,
                     modelContext: modelContext,
                     kgService: kgService
                 )
@@ -182,6 +183,8 @@ struct NotebookListView: View {
                             await coordinator.deleteNotebook(
                                 notebook,
                                 isActive: activeNotebookId == notebook.remoteId,
+                                availableNotebooks: notebooks,
+                                allEntries: allEntries,
                                 modelContext: modelContext,
                                 kgService: kgService,
                                 toastCoordinator: toastCoordinator,
