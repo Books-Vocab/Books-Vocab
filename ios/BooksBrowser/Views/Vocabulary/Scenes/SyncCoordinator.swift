@@ -89,8 +89,17 @@ final class SyncCoordinator: SyncCoordinating {
             defer { self?.pipelineTask = nil }
             guard let self else { return }
             do {
-                let deletes = pendingEntries.filter { $0.syncAction == .delete && $0.shouldUploadOnNextSync }
-                let adds = pendingEntries.filter { $0.syncAction == .add && $0.shouldUploadOnNextSync }
+                // Defense-in-depth Layer 2: sanitize outbox before grouping by notebook.
+                // 把指向已刪 notebook 的孤兒 entry 自動 reassign 到 default。
+                // 同時是歷史 orphan 的 in-place migration — idempotent，重複跑無副作用。
+                Self.sanitizeOutbox(pendingEntries: pendingEntries, modelContext: modelContext)
+
+                // Tombstone defense: sanitize 對 orphan-delete 走 modelContext.delete()，
+                // 該 entry 此時 PersistentModel.isDeleted == true 但仍存在於 caller 的
+                // [VocabularyEntry] snapshot 中。downstream filters 必須跳過 tombstone，
+                // 否則會把幽靈 entry 餵給 batchAdd / batchDelete。
+                let deletes = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .delete && $0.shouldUploadOnNextSync }
+                let adds = pendingEntries.filter { !$0.isDeleted && $0.syncAction == .add && $0.shouldUploadOnNextSync }
                 var encounteredFailure = false
 
                 if !deletes.isEmpty {
@@ -208,17 +217,31 @@ final class SyncCoordinator: SyncCoordinating {
                     }
                 }
 
+                // Defense-in-depth Layer 3: per-notebook trigger isolation.
+                // 一個 notebook 的 trigger 失敗（例：notebook 已被刪 → 403）絕不能
+                // 拖累其他 notebook 的 pipeline 觸發。今日事故的直接原因就是
+                // `for nbId in notebookIds { try await ... }` 是 fail-fast，
+                // 4205d6bed3ed 先 throw 後 default 的 trigger 永遠跑不到。
+                // 委派 `triggerPipelinesIsolated` 讓測試與 production 共享同一份邏輯。
                 self.updateStep("trigger", status: .running)
-                do {
-                    let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
-                    let notebookIds = affectedNotebookIds.isEmpty ? ["default"] : Array(affectedNotebookIds)
-                    for nbId in notebookIds {
-                        try await kgService.triggerPipeline(notebookId: nbId)
-                    }
+                let affectedNotebookIds = Set(adds.map(\.notebookId)).filter { !$0.isEmpty }
+                let notebookIds = affectedNotebookIds.isEmpty
+                    ? ["default"]
+                    : affectedNotebookIds.sorted()  // deterministic order for log triage
+                let triggerFailures = await Self.triggerPipelinesIsolated(
+                    notebookIds: notebookIds
+                ) { nbId in
+                    try await kgService.triggerPipeline(notebookId: nbId)
+                }
+                if triggerFailures.isEmpty {
                     self.updateStep("trigger", status: .done, detail: L10n.string("已交由伺服器背景處理"))
-                } catch {
+                } else {
                     encounteredFailure = true
-                    self.updateStep("trigger", status: .error, detail: L10n.format("無法觸發: %@", error.localizedDescription))
+                    self.updateStep(
+                        "trigger",
+                        status: .error,
+                        detail: L10n.format("部分通知失敗: %@", triggerFailures.joined(separator: ", "))
+                    )
                 }
 
                 // Push review state + daily stats before pull
@@ -287,6 +310,62 @@ final class SyncCoordinator: SyncCoordinating {
         phase = .ready
         summaryText = ""
         failureKind = nil
+    }
+
+    /// 把 outbox 內指向已刪 / 不存在 notebook 的孤兒 entry 修好。
+    ///
+    /// - **Pending add orphan** → reassign to "default"，下次 sync 用 default 上傳
+    /// - **Pending delete orphan** → local hard-delete（不送 server）。理由：
+    ///   server 端 cascade 已經把該 notebook 下所有 card 刪掉了，繼續對 server
+    ///   發 delete 不只多餘，rewrite 到 default 還可能誤刪 default 內同名字（同
+    ///   `word` 但 cardId 不同），破壞使用者資料。
+    /// - 同時是歷史 orphan 的 in-place migration，無需獨立 launch-time script
+    /// - Idempotent — 重複跑無副作用，已是 default 或已 valid 的 entry 完全不變
+    /// - 在 sync 入口呼叫一次，把 race condition 的後果在落 server 之前修好
+    static func sanitizeOutbox(
+        pendingEntries: [VocabularyEntry],
+        modelContext: ModelContext
+    ) {
+        var sanitized = 0
+        for entry in pendingEntries where entry.shouldUploadOnNextSync {
+            let resolved = VocabularyEntry.resolveNotebookId(entry.notebookId, in: modelContext)
+            guard resolved != entry.notebookId else { continue }
+            if entry.syncAction == .delete {
+                // 孤兒 delete：server 已 cascade 過，rewrite 到 default 風險大於收益
+                AppLog.kg.warning("drop orphan delete: \(entry.word) from \(entry.notebookId)")
+                modelContext.delete(entry)
+            } else {
+                AppLog.kg.warning("sanitize orphan add: \(entry.word) \(entry.notebookId) → \(resolved)")
+                entry.notebookId = resolved
+            }
+            sanitized += 1
+        }
+        if sanitized > 0 {
+            modelContext.safeSave()
+        }
+    }
+
+    /// Per-notebook isolated trigger pipeline 呼叫迴圈。
+    ///
+    /// 抽出來讓 `SyncCoordinator.startSync` 與測試共享同一份 isolation 邏輯，
+    /// 避免「測試裡寫的 pattern」與「production 跑的 pattern」分裂的 dead-test 問題。
+    /// 任何單一 notebook 失敗（例：notebook 已被刪 → 403）絕不會中斷其他 notebook 的觸發。
+    /// 回傳失敗的 notebook id 列表（成功時為空）。
+    static func triggerPipelinesIsolated(
+        notebookIds: [String],
+        trigger: (String) async throws -> Void
+    ) async -> [String] {
+        var failures: [String] = []
+        for nbId in notebookIds {
+            if Task.isCancelled { break }
+            do {
+                try await trigger(nbId)
+            } catch {
+                failures.append(nbId)
+                AppLog.kg.error("triggerPipeline(\(nbId)) failed: \(error.localizedDescription)")
+            }
+        }
+        return failures
     }
 
     private func updateStep(

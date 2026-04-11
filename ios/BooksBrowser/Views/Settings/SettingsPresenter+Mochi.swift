@@ -113,7 +113,7 @@ extension SettingsPresenter {
                     }
                 }
                 .padding(vocabSkin.spacing.cardPadding)
-                .background(vocabSkin.palette.secondaryBackground)
+                .background(vocabSkin.palette.stageBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous))
 
                 Text("預覽內容已脫敏；完整內容仍以本機 os.Logger 為主。".localized)
