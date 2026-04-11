@@ -688,34 +688,24 @@ class TestBatchD_UserLockAtomic:
         unique = asyncio.run(run())
         assert unique == 1, f"Race condition: {unique} distinct Lock objects created"
 
-    def test_pipeline_skips_if_lock_held(self, user_env, caplog):
-        """If pipeline lock is already held, second invocation logs 'skipping'."""
-        client, user_id, headers, data_dir = user_env
-
-        # Pre-acquire the user's lock so the pipeline sees it as locked
-        async def grab_lock():
-            api_mod._USER_LOCKS.clear()
-            deps_mod._USER_LOCKS_MUTEX = None
-            lk = await api_mod.get_user_lock(user_id)
-            await lk.acquire()
-            return lk
-
-        lk = asyncio.run(grab_lock())
-
-        try:
-            with caplog.at_level(logging.INFO, logger="kg.api"):
-                r = client.post("/api/pipeline", headers=headers)
-                assert r.status_code == 200
-                time.sleep(0.5)
-        finally:
-            lk.release()
-
-        skip_logs = [r for r in caplog.records
-                     if "skipping" in r.message.lower() or "already running" in r.message.lower()]
-        assert skip_logs, (
-            "Expected log message about skipping locked pipeline.\n"
-            f"All INFO+: {[(r.levelno, r.message) for r in caplog.records if r.levelno >= 20]}"
-        )
+    # NOTE: The old `test_pipeline_skips_if_lock_held` test pinned a bug in
+    # place. After the 2026-04-11 incident fix (`pipeline_service.py` no
+    # longer `if lock.locked(): return`), this integration-level test cannot
+    # be rewritten via `FastAPI TestClient` because:
+    #
+    #   1. `TestClient` awaits `BackgroundTasks` before returning from
+    #      `client.post(...)`.
+    #   2. With the fix, the background task blocks on the user lock while
+    #      we hold it — deadlock: POST waits for task, task waits for lock,
+    #      test holds lock.
+    #   3. `asyncio.Lock.release()` from a second thread does not actually
+    #      wake waiters because the lock's state belongs to the event loop
+    #      that acquired it (already closed in `asyncio.run(grab_lock())`).
+    #
+    # The behavior is correctly covered by unit tests that run everything
+    # inside one event loop via `asyncio.gather` — see
+    # `test_pipeline_service.py::test_pipeline_service_waits_when_lock_is_held`
+    # and `::test_pipeline_service_concurrent_triggers_different_notebooks_all_run`.
 
 
 # ============================================================================
