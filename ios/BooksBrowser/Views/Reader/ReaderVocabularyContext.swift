@@ -24,7 +24,11 @@ struct ReaderVocabularyContext {
     }
 
     func deleteEntry(matching word: String) {
-        guard let entry = existingEntry(matching: word) else { return }
+        // Snapshot lookup may miss entries inserted in the same event cycle
+        // because `saveEntry` uses `deferSave()` and `@Query` refresh is async.
+        // Fall back to a direct ModelContext fetch so pending inserts still resolve.
+        let entry = existingEntry(matching: word) ?? fetchEntryFromContext(matching: word)
+        guard let entry else { return }
 
         if entry.isSynced {
             entry.queueDelete()
@@ -34,6 +38,21 @@ struct ReaderVocabularyContext {
             AppLog.reader.info("Deleted local entry: \(word)")
         }
         modelContext.safeSaveWithToast(toastCoordinator)
+    }
+
+    private func fetchEntryFromContext(matching word: String) -> VocabularyEntry? {
+        let nbId = notebookId
+        let descriptor = FetchDescriptor<VocabularyEntry>(
+            predicate: #Predicate<VocabularyEntry> { $0.notebookId == nbId }
+        )
+        guard let candidates = try? modelContext.fetch(descriptor) else { return nil }
+        let wordLower = word.lowercased()
+        return candidates.first { entry in
+            let normalized = entry.word.lowercased()
+            if normalized == wordLower { return true }
+            if entry.rootForm?.lowercased() == wordLower { return true }
+            return entry.inflections.contains { $0.lowercased() == wordLower }
+        }
     }
 
     func saveEntry(

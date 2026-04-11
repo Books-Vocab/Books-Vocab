@@ -14,7 +14,8 @@ extension ReaderTranslationHandler {
         let selection = WordSelection(word: normalizedWord, context: context, position: .zero)
         wordSelection = selection
 
-        if let existing = vocabularyContext.existingEntry(matching: word) {
+        if let existing = vocabularyContext.existingEntry(matching: word),
+           existing.syncAction != .delete {
             withAnimation(AppMotion.panelState) {
                 translationResult = TranslationResult(
                     translation: existing.translation,
