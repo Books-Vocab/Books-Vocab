@@ -115,6 +115,36 @@ final class VocabularyEntry {
 }
 
 extension VocabularyEntry {
+    /// 解析 notebookId 候選值，若不存在或已 isDeleted → 回 "default"。
+    ///
+    /// 純函數。所有把使用者輸入 / 上層 binding 的 notebook id 寫入 `VocabularyEntry`
+    /// 之前都應該走這裡，避免 race condition 把孤兒 entry 塞進已刪 notebook。
+    /// 與 `SyncCoordinator.sanitizeOutbox` 形成 defense-in-depth。
+    ///
+    /// 「default」是 server-side sentinel，即使 local 出現 `Notebook(remoteId="default", isDeleted=true)`
+    /// 的損壞紀錄也必須回 "default" — 這是刻意的 short-circuit，don't "fix" it。
+    ///
+    /// **Cold-start guard**：若 local Notebook 表完全空（首次登入 / 尚未 reconcile），
+    /// 直接回原候選值 — 此時無從判斷候選是否合法，誤判 fallback 到 default 會
+    /// 永久污染 outbox。對齊 `ReaderView.sanitizeStaleBoundNotebook` 的「liveNotebooks
+    /// 為空時 bail」契約。
+    static func resolveNotebookId(
+        _ candidate: String,
+        in context: ModelContext
+    ) -> String {
+        if candidate.isEmpty || candidate == "default" { return "default" }
+
+        // Cold-start guard: 表完全空 → 不夠資訊判斷，回原值
+        let totalCount = (try? context.fetchCount(FetchDescriptor<Notebook>())) ?? 0
+        guard totalCount > 0 else { return candidate }
+
+        let descriptor = FetchDescriptor<Notebook>(
+            predicate: #Predicate { $0.remoteId == candidate && !$0.isDeleted }
+        )
+        let count = (try? context.fetchCount(descriptor)) ?? 0
+        return count > 0 ? candidate : "default"
+    }
+
     func queueDelete() {
         syncAction = .delete
         syncState = .pending
