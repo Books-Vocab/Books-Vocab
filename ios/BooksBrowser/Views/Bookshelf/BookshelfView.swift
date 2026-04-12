@@ -22,6 +22,8 @@ struct BookshelfView: View {
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
+    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
+    private var podcastSeries: [PodcastSeries]
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
 
@@ -35,7 +37,7 @@ struct BookshelfView: View {
                 appTheme.palette.pageBackground
                     .ignoresSafeArea()
 
-                if books.isEmpty {
+                if books.isEmpty && podcastSeries.isEmpty {
                     emptyState
                         .transition(.contentSwap)
                 } else {
@@ -184,8 +186,19 @@ struct BookshelfView: View {
                         }
                     }
                 }
+
+                ForEach(podcastSeries) { series in
+                    NavigationLink {
+                        PodcastEpisodeListView(seriesId: series.remoteId)
+                    } label: {
+                        PodcastSeriesCard(series: series, coverHeight: coverHeight)
+                    }
+                    .buttonStyle(.liftable)
+                    .accessibilityLabel("\(series.title), podcast")
+                    .transition(.bookshelfCard)
+                }
             }
-            .animateContentFade(books.count)
+            .animateContentFade(books.count + podcastSeries.count)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
             .padding(.top, AppMetrics.spacingSmall)
 
@@ -194,8 +207,6 @@ struct BookshelfView: View {
                 .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .refreshable {
-            // CloudKit 自動同步無法直接觸發，短暫等待讓 pending 操作完成
-            // @Query 會自動反映 CloudKit 傳入的變更
             try? await Task.sleep(for: .seconds(1.5))
         }
         .navigationDestination(for: Book.self) { book in
@@ -438,6 +449,67 @@ private struct ICloudProgressBadge: View {
         }
         .frame(width: 32, height: 32)
         .background(.ultraThinMaterial, in: Circle())
+    }
+}
+
+// MARK: - Podcast 卡片
+
+struct PodcastSeriesCard: View {
+    @Environment(\.appTheme) private var appTheme
+    let series: PodcastSeries
+    var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
+
+    private var coverColor: Color {
+        NotebookPalette.color(for: series.color)
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+            // 封面
+            coverView
+                .overlay(
+                    RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous)
+                        .strokeBorder(appTheme.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
+                )
+                .overlay(alignment: .topTrailing) {
+                    Image(systemName: "waveform")
+                        .font(AppFonts.caption2(weight: .bold))
+                        .foregroundStyle(appTheme.palette.primaryText)
+                        .padding(AppMetrics.spacingExtraSmall)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
+                        .padding(AppMetrics.spacingSmall)
+                }
+                .shadow(
+                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
+                    radius: AppBookshelfMetrics.coverShadowRadius,
+                    y: AppBookshelfMetrics.coverShadowY
+                )
+
+            // 元資料
+            VStack(alignment: .leading, spacing: AppMetrics.spacingTiny) {
+                Text(series.title)
+                    .font(AppFonts.caption(weight: .medium))
+                    .lineLimit(2)
+                    .multilineTextAlignment(.leading)
+                    .foregroundStyle(appTheme.palette.primaryText)
+
+                Text("\(series.episodeCount) 集")
+                    .font(AppFonts.caption2())
+                    .foregroundStyle(appTheme.palette.tertiaryText)
+            }
+        }
+    }
+
+    private var coverView: some View {
+        NotebookCoverView(
+            color: coverColor,
+            pattern: series.coverPattern.flatMap { NotebookCoverPattern(rawValue: $0) },
+            coverImagePath: series.coverImagePath,
+            name: series.title
+        )
+        .aspectRatio(2/3, contentMode: .fill)
+        .frame(height: coverHeight)
+        .clipShape(RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous))
     }
 }
 
