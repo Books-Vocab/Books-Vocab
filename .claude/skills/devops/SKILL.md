@@ -10,7 +10,7 @@ allowed-tools: Bash, Read, Grep
 
 | key | value |
 |-----|-------|
-| server | `ubuntu@54.95.189.179` |
+| server | `ubuntu@13.193.212.134` |
 | remote | `~/knowledge_graph_api` |
 | domain | `wordnexus.lol` |
 | container | `knowledge-graph-api` |
@@ -149,13 +149,13 @@ DNS fail → DNS issue
 
 # 2. Backup broken data
 scp -i ~/.ssh/lightsail_default.pem -r \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/data \
+  ubuntu@13.193.212.134:~/knowledge_graph_api/data \
   ~/Desktop/broken_data_$(date +%Y%m%d_%H%M)
 
 # 3. Restore good backup
 scp -i ~/.ssh/lightsail_default.pem -r \
   ~/MPSO/projects/kg/backups/data_<date> \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/data
+  ubuntu@13.193.212.134:~/knowledge_graph_api/data
 
 # 4. Restart
 ./ops/devops_kg_safe.sh restart
