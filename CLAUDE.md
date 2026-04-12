@@ -56,10 +56,13 @@
 唯一合法方式（從 `projects/kg/` 或任何 worktree）：
 
 ```bash
-./ops/ios_build.sh
+./ops/ios_build.sh          # build only (Release, ~15s incremental)
+./ops/ios_test.sh           # run ALL unit tests
+./ops/ios_test.sh -g "foo"  # run tests matching pattern "foo"
+./ops/ios_test.sh testName  # run specific test by method name
 ```
 
-內建 `shlock` 排隊鎖，多 worktree 可同時呼叫，自動排隊共用 DerivedData（增量 ~15s / cold ~3min）。
+兩者共用 `shlock` 排隊鎖 + DerivedData，多 worktree 可同時呼叫。
 
 - Exit 0 → 成功，停止
 - Exit 非 0 → 讀錯誤上下文 ±20 行，修正後重跑
@@ -109,12 +112,13 @@
 
 動手前先對照，確認不重複建造。
 
-- **iOS**（`ios/BooksBrowser`）：auth flows（Apple/Google SSO）、bookshelf + reader（EPUB/TXT/MD/PDF multi-format import）、translation/explanation（context sentence extraction）、vocabulary capture/list/detail/sync/graph views、hide/unhide links + bilateral optimistic sync、toast notification system（capsule toast + sheet overlay）、graph thumbnail + health blob、today review、stats overview、settings + account deletion、onboarding empty-state login entry points、app-intent/background sync、preview matrix、**macOS multiplatform (macOS 15.0+)**
-- **Backend**（`backend/src/kg`）：auth/user identity（Apple/Google + web auth + cookie admin session）、user config/account lifecycle、vocabulary/graph-link APIs（hide/unhide/blocked pairs）、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、multi-format import parsing、query path perf（incremental sync/zipf cache/filter-before-sort）、write path perf（batch ops/N+1 elimination）、static pages、system observability（`/api/system/info` + VERSION tracking + deploy.log）、pipeline telemetry（`pipeline_log.db` — per-run/step timing + status + items，admin UI summary stats + stacked bar chart）、one-shot judge（pending_judge + selective prompt + degree cap + batch judge 86% token savings）、judge_log（complete decision tracking + acceptance rate）、translate_log（structured LLM call logging + cross-user cache）
+- **iOS**（`ios/BooksBrowser`）：auth flows（Apple/Google SSO）、bookshelf + reader（EPUB/TXT/MD/PDF multi-format import）、translation/explanation（context sentence extraction）、vocabulary capture/list/detail/sync/graph views、hide/unhide links + bilateral optimistic sync、toast notification system（capsule toast + sheet overlay）、graph thumbnail + health blob、today review、stats overview、settings + account deletion、onboarding empty-state login entry points、app-intent/background sync、preview matrix、**macOS multiplatform (macOS 15.0+)**、notebook robustness（`resolveNotebookId` chokepoint + `sanitizeOutbox` orphan migration + `triggerPipelinesIsolated` per-notebook isolation + stale `activeNotebookId` cleanup + tombstone defense）
+- **Backend**（`backend/src/kg`）：auth/user identity（Apple/Google + web auth + cookie admin session）、user config/account lifecycle、vocabulary/graph-link APIs（hide/unhide/blocked pairs）、translate/explain/pipeline、card/graph/embedding/difficulty/enrichment/Mochi、multi-format import parsing、query path perf（incremental sync/zipf cache/filter-before-sort）、write path perf（batch ops/N+1 elimination）、static pages、system observability（`/api/system/info` + VERSION tracking + deploy.log）、pipeline telemetry（`pipeline_log.db` — per-run/step timing + status + items，admin UI summary stats + stacked bar chart）、pipeline lock-queue（concurrent triggers queue via `async with lock` instead of silent-skip）、one-shot judge（pending_judge + selective prompt + degree cap + batch judge 86% token savings）、judge_log（complete decision tracking + acceptance rate）、translate_log（structured LLM call logging + cross-user cache）
 - **Chrome Extension**（`chrome-extension/`）：side panel vocab lookup、閱讀選詞翻譯、auth token 整合、woff2 字型
 - **Admin**：dashboard (`/admin` — judge acceptance rate)、user detail page (`/admin/user/<uid>` — two-column layout：帳戶/訂閱/grant/額度/token + graph density chart + graph playback + pipeline waterfall + translate_log viewer)、password login (`/admin/login`)、logs/stats APIs (`/api/admin/*`)、test-matrix (`/admin/tests`)、in-memory log capture
-- **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix、auth provider tests（Apple/Google）、text_utils/enrich modules
-- **Ops**：safe wrapper、smart deploy（auto fast/full path + rsync --delete stale files）、ops-cli（container 內查詢工具）、container-script（本地腳本上傳執行）、ops_analyze.py（one-command deep graph analysis levels 1-6）、preflight/backup/restart/status/logs/migration workflows、system observability（version tracking + deploy log）
+- **Tests**（`backend/tests`）：API contract、robustness、renderer、admin/test-matrix、auth provider tests（Apple/Google）、text_utils/enrich modules、pipeline lock-queue concurrency tests
+- **Tests**（`ios/BooksBrowserTests`）：vocabulary entry lifecycle、bilateral link mutation、reader bridge planner、session persistence、notebook orphan defense（resolveNotebookId 7 + sanitizeOutbox 8 + triggerPipelinesIsolated 3 = 18 tests）
+- **Ops**：safe wrapper、smart deploy（auto fast/full path + rsync --delete stale files）、ops-cli（container 內查詢工具，db-query 不需引號）、container-script（本地腳本上傳執行）、ops_analyze.py（one-command deep graph analysis levels 1-6）、preflight/backup/restart/status/logs（`KG_LOG_TZ` 時區轉換）/migration workflows、system observability（version tracking + deploy log）、ios_test.sh（`-g` pattern grep + clean output）
 
 ## Reference Docs（按需讀取）
 
