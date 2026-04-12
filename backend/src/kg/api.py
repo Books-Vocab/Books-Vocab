@@ -341,7 +341,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     _podcasts_path = settings.podcasts_dir
     if _podcasts_path.exists():
         from starlette.staticfiles import StaticFiles
-        app.mount("/api/podcast-media", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
+        app.mount("/api/podcast-media/", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
 
     return app
 

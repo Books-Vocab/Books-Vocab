@@ -72,3 +72,16 @@ def test_podcast_subtitle_endpoint(podcast_client):
     resp = client.get("/api/podcasts/series_a/1/subtitle")
     assert resp.status_code == 200
     assert resp.text == srt_content
+
+
+def test_podcast_subtitle_not_found(podcast_client):
+    client, podcasts = podcast_client
+    (podcasts / "series_a").mkdir()
+    resp = client.get("/api/podcasts/series_a/99/subtitle")
+    assert resp.status_code == 404
+
+
+def test_podcast_subtitle_rejects_traversal(podcast_client):
+    client, _ = podcast_client
+    resp = client.get("/api/podcasts/../evil/1/subtitle")
+    assert resp.status_code in (404, 422)
