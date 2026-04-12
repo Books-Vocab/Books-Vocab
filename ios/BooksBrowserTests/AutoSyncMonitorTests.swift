@@ -63,6 +63,18 @@ struct AutoSyncMonitorTests {
         #expect(result == false)
     }
 
+    @Test func shouldNotTriggerWhenLoggedOut() {
+        let result = AutoSyncMonitor.shouldTrigger(
+            pendingCount: 5,
+            isEnabled: true,
+            isRunning: false,
+            isLoggedIn: false,
+            isDemoMode: false,
+            isConnected: true
+        )
+        #expect(result == false)
+    }
+
     @Test func shouldNotTriggerInDemoMode() {
         let result = AutoSyncMonitor.shouldTrigger(
             pendingCount: 5,

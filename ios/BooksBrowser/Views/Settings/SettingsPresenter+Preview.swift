@@ -38,7 +38,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: false, showAutoSync: false),
         kg: nil,
         subscription: nil,
         syncSummary: nil,
