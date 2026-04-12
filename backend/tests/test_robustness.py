@@ -4,7 +4,7 @@ Robustness integration tests for Batch A-D changes.
 Design constraints:
 - SQLModel Card(table=True) is a singleton per process. Modules MUST NOT be reloaded.
 - All data I/O uses tmp_path (isolated per test).
-- External APIs (Gemini, Mochi) are mocked.
+- External APIs (Gemini) are mocked.
 - FastAPI TestClient runs ASGI in-process.
 """
 
@@ -19,7 +19,6 @@ import time
 import uuid
 from unittest.mock import MagicMock, patch
 
-import httpx
 import pytest
 from fastapi.testclient import TestClient
 
@@ -37,7 +36,6 @@ import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.embeddings as emb_mod
 import kg.judge as judge_mod
-import kg.mochi as mochi_mod
 from kg.api import app  # noqa: E402 — must come after env setup
 from kg.settings import KGSettings
 
@@ -135,28 +133,19 @@ def user_env(tmp_path):
 # ============================================================================
 
 
-def _assert_mochi_key_matches(stored_key, expected):
-    if stored_key.startswith("enc:"):
-        from kg.secret_store import decrypt_value
-        assert decrypt_value(stored_key, app.state.kg_settings.jwt_secret) == expected
-    else:
-        assert stored_key == expected
-
-
 class TestBatchA_UsersJsonLock:
 
     def test_sequential_config_update_persists(self, user_env):
-        """PUT /api/user/config should write and return the new key."""
+        """PUT /api/user/config should write and return the updated config."""
         client, user_id, headers, data_dir = user_env
 
         r = client.put("/api/user/config",
-                       json={"integrations": {"mochi": {"api_key": "mk_abc123"}}},
+                       json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}},
                        headers=headers)
         assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
-
-        data = json.loads((data_dir / "users.json").read_text())
-        _assert_mochi_key_matches(data[user_id]["config"]["integrations"]["mochi"]["api_key"], "mk_abc123")
+        body = r.json()
+        assert body["translation"]["source_lang"] == "en"
+        assert body["translation"]["target_lang"] == "zh-Hant"
 
     def test_concurrent_writes_no_json_corruption(self, user_env):
         """10 concurrent PUT /api/user/config must not corrupt users.json."""
@@ -164,16 +153,16 @@ class TestBatchA_UsersJsonLock:
 
         errors, statuses = [], []
 
-        def do_put(key):
+        def do_put(i):
             try:
                 r = client.put("/api/user/config",
-                               json={"integrations": {"mochi": {"api_key": key}}},
+                               json={"translation": {"source_lang": "en", "target_lang": "zh-Hant"}},
                                headers=headers)
                 statuses.append(r.status_code)
             except Exception as e:
                 errors.append(str(e))
 
-        threads = [threading.Thread(target=do_put, args=(f"key_{i}",)) for i in range(10)]
+        threads = [threading.Thread(target=do_put, args=(i,)) for i in range(10)]
         for t in threads:
             t.start()
         for t in threads:
@@ -188,30 +177,16 @@ class TestBatchA_UsersJsonLock:
         except json.JSONDecodeError as e:
             pytest.fail(f"users.json corrupted: {e}")
 
-        assert user_id in data and "integrations" in data[user_id]["config"]
+        assert user_id in data
 
     def test_get_config_returns_current_value(self, user_env):
         """GET /api/user/config should reflect what was PUT."""
         client, user_id, headers, data_dir = user_env
 
-        client.put("/api/user/config", json={"integrations": {"mochi": {"api_key": "mk_xyz"}}}, headers=headers)
+        client.put("/api/user/config", json={"translation": {"source_lang": "en", "target_lang": "ja"}}, headers=headers)
         r = client.get("/api/user/config", headers=headers)
         assert r.status_code == 200
-        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
-
-    def test_nested_integrations_payload_is_accepted(self, user_env):
-        client, user_id, headers, data_dir = user_env
-
-        r = client.put(
-            "/api/user/config",
-            json={"integrations": {"mochi": {"api_key": "mk_nested"}}},
-            headers=headers,
-        )
-        assert r.status_code == 200, r.text
-        assert r.json()["integrations"]["mochi"]["has_api_key"] is True
-
-        data = json.loads((data_dir / "users.json").read_text())
-        _assert_mochi_key_matches(data[user_id]["config"]["integrations"]["mochi"]["api_key"], "mk_nested")
+        assert r.json()["translation"]["target_lang"] == "ja"
 
     def test_get_entitlements_returns_default_subscription_snapshot(self, user_env):
         """GET /api/user/entitlements should return a stable default snapshot."""
@@ -389,10 +364,6 @@ class TestBatchA_NoPrintInModules:
         lines = self._find_print_calls(api_mod)
         assert not lines, f"api.py still has print() at lines: {lines}"
 
-    def test_mochi_module(self):
-        lines = self._find_print_calls(mochi_mod)
-        assert not lines, f"mochi.py still has print() at lines: {lines}"
-
     def test_judge_module(self):
         lines = self._find_print_calls(judge_mod)
         assert not lines, f"judge.py still has print() at lines: {lines}"
@@ -418,83 +389,6 @@ class TestBatchA_NoPrintInModules:
             "Expected >=1 ERROR log from failing pipeline step.\n"
             f"All records: {[(r.levelno, r.message) for r in caplog.records]}"
         )
-
-
-# ============================================================================
-# BATCH B — mochi_sync.json unified atomic storage
-# ============================================================================
-
-class TestBatchB_MochiAtomicStorage:
-
-    def _make_sync(self, tmp_path):
-        from kg.cards import CardStore
-        from kg.graph import GraphStore
-        from kg.mochi import MochiSync
-
-        cards = CardStore(tmp_path / "cards.db")
-        graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
-        client_mock = MagicMock()
-        return MochiSync(
-            client=client_mock, cards=cards, graph=graph,
-            map_path=tmp_path / "mochi_map.json",
-        ), tmp_path
-
-    def test_save_creates_unified_file(self, tmp_path):
-        sync, d = self._make_sync(tmp_path)
-        sync._map = {"c1": "m1"}
-        sync._state = {"c1": "h1"}
-        sync._save()
-
-        f = d / "mochi_sync.json"
-        assert f.exists()
-        data = json.loads(f.read_text())
-        assert data == {"map": {"c1": "m1"}, "state": {"c1": "h1"}}
-
-    def test_load_reads_unified_file(self, tmp_path):
-        (tmp_path / "mochi_sync.json").write_text(
-            json.dumps({"map": {"x": "y"}, "state": {"x": "hash"}})
-        )
-        sync, _ = self._make_sync(tmp_path)
-        assert sync._map == {"x": "y"}
-        assert sync._state == {"x": "hash"}
-
-    def test_map_and_state_always_in_sync(self, tmp_path):
-        """After _save(), reading back must have identical map+state."""
-        sync, d = self._make_sync(tmp_path)
-        sync._map = {"a": "b", "c": "d"}
-        sync._state = {"a": "h1"}
-        sync._save()
-
-        data = json.loads((d / "mochi_sync.json").read_text())
-        assert data["map"] == sync._map
-        assert data["state"] == sync._state
-
-    def test_migration_from_legacy_separate_files(self, tmp_path):
-        """Legacy mochi_map.json + sync_state.json -> migrated to mochi_sync.json."""
-        (tmp_path / "mochi_map.json").write_text(json.dumps({"old": "mochi_id"}))
-        (tmp_path / "sync_state.json").write_text(json.dumps({"old": "hashval"}))
-
-        sync, d = self._make_sync(tmp_path)
-        assert sync._map == {"old": "mochi_id"}
-        assert sync._state == {"old": "hashval"}
-        assert (d / "mochi_sync.json").exists(), "Unified file must be created after migration"
-
-    def test_no_tmp_file_leftover_after_save(self, tmp_path):
-        sync, d = self._make_sync(tmp_path)
-        sync._map = {"k": "v"}
-        sync._state = {}
-        sync._save()
-
-        assert not (d / "mochi_sync.json.tmp").exists(), \
-            ".json.tmp must be cleaned up by atomic replace"
-
-    def test_corrupted_unified_file_logs_warning(self, tmp_path, caplog):
-        (tmp_path / "mochi_sync.json").write_text("{INVALID")
-        with caplog.at_level(logging.WARNING, logger="kg.mochi"):
-            sync, _ = self._make_sync(tmp_path)
-        assert any(r.levelno == logging.WARNING for r in caplog.records), \
-            "Corrupted mochi_sync.json must log WARNING"
-        assert isinstance(sync._map, dict)  # must not crash
 
 
 # ============================================================================
@@ -706,47 +600,6 @@ class TestBatchD_UserLockAtomic:
     # inside one event loop via `asyncio.gather` — see
     # `test_pipeline_service.py::test_pipeline_service_waits_when_lock_is_held`
     # and `::test_pipeline_service_concurrent_triggers_different_notebooks_all_run`.
-
-
-# ============================================================================
-# BATCH A — mochi orphan delete failure logs WARNING (not silent)
-# ============================================================================
-
-class TestBatchA_MochiOrphanWarning:
-
-    def test_delete_failure_logs_warning(self, tmp_path, caplog):
-        from kg.cards import CardStore
-        from kg.graph import GraphStore
-        from kg.mochi import MochiSync
-        from kg.renderer import RenderIntent
-
-        cards = CardStore(tmp_path / "cards.db")
-        graph = GraphStore(tmp_path / "graph.json", tmp_path / "candidates.json")
-
-        client_mock = MagicMock()
-        client_mock.delete_card.side_effect = httpx.HTTPStatusError(
-            "Mochi 503", request=httpx.Request("DELETE", "https://mochi"), response=httpx.Response(503)
-        )
-        client_mock.list_decks.return_value = [{"name": "Knowledge", "id": "deck1"}]
-
-        sync = MochiSync(
-            client=client_mock, cards=cards, graph=graph,
-            map_path=tmp_path / "mochi_map.json",
-        )
-        # Inject orphan (card_id not in cards DB -> orphan)
-        sync._map = {"gone_card": "mochi_orphan"}
-        sync._state = {}
-
-        with caplog.at_level(logging.WARNING, logger="kg.mochi"):
-            try:
-                sync.sync(RenderIntent.FULL, dry_run=False)
-            except Exception:
-                pass  # We only care about the WARNING
-
-        warning_msgs = [r.message for r in caplog.records if r.levelno == logging.WARNING]
-        assert any("orphan" in m.lower() or "mochi_orphan" in m for m in warning_msgs), (
-            f"Expected WARNING mentioning orphan delete failure.\nWarnings: {warning_msgs}"
-        )
 
 
 # ============================================================================
