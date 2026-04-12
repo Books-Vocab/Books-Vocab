@@ -1,6 +1,6 @@
 # Knowledge Graph (Vocab) Backend — FastAPI 服務
 
-這是一個以 SQLite 為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、背景 Pipeline、增量同步機制，以及可選的 Mochi legacy 整合。
+這是一個以 SQLite 為核心的單字學習系統後端，整合了知識圖譜 (Knowledge Graph)、LLM 增強內容 (Gemini 2.5 Flash Lite)、向量編碼 (Embeddings)、以及自動化難度標記系統。支援多用戶沙盒隔離、背景 Pipeline、增量同步機制。
 
 ## Backend Layout
 
@@ -9,13 +9,6 @@
 - `src/kg/route_registration.py`: 集中 route registration，避免 handler 與 decorator 混在一起
 - `src/kg/*_service.py`: translate / auth / vocab / pipeline / billing 等業務邏輯
 - `tests/test_api_module_compat.py`、`tests/test_api_startup_smoke.py`、`tests/test_route_registration.py`: 重構遷移的 guardrails
-
-Mochi 整合目前採用使用者層設定，且已降級為 optional / legacy integration：
-
-- 權威來源是 `users.json -> <user_id> -> config -> integrations -> mochi -> api_key`
-- 權威欄位為 `config.integrations.mochi.api_key`
-- iOS app 透過 `/api/user/config` 讀寫
-- 系統層 `MOCHI_API_KEY` 只保留給少數 legacy admin scripts 作 fallback，不是主要 runtime 來源
 
 > 💡 **後端開發入口**：部署、測試、格式規範與 debug 路徑，請先看：[👉 `../docs/backend-dev.md`](../docs/backend-dev.md)
 >
@@ -60,15 +53,13 @@ Authorization: Bearer google-oauth2|1234567890  # Google Sign-In ID
 
 ```
 data/users/
-├── users.json                    # 全域用戶索引與 per-user config（含 config.integrations.mochi.api_key）
+├── users.json                    # 全域用戶索引與 per-user config
 ├── chen/
 │   ├── cards.db                 # SQLite 卡片資料庫
 │   ├── graph.json               # 知識圖譜連結
 │   ├── candidates.json          # 待評估的相似度候選對
 │   ├── embeddings.npy           # 向量嵌入矩陣
-│   ├── card_ids.json            # 向量 ID 映射表
-│   ├── mochi_map.json           # 本地→Mochi 卡片 ID 對應
-│   └── sync_state.json          # 上次同步狀態（時間戳與 Hash）
+│   └── card_ids.json            # 向量 ID 映射表
 └── alice/
     └── [同樣的結構]
 ```
@@ -77,7 +68,7 @@ data/users/
 
 `/api/pipeline` 採用 **Fire-and-Forget** 模式：
 - 呼叫後**立即回傳** `{"status": "queued"}`
-- 伺服器在背景獨立處理四步 Pipeline（Enrich → Link → Difficulty → Optional External Sync）
+- 伺服器在背景獨立處理三步 Pipeline（Enrich → Link → Difficulty）
 - 每個用戶有專屬的 `asyncio.Lock` 確保同時只有一個 Pipeline 在執行，避免競態
 - 目前沒有對外暴露 SSE pipeline step stream；前端以本地同步步驟為主，遠端處理完成後再透過 pull 合併結果
 
@@ -111,75 +102,6 @@ class Card(SQLModel, table=True):
     created_at: datetime
     updated_at: datetime  # 用於增量同步
 ```
-
-## Mochi Integration (Optional / Legacy)
-
-Mochi 的卡片並非單純的 Markdown 渲染器，它有一套獨特的**雙重內容模型 (Dual Content Model)**，這是官方文檔較少提及但至關重要的部分。
-
-### 1. Content vs. Fields (關鍵概念)
-
-Mochi 卡片有兩種儲存與顯示模式：
-
-*   **Content (Raw Markdown)**:
-    *   卡片的原始文本，包含所有 Markdown 標記。
-    *   **顯示時機**: 當卡片**未套用 Template** 時，Mochi 直接渲染此內容。
-    *   **限制**: Mochi 會嘗試從這裡「自動解析」出欄位（如 `Word: ...`），但對於複雜或自定義欄位（如多行筆記、WikiLinks）非常不可靠。
-
-*   **Fields (Template Data)**:
-    *   當卡片**套用 Template** 時，Mochi 僅渲染 `fields` 中的數據，完全忽略 `content`（除非 Template 引用了 `<< content >>`，但通常不會）。
-    *   **儲存方式**: 獨立於 `content` 的鍵值對（Key-Value Pair），每個欄位有唯一的 ID。
-    *   **最佳實踐**: **永遠不要依賴 Content 的自動解析**。在更新卡片時，必須明確構造 `fields` payload，指定每個欄位的 ID 與值。
-
-### 2. Template System (KG Vocab v3)
-
-本專案使用自定義模板 `KG Vocab v3` (ID: `fiAjorZ6`)。
-
-| 欄位名稱 (Display) | 欄位 KEY (ID) | 內容來源 | 渲染特性 |
-| :--- | :--- | :--- | :--- |
-| **Word** | `name` | `card.content` | 標題，支援搜尋 |
-| **POS** | `pos_field` | `card.pos` | 詞性，CSS `.pos-tag` |
-| **Difficulty** | `diff_field` | `card.difficulty` | 難度 (core/rare...)，CSS `.diff-tag` |
-| **Example** | `example_field` | `card.examples[0]` | **注意**: Template 自帶 `_..._` (斜體)，傳入內容需為 Plain Text，否則會變成粗體 (`__bold__`) |
-| **Meaning** | `meaning_field` | `card.meaning` | 中文釋義 |
-| **Note** | `note_field` | `card.note` | 豐富筆記 (Markdown)，支援 HTML |
-| **Links** | `qzEWEGLk` (Auto-ID) | Graph Links | WikiLinks `[[id]]`，點擊跳轉 |
-
-### 3. CSS & Rendering Strategy
-
-Mochi 允許自定義 CSS (Custom CSS)，我們利用此特性實現高級排版。
-
-*   **Class Preservation**: Mochi 的 Markdown parser 會**保留** `<div>` 的 `class` 屬性（如 `<div class="note-block">`），但會過濾掉 `<span>` 或 `<sup>` 等行內標籤的 class。
-    *   **策略**: 使用 `<div>` 包裹內容區塊，並在 Mochi 全局 CSS 中定義樣式。
-*   **Highlighting**:
-    *   **語法**: `==word==` (Mochi 支援的 Extended Markdown) → 渲染為 `<mark>` (螢光筆效果)。
-    *   **粗體**: `**word**` → `<strong>`。
-    *   **斜體**: `_word_` → `<em>`。
-    *   **Trap**: Template 如果已經包了 `_<<Field>>_`，傳入 `_text_` 會變成 `__text__` (粗體)。
-
-### 4. Sync Mechanism (同步機制)
-
-為了確保效率與正確性，`kg sync` 採用**三階段同步**：
-
-1.  **Map Check**: 確保所有本地卡片都有對應的 Mochi ID (儲存於 `data/mochi_map.json`)。
-2.  **Render & Diff (Local)**:
-    *   本地生成 Fields Payload（含動態難度）。
-    *   計算 Hash (MD5)，與上次同步狀態 (`data/sync_state.json`) 比對。
-    *   Hash 包含 Fields + Tags，確保難度變動也能觸發更新。
-    *   **過濾**: 僅將內容實質變更的卡片加入更新佇列。
-3.  **API Update**:
-    *   針對變更的卡片，呼叫 `POST /cards/:id`。
-    *   **Payload**: 同時更新 `content` (備份/搜尋) 與 `fields` (渲染)。
-
-#### Difficulty 雙重同步
-
-難度資訊會同時寫入兩個地方：
-
-| 目標 | 用途 | 來源 |
-| :--- | :--- | :--- |
-| `diff_field` (Template Field) | 卡片上**顯示**的難度標籤 + CSS 樣式 | `render_fields()` |
-| `manual-tags` (Mochi Tags) | 側邊欄**篩選**卡片用 | `sync()` payload |
-
-兩者都使用**動態百分位 (Percentile)** 計算，確保一致。
 
 ### 5. Difficulty Scoring (難度分級)
 
@@ -230,7 +152,7 @@ POST /api/translate/explain
   Response: {"e": "在語境中意思是..."}
 ```
 
-這兩個端點由 iOS 前端直接呼叫（當用戶未登入或需要快速翻譯時），繞過 Mochi 與生詞庫，直接透過 Gemini API 進行翻譯。
+這兩個端點由 iOS 前端直接呼叫，透過 Gemini API 進行翻譯。
 
 ### 知識圖譜
 
@@ -254,9 +176,6 @@ POST /api/pipeline                         # 觸發背景 Pipeline
 ## Development
 
 *   **API 伺服器**: `src/kg/api.py` - FastAPI 端點與多用戶隔離邏輯。
-*   **Renderer**: `src/kg/renderer.py` - 核心渲染邏輯，定義了 Template ID 與 Field Mapping。
-*   **Mochi Adapter**: `src/kg/mochi.py` - API 客戶端與同步邏輯。
 *   **Difficulty**: `src/kg/difficulty.py` - Zipf 評分 + 動態百分位計算。
 *   **Enrich & Judges**: `src/kg/enrich.py` & `src/kg/judge.py` - LLM Prompt (使用 `gemini-2.5-flash-lite`, batch 20, 5 workers)。
 *   **Embedding**: `src/kg/embeddings.py` - 使用 `gemini-embedding-001` (768維) 進行語意相似度檢索。
-*   **CSS**: `mochi_theme.css` - 需手動複製到 Mochi 的 "Custom CSS" 設定中。
