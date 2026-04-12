@@ -50,12 +50,19 @@ def _make_card(cid: str, content: str, meaning: str, *, is_archived: bool = Fals
 class _FakeCards:
     def __init__(self, cards: list):
         self._cards = {c.id: c for c in cards}
+        self.touched_ids: set[str] = set()
 
     def all(self, include_deleted=False, notebook_id=None):
         return list(self._cards.values())
 
     def get_batch(self, ids):
         return {cid: self._cards[cid] for cid in ids if cid in self._cards}
+
+    def touch(self, card_id: str):
+        self.touched_ids.add(card_id)
+
+    def batch_touch(self, card_ids):
+        self.touched_ids.update(card_ids)
 
 
 class _FakeEmbeddings:
