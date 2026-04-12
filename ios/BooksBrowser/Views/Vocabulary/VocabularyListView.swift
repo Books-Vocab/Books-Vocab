@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
 
-/// 生詞庫列表
+/// 單字本內的已收錄列表
 struct VocabularyListView: View {
     @Query var allEntries: [VocabularyEntry]
     @Query private var notebooks: [Notebook]
@@ -18,7 +18,6 @@ struct VocabularyListView: View {
     let notebookId: String
 
     @State var searchText = ""
-    /// debounce 後的搜尋文字，用於實際過濾
     @State var debouncedSearchText = ""
     @Environment(\.kgService) var kgService
     @Environment(\.authManager) var authManager
@@ -27,7 +26,6 @@ struct VocabularyListView: View {
     @Environment(\.toastCoordinator) var toastCoordinator
     @Environment(\.syncCoordinator) var syncCoordinator
     @Environment(\.detailRouter) var detailRouter
-    @State var selectedTab = 0  // 0 = 我的生詞, 1 = KG 字庫
     @State var coordinator = VocabularyListCoordinator()
 
     var notebookName: String {
@@ -49,31 +47,28 @@ struct VocabularyListView: View {
         let classified = VocabularyEntryPresentation.classifyKnowledgeEntries(in: allEntries, now: Date())
 
         VocabularyListPresenter(
-            state: presenterState(classified: classified),
-            selectedTab: $selectedTab,
+            showsSearchField: authManager.isLoggedIn,
             searchText: $searchText
         ) {
-            routedContent(classified: classified)
+            contentView(classified: classified)
         }
         .navigationTitle(notebookName)
         .largeNavigationBarTitle()
         .modifier(VocabularyListToolbar(
-            selectedTab: selectedTab,
             isLoggedIn: authManager.isLoggedIn,
             isSyncing: syncCoordinator.phase == .running,
             pendingCount: pendingCount,
             knowledgeReviewCount: classified.dueCount + classified.unlearnedCount,
             knowledgeDueCount: classified.dueCount,
+            knowledgeUnlearnedCount: classified.unlearnedCount,
             onSync: coordinator.presentSyncView,
             onStartDueReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
             onStartUnlearnedReview: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
             onStartAllReview: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) },
-            onExportCSV: { coordinator.exportCSV(entries: pendingEntries, toastCoordinator: toastCoordinator) },
-            onExportJSON: { coordinator.exportJSON(entries: pendingEntries, toastCoordinator: toastCoordinator) },
-            onExportAnki: { coordinator.exportAnki(entries: pendingEntries, toastCoordinator: toastCoordinator) },
-            hasPendingEntries: !pendingEntries.isEmpty,
-            knowledgeDueEntriesCount: classified.dueCount,
-            knowledgeUnlearnedEntriesCount: classified.unlearnedCount
+            onExportCSV: { coordinator.exportCSV(entries: syncedEntries, toastCoordinator: toastCoordinator) },
+            onExportJSON: { coordinator.exportJSON(entries: syncedEntries, toastCoordinator: toastCoordinator) },
+            onExportAnki: { coordinator.exportAnki(entries: syncedEntries, toastCoordinator: toastCoordinator) },
+            hasSyncedEntries: !syncedEntries.isEmpty
         ))
         .modifier(VocabularyListSheets(
             coordinator: coordinator,
@@ -83,12 +78,7 @@ struct VocabularyListView: View {
             guard !authManager.isDemoMode else { return }
             await kgService.healthCheck()
         }
-        .onChange(of: selectedTab) { _, _ in
-            searchText = ""
-            debouncedSearchText = ""
-        }
         .task(id: searchText) {
-            // 清空時立即反映；否則 debounce 300ms
             guard !searchText.isEmpty else {
                 debouncedSearchText = ""
                 return
@@ -96,9 +86,7 @@ struct VocabularyListView: View {
             do {
                 try await Task.sleep(for: .milliseconds(300))
                 debouncedSearchText = searchText
-            } catch {
-                // Task cancelled — 使用者繼續輸入，忽略
-            }
+            } catch {}
         }
         .onChange(of: coordinator.selectedEntry) { _, entry in
             if let entry, let detailRouter {

@@ -15,6 +15,7 @@ def _notebook_response(nb, card_count: int = 0) -> NotebookResponse:
         id=nb.id,
         name=nb.name,
         color=nb.color,
+        coverPattern=nb.cover_pattern,
         sortOrder=nb.sort_order,
         isDefault=nb.is_default,
         isDeleted=nb.is_deleted,
@@ -48,7 +49,7 @@ def list_notebooks(since: str | None = None, user: dict = Depends(get_current_us
 @router.post("/api/notebooks", response_model=NotebookResponse, status_code=201)
 def create_notebook(req: NotebookCreateRequest, user: dict = Depends(get_current_user)):
     store = _notebook_store(user["dir"])
-    nb = store.create(name=req.name, color=req.color)
+    nb = store.create(name=req.name, color=req.color, cover_pattern=req.cover_pattern)
     return _notebook_response(nb)
 
 
@@ -60,6 +61,8 @@ def update_notebook(nb_id: str, req: NotebookUpdateRequest, user: dict = Depends
         kwargs["name"] = req.name
     if req.color is not None:
         kwargs["color"] = req.color
+    if req.cover_pattern is not None:
+        kwargs["cover_pattern"] = req.cover_pattern if req.cover_pattern != "" else None
     if req.sort_order is not None:
         kwargs["sort_order"] = req.sort_order
     if not kwargs:

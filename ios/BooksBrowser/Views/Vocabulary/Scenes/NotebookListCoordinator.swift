@@ -18,6 +18,7 @@ import SwiftData
     func createNotebook(
         name: String,
         color: String?,
+        coverPattern: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
@@ -26,6 +27,7 @@ import SwiftData
         _ notebook: Notebook,
         name: String,
         color: String?,
+        coverPattern: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
@@ -44,6 +46,7 @@ import SwiftData
 
 @Observable @MainActor
 final class NotebookListCoordinator: NotebookListCoordinating {
+    var exportURL: URL?
 
     /// 從 server 拉 notebook 清單並與本地 reconcile：
     /// - remote 新增 → 本地 insert
@@ -97,6 +100,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
                 let wasAlive = !local.isDeleted
                 local.name = remote.name
                 local.color = remote.color
+                local.coverPattern = remote.coverPattern
                 local.isDefault = remote.isDefault
                 local.sortOrder = remote.sortOrder
                 local.isDeleted = remote.isDeleted
@@ -160,13 +164,15 @@ final class NotebookListCoordinator: NotebookListCoordinating {
     func createNotebook(
         name: String,
         color: String?,
+        coverPattern: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async {
         do {
-            let remote = try await kgService.createNotebook(name: name, color: color)
+            let remote = try await kgService.createNotebook(name: name, color: color, coverPattern: coverPattern)
             let nb = Notebook(remoteId: remote.id, name: remote.name, color: remote.color)
+            nb.coverPattern = remote.coverPattern
             nb.syncStatus = 1
             modelContext.insert(nb)
             if modelContext.safeSaveWithToast(toastCoordinator) {
@@ -182,14 +188,16 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         _ notebook: Notebook,
         name: String,
         color: String?,
+        coverPattern: String?,
         modelContext: ModelContext,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async {
         do {
-            let remote = try await kgService.updateNotebook(id: notebook.remoteId, name: name, color: color)
+            let remote = try await kgService.updateNotebook(id: notebook.remoteId, name: name, color: color, coverPattern: coverPattern)
             notebook.name = remote.name
             notebook.color = remote.color
+            notebook.coverPattern = remote.coverPattern
             notebook.updatedAt = Date()
             if modelContext.safeSaveWithToast(toastCoordinator) {
                 toastCoordinator.success("已更新")

@@ -13,6 +13,8 @@ final class Notebook {
     var remoteId: String
     var name: String
     var color: String?
+    var coverPattern: String?
+    var coverImagePath: String?
     var sortOrder: Int = 0
     var isDefault: Bool = false
     var createdAt: Date
