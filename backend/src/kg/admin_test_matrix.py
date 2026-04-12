@@ -15,14 +15,6 @@ CASE_LINE_RE = re.compile(
 TEST_MATRIX_COLUMNS = ["Unit", "Integration", "Robustness", "Contract"]
 TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
     {
-        "id": "renderer_truncation",
-        "domain": "Rendering",
-        "column": "Unit",
-        "label": "Renderer Truncation",
-        "summary": "Fast renderer-only check for text truncation behavior.",
-        "nodeids": ["tests/test_renderer_truncation.py"],
-    },
-    {
         "id": "vocab_graph",
         "domain": "Vocab/Graph",
         "column": "Integration",
@@ -72,10 +64,9 @@ TEST_MATRIX_ITEMS: list[dict[str, Any]] = [
         "id": "storage_atomicity",
         "domain": "Storage",
         "column": "Robustness",
-        "label": "Mochi + CardStore Atomicity",
+        "label": "CardStore Atomicity",
         "summary": "Protects atomic writes, counts, and migration behavior for stored data.",
         "nodeids": [
-            "tests/test_robustness.py::TestBatchB_MochiAtomicStorage",
             "tests/test_robustness.py::TestBatchC_CardStoreCount",
         ],
     },

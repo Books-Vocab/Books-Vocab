@@ -70,10 +70,6 @@ struct SettingsPresenterState {
         let summaryText: String
     }
 
-    struct OptionalIntegrationSection {
-        let isEnabled: Bool
-    }
-
     struct AboutSection {
         let version: String
         let developerName: String
@@ -88,7 +84,6 @@ struct SettingsPresenterState {
     let kg: KGSection?
     let subscription: SubscriptionSection?
     let syncSummary: SyncSummaryState?
-    let optionalIntegration: OptionalIntegrationSection?
     let about: AboutSection
     let danger: DangerSection?
 }
@@ -110,7 +105,6 @@ struct SettingsPresenterActions {
     let selectLanguage: (AppLanguage) -> Void
     let selectAppearance: (AppAppearanceMode) -> Void
     let showSubscriptionPaywall: () -> Void
-    let showOptionalIntegrationInfo: () -> Void
     let requestDeleteAccount: () -> Void
     let openPrivacyPolicy: () -> Void
     let openTermsOfService: () -> Void

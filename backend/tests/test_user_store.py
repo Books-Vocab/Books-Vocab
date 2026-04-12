@@ -6,7 +6,6 @@ from kg.user_store import (
     collect_account_ids_for_deletion,
     normalize_users_payload,
     parse_datetime,
-    resolve_mochi_api_key_from_config,
 )
 
 
@@ -76,37 +75,6 @@ class TestNormalizeUsersPayload:
     def _normalize(self, users):
         return normalize_users_payload(users, _default_subscription)
 
-    def test_legacy_mochi_key_migrated_to_nested(self):
-        users = {
-            "u1": {"mochi_api_key": "legacy_key", "config": {}},
-        }
-        result, changed = self._normalize(users)
-        assert changed
-        assert "mochi_api_key" not in result["u1"]
-        assert result["u1"]["config"]["integrations"]["mochi"]["api_key"] == "legacy_key"
-
-    def test_flat_config_mochi_key_migrated_to_nested(self):
-        users = {
-            "u1": {"config": {"mochi_api_key": "flat_key"}},
-        }
-        result, changed = self._normalize(users)
-        assert changed
-        assert "mochi_api_key" not in result["u1"]["config"]
-        assert result["u1"]["config"]["integrations"]["mochi"]["api_key"] == "flat_key"
-
-    def test_nested_key_takes_priority_over_flat(self):
-        users = {
-            "u1": {
-                "mochi_api_key": "legacy",
-                "config": {
-                    "mochi_api_key": "flat",
-                    "integrations": {"mochi": {"api_key": "nested"}},
-                },
-            }
-        }
-        result, _ = self._normalize(users)
-        assert result["u1"]["config"]["integrations"]["mochi"]["api_key"] == "nested"
-
     def test_subscription_defaults_filled(self):
         users = {
             "u1": {"config": {}, "subscription": {"is_active": True, "status": "active"}},
@@ -126,14 +94,11 @@ class TestNormalizeUsersPayload:
     def test_already_normal_payload_returns_changed_false(self):
         users = {
             "u1": {
-                "config": {
-                    "integrations": {"mochi": {"api_key": "mk_abc"}},
-                },
+                "config": {},
             }
         }
         result, changed = self._normalize(users)
         assert not changed
-        assert result["u1"]["config"]["integrations"]["mochi"]["api_key"] == "mk_abc"
 
     def test_underscore_prefixed_keys_pass_through(self):
         users = {
@@ -186,26 +151,3 @@ class TestCollectAccountIdsForDeletion:
         assert "ghost_canonical" in ids
 
 
-# ===========================================================================
-# resolve_mochi_api_key_from_config
-# ===========================================================================
-
-class TestResolveMochiApiKeyFromConfig:
-
-    def test_nested_path_returns_key(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_valid"}}}
-        assert resolve_mochi_api_key_from_config(config) == "mk_valid"
-
-    def test_missing_integrations_returns_none(self):
-        assert resolve_mochi_api_key_from_config({}) is None
-
-    def test_missing_mochi_returns_none(self):
-        assert resolve_mochi_api_key_from_config({"integrations": {}}) is None
-
-    def test_whitespace_only_returns_none(self):
-        config = {"integrations": {"mochi": {"api_key": "   "}}}
-        assert resolve_mochi_api_key_from_config(config) is None
-
-    def test_missing_api_key_returns_none(self):
-        config = {"integrations": {"mochi": {}}}
-        assert resolve_mochi_api_key_from_config(config) is None
