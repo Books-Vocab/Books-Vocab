@@ -156,7 +156,7 @@ struct BookshelfView: View {
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
         .refreshable {
-            try? await Task.sleep(for: .seconds(1.5))
+            await PodcastSyncService().syncAll(context: modelContext)
         }
     }
 
@@ -207,7 +207,10 @@ struct BookshelfView: View {
                 .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .refreshable {
-            try? await Task.sleep(for: .seconds(1.5))
+            await PodcastSyncService().syncAll(context: modelContext)
+        }
+        .task {
+            await PodcastSyncService().syncAll(context: modelContext)
         }
         .navigationDestination(for: Book.self) { book in
             switch book.format {

@@ -12,9 +12,14 @@ struct PodcastEpisodeListView: View {
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \PodcastEpisode.episodeNumber) private var allEpisodes: [PodcastEpisode]
+    @Query private var allProgress: [PodcastProgress]
 
     private var episodes: [PodcastEpisode] {
         allEpisodes.filter { $0.series?.remoteId == seriesId }
+    }
+
+    private var progressMap: [String: PodcastProgress] {
+        Dictionary(uniqueKeysWithValues: allProgress.map { ($0.episodeRemoteId, $0) })
     }
 
     private var seriesTitle: String {
@@ -39,7 +44,10 @@ struct PodcastEpisodeListView: View {
                         NavigationLink {
                             PodcastPlayerView(episodeId: episode.remoteId)
                         } label: {
-                            PodcastEpisodeRow(episode: episode)
+                            PodcastEpisodeRow(
+                                episode: episode,
+                                progress: progressMap[episode.remoteId]
+                            )
                         }
                         .disabled(!episode.audioAvailable)
                     }

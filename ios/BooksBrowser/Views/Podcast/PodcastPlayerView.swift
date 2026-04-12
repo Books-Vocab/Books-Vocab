@@ -17,6 +17,7 @@ struct PodcastPlayerView: View {
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = PodcastTranslationHandler()
+    @State private var lastSavedTime: TimeInterval = 0
 
     var body: some View {
         Group {
@@ -29,6 +30,16 @@ struct PodcastPlayerView: View {
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
         .task { loadEpisode() }
+        .onChange(of: viewModel?.currentTime) { _, newTime in
+            guard let vm = viewModel, let newTime,
+                  vm.state == .playing else { return }
+            saveProgressIfNeeded(time: newTime)
+        }
+        .onChange(of: viewModel?.state) { _, newState in
+            if newState == .paused || newState == .ready {
+                saveProgress()
+            }
+        }
     }
 
     @ViewBuilder
@@ -110,31 +121,78 @@ struct PodcastPlayerView: View {
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
 
-        // Resolve audio URL: try local path first, fall back to bundle resource
-        let audioURL: URL
-        if let audioPath = episode.localAudioPath, let url = URL(string: audioPath),
-           FileManager.default.fileExists(atPath: url.path) {
-            audioURL = url
-        } else if let bundleURL = Bundle.main.url(forResource: "debug_podcast", withExtension: "mp3") {
-            audioURL = bundleURL
-        } else {
-            vm.reportError("音訊檔案不存在")
-            return
-        }
+        Task {
+            do {
+                guard let audioURLStr = episode.audioURL,
+                      let audioURL = URL(string: audioURLStr) else {
+                    vm.reportError("無音訊 URL")
+                    return
+                }
 
-        // Resolve subtitle content
-        let subtitleContent: String?
-        if let srtPath = episode.localSubtitlePath, let srtURL = URL(string: srtPath),
-           let content = try? String(contentsOf: srtURL, encoding: .utf8) {
-            subtitleContent = content
-        } else if let bundleSRT = Bundle.main.url(forResource: "debug_podcast", withExtension: "srt"),
-                  let content = try? String(contentsOf: bundleSRT, encoding: .utf8) {
-            subtitleContent = content
-        } else {
-            subtitleContent = nil
-        }
+                vm.setLoading()
 
-        vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
+                let (tmpURL, _) = try await URLSession.shared.download(from: audioURL)
+                let stableTmp = FileManager.default.temporaryDirectory
+                    .appendingPathComponent(UUID().uuidString)
+                    .appendingPathExtension("mp3")
+                try FileManager.default.moveItem(at: tmpURL, to: stableTmp)
+
+                var subtitleContent: String?
+                if let subtitleURLStr = episode.subtitleURL,
+                   let subtitleURL = URL(string: subtitleURLStr) {
+                    let (data, _) = try await URLSession.shared.data(from: subtitleURL)
+                    subtitleContent = String(data: data, encoding: .utf8)
+                }
+
+                await MainActor.run {
+                    vm.loadEpisode(audioURL: stableTmp, subtitleContent: subtitleContent)
+                }
+
+                restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)
+            } catch {
+                await MainActor.run {
+                    vm.reportError("下載失敗：\(error.localizedDescription)")
+                }
+            }
+        }
+    }
+
+    @MainActor
+    private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
+        let targetId = episodeRemoteId
+        let descriptor = FetchDescriptor<PodcastProgress>(
+            predicate: #Predicate { $0.episodeRemoteId == targetId }
+        )
+        if let progress = try? modelContext.fetch(descriptor).first,
+           progress.lastPlayedTime > 0,
+           !progress.completed {
+            vm.seek(to: progress.lastPlayedTime)
+        }
+    }
+
+    private func saveProgressIfNeeded(time: TimeInterval) {
+        guard abs(time - lastSavedTime) > 10 else { return }
+        lastSavedTime = time
+        saveProgress()
+    }
+
+    private func saveProgress() {
+        guard let vm = viewModel else { return }
+        let targetId = episodeId
+        let descriptor = FetchDescriptor<PodcastProgress>(
+            predicate: #Predicate { $0.episodeRemoteId == targetId }
+        )
+        let progress: PodcastProgress
+        if let existing = try? modelContext.fetch(descriptor).first {
+            progress = existing
+        } else {
+            progress = PodcastProgress(episodeRemoteId: episodeId)
+            modelContext.insert(progress)
+        }
+        progress.lastPlayedTime = vm.currentTime
+        progress.completed = (vm.state == .ready && vm.currentTime > 0 && vm.currentTime >= vm.duration - 1)
+        progress.updatedAt = Date()
+        try? modelContext.save()
     }
 }
 #endif

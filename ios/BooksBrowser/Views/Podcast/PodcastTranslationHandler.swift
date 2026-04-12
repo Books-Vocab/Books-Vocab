@@ -21,6 +21,8 @@ final class PodcastTranslationHandler {
     private let translationService: any Translating
     @ObservationIgnored
     private var currentTask: Task<Void, Never>?
+    @ObservationIgnored
+    private var debounceTask: Task<Void, Never>?
 
     init(translationService: any Translating = TranslationService()) {
         self.translationService = translationService
@@ -32,27 +34,33 @@ final class PodcastTranslationHandler {
             .lowercased()
         guard !normalized.isEmpty else { return }
 
-        currentTask?.cancel()
-        wordSelection = WordSelection(word: normalized, context: context, position: .zero)
-        translationResult = nil
-        translationErrorMessage = nil
-        isTranslating = true
-        isSaved = false
+        debounceTask?.cancel()
+        debounceTask = Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(300))
+            guard !Task.isCancelled else { return }
 
-        currentTask = Task {
-            do {
-                let result = try await translationService.translateQuick(
-                    word: normalized,
-                    context: context,
-                    onRetry: nil
-                )
-                guard !Task.isCancelled else { return }
-                translationResult = result
-                isTranslating = false
-            } catch {
-                guard !Task.isCancelled else { return }
-                isTranslating = false
-                translationErrorMessage = error.localizedDescription
+            currentTask?.cancel()
+            wordSelection = WordSelection(word: normalized, context: context, position: .zero)
+            translationResult = nil
+            translationErrorMessage = nil
+            isTranslating = true
+            isSaved = false
+
+            currentTask = Task {
+                do {
+                    let result = try await translationService.translateQuick(
+                        word: normalized,
+                        context: context,
+                        onRetry: nil
+                    )
+                    guard !Task.isCancelled else { return }
+                    translationResult = result
+                    isTranslating = false
+                } catch {
+                    guard !Task.isCancelled else { return }
+                    isTranslating = false
+                    translationErrorMessage = error.localizedDescription
+                }
             }
         }
     }
