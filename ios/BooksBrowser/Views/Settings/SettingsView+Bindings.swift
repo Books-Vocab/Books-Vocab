@@ -20,13 +20,6 @@ extension SettingsView {
         )
     }
 
-    var optionalIntegrationApiKeyBinding: Binding<String> {
-        Binding(
-            get: { coordinator.optionalIntegrationApiKey },
-            set: { coordinator.optionalIntegrationApiKey = $0 }
-        )
-    }
-
     var manualLoginBinding: Binding<String>? {
 #if DEBUG
         Binding(

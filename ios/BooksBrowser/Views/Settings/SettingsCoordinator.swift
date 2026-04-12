@@ -3,9 +3,6 @@ import SwiftData
 import os
 
 @MainActor protocol SettingsCoordinating: AnyObject, Observable {
-    var optionalIntegrationApiKey: String { get set }
-    var fetchedKey: String { get }
-    var showOptionalIntegrationInfo: Bool { get set }
     var showSubscriptionPaywall: Bool { get set }
     var connectionPulse: Bool { get }
     var iconBreathing: Bool { get }
@@ -16,10 +13,8 @@ import os
     var translationTargetLang: TranslationLanguage { get set }
     func handleAppear()
     func loadData(authManager: any AuthManaging, kgService: any KGServing) async
-    func scheduleOptionalIntegrationSave(authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator)
     func requestDeleteAccount()
     func clearDeleteAccountError()
-    func presentOptionalIntegrationInfo()
     func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
     func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator)
@@ -27,9 +22,6 @@ import os
 
 @Observable @MainActor
 final class SettingsCoordinator: SettingsCoordinating {
-    var optionalIntegrationApiKey = ""
-    var fetchedKey = ""
-    var showOptionalIntegrationInfo = false
     var showSubscriptionPaywall = false
     var connectionPulse = false
     var iconBreathing = false
@@ -43,16 +35,10 @@ final class SettingsCoordinator: SettingsCoordinating {
     var observationTotalCount = 0
     var translationSourceLang: TranslationLanguage = TranslationLanguage.currentSource
     var translationTargetLang: TranslationLanguage = TranslationLanguage.currentTarget
-    @ObservationIgnored private var saveTask: Task<Void, Never>?
-
     init() {
         #if DEBUG
         debugLocalServerURL = KGService.getDebugLocalServerURL()
         #endif
-    }
-
-    deinit {
-        saveTask?.cancel()
     }
 
     func handleAppear() {
@@ -70,18 +56,6 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         if authManager.isLoggedIn {
             if let config = try? await kgService.fetchUserConfig() {
-                if let key = config.optionalIntegrationApiKey, !key.isEmpty {
-                    fetchedKey = key
-                    optionalIntegrationApiKey = key
-                } else if config.hasMochiApiKey {
-                    let placeholder = "••••••••"
-                    fetchedKey = placeholder
-                    optionalIntegrationApiKey = placeholder
-                } else {
-                    fetchedKey = ""
-                    optionalIntegrationApiKey = ""
-                }
-
                 // Sync translation language from server config
                 if let translation = config.translation {
                     if let src = translation.source_lang, let lang = TranslationLanguage(rawValue: src) {
@@ -94,9 +68,6 @@ final class SettingsCoordinator: SettingsCoordinating {
                     }
                 }
             }
-        } else {
-            fetchedKey = ""
-            optionalIntegrationApiKey = ""
         }
     }
 
@@ -106,47 +77,12 @@ final class SettingsCoordinator: SettingsCoordinating {
         observationTotalCount = preview.totalCount
     }
 
-    func scheduleOptionalIntegrationSave(
-        authManager: any AuthManaging,
-        kgService: any KGServing,
-        toastCoordinator: AppToastCoordinator
-    ) {
-        guard optionalIntegrationApiKey != fetchedKey else { return }
-        saveTask?.cancel()
-        saveTask = Task {
-            try? await Task.sleep(for: .milliseconds(600))
-            guard !Task.isCancelled else { return }
-            if authManager.isLoggedIn {
-                do {
-                    let sent = optionalIntegrationApiKey
-                    let config = try await kgService.updateOptionalIntegrationKey(sent)
-                    if config.hasMochiApiKey {
-                        let placeholder = "••••••••"
-                        fetchedKey = placeholder
-                        optionalIntegrationApiKey = placeholder
-                    } else {
-                        fetchedKey = ""
-                        optionalIntegrationApiKey = ""
-                    }
-                } catch {
-                    toastCoordinator.error("儲存失敗")
-                    AppLog.kg.error("updateUserConfig (API key) failed: \(error.localizedDescription)")
-                    return
-                }
-            }
-        }
-    }
-
     func requestDeleteAccount() {
         showDeleteAccountConfirm = true
     }
 
     func clearDeleteAccountError() {
         deleteAccountError = nil
-    }
-
-    func presentOptionalIntegrationInfo() {
-        showOptionalIntegrationInfo = true
     }
 
     func presentSubscriptionPaywall() {

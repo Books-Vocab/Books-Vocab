@@ -82,66 +82,23 @@ def normalize_users_payload(
         normalized_record = dict(record)
         had_config = isinstance(normalized_record.get("config"), dict)
         config = dict(normalized_record.get("config", {})) if had_config else {}
-        legacy_mochi_key = normalized_record.pop("mochi_api_key", None)
-        flat_mochi_key = config.pop("mochi_api_key", None)
         subscription = normalized_record.get("subscription")
-        integrations = config.get("integrations")
-        if not isinstance(integrations, dict):
-            integrations = {}
-        mochi_integration = integrations.get("mochi")
-        if not isinstance(mochi_integration, dict):
-            mochi_integration = {}
 
-        if "mochi_api_key" in record:
+        # Strip legacy Mochi keys (top-level, flat config, nested integrations)
+        if "mochi_api_key" in normalized_record:
+            normalized_record.pop("mochi_api_key", None)
             changed = True
         if "mochi_api_key" in config:
+            config.pop("mochi_api_key", None)
             changed = True
-
-        if isinstance(legacy_mochi_key, str):
-            legacy_mochi_key = legacy_mochi_key.strip()
-        else:
-            legacy_mochi_key = None
-
-        if isinstance(flat_mochi_key, str):
-            flat_mochi_key = flat_mochi_key.strip()
-        else:
-            flat_mochi_key = None
-
-        nested_mochi_key = mochi_integration.get("api_key")
-        if isinstance(nested_mochi_key, str):
-            nested_mochi_key = nested_mochi_key.strip()
-            if nested_mochi_key != mochi_integration.get("api_key"):
+        integrations = config.get("integrations")
+        if isinstance(integrations, dict):
+            if "mochi" in integrations:
+                integrations.pop("mochi", None)
                 changed = True
-            if nested_mochi_key:
-                mochi_integration["api_key"] = nested_mochi_key
-            elif "api_key" in mochi_integration:
-                mochi_integration.pop("api_key", None)
+            if not integrations:
+                config.pop("integrations", None)
                 changed = True
-        else:
-            nested_mochi_key = None
-
-        resolved_mochi_key = nested_mochi_key or flat_mochi_key or legacy_mochi_key
-        if resolved_mochi_key:
-            from .secret_store import is_encrypted
-            if encrypt_fn and not is_encrypted(resolved_mochi_key):
-                resolved_mochi_key = encrypt_fn(resolved_mochi_key)
-            if mochi_integration.get("api_key") != resolved_mochi_key:
-                changed = True
-            mochi_integration["api_key"] = resolved_mochi_key
-
-        if mochi_integration:
-            integrations["mochi"] = mochi_integration
-        elif "mochi" in integrations:
-            integrations.pop("mochi", None)
-            changed = True
-
-        if integrations:
-            if config.get("integrations") != integrations:
-                changed = True
-            config["integrations"] = integrations
-        elif "integrations" in config:
-            config.pop("integrations", None)
-            changed = True
 
         if had_config or config:
             if normalized_record.get("config") != config:
@@ -184,21 +141,6 @@ def parse_datetime(raw: Any) -> datetime | None:
                 return datetime.fromtimestamp(float(raw), tz=UTC)
             except ValueError:
                 return None
-    return None
-
-
-def resolve_mochi_api_key_from_config(config: dict[str, Any], jwt_secret: str = "") -> str | None:
-    integrations = config.get("integrations", {})
-    if isinstance(integrations, dict):
-        mochi = integrations.get("mochi", {})
-        if isinstance(mochi, dict):
-            nested = mochi.get("api_key")
-            if isinstance(nested, str):
-                nested = nested.strip()
-                if nested:
-                    from .secret_store import decrypt_value
-                    return decrypt_value(nested, jwt_secret) if jwt_secret else nested
-
     return None
 
 

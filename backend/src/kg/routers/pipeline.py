@@ -28,7 +28,7 @@ async def _run_pipeline_background(user: dict, *, settings: KGSettings, force_en
         get_user_lock_fn=get_user_lock,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         embedding_store_factory=_embedding_store, gemini_client_factory=_gemini_client,
-        logger=logger, link_kind_enum=LinkKind, jwt_secret=settings.jwt_secret,
+        logger=logger, link_kind_enum=LinkKind,
         force_enrich=force_enrich, notebook_id=notebook_id, gemini_model=settings.gemini_model,
     )
 

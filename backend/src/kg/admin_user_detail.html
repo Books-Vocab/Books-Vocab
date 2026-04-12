@@ -923,7 +923,6 @@ function renderUserInfo(u, judgeStats) {
     <div class="detail-kv"><span class="detail-k">Pro 狀態</span><span class="detail-v">${escapeHtml(proStatusLabel)}</span></div>
     <div class="detail-kv"><span class="detail-k">最後登入</span><span class="detail-v">${fmtDateFull(u.last_login)}</span></div>
     <div class="detail-kv"><span class="detail-k">單字數</span><span class="detail-v">${u.vocab_count.toLocaleString()}</span></div>
-    <div class="detail-kv"><span class="detail-k">Mochi 整合</span><span class="detail-v">${u.has_mochi ? '已啟用' : '未啟用'}</span></div>
   `;
 
   // ── Table 2: 訂閱狀態 — context-aware, only show fields that apply ──

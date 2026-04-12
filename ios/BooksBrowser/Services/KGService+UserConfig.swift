@@ -107,17 +107,6 @@ extension KGService {
         return result
     }
 
-    func updateOptionalIntegrationKey(_ apiKey: String) async throws -> KGUserConfig {
-        let token = try await currentAuthToken()
-        let config = try await userConfigClient.updateOptionalIntegrationKey(
-            baseURL: baseURL,
-            token: token,
-            apiKey: apiKey
-        )
-        AppLog.kg.info("Updated config successfully")
-        return config
-    }
-
     func updateTranslationConfig(_ translationConfig: KGTranslationConfig) async throws -> KGUserConfig {
         let token = try await currentAuthToken()
         let config = try await userConfigClient.updateTranslationConfig(

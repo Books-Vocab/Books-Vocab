@@ -15,18 +15,13 @@ from .api_models import (
     DeleteAccountResponse,
     EntitlementsResponse,
     HealthResponse,
-    MochiIntegrationResponseConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
     UserConfigResponse,
-    UserIntegrationsResponseConfig,
 )
-from .user_store import resolve_mochi_api_key_from_config
 
 
 def _build_user_config_response(config: dict[str, Any], jwt_secret: str = "") -> UserConfigResponse:
-    mochi_api_key = resolve_mochi_api_key_from_config(config, jwt_secret)
-
     translation_data = config.get("translation")
     if isinstance(translation_data, dict):
         translation = TranslationLanguageConfig(
@@ -37,36 +32,11 @@ def _build_user_config_response(config: dict[str, Any], jwt_secret: str = "") ->
         translation = TranslationLanguageConfig()
 
     return UserConfigResponse(
-        integrations=UserIntegrationsResponseConfig(
-            mochi=MochiIntegrationResponseConfig(has_api_key=True)
-        ) if mochi_api_key else None,
         translation=translation,
     )
 
 
 def _merge_user_config(config: dict[str, Any], req: UserConfigRequest) -> None:
-    if req.integrations and req.integrations.mochi and req.integrations.mochi.api_key is not None:
-        integrations = config.get("integrations")
-        if not isinstance(integrations, dict):
-            integrations = {}
-
-        mochi = integrations.get("mochi")
-        if not isinstance(mochi, dict):
-            mochi = {}
-
-        resolved_key = req.integrations.mochi.api_key.strip()
-        if resolved_key:
-            mochi["api_key"] = resolved_key
-            integrations["mochi"] = mochi
-            config["integrations"] = integrations
-        else:
-            mochi.pop("api_key", None)
-            integrations.pop("mochi", None)
-            if integrations:
-                config["integrations"] = integrations
-            else:
-                config.pop("integrations", None)
-
     # Translation config
     if req.translation:
         config["translation"] = {
