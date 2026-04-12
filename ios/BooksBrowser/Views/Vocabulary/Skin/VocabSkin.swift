@@ -83,6 +83,7 @@ struct VocabSkin {
         let iconNavigation: Font
         let symbolLarge: Font
         let symbolHero: Font
+        let symbolPlayback: Font
         let settingsFontSizeDisplay: Font
         let settingsAdjustSmall: Font
         let settingsAdjustLarge: Font
@@ -337,6 +338,7 @@ extension VocabSkin {
             iconNavigation: .system(size: 16, weight: .thin, design: .default),
             symbolLarge: .system(size: 30, weight: .light, design: .default),
             symbolHero: .system(size: 44, weight: .light, design: .default),
+            symbolPlayback: .system(size: 56, weight: .light, design: .default),
             // Settings — mono (數值調控)
             settingsFontSizeDisplay: AppFonts.mono(size: 28, bold: true),
             settingsAdjustSmall: AppFonts.sans(size: 15, bold: true),

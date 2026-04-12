@@ -6,6 +6,7 @@ struct NotebookCardData {
     let coverPattern: String?
     let coverImagePath: String?
     let cardCount: Int
+    var cardCountLabel: String = "個單字"
     let dueCount: Int
     let unlearnedCount: Int
     let reviewedCount: Int
@@ -63,7 +64,7 @@ struct NotebookCard: View {
 
             VStack(alignment: .leading, spacing: skin.spacing.microGap) {
                 HStack {
-                    Label("\(data.cardCount) 個單字", systemImage: "character.book.closed")
+                    Label("\(data.cardCount) \(data.cardCountLabel)", systemImage: "character.book.closed")
                         .font(skin.typography.caption)
                         .foregroundStyle(skin.palette.secondaryText)
 
@@ -115,7 +116,7 @@ struct NotebookCard: View {
     }
 
     private var accessibilityDescription: String {
-        var parts = [data.name, "\(data.cardCount) 個單字"]
+        var parts = [data.name, "\(data.cardCount) \(data.cardCountLabel)"]
         if data.dueCount > 0 { parts.append("\(data.dueCount) 到期") }
         if data.unlearnedCount > 0 { parts.append("\(data.unlearnedCount) 未學") }
         if data.isActive { parts.append("使用中") }
