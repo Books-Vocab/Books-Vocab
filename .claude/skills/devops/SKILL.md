@@ -52,7 +52,7 @@ ops-cli user-quota <uid>        # 24h 額度 + 逐時明細
 ops-cli user-stats <uid>        # 單字庫統計
 ops-cli quota-overview           # 全用戶額度總覽
 ops-cli active-users [hours]    # 近 N 小時活躍用戶
-ops-cli db-query <uid> "SQL"    # 對用戶 DB 跑 SQL
+ops-cli db-query <uid> SQL...   # 對用戶 DB 跑 SQL（不需要引號）
 ops-cli analyze <uid> [level]  # 深度分析（1-6 或 all）
 ```
 
@@ -90,11 +90,21 @@ python3 ops/data_inspect.py [command]
 # 近 24h 活躍用戶
 ./ops/devops_kg_safe.sh ops-cli active-users 24
 
+# 對用戶 DB 跑 SQL（不需要引號包覆）
+./ops/devops_kg_safe.sh ops-cli db-query <uid> SELECT content, notebook_id FROM card LIMIT 5
+
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
 
 # 部署（自動偵測 fast/full）
 ./ops/devops_kg_safe.sh deploy
+
+# Logs 台北時區
+KG_LOG_TZ=Asia/Taipei ./ops/devops_kg_safe.sh logs 50
+
+# iOS 測試
+./ops/ios_test.sh -g "sanitize"     # 跑含 "sanitize" 的 test
+./ops/ios_test.sh                    # 跑全部 test
 ```
 
 ## 快速診斷流程
