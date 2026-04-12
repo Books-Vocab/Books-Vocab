@@ -247,6 +247,16 @@ enum TodayReviewMetrics {
     static let answerHintTopPadding: CGFloat = 2
 }
 
+enum PodcastPlayerMetrics {
+    static let seekBarTrackHeight: CGFloat = 5
+    static let seekBarThumbSize: CGFloat = 16
+    static let seekBarThumbOffset: CGFloat = 8
+    static let seekBarHitArea: CGFloat = 20
+    static let seekBarThumbShadowRadius: CGFloat = 4
+    static let seekBarThumbShadowY: CGFloat = 2
+    static let seekBarThumbShadowOpacity: Double = 0.15
+}
+
 enum AppShadows {
     // ── iOS 26 Liquid Glass & Morandi Paper Shadows ───────────────────────────
     // 極低對比度的大範圍陰影，模擬實體紙張微微浮起的效果
