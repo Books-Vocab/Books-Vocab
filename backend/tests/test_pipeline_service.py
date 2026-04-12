@@ -367,6 +367,212 @@ class _GraphWithPending:
         return links
 
 
+def test_step_embed_and_judge_touches_cards_after_creating_links():
+    """Cards involved in newly created links must have updated_at bumped.
+
+    Root cause of the "0 links" iOS display bug: pipeline creates links via
+    batch_add_links but never touches the cards, so incremental sync
+    (filtered by updated_at) never sends the new links to the client.
+    """
+    from kg.pipeline_service import _step_embed_and_judge
+
+    ids = ["from1", "to1"]
+    similar_map = {"from1": [("to1", 0.9)]}
+
+    class _TrackingCards(_CardsForLink):
+        def __init__(self, card_ids):
+            super().__init__(card_ids)
+            self.touched_ids: set[str] = set()
+
+        def touch(self, card_id):
+            self.touched_ids.add(card_id)
+
+        def batch_touch(self, card_ids):
+            self.touched_ids.update(card_ids)
+
+    class _GraphCreatesLinks(_GraphWithPending):
+        def batch_add_links(self, links):
+            self.batch_links_called = True
+            self.created_links.extend(links)
+            return links  # production returns GraphLink objects; touch uses all_links not created
+
+    tracking_cards = _TrackingCards(ids)
+    graph = _GraphCreatesLinks(["from1"])
+
+    async def run():
+        import kg.judge as judge_mod
+        orig = judge_mod.Judge
+
+        class FakeJudge:
+            def __init__(self, llm, **kwargs):
+                pass
+
+            def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+                results = {}
+                for cid, word, meaning in candidates:
+                    results[cid] = SimpleNamespace(link="shares_usage", confidence=0.9, reason="test")
+                return results
+
+        judge_mod.Judge = FakeJudge
+        try:
+            user = {"id": "u_touch", "dir": None, "config": {}}
+            await _step_embed_and_judge(
+                "u_touch", user,
+                card_store_factory=lambda d: tracking_cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
+                gemini_client_factory=lambda: None,
+                logger=_FakeLogger(),
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = orig
+
+    asyncio.run(run())
+
+    assert graph.batch_links_called, "Expected batch_add_links to be called"
+    assert len(graph.created_links) >= 1, f"Expected at least 1 link, got {len(graph.created_links)}"
+    # Both from_id and to_id must be touched
+    assert "from1" in tracking_cards.touched_ids, (
+        f"from_id 'from1' not touched. Touched: {tracking_cards.touched_ids}"
+    )
+    assert "to1" in tracking_cards.touched_ids, (
+        f"to_id 'to1' not touched. Touched: {tracking_cards.touched_ids}"
+    )
+
+
+def test_step_embed_and_judge_no_touch_when_no_links_created():
+    """When judge rejects all candidates, no cards should be touched."""
+    from kg.pipeline_service import _step_embed_and_judge
+
+    ids = ["c1", "c2"]
+    similar_map = {"c1": [("c2", 0.9)]}
+
+    class _TrackingCards(_CardsForLink):
+        def __init__(self, card_ids):
+            super().__init__(card_ids)
+            self.touched_ids: set[str] = set()
+
+        def batch_touch(self, card_ids):
+            self.touched_ids.update(card_ids)
+
+    tracking_cards = _TrackingCards(ids)
+    graph = _GraphWithPending(["c1"])
+
+    async def run():
+        import kg.judge as judge_mod
+        orig = judge_mod.Judge
+
+        class RejectAllJudge:
+            def __init__(self, llm, **kwargs):
+                pass
+
+            def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+                return {cid: None for cid, _, _ in candidates}
+
+        judge_mod.Judge = RejectAllJudge
+        try:
+            user = {"id": "u_no_touch", "dir": None, "config": {}}
+            await _step_embed_and_judge(
+                "u_no_touch", user,
+                card_store_factory=lambda d: tracking_cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
+                gemini_client_factory=lambda: None,
+                logger=_FakeLogger(),
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = orig
+
+    asyncio.run(run())
+
+    assert tracking_cards.touched_ids == set(), (
+        f"No links created, but cards were touched: {tracking_cards.touched_ids}"
+    )
+
+
+def test_step_embed_and_judge_touches_cards_on_exception_path():
+    """When judge crashes mid-batch, partially created links must still touch cards."""
+    from kg.pipeline_service import _step_embed_and_judge
+
+    ids = ["ok1", "ok2", "boom1", "boom2"]
+    # ok1 → ok2 will succeed, boom1 → boom2 will crash
+    similar_map = {
+        "ok1": [("ok2", 0.9)],
+        "boom1": [("boom2", 0.9)],
+    }
+
+    class _TrackingCards(_CardsForLink):
+        def __init__(self, card_ids):
+            super().__init__(card_ids)
+            self.touched_ids: set[str] = set()
+
+        def batch_touch(self, card_ids):
+            self.touched_ids.update(card_ids)
+
+    class _GraphWithRequeue(_GraphWithPending):
+        def __init__(self, pending):
+            super().__init__(pending)
+            self.requeued: list[str] = []
+
+        def add_pending_judge(self, card_ids):
+            self.requeued.extend(card_ids)
+
+    tracking_cards = _TrackingCards(ids)
+    graph = _GraphWithRequeue(["ok1", "boom1"])
+
+    call_count = 0
+
+    async def run():
+        import kg.judge as judge_mod
+        orig = judge_mod.Judge
+
+        class CrashOnSecondJudge:
+            def __init__(self, llm, **kwargs):
+                pass
+
+            def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+                nonlocal call_count
+                call_count += 1
+                if call_count >= 2:
+                    raise RuntimeError("judge crashed")
+                return {
+                    cid: SimpleNamespace(link="shares_usage", confidence=0.9, reason="test")
+                    for cid, _, _ in candidates
+                }
+
+        judge_mod.Judge = CrashOnSecondJudge
+        try:
+            user = {"id": "u_exc", "dir": None, "config": {}}
+            await _step_embed_and_judge(
+                "u_exc", user,
+                card_store_factory=lambda d: tracking_cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
+                gemini_client_factory=lambda: None,
+                logger=_FakeLogger(),
+                link_kind_enum=lambda v: v,
+            )
+        finally:
+            judge_mod.Judge = orig
+
+    try:
+        asyncio.run(run())
+    except RuntimeError:
+        pass  # expected
+
+    # If any links were created before the crash, their cards must be touched
+    if graph.created_links:
+        for from_id, to_id, *_ in graph.created_links:
+            assert from_id in tracking_cards.touched_ids, (
+                f"Exception path: from_id '{from_id}' not touched"
+            )
+            assert to_id in tracking_cards.touched_ids, (
+                f"Exception path: to_id '{to_id}' not touched"
+            )
+
+
 def test_step_embed_and_judge_runs_judge_concurrently():
     """_step_embed_and_judge 必須並行呼叫 judge.evaluate_batch（max_concurrent > 1）。"""
     from kg.pipeline_service import _step_embed_and_judge

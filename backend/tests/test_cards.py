@@ -202,6 +202,44 @@ def test_get_batch_missing_ids(tmp_path):
     assert set(result.keys()) == {c1.id}
 
 
+class TestBatchTouch:
+    def test_bumps_updated_at_for_multiple_cards(self, store):
+        c1 = store.add(content="alpha", meaning="first")
+        c2 = store.add(content="beta", meaning="second")
+        old_ts_1 = store.get(c1.id).updated_at
+        old_ts_2 = store.get(c2.id).updated_at
+        touched = store.batch_touch({c1.id, c2.id})
+        assert touched == 2
+        assert store.get(c1.id).updated_at > old_ts_1
+        assert store.get(c2.id).updated_at > old_ts_2
+        # Both should have the exact same timestamp (single transaction)
+        assert store.get(c1.id).updated_at == store.get(c2.id).updated_at
+
+    def test_skips_deleted_cards(self, store):
+        c1 = store.add(content="alpha", meaning="first")
+        c2 = store.add(content="beta", meaning="second")
+        store.delete(c1.id)
+        touched = store.batch_touch({c1.id, c2.id})
+        assert touched == 1
+
+    def test_skips_nonexistent_ids(self, store):
+        c1 = store.add(content="alpha", meaning="first")
+        touched = store.batch_touch({c1.id, "nonexistent"})
+        assert touched == 1
+
+    def test_empty_set_returns_zero(self, store):
+        touched = store.batch_touch(set())
+        assert touched == 0
+
+    def test_shows_up_in_get_modified_since(self, store):
+        """Core invariant: touched cards must appear in incremental sync."""
+        c1 = store.add(content="alpha", meaning="first")
+        ts = store.get(c1.id).updated_at  # naive, matches DB
+        store.batch_touch({c1.id})
+        results = store.get_modified_since(ts)
+        assert any(c.id == c1.id for c in results)
+
+
 class TestBatchUpdateNoN1:
     """Verify batch_update uses a single WHERE IN query, not N individual SELECTs."""
 
