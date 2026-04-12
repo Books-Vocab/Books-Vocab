@@ -2,18 +2,34 @@ import SwiftUI
 
 struct PodcastSentenceLevelView: View {
     let sentences: [PodcastSentence]
-    let currentSentenceId: Int?
+    let renderState: SubtitleRenderState?
+    let highlightedWordIndex: Int
     let hostNames: [String]
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
 
+    @State private var scrollDebounceTask: Task<Void, Never>?
+
+    private var currentIndex: Int? {
+        guard let sid = renderState?.sentenceId else { return nil }
+        return sentences.firstIndex { $0.id == sid }
+    }
+
+    /// Windowed range: only render sentences within +-10 of current.
+    private var windowedSentences: [PodcastSentence] {
+        guard let idx = currentIndex else { return sentences }
+        let lo = max(0, idx - 10)
+        let hi = min(sentences.count - 1, idx + 10)
+        return Array(sentences[lo...hi])
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(spacing: skin.spacing.wordRowVerticalGap) {
-                    ForEach(sentences) { sentence in
-                        let isCurrent = sentence.id == currentSentenceId
+                    ForEach(windowedSentences) { sentence in
+                        let isCurrent = sentence.id == renderState?.sentenceId
                         sentenceRow(sentence, isCurrent: isCurrent)
                             .id(sentence.id)
                             .opacity(isCurrent ? 1.0 : 0.4)
@@ -25,10 +41,15 @@ struct PodcastSentenceLevelView: View {
                 }
                 .padding(.vertical, skin.spacing.sectionGap)
             }
-            .onChange(of: currentSentenceId) { _, newId in
-                guard let newId else { return }
-                withAnimation(AppMotion.standardSpring) {
-                    proxy.scrollTo(newId, anchor: .center)
+            .onChange(of: renderState?.sentenceId) { _, newId in
+                scrollDebounceTask?.cancel()
+                scrollDebounceTask = Task {
+                    try? await Task.sleep(for: .milliseconds(100))
+                    guard !Task.isCancelled else { return }
+                    guard let newId else { return }
+                    withAnimation(AppMotion.standardSpring) {
+                        proxy.scrollTo(newId, anchor: .center)
+                    }
                 }
             }
         }
@@ -40,8 +61,8 @@ struct PodcastSentenceLevelView: View {
             SpeakerAccentBar(speaker: sentence.speaker, hostNames: hostNames)
             VStack(alignment: .leading, spacing: skin.spacing.microGap) {
                 SpeakerChip(speaker: sentence.speaker, hostNames: hostNames)
-                if isCurrent {
-                    tappableText(sentence)
+                if isCurrent, let rs = renderState {
+                    tappableWords(rs)
                 } else {
                     Text(sentence.text)
                         .font(skin.typography.body)
@@ -57,14 +78,27 @@ struct PodcastSentenceLevelView: View {
     }
 
     @ViewBuilder
-    private func tappableText(_ sentence: PodcastSentence) -> some View {
-        let words = sentence.text.split(separator: " ").map(String.init)
-        FlowLayout(spacing: 4) {
-            ForEach(Array(words.enumerated()), id: \.offset) { _, word in
-                Text(word)
+    private func tappableWords(_ rs: SubtitleRenderState) -> some View {
+        CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
+            ForEach(rs.words) { word in
+                let isHighlighted = word.id == highlightedWordIndex
+                Text(word.text)
                     .font(skin.typography.body)
-                    .foregroundStyle(skin.palette.primaryText)
-                    .onTapGesture { onWordTap(word, sentence.text) }
+                    .foregroundStyle(
+                        isHighlighted
+                            ? skin.palette.cardBackground
+                            : skin.palette.primaryText
+                    )
+                    .padding(.horizontal, AppMetrics.spacingMicro)
+                    .padding(.vertical, 1)
+                    .background(
+                        isHighlighted ? skin.palette.accent : Color.clear,
+                        in: RoundedRectangle(cornerRadius: skin.radii.tiny, style: .continuous)
+                    )
+                    .animation(AppMotion.feedbackPulse, value: isHighlighted)
+                    .onTapGesture {
+                        onWordTap(word.text, rs.sentenceText)
+                    }
             }
         }
     }
