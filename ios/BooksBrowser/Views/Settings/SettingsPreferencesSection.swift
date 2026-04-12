@@ -83,10 +83,31 @@ struct SettingsPreferencesSection: View {
                         color: vocabSkin.palette.secondaryText
                     )
                 }
+
+                if state.showAutoSync {
+                    SettingsDivider()
+
+                    AppKeyValueRow(
+                        icon: "arrow.triangle.2.circlepath",
+                        label: "自動同步".localized,
+                        style: .settings(vocabSkin)
+                    ) {
+                        Toggle("", isOn: Binding(
+                            get: { state.autoSyncEnabled },
+                            set: { actions.toggleAutoSync($0) }
+                        ))
+                        .labelsHidden()
+                        .tint(vocabSkin.palette.accent)
+                    }
+                }
             }
             .settingsCard()
 
-            SettingsSectionFooter("切換後會立即套用到 app 介面。".localized)
+            SettingsSectionFooter(
+                state.showAutoSync
+                    ? "切換後會立即套用到 app 介面。開啟自動同步後，收錄滿 5 個單字會自動同步到雲端。".localized
+                    : "切換後會立即套用到 app 介面。".localized
+            )
         }
     }
 }

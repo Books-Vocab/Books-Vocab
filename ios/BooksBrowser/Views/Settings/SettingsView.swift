@@ -19,6 +19,7 @@ struct SettingsView: View {
     @EnvironmentObject var appLanguage: AppLanguageStore
     @EnvironmentObject var appearanceStore: AppAppearanceStore
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
+    @Environment(\.autoSyncSettingsStore) var autoSyncSettingsStore
     @State var coordinator = SettingsCoordinator()
     /// Predicate 對應 shouldAppearInKnowledgeList — 僅用於 displayCardCount
     @Query(filter: #Predicate<VocabularyEntry> {
