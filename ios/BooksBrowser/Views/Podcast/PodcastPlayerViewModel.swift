@@ -22,6 +22,8 @@ final class PodcastPlayerViewModel {
     private(set) var duration: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
     private(set) var currentCue: PodcastSubtitleCue?
+    private(set) var renderState: SubtitleRenderState?
+    private(set) var highlightedWordIndex: Int = -1
     private(set) var playbackRate: Float = 1.0
     private(set) var displayMode: PodcastSubtitleDisplayMode = .wordLevel
     let hostNames: [String]
@@ -62,6 +64,10 @@ final class PodcastPlayerViewModel {
         } catch {
             state = .error(error.localizedDescription)
         }
+    }
+
+    func setLoading() {
+        state = .loading
     }
 
     func reportError(_ message: String) {
@@ -129,7 +135,26 @@ final class PodcastPlayerViewModel {
 
     private func handleTimeUpdate(_ time: TimeInterval) {
         currentTime = time
-        currentCue = subtitleEngine.currentCue(at: time)
-        currentSentence = subtitleEngine.currentSentence(at: time)
+        let cue = subtitleEngine.currentCue(at: time)
+        currentCue = cue
+
+        // Low-frequency path: only rebuild renderState when sentence changes
+        let sentence = subtitleEngine.currentSentence(at: time)
+        if sentence?.id != currentSentence?.id {
+            currentSentence = sentence
+            if let sentence {
+                renderState = SubtitleRenderState(from: sentence, hostNames: hostNames)
+            } else {
+                renderState = nil
+            }
+        }
+
+        // High-frequency path: update highlight index (just an Int, cheap)
+        if let hw = cue?.highlightedWord, let rs = renderState {
+            let normalized = hw.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            highlightedWordIndex = rs.highlightIndex(for: normalized)
+        } else {
+            highlightedWordIndex = -1
+        }
     }
 }
