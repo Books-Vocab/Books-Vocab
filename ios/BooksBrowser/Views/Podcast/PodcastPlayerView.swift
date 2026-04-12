@@ -1,8 +1,9 @@
+#if os(iOS)
 //
 //  PodcastPlayerView.swift
 //  BooksBrowser
 //
-//  Podcast 播放器主頁面：載入 episode → 字幕 + 控制面板
+//  Podcast 播放器主頁面：載入 episode → 字幕 + 控制面板 + 翻譯面板
 //
 
 import SwiftUI
@@ -15,6 +16,7 @@ struct PodcastPlayerView: View {
     @Environment(\.modelContext) private var modelContext
 
     @State private var viewModel: PodcastPlayerViewModel?
+    @State private var translationHandler = PodcastTranslationHandler()
 
     var body: some View {
         Group {
@@ -67,6 +69,33 @@ struct PodcastPlayerView: View {
                     .padding(.bottom, AppShellMetrics.pageBottomPadding)
             }
             .background(theme.palette.pageBackground)
+            .overlay(alignment: .bottom) {
+                if translationHandler.wordSelection != nil {
+                    TranslationPanel(
+                        word: translationHandler.wordSelection!.word,
+                        result: translationHandler.translationResult,
+                        isLoading: translationHandler.isTranslating,
+                        isSaved: translationHandler.isSaved,
+                        isLoggedIn: true,
+                        isExpanded: false,
+                        explanation: nil,
+                        isLoadingExplanation: false,
+                        statusMessage: nil,
+                        isExplanationOnly: false,
+                        translationErrorMessage: translationHandler.translationErrorMessage,
+                        explanationErrorMessage: nil,
+                        onExpand: {},
+                        onDelete: {},
+                        onShowDetail: nil,
+                        onDismiss: { translationHandler.dismiss() }
+                    )
+                    .transition(.readerPanelReveal)
+                }
+            }
+            .onChange(of: vm.activeWordSelection?.word) { _, newWord in
+                guard let selection = vm.activeWordSelection else { return }
+                translationHandler.handleWordTap(word: selection.word, context: selection.context)
+            }
         }
     }
 
@@ -98,3 +127,4 @@ struct PodcastPlayerView: View {
         vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
     }
 }
+#endif
