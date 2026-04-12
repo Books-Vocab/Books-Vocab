@@ -83,6 +83,10 @@ struct BooksBrowserApp: App {
 
         // Always recover orphan book files (idempotent — skips files with existing records)
         Self.recoverOrphanBooks(container: modelContainer)
+
+        #if DEBUG
+        PodcastDebugSeed.seedIfNeeded(context: modelContainer.mainContext)
+        #endif
     }
 
     private static func runMigrationIfNeeded(container: ModelContainer) {
