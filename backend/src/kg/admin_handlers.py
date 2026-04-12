@@ -15,7 +15,6 @@ from filelock import FileLock
 
 from .api_models import AdminGrantRequest, AdminGrantStatusResponse, AdminUserEntitlementResponse
 from .exceptions import NotFoundError
-from .user_store import resolve_mochi_api_key_from_config
 
 
 ADMIN_COOKIE_NAME = "admin_session"
@@ -197,7 +196,6 @@ def admin_stats_response(
                 "provider": info.get("provider") if isinstance(info, dict) else None,
                 "last_login": info.get("last_login") if isinstance(info, dict) else None,
                 "vocab_count": vocab_count,
-                "has_mochi": bool(resolve_mochi_api_key_from_config(config, jwt_secret)),
                 "tokens": utoken,
                 "total_input": total_input,
                 "total_output": total_output,

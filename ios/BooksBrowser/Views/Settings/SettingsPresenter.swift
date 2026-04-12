@@ -14,7 +14,6 @@ struct SettingsPresenter: View {
     }
 
     let state: SettingsPresenterState
-    let optionalIntegrationApiKey: Binding<String>
     let translationSourceLang: Binding<TranslationLanguage>
     let translationTargetLang: Binding<TranslationLanguage>
     let onTranslationLanguageChanged: (TranslationLanguage, TranslationLanguage) -> Void
@@ -148,12 +147,6 @@ struct SettingsPresenter: View {
                 // 今日額度 (always when logged in)
                 if state.auth.isLoggedIn {
                     quotaRow
-                    SettingsDivider()
-                }
-
-                // Mochi 整合 (only when logged in)
-                if let optionalIntegration = state.optionalIntegration {
-                    mochiRow(optionalIntegration)
                     SettingsDivider()
                 }
 

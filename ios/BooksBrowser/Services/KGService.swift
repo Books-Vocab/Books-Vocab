@@ -28,15 +28,6 @@ struct KGAddResponse: Codable {
     let cardIds: [String: String]
 }
 
-struct KGOptionalIntegrationProviderConfig: Codable {
-    var api_key: String?
-    var has_api_key: Bool?
-}
-
-struct KGUserIntegrationsConfig: Codable {
-    let mochi: KGOptionalIntegrationProviderConfig?
-}
-
 struct KGTranslationConfig: Codable {
     let source_lang: String?
     let target_lang: String?
@@ -44,31 +35,7 @@ struct KGTranslationConfig: Codable {
 
 /// User config request/response
 struct KGUserConfig: Codable {
-    let integrations: KGUserIntegrationsConfig?
     let translation: KGTranslationConfig?
-
-    init(
-        optionalIntegrationKey: String?,
-        integrations: KGUserIntegrationsConfig? = nil,
-        translation: KGTranslationConfig? = nil
-    ) {
-        self.integrations = integrations ?? (
-            optionalIntegrationKey == nil
-                ? nil
-                : KGUserIntegrationsConfig(
-                    mochi: KGOptionalIntegrationProviderConfig(api_key: optionalIntegrationKey)
-                )
-        )
-        self.translation = translation
-    }
-
-    var optionalIntegrationApiKey: String? {
-        integrations?.mochi?.api_key
-    }
-
-    var hasMochiApiKey: Bool {
-        integrations?.mochi?.has_api_key ?? false
-    }
 }
 
 // MARK: - Service

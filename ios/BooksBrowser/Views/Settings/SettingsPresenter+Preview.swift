@@ -15,7 +15,6 @@ enum SettingsPresenterPreviewData {
         selectLanguage: { _ in },
         selectAppearance: { _ in },
         showSubscriptionPaywall: {},
-        showOptionalIntegrationInfo: {},
         requestDeleteAccount: {},
 
         openPrivacyPolicy: {},
@@ -42,7 +41,6 @@ enum SettingsPresenterPreviewData {
         kg: nil,
         subscription: nil,
         syncSummary: nil,
-        optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: nil
     )
@@ -85,7 +83,6 @@ enum SettingsPresenterPreviewData {
             isRefreshing: false
         ),
         syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 3 分鐘前"),
-        optionalIntegration: .init(isEnabled: true),
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
@@ -128,7 +125,6 @@ enum SettingsPresenterPreviewData {
             isRefreshing: true
         ),
         syncSummary: .init(isConnected: false, isSyncing: false, summaryText: "離線"),
-        optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
@@ -171,7 +167,6 @@ enum SettingsPresenterPreviewData {
             isRefreshing: false
         ),
         syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 剛剛"),
-        optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: true)
     )
@@ -214,7 +209,6 @@ enum SettingsPresenterPreviewData {
             isRefreshing: false
         ),
         syncSummary: .init(isConnected: true, isSyncing: false, summaryText: "已連線 · 128 張 · 10 分鐘前"),
-        optionalIntegration: nil,
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
@@ -253,7 +247,6 @@ enum SettingsPresenterPreviewData {
         ),
         subscription: nil,
         syncSummary: .init(isConnected: false, isSyncing: false, summaryText: "離線"),
-        optionalIntegration: .init(isEnabled: true),
         about: .init(version: "1.1.0 (42)", developerName: "MPSO"),
         danger: .init(isDeletingAccount: false)
     )
@@ -264,7 +257,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.loggedOut,
-                optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },
@@ -281,7 +273,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.subscribedActive,
-                optionalIntegrationApiKey: .constant("sk-test-key"),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },
@@ -298,7 +289,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.subscriptionLoading,
-                optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },
@@ -315,7 +305,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.deletingAccount,
-                optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },
@@ -332,7 +321,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.pricingUnavailable,
-                optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },
@@ -349,7 +337,6 @@ enum SettingsPresenterPreviewData {
         NavigationStack {
             SettingsPresenter(
                 state: SettingsPresenterPreviewData.debugBackendLocal,
-                optionalIntegrationApiKey: .constant(""),
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
                 onTranslationLanguageChanged: { _, _ in },

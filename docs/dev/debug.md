@@ -149,8 +149,6 @@ Step 2 Embed+Judge → pending_judge 積累 / judge 全 reject
   → 查 judge_log：./devops.sh run "docker exec knowledge-graph-api sqlite3 /app/data/users/<id>/cards.db 'SELECT * FROM judge_log ORDER BY created_at DESC LIMIT 20;'"
   → 查 acceptance rate：admin dashboard 或 /api/admin/stats
 
-Step 3 Optional External Sync → Mochi API key 無效或未設定
-  → ./devops.sh users
 ```
 
 **Pipeline Telemetry 查詢**：
@@ -187,7 +185,7 @@ Step 3 Optional External Sync → Mochi API key 無效或未設定
   rm -f /app/data/users/<user_id>/graph.json
   rm -f /app/data/users/<user_id>/candidates.json
   rm -f /app/data/users/<user_id>/card_ids.json
-  rm -f /app/data/users/<user_id>/mochi_map.json
+
 '"
 
 # 確認清空
