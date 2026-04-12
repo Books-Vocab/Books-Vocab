@@ -66,8 +66,6 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             remoteNotebooks = try await kgService.fetchNotebooks()
         } catch {
             AppLog.kg.error("fetchNotebooks failed: \(error.localizedDescription)")
-            // 離線且本地完全沒 notebook → 建一本 pending fallback 讓 UI 有內容
-            // 用 UUID 避免與 server 真正 default 的 remoteId 撞
             if currentNotebooks.isEmpty {
                 let nb = Notebook(remoteId: "local-\(UUID().uuidString)", name: "我的單字本", isDefault: true)
                 nb.syncStatus = 0
@@ -77,9 +75,17 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             return
         }
 
-        // 防禦重複 remoteId（若資料已損壞，保留第一個遇到的 entry）
+        // 查全量（含 isDeleted）避免已刪除 notebook 無法被 reconcile 修正
+        let allLocal: [Notebook]
+        do {
+            allLocal = try modelContext.fetch(FetchDescriptor<Notebook>())
+        } catch {
+            AppLog.kg.error("fetch all notebooks failed: \(error.localizedDescription)")
+            return
+        }
+
         let localByRemoteId = Dictionary(
-            currentNotebooks.map { ($0.remoteId, $0) },
+            allLocal.map { ($0.remoteId, $0) },
             uniquingKeysWith: { first, _ in first }
         )
         let remoteIds = Set(remoteNotebooks.map(\.id))
@@ -111,8 +117,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             }
         }
 
-        // Local synced 但 remote 沒回報 → 標記 isDeleted（保留 syncStatus=0 的 pending 本地 notebook）
-        for local in currentNotebooks where local.syncStatus == 1 && !remoteIds.contains(local.remoteId) && !local.isDeleted {
+        for local in allLocal where local.syncStatus == 1 && !remoteIds.contains(local.remoteId) && !local.isDeleted {
             local.isDeleted = true
             local.updatedAt = Date()
             newlyDeleted.insert(local.remoteId)
