@@ -11,8 +11,6 @@ import TipKit
 struct NotebookListView: View {
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
-    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
-    private var podcastSeries: [PodcastSeries]
     @Query private var allEntries: [VocabularyEntry]
     @Query private var pendingEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
@@ -47,12 +45,6 @@ struct NotebookListView: View {
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
-    private var bookshelfItems: [BookshelfItem] {
-        let nb = notebooks.map { BookshelfItem.notebook($0) }
-        let ps = podcastSeries.map { BookshelfItem.podcastSeries($0) }
-        return (nb + ps).sorted { $0.sortDate > $1.sortDate }
-    }
-
     var body: some View {
         let stats = Self.computeNotebookStats(allEntries, pendingEntries: pendingEntries)
         let (filteredDueEntries, filteredUnlearnedEntries) = Self.computeFilteredEntries(allEntries, filter: reviewFilter)
@@ -80,80 +72,54 @@ struct NotebookListView: View {
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
 
-                    if bookshelfItems.isEmpty {
+                    if notebooks.isEmpty {
                         emptyState
                     } else {
                         LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
-                            ForEach(bookshelfItems) { item in
-                                switch item {
-                                case .notebook(let notebook):
-                                    let s = stats[notebook.remoteId] ?? NotebookStats()
-                                    NavigationLink(value: BookshelfDestination.notebook(notebook.remoteId)) {
-                                        NotebookCard(data: NotebookCardData(
-                                            name: notebook.name,
-                                            color: notebook.color,
-                                            coverPattern: notebook.coverPattern,
-                                            coverImagePath: notebook.coverImagePath,
-                                            cardCount: s.cardCount,
-                                            dueCount: s.dueCount,
-                                            unlearnedCount: s.unlearnedCount,
-                                            reviewedCount: s.reviewedCount,
-                                            pendingCount: s.pendingCount,
-                                            lastActivity: s.lastActivity,
-                                            isActive: notebook.remoteId == activeNotebookId
-                                        ))
+                            ForEach(notebooks) { notebook in
+                                let s = stats[notebook.remoteId] ?? NotebookStats()
+                                NavigationLink(value: notebook.remoteId) {
+                                    NotebookCard(data: NotebookCardData(
+                                        name: notebook.name,
+                                        color: notebook.color,
+                                        coverPattern: notebook.coverPattern,
+                                        coverImagePath: notebook.coverImagePath,
+                                        cardCount: s.cardCount,
+                                        dueCount: s.dueCount,
+                                        unlearnedCount: s.unlearnedCount,
+                                        reviewedCount: s.reviewedCount,
+                                        pendingCount: s.pendingCount,
+                                        lastActivity: s.lastActivity,
+                                        isActive: notebook.remoteId == activeNotebookId
+                                    ))
+                                }
+                                .buttonStyle(.plain)
+                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
+                                .contextMenu {
+                                    Button {
+                                        setActiveNotebook(notebook.remoteId)
+                                    } label: {
+                                        Label("設為使用中".localized, systemImage: "checkmark.circle")
                                     }
-                                    .buttonStyle(.plain)
-                                    .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
-                                    .contextMenu {
-                                        Button {
-                                            setActiveNotebook(notebook.remoteId)
-                                        } label: {
-                                            Label("設為使用中".localized, systemImage: "checkmark.circle")
-                                        }
 
-                                        Button {
-                                            editingNotebook = notebook
-                                        } label: {
-                                            Label("編輯".localized, systemImage: "pencil")
-                                        }
+                                    Button {
+                                        editingNotebook = notebook
+                                    } label: {
+                                        Label("編輯".localized, systemImage: "pencil")
+                                    }
 
+                                    Divider()
+
+                                    exportMenu(for: notebook)
+
+                                    if !notebook.isDefault {
                                         Divider()
-
-                                        exportMenu(for: notebook)
-
-                                        if !notebook.isDefault {
-                                            Divider()
-                                            Button(role: .destructive) {
-                                                notebookToDelete = notebook
-                                            } label: {
-                                                Label("刪除".localized, systemImage: "trash")
-                                            }
+                                        Button(role: .destructive) {
+                                            notebookToDelete = notebook
+                                        } label: {
+                                            Label("刪除".localized, systemImage: "trash")
                                         }
                                     }
-
-                                case .podcastSeries(let series):
-                                    NavigationLink(value: BookshelfDestination.podcast(series.remoteId)) {
-                                        NotebookCard(data: NotebookCardData(
-                                            name: series.title,
-                                            color: series.color,
-                                            coverPattern: series.coverPattern,
-                                            coverImagePath: series.coverImagePath,
-                                            cardCount: series.episodeCount,
-                                            cardCountLabel: "集",
-                                            dueCount: 0,
-                                            unlearnedCount: 0,
-                                            reviewedCount: 0,
-                                            pendingCount: 0,
-                                            lastActivity: series.updatedAt,
-                                            isActive: false
-                                        ))
-                                        .overlay(alignment: .topLeading) {
-                                            PodcastBadge()
-                                        }
-                                    }
-                                    .buttonStyle(.plain)
-                                    .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
                                 }
                             }
 
@@ -191,13 +157,8 @@ struct NotebookListView: View {
                     .disabled(!authManager.isLoggedIn)
                 }
             }
-            .navigationDestination(for: BookshelfDestination.self) { dest in
-                switch dest {
-                case .notebook(let id):
-                    VocabularyListView(notebookId: id)
-                case .podcast(let id):
-                    PodcastEpisodeListView(seriesId: id)
-                }
+            .navigationDestination(for: String.self) { notebookId in
+                VocabularyListView(notebookId: notebookId)
             }
             .toastSheet(isPresented: $showCreateSheet) {
                 NotebookEditSheet(mode: .create) { appearance in
