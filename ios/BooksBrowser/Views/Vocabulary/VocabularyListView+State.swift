@@ -32,7 +32,8 @@ extension VocabularyListView {
                         dueCount: classified.dueCount,
                         unlearnedCount: classified.unlearnedCount,
                         onStartDue: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
-                        onStartUnlearned: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) }
+                        onStartUnlearned: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
+                        onStartMixed: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) }
                     )
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                     .padding(.bottom, AppShellMetrics.sectionSpacing)
