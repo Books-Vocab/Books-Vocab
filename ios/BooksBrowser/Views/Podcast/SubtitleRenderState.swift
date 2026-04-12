@@ -1,37 +1,37 @@
-import SwiftUI
+import Foundation
 
-struct WordRenderItem: Identifiable, Equatable {
-    let id: Int
-    let text: String
-    let normalizedText: String
-    let isHighlightTarget: Bool
-}
-
+/// Pre-computed render state for the current subtitle, derived from
+/// PodcastSentence + PodcastSubtitleCue.  Views consume this struct
+/// instead of reaching into raw engine objects.
 struct SubtitleRenderState: Equatable {
-    let sentenceId: Int
-    let speaker: String
-    let speakerIndex: Int  // 0 for first host, 1+ for others
-    let words: [WordRenderItem]
-    let sentenceText: String
-
-    init(from sentence: PodcastSentence, hostNames: [String]) {
-        self.sentenceId = sentence.id
-        self.speaker = sentence.speaker
-        self.speakerIndex = hostNames.firstIndex(of: sentence.speaker) ?? 1
-        self.sentenceText = sentence.text
-
-        let rawWords = sentence.text.split(separator: " ").map(String.init)
-        self.words = rawWords.enumerated().map { index, word in
-            WordRenderItem(
-                id: index,
-                text: word,
-                normalizedText: word.lowercased().trimmingCharacters(in: .punctuationCharacters),
-                isHighlightTarget: true
-            )
-        }
+    struct Word: Identifiable, Equatable {
+        let id: Int
+        let text: String
     }
 
-    func highlightIndex(for normalizedWord: String) -> Int {
-        words.firstIndex { $0.normalizedText == normalizedWord } ?? -1
+    let sentenceId: Int
+    let sentenceText: String
+    let speaker: String
+    let speakerIndex: Int?
+    let words: [Word]
+
+    /// Build render state from current sentence + cue.
+    static func from(
+        sentence: PodcastSentence,
+        cue: PodcastSubtitleCue?,
+        hostNames: [String]
+    ) -> SubtitleRenderState {
+        let speakerIdx = hostNames.firstIndex(of: sentence.speaker)
+        let wordTexts = sentence.text.split(separator: " ").map(String.init)
+        let wordModels = wordTexts.enumerated().map { idx, text in
+            Word(id: idx, text: text)
+        }
+        return SubtitleRenderState(
+            sentenceId: sentence.id,
+            sentenceText: sentence.text,
+            speaker: sentence.speaker,
+            speakerIndex: speakerIdx,
+            words: wordModels
+        )
     }
 }
