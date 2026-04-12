@@ -20,11 +20,18 @@ final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
-    private(set) var currentSentence: PodcastSentence?
-    private(set) var currentCue: PodcastSubtitleCue?
     private(set) var playbackRate: Float = 1.0
     private(set) var displayMode: PodcastSubtitleDisplayMode = .wordLevel
     let hostNames: [String]
+
+    // Low-frequency: only changes when sentence switches (~0.2 Hz)
+    private(set) var renderState: SubtitleRenderState?
+    // High-frequency: changes at ~30fps, just an Int — does NOT trigger sentence re-render
+    private(set) var highlightedWordIndex: Int = -1
+
+    // Keep for backward compat / sentence-level view
+    private(set) var currentSentence: PodcastSentence?
+    private(set) var currentCue: PodcastSubtitleCue?
 
     // Translation — set by the player view
     var activeWordSelection: (word: String, context: String)?
@@ -129,7 +136,30 @@ final class PodcastPlayerViewModel {
 
     private func handleTimeUpdate(_ time: TimeInterval) {
         currentTime = time
-        currentCue = subtitleEngine.currentCue(at: time)
-        currentSentence = subtitleEngine.currentSentence(at: time)
+        let cue = subtitleEngine.currentCue(at: time)
+        currentCue = cue
+
+        // Low-frequency path: only rebuild renderState when sentence changes
+        let sentence = subtitleEngine.currentSentence(at: time)
+        if sentence?.id != currentSentence?.id {
+            currentSentence = sentence
+            rebuildRenderState(for: sentence)
+        }
+
+        // High-frequency path: update highlight index from cue
+        if let word = cue?.highlightedWord, let rs = renderState {
+            let normalized = word.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            highlightedWordIndex = rs.highlightIndex(for: normalized)
+        } else {
+            highlightedWordIndex = -1
+        }
+    }
+
+    private func rebuildRenderState(for sentence: PodcastSentence?) {
+        guard let sentence else {
+            renderState = nil
+            return
+        }
+        renderState = SubtitleRenderState(from: sentence, hostNames: hostNames)
     }
 }

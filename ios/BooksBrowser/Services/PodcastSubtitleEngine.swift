@@ -47,7 +47,19 @@ final class PodcastSubtitleEngine {
     }
 
     func currentSentence(at time: TimeInterval) -> PodcastSentence? {
-        sentences.last { $0.startTime <= time && time <= $0.endTime }
+        guard !sentences.isEmpty else { return nil }
+        var lo = 0, hi = sentences.count - 1
+        while lo <= hi {
+            let mid = (lo + hi) / 2
+            if sentences[mid].endTime < time {
+                lo = mid + 1
+            } else if sentences[mid].startTime > time {
+                hi = mid - 1
+            } else {
+                return sentences[mid]
+            }
+        }
+        return hi >= 0 ? sentences[hi] : nil
     }
 
     // MARK: - Parsing
