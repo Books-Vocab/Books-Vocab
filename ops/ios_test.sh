@@ -41,13 +41,15 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev
 ONLY_FLAGS=()
 
 if [[ -n "$GREP_PATTERN" ]]; then
-  # Auto-discover test method names matching the pattern from the test file
+  # Auto-discover test method names matching the pattern from the test file.
+  # Swift Testing puts @Test on the line ABOVE `func`, so we grep for `func`
+  # names that appear within the test struct and filter by the user's pattern.
   TEST_FILE="$PROJECT_ROOT/ios/BooksBrowserTests/BooksBrowserTests.swift"
   if [[ -f "$TEST_FILE" ]]; then
     while IFS= read -r name; do
       ONLY_FLAGS+=("-only-testing:BooksBrowserTests/BooksBrowserTests/$name")
-    done < <(grep -oE '@Test.*func ([a-zA-Z0-9_]+)' "$TEST_FILE" \
-             | sed 's/@Test.*func //' \
+    done < <(grep -E '^\s+func [a-zA-Z0-9_]+\(' "$TEST_FILE" \
+             | sed -E 's/.*func ([a-zA-Z0-9_]+)\(.*/\1/' \
              | grep -i "$GREP_PATTERN")
   fi
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
