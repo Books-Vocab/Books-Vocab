@@ -105,7 +105,7 @@ def isolated_api(tmp_path):
             {
                 user_id: {"config": {}},
                 "other_user": {
-                    "config": {"integrations": {"mochi": {"api_key": "mk_live"}}},
+                    "config": {},
                     "provider": "google",
                     "email": "other@example.com",
                 },

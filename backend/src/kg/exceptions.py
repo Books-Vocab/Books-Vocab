@@ -41,7 +41,7 @@ class QuotaExceededError(KGError):
 
 
 class ExternalServiceError(KGError):
-    """Wraps failures from Gemini, Mochi, App Store, etc."""
+    """Wraps failures from Gemini, App Store, etc."""
     status_code = 502
 
 

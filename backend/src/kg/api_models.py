@@ -226,29 +226,11 @@ class AuthVerifyResponse(BaseModel):
     expires_in: int  # seconds
 
 
-class MochiIntegrationConfig(BaseModel):
-    api_key: str | None = None
-
-
-class MochiIntegrationResponseConfig(BaseModel):
-    has_api_key: bool = False
-
-
-class UserIntegrationsConfig(BaseModel):
-    mochi: MochiIntegrationConfig | None = None
-
-
-class UserIntegrationsResponseConfig(BaseModel):
-    mochi: MochiIntegrationResponseConfig | None = None
-
-
 class UserConfigRequest(BaseModel):
-    integrations: UserIntegrationsConfig | None = None
     translation: TranslationLanguageConfig | None = None
 
 
 class UserConfigResponse(BaseModel):
-    integrations: UserIntegrationsResponseConfig | None = None
     translation: TranslationLanguageConfig | None = None
 
 

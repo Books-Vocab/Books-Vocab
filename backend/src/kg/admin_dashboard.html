@@ -217,8 +217,6 @@ tbody tr:hover td { background: #f6f4ef; }
   color: var(--ink-light);
 }
 .b-apple, .b-google, .b-manual { background: transparent; }
-.mochi-yes { color: var(--ink); }
-.mochi-no  { color: var(--sub); }
 .bar-wrap { display: flex; align-items: center; gap: 8px; }
 .bar {
   flex: 1;
@@ -586,7 +584,7 @@ tr.expandable:hover td { background: #f0ece4; }
       <table>
         <thead><tr>
           <th>用戶</th><th>Provider</th><th>最後登入</th>
-          <th>單字數</th><th>Mochi</th>
+          <th>單字數</th>
           <th>Pro 狀態</th><th>操作</th><th>每日額度</th><th>Token 用量</th><th>預估費用</th>
         </tr></thead>
         <tbody id="rows"></tbody>
@@ -689,7 +687,7 @@ function fmt(n) {
   return n.toLocaleString();
 }
 function fmtDate(iso) {
-  if (!iso) return '<span class="mochi-no">—</span>';
+  if (!iso) return '<span style="color:var(--sub)">—</span>';
   return new Date(iso).toLocaleString('zh-TW',{timeZone:'Asia/Taipei',month:'2-digit',day:'2-digit',hour:'2-digit',minute:'2-digit'});
 }
 function fmtDateFull(iso) {
@@ -840,7 +838,6 @@ function renderUserRows(users) {
       <td><span class="badge b-${pc}">${pc}</span></td>
       <td style="color:var(--ink-light);font-size:12px">${fmtDate(u.last_login)}</td>
       <td style="font-variant-numeric:tabular-nums">${u.vocab_count.toLocaleString()}</td>
-      <td>${u.has_mochi?'<span class="mochi-yes">✓</span>':'<span class="mochi-no">—</span>'}</td>
       <td>
         <div class="status-stack">
           <span class="badge ${proBadgeClass}">${escapeHtml(proLabel)}</span>

@@ -13,7 +13,6 @@ from openai import OpenAIError
 
 from .retry import async_retry
 from .types import UserRecord
-from .user_store import resolve_mochi_api_key_from_config
 from .vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
 _PIPELINE_RUNNING: dict[str, bool] = {}
@@ -337,47 +336,6 @@ async def _step_difficulty(
     return scored
 
 
-async def _step_external_sync(
-    uid: str,
-    user: UserRecord,
-    *,
-    card_store_factory: Callable[[Any], Any],
-    graph_store_factory: Callable[..., Any],
-    logger: logging.Logger,
-    jwt_secret: str = "",
-    notebook_id: str = "default",
-) -> int:
-    logger.info("[%s] Step 4: Optional External Sync (notebook=%s)", uid, notebook_id)
-    mochi_key = resolve_mochi_api_key_from_config(user["config"], jwt_secret)
-    if not mochi_key:
-        logger.info("[%s] Optional Mochi integration not configured, skipping external sync", uid)
-        return 0
-
-    from .mochi import MochiClient, MochiSync
-    from .renderer import RenderIntent
-
-    cards = card_store_factory(user["dir"])
-    graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
-    mochi_client = MochiClient(mochi_key)
-    syncer = MochiSync(
-        mochi_client,
-        cards,
-        graph,
-        map_path=user["dir"] / "mochi_map.json",
-    )
-
-    loop = asyncio.get_running_loop()
-    try:
-        stats = await loop.run_in_executor(None, lambda: syncer.sync(RenderIntent.FULL, dry_run=False))
-    finally:
-        mochi_client.close()
-    logger.info(
-        "[%s] Optional external sync (Mochi): %d created, %d updated, %d deleted",
-        uid, stats["created"], stats["updated"], stats["deleted"],
-    )
-    return stats["created"] + stats["updated"]
-
-
 _STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError)
 
 
@@ -434,7 +392,6 @@ async def run_pipeline_background(
     gemini_client_factory: Callable[[], Any],
     logger: logging.Logger,
     link_kind_enum: Any,
-    jwt_secret: str = "",
     force_enrich: bool = False,
     notebook_id: str = "default",
     gemini_model: str = "gemini-2.5-flash-lite",
@@ -503,21 +460,6 @@ async def run_pipeline_background(
                 uid, user,
                 card_store_factory=card_store_factory,
                 logger=logger,
-                notebook_id=notebook_id,
-            ), logger=logger, run_id=run_id)
-
-            # Core steps done — clear pending flag so iOS clients stop polling.
-            # The asyncio lock remains held to prevent concurrent pipeline runs.
-            with _PIPELINE_RUNNING_LOCK:
-                _PIPELINE_RUNNING[uid] = False
-            logger.info("[%s] Core pipeline done, clients unblocked.", uid)
-
-            await _run_step(uid, "ExternalSync", lambda: _step_external_sync(
-                uid, user,
-                card_store_factory=card_store_factory,
-                graph_store_factory=graph_store_factory,
-                logger=logger,
-                jwt_secret=jwt_secret,
                 notebook_id=notebook_id,
             ), logger=logger, run_id=run_id)
 

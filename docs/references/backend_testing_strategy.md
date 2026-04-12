@@ -11,20 +11,17 @@ verified_against: 4eaa92b
 - 核心資料一致性（SQLite / JSON 儲存）
 - API 契約與授權行為
 - 背景 Pipeline 的併發安全與容錯
-- 外部整合（Gemini / Mochi / OAuth）在 mock 下的可預測行為
+- 外部整合（Gemini / OAuth）在 mock 下的可預測行為
 
 ## Current Test Layers
 
 ### 1) Unit tests (純函式/單模組)
 - `difficulty.py`: tier mapping 與 Zipf 規則
-- `renderer.py`: example truncate / format
-- `parser.py`: fields/content 解析回寫規則
 - `graph.py`: link/candidate 去重與狀態邏輯
 - `embeddings.py`: 相似度查詢、存在檢查
 
 ### 2) Integration tests (本地 I/O + FastAPI in-process)
 - `CardStore`：count / soft-delete / modified_since
-- `MochiSync`：map/state 原子存檔、legacy migration、orphan 刪除 warning
 - `api.py`（`TestClient`）：
   - `/api/vocab` lifecycle（新增、重複、刪除、since 增量）
   - `/api/graph/links` 僅回 active links
@@ -42,7 +39,7 @@ verified_against: 4eaa92b
 ## Test Isolation Rules
 - 每個測試使用 `tmp_path` 建立獨立 data 目錄
 - `KG_DATA_DIR/JWT_SECRET/GEMINI_API_KEY` 使用測試預設值
-- 外部 API 一律 mock（Gemini/Mochi/Google/Apple）
+- 外部 API 一律 mock（Gemini/Google/Apple）
 - 不觸碰 production data，不依賴網路
 
 ## Runbook
@@ -85,7 +82,7 @@ pytest -q
 
 ## Gaps & Next Iteration
 - 壓力/負載：高併發 `POST /api/vocab`、pipeline 排隊行為（非功能測試）
-- 真實整合環境 smoke：staging 的 Mochi/Google/Apple token flow
+- 真實整合環境 smoke：staging 的 Google/Apple token flow
 - Property-based tests：
   - parser/renderer round-trip（多語符號、邊界字元）
 - Migration safety：

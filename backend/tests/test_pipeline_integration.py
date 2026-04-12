@@ -1,7 +1,7 @@
 """Pipeline integration tests.
 
-Verifies that POST /api/pipeline triggers the full 4-stage background pipeline
-(Enrich -> Link -> Difficulty -> Mochi Sync) and completes without errors.
+Verifies that POST /api/pipeline triggers the background pipeline
+(Enrich -> Link -> Difficulty) and completes without errors.
 
 External APIs (Gemini enrich, embedding) are mocked. Difficulty (Zipf) and
 candidate-link evaluation run against an empty graph, so no LLM calls needed.
