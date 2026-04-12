@@ -118,6 +118,16 @@ struct NotebookCard: View {
             RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
                 .stroke(skin.palette.cardBorder, lineWidth: 1)
         )
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(accessibilityDescription)
+    }
+
+    private var accessibilityDescription: String {
+        var parts = [data.name, "\(data.cardCount) 個單字"]
+        if data.dueCount > 0 { parts.append("\(data.dueCount) 到期") }
+        if data.unlearnedCount > 0 { parts.append("\(data.unlearnedCount) 未學") }
+        if data.isActive { parts.append("使用中") }
+        return parts.joined(separator: "，")
     }
 }
 

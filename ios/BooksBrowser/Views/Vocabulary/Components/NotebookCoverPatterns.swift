@@ -140,8 +140,8 @@ struct NotebookCoverView: View {
             ZStack {
                 color
 
-                if let imagePath = coverImagePath, let uiImage = loadImage(from: imagePath) {
-                    Image(uiImage: uiImage)
+                if let imagePath = coverImagePath, let coverImage = loadImage(from: imagePath) {
+                    platformImage(coverImage)
                         .resizable()
                         .aspectRatio(contentMode: .fill)
                         .frame(width: geo.size.width, height: geo.size.height)
@@ -151,7 +151,7 @@ struct NotebookCoverView: View {
                 }
 
                 Text(name)
-                    .font(.system(size: 15, weight: .semibold, design: .rounded))
+                    .font(.headline)
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                     .lineLimit(2)
@@ -165,9 +165,15 @@ struct NotebookCoverView: View {
     private func loadImage(from path: String) -> NSImage? {
         NSImage(contentsOfFile: path)
     }
+    private func platformImage(_ image: NSImage) -> Image {
+        Image(nsImage: image)
+    }
     #else
     private func loadImage(from path: String) -> UIImage? {
         UIImage(contentsOfFile: path)
+    }
+    private func platformImage(_ image: UIImage) -> Image {
+        Image(uiImage: image)
     }
     #endif
 }

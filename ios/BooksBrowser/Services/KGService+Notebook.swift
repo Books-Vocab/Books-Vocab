@@ -28,7 +28,8 @@ extension KGService {
         var body: [String: String] = [:]
         if let name { body["name"] = name }
         if let color { body["color"] = color }
-        if let coverPattern { body["cover_pattern"] = coverPattern }
+        // Always send cover_pattern on update — nil maps to "" (clear), non-nil maps to value
+        body["cover_pattern"] = coverPattern ?? ""
         return try await authenticatedDecode(
             KGNotebook.self,
             path: "api/notebooks/\(id)",

@@ -32,6 +32,7 @@ struct NotebookEditSheet: View {
     @State private var coverImagePath: String?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isProcessingPhoto = false
+    @State private var photoError: String?
 
     init(mode: Mode, onSave: @escaping (NotebookAppearance) -> Void) {
         self.mode = mode
@@ -78,7 +79,7 @@ struct NotebookEditSheet: View {
                                 .overlay {
                                     if selectedColor == item.hex {
                                         Image(systemName: "checkmark")
-                                            .font(.system(size: 12, weight: .bold))
+                                            .font(skin.typography.captionStrong)
                                             .foregroundStyle(.white)
                                     }
                                 }
@@ -120,6 +121,12 @@ struct NotebookEditSheet: View {
 
                     if isProcessingPhoto {
                         ProgressView("處理中...".localized)
+                    }
+
+                    if let photoError {
+                        Text(photoError)
+                            .font(skin.typography.caption)
+                            .foregroundStyle(skin.palette.destructive)
                     }
                 }
             }
@@ -166,11 +173,11 @@ struct NotebookEditSheet: View {
                 if isSelected {
                     Image(systemName: "checkmark.circle.fill")
                         .foregroundStyle(.white)
-                        .font(.system(size: 14))
+                        .font(skin.typography.iconSmall)
                 }
             }
             Text(label)
-                .font(.system(size: 10))
+                .font(skin.typography.monoLabel)
                 .foregroundStyle(skin.palette.secondaryText)
         }
         .onTapGesture { selectedPattern = patternId }
@@ -184,29 +191,51 @@ struct NotebookEditSheet: View {
     @MainActor
     private func processPhoto(_ item: PhotosPickerItem) async {
         isProcessingPhoto = true
+        photoError = nil
         defer { isProcessingPhoto = false }
 
-        guard let data = try? await item.loadTransferable(type: Data.self) else { return }
+        guard let data = try? await item.loadTransferable(type: Data.self) else {
+            photoError = "無法載入圖片".localized
+            return
+        }
 
         #if os(macOS)
-        guard let nsImage = NSImage(data: data) else { return }
+        guard let nsImage = NSImage(data: data) else {
+            photoError = "圖片格式不支援".localized
+            return
+        }
         let cgImage = nsImage.cgImage(forProposedRect: nil, context: nil, hints: nil)
-        guard let cg = cgImage else { return }
+        guard let cg = cgImage else {
+            photoError = "圖片格式不支援".localized
+            return
+        }
         let resized = NSImage(cgImage: cg, size: NSSize(width: min(CGFloat(cg.width), 600), height: min(CGFloat(cg.height), 400)))
         guard let tiffData = resized.tiffRepresentation,
               let rep = NSBitmapImageRep(data: tiffData),
-              let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else { return }
+              let jpegData = rep.representation(using: .jpeg, properties: [.compressionFactor: 0.7]) else {
+            photoError = "圖片處理失敗".localized
+            return
+        }
         #else
-        guard let uiImage = UIImage(data: data) else { return }
+        guard let uiImage = UIImage(data: data) else {
+            photoError = "圖片格式不支援".localized
+            return
+        }
         let maxDim: CGFloat = 600
         let scale = min(maxDim / uiImage.size.width, maxDim / uiImage.size.height, 1.0)
         let newSize = CGSize(width: uiImage.size.width * scale, height: uiImage.size.height * scale)
         let renderer = UIGraphicsImageRenderer(size: newSize)
         let resizedImage = renderer.image { _ in uiImage.draw(in: CGRect(origin: .zero, size: newSize)) }
-        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.7) else { return }
+        guard let jpegData = resizedImage.jpegData(compressionQuality: 0.7) else {
+            photoError = "圖片處理失敗".localized
+            return
+        }
         #endif
 
-        guard jpegData.count <= 500_000 else { return }
+        guard jpegData.count <= 500_000 else {
+            photoError = "圖片太大，請選擇較小的圖片".localized
+            return
+        }
 
         let filename = "notebook_cover_\(UUID().uuidString).jpg"
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!

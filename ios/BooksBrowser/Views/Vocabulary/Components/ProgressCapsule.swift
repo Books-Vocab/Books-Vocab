@@ -5,6 +5,7 @@ struct ProgressCapsule: View {
     let label: String?
     var fillColor: Color
     var trackColor: Color
+    var labelFont: Font = .caption2.monospacedDigit()
     var height: CGFloat = 6
 
     var body: some View {
@@ -22,7 +23,7 @@ struct ProgressCapsule: View {
         .overlay(alignment: .trailing) {
             if let label {
                 Text(label)
-                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .font(labelFont)
                     .foregroundStyle(fillColor)
                     .padding(.trailing, 2)
             }

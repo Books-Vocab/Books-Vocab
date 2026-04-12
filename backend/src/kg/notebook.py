@@ -45,6 +45,15 @@ class NotebookStore:
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
+        self._migrate_columns()
+
+    def _migrate_columns(self) -> None:
+        with self.engine.connect() as conn:
+            existing = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(notebook)").fetchall()}
+            if "cover_pattern" not in existing:
+                conn.exec_driver_sql("ALTER TABLE notebook ADD COLUMN cover_pattern TEXT")
+                conn.commit()
+                logger.info("migrated notebook: added cover_pattern column")
 
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""
