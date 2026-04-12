@@ -44,7 +44,7 @@
 2. **驗證先於宣稱** — 說「完成」「通過」「修好」之前，必須有當下的驗證輸出作為證據。「should work」= 謊言。
 3. **根因先於修復** — 遇到 bug 必須確認根因才動手改。不可看到錯就補 patch。
 4. **逐項 review，不批次** — 每完成一個 fix/feature 立即 dispatch review agent 審核，發現問題當場修，確認 PASS 後才進下一個。禁止「全部寫完再一起 review」。此規則適用所有程式碼修改，無論是否走 execute skill。
-5. **不主動跑 build/test** — 除非使用者明確說「跑測試」「build」，否則禁止主動執行 `ios_test.sh` / `ios_build.sh`。Subagent 在 worktree 中跑不受此限。
+5. **不主動跑 iOS test** — 除非使用者明確說「跑測試」，否則禁止主動執行 `ios_test.sh`。**無例外，包含 worktree 中的 subagent。** `ios_build.sh` 和 backend `pytest` 不受此限。
 6. **不寫 memory** — 禁止寫入 `.claude/projects/*/memory/`。所有持久化規則寫在 `CLAUDE.md` 或 `docs/`。
 
 ## Git
