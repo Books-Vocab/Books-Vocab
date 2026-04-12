@@ -138,8 +138,8 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 - Review reveal / navigation / swap → `reviewRevealSpring`、`reviewNavigationSpring`、`reviewCardSwapSpring`
 - Sync phase / step update → `phaseChange`、`feedbackPulse`
 
-這層規範的主文檔在 `docs/ui-design.md` 的 `Motion Contract`。
-若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/ios-dev.md`。
+這層規範的主文檔在 `docs/dev/ui-design.md` 的 `Motion Contract`。
+若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/dev/ios-dev.md`。
 若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/references/ui_component_pattern_inventory.md`。
 若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/references/ui_state_matrix.md`。
 若要查 backend 部署、debug、測試與格式規範入口，查 `docs/dev/backend-dev.md`。

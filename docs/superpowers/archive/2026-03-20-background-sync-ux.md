@@ -57,7 +57,7 @@ var syncCoordinator: SyncCoordinator {
 - [ ] **Step 3: Build to verify**
 
 ```bash
-cd /Users/chenliangyu/MPSO/projects/kg
+cd /Users/chenliangyu/kg
 ./ops/ios_build.sh
 ```
 

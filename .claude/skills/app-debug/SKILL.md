@@ -1,5 +1,5 @@
 ---
-name: debug
+name: app-debug
 description: "Use when encountering any bug, test failure, or unexpected behavior — root cause investigation with parallel hypothesis testing via opus agents."
 user-invocable: true
 ---

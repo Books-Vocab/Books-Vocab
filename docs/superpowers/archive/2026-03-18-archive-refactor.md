@@ -68,7 +68,7 @@ class TestRestoreLinksFor:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_graph_index.py::TestRestoreLinksFor -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_graph_index.py::TestRestoreLinksFor -v`
 Expected: FAIL — `AttributeError: 'GraphStore' object has no attribute 'restore_links_for'`
 
 - [ ] **Step 3: Implement restore_links_for**
@@ -95,7 +95,7 @@ Expected: FAIL — `AttributeError: 'GraphStore' object has no attribute 'restor
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_graph_index.py::TestRestoreLinksFor -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_graph_index.py::TestRestoreLinksFor -v`
 Expected: all 5 PASS
 
 - [ ] **Step 5: Commit**
@@ -187,7 +187,7 @@ class TestArchiveVocabWord:
 
 - [ ] **Step 2: Run tests to verify they fail**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_vocab_service.py::TestArchiveVocabWord -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_vocab_service.py::TestArchiveVocabWord -v`
 Expected: FAIL — `archive_vocab_word() got an unexpected keyword argument 'graph'`
 
 - [ ] **Step 3: Modify archive_vocab_word**
@@ -213,7 +213,7 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
 
 - [ ] **Step 4: Run tests to verify they pass**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_vocab_service.py::TestArchiveVocabWord -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_vocab_service.py::TestArchiveVocabWord -v`
 Expected: all 3 PASS
 
 - [ ] **Step 5: Modify build_links_by_kind to filter archived**
@@ -260,7 +260,7 @@ def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("d
 
 - [ ] **Step 8: Run full test suite**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 Expected: all pass
 
 - [ ] **Step 9: Commit**
@@ -323,7 +323,7 @@ git commit -m "api: archive 整合圖譜操作 — deprecate/restore 連結 + bu
 
 - [ ] **Step 4: Run existing pipeline tests**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_pipeline_service.py -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_pipeline_service.py -x -q`
 Expected: all pass
 
 - [ ] **Step 5: Commit**
@@ -429,7 +429,7 @@ git commit -m "api: pipeline 排除封存卡片 — embed/link/candidate 全鏈�
 
 - [ ] **Step 6: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 7: Commit**
@@ -467,7 +467,7 @@ git commit -m "ios: 封存入口搬至 NotebookListView toolbar — 跨單字本
 
 - [ ] **Step 2: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit**
@@ -483,12 +483,12 @@ git commit -m "ios: 圖譜視覺化完全移除封存節點"
 
 - [ ] **Step 1: 後端完整測試**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 Expected: all pass
 
 - [ ] **Step 2: iOS build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: 移除 VocabularyListView+State 中的 archivedCount**

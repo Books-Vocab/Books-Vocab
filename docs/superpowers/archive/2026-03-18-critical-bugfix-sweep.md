@@ -456,7 +456,7 @@ Apply same pattern to all try blocks in backgroundSync. Reference `healthCheck` 
 - [ ] **Step 3: Build**
 
 ```bash
-cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh
+cd /Users/chenliangyu/kg && ./ops/ios_build.sh
 ```
 
 - [ ] **Step 4: Commit**
@@ -489,7 +489,7 @@ This uses `dateAdded` as fallback (VocabularyEntry 沒有 `createdAt`，有 `dat
 - [ ] **Step 2: Build**
 
 ```bash
-cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh
+cd /Users/chenliangyu/kg && ./ops/ios_build.sh
 ```
 
 - [ ] **Step 3: Commit**
@@ -546,7 +546,7 @@ Also update `makeCoordinator` and `updateUIView` to match optional type.
 - [ ] **Step 2: Build**
 
 ```bash
-cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh
+cd /Users/chenliangyu/kg && ./ops/ios_build.sh
 ```
 
 - [ ] **Step 3: Commit**

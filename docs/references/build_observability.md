@@ -15,7 +15,7 @@ verified_against: 4eaa92b
 - `xcodebuild` 本體必須維持 workspace SOP 指定的唯一合法指令
 - 若要量時間，只能在外層包時間戳或 wrapper；不可改動 build 指令參數
 
-執行以下方式收集 build 時間數據（從 `projects/kg/` 目錄執行）：
+執行以下方式收集 build 時間數據（從 repo root 執行）：
 
 ```bash
 # 例：用外層 wrapper 量測兩次合法 build
