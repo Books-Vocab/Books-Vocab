@@ -36,7 +36,9 @@ struct PodcastEpisodeListView: View {
             } else {
                 List {
                     ForEach(episodes) { episode in
-                        NavigationLink(value: PodcastEpisodeDestination(episodeId: episode.remoteId)) {
+                        NavigationLink {
+                            PodcastPlayerView(episodeId: episode.remoteId)
+                        } label: {
                             PodcastEpisodeRow(episode: episode)
                         }
                         .disabled(!episode.audioAvailable)
@@ -46,8 +48,5 @@ struct PodcastEpisodeListView: View {
             }
         }
         .navigationTitle(seriesTitle)
-        .navigationDestination(for: PodcastEpisodeDestination.self) { dest in
-            PodcastPlayerView(episodeId: dest.episodeId)
-        }
     }
 }

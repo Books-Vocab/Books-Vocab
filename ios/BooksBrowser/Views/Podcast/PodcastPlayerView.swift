@@ -110,16 +110,26 @@ struct PodcastPlayerView: View {
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
 
-        guard let audioPath = episode.localAudioPath,
-              let audioURL = URL(string: audioPath) else {
+        // Resolve audio URL: try local path first, fall back to bundle resource
+        let audioURL: URL
+        if let audioPath = episode.localAudioPath, let url = URL(string: audioPath),
+           FileManager.default.fileExists(atPath: url.path) {
+            audioURL = url
+        } else if let bundleURL = Bundle.main.url(forResource: "debug_podcast", withExtension: "mp3") {
+            audioURL = bundleURL
+        } else {
             vm.reportError("音訊檔案不存在")
             return
         }
 
+        // Resolve subtitle content
         let subtitleContent: String?
-        if let srtPath = episode.localSubtitlePath,
-           let srtURL = URL(string: srtPath) {
-            subtitleContent = try? String(contentsOf: srtURL, encoding: .utf8)
+        if let srtPath = episode.localSubtitlePath, let srtURL = URL(string: srtPath),
+           let content = try? String(contentsOf: srtURL, encoding: .utf8) {
+            subtitleContent = content
+        } else if let bundleSRT = Bundle.main.url(forResource: "debug_podcast", withExtension: "srt"),
+                  let content = try? String(contentsOf: bundleSRT, encoding: .utf8) {
+            subtitleContent = content
         } else {
             subtitleContent = nil
         }
