@@ -87,6 +87,7 @@ struct KGNotebook: Codable, Identifiable {
     let id: String
     let name: String
     let color: String?
+    let coverPattern: String?
     let sortOrder: Int
     let isDefault: Bool
     let isDeleted: Bool

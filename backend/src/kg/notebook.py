@@ -24,6 +24,7 @@ class Notebook(SQLModel, table=True):
     id: str = SQLField(default_factory=lambda: uuid.uuid4().hex[:12], primary_key=True)
     name: str
     color: str | None = None
+    cover_pattern: str | None = None
     sort_order: int = SQLField(default=0)
     is_default: bool = SQLField(default=False)
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -44,6 +45,15 @@ class NotebookStore:
             conn.exec_driver_sql("PRAGMA synchronous=NORMAL;")
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         Notebook.metadata.create_all(self.engine, tables=[Notebook.__table__], checkfirst=True)
+        self._migrate_columns()
+
+    def _migrate_columns(self) -> None:
+        with self.engine.connect() as conn:
+            existing = {r[1] for r in conn.exec_driver_sql("PRAGMA table_info(notebook)").fetchall()}
+            if "cover_pattern" not in existing:
+                conn.exec_driver_sql("ALTER TABLE notebook ADD COLUMN cover_pattern TEXT")
+                conn.commit()
+                logger.info("migrated notebook: added cover_pattern column")
 
     def ensure_default(self) -> Notebook:
         """Ensure the default notebook exists. Returns it."""
@@ -63,8 +73,8 @@ class NotebookStore:
             session.refresh(nb)
             return nb
 
-    def create(self, name: str, color: str | None = None) -> Notebook:
-        nb = Notebook(name=name, color=color)
+    def create(self, name: str, color: str | None = None, cover_pattern: str | None = None) -> Notebook:
+        nb = Notebook(name=name, color=color, cover_pattern=cover_pattern)
         with Session(self.engine) as session:
             session.add(nb)
             session.commit()

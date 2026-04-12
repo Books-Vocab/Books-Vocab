@@ -10,6 +10,31 @@ struct SyncPresenterState {
     let deleteCount: Int
     let steps: [PipelineStep]
     let summaryText: String
+    let pendingRows: [PendingVocabPresenterState.RowItem]
+
+    init(
+        isLoggedIn: Bool,
+        isConnected: Bool,
+        phase: SyncPhase,
+        failureKind: SyncFailureKind?,
+        pendingCount: Int,
+        addCount: Int,
+        deleteCount: Int,
+        steps: [PipelineStep],
+        summaryText: String,
+        pendingRows: [PendingVocabPresenterState.RowItem] = []
+    ) {
+        self.isLoggedIn = isLoggedIn
+        self.isConnected = isConnected
+        self.phase = phase
+        self.failureKind = failureKind
+        self.pendingCount = pendingCount
+        self.addCount = addCount
+        self.deleteCount = deleteCount
+        self.steps = steps
+        self.summaryText = summaryText
+        self.pendingRows = pendingRows
+    }
 }
 
 struct SyncPresenter: View {
@@ -20,46 +45,38 @@ struct SyncPresenter: View {
     let onPrimaryAction: () -> Void
     let onCancel: () -> Void
     let onShowSettings: () -> Void
+    var onPendingRowTapped: ((UUID) -> Void)?
+    var onPendingActionTapped: ((UUID) -> Void)?
 
     var body: some View {
         VStack(spacing: 0) {
-            headerView
-                .padding(.top, vocabSkin.metrics.syncOverlayInset)
-                .padding(.bottom, vocabSkin.metrics.reviewFoldPadding)
-                .animatePhaseChange(state.phase)
+            ScrollView {
+                VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
+                    headerView
+                        .padding(.top, vocabSkin.metrics.syncOverlayInset)
+                        .animatePhaseChange(state.phase)
 
-            if state.isLoggedIn && !state.steps.isEmpty {
-                VocabCard(padding: 0) {
-                    VStack(alignment: .leading, spacing: 0) {
-                        ForEach(Array(state.steps.enumerated()), id: \.element.id) { index, step in
-                            stepRow(step)
-                                .transition(.listInsert)
-
-                            if index < state.steps.count - 1 {
-                                Divider()
-                                    .padding(.leading, vocabSkin.metrics.syncOverlayInset)
-                            }
-                        }
+                    if state.isLoggedIn && state.phase == .ready && !state.pendingRows.isEmpty {
+                        pendingListSection
                     }
-                    .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                    .padding(.vertical, vocabSkin.metrics.reviewTopBarBottomInset)
-                    .animation(AppMotion.standardSpring, value: state.steps.map(\.id))
+
+                    if state.isLoggedIn && !state.steps.isEmpty {
+                        stepsSection
+                    }
+
+                    if !state.summaryText.isEmpty {
+                        summaryCard
+                            .transition(.feedbackBadge)
+                    }
                 }
                 .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
-            }
-
-            Spacer()
-
-            if !state.summaryText.isEmpty {
-                summaryCard
-                    .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
-                    .padding(.bottom, vocabSkin.metrics.reviewToolbarVerticalInset)
-                    .transition(.feedbackBadge)
+                .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
             }
 
             actionArea
                 .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
                 .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
+                .background(vocabSkin.palette.pageBackground)
         }
         .vocabCanvasBackground()
         .animatePhaseChange(state.summaryText.isEmpty)
@@ -72,6 +89,72 @@ struct SyncPresenter: View {
             ToolbarItem(placement: .confirmationAction) {
                 Button("關閉".localized) { dismiss() }
             }
+        }
+    }
+
+    // MARK: - Pending List
+
+    @ViewBuilder
+    private var pendingListSection: some View {
+        VocabCard(padding: 0) {
+            LazyVStack(spacing: 0) {
+                ForEach(Array(state.pendingRows.enumerated()), id: \.element.id) { index, item in
+                    HStack(alignment: .top, spacing: 12) {
+                        WordRow(viewData: item.row)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { onPendingRowTapped?(item.id) }
+
+                        VocabAccessoryIconButton(
+                            systemImage: item.actionSystemImage,
+                            tone: resolveTone(item.actionTone),
+                            action: { onPendingActionTapped?(item.id) }
+                        )
+                        .padding(.top, vocabSkin.metrics.accessoryTopOffset)
+                    }
+                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                    .transition(.listItemFade)
+
+                    if index < state.pendingRows.count - 1 {
+                        Divider()
+                            .padding(.leading, vocabSkin.spacing.cardPadding)
+                    }
+                }
+            }
+            .animateSpring(state.pendingRows.count)
+        }
+    }
+
+    private func resolveTone(_ tone: WordRow.ViewData.Tone) -> Color {
+        switch tone {
+        case .primary: return vocabSkin.palette.primaryText
+        case .secondary: return vocabSkin.palette.secondaryText
+        case .tertiary: return vocabSkin.palette.tertiaryText
+        case .quaternary: return vocabSkin.palette.quaternaryText
+        case .destructive: return vocabSkin.palette.destructive
+        case .reviewDue: return vocabSkin.palette.warning
+        }
+    }
+
+    // MARK: - Steps
+
+    @ViewBuilder
+    private var stepsSection: some View {
+        VocabCard(padding: 0) {
+            VStack(alignment: .leading, spacing: 0) {
+                ForEach(Array(state.steps.enumerated()), id: \.element.id) { index, step in
+                    stepRow(step)
+                        .transition(.listInsert)
+
+                    if index < state.steps.count - 1 {
+                        Divider()
+                            .padding(.leading, vocabSkin.metrics.syncOverlayInset)
+                    }
+                }
+            }
+            .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+            .padding(.vertical, vocabSkin.metrics.reviewTopBarBottomInset)
+            .animation(AppMotion.standardSpring, value: state.steps.map(\.id))
         }
     }
 

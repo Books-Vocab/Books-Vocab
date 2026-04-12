@@ -6,12 +6,12 @@
 import SwiftUI
 
 struct VocabularyListToolbar: ViewModifier {
-    let selectedTab: Int
     let isLoggedIn: Bool
     let isSyncing: Bool
     let pendingCount: Int
     let knowledgeReviewCount: Int
     let knowledgeDueCount: Int
+    let knowledgeUnlearnedCount: Int
     let onSync: () -> Void
     let onStartDueReview: () -> Void
     let onStartUnlearnedReview: () -> Void
@@ -19,14 +19,11 @@ struct VocabularyListToolbar: ViewModifier {
     let onExportCSV: () -> Void
     let onExportJSON: () -> Void
     let onExportAnki: () -> Void
-    let hasPendingEntries: Bool
-    let knowledgeDueEntriesCount: Int
-    let knowledgeUnlearnedEntriesCount: Int
+    let hasSyncedEntries: Bool
 
     func body(content: Content) -> some View {
         content
             .toolbar {
-                // Sync button
                 ToolbarItem(placement: .cancellationAction) {
                     Button(action: onSync) {
                         VocabToolbarGlyph(
@@ -38,56 +35,51 @@ struct VocabularyListToolbar: ViewModifier {
                     .accessibilityLabel("同步詞彙".localized)
                 }
 
-                // Force refresh (知識庫 tab only)
-                if selectedTab == 1 && isLoggedIn {
-                    if knowledgeReviewCount > 0 {
-                        ToolbarItem(placement: .confirmationAction) {
-                            Menu {
-                                if knowledgeDueEntriesCount > 0 {
-                                    Button {
-                                        onStartDueReview()
-                                    } label: {
-                                        Label(
-                                            L10n.format("複習到期卡片（%@）", "\(knowledgeDueEntriesCount)"),
-                                            systemImage: "clock.badge.exclamationmark"
-                                        )
-                                    }
-                                }
-
-                                if knowledgeUnlearnedEntriesCount > 0 {
-                                    Button {
-                                        onStartUnlearnedReview()
-                                    } label: {
-                                        Label(
-                                            L10n.format("學習新卡片（%@）", "\(knowledgeUnlearnedEntriesCount)"),
-                                            systemImage: "sparkles"
-                                        )
-                                    }
-                                }
-
-                                Divider()
-
+                if isLoggedIn && knowledgeReviewCount > 0 {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Menu {
+                            if knowledgeDueCount > 0 {
                                 Button {
-                                    onStartAllReview()
+                                    onStartDueReview()
                                 } label: {
                                     Label(
-                                        L10n.format("全部複習（%@）", "\(knowledgeReviewCount)"),
-                                        systemImage: "rectangle.stack"
+                                        L10n.format("複習到期卡片（%@）", "\(knowledgeDueCount)"),
+                                        systemImage: "clock.badge.exclamationmark"
                                     )
                                 }
+                            }
+
+                            if knowledgeUnlearnedCount > 0 {
+                                Button {
+                                    onStartUnlearnedReview()
+                                } label: {
+                                    Label(
+                                        L10n.format("學習新卡片（%@）", "\(knowledgeUnlearnedCount)"),
+                                        systemImage: "sparkles"
+                                    )
+                                }
+                            }
+
+                            Divider()
+
+                            Button {
+                                onStartAllReview()
                             } label: {
-                                VocabToolbarGlyph(
-                                    systemImage: "rectangle.stack.badge.play",
-                                    badge: knowledgeDueCount > 0 ? "\(knowledgeDueCount)" : "\(knowledgeReviewCount)"
+                                Label(
+                                    L10n.format("全部複習（%@）", "\(knowledgeReviewCount)"),
+                                    systemImage: "rectangle.stack"
                                 )
                             }
+                        } label: {
+                            VocabToolbarGlyph(
+                                systemImage: "rectangle.stack.badge.play",
+                                badge: knowledgeDueCount > 0 ? "\(knowledgeDueCount)" : "\(knowledgeReviewCount)"
+                            )
                         }
                     }
-
                 }
 
-                // Export menu (only for local vocab tab)
-                if selectedTab == 0 && hasPendingEntries {
+                if hasSyncedEntries {
                     ToolbarItem(placement: .confirmationAction) {
                         Menu {
                             Button {
