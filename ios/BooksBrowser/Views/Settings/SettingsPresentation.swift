@@ -60,6 +60,8 @@ struct SettingsPresenterState {
         let translationSource: String
         let translationTarget: String
         let selectedReviewMode: String
+        let autoSyncEnabled: Bool
+        let showAutoSync: Bool
     }
 
     struct SyncSummaryState {
@@ -115,4 +117,5 @@ struct SettingsPresenterActions {
     let openSupport: () -> Void
     let requestAppRating: () -> Void
     let resync: () -> Void
+    let toggleAutoSync: (Bool) -> Void
 }

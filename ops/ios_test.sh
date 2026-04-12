@@ -41,17 +41,21 @@ CALLER="${WORKTREE_BRANCH:-$(git -C "$PROJECT_ROOT" branch --show-current 2>/dev
 ONLY_FLAGS=()
 
 if [[ -n "$GREP_PATTERN" ]]; then
-  # Auto-discover test method names matching the pattern from the test file.
+  # Auto-discover test method names matching the pattern from all test files.
   # Swift Testing puts @Test on the line ABOVE `func`, so we grep for `func`
   # names that appear within the test struct and filter by the user's pattern.
-  TEST_FILE="$PROJECT_ROOT/ios/BooksBrowserTests/BooksBrowserTests.swift"
-  if [[ -f "$TEST_FILE" ]]; then
+  TEST_DIR="$PROJECT_ROOT/ios/BooksBrowserTests"
+  for TEST_FILE in "$TEST_DIR"/*.swift; do
+    [[ -f "$TEST_FILE" ]] || continue
+    # Extract struct name from the file
+    STRUCT_NAME=$(grep -E '^struct [a-zA-Z0-9_]+' "$TEST_FILE" | head -1 | sed -E 's/struct ([a-zA-Z0-9_]+).*/\1/')
+    [[ -n "$STRUCT_NAME" ]] || continue
     while IFS= read -r name; do
-      ONLY_FLAGS+=("-only-testing:BooksBrowserTests/BooksBrowserTests/$name")
-    done < <(grep -E '^\s+func [a-zA-Z0-9_]+\(' "$TEST_FILE" \
+      ONLY_FLAGS+=("-only-testing:BooksBrowserTests/$STRUCT_NAME/$name")
+    done < <(grep -E '^\s+(@Test\s+)?func [a-zA-Z0-9_]+\(' "$TEST_FILE" \
              | sed -E 's/.*func ([a-zA-Z0-9_]+)\(.*/\1/' \
              | grep -i "$GREP_PATTERN")
-  fi
+  done
   if [[ ${#ONLY_FLAGS[@]} -eq 0 ]]; then
     echo "[ios_test] no tests matching pattern '$GREP_PATTERN'" >&2
     exit 1
@@ -84,7 +88,7 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
 done
 trap cleanup EXIT
 
-echo "[ios_test] lock acquired — running ${#ONLY_FLAGS[@]:-all} tests..."
+echo "[ios_test] lock acquired — running ${#ONLY_FLAGS[@]} tests (0=all)..."
 START=$(date +%s)
 
 # Run xcodebuild test, capture output to parse results
@@ -94,7 +98,7 @@ xcodebuild test \
   -project "$XCODEPROJ" \
   -scheme BooksBrowser \
   -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
-  "${ONLY_FLAGS[@]}" \
+  ${ONLY_FLAGS[@]+"${ONLY_FLAGS[@]}"} \
   2>&1 | tee "$TMPOUT" | grep -E '^(Test |✓|✗|◇|Passing|Failing|Executed|\*\* TEST)' || true
 EXIT_CODE=${PIPESTATUS[0]}
 set -e

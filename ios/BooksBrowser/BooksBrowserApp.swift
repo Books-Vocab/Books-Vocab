@@ -182,6 +182,7 @@ struct BooksBrowserApp: App {
             AppStartupRecoveryView(failure: startupFailure)
         } else {
             ContentView()
+                .modifier(AutoSyncMonitor())
                 .onOpenURL { url in
                     GIDSignIn.sharedInstance.handle(url)
                 }
