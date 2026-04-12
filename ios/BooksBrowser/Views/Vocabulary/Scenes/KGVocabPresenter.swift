@@ -38,7 +38,21 @@ struct KGVocabPresenter: View {
     var onRefresh: (() async -> Void)?
 
     var body: some View {
-        ScrollView {
+        VStack(alignment: .leading, spacing: 0) {
+            // Pinned filter bar — stays visible while scrolling
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
+                HStack {
+                    Spacer()
+                    VocabSortPill(sortOption: $sortOption)
+                }
+            }
+            .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
+            .padding(.top, vocabSkin.spacing.microGap)
+            .padding(.bottom, vocabSkin.spacing.inlineGap)
+            .background(vocabSkin.palette.pageBackground)
+
+            ScrollView {
             VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                 if let banner = state.banner {
                     AppBanner(
@@ -51,13 +65,7 @@ struct KGVocabPresenter: View {
 
 
                 VocabListCard {
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
-                        VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
-                        HStack {
-                            Spacer()
-                            VocabSortPill(sortOption: $sortOption)
-                        }
-                    }
+                    EmptyView()
                 } content: {
                     Group {
                     if state.rows.isEmpty {
@@ -122,7 +130,7 @@ struct KGVocabPresenter: View {
                 }
             }
             .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-            .padding(.top, vocabSkin.metrics.pageTopInset)
+            .padding(.top, vocabSkin.spacing.microGap)
             .padding(.bottom, vocabSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
@@ -130,6 +138,7 @@ struct KGVocabPresenter: View {
             await onRefresh?()
         }
         .animateSpring(state.banner == nil)
+        } // end outer VStack
     }
 }
 
