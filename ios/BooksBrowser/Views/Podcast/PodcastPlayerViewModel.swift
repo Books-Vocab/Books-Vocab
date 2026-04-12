@@ -135,24 +135,25 @@ final class PodcastPlayerViewModel {
 
     private func handleTimeUpdate(_ time: TimeInterval) {
         currentTime = time
-        currentCue = subtitleEngine.currentCue(at: time)
-        currentSentence = subtitleEngine.currentSentence(at: time)
+        let cue = subtitleEngine.currentCue(at: time)
+        currentCue = cue
 
-        if let sentence = currentSentence {
-            renderState = SubtitleRenderState.from(
-                sentence: sentence, cue: currentCue, hostNames: hostNames
-            )
-            // O(1) highlight: match cue's highlightedWord to word index
-            if let hw = currentCue?.highlightedWord {
-                let target = hw.lowercased()
-                highlightedWordIndex = renderState?.words.firstIndex {
-                    $0.text.lowercased() == target
-                } ?? -1
+        // Low-frequency path: only rebuild renderState when sentence changes
+        let sentence = subtitleEngine.currentSentence(at: time)
+        if sentence?.id != currentSentence?.id {
+            currentSentence = sentence
+            if let sentence {
+                renderState = SubtitleRenderState(from: sentence, hostNames: hostNames)
             } else {
-                highlightedWordIndex = -1
+                renderState = nil
             }
+        }
+
+        // High-frequency path: update highlight index (just an Int, cheap)
+        if let hw = cue?.highlightedWord, let rs = renderState {
+            let normalized = hw.lowercased().trimmingCharacters(in: .punctuationCharacters)
+            highlightedWordIndex = rs.highlightIndex(for: normalized)
         } else {
-            renderState = nil
             highlightedWordIndex = -1
         }
     }

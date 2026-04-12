@@ -11,6 +11,7 @@ final class PodcastProgress {
     init(episodeRemoteId: String, lastPlayedTime: Double = 0, completed: Bool = false) {
         self.episodeRemoteId = episodeRemoteId
         self.lastPlayedTime = lastPlayedTime
+        self.completed = completed
         self.updatedAt = Date()
     }
 }
