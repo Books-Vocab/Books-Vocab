@@ -22,7 +22,8 @@ enum SettingsPresenterPreviewData {
         openTermsOfService: {},
         openSupport: {},
         requestAppRating: {},
-        resync: {}
+        resync: {},
+        toggleAutoSync: { _ in }
     )
 
     static let loggedOut = SettingsPresenterState(
@@ -37,7 +38,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: false, showAutoSync: false),
         kg: nil,
         subscription: nil,
         syncSummary: nil,
@@ -58,7 +59,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -101,7 +102,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "淺色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: false,
@@ -144,7 +145,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "深色", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -187,7 +188,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: nil
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
         kg: .init(
             serverURL: "https://wordnexus.lol",
             isConnected: true,
@@ -230,7 +231,7 @@ enum SettingsPresenterPreviewData {
             iconBreathing: false,
             debug: .init(manualLoginHint: "僅供本地測試帳號切換使用".localized)
         ),
-        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆"),
+        preferences: .init(selectedLanguage: "繁體中文", selectedAppearance: "跟隨系統", translationSource: "English", translationTarget: "繁體中文", selectedReviewMode: "寬鬆", autoSyncEnabled: true, showAutoSync: true),
         kg: .init(
             serverURL: "http://127.0.0.1:8000",
             isConnected: false,
