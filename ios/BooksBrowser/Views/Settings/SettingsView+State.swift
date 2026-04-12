@@ -61,7 +61,9 @@ extension SettingsView {
                 selectedAppearance: appearanceStore.selection.titleKey,
                 translationSource: coordinator.translationSourceLang.nativeName,
                 translationTarget: coordinator.translationTargetLang.nativeName,
-                selectedReviewMode: reviewSettingsStore.settings.mode.displayName
+                selectedReviewMode: reviewSettingsStore.settings.mode.displayName,
+                autoSyncEnabled: autoSyncSettingsStore.isEnabled,
+                showAutoSync: authManager.isLoggedIn
             ),
             kg: authManager.isLoggedIn
                 ? .init(
@@ -146,7 +148,8 @@ extension SettingsView {
                 Task {
                     await coordinator.resync(kgService: kgService, modelContext: modelContext)
                 }
-            }
+            },
+            toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) }
         )
     }
 
