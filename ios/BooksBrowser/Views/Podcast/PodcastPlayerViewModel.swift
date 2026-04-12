@@ -64,6 +64,10 @@ final class PodcastPlayerViewModel {
         }
     }
 
+    func reportError(_ message: String) {
+        state = .error(message)
+    }
+
     // MARK: - Playback Controls
 
     func play() {

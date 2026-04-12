@@ -112,7 +112,7 @@ struct PodcastPlayerView: View {
 
         guard let audioPath = episode.localAudioPath,
               let audioURL = URL(string: audioPath) else {
-            vm.state = .error("音訊檔案不存在")
+            vm.reportError("音訊檔案不存在")
             return
         }
 
