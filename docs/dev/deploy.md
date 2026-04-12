@@ -9,7 +9,7 @@ verified_against: a5bcffc
 
 ## 核心資訊
 
-- **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`
+- **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`
 - **Domain**: `wordnexus.lol`（Porkbun DNS → Caddy → Docker FastAPI）
 - **SSH Key**: `~/.ssh/lightsail_default.pem`
 - **本地工作區**: `projects/kg/`
