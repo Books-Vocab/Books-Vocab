@@ -401,8 +401,26 @@ cmd_status() {
 # ── 指令：logs ────────────────────────────────────────────────────────────────
 cmd_logs() {
   local n="${1:-50}"
+  local tz="${KG_LOG_TZ:-}"
   info "顯示最新 $n 行日誌"
-  run_remote "docker logs knowledge-graph-api -n $n --timestamps 2>&1"
+  if [[ -n "$tz" ]]; then
+    # 透過 perl 即時轉換 ISO 8601 timestamp 到指定時區
+    run_remote "docker logs knowledge-graph-api -n $n --timestamps 2>&1" \
+      | perl -MPOSIX -MTime::Piece -pe '
+          if (/^(\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2})/) {
+            my $utc = $1;
+            $ENV{TZ} = "'"$tz"'";
+            POSIX::tzset();
+            if (my $t = eval { Time::Piece->strptime($utc, "%Y-%m-%dT%H:%M:%S") }) {
+              my $local = localtime($t->epoch);
+              my $s = $local->strftime("%Y-%m-%d %H:%M:%S %Z");
+              s/\Q$utc\E/$s/;
+            }
+          }
+        '
+  else
+    run_remote "docker logs knowledge-graph-api -n $n --timestamps 2>&1"
+  fi
 }
 
 # ── 指令：backup ──────────────────────────────────────────────────────────────
