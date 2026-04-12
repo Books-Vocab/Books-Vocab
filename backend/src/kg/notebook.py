@@ -24,6 +24,7 @@ class Notebook(SQLModel, table=True):
     id: str = SQLField(default_factory=lambda: uuid.uuid4().hex[:12], primary_key=True)
     name: str
     color: str | None = None
+    cover_pattern: str | None = None
     sort_order: int = SQLField(default=0)
     is_default: bool = SQLField(default=False)
     created_at: datetime = SQLField(default_factory=lambda: datetime.now(UTC))
@@ -63,8 +64,8 @@ class NotebookStore:
             session.refresh(nb)
             return nb
 
-    def create(self, name: str, color: str | None = None) -> Notebook:
-        nb = Notebook(name=name, color=color)
+    def create(self, name: str, color: str | None = None, cover_pattern: str | None = None) -> Notebook:
+        nb = Notebook(name=name, color=color, cover_pattern=cover_pattern)
         with Session(self.engine) as session:
             session.add(nb)
             session.commit()

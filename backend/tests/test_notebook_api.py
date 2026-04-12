@@ -262,6 +262,45 @@ def test_delete_nonexistent_notebook_fails(isolated_api):
     assert r.status_code == 400, r.text
 
 
+# ---------------------------------------------------------------------------
+# cover_pattern
+# ---------------------------------------------------------------------------
+
+
+def test_create_notebook_with_cover_pattern(isolated_api):
+    r = isolated_api.client.post(
+        "/api/notebooks",
+        json={"name": "Patterned", "cover_pattern": "dots"},
+        headers=isolated_api.headers,
+    )
+    assert r.status_code == 201, r.text
+    assert r.json()["coverPattern"] == "dots"
+
+
+def test_update_notebook_cover_pattern(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Pat"}, headers=h).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"cover_pattern": "waves"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["coverPattern"] == "waves"
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"cover_pattern": ""}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["coverPattern"] is None
+
+
+def test_update_notebook_cover_pattern_preserved_when_not_sent(isolated_api):
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Keep", "cover_pattern": "dots"}, headers=h).json()["id"]
+
+    r = client.patch(f"/api/notebooks/{nb_id}", json={"name": "Renamed"}, headers=h)
+    assert r.status_code == 200, r.text
+    assert r.json()["coverPattern"] == "dots"
+
+
 def test_delete_idempotent(isolated_api):
     """Second delete on an already-deleted notebook returns 200 with cardsDeleted=0.
 

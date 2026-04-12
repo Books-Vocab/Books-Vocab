@@ -64,6 +64,7 @@ class NotebookResponse(BaseModel):
     id: str
     name: str
     color: str | None = None
+    coverPattern: str | None = None
     sortOrder: int = 0
     isDefault: bool = False
     isDeleted: bool = False
@@ -74,12 +75,14 @@ class NotebookResponse(BaseModel):
 class NotebookCreateRequest(BaseModel):
     name: str = Field(max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
+    cover_pattern: str | None = Field(default=None, max_length=30)
 
 
 class NotebookUpdateRequest(BaseModel):
     name: str | None = Field(default=None, max_length=100)
     color: str | None = Field(default=None, max_length=20, pattern=r"^#[0-9a-fA-F]{6}$")
     sort_order: int | None = None
+    cover_pattern: str | None = Field(default=None, max_length=30)
 
 
 class CardResponse(BaseModel):
