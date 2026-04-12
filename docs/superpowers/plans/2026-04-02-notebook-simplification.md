@@ -44,7 +44,7 @@ class TestSoftDeleteByNotebook:
 ```
 
 - [ ] **Step 2: 跑 test 確認失敗**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_cards.py::TestSoftDeleteByNotebook -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_cards.py::TestSoftDeleteByNotebook -v`
 Expected: FAIL (AttributeError: 'CardStore' object has no attribute 'soft_delete_by_notebook')
 
 - [ ] **Step 3: 寫最小實作**
@@ -69,7 +69,7 @@ def soft_delete_by_notebook(self, notebook_id: str) -> int:
 ```
 
 - [ ] **Step 4: 跑 test 確認通過**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_cards.py::TestSoftDeleteByNotebook -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_cards.py::TestSoftDeleteByNotebook -v`
 
 - [ ] **Step 5: Commit**
 `api: add CardStore.soft_delete_by_notebook`
@@ -150,7 +150,7 @@ def delete_notebook(nb_id: str, user: dict = Depends(get_current_user)):
 移除舊的 import：`TrackedLLM`、`_embedding_store`、`_gemini_client`（如果不再被其他函數使用）。
 
 - [ ] **Step 4: 跑 test 確認通過**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/test_notebook_api.py -v`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/test_notebook_api.py -v`
 
 - [ ] **Step 5: Commit**
 `api: notebook delete — hard-delete cards instead of reassign`
@@ -183,7 +183,7 @@ Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/t
 3. `test_cards.py` — 刪除 `TestMoveVocabWordsNoExtraScan`
 
 - [ ] **Step 3: 跑全部 backend tests 確認無破壞**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -v --tb=short`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -v --tb=short`
 
 - [ ] **Step 4: Commit**
 `api: remove move vocabulary API and all related code`
@@ -213,7 +213,7 @@ Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ 
 2. `test_hide_link.py` — 找到並刪除 `merge_from` 相關 test functions
 
 - [ ] **Step 5: 跑全部 backend tests**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -v --tb=short`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -v --tb=short`
 
 - [ ] **Step 6: Commit**
 `api: remove merge_from and reassign_notebook dead code`
@@ -280,7 +280,7 @@ struct SelectionToolbar: View {
 2. `KGService+VocabCRUD.swift`：移除 `moveCards` 實作（77-85 行）
 
 - [ ] **Step 6: Build 驗證**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 
 - [ ] **Step 7: Commit**
 `ios: remove move vocabulary feature`
@@ -301,7 +301,7 @@ Text("此單字本及所有單字將被永久刪除，無法復原。".localized
 ```
 
 - [ ] **Step 2: Build 驗證**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 
 - [ ] **Step 3: Commit**
 `ios: update notebook delete confirmation — warn permanent deletion`

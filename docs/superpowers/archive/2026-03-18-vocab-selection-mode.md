@@ -64,7 +64,7 @@ def test_move_cards_empty_list(store):
 
 - [ ] **Step 2: 跑測試確認失敗**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/test_move_cards.py -v`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/test_move_cards.py -v`
 Expected: FAIL — `AttributeError: 'CardStore' object has no attribute 'move_cards'`
 
 - [ ] **Step 3: 實作 CardStore.move_cards**
@@ -99,7 +99,7 @@ def move_cards(self, words: list[str], from_notebook_id: str, to_notebook_id: st
 
 - [ ] **Step 4: 跑測試確認通過**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/test_move_cards.py -v`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/test_move_cards.py -v`
 Expected: 4 passed
 
 - [ ] **Step 5: Commit**
@@ -179,7 +179,7 @@ def test_move_vocab_words_empty():
 
 - [ ] **Step 2: 跑測試確認失敗**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/test_move_cards.py::test_move_vocab_words_service tests/test_move_cards.py::test_move_vocab_words_empty -v`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/test_move_cards.py::test_move_vocab_words_service tests/test_move_cards.py::test_move_vocab_words_empty -v`
 Expected: FAIL — `ImportError: cannot import name 'move_vocab_words'`
 
 - [ ] **Step 3: 實作 move_vocab_words service 函數**
@@ -229,7 +229,7 @@ def move_vocab_words(
 
 - [ ] **Step 4: 跑測試確認通過**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/test_move_cards.py -v`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/test_move_cards.py -v`
 Expected: 6 passed
 
 - [ ] **Step 5: 新增 API model 和 router**
@@ -300,7 +300,7 @@ def move_words(
 
 - [ ] **Step 6: 跑全部後端測試確認無回歸**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/ -x -q`
 Expected: all passed
 
 - [ ] **Step 7: Commit**
@@ -367,7 +367,7 @@ final class SelectionModeState {
 
 - [ ] **Step 2: 加入 Xcode project，build 確認編譯**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit**
@@ -462,7 +462,7 @@ struct SelectionToolbar: View {
 
 - [ ] **Step 2: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit**
@@ -547,7 +547,7 @@ struct NotebookPickerSheet: View {
 
 - [ ] **Step 2: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit**
@@ -610,7 +610,7 @@ func moveCards(words: [String], fromNotebook: String, toNotebook: String) async 
 
 - [ ] **Step 3: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**
@@ -698,7 +698,7 @@ func handleBatchMove(
 
 - [ ] **Step 3: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 4: Commit**
@@ -907,7 +907,7 @@ private func handleBatchMove(to notebook: Notebook) {
 
 - [ ] **Step 2: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit**
@@ -933,7 +933,7 @@ git commit -m "ios: replace swipe/context menu with unified selection mode"
 
 - [ ] **Step 2: Build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: Commit（若有變更）**
@@ -953,12 +953,12 @@ KGServing protocol 已在 Task 6 更新。
 
 - [ ] **Step 1: 全域 build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 3: 跑後端全部測試**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg/backend && python -m pytest tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg/backend && python -m pytest tests/ -x -q`
 Expected: all passed
 
 - [ ] **Step 3: Commit（若有修正）**
@@ -985,7 +985,7 @@ git commit -m "ios: finalize selection mode integration"
 
 - [ ] **Step 3: Final build**
 
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && ./ops/ios_build.sh`
+Run: `cd /Users/chenliangyu/kg && ./ops/ios_build.sh`
 Expected: exit 0
 
 - [ ] **Step 4: Final commit（如有調整）**

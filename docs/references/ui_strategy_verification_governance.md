@@ -10,8 +10,8 @@ Date: 2026-03-10
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 主設計規範：`docs/ui-design.md`
-- 開發入口：`docs/ios-dev.md`
+- 主設計規範：`docs/dev/ui-design.md`
+- 開發入口：`docs/dev/ios-dev.md`
 - 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
 - 狀態矩陣：`docs/references/ui_state_matrix.md`
 
@@ -78,9 +78,9 @@ Scope: `ios/BooksBrowser`
 讓文件真的可用，而不是持續長大。
 
 主文檔負責：
-- `docs/ui-design.md`
-- `docs/ios-dev.md`
-- `docs/architecture.md`
+- `docs/dev/ui-design.md`
+- `docs/dev/ios-dev.md`
+- `docs/dev/architecture.md`
 
 附錄負責：
 - inventory

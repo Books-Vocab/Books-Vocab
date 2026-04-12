@@ -11,7 +11,7 @@ verified_against: 05acfbf
 
 - **專案路徑**: `ios/BooksBrowser.xcodeproj`
 - **Scheme**: `BooksBrowser`
-- **工作目錄**: `projects/kg/`
+- **工作目錄**: repo root（`~/kg/`）
 - **Destinations**: iOS 17+ / macOS 15.0+（macOS Reader 暫不啟用）
 - **平台抽象**: `Platform/PlatformRepresentable.swift`、`Platform/PlatformCompatibility.swift`
 

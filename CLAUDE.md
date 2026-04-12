@@ -5,9 +5,9 @@
 | key | value |
 |-----|-------|
 | project key | `kg` |
-| local root | `projects/kg` |
-| backend | `projects/kg/backend` |
-| ios | `projects/kg/ios` |
+| local root | `.` |
+| backend | `backend` |
+| ios | `ios` |
 | remote | `~/knowledge_graph_api` |
 | domain | `wordnexus.lol` |
 | container | `knowledge-graph-api` |
@@ -53,7 +53,7 @@
 
 ## iOS 編譯（強制）
 
-唯一合法方式（從 `projects/kg/` 或任何 worktree）：
+唯一合法方式（從 repo root 或任何 worktree）：
 
 ```bash
 ./ops/ios_build.sh          # build only (Release, ~15s incremental)
