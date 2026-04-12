@@ -44,7 +44,7 @@ struct BooksBrowserApp: App {
 
         let localConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self]),
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
             cloudKitDatabase: .none
         )
 
@@ -54,11 +54,11 @@ struct BooksBrowserApp: App {
             cloudKitDatabase: .automatic
         )
 
-        let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self]
+        let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]
 
         do {
             modelContainer = try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self,
                 configurations: localConfig, cloudConfig
             )
             startupFailure = nil
@@ -83,6 +83,10 @@ struct BooksBrowserApp: App {
 
         // Always recover orphan book files (idempotent — skips files with existing records)
         Self.recoverOrphanBooks(container: modelContainer)
+
+        #if DEBUG
+        PodcastDebugSeed.seedIfNeeded(context: modelContainer.mainContext)
+        #endif
     }
 
     private static func runMigrationIfNeeded(container: ModelContainer) {
@@ -313,7 +317,7 @@ struct BooksBrowserApp: App {
 
         // First try: dual-store (local + CloudKit)
         if let container = try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self,
             configurations: localConfig, cloudConfig
         ) {
             return container
@@ -323,11 +327,11 @@ struct BooksBrowserApp: App {
         AppLog.app.warning("Dual-store retry failed — attempting single-store without CloudKit")
         let localOnlyConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self]),
+            schema: Schema([Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
             cloudKitDatabase: .none
         )
         return try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self,
             configurations: localOnlyConfig
         )
     }
@@ -335,7 +339,7 @@ struct BooksBrowserApp: App {
     private static func makeFallbackModelContainer() -> ModelContainer {
         do {
             return try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self,
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
         } catch {
