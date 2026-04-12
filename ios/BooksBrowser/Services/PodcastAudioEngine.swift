@@ -131,6 +131,7 @@ final class PodcastAudioEngine: NSObject {
     private func startDisplayLink() {
         guard displayLink == nil else { return }
         displayLink = CADisplayLink(target: self, selector: #selector(displayLinkFired))
+        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
         displayLink?.add(to: .main, forMode: .common)
     }
 

@@ -9,9 +9,9 @@ final class PodcastEpisode {
     var episodeNumber: Int
     var title: String
     var durationSec: Double
-    var audioURL: String?
+    var audioURL: String?       // "https://wordnexus.lol/api/podcast-media/{series_id}/ep_{num}/audio.mp3"
     var localAudioPath: String?
-    var subtitleURL: String?
+    var subtitleURL: String?    // "https://wordnexus.lol/api/podcasts/{series_id}/{ep_num}/subtitle"
     var localSubtitlePath: String?
     var audioAvailable: Bool = false
     var subtitleAvailable: Bool = false
