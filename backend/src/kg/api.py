@@ -84,6 +84,7 @@ from .routers import (
     vocab_router,
     web_auth_router,
 )
+from .routers.podcast import router as podcast_router
 from .service_factories import clear_store_cache
 from .settings import KGSettings, load_settings
 from .user_store import (
@@ -310,6 +311,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(translate_router)
     app.include_router(auth_router)
     app.include_router(web_auth_router)
+    app.include_router(podcast_router)
 
     # Admin router uses builder pattern (runtime closures)
     def _settings_fn() -> KGSettings:
@@ -334,6 +336,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(login_r)
     app.include_router(html_r)
     app.include_router(api_r)
+
+    # StaticFiles mount MUST be after all routers to avoid path shadowing
+    _podcasts_path = settings.podcasts_dir
+    if _podcasts_path.exists():
+        from starlette.staticfiles import StaticFiles
+        app.mount("/api/podcast-media", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
 
     return app
 

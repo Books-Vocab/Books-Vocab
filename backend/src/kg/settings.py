@@ -59,6 +59,10 @@ class KGSettings:
         return self.data_dir / "users.json.lock"
 
     @property
+    def podcasts_dir(self) -> Path:
+        return self.data_dir / "podcasts"
+
+    @property
     def app_store_notifications_file(self) -> Path:
         return self.data_dir / "app_store_notifications.ndjson"
 
