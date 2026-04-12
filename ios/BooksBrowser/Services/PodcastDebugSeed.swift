@@ -1,4 +1,4 @@
-#if DEBUG
+import Foundation
 import SwiftData
 
 enum PodcastDebugSeed {
@@ -38,4 +38,3 @@ enum PodcastDebugSeed {
         try? context.save()
     }
 }
-#endif
