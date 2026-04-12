@@ -29,8 +29,6 @@ verified_against: 4eaa92b
 | `SettingsPresenter.swift` | 196 | `struct SettingsPresenter: View`，主佈局 |
 | `SettingsPresenter+Components.swift` | 645 | 可復用元件庫：`SettingsSectionHeader` / `SettingsRow` / `SettingsNavigationRow` / `SettingsCardNavigationRow` / `SettingsActionRowLabel` 等（最大檔案）|
 | `SettingsPresenter+Quota.swift` | 52 | quota 相關 UI extension |
-| `SettingsPresenter+Sheet.swift` | 75 | `struct OptionalIntegrationInfoSheetView: View`，整合說明 sheet |
-| `SettingsPresenter+Mochi.swift` | 87 | Mochi 整合 UI extension |
 | `SettingsPresenter+Preview.swift` | 352 | preview 資料 |
 
 ### Presentation Models（UI 資料轉換）

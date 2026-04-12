@@ -31,7 +31,6 @@ struct SettingsView: View {
     var body: some View {
         SettingsPresenter(
             state: presenterState,
-            optionalIntegrationApiKey: optionalIntegrationApiKeyBinding,
             translationSourceLang: translationSourceLangBinding,
             translationTargetLang: translationTargetLangBinding,
             onTranslationLanguageChanged: { source, target in
@@ -64,14 +63,8 @@ struct SettingsView: View {
                 }
             }
         }
-        .onChange(of: coordinator.optionalIntegrationApiKey) { _, _ in
-            coordinator.scheduleOptionalIntegrationSave(authManager: authManager, kgService: kgService, toastCoordinator: toastCoordinator)
-        }
         .onAppear {
             coordinator.handleAppear()
-        }
-        .toastSheet(isPresented: $coordinator.showOptionalIntegrationInfo) {
-            OptionalIntegrationInfoSheetView()
         }
         .toastSheet(isPresented: $coordinator.showSubscriptionPaywall) {
             SubscriptionPaywallSheet()

@@ -4,10 +4,8 @@ import json
 from unittest.mock import MagicMock
 
 from kg.api_models import (
-    MochiIntegrationConfig,
     TranslationLanguageConfig,
     UserConfigRequest,
-    UserIntegrationsConfig,
 )
 
 # ===========================================================================
@@ -19,81 +17,26 @@ from kg.user_store import collect_account_ids_for_deletion
 
 class TestMergeUserConfig:
 
-    def _req(self, api_key):
-        return UserConfigRequest(
-            integrations=UserIntegrationsConfig(
-                mochi=MochiIntegrationConfig(api_key=api_key)
-            )
-        )
-
-    def test_normal_merge_mochi_api_key(self):
+    def test_translation_merge(self):
         config = {}
-        _merge_user_config(config, self._req("mk_abc"))
-        assert config["integrations"]["mochi"]["api_key"] == "mk_abc"
-
-    def test_whitespace_trimmed(self):
-        config = {}
-        _merge_user_config(config, self._req("  mk_trimmed  "))
-        assert config["integrations"]["mochi"]["api_key"] == "mk_trimmed"
-
-    def test_empty_string_deletes_key(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_old"}}}
-        _merge_user_config(config, self._req(""))
-        assert "mochi" not in config.get("integrations", {})
-
-    def test_whitespace_only_string_deletes_key(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_old"}}}
-        _merge_user_config(config, self._req("   "))
-        assert "mochi" not in config.get("integrations", {})
-
-    def test_no_update_when_integrations_none(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_keep"}}}
-        req = UserConfigRequest(integrations=None)
-        _merge_user_config(config, req)
-        assert config["integrations"]["mochi"]["api_key"] == "mk_keep"
-
-    def test_no_update_when_api_key_is_none(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_keep"}}}
-        req = UserConfigRequest(
-            integrations=UserIntegrationsConfig(
-                mochi=MochiIntegrationConfig(api_key=None)
-            )
-        )
-        _merge_user_config(config, req)
-        assert config["integrations"]["mochi"]["api_key"] == "mk_keep"
-
-    def test_translation_patch_preserves_existing_integrations(self):
-        config = {"integrations": {"mochi": {"api_key": "mk_keep"}}}
         req = UserConfigRequest(
             translation=TranslationLanguageConfig(source_lang="en", target_lang="ja")
         )
-
         _merge_user_config(config, req)
-
-        assert config["integrations"]["mochi"]["api_key"] == "mk_keep"
         assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
 
-    def test_integration_patch_preserves_existing_translation(self):
-        config = {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}
-        req = self._req("mk_new")
-
+    def test_no_update_when_translation_none(self):
+        config = {"translation": {"source_lang": "en", "target_lang": "ja"}}
+        req = UserConfigRequest(translation=None)
         _merge_user_config(config, req)
+        assert config["translation"] == {"source_lang": "en", "target_lang": "ja"}
 
-        assert config["integrations"]["mochi"]["api_key"] == "mk_new"
-        assert config["translation"] == {"source_lang": "en", "target_lang": "zh-Hant"}
-
-    def test_translation_and_integration_patch_can_merge_together(self):
-        config = {}
+    def test_translation_overwrites_existing(self):
+        config = {"translation": {"source_lang": "en", "target_lang": "ja"}}
         req = UserConfigRequest(
-            integrations=UserIntegrationsConfig(
-                mochi=MochiIntegrationConfig(api_key="mk_combo")
-            ),
-            translation=TranslationLanguageConfig(source_lang="en", target_lang="ko"),
+            translation=TranslationLanguageConfig(source_lang="en", target_lang="ko")
         )
-
         _merge_user_config(config, req)
-
-        assert config["integrations"]["mochi"]["api_key"] == "mk_combo"
         assert config["translation"] == {"source_lang": "en", "target_lang": "ko"}
 
 

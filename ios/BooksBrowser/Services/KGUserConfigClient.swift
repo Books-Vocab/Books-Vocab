@@ -2,12 +2,10 @@ import Foundation
 
 protocol KGUserConfigRemoteHandling {
     func fetchUserConfig(baseURL: URL, token: String) async throws -> KGUserConfig
-    func updateOptionalIntegrationKey(baseURL: URL, token: String, apiKey: String) async throws -> KGUserConfig
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig
 }
 
 private struct KGUserConfigPatch: Encodable {
-    let integrations: KGUserIntegrationsConfig?
     let translation: KGTranslationConfig?
 }
 
@@ -18,18 +16,8 @@ final class KGUserConfigClient: KGUserConfigRemoteHandling {
         return try await perform(request)
     }
 
-    func updateOptionalIntegrationKey(baseURL: URL, token: String, apiKey: String) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(
-            integrations: KGUserIntegrationsConfig(
-                mochi: KGOptionalIntegrationProviderConfig(api_key: apiKey)
-            ),
-            translation: nil
-        )
-        return try await update(baseURL: baseURL, token: token, patch: patch)
-    }
-
     func updateTranslationConfig(baseURL: URL, token: String, translation: KGTranslationConfig) async throws -> KGUserConfig {
-        let patch = KGUserConfigPatch(integrations: nil, translation: translation)
+        let patch = KGUserConfigPatch(translation: translation)
         return try await update(baseURL: baseURL, token: token, patch: patch)
     }
 

@@ -6,15 +6,10 @@
 "明天" = "Tomorrow";
 
 "(無法讀取)" = "(unreadable)";
-"1. 登入網頁版的 app.mochi.cards" = "1. Sign in to app.mochi.cards on the web";
-"2. 點擊右上角設定 (Settings)" = "2. Open Settings in the top-right corner";
-"3. 選擇 API 分頁" = "3. Open the API tab";
-"4. 點擊 Generate API key 並複製貼上到前面設定中" = "4. Click Generate API key and paste it into the setting above";
 "AI 翻譯・知識圖譜・雲端同步" = "AI translation, knowledge graph, and cloud sync";
 "English" = "English";
 "API 錯誤：%@" = "API error: %@";
 "KG 伺服器未連線" = "KG server unavailable";
-"KG 伺服器負責生詞 AI 增強、知識連結與可選的第三方整合。" = "The KG server handles AI enrichment, knowledge links, and optional third-party integrations.";
 "KG 伺服器錯誤：%@" = "KG server error: %@";
 "KG 字庫" = "KG Library";
 "上傳新單字" = "Upload New Words";
@@ -60,9 +55,6 @@
 "刪除帳號與雲端資料？" = "Delete account and cloud data?";
 "前往設定登入" = "Go to Settings to Sign In";
 "力" = "Forces";
-"可選" = "Optional";
-"可選。只有在你仍使用 Mochi 時才需要填寫，填入後會將生詞同步到 Mochi。" = "Optional. Only fill this in if you still use Mochi. When provided, vocabulary will sync to Mochi.";
-"如何取得 API Key？" = "How do I get an API key?";
 "字庫卡片" = "Cards";
 "字體" = "Font";
 "字級倍率" = "Font Scale";
@@ -186,7 +178,6 @@
 "閱讀設定" = "Reading Settings";
 "關聯圖需 Pro" = "Graph Requires Pro";
 "關於" = "About";
-"關於 Mochi 整合" = "About Mochi Integration";
 "關閉" = "Close";
 "關聯圖" = "Graph";
 "離線" = "Offline";
@@ -233,9 +224,7 @@
 "變化形" = "Forms";
 "升級卡片資料格式，重新同步全部卡片..." = "Upgrading card data format and re-syncing all cards...";
 "取消" = "Cancel";
-"可選整合" = "Optional Integrations";
 "危險操作" = "Danger Zone";
-"Legacy optional。只有在你仍使用 Mochi 時才需要填寫；Books & Vocab 的雲端同步與複習不依賴它。" = "Legacy optional. Only fill this in if you still use Mochi; Books & Vocab cloud sync and review do not depend on it.";
 "目前使用本地開發站。" = "Currently using the local development server.";
 "目前使用遠端正式站。" = "Currently using the production server.";
 "目前先以狀態卡與 paywall 骨架接上，購買與 restore 流程下一步接 StoreKit 2。" = "This currently ships with a status card and paywall shell; purchase and restore flows will be connected to StoreKit 2 next.";
@@ -252,7 +241,6 @@
 "用於校正 reader hit-testing。" = "Used to calibrate reader hit-testing.";
 "此功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data.";
 "總覽功能需要登入帳號後才能存取您的雲端資料。" = "Sign in to access your cloud data in the overview.";
-"關於 Mochi 整合（Legacy）" = "About Mochi Integration (Legacy)";
 "遠端正式站" = "Production Server";
 "閱讀介面風格" = "Reader Interface Style";
 "好" = "OK";
@@ -269,8 +257,6 @@
 "App Store 載入失敗" = "App Store Load Failed";
 "AI 翻譯與語境解釋" = "AI Translation and Context Explanation";
 "DEBUG 後端" = "DEBUG Backend";
-"如果你仍在使用 Mochi (mochi.cards)，Books & Vocab 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，Books & Vocab 本身的雲端同步與複習功能不依賴 Mochi。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), Books & Vocab can sync saved looked-up words there. This is an optional third-party integration, and Books & Vocab cloud sync and review do not depend on it. The API key is stored in your account settings, not as a global server setting.";
-"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 Books & Vocab 的主要功能。" = "This optional integration is kept for existing users. Leaving the API key empty does not affect Books & Vocab's core features.";
 "雲端同步與跨裝置狀態" = "Cloud Sync and Cross-Device State";
 "關聯圖與內建複習" = "Graph View and Built-in Review";
 "重新同步訂閱狀態" = "Re-sync Subscription Status";
@@ -324,8 +310,6 @@
 "登出帳號" = "Sign Out";
 "已連線" = "Connected";
 "訂閱" = "Subscription";
-"如果你仍在使用 Mochi (mochi.cards)，Books & Vocab 可以把你查過並儲存的單字同步過去。這屬於可選的第三方整合，Books & Vocab 本身的雲端同步與複習功能不依賴它。這個 API Key 會綁定在你的帳號設定，不是伺服器全域設定。" = "If you still use Mochi (mochi.cards), Books & Vocab can sync the words you looked up and saved there. This is an optional third-party integration, and Books & Vocab cloud sync and review do not depend on it. This API key is stored in your account settings, not as a server-wide setting.";
-"這是保留給既有使用者的可選整合，不填寫 API Key 也不影響 Books & Vocab 的主要功能。" = "This optional integration remains for existing users. Leaving the API key empty does not affect Books & Vocab's core features.";
 "2 個單字刪除待同步" = "2 pending deletions to sync";
 "已刪除 %@ 個單字" = "Deleted %@ words";
 "觸發背景 AI 處理" = "Trigger Background AI Processing";

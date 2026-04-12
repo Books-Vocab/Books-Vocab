@@ -66,7 +66,7 @@ def isolated_api(tmp_path):
             {
                 user_id: {"config": {}},
                 "other_user": {
-                    "config": {"integrations": {"mochi": {"api_key": "mk_live"}}},
+                    "config": {},
                     "provider": "google",
                     "email": "other@example.com",
                 },
@@ -131,15 +131,6 @@ class _DummyEmbeddingStore:
 
     def find_similar(self, card_id: str, k: int = 3):
         return []
-
-
-
-def _assert_mochi_key_matches(stored_key, expected):
-    if stored_key.startswith("enc:"):
-        from kg.secret_store import decrypt_value
-        assert decrypt_value(stored_key, app.state.kg_settings.jwt_secret) == expected
-    else:
-        assert stored_key == expected
 
 
 
@@ -398,34 +389,6 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
         _swap_settings(original_settings)
 
 
-def test_load_users_normalizes_legacy_top_level_mochi_key(tmp_path):
-    users_file = tmp_path / "users.json"
-    users_file.write_text(
-        json.dumps(
-            {
-                "legacy_user": {
-                    "mochi_api_key": "mk_legacy",
-                    "provider": "google",
-                }
-            }
-        )
-    )
-
-    original_settings = app.state.kg_settings
-    original_load = app.state.load_users
-    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
-    _swap_settings(test_settings)
-    try:
-        users = app.state.load_users()
-    finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-
-    _assert_mochi_key_matches(users["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
-    assert "mochi_api_key" not in users["legacy_user"]
-    assert "mochi_api_key" not in users["legacy_user"]["config"]
-
-
 def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
     client = isolated_api.client
     headers = isolated_api.headers
@@ -492,64 +455,6 @@ def test_get_entitlements_prefers_active_admin_grant(isolated_api):
     assert body["price_display"] is None
 
 
-def test_save_users_rewrites_legacy_top_level_mochi_key(tmp_path):
-    users_file = tmp_path / "users.json"
-
-    original_settings = app.state.kg_settings
-    original_save = app.state.save_users
-    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
-    _swap_settings(test_settings)
-    try:
-        app.state.save_users(
-            {
-                "legacy_user": {
-                    "mochi_api_key": "mk_legacy",
-                    "provider": "google",
-                }
-            }
-        )
-    finally:
-        app.state.kg_settings = original_settings
-        app.state.save_users = original_save
-
-    stored = json.loads(users_file.read_text())
-    _assert_mochi_key_matches(stored["legacy_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_legacy")
-    assert "mochi_api_key" not in stored["legacy_user"]
-    assert "mochi_api_key" not in stored["legacy_user"]["config"]
-
-
-def test_load_users_normalizes_nested_integration_mochi_key(tmp_path):
-    users_file = tmp_path / "users.json"
-    users_file.write_text(
-        json.dumps(
-            {
-                "nested_user": {
-                    "config": {
-                        "integrations": {
-                            "mochi": {
-                                "api_key": "mk_nested"
-                            }
-                        }
-                    },
-                    "provider": "google",
-                }
-            }
-        )
-    )
-
-    original_settings = app.state.kg_settings
-    original_load = app.state.load_users
-    test_settings = KGSettings(data_dir=tmp_path, jwt_secret=TEST_JWT_SECRET)
-    _swap_settings(test_settings)
-    try:
-        users = app.state.load_users()
-    finally:
-        app.state.kg_settings = original_settings
-        app.state.load_users = original_load
-
-    _assert_mochi_key_matches(users["nested_user"]["config"]["integrations"]["mochi"]["api_key"], "mk_nested")
-
-
 def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
     client = isolated_api.client
 
@@ -582,7 +487,6 @@ def test_admin_endpoints_enforce_token_and_return_stats(isolated_api):
 
             other = next(u for u in body["users"] if u["user_id"] == "other_user")
             assert other["vocab_count"] == 2
-            assert other["has_mochi"] is True
             assert other["total_input"] == 3000
             assert other["total_output"] == 500
             assert other["est_cost_usd"] == pytest.approx(0.000301, rel=1e-4)

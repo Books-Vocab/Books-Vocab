@@ -100,7 +100,6 @@ extension SettingsView {
                     summaryText: syncSummaryText
                 )
                 : nil,
-            optionalIntegration: authManager.isLoggedIn ? .init(isEnabled: true) : nil,
             about: .init(
                 version: "1.1.0",
                 developerName: "陳亮宇"
@@ -136,7 +135,6 @@ extension SettingsView {
                 subscriptionManager.activePaywallSource = .settings
                 coordinator.presentSubscriptionPaywall()
             },
-            showOptionalIntegrationInfo: coordinator.presentOptionalIntegrationInfo,
             requestDeleteAccount: coordinator.requestDeleteAccount,
             openPrivacyPolicy: { openURL(AppURLs.privacy) },
             openTermsOfService: { openURL(AppURLs.terms) },
