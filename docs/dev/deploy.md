@@ -9,7 +9,7 @@ verified_against: a5bcffc
 
 ## 核心資訊
 
-- **伺服器**: AWS Lightsail `booksbrowser-kg-api`，靜態 IP `54.95.189.179`
+- **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`
 - **Domain**: `wordnexus.lol`（Porkbun DNS → Caddy → Docker FastAPI）
 - **SSH Key**: `~/.ssh/lightsail_default.pem`
 - **本地工作區**: `projects/kg/`
@@ -108,7 +108,7 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appsto
 
 ```bash
 # 1. 安裝 Docker
-ssh ubuntu@54.95.189.179
+ssh ubuntu@13.193.212.134
 curl -fsSL https://get.docker.com -o get-docker.sh && sudo sh get-docker.sh
 sudo apt-get install docker-compose-plugin -y
 
@@ -124,7 +124,7 @@ cd ~/MPSO/projects/kg
 
 # 4. 開放防火牆
 aws lightsail put-instance-public-ports \
-  --instance-name booksbrowser-kg-api \
+  --instance-name booksbrowser-kg-api-2gb \
   --port-infos \
     fromPort=80,toPort=80,protocol=tcp \
     fromPort=443,toPort=443,protocol=tcp \
@@ -148,7 +148,7 @@ aws lightsail put-instance-public-ports \
 deploy 失敗
 │
 ├─ env-check → 遠端 .env 缺 key → ./devops.sh push-env
-├─ rsync → SSH 問題 → 測試 ssh -i ~/.ssh/lightsail_default.pem ubuntu@54.95.189.179
+├─ rsync → SSH 問題 → 測試 ssh -i ~/.ssh/lightsail_default.pem ubuntu@13.193.212.134
 ├─ docker build → Python 依賴錯誤 → ./devops.sh logs 100
 ├─ migrate → SQL 語法錯誤 → 確認 MIGRATIONS 是 idempotent
 └─ health check 非 200 → FastAPI 啟動失敗 → ./devops.sh logs 100
@@ -177,12 +177,12 @@ deploy 失敗
 
 ```bash
 ./devops.sh backup
-# 等同：scp -r ubuntu@54.95.189.179:~/knowledge_graph_api/data backups/data_YYYYMMDD
+# 等同：scp -r ubuntu@13.193.212.134:~/knowledge_graph_api/data backups/data_YYYYMMDD
 
 # 恢復
 scp -i ~/.ssh/lightsail_default.pem -r \
   ~/MPSO/projects/kg/backups/data_<日期> \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/data
+  ubuntu@13.193.212.134:~/knowledge_graph_api/data
 ./devops.sh restart
 ```
 
@@ -218,5 +218,5 @@ rsync -avz --delete \
   -e "ssh -i ~/.ssh/lightsail_default.pem" \
   --exclude '.venv' --exclude '__pycache__' --exclude '.git' \
   ~/MPSO/projects/kg/backend/ \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/
+  ubuntu@13.193.212.134:~/knowledge_graph_api/
 ```

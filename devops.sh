@@ -12,7 +12,7 @@ set -euo pipefail
 
 # ── 設定 ──────────────────────────────────────────────────────────────────────
 SSH_KEY="$HOME/.ssh/lightsail_default.pem"
-SERVER="ubuntu@54.95.189.179"
+SERVER="ubuntu@13.193.212.134"
 REMOTE_DIR="~/knowledge_graph_api"
 CONTAINER="knowledge-graph-api"
 LOCAL_DIR="$(cd "$(dirname "$0")/backend" && pwd)"
@@ -142,7 +142,7 @@ def parse_local_env(path: Path):
 
 def parse_remote_env(path: str):
     proc = subprocess.run(
-        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_default.pem"), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "ubuntu@54.95.189.179", f"cat {path}"],
+        ["ssh", "-T", "-i", os.path.expanduser("~/.ssh/lightsail_default.pem"), "-o", "StrictHostKeyChecking=accept-new", "-o", "BatchMode=yes", "ubuntu@13.193.212.134", f"cat {path}"],
         capture_output=True,
         text=True,
         check=False,

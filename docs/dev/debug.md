@@ -9,9 +9,9 @@ verified_against: a5bcffc
 
 ## 核心資訊
 
-- **伺服器 IP**: `54.95.189.179`（AWS Lightsail，ap-northeast-1a）
+- **伺服器 IP**: `13.193.212.134`（AWS Lightsail，ap-northeast-1a）
 - **Domain**: `wordnexus.lol`（Porkbun DNS A record）
-- **SSH**: `ssh -i ~/.ssh/lightsail_default.pem ubuntu@54.95.189.179`
+- **SSH**: `ssh -i ~/.ssh/lightsail_default.pem ubuntu@13.193.212.134`
 - **Stack**: Caddy（443/80）→ Docker FastAPI（localhost:8000）→ SQLite（/app/data/）
 
 ---
@@ -43,12 +43,12 @@ DNS 失敗 → DNS 問題
 
 ```bash
 # 1. DNS
-nslookup wordnexus.lol                # 應返回 54.95.189.179
+nslookup wordnexus.lol                # 應返回 13.193.212.134
 dig wordnexus.lol @8.8.8.8
 
 # 2. 防火牆
 aws lightsail describe-instance-firewall-rules \
-  --instance-name booksbrowser-kg-api --region ap-northeast-1
+  --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
 
 # 3. Caddy
 ./devops.sh run "sudo systemctl status caddy"
@@ -102,7 +102,7 @@ restart 後仍 502：
 
 ```bash
 dig wordnexus.lol @8.8.8.8
-# 期望：wordnexus.lol → 54.95.189.179
+# 期望：wordnexus.lol → 13.193.212.134
 # 不對 → 去 Porkbun 後台確認 A record
 # DNS 生效需 5-10 分鐘
 ```
@@ -113,7 +113,7 @@ dig wordnexus.lol @8.8.8.8
 
 ```bash
 aws lightsail put-instance-public-ports \
-  --instance-name booksbrowser-kg-api \
+  --instance-name booksbrowser-kg-api-2gb \
   --port-infos \
     fromPort=80,toPort=80,protocol=tcp \
     fromPort=443,toPort=443,protocol=tcp \
@@ -234,13 +234,13 @@ Step 3 Optional External Sync → Mochi API key 無效或未設定
 
 # 2. 備份當前損壞資料
 scp -i ~/.ssh/lightsail_default.pem -r \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/data \
+  ubuntu@13.193.212.134:~/knowledge_graph_api/data \
   ~/Desktop/broken_data_$(date +%Y%m%d_%H%M)
 
 # 3. 推回好的備份
 scp -i ~/.ssh/lightsail_default.pem -r \
   ~/MPSO/projects/kg/backups/data_<日期> \
-  ubuntu@54.95.189.179:~/knowledge_graph_api/data
+  ubuntu@13.193.212.134:~/knowledge_graph_api/data
 
 # 4. 重啟
 ./devops.sh restart
@@ -266,15 +266,15 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 ```bash
 # 查看實例狀態
-aws lightsail get-instance --instance-name booksbrowser-kg-api --region ap-northeast-1
+aws lightsail get-instance --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
 
 # 查看防火牆規則
 aws lightsail describe-instance-firewall-rules \
-  --instance-name booksbrowser-kg-api --region ap-northeast-1
+  --instance-name booksbrowser-kg-api-2gb --region ap-northeast-1
 
 # 臨時開放額外 port（如 8080 debug）
 aws lightsail put-instance-public-ports \
-  --instance-name booksbrowser-kg-api \
+  --instance-name booksbrowser-kg-api-2gb \
   --port-infos \
     fromPort=80,toPort=80,protocol=tcp \
     fromPort=443,toPort=443,protocol=tcp \
