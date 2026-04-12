@@ -1,52 +1,38 @@
 import SwiftUI
 
-struct VocabularyListPresenterState {
-    let tabOptions: [VocabTabOption<Int>]
-    let showsSearchField: Bool
-    let searchPrompt: String
-}
-
 struct VocabularyListPresenter<Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
 
-    let state: VocabularyListPresenterState
-    @Binding var selectedTab: Int
+    let showsSearchField: Bool
     @Binding var searchText: String
     @ViewBuilder let content: Content
 
     init(
-        state: VocabularyListPresenterState,
-        selectedTab: Binding<Int>,
+        showsSearchField: Bool,
         searchText: Binding<String>,
         @ViewBuilder content: () -> Content
     ) {
-        self.state = state
-        self._selectedTab = selectedTab
+        self.showsSearchField = showsSearchField
         self._searchText = searchText
         self.content = content()
     }
 
     var body: some View {
         VStack(spacing: 0) {
-            VocabTabSelector(options: state.tabOptions, selection: $selectedTab)
-                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.vertical, vocabSkin.metrics.pageSectionVerticalInset)
-
-            if state.showsSearchField {
+            if showsSearchField {
                 VocabSearchField(
                     text: $searchText,
-                    prompt: state.searchPrompt
+                    prompt: "搜尋單字".localized
                 )
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.pageSectionVerticalInset)
+                .padding(.vertical, vocabSkin.metrics.pageSectionVerticalInset)
                 .transition(.listInsert)
             }
 
             content
                 .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .animatePhaseChange(selectedTab)
         }
-        .animation(AppMotion.standardSpring, value: state.showsSearchField)
+        .animation(AppMotion.standardSpring, value: showsSearchField)
         .vocabCanvasBackground()
         .scrollDismissesKeyboard(.interactively)
         .onTapGesture {

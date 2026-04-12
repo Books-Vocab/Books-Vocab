@@ -12,6 +12,7 @@ struct SyncView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
+    @Environment(\.toastCoordinator) private var toastCoordinator
     @Query(filter: #Predicate<VocabularyEntry> { $0.syncStatus != 1 })
     private var pendingEntries: [VocabularyEntry]
 
@@ -24,7 +25,9 @@ struct SyncView: View {
                 state: presenterState,
                 onPrimaryAction: handlePrimaryAction,
                 onCancel: coordinator.cancelSync,
-                onShowSettings: { showSettings = true }
+                onShowSettings: { showSettings = true },
+                onPendingRowTapped: handlePendingRowTap,
+                onPendingActionTapped: handlePendingActionTap
             )
             .toastSheet(isPresented: $showSettings) {
                 SettingsView()
@@ -39,7 +42,8 @@ struct SyncView: View {
     }
 
     private var presenterState: SyncPresenterState {
-        SyncPresenterState(
+        let filtered = pendingEntries.filter { $0.syncAction != .delete || $0.shouldUploadOnNextSync }
+        return SyncPresenterState(
             isLoggedIn: authManager.isLoggedIn,
             isConnected: kgService.isConnected,
             phase: coordinator.phase,
@@ -48,7 +52,15 @@ struct SyncView: View {
             addCount: addActions.count,
             deleteCount: deleteActions.count,
             steps: coordinator.steps,
-            summaryText: coordinator.summaryText
+            summaryText: coordinator.summaryText,
+            pendingRows: filtered.map { entry in
+                PendingVocabPresenterState.RowItem(
+                    id: entry.id,
+                    row: entry.wordRowViewData(),
+                    actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
+                    actionTone: entry.syncAction == .delete ? .secondary : .tertiary
+                )
+            }
         )
     }
 
@@ -75,6 +87,20 @@ struct SyncView: View {
         }
     }
 
+    private func handlePendingRowTap(_ entryID: UUID) {
+        // In SyncView we don't navigate to detail — just a visual acknowledgement
+    }
+
+    private func handlePendingActionTap(_ entryID: UUID) {
+        guard let entry = pendingEntries.first(where: { $0.id == entryID }) else { return }
+        if entry.syncAction == .delete {
+            entry.markSynced()
+        } else {
+            modelContext.delete(entry)
+        }
+        modelContext.safeSaveWithToast(toastCoordinator)
+    }
+
     private func refreshStepLayout() {
         coordinator.resetForRetry(
             deleteCount: deleteActions.count,
@@ -87,8 +113,6 @@ struct SyncView: View {
         refreshStepLayout()
     }
 }
-
-// MARK: - Preview
 
 #Preview("SyncView / Ready") {
     AppThemeContainer {

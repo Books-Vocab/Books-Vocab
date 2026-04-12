@@ -47,6 +47,14 @@ enum LayoutMode: Equatable {
         }
     }
 
+    /// 單字本書架 grid item
+    var notebookGridItem: GridItem {
+        switch self {
+        case .compact: return GridItem(.adaptive(minimum: 160, maximum: 200), spacing: AppShellMetrics.sectionSpacing)
+        case .regular: return GridItem(.adaptive(minimum: 200, maximum: 260), spacing: AppShellMetrics.sectionSpacing)
+        }
+    }
+
     #if os(iOS)
     /// Reader header title max width
     var readerTitleMaxWidth: CGFloat {
