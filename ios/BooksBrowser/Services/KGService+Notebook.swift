@@ -12,9 +12,10 @@ extension KGService {
         try await authenticatedDecode([KGNotebook].self, path: "api/notebooks")
     }
 
-    func createNotebook(name: String, color: String? = nil) async throws -> KGNotebook {
+    func createNotebook(name: String, color: String? = nil, coverPattern: String? = nil) async throws -> KGNotebook {
         var body: [String: String] = ["name": name]
         if let color { body["color"] = color }
+        if let coverPattern { body["cover_pattern"] = coverPattern }
         return try await authenticatedDecode(
             KGNotebook.self,
             path: "api/notebooks",
@@ -23,10 +24,11 @@ extension KGService {
         )
     }
 
-    func updateNotebook(id: String, name: String? = nil, color: String? = nil) async throws -> KGNotebook {
+    func updateNotebook(id: String, name: String? = nil, color: String? = nil, coverPattern: String? = nil) async throws -> KGNotebook {
         var body: [String: String] = [:]
         if let name { body["name"] = name }
         if let color { body["color"] = color }
+        if let coverPattern { body["cover_pattern"] = coverPattern }
         return try await authenticatedDecode(
             KGNotebook.self,
             path: "api/notebooks/\(id)",
