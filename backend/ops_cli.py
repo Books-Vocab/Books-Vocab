@@ -225,7 +225,7 @@ def cmd_active_users(args: argparse.Namespace) -> None:
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
     uid = _resolve_uid(args.uid)
-    sql = args.sql
+    sql = " ".join(args.sql)  # REMAINDER captures split words; rejoin
     db_path = _cards_db(uid)
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
@@ -287,7 +287,7 @@ def main() -> None:
     # db-query
     p = sub.add_parser("db-query", help="對用戶 cards.db 跑任意 SQL")
     p.add_argument("uid", help="User ID")
-    p.add_argument("sql", help="SQL 查詢語句")
+    p.add_argument("sql", nargs=argparse.REMAINDER, help="SQL 查詢語句（不需要引號包覆）")
     p.set_defaults(func=cmd_db_query)
 
     # analyze
