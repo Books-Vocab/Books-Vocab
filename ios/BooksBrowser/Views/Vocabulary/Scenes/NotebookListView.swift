@@ -2,7 +2,7 @@
 //  NotebookListView.swift
 //  BooksBrowser
 //
-//  單字本列表 — 生詞庫 tab 的入口頁
+//  單字本書架 — 生詞庫 tab 的入口頁
 
 import SwiftUI
 import SwiftData
@@ -11,7 +11,6 @@ import TipKit
 struct NotebookListView: View {
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
-    /// Predicate 對應 shouldAppearInKnowledgeList：synced + 非 delete + 非 archived
     @Query private var allEntries: [VocabularyEntry]
     @Query private var pendingEntries: [VocabularyEntry]
     @Environment(\.modelContext) private var modelContext
@@ -44,74 +43,97 @@ struct NotebookListView: View {
     @State private var detailState = DetailRouter()
     @State private var isEditingDetailEntry = false
 
+    private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
+
     var body: some View {
-        // Single-pass: compute cardCounts & dueCounts together
-        let (cardCounts, dueCounts) = Self.computeCounts(allEntries)
-        let totalDueCount = dueCounts.values.reduce(0, +)
-        let filteredDueEntries = Self.computeFilteredDueEntries(allEntries, filter: reviewFilter)
-        let filteredDueCount = filteredDueEntries.count
+        let stats = Self.computeNotebookStats(allEntries, pendingEntries: pendingEntries)
+        let (filteredDueEntries, filteredUnlearnedEntries) = Self.computeFilteredEntries(allEntries, filter: reviewFilter)
+        let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
+        let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
 
         NavigationStack(path: $navigationPath) {
             ScrollView {
-                LazyVStack(spacing: 0) {
+                VStack(spacing: skin.spacing.sectionGap) {
                     if !pendingEntries.isEmpty {
                         TipView(SyncPendingTip())
                             .padding(.horizontal, skin.metrics.listRowHorizontalInset)
-                            .padding(.bottom, skin.spacing.sectionGap)
                     }
 
-                    // Cross-notebook review section
-                    if totalDueCount > 0 {
-                        reviewBannerContent(filteredDueCount: filteredDueCount, filteredDueEntries: filteredDueEntries)
-                            .padding(.bottom, skin.spacing.sectionGap)
+                    if totalDueCount > 0 || totalUnlearnedCount > 0 {
+                        VocabReviewBanner(
+                            dueCount: filteredDueEntries.count,
+                            unlearnedCount: filteredUnlearnedEntries.count,
+                            onStartDue: { startReview(with: filteredDueEntries) },
+                            onStartUnlearned: { startReview(with: filteredUnlearnedEntries) }
+                        ) {
+                            NotebookFilterChip(filter: $reviewFilter)
+                        }
+                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
 
                     if notebooks.isEmpty {
                         emptyState
                     } else {
-                        ForEach(notebooks) { notebook in
-                            NavigationLink(value: notebook.remoteId) {
-                                NotebookRow(
-                                    name: notebook.name,
-                                    cardCount: cardCounts[notebook.remoteId] ?? 0,
-                                    dueCount: dueCounts[notebook.remoteId] ?? 0,
-                                    isActive: notebook.remoteId == activeNotebookId,
-                                    color: notebook.color.flatMap { Color(hex: $0) }
-                                )
-                            }
-                            .platformListButtonStyle()
-                            .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
-                            .contextMenu {
-                                Button {
-                                    setActiveNotebook(notebook.remoteId)
-                                } label: {
-                                    Label("設為使用中".localized, systemImage: "checkmark.circle")
+                        LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
+                            ForEach(notebooks) { notebook in
+                                let s = stats[notebook.remoteId] ?? NotebookStats()
+                                NavigationLink(value: notebook.remoteId) {
+                                    NotebookCard(data: NotebookCardData(
+                                        name: notebook.name,
+                                        color: notebook.color,
+                                        coverPattern: notebook.coverPattern,
+                                        coverImagePath: notebook.coverImagePath,
+                                        cardCount: s.cardCount,
+                                        dueCount: s.dueCount,
+                                        unlearnedCount: s.unlearnedCount,
+                                        reviewedCount: s.reviewedCount,
+                                        pendingCount: s.pendingCount,
+                                        lastActivity: s.lastActivity,
+                                        isActive: notebook.remoteId == activeNotebookId
+                                    ))
                                 }
-
-                                Button {
-                                    editingNotebook = notebook
-                                } label: {
-                                    Label("編輯".localized, systemImage: "pencil")
-                                }
-
-                                if !notebook.isDefault {
-                                    Divider()
-                                    Button(role: .destructive) {
-                                        notebookToDelete = notebook
+                                .buttonStyle(.plain)
+                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
+                                .contextMenu {
+                                    Button {
+                                        setActiveNotebook(notebook.remoteId)
                                     } label: {
-                                        Label("刪除".localized, systemImage: "trash")
+                                        Label("設為使用中".localized, systemImage: "checkmark.circle")
+                                    }
+
+                                    Button {
+                                        editingNotebook = notebook
+                                    } label: {
+                                        Label("編輯".localized, systemImage: "pencil")
+                                    }
+
+                                    Divider()
+
+                                    exportMenu(for: notebook)
+
+                                    if !notebook.isDefault {
+                                        Divider()
+                                        Button(role: .destructive) {
+                                            notebookToDelete = notebook
+                                        } label: {
+                                            Label("刪除".localized, systemImage: "trash")
+                                        }
                                     }
                                 }
                             }
 
-                            if notebook.id != notebooks.last?.id {
-                                Divider()
-                                    .padding(.leading, skin.metrics.listRowHorizontalInset)
+                            if authManager.isLoggedIn {
+                                Button { showCreateSheet = true } label: {
+                                    NotebookAddCard()
+                                }
+                                .buttonStyle(.plain)
                             }
                         }
+                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
                 }
-                .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                .padding(.top, skin.metrics.pageTopInset)
+                .padding(.bottom, skin.metrics.pageBottomInset)
             }
             .background(skin.palette.pageBackground)
             .navigationTitle("單字本".localized)
@@ -138,16 +160,43 @@ struct NotebookListView: View {
                 VocabularyListView(notebookId: notebookId)
             }
             .toastSheet(isPresented: $showCreateSheet) {
-                NotebookEditSheet(mode: .create) { name, color in
+                NotebookEditSheet(mode: .create) { appearance in
                     Task { @MainActor in
-                        await coordinator.createNotebook(name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
+                        await coordinator.createNotebook(
+                            name: appearance.name,
+                            color: appearance.color,
+                            coverPattern: appearance.coverPattern,
+                            modelContext: modelContext,
+                            kgService: kgService,
+                            toastCoordinator: toastCoordinator
+                        )
                     }
                 }
             }
             .toastSheet(item: $editingNotebook) { notebook in
-                NotebookEditSheet(mode: .edit(name: notebook.name, color: notebook.color)) { name, color in
+                NotebookEditSheet(
+                    mode: .edit(
+                        name: notebook.name,
+                        color: notebook.color,
+                        coverPattern: notebook.coverPattern,
+                        coverImagePath: notebook.coverImagePath
+                    )
+                ) { appearance in
+                    if let imgPath = appearance.coverImagePath, imgPath != notebook.coverImagePath {
+                        notebook.coverImagePath = imgPath
+                    } else if appearance.coverImagePath == nil && notebook.coverImagePath != nil {
+                        notebook.coverImagePath = nil
+                    }
                     Task { @MainActor in
-                        await coordinator.updateNotebook(notebook, name: name, color: color, modelContext: modelContext, kgService: kgService, toastCoordinator: toastCoordinator)
+                        await coordinator.updateNotebook(
+                            notebook,
+                            name: appearance.name,
+                            color: appearance.color,
+                            coverPattern: appearance.coverPattern,
+                            modelContext: modelContext,
+                            kgService: kgService,
+                            toastCoordinator: toastCoordinator
+                        )
                     }
                 }
             }
@@ -159,6 +208,9 @@ struct NotebookListView: View {
             }
             .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
+            }
+            .toastSheet(item: $coordinator.exportURL) { url in
+                PlatformShareView(url: url)
             }
             .task(id: authManager.isLoggedIn) {
                 await coordinator.reconcileNotebooks(
@@ -201,7 +253,7 @@ struct NotebookListView: View {
         .environment(\.detailRouter, detailState)
         .modifier(DetailPresentation(
             detailState: detailState,
-            layoutMode: LayoutMode(horizontalSizeClass: sizeClass),
+            layoutMode: layoutMode,
             allEntries: allEntries,
             currentUserID: authManager.userId,
             isEditingDetailEntry: $isEditingDetailEntry,
@@ -209,39 +261,36 @@ struct NotebookListView: View {
         ))
     }
 
-    // MARK: - Review Banner
+    // MARK: - Export Menu
 
     @ViewBuilder
-    private func reviewBannerContent(filteredDueCount: Int, filteredDueEntries: [VocabularyEntry]) -> some View {
-        VStack(spacing: skin.spacing.inlineGap) {
-            HStack {
-                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
-                    Text("今日複習".localized)
-                        .font(skin.typography.captionStrong)
-                        .foregroundStyle(skin.palette.primaryText)
-
-                    Text(L10n.format("%@ 張卡片到期", "\(filteredDueCount)"))
-                        .font(skin.typography.caption)
-                        .foregroundStyle(skin.palette.secondaryText)
+    private func exportMenu(for notebook: Notebook) -> some View {
+        let entries = allEntries.filter { $0.notebookId == notebook.remoteId }
+        Menu {
+            Button {
+                if let url = VocabularyExporter.exportAsCSV(entries: entries) {
+                    coordinator.exportURL = url
                 }
-
-                Spacer()
-
-                NotebookFilterChip(filter: $reviewFilter)
-
-                Button {
-                    startReview(with: filteredDueEntries)
-                } label: {
-                    Label("開始".localized, systemImage: "play.fill")
-                        .font(skin.typography.captionStrong)
-                }
-                .buttonStyle(.borderedProminent)
-                .controlSize(.small)
-                .disabled(filteredDueEntries.isEmpty)
+            } label: {
+                Label("CSV", systemImage: "tablecells")
             }
+            Button {
+                if let url = VocabularyExporter.exportAsJSON(entries: entries) {
+                    coordinator.exportURL = url
+                }
+            } label: {
+                Label("JSON", systemImage: "curlybraces")
+            }
+            Button {
+                if let url = VocabularyExporter.exportAsAnki(entries: entries) {
+                    coordinator.exportURL = url
+                }
+            } label: {
+                Label("Anki TSV", systemImage: "rectangle.stack")
+            }
+        } label: {
+            Label("匯出".localized, systemImage: "square.and.arrow.up")
         }
-        .padding(skin.spacing.cardPadding)
-        .background(skin.palette.cardBackground, in: RoundedRectangle(cornerRadius: skin.radii.card))
     }
 
     // MARK: - Empty State
@@ -278,35 +327,58 @@ struct NotebookListView: View {
         activeReviewSession = TodayReviewSession(entries: entries)
     }
 
-    // MARK: - Card Count Helpers (single-pass O(n))
+    // MARK: - Stats (single-pass O(n))
 
-    /// Returns (cardCounts, dueCounts) in one iteration over allEntries.
-    private static func computeCounts(_ entries: [VocabularyEntry]) -> ([String: Int], [String: Int]) {
-        let now = Date()
-        var card: [String: Int] = [:]
-        var due: [String: Int] = [:]
-        for entry in entries {
-            card[entry.notebookId, default: 0] += 1
-            if entry.nextReviewAt <= now {
-                due[entry.notebookId, default: 0] += 1
-            }
-        }
-        return (card, due)
+    struct NotebookStats {
+        var cardCount: Int = 0
+        var dueCount: Int = 0
+        var unlearnedCount: Int = 0
+        var reviewedCount: Int = 0
+        var pendingCount: Int = 0
+        var lastActivity: Date?
     }
 
-    private static func computeFilteredDueEntries(_ entries: [VocabularyEntry], filter: NotebookFilter) -> [VocabularyEntry] {
+    static func computeNotebookStats(_ entries: [VocabularyEntry], pendingEntries: [VocabularyEntry]) -> [String: NotebookStats] {
         let now = Date()
-        return entries.filter {
-            $0.nextReviewAt <= now &&
-            filter.matches($0.notebookId)
+        var result: [String: NotebookStats] = [:]
+        for entry in entries {
+            result[entry.notebookId, default: NotebookStats()].cardCount += 1
+            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
+                result[entry.notebookId, default: NotebookStats()].dueCount += 1
+            } else if entry.reviewCount == 0 {
+                result[entry.notebookId, default: NotebookStats()].unlearnedCount += 1
+            } else {
+                result[entry.notebookId, default: NotebookStats()].reviewedCount += 1
+            }
+            let activity = entry.lastReviewedAt ?? entry.dateAdded
+            if result[entry.notebookId]?.lastActivity == nil || activity > result[entry.notebookId]!.lastActivity! {
+                result[entry.notebookId, default: NotebookStats()].lastActivity = activity
+            }
         }
+        for entry in pendingEntries {
+            result[entry.notebookId, default: NotebookStats()].pendingCount += 1
+        }
+        return result
+    }
+
+    static func computeFilteredEntries(_ entries: [VocabularyEntry], filter: NotebookFilter) -> ([VocabularyEntry], [VocabularyEntry]) {
+        let now = Date()
+        var due: [VocabularyEntry] = []
+        var unlearned: [VocabularyEntry] = []
+        for entry in entries where filter.matches(entry.notebookId) {
+            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
+                due.append(entry)
+            } else if entry.reviewCount == 0 {
+                unlearned.append(entry)
+            }
+        }
+        return (due, unlearned)
     }
 
     private func setActiveNotebook(_ id: String) {
         activeNotebookId = id
         UserDefaults.standard.set(id, forKey: "activeNotebookId")
     }
-
 }
 
 // MARK: - Detail Presentation

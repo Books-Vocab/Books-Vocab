@@ -16,8 +16,8 @@ protocol KGServing: AnyObject {
     @discardableResult
     func pullCardsToLocal(container: ModelContainer, progress: ((String, Int, Int) -> Void)?, notebookId: String?) async throws -> Bool
     func fetchNotebooks() async throws -> [KGNotebook]
-    func createNotebook(name: String, color: String?) async throws -> KGNotebook
-    func updateNotebook(id: String, name: String?, color: String?) async throws -> KGNotebook
+    func createNotebook(name: String, color: String?, coverPattern: String?) async throws -> KGNotebook
+    func updateNotebook(id: String, name: String?, color: String?, coverPattern: String?) async throws -> KGNotebook
     func deleteNotebook(id: String) async throws
     func fetchUserConfig() async throws -> KGUserConfig
     func fetchEntitlements() async throws -> KGEntitlements
