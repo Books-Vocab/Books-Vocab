@@ -75,8 +75,16 @@ aws lightsail describe-instance-firewall-rules \
 **修復：Caddyfile 配置錯誤**
 ```bash
 ./devops.sh run "cat /etc/caddy/Caddyfile"
-# 正確格式：wordnexus.lol { reverse_proxy localhost:8000 }
-./devops.sh run "echo 'wordnexus.lol { reverse_proxy localhost:8000 }' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl restart caddy"
+# 正確格式（含 Claude Gateway 路由）：
+./devops.sh run "cat <<'CADDY' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl reload caddy
+wordnexus.lol {
+    handle /claude/* {
+        uri strip_prefix /claude
+        reverse_proxy localhost:8090
+    }
+    reverse_proxy localhost:8000
+}
+CADDY"
 ```
 
 ---
