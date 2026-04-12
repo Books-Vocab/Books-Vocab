@@ -131,14 +131,21 @@ for m in re.finditer(
         "subtitleAvailable": os.path.isfile(os.path.join(ep_dir, "subtitle.srt")),
     })
 
+from datetime import datetime, timezone
+total_duration = sum(e["durationSec"] for e in episodes)
+now = datetime.now(timezone.utc).isoformat(timespec="seconds")
+
 metadata = {
-    "seriesId": series_id,
+    "id": series_id,
     "title": title,
     "author": author,
     "hostNames": host_names,
     "color": "#5B8C5A",
     "coverPattern": "waves",
+    "totalDurationSec": total_duration,
     "episodes": episodes,
+    "createdAt": now,
+    "updatedAt": now,
 }
 
 out_path = os.path.join(staging_dir, "metadata.json")
