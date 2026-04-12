@@ -10,10 +10,10 @@ Date: 2026-03-09
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 設計規範主文檔：`docs/ui-design.md`
+- 設計規範主文檔：`docs/dev/ui-design.md`
 - 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
-- 開發入口：`docs/ios-dev.md`
-- App 架構脈絡：`docs/architecture.md`
+- 開發入口：`docs/dev/ios-dev.md`
+- App 架構脈絡：`docs/dev/architecture.md`
 
 ## 這份文件是幹嘛的
 

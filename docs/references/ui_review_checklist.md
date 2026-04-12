@@ -10,7 +10,7 @@ Date: 2026-03-10
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 設計規範主文檔：`docs/ui-design.md`
+- 設計規範主文檔：`docs/dev/ui-design.md`
 - 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
 - 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
 

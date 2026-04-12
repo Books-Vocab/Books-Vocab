@@ -154,7 +154,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 # 3. Restore good backup
 scp -i ~/.ssh/lightsail_default.pem -r \
-  ~/MPSO/projects/kg/backups/data_<date> \
+  ~/kg/backups/data_<date> \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data
 
 # 4. Restart

@@ -47,7 +47,7 @@ def cleanup_for_card(self, card_id: str, *, remove_blocked: bool = False) -> dic
 | `:418-419` | move | `deprecate + remove_candidates` on source_graph | `source_graph.cleanup_for_card(card.id)` |
 
 - [ ] **Step 3: 跑測試**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 
 ---
 
@@ -117,7 +117,7 @@ cards, _ = _resolve_stores(user, notebook_id, card_store_factory=card_store_fact
 其模式（雙 notebook 驗證、guard 條件 `if notebook_store_factory is not None` 而非 `notebook_id is not None`、雙 graph 建構）與 helper 不相容。保持原樣。
 
 - [ ] **Step 6: 跑測試**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 
 ---
 
@@ -180,7 +180,7 @@ async def run_explain_translate(req, user, *, client, logger=None, model="gemini
 ```
 
 - [ ] **Step 3: 跑測試**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 
 ---
 
@@ -245,7 +245,7 @@ def admin_xxx():
 每個函數移除 `token`, `admin_token`, `authorization`, `cookie_token` 四個參數，刪除 `require_admin(...)` 調用行。同時將 2 處 `HTTPException(404, "User not found")` 改為 `NotFoundError("User", user_id)`。
 
 - [ ] **Step 6: 跑測試**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 
 ---
 
@@ -302,14 +302,14 @@ raise QuotaExceededError(quota["reset_seconds"], headers={"X-Quota-Fraction": st
 ```
 
 - [ ] **Step 5: 跑測試**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 
 ---
 
 ### Task 6: 全量回歸驗證
 
 - [ ] **Step 1: 全量 pytest**
-Run: `cd /Users/chenliangyu/MPSO/projects/kg && python -m pytest backend/tests/ -x -q`
+Run: `cd /Users/chenliangyu/kg && python -m pytest backend/tests/ -x -q`
 Expected: ALL PASS
 
 - [ ] **Step 2: Commit**

@@ -23,7 +23,7 @@ verified_against: a5bcffc
 curl -s https://wordnexus.lol/api/system/info | python3 -m json.tool
 
 # 詳細
-cd ~/MPSO/projects/kg
+cd ~/kg
 ./ops/devops_kg_safe.sh status   # HTTP code + 部署版本 + 部署記錄
 ./ops/devops_kg_safe.sh logs 50
 ```
@@ -247,7 +247,7 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 # 3. 推回好的備份
 scp -i ~/.ssh/lightsail_default.pem -r \
-  ~/MPSO/projects/kg/backups/data_<日期> \
+  ~/kg/backups/data_<日期> \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data
 
 # 4. 重啟
