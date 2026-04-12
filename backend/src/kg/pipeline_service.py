@@ -24,6 +24,16 @@ def is_pipeline_running(user_id: str) -> bool:
         return _PIPELINE_RUNNING.get(user_id, False)
 
 
+def _touch_linked_cards(cards: Any, all_links: list[tuple]) -> None:
+    """Bump updated_at for all cards involved in newly created links.
+
+    This ensures incremental sync (filtered by updated_at) delivers the
+    new links to iOS clients.
+    """
+    touched_ids = {cid for from_id, to_id, *_ in all_links for cid in (from_id, to_id)}
+    cards.batch_touch(touched_ids)
+
+
 async def _step_enrich(
     uid: str,
     user: UserRecord,
@@ -304,12 +314,24 @@ async def _step_embed_and_judge(
                       uid, processed, len(futures), len(unprocessed_ids))
         if all_links:
             graph.batch_add_links(all_links)
+            try:
+                _touch_linked_cards(cards, all_links)
+            except Exception:
+                logger.warning("[%s] Failed to touch cards after partial link creation", uid)
         raise
     finally:
         executor.shutdown(wait=False)
 
     # Batch create all links
     created = graph.batch_add_links(all_links) if all_links else []
+
+    # Touch all cards involved in new links so incremental sync picks them up.
+    # Without this, cards with new pipeline-created links keep their old
+    # updated_at and iOS incremental sync (filtered by updated_at) never
+    # sends the new links to the client.
+    if created:
+        _touch_linked_cards(cards, all_links)
+
     logger.info("[%s] Created %d links from %d cards", uid, len(created), len(pending))
     return len(created)
 
