@@ -97,6 +97,9 @@ struct BookshelfView: View {
             .sheet(isPresented: $showLoginSheet) {
                 LoginSheet()
             }
+            .task {
+                await PodcastSyncService().syncAll(context: modelContext)
+            }
         }
     }
 
@@ -207,9 +210,6 @@ struct BookshelfView: View {
                 .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .refreshable {
-            await PodcastSyncService().syncAll(context: modelContext)
-        }
-        .task {
             await PodcastSyncService().syncAll(context: modelContext)
         }
         .navigationDestination(for: Book.self) { book in
