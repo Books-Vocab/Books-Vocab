@@ -54,58 +54,50 @@ struct NotebookCard: View {
                     Text("使用中".localized)
                         .font(skin.typography.monoLabel)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 6)
-                        .padding(.vertical, 2)
-                        .background(.white.opacity(0.25), in: Capsule(style: .continuous))
-                        .padding(6)
+                        .padding(.horizontal, 8)
+                        .padding(.vertical, 3)
+                        .background(skin.palette.accent, in: Capsule(style: .continuous))
+                        .padding(8)
                 }
             }
 
             VStack(alignment: .leading, spacing: skin.spacing.microGap) {
-                Label("\(data.cardCount) 個單字", systemImage: "character.book.closed")
-                    .font(skin.typography.caption)
-                    .foregroundStyle(skin.palette.secondaryText)
+                HStack {
+                    Label("\(data.cardCount) 個單字", systemImage: "character.book.closed")
+                        .font(skin.typography.caption)
+                        .foregroundStyle(skin.palette.secondaryText)
+
+                    Spacer()
+
+                    if data.pendingCount > 0 {
+                        Label("\(data.pendingCount)", systemImage: "arrow.triangle.2.circlepath")
+                            .font(skin.typography.monoLabel)
+                            .foregroundStyle(skin.palette.tertiaryText)
+                    }
+                }
 
                 if totalSynced > 0 {
                     ProgressCapsule(
                         progress: reviewProgress,
-                        label: "\(Int(reviewProgress * 100))%",
+                        label: nil,
                         fillColor: skin.palette.accent,
                         trackColor: skin.palette.progressBarBackground,
                         height: 5
                     )
                 }
 
-                HStack(spacing: skin.spacing.microGap) {
-                    if data.dueCount > 0 {
-                        Label("\(data.dueCount) 到期", systemImage: "clock.badge")
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.warning)
-                    }
-                    if data.unlearnedCount > 0 {
-                        Label("\(data.unlearnedCount) 未學", systemImage: "sparkles")
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.secondaryText)
-                    }
-                }
-
-                HStack(spacing: skin.spacing.microGap) {
-                    if data.pendingCount > 0 {
-                        Label("\(data.pendingCount) 待同步", systemImage: "arrow.triangle.2.circlepath")
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.tertiaryText)
-                    } else {
-                        Label("已同步", systemImage: "checkmark.circle")
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.success)
-                    }
-
-                    if let lastActivity = data.lastActivity {
-                        Text("·")
-                            .foregroundStyle(skin.palette.quaternaryText)
-                        Text(lastActivity, style: .relative)
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.quaternaryText)
+                if data.dueCount > 0 || data.unlearnedCount > 0 {
+                    HStack(spacing: skin.spacing.inlineGap) {
+                        if data.dueCount > 0 {
+                            Label("\(data.dueCount) 到期", systemImage: "clock.badge")
+                                .font(skin.typography.monoLabel)
+                                .foregroundStyle(skin.palette.warning)
+                        }
+                        if data.unlearnedCount > 0 {
+                            Label("\(data.unlearnedCount) 未學", systemImage: "sparkles")
+                                .font(skin.typography.monoLabel)
+                                .foregroundStyle(skin.palette.secondaryText)
+                        }
                     }
                 }
             }

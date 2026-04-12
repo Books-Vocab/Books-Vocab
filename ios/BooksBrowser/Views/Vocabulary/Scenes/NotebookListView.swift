@@ -64,7 +64,8 @@ struct NotebookListView: View {
                             dueCount: filteredDueEntries.count,
                             unlearnedCount: filteredUnlearnedEntries.count,
                             onStartDue: { startReview(with: filteredDueEntries) },
-                            onStartUnlearned: { startReview(with: filteredUnlearnedEntries) }
+                            onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                            onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
                         ) {
                             NotebookFilterChip(filter: $reviewFilter)
                         }
