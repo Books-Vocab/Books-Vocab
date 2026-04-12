@@ -5,9 +5,9 @@ This directory is the project workspace for KG API + iOS app development and mai
 
 ## Identity
 - project key: `kg`
-- local root: `projects/kg`
-- backend root: `projects/kg/backend`
-- ios root: `projects/kg/ios`
+- local root: `.`
+- backend root: `backend`
+- ios root: `ios`
 - API remote root: `~/knowledge_graph_api`
 - domain: `wordnexus.lol`
 - API container: `knowledge-graph-api`
@@ -72,7 +72,7 @@ Use this section as the "what already exists" checklist before proposing or chan
 
 ## iOS 編譯 SOP（強制）
 
-**唯一合法的編譯方式**（從 `projects/kg/` 或任何 worktree 執行）：
+**唯一合法的編譯方式**（從 repo root 或任何 worktree 執行）：
 
 ```bash
 ./ops/ios_build.sh

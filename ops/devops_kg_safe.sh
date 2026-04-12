@@ -38,7 +38,7 @@ preflight() {
   echo "project   : kg"
   echo "root      : $ROOT_DIR"
   echo "base      : $BASE"
-  echo "server    : ubuntu@54.95.189.179"
+  echo "server    : ubuntu@13.193.212.134"
   echo "remote    : ~/knowledge_graph_api"
   echo "domain    : wordnexus.lol"
   echo "container : knowledge-graph-api"

@@ -17,6 +17,10 @@ certs/
 
 # Runtime data
 backend/data/*.db
+*.npy
+
+# Python venv
+.venv/
 
 # Python cache in root if any
 __pycache__/
