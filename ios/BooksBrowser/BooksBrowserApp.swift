@@ -44,7 +44,7 @@ struct BooksBrowserApp: App {
 
         let localConfig = ModelConfiguration(
             "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
+            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]),
             cloudKitDatabase: .none
         )
 

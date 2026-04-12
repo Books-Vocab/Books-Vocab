@@ -1,8 +1,15 @@
 import SwiftUI
+import SwiftData
 
 struct PodcastEpisodeRow: View {
     let episode: PodcastEpisode
+    let progress: PodcastProgress?
     @Environment(\.vocabSkin) private var skin
+
+    init(episode: PodcastEpisode, progress: PodcastProgress? = nil) {
+        self.episode = episode
+        self.progress = progress
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.spacing.rowContentSpacing) {
@@ -26,6 +33,26 @@ struct PodcastEpisodeRow: View {
                         .font(.caption)
                         .foregroundStyle(skin.palette.success)
                 }
+
+                Spacer()
+
+                if let progress {
+                    if progress.completed {
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.caption)
+                            .foregroundStyle(skin.palette.success)
+                    }
+                }
+            }
+
+            if let progress, !progress.completed, episode.durationSec > 0, progress.lastPlayedTime > 0 {
+                ProgressCapsule(
+                    progress: progress.lastPlayedTime / episode.durationSec,
+                    label: nil,
+                    fillColor: skin.palette.accent,
+                    trackColor: skin.palette.accent.opacity(0.15),
+                    height: 4
+                )
             }
         }
         .padding(.vertical, skin.spacing.compactRowVerticalPadding)

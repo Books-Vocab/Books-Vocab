@@ -66,6 +66,10 @@ final class PodcastPlayerViewModel {
         }
     }
 
+    func setLoading() {
+        state = .loading
+    }
+
     func reportError(_ message: String) {
         state = .error(message)
     }
