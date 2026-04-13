@@ -36,7 +36,11 @@ Read in this order:
 
 ---
 *[Takeaway line]*
+
+<!-- END_OF_SCRIPT -->
 ```
+
+The trailing `<!-- END_OF_SCRIPT -->` HTML comment is a **mandatory completeness marker** — the pipeline uses it to verify the script wasn't truncated mid-write. Always end the file with this exact line.
 
 ---
 
