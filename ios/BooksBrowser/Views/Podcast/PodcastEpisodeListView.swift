@@ -1,6 +1,20 @@
 import SwiftUI
 import SwiftData
 
+/// Podcast push 路由 — value-based NavigationLink 目標。
+///
+/// 改成 value-based 的理由：PR #366/#368/#370/#373 追查一個 tap episode row →
+/// 凍結（freeze，非 crash、無 log、無 crash report）。已確認 destination view
+/// 本身空殼也凍結，根因鎖定在 navigation 機制而非 destination 內部。
+/// closure-based `NavigationLink { destination }` 在 LazyVStack 中 SwiftUI 會
+/// eager evaluate destination closure；結合父層 BookshelfView 同一
+/// NavigationStack 已註冊 `navigationDestination(for: Book.self)` 的情境，
+/// 2 層 push 時出現內部卡死。改成 value-based + 統一在 NavigationStack root
+/// 註冊 destination，走正式 Apple 推薦路徑。
+enum PodcastNavRoute: Hashable {
+    case episode(episodeRemoteId: String)
+}
+
 private enum EpisodeSort: String, CaseIterable, Identifiable {
     case ascending, descending
     var id: String { rawValue }
@@ -162,9 +176,7 @@ struct PodcastEpisodeListView: View {
                 return "開始播放"
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
-            NavigationLink {
-                PodcastPlayerView(episodeId: target.remoteId)
-            } label: {
+            NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
                 Label(label, systemImage: icon)
             }
             .buttonStyle(.appAction(.primary))
@@ -188,9 +200,7 @@ struct PodcastEpisodeListView: View {
 
             VStack(spacing: 0) {
                 ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
-                    NavigationLink {
-                        PodcastPlayerView(episodeId: episode.remoteId)
-                    } label: {
+                    NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: episode.remoteId)) {
                         PodcastEpisodeRow(
                             episode: episode,
                             progress: progressMap[episode.remoteId]

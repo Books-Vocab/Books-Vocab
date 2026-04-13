@@ -56,6 +56,23 @@ struct BookshelfView: View {
             .largeNavigationBarTitle()
             .animatePhaseChange(books.isEmpty)
             .animateContentFade(coordinator.isLoading)
+            // navigationDestination 統一掛在 NavigationStack root —
+            // 避免 nested-modifier 競爭。Podcast 改 value-based push 後
+            // 由此處接住路由（PR 追查 podcast tap freeze 的根因之一）。
+            .navigationDestination(for: Book.self) { book in
+                switch book.format {
+                case .epub, .txt, .md:
+                    ReaderView(book: book)
+                case .pdf:
+                    PDFReaderView(book: book)
+                }
+            }
+            .navigationDestination(for: PodcastNavRoute.self) { route in
+                switch route {
+                case .episode(let episodeRemoteId):
+                    PodcastPlayerView(episodeId: episodeRemoteId)
+                }
+            }
             .toolbar {
                 ToolbarItem(placement: .topBarLeading) {
                     Button(action: coordinator.presentSettings) {
@@ -217,14 +234,6 @@ struct BookshelfView: View {
         .refreshable {
             if authManager.isLoggedIn {
                 await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-            }
-        }
-        .navigationDestination(for: Book.self) { book in
-            switch book.format {
-            case .epub, .txt, .md:
-                ReaderView(book: book)
-            case .pdf:
-                PDFReaderView(book: book)
             }
         }
     }
