@@ -337,11 +337,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(html_r)
     app.include_router(api_r)
 
-    # StaticFiles mount MUST be after all routers to avoid path shadowing
+    # StaticFiles mount MUST be after all routers to avoid path shadowing.
+    # Always mount — create the dir if missing so uploads land correctly without restart.
     _podcasts_path = settings.podcasts_dir
-    if _podcasts_path.exists():
-        from starlette.staticfiles import StaticFiles
-        app.mount("/api/podcast-media/", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
+    _podcasts_path.mkdir(parents=True, exist_ok=True)
+    from starlette.staticfiles import StaticFiles
+    app.mount("/api/podcast-media/", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
 
     return app
 
