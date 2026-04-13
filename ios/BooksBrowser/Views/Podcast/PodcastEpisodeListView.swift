@@ -195,6 +195,7 @@ struct PodcastEpisodeListView: View {
                             episode: episode,
                             progress: progressMap[episode.remoteId]
                         )
+                        .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
                     .disabled(!episode.audioAvailable)
