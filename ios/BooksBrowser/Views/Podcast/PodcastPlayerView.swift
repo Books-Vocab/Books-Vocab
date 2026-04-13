@@ -20,6 +20,8 @@ struct PodcastPlayerView: View {
     @State private var translationHandler = PodcastTranslationHandler()
     @State private var lastSavedTime: TimeInterval = 0
     @State private var loadTask: Task<Void, Never>?
+    @State private var loadedEpisodeId: String?
+    @State private var progressRestored = false
 
     var body: some View {
         Group {
@@ -31,10 +33,15 @@ struct PodcastPlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        // `.task(id:)` reloads when episodeId changes (parent swap) and avoids
-        // re-firing on every appear cycle; guard against re-runs via viewModel check.
+        // `.task(id:)` reloads when episodeId changes; loadedEpisodeId flag
+        // tracks which episode the current VM is loading so we correctly reload
+        // on parent-driven id swaps (e.g. future "next episode" button).
         .task(id: episodeId) {
-            guard viewModel == nil else { return }
+            guard loadedEpisodeId != episodeId else { return }
+            viewModel?.stop()
+            viewModel = nil
+            loadedEpisodeId = episodeId
+            progressRestored = false
             loadEpisode()
         }
         .onChange(of: viewModel?.currentTime) { _, newTime in
@@ -43,6 +50,12 @@ struct PodcastPlayerView: View {
             saveProgressIfNeeded(time: newTime)
         }
         .onChange(of: viewModel?.state) { _, newState in
+            // Defer restoreProgress until the item is genuinely ready; seeking on
+            // an un-ready AVPlayer item silently drops the target time.
+            if newState == .ready, !progressRestored, let vm = viewModel {
+                progressRestored = true
+                restoreProgress(vm: vm, episodeRemoteId: episodeId)
+            }
             if newState == .paused || newState == .ready {
                 saveProgress()
             }
@@ -52,6 +65,8 @@ struct PodcastPlayerView: View {
             loadTask = nil
             viewModel?.stop()
             viewModel = nil
+            loadedEpisodeId = nil
+            progressRestored = false
         }
     }
 
@@ -159,9 +174,8 @@ struct PodcastPlayerView: View {
                 await MainActor.run {
                     vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
                 }
-                if Task.isCancelled { return }
-
-                await restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)
+                // restoreProgress is now triggered by .ready state observer,
+                // after AVPlayer's item has actually reached a seekable state.
             } catch is CancellationError {
                 return
             } catch {
