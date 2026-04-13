@@ -1,7 +1,13 @@
 .DS_Store
 backups/
 plan/
-lab/
+
+# lab/ — track source code only; ignore binaries/credentials/sandboxes
+lab/claude-code-gateway/
+lab/podcast/workspaces/
+lab/podcast/voice_samples/
+lab/podcast/__pycache__/
+lab/podcast/gen-lang-client-*.json
 
 # Secrets
 .env
