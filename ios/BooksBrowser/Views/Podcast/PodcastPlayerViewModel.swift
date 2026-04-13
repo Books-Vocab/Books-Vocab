@@ -48,19 +48,31 @@ final class PodcastPlayerViewModel {
                 self?.state = .ready
             }
         }
+        audioEngine.onDurationLoaded = { [weak self] d in
+            MainActor.assumeIsolated {
+                self?.duration = d
+            }
+        }
+        audioEngine.onReadyToPlay = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.state == .loading { self.state = .ready }
+            }
+        }
     }
 
     // MARK: - Loading
 
     func loadEpisode(audioURL: URL, subtitleContent: String?) {
         state = .loading
+        duration = 0
         do {
             try audioEngine.loadAudio(url: audioURL)
-            duration = audioEngine.duration
             if let srt = subtitleContent {
                 subtitleEngine.load(srtContent: srt)
             }
-            state = .ready
+            // With AVPlayer streaming, duration + readiness arrive asynchronously.
+            // state transitions to .ready via onReadyToPlay callback.
         } catch {
             state = .error(error.localizedDescription)
         }
