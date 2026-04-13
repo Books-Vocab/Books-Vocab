@@ -108,8 +108,10 @@ Write `{workspace}/plan/overview.md`:
 - [Recurring bits or dynamics that develop across the series]
 
 ### Voice Mapping
-- **[Host A Name]**: Speaker1 (TTS voice: to be assigned)
-- **[Host B Name]**: Speaker2 (TTS voice: to be assigned)
+- **[Host A Name] (TBD)**: Speaker1
+- **[Host B Name] (TBD)**: Speaker2
+
+(The `(TBD)` placeholder is replaced with the actual Gemini voice name by the `tts-prep` stage. Do NOT pick a voice yourself — that's tts-prep's job after seeing the finished scripts.)
 
 ## Audience
 - **Target listener**: [who this podcast is for]
