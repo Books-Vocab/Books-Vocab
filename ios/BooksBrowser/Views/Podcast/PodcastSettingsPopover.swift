@@ -23,6 +23,26 @@ enum PodcastSubtitleSize: String, CaseIterable, Identifiable {
         case .xxLarge: return .xxLarge
         }
     }
+
+    var subtitleFont: Font {
+        switch self {
+        case .small:   return AppFonts.sans(size: 13)
+        case .medium:  return AppFonts.sans(size: 15)
+        case .large:   return AppFonts.sans(size: 17)
+        case .xLarge:  return AppFonts.sans(size: 19)
+        case .xxLarge: return AppFonts.sans(size: 22)
+        }
+    }
+
+    var speakerFont: Font {
+        switch self {
+        case .small:   return AppFonts.mono(size: 9, bold: true)
+        case .medium:  return AppFonts.mono(size: 10, bold: true)
+        case .large:   return AppFonts.mono(size: 11, bold: true)
+        case .xLarge:  return AppFonts.mono(size: 12, bold: true)
+        case .xxLarge: return AppFonts.mono(size: 13, bold: true)
+        }
+    }
 }
 
 struct PodcastSettingsPopover: View {

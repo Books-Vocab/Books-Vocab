@@ -16,6 +16,7 @@ struct PodcastSentenceLevelView: View {
     let renderState: SubtitleRenderState?
     let highlightedWordIndex: Int
     let hostNames: [String]
+    let subtitleSize: PodcastSubtitleSize
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
@@ -106,7 +107,7 @@ struct PodcastSentenceLevelView: View {
             VStack(alignment: alignRight ? .trailing : .leading, spacing: 3) {
                 if showSpeaker {
                     Text(sentence.speaker)
-                        .font(skin.typography.monoLabel)
+                        .font(subtitleSize.speakerFont)
                         .foregroundStyle(tint(for: idx).opacity(isCurrent ? 0.85 : 0.45))
                         .transition(.opacity)
                 }
@@ -158,7 +159,7 @@ struct PodcastSentenceLevelView: View {
                 ForEach(rs.words) { word in
                     let isActive = word.id == highlightedWordIndex
                     Text(word.text)
-                        .font(skin.typography.body)
+                        .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
                         .overlay(alignment: .bottom) {
                             if isActive {
@@ -185,7 +186,7 @@ struct PodcastSentenceLevelView: View {
                 // becomes current — avoids any jump in bubble height.
                 ForEach(Array(sentence.words.enumerated()), id: \.offset) { _, cue in
                     Text(cue.word)
-                        .font(skin.typography.body)
+                        .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
                         .onTapGesture {
                             onWordTap(cue.word, sentence.text)
@@ -236,5 +237,39 @@ struct PodcastSentenceLevelView: View {
         case 1: return skin.palette.success
         default: return skin.palette.tertiaryText
         }
+    }
+}
+
+#Preview("Podcast Subtitle XL") {
+    let cues1 = [
+        PodcastSubtitleCue(id: 1, startTime: 0, endTime: 0.4, speaker: "Maya", word: "OK"),
+        PodcastSubtitleCue(id: 2, startTime: 0.4, endTime: 0.8, speaker: "Maya", word: "so"),
+        PodcastSubtitleCue(id: 3, startTime: 0.8, endTime: 1.2, speaker: "Maya", word: "here's"),
+        PodcastSubtitleCue(id: 4, startTime: 1.2, endTime: 1.6, speaker: "Maya", word: "a"),
+        PodcastSubtitleCue(id: 5, startTime: 1.6, endTime: 2.2, speaker: "Maya", word: "question."),
+    ]
+    let cues2 = [
+        PodcastSubtitleCue(id: 6, startTime: 2.2, endTime: 2.7, speaker: "Kai", word: "We"),
+        PodcastSubtitleCue(id: 7, startTime: 2.7, endTime: 3.0, speaker: "Kai", word: "live"),
+        PodcastSubtitleCue(id: 8, startTime: 3.0, endTime: 3.2, speaker: "Kai", word: "in"),
+        PodcastSubtitleCue(id: 9, startTime: 3.2, endTime: 3.5, speaker: "Kai", word: "the"),
+        PodcastSubtitleCue(id: 10, startTime: 3.5, endTime: 4.0, speaker: "Kai", word: "most"),
+        PodcastSubtitleCue(id: 11, startTime: 4.0, endTime: 4.7, speaker: "Kai", word: "comfortable"),
+        PodcastSubtitleCue(id: 12, startTime: 4.7, endTime: 5.2, speaker: "Kai", word: "era."),
+    ]
+    let s1 = PodcastSentence(id: 0, speaker: "Maya", text: "OK so here's a question.", startTime: 0, endTime: 2.2, words: cues1)
+    let s2 = PodcastSentence(id: 1, speaker: "Kai", text: "We live in the most comfortable era.", startTime: 2.2, endTime: 5.2, words: cues2)
+
+    return AppThemeContainer {
+        PodcastSentenceLevelView(
+            sentences: [s1, s2],
+            renderState: SubtitleRenderState(from: s2, hostNames: ["Maya", "Kai"]),
+            highlightedWordIndex: 4,
+            hostNames: ["Maya", "Kai"],
+            subtitleSize: .xLarge,
+            onSentenceTap: { _ in },
+            onWordTap: { _, _ in },
+            onPhraseTap: { _, _ in }
+        )
     }
 }
