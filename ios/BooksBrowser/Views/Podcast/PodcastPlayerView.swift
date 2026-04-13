@@ -24,7 +24,27 @@ struct PodcastPlayerView: View {
     @State private var loadedEpisodeId: String?
     @State private var progressRestored = false
 
+    // CRASH BISECT: when true, render a minimal stub instead of the full player.
+    // If tap STILL crashes with stub → navigation/listView side bug.
+    // If tap NO LONGER crashes → bug is inside the full player body/init/onChange/task chain.
+    private static let bisectStub = true
+
     var body: some View {
+        if Self.bisectStub {
+            VStack(spacing: 12) {
+                Text("BISECT STUB").font(.headline)
+                Text("episodeId:")
+                Text(episodeId).font(.system(.body, design: .monospaced))
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .navigationBarTitleDisplayMode(.inline)
+        } else {
+            fullBody
+        }
+    }
+
+    @ViewBuilder
+    private var fullBody: some View {
         Group {
             if let vm = viewModel {
                 // onChange mounted INSIDE the non-nil branch — observing
