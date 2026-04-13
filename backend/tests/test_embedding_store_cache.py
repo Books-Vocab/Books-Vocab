@@ -215,3 +215,28 @@ class TestEmbeddingSettingsWiring:
             assert s1 is not s2
         finally:
             clear_store_cache()
+
+
+class TestEmbeddingDimGuard:
+    def test_dim_mismatch_raises_valueerror(self, tmp_path: Path):
+        """If upstream returns wrong dim, fail loudly instead of later
+        crashing in np.vstack / dot-product with a cryptic error."""
+        client = MagicMock()
+        resp = MagicMock()
+        resp.usage = MagicMock(prompt_tokens=10, total_tokens=10)
+        item = MagicMock()
+        item.index = 0
+        item.embedding = np.random.rand(1024).tolist()  # wrong dim
+        resp.data = [item]
+        client.embeddings.create.return_value = resp
+        llm = TrackedLLM(client, "test_user")
+
+        store = EmbeddingStore(
+            embeddings_path=tmp_path / "emb.npy",
+            ids_path=tmp_path / "ids.json",
+            llm=llm,
+            model="test-model",
+            dim=3072,
+        )
+        with pytest.raises(ValueError, match="Embedding dim mismatch"):
+            store.add("c1", "hello")
