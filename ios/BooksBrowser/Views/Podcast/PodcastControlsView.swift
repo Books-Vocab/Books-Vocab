@@ -91,10 +91,14 @@ struct PodcastControlsView: View {
                     .gesture(
                         DragGesture(minimumDistance: 0)
                             .onChanged { v in
+                                // Block scrubbing until AVPlayer reports duration;
+                                // dragging earlier silently resolves to seek(0).
+                                guard viewModel.duration > 0 else { return }
                                 isDragging = true
                                 dragTime = max(0, min(viewModel.duration, Double(v.location.x / w) * viewModel.duration))
                             }
                             .onEnded { _ in
+                                guard viewModel.duration > 0, isDragging else { return }
                                 isDragging = false
                                 viewModel.seek(to: dragTime)
                             }

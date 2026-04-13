@@ -15,10 +15,14 @@ struct PodcastPlayerView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = PodcastTranslationHandler()
     @State private var lastSavedTime: TimeInterval = 0
+    @State private var loadTask: Task<Void, Never>?
+    @State private var loadedEpisodeId: String?
+    @State private var progressRestored = false
 
     var body: some View {
         Group {
@@ -30,16 +34,68 @@ struct PodcastPlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .task { loadEpisode() }
+        // `.task(id:)` reloads when episodeId changes; loadedEpisodeId flag
+        // tracks which episode the current VM is loading so we correctly reload
+        // on parent-driven id swaps (e.g. future "next episode" button).
+        .task(id: episodeId) {
+            guard loadedEpisodeId != episodeId else { return }
+            // Save the OUTGOING episode's progress BEFORE tearing down the VM
+            // or advancing loadedEpisodeId. Otherwise the current-swap path
+            // loses up to the throttle window (~10s) of the previous episode's
+            // position: .paused/.ready transitions won't fire during the swap
+            // and the saveProgress guard would reject the write once
+            // loadedEpisodeId moves on.
+            if let oldVm = viewModel, let oldId = loadedEpisodeId {
+                saveProgress(vm: oldVm, episodeRemoteId: oldId)
+            }
+            // Cancel any in-flight load BEFORE tearing down the VM — otherwise
+            // the old task can still resume after stop() and call loadEpisode()
+            // on the now-detached VM, spawning a second AVPlayer.
+            loadTask?.cancel()
+            loadTask = nil
+            viewModel?.stop()
+            viewModel = nil
+            loadedEpisodeId = episodeId
+            progressRestored = false
+            lastSavedTime = 0
+            loadEpisode()
+        }
         .onChange(of: viewModel?.currentTime) { _, newTime in
             guard let vm = viewModel, let newTime,
                   vm.state == .playing else { return }
             saveProgressIfNeeded(time: newTime)
         }
         .onChange(of: viewModel?.state) { _, newState in
+            // Defer restoreProgress until the item is genuinely ready; seeking on
+            // an un-ready AVPlayer item silently drops the target time.
+            // CRITICAL: if we just restored, do NOT fall through to saveProgress —
+            // vm.seek is async, currentTime is still 0 this tick, and saveProgress
+            // would overwrite lastPlayedTime with 0 before the seek lands.
+            if newState == .ready, !progressRestored, let vm = viewModel {
+                progressRestored = true
+                restoreProgress(vm: vm, episodeRemoteId: episodeId)
+                return
+            }
             if newState == .paused || newState == .ready {
                 saveProgress()
             }
+        }
+        .onDisappear {
+            // Save before teardown — shutdown() flips state to .idle which the
+            // onChange path would otherwise skip, losing up to 10s of progress.
+            saveProgress()
+            loadTask?.cancel()
+            loadTask = nil
+            // shutdown = full teardown (session deactivate + remote commands off).
+            viewModel?.shutdown()
+            viewModel = nil
+            loadedEpisodeId = nil
+            progressRestored = false
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // App backgrounded / inactive → persist latest position; no
+            // .paused / .ready transition fires for a scene-phase change alone.
+            if phase != .active { saveProgress() }
         }
     }
 
@@ -65,7 +121,7 @@ struct PodcastPlayerView: View {
                 Text(msg)
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
-                Button("重試") { loadEpisode() }
+                Button("重試") { reloadEpisode() }
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,6 +167,18 @@ struct PodcastPlayerView: View {
         }
     }
 
+    /// Retry helper — resets per-load flags so the retry truly starts clean
+    /// (otherwise progressRestored stays true and restoreProgress never fires).
+    private func reloadEpisode() {
+        loadTask?.cancel()
+        loadTask = nil
+        viewModel?.stop()
+        viewModel = nil
+        progressRestored = false
+        lastSavedTime = 0
+        loadEpisode()
+    }
+
     private func loadEpisode() {
         let targetId = episodeId
         let descriptor = FetchDescriptor<PodcastEpisode>(
@@ -119,36 +187,57 @@ struct PodcastPlayerView: View {
         guard let episode = try? modelContext.fetch(descriptor).first,
               let series = episode.series else { return }
 
+        // Cancel stale task BEFORE installing the new VM so an in-flight
+        // closure can't land on the fresh VM.
+        loadTask?.cancel()
+        loadTask = nil
+
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
 
-        Task {
+        loadTask = Task { [weak vm] in
+            guard let vm else { return }
             do {
                 guard let audioURLStr = episode.audioURL,
                       let audioURL = URL(string: audioURLStr) else {
-                    vm.reportError("無音訊 URL")
+                    await MainActor.run { vm.reportError("無音訊 URL") }
                     return
                 }
 
-                vm.setLoading()
+                await MainActor.run { vm.setLoading() }
+                if Task.isCancelled { return }
 
-                // Subtitle is small (~150 KB); fetch upfront so it's ready when audio plays.
+                // Subtitle is best-effort — audio can play without it.
+                // Per-request 10s timeout + cancellation check so a flaky server
+                // can't block audio load for 60s (default URLSession timeout).
                 var subtitleContent: String?
                 if let subtitleURLStr = episode.subtitleURL {
-                    let data = try await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService)
-                    subtitleContent = String(data: data, encoding: .utf8)
+                    if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
+                        subtitleContent = String(data: data, encoding: .utf8)
+                    }
                 }
+                if Task.isCancelled { return }
 
-                // Audio streams via AVPlayer — pass the remote URL directly.
-                // No full-file download, playback starts as soon as first chunk buffers.
+                let episodeTitle = episode.displayTitle
                 await MainActor.run {
-                    vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
+                    // Second cancel gate — URLSession.data can complete before
+                    // the cancel signal propagates, and we don't want to call
+                    // loadEpisode on a VM whose stop() already ran (would
+                    // spawn a second AVPlayer on a torn-down engine).
+                    guard !Task.isCancelled else { return }
+                    vm.loadEpisode(
+                        audioURL: audioURL,
+                        subtitleContent: subtitleContent,
+                        title: episodeTitle
+                    )
                 }
-
-                restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)
+                // restoreProgress is now triggered by .ready state observer,
+                // after AVPlayer's item has actually reached a seekable state.
+            } catch is CancellationError {
+                return
             } catch {
                 await MainActor.run {
-                    vm.reportError("下載失敗：\(error.localizedDescription)")
+                    vm.reportError("載入失敗：\(error.localizedDescription)")
                 }
             }
         }
@@ -157,8 +246,12 @@ struct PodcastPlayerView: View {
     @MainActor
     private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
         let targetId = episodeRemoteId
+        // Sort by updatedAt DESC — CloudKit can legally produce duplicate rows
+        // for the same episode across devices (no @Attribute(.unique) — it's
+        // CloudKit-incompatible). Pick the newest so we don't rewind the user.
         let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId }
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         if let progress = try? modelContext.fetch(descriptor).first,
            progress.lastPlayedTime > 0,
@@ -173,23 +266,53 @@ struct PodcastPlayerView: View {
         saveProgress()
     }
 
+    /// Current-VM / current-episode save (used by scenePhase, onChange, onDisappear).
     private func saveProgress() {
         guard let vm = viewModel else { return }
-        let targetId = episodeId
+        // Guard 1: don't write stale VM's currentTime under NEW episodeId
+        // during a fast episode swap (old VM emits .paused during stop()).
+        guard loadedEpisodeId == episodeId else { return }
+        // Guard 2: don't overwrite a saved lastPlayedTime with 0 during the
+        // window between AVPlayer reaching .ready and restoreProgress seeking
+        // to the saved position — scenePhase / onDisappear may fire in that gap.
+        if !progressRestored && vm.currentTime == 0 { return }
+        saveProgress(vm: vm, episodeRemoteId: episodeId)
+    }
+
+    /// Explicit-target save — used when we need to write the OUTGOING episode's
+    /// progress during an episodeId swap, before `loadedEpisodeId` advances.
+    private func saveProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
+        if vm.currentTime == 0 { return }
+        let targetId = episodeRemoteId
+        // Sort newest-first + collapse duplicates from CloudKit into the newest.
         let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId }
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
+        let existing = (try? modelContext.fetch(descriptor)) ?? []
+        // Delete any older duplicates so the store converges to a single row.
+        for stale in existing.dropFirst() {
+            modelContext.delete(stale)
+        }
         let progress: PodcastProgress
-        if let existing = try? modelContext.fetch(descriptor).first {
-            progress = existing
+        if let newest = existing.first {
+            progress = newest
         } else {
-            progress = PodcastProgress(episodeRemoteId: episodeId)
+            progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
             modelContext.insert(progress)
         }
         progress.lastPlayedTime = vm.currentTime
-        progress.completed = (vm.state == .ready && vm.currentTime > 0 && vm.currentTime >= vm.duration - 1)
+        progress.completed = (
+            vm.state == .ready
+            && vm.duration > 0
+            && vm.currentTime >= vm.duration - 1
+        )
         progress.updatedAt = Date()
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.app.error("PodcastProgress save failed: \(error.localizedDescription)")
+        }
     }
 }
 #endif

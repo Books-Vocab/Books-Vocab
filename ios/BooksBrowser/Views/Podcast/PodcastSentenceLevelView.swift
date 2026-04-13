@@ -4,10 +4,13 @@ import SwiftUI
 ///
 /// Design principles:
 ///   • flat — no shadow, no scale lift, no blur
-///   • passive — current sentence highlights but does NOT auto-center;
-///     a "回到正在播放" pill appears when the current sentence scrolls off.
-///   • alignment distinguishes speakers (host[0] → left, host[1] → right),
-///     removing the need for accent bars / chips on each bubble.
+///   • follow-by-default: auto-scrolls with the current sentence; user drag
+///     disables follow and surfaces a "追隨當前" pill that, when tapped,
+///     re-enables follow and scrolls back to center.
+///   • alignment distinguishes speakers (host[0] → left, host[1] → right);
+///     the speaker label is shown only when it changes from the previous row.
+///   • layout transitions are explicitly animated (bubble bg, underline,
+///     label show/hide) to avoid the snap-change jank of dt→0 shifts.
 struct PodcastSentenceLevelView: View {
     let sentences: [PodcastSentence]
     let renderState: SubtitleRenderState?
@@ -17,36 +20,43 @@ struct PodcastSentenceLevelView: View {
     let onWordTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
 
-    @State private var visibleIds: Set<Int> = []
-    @State private var pillEnabled = false
+    @State private var isFollowing = true
+    @State private var didInitialScroll = false
 
     private var currentId: Int? { renderState?.sentenceId }
-
-    private var isCurrentVisible: Bool {
-        guard let id = currentId else { return true }
-        return visibleIds.contains(id)
-    }
 
     var body: some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
                 ScrollView {
                     LazyVStack(spacing: skin.spacing.inlineGap) {
-                        ForEach(sentences) { sentence in
-                            bubbleRow(sentence)
+                        ForEach(Array(sentences.enumerated()), id: \.element.id) { index, sentence in
+                            let prevSpeaker = index > 0 ? sentences[index - 1].speaker : nil
+                            let showSpeaker = sentence.speaker != prevSpeaker
+                            bubbleRow(sentence, showSpeaker: showSpeaker)
                                 .id(sentence.id)
-                                .onAppear { visibleIds.insert(sentence.id) }
-                                .onDisappear { visibleIds.remove(sentence.id) }
                         }
                     }
                     .padding(.vertical, skin.spacing.sectionGap)
                     .padding(.horizontal, skin.spacing.cardPadding)
                 }
+                // User drag disables follow mode. `minimumDistance: 24` avoids
+                // cancelling follow on a finger-tremor tap (10pt contact +
+                // small slide during release). Genuine scroll easily clears it.
+                .simultaneousGesture(
+                    DragGesture(minimumDistance: 24)
+                        .onChanged { _ in
+                            if isFollowing { isFollowing = false }
+                        }
+                )
 
-                if pillEnabled && !isCurrentVisible, let id = currentId {
-                    returnPill {
-                        withAnimation(AppMotion.standardSpring) {
-                            proxy.scrollTo(id, anchor: .center)
+                if !isFollowing {
+                    followPill {
+                        isFollowing = true
+                        if let id = currentId {
+                            withAnimation(AppMotion.standardSpring) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
                         }
                     }
                     .padding(.bottom, skin.spacing.sectionGap)
@@ -54,34 +64,51 @@ struct PodcastSentenceLevelView: View {
                 }
             }
             .onAppear {
-                // One-shot scroll to current on entry; then enable pill logic
-                // after a settle delay so lazy-stack visibility stabilizes.
-                if let id = currentId {
+                // If currentId is already known at appear, do the one-shot scroll.
+                // Otherwise the .onChange below will handle it when the first
+                // sentence resolves after restoreProgress / first time-tick.
+                if !didInitialScroll, let id = currentId {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         proxy.scrollTo(id, anchor: .center)
+                        didInitialScroll = true
                     }
                 }
-                DispatchQueue.main.asyncAfter(deadline: .now() + 0.6) {
-                    pillEnabled = true
+            }
+            .onChange(of: currentId) { _, newId in
+                guard let newId else { return }
+                // First non-nil currentId → one-shot initial scroll without animation
+                // so restored positions appear immediately.
+                if !didInitialScroll {
+                    proxy.scrollTo(newId, anchor: .center)
+                    didInitialScroll = true
+                    return
+                }
+                // Auto-follow: smoothly recenter when the sentence advances.
+                guard isFollowing else { return }
+                withAnimation(AppMotion.standardSpring) {
+                    proxy.scrollTo(newId, anchor: .center)
                 }
             }
-            .animation(AppMotion.contentFade, value: isCurrentVisible)
+            .animation(AppMotion.contentFade, value: isFollowing)
         }
     }
 
     // MARK: - Bubble row
 
     @ViewBuilder
-    private func bubbleRow(_ sentence: PodcastSentence) -> some View {
+    private func bubbleRow(_ sentence: PodcastSentence, showSpeaker: Bool) -> some View {
         let idx = hostNames.firstIndex(of: sentence.speaker)
         let alignRight = (idx == 1)
         let isCurrent = sentence.id == currentId
         HStack(alignment: .bottom, spacing: 0) {
             if alignRight { Spacer(minLength: 48) }
             VStack(alignment: alignRight ? .trailing : .leading, spacing: 3) {
-                Text(sentence.speaker)
-                    .font(skin.typography.monoLabel)
-                    .foregroundStyle(tint(for: idx).opacity(isCurrent ? 0.85 : 0.45))
+                if showSpeaker {
+                    Text(sentence.speaker)
+                        .font(skin.typography.monoLabel)
+                        .foregroundStyle(tint(for: idx).opacity(isCurrent ? 0.85 : 0.45))
+                        .transition(.opacity)
+                }
                 bubbleContent(sentence: sentence, idx: idx, isCurrent: isCurrent)
             }
             if !alignRight { Spacer(minLength: 48) }
@@ -103,50 +130,68 @@ struct PodcastSentenceLevelView: View {
             ? bubbleTint.opacity(0.10)
             : skin.palette.mutedFill.opacity(0.35)
         let fg: Color = isCurrent ? skin.palette.primaryText : skin.palette.secondaryText
-        Group {
-            if isCurrent, let rs = renderState {
-                tappableWords(rs, tint: bubbleTint)
-            } else {
-                Text(sentence.text)
-                    .font(skin.typography.body)
-                    .foregroundStyle(fg)
-                    .fixedSize(horizontal: false, vertical: true)
-            }
-        }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .background(bg, in: RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
-        .animation(AppMotion.contentFade, value: isCurrent)
+        // All bubbles use CachedFlowLayout of per-word tokens — same layout
+        // algorithm whether current or not. This guarantees line breaks don't
+        // shift when a sentence becomes current (the prior design mixed a
+        // single wrapping Text with an overlay FlowLayout whose wrapping
+        // disagreed, producing visible misalignment + jank).
+        wordFlow(for: sentence, isCurrent: isCurrent, textColor: fg, tint: bubbleTint)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .background(bg, in: RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
+            .animation(AppMotion.contentFade, value: isCurrent)
     }
 
     @ViewBuilder
-    private func tappableWords(_ rs: SubtitleRenderState, tint: Color) -> some View {
-        CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
-            ForEach(rs.words) { word in
-                let isActive = word.id == highlightedWordIndex
-                Text(word.text)
-                    .font(skin.typography.body)
-                    .foregroundStyle(skin.palette.primaryText)
-                    .overlay(alignment: .bottom) {
-                        if isActive {
-                            Rectangle()
-                                .fill(tint)
-                                .frame(height: 1.5)
-                                .offset(y: 3)
+    private func wordFlow(
+        for sentence: PodcastSentence,
+        isCurrent: Bool,
+        textColor: Color,
+        tint: Color
+    ) -> some View {
+        // When the sentence is current AND we have renderState for it, use the
+        // per-cue words so the active-word underline and word-tap map 1:1 to
+        // the audio. Otherwise derive stable tokens from sentence.text.
+        if isCurrent, let rs = renderState, rs.sentenceId == sentence.id {
+            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
+                ForEach(rs.words) { word in
+                    let isActive = word.id == highlightedWordIndex
+                    Text(word.text)
+                        .font(skin.typography.body)
+                        .foregroundStyle(textColor)
+                        .overlay(alignment: .bottom) {
+                            if isActive {
+                                Rectangle()
+                                    .fill(tint)
+                                    .frame(height: 1.5)
+                                    .offset(y: 3)
+                                    .transition(.opacity)
+                            }
                         }
-                    }
-                    .animation(AppMotion.feedbackPulse, value: isActive)
-                    .onTapGesture {
-                        onWordTap(word.text, rs.sentenceText)
-                    }
+                        .onTapGesture {
+                            onWordTap(word.text, rs.sentenceText)
+                        }
+                }
+            }
+            .animation(AppMotion.standardSpring, value: highlightedWordIndex)
+        } else {
+            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
+                // Use sentence.words (same source the current-branch uses) so
+                // token count and line-wrapping stay identical when the sentence
+                // becomes current — avoids any jump in bubble height.
+                ForEach(Array(sentence.words.enumerated()), id: \.offset) { _, cue in
+                    Text(cue.word)
+                        .font(skin.typography.body)
+                        .foregroundStyle(textColor)
+                }
             }
         }
     }
 
-    // MARK: - Return pill
+    // MARK: - Follow pill
 
     @ViewBuilder
-    private func returnPill(_ action: @escaping () -> Void) -> some View {
+    private func followPill(_ action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 6) {
                 if let speaker = renderState?.speaker {
@@ -155,7 +200,7 @@ struct PodcastSentenceLevelView: View {
                         .fill(tint(for: idx))
                         .frame(width: 6, height: 6)
                 }
-                Text("回到正在播放")
+                Text("追隨當前")
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.primaryText)
                 Image(systemName: "arrow.down")

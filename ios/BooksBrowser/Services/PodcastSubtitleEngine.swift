@@ -5,8 +5,7 @@ struct PodcastSubtitleCue: Identifiable, Equatable {
     let startTime: TimeInterval
     let endTime: TimeInterval
     let speaker: String
-    let fullText: String
-    let highlightedWord: String?
+    let word: String  // compact SRT: one cue = one word
 }
 
 struct PodcastSentence: Identifiable, Equatable {
@@ -23,7 +22,7 @@ final class PodcastSubtitleEngine {
     private(set) var sentences: [PodcastSentence] = []
 
     private static let speakerPattern = /^\[(\w+)\]\s*/
-    private static let fontTagPattern = /<font[^>]*>(.*?)<\/font>/
+    private static let sentenceEndChars: Set<Character> = [".", "!", "?", "…"]
 
     func load(srtContent: String) {
         cues = parseCues(from: srtContent)
@@ -31,7 +30,11 @@ final class PodcastSubtitleEngine {
     }
 
     func currentCue(at time: TimeInterval) -> PodcastSubtitleCue? {
-        // Binary search
+        // Binary search with gap fallback — compact SRTs stitch end=next.start
+        // but any gap (silence / rounding) would otherwise return nil and cause
+        // the highlight to strobe off/on once per word. Fall back to the last
+        // cue whose startTime <= time.
+        guard !cues.isEmpty else { return nil }
         var lo = 0, hi = cues.count - 1
         while lo <= hi {
             let mid = (lo + hi) / 2
@@ -43,7 +46,8 @@ final class PodcastSubtitleEngine {
                 return cues[mid]
             }
         }
-        return nil
+        // hi is the largest index with startTime <= time (mirrors currentSentence).
+        return hi >= 0 ? cues[hi] : nil
     }
 
     func currentSentence(at time: TimeInterval) -> PodcastSentence? {
@@ -82,7 +86,7 @@ final class PodcastSubtitleEngine {
 
             let rawText = lines[2...].joined(separator: " ")
 
-            // Extract speaker
+            // Extract speaker tag [SpeakerName]
             let speaker: String
             let textAfterSpeaker: String
             if let match = rawText.firstMatch(of: Self.speakerPattern) {
@@ -93,22 +97,15 @@ final class PodcastSubtitleEngine {
                 textAfterSpeaker = rawText
             }
 
-            // Extract highlighted word
-            let highlightedWord: String?
-            if let match = textAfterSpeaker.firstMatch(of: Self.fontTagPattern) {
-                highlightedWord = String(match.1)
-            } else {
-                highlightedWord = nil
-            }
-
-            // Strip all HTML tags
-            let fullText = textAfterSpeaker
+            // Defensive: strip any HTML tags (handles legacy SRTs with <font> wrappers).
+            let word = textAfterSpeaker
                 .replacingOccurrences(of: "<[^>]+>", with: "", options: .regularExpression)
                 .trimmingCharacters(in: .whitespaces)
+            guard !word.isEmpty else { continue }
 
             result.append(PodcastSubtitleCue(
                 id: id, startTime: start, endTime: end,
-                speaker: speaker, fullText: fullText, highlightedWord: highlightedWord
+                speaker: speaker, word: word
             ))
         }
 
@@ -122,12 +119,19 @@ final class PodcastSubtitleEngine {
 
         for i in 1..<cues.count {
             let cue = cues[i]
-            let prev = currentGroup[0]
-            if cue.speaker == prev.speaker && cue.fullText == prev.fullText {
-                currentGroup.append(cue)
-            } else {
+            let prev = currentGroup.last!
+            // Boundary rule (matches lab/podcast/preview.py):
+            //   • speaker change, OR
+            //   • previous word ends with sentence-final punctuation (.!?…)
+            //     ignoring trailing quote/paren.
+            let prevTrimmed = prev.word.trimmingCharacters(
+                in: CharacterSet(charactersIn: "\"')]}”’」』"))
+            let endsSentence = prevTrimmed.last.map { Self.sentenceEndChars.contains($0) } ?? false
+            if cue.speaker != prev.speaker || endsSentence {
                 sentences.append(makeSentence(from: currentGroup, id: sentences.count))
                 currentGroup = [cue]
+            } else {
+                currentGroup.append(cue)
             }
         }
         if !currentGroup.isEmpty {
@@ -137,8 +141,9 @@ final class PodcastSubtitleEngine {
     }
 
     private func makeSentence(from cues: [PodcastSubtitleCue], id: Int) -> PodcastSentence {
-        PodcastSentence(
-            id: id, speaker: cues[0].speaker, text: cues[0].fullText,
+        let text = cues.map(\.word).joined(separator: " ")
+        return PodcastSentence(
+            id: id, speaker: cues[0].speaker, text: text,
             startTime: cues[0].startTime, endTime: cues.last!.endTime, words: cues
         )
     }
