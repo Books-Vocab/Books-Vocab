@@ -30,6 +30,7 @@ struct NotebookEditSheet: View {
     @State private var selectedColor: String?
     @State private var selectedPattern: String?
     @State private var coverImagePath: String?
+    @State private var originalCoverImagePath: String?
     @State private var selectedPhoto: PhotosPickerItem?
     @State private var isProcessingPhoto = false
     @State private var photoError: String?
@@ -43,11 +44,13 @@ struct NotebookEditSheet: View {
             _selectedColor = State(initialValue: nil)
             _selectedPattern = State(initialValue: nil)
             _coverImagePath = State(initialValue: nil)
+            _originalCoverImagePath = State(initialValue: nil)
         case .edit(let n, let c, let p, let img):
             _name = State(initialValue: n)
             _selectedColor = State(initialValue: c)
             _selectedPattern = State(initialValue: p)
             _coverImagePath = State(initialValue: img)
+            _originalCoverImagePath = State(initialValue: img)
         }
     }
 
@@ -134,10 +137,20 @@ struct NotebookEditSheet: View {
             .inlineNavigationBarTitle()
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("取消".localized) { dismiss() }
+                    Button("取消".localized) {
+                        // 捨棄未保存的新檔（使用者選了圖但按取消）
+                        if let staged = coverImagePath, staged != originalCoverImagePath {
+                            try? FileManager.default.removeItem(atPath: staged)
+                        }
+                        dismiss()
+                    }
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(isCreating ? "建立".localized : "儲存".localized) {
+                        // 真正保存時才刪原檔（使用者換圖或移除）
+                        if let original = originalCoverImagePath, original != coverImagePath {
+                            try? FileManager.default.removeItem(atPath: original)
+                        }
                         onSave(NotebookAppearance(
                             name: name.trimmingCharacters(in: .whitespacesAndNewlines),
                             color: selectedColor,
@@ -240,15 +253,25 @@ struct NotebookEditSheet: View {
         let filename = "notebook_cover_\(UUID().uuidString).jpg"
         let dir = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask).first!
             .appendingPathComponent("NotebookCovers", isDirectory: true)
-        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
         let fileURL = dir.appendingPathComponent(filename)
-        try? jpegData.write(to: fileURL)
+        do {
+            try FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+            try jpegData.write(to: fileURL)
+        } catch {
+            photoError = "儲存圖片失敗".localized
+            return
+        }
+        // 清掉本次編輯中已 staged 的舊新檔（非 original），避免 orphan
+        if let prev = coverImagePath, prev != originalCoverImagePath {
+            try? FileManager.default.removeItem(atPath: prev)
+        }
         coverImagePath = fileURL.path
         selectedPattern = nil
     }
 
     private func removeCoverImage() {
-        if let path = coverImagePath {
+        // 只清掉 staged 新檔；originalCoverImagePath 延遲到 save 再刪
+        if let path = coverImagePath, path != originalCoverImagePath {
             try? FileManager.default.removeItem(atPath: path)
         }
         coverImagePath = nil

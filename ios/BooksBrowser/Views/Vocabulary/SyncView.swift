@@ -18,6 +18,7 @@ struct SyncView: View {
 
     @Environment(\.syncCoordinator) private var coordinator
     @State private var showSettings = false
+    @State private var pendingDeleteID: UUID?
 
     var body: some View {
         NavigationStack {
@@ -37,6 +38,18 @@ struct SyncView: View {
             }
             .onChange(of: pendingEntries.count) { _, _ in
                 refreshStepLayoutIfIdle()
+            }
+            .alert(
+                "移除此待收錄單字？".localized,
+                isPresented: Binding(
+                    get: { pendingDeleteID != nil },
+                    set: { if !$0 { pendingDeleteID = nil } }
+                )
+            ) {
+                Button("取消".localized, role: .cancel) { pendingDeleteID = nil }
+                Button("移除".localized, role: .destructive) { confirmPendingDelete() }
+            } message: {
+                Text("尚未同步到雲端，移除後無法復原。".localized)
             }
         }
     }
@@ -95,9 +108,18 @@ struct SyncView: View {
         guard let entry = pendingEntries.first(where: { $0.id == entryID }) else { return }
         if entry.syncAction == .delete {
             entry.markSynced()
+            modelContext.safeSaveWithToast(toastCoordinator)
         } else {
-            modelContext.delete(entry)
+            // .add pending 是尚未上雲的 local-only 資料，硬刪後無法復原 → 先確認
+            pendingDeleteID = entryID
         }
+    }
+
+    private func confirmPendingDelete() {
+        defer { pendingDeleteID = nil }
+        guard let id = pendingDeleteID,
+              let entry = pendingEntries.first(where: { $0.id == id }) else { return }
+        modelContext.delete(entry)
         modelContext.safeSaveWithToast(toastCoordinator)
     }
 
