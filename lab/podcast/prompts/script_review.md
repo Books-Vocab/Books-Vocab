@@ -15,6 +15,14 @@ If reviewing all episodes, also check cross-episode consistency:
 
 ## Review Dimensions
 
+### 0. Completeness Marker (check first — blocks everything else)
+
+The script MUST end with the literal line `<!-- END_OF_SCRIPT -->` on its own line. The pipeline uses this sentinel to detect partial writes; a script without it will be **silently discarded and re-generated** on the next pipeline run, wasting a full scriptwriter invocation.
+
+- If the marker is **missing**, append it immediately as the last line (after the takeaway italic line) using the Edit tool.
+- **Never remove** this marker during auto-fix editing. If you edit the file for any other reason, verify the marker is still the last non-empty line afterward.
+- Treat this as part of PASS_WITH_FIXES: fix silently, note in "Fixes Applied".
+
 ### 1. Coverage Check
 - List every key point from the episode plan
 - For each: found in script? Adequately covered or just mentioned in passing?
@@ -49,7 +57,7 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 **h. Voice distinctness** — Cover the names and read 5 random exchanges. Can you tell who's speaking? If <4/5 identifiable → NEEDS_WORK on voice.
 
 ### 4. TTS Tag Health
-- Count emotion tags and list the **distinct** ones used (e.g. `[excited]`, `[thoughtful]`, `[somber]`, `[wry]`...)
+- Count emotion tags and list the **distinct** ones used (e.g. `[excited]`, `[thoughtful]`, `[somber]`, `[amused]`...)
 - Count pacing tags: `[speaking slowly]` `[speaking quickly]` `[whispering]` `[sighing]` `[laughing]` `[chuckling]`
 - Count SSML: `<break>` (note the time values — are they varied or all 1s?), `<emphasis>`, `<prosody>`
 - **Tag density target**: ~1 per 200-300 words
@@ -125,6 +133,7 @@ Write `{workspace}/scripts/ep_{N}_review.md`:
 ## Auto-Fix Policy
 
 Fix directly with Edit tool:
+- Missing `<!-- END_OF_SCRIPT -->` sentinel → append as last line (non-negotiable)
 - Complex bracket tags → split into consecutive simple tags (e.g. `[both laugh, overlap]` → two lines each `[laughing]`)
 - Missing `<break>` before must-quote passages; promote 1s→2s around heavy moments
 - Obvious tag mismatches (`[happy]` before a tragic moment)

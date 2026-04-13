@@ -101,24 +101,27 @@ The parser expects:
 
 ## Part 3 — Updated Voice Mapping Format
 
-Rewrite the `### Voice Mapping` section of `plan/overview.md` to the new format:
+The **architect stage already wrote** the Voice Mapping section to `plan/overview.md` with a `(TBD)` placeholder:
 
 ```markdown
 ### Voice Mapping
-- **HostA (VoiceName)**: Speaker1
-- **HostB (VoiceName)**: Speaker2
+- **Marcus (TBD)**: Speaker1
+- **Rachel (TBD)**: Speaker2
 ```
 
-Example (for BKTS, after fixing reversed assignment):
+**Your job is to replace each `TBD` with the actual Gemini voice name you chose in Part 1.** Do NOT add or remove lines — just substitute `TBD` → voice. Final example:
+
 ```markdown
 ### Voice Mapping
 - **Marcus (Orus)**: Speaker1
 - **Rachel (Sulafat)**: Speaker2
 ```
 
+**If the order needs reversing** (e.g. Speaker1/Speaker2 assignment was wrong because the host who speaks first in Episode 1 is currently labeled Speaker2), go ahead and swap — but still just edit the two existing lines, don't add new ones.
+
 **Critical**: the male host gets the male voice, the female host gets the female voice. The Speaker1/Speaker2 label can be reassigned — whichever host speaks first in Episode 1 should typically be Speaker1 (to avoid Gemini's cold-start voice-routing bug).
 
-`synthesize.py` will read the voice name from inside the parentheses and override the default `Puck`/`Kore` for that host.
+`synthesize.py` reads the voice name from inside the parentheses. It will hard-fail if it still sees `TBD`, so this substitution is mandatory.
 
 ---
 
