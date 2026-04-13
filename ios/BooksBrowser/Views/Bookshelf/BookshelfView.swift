@@ -21,6 +21,8 @@ struct BookshelfView: View {
     @Environment(\.bookshelfImportService) private var bookshelfImportService
     @Environment(\.bookFileManager) private var bookFileManager
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.kgService) private var kgService
+    @Environment(\.authManager) private var authManager
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
     private var podcastSeries: [PodcastSeries]
@@ -98,7 +100,9 @@ struct BookshelfView: View {
                 LoginSheet()
             }
             .task {
-                await PodcastSyncService().syncAll(context: modelContext)
+                if authManager.isLoggedIn {
+                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+            }
             }
         }
     }
@@ -106,7 +110,6 @@ struct BookshelfView: View {
     // MARK: - 空狀態
 
     @Environment(\.openURL) private var openURL
-    @Environment(\.authManager) private var authManager
 
     private var emptyState: some View {
         ScrollView {
@@ -159,7 +162,9 @@ struct BookshelfView: View {
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         }
         .refreshable {
-            await PodcastSyncService().syncAll(context: modelContext)
+            if authManager.isLoggedIn {
+                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+            }
         }
     }
 
@@ -210,7 +215,9 @@ struct BookshelfView: View {
                 .padding(.bottom, AppMetrics.spacingExtraLarge)
         }
         .refreshable {
-            await PodcastSyncService().syncAll(context: modelContext)
+            if authManager.isLoggedIn {
+                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+            }
         }
         .navigationDestination(for: Book.self) { book in
             switch book.format {
