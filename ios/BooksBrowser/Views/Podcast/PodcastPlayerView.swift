@@ -27,7 +27,32 @@ struct PodcastPlayerView: View {
     var body: some View {
         Group {
             if let vm = viewModel {
+                // onChange mounted INSIDE the non-nil branch — observing
+                // `viewModel?.state` on an optional @Observable class was a
+                // known SwiftUI/Observation runtime race on VM swap/teardown
+                // (silent SIGABRT, no log). By binding to the non-optional vm
+                // here, diff evaluation can't read freed storage across
+                // nil↔non-nil transitions.
                 playerContent(vm)
+                    .onChange(of: vm.currentTime) { _, newTime in
+                        guard vm.state == .playing else { return }
+                        saveProgressIfNeeded(time: newTime)
+                    }
+                    .onChange(of: vm.state) { _, newState in
+                        // Defer restoreProgress until the item is genuinely ready; seeking on
+                        // an un-ready AVPlayer item silently drops the target time.
+                        // CRITICAL: if we just restored, do NOT fall through to saveProgress —
+                        // vm.seek is async, currentTime is still 0 this tick, and saveProgress
+                        // would overwrite lastPlayedTime with 0 before the seek lands.
+                        if newState == .ready, !progressRestored {
+                            progressRestored = true
+                            restoreProgress(vm: vm, episodeRemoteId: episodeId)
+                            return
+                        }
+                        if newState == .paused || newState == .ready {
+                            saveProgress()
+                        }
+                    }
             } else {
                 ProgressView("載入中…")
             }
@@ -59,26 +84,6 @@ struct PodcastPlayerView: View {
             progressRestored = false
             lastSavedTime = 0
             loadEpisode()
-        }
-        .onChange(of: viewModel?.currentTime) { _, newTime in
-            guard let vm = viewModel, let newTime,
-                  vm.state == .playing else { return }
-            saveProgressIfNeeded(time: newTime)
-        }
-        .onChange(of: viewModel?.state) { _, newState in
-            // Defer restoreProgress until the item is genuinely ready; seeking on
-            // an un-ready AVPlayer item silently drops the target time.
-            // CRITICAL: if we just restored, do NOT fall through to saveProgress —
-            // vm.seek is async, currentTime is still 0 this tick, and saveProgress
-            // would overwrite lastPlayedTime with 0 before the seek lands.
-            if newState == .ready, !progressRestored, let vm = viewModel {
-                progressRestored = true
-                restoreProgress(vm: vm, episodeRemoteId: episodeId)
-                return
-            }
-            if newState == .paused || newState == .ready {
-                saveProgress()
-            }
         }
         .onDisappear {
             // Save before teardown — shutdown() flips state to .idle which the
@@ -245,17 +250,18 @@ struct PodcastPlayerView: View {
 
     @MainActor
     private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
-        // Sweep first so we read the dedup'd winner (avoids race where CloudKit
-        // pushed a stale row that sorts newer due to clock skew).
-        let progress = PodcastSyncService.sanitizeProgressDuplicates(
-            for: episodeRemoteId, context: modelContext
+        // READ-ONLY path. Calling sanitize+save here during AVPlayer .ready
+        // early lifecycle triggered SwiftData runtime trap when CloudKit
+        // mirror was still importing (silent SIGABRT — no throw, no log).
+        // Dedup happens in saveProgress (which only fires after user activity).
+        let targetId = episodeRemoteId
+        let descriptor = FetchDescriptor<PodcastProgress>(
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
-        // Flush any pending deletes from sweep — otherwise other fetches may
-        // see phantom rows until next saveProgress() trigger.
-        if modelContext.hasChanges {
-            try? modelContext.save()
-        }
-        if let progress, progress.lastPlayedTime > 0, !progress.completed {
+        if let progress = try? modelContext.fetch(descriptor).first,
+           progress.lastPlayedTime > 0,
+           !progress.completed {
             vm.seek(to: progress.lastPlayedTime)
         }
     }
