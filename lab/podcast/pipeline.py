@@ -230,7 +230,10 @@ def _run_claude_subprocess(
         )
     except subprocess.TimeoutExpired as e:
         elapsed = time.time() - t0
-        tail = (e.stderr or "")[-2000:] if isinstance(e.stderr, str) else ""
+        raw = e.stderr
+        if isinstance(raw, bytes):
+            raw = raw.decode("utf-8", errors="replace")
+        tail = (raw or "")[-2000:]
         if tail:
             stderr_log.write_text(tail)
         if log:
@@ -397,7 +400,7 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
             existing.add(n)
         else:
             incomplete.append(n)
-            f.unlink()  # remove partial so re-run starts clean
+            f.unlink(missing_ok=True)  # remove partial so re-run starts clean
 
     if incomplete:
         log.event(f"Discarded {len(incomplete)} partial scripts (missing END_OF_SCRIPT): {sorted(incomplete)}")
@@ -512,7 +515,9 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
 def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
     scripts_dir = workspace / "scripts"
     if only_episode:
-        candidates = list(scripts_dir.glob(f"ep_{only_episode}_*.mp3"))
+        # Exact-match episode number: ep_1_pro.mp3 must NOT catch ep_10_pro.mp3.
+        pattern = re.compile(rf"^ep_{only_episode}_[A-Za-z]+\.mp3$")
+        candidates = sorted(f for f in scripts_dir.glob("ep_*.mp3") if pattern.match(f.name))
         if not candidates:
             log.error(f"No audio for episode {only_episode}")
             return False
