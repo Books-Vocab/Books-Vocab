@@ -72,7 +72,7 @@ STAGES = [
     "prep", "analyst", "architect", "plan-review",
     "enricher-gap", "enricher", "scriptwrite", "script-review",
     "tts-prep",
-    "synthesize", "subtitle",
+    "synthesize", "audio-qa", "subtitle",
 ]
 
 # Stage completion markers — written to workspace after each stage succeeds
@@ -192,6 +192,69 @@ def find_workspace(epub_path: Path) -> Path | None:
 # ─── Claude Code Runner ───
 
 
+# Per-stage timeout in seconds. Enricher does WebFetch and may legitimately take
+# longer; scriptwriter/reviewer are single-pass writes; default for misc agents.
+_STAGE_TIMEOUTS = {
+    "Enricher": 2700,
+    "Scriptwriter": 1800,
+    "Script Review": 1200,
+    "TTS Prep": 1200,
+}
+_DEFAULT_TIMEOUT = 1500
+
+
+def _run_claude_subprocess(
+    cmd: list[str],
+    workspace: Path,
+    label: str,
+    log: PipelineLog | None,
+    timeout: int,
+) -> tuple[bool, float]:
+    """Shared subprocess runner with timeout + stderr tail capture.
+
+    stdout stays inherited (live progress on TTY). stderr is piped so failure
+    diagnostics can be persisted to pipeline_log.jsonl + a per-stage tail file.
+    """
+    t0 = time.time()
+    stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
+
+    try:
+        proc = subprocess.run(
+            cmd,
+            cwd=str(workspace),
+            stdout=None,                  # inherit — keep live progress
+            stderr=subprocess.PIPE,       # capture for log
+            text=True,
+            env=_UNBUF_ENV,
+            timeout=timeout,
+        )
+    except subprocess.TimeoutExpired as e:
+        elapsed = time.time() - t0
+        tail = (e.stderr or "")[-2000:] if isinstance(e.stderr, str) else ""
+        if tail:
+            stderr_log.write_text(tail)
+        if log:
+            log.error(
+                f"{label} TIMEOUT after {timeout}s",
+                timeout=True, elapsed_s=round(elapsed, 1),
+                stderr_tail=tail[-500:],
+            )
+        return False, elapsed
+
+    elapsed = time.time() - t0
+    success = proc.returncode == 0
+    if not success:
+        stderr_text = proc.stderr or ""
+        if stderr_text:
+            stderr_log.write_text(stderr_text)
+        if log:
+            log.error(
+                f"{label} exited with code {proc.returncode}",
+                stderr_tail=stderr_text[-500:],
+            )
+    return success, elapsed
+
+
 def run_claude(
     prompt: str,
     workspace: Path,
@@ -205,16 +268,11 @@ def run_claude(
         tools.extend(extra_tools)
 
     cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", ",".join(tools)]
+    timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
-    log.event(f"claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt))
+    log.event("claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt), timeout_s=timeout)
 
-    t0 = time.time()
-    proc = subprocess.run(cmd, cwd=str(workspace), capture_output=False, text=True, env=_UNBUF_ENV)
-    elapsed = time.time() - t0
-
-    success = proc.returncode == 0
-    if not success:
-        log.error(f"{label} exited with code {proc.returncode}")
+    success, _ = _run_claude_subprocess(cmd, workspace, label, log, timeout)
     return success
 
 
@@ -224,16 +282,15 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
-    print(f"\n  [Scriptwriter EP{ep_num}] Starting...")
-    t0 = time.time()
-    proc = subprocess.run(
-        ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"],
-        cwd=str(workspace), capture_output=False, text=True, env=_UNBUF_ENV,
-    )
-    elapsed = time.time() - t0
-    status = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
-    print(f"  [Scriptwriter EP{ep_num}] {status} in {elapsed:.1f}s")
-    return ep_num, proc.returncode == 0
+    cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    label = f"Scriptwriter EP{ep_num}"
+    timeout = _STAGE_TIMEOUTS["Scriptwriter"]
+
+    print(f"\n  [{label}] Starting (timeout {timeout}s)...")
+    success, elapsed = _run_claude_subprocess(cmd, workspace, label, None, timeout)
+    status = "OK" if success else "FAILED"
+    print(f"  [{label}] {status} in {elapsed:.1f}s")
+    return ep_num, success
 
 
 def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
@@ -242,16 +299,15 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
-    print(f"\n  [Script Review EP{ep_num}] Starting...")
-    t0 = time.time()
-    proc = subprocess.run(
-        ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"],
-        cwd=str(workspace), capture_output=False, text=True, env=_UNBUF_ENV,
-    )
-    elapsed = time.time() - t0
-    status = "OK" if proc.returncode == 0 else f"FAILED (exit {proc.returncode})"
-    print(f"  [Script Review EP{ep_num}] {status} in {elapsed:.1f}s")
-    return ep_num, proc.returncode == 0
+    cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    label = f"Script Review EP{ep_num}"
+    timeout = _STAGE_TIMEOUTS["Script Review"]
+
+    print(f"\n  [{label}] Starting (timeout {timeout}s)...")
+    success, elapsed = _run_claude_subprocess(cmd, workspace, label, None, timeout)
+    status = "OK" if success else "FAILED"
+    print(f"  [{label}] {status} in {elapsed:.1f}s")
+    return ep_num, success
 
 
 # ─── Stage Completion Detection ───
@@ -328,7 +384,24 @@ def stage_scriptwriters(workspace: Path, log: PipelineLog, max_parallel: int = 3
         return False
 
     ep_nums = [int(f.stem.split("_")[1]) for f in ep_files]
-    existing = {int(f.stem.split("_")[1]) for f in (workspace / "scripts").glob("ep_*_script.md")}
+
+    # A script is "complete" only if it ends with the sentinel marker that
+    # scriptwriter.md mandates. Files without it are partial writes (agent
+    # crashed/timed-out mid-generation) — re-run them.
+    existing: set[int] = set()
+    incomplete: list[int] = []
+    for f in (workspace / "scripts").glob("ep_*_script.md"):
+        n = int(f.stem.split("_")[1])
+        tail = f.read_text(encoding="utf-8")[-200:]
+        if "END_OF_SCRIPT" in tail:
+            existing.add(n)
+        else:
+            incomplete.append(n)
+            f.unlink()  # remove partial so re-run starts clean
+
+    if incomplete:
+        log.event(f"Discarded {len(incomplete)} partial scripts (missing END_OF_SCRIPT): {sorted(incomplete)}")
+
     todo = [n for n in ep_nums if n not in existing]
 
     if not todo:
@@ -434,6 +507,29 @@ def stage_synthesize(workspace: Path, log: PipelineLog, only_episode: int | None
         cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
     )
     return proc.returncode == 0
+
+
+def stage_audio_qa(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
+    scripts_dir = workspace / "scripts"
+    if only_episode:
+        candidates = list(scripts_dir.glob(f"ep_{only_episode}_*.mp3"))
+        if not candidates:
+            log.error(f"No audio for episode {only_episode}")
+            return False
+        target = candidates[0]
+    else:
+        target = scripts_dir
+
+    report = workspace / "audio_qa.json"
+    proc = subprocess.run(
+        ["uv", "run", str(ROOT / "audio_qa.py"), str(target), "--report", str(report)],
+        cwd=str(ROOT), capture_output=False, text=True, env=_UNBUF_ENV,
+    )
+    if proc.returncode != 0:
+        log.error(f"audio_qa found FAIL findings — see {report}")
+        return False
+    log.event(f"audio_qa passed — report at {report.relative_to(workspace)}")
+    return True
 
 
 def stage_subtitle(workspace: Path, log: PipelineLog, only_episode: int | None = None) -> bool:
@@ -706,6 +802,7 @@ examples:
         "script-review": lambda: stage_script_review(workspace, log, args.parallel, args.only_episode),
         "tts-prep": lambda: stage_tts_prep(workspace, log),
         "synthesize": lambda: stage_synthesize(workspace, log, args.only_episode),
+        "audio-qa": lambda: stage_audio_qa(workspace, log, args.only_episode),
         "subtitle": lambda: stage_subtitle(workspace, log, args.only_episode),
     }
 
