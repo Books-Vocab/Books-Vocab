@@ -186,10 +186,17 @@ def create_embedding_store(
     *,
     llm,
     notebook_id: str = "default",
+    model: str | None = None,
+    dim: int | None = None,
 ) -> EmbeddingStore:
-    key = f"embedding:{user_dir}:{notebook_id}"
+    if model is None or dim is None:
+        from .settings import load_settings
+        s = load_settings()
+        model = model or s.embedding_model
+        dim = dim or s.embedding_dim
+    key = f"embedding:{user_dir}:{notebook_id}:{model}:{dim}"
     emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
         ("embeddings_{nb}.npy", "embeddings.npy"),
         ("card_ids_{nb}.json", "card_ids.json"),
     ])
-    return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm))
+    return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim))
