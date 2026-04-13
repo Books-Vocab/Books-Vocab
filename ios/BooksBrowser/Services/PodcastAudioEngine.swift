@@ -11,6 +11,8 @@ final class PodcastAudioEngine: NSObject {
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    private var interruptionObserver: NSObjectProtocol?
+    private var routeChangeObserver: NSObjectProtocol?
     // Incremented on every loadAudio; async tasks capture + compare to bail out
     // when a later load has superseded them (prevents stale duration / ready signals).
     private var loadGeneration: UInt64 = 0
@@ -176,8 +178,58 @@ final class PodcastAudioEngine: NSObject {
         let session = AVAudioSession.sharedInstance()
         try? session.setCategory(.playback, mode: .spokenAudio)
         try? session.setActive(true)
+        registerAudioSessionObservers()
         #endif
     }
+
+    #if os(iOS)
+    private func registerAudioSessionObservers() {
+        guard interruptionObserver == nil else { return }
+        let nc = NotificationCenter.default
+        interruptionObserver = nc.addObserver(
+            forName: AVAudioSession.interruptionNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] note in
+            guard
+                let info = note.userInfo,
+                let typeRaw = info[AVAudioSessionInterruptionTypeKey] as? UInt,
+                let type = AVAudioSession.InterruptionType(rawValue: typeRaw)
+            else { return }
+            switch type {
+            case .began:
+                self?.player?.pause()
+            case .ended:
+                // Reactivate session + auto-resume only if system hints it.
+                try? AVAudioSession.sharedInstance().setActive(true)
+                let opts = (info[AVAudioSessionInterruptionOptionKey] as? UInt).map {
+                    AVAudioSession.InterruptionOptions(rawValue: $0)
+                } ?? []
+                if opts.contains(.shouldResume) {
+                    self?.player?.play()
+                    self?.player?.rate = self?.playbackRate ?? 1.0
+                }
+            @unknown default:
+                break
+            }
+        }
+        routeChangeObserver = nc.addObserver(
+            forName: AVAudioSession.routeChangeNotification,
+            object: AVAudioSession.sharedInstance(),
+            queue: .main
+        ) { [weak self] note in
+            guard
+                let info = note.userInfo,
+                let reasonRaw = info[AVAudioSessionRouteChangeReasonKey] as? UInt,
+                let reason = AVAudioSession.RouteChangeReason(rawValue: reasonRaw)
+            else { return }
+            // Headphones unplugged / previous device unavailable → pause per HIG.
+            if reason == .oldDeviceUnavailable {
+                self?.player?.pause()
+            }
+        }
+    }
+    #endif
 
     /// Full teardown — frees the AVPlayerItem so buffering stops and the asset
     /// reader releases its network handle. Call from view `.onDisappear`.
@@ -203,6 +255,14 @@ final class PodcastAudioEngine: NSObject {
         failObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        if let obs = interruptionObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        interruptionObserver = nil
+        if let obs = routeChangeObserver {
+            NotificationCenter.default.removeObserver(obs)
+        }
+        routeChangeObserver = nil
         player?.pause()
         // Detach the item so AVPlayer releases the underlying asset reader
         // (pause alone keeps network buffering alive).

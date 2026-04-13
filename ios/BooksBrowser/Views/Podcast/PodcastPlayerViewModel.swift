@@ -25,7 +25,9 @@ final class PodcastPlayerViewModel {
     private(set) var renderState: SubtitleRenderState?
     private(set) var highlightedWordIndex: Int = -1
     private(set) var playbackRate: Float = 1.0
-    private(set) var displayMode: PodcastSubtitleDisplayMode = .wordLevel
+    // .sentenceLevel is the chat-bubble transcript (primary UX).
+    // .wordLevel is a single-focus card retained as a secondary mode.
+    private(set) var displayMode: PodcastSubtitleDisplayMode = .sentenceLevel
     let hostNames: [String]
 
     // Translation — set by the player view

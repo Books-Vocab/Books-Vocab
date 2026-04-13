@@ -166,9 +166,11 @@ struct PodcastSentenceLevelView: View {
             .animation(AppMotion.standardSpring, value: highlightedWordIndex)
         } else {
             CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
-                let tokens = sentence.text.split(separator: " ").map(String.init)
-                ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
-                    Text(token)
+                // Use sentence.words (same source the current-branch uses) so
+                // token count and line-wrapping stay identical when the sentence
+                // becomes current — avoids any jump in bubble height.
+                ForEach(Array(sentence.words.enumerated()), id: \.offset) { _, cue in
+                    Text(cue.word)
                         .font(skin.typography.body)
                         .foregroundStyle(textColor)
                 }

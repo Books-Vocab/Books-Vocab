@@ -30,7 +30,11 @@ final class PodcastSubtitleEngine {
     }
 
     func currentCue(at time: TimeInterval) -> PodcastSubtitleCue? {
-        // Binary search
+        // Binary search with gap fallback — compact SRTs stitch end=next.start
+        // but any gap (silence / rounding) would otherwise return nil and cause
+        // the highlight to strobe off/on once per word. Fall back to the last
+        // cue whose startTime <= time.
+        guard !cues.isEmpty else { return nil }
         var lo = 0, hi = cues.count - 1
         while lo <= hi {
             let mid = (lo + hi) / 2
@@ -42,7 +46,8 @@ final class PodcastSubtitleEngine {
                 return cues[mid]
             }
         }
-        return nil
+        // hi is the largest index with startTime <= time (mirrors currentSentence).
+        return hi >= 0 ? cues[hi] : nil
     }
 
     func currentSentence(at time: TimeInterval) -> PodcastSentence? {

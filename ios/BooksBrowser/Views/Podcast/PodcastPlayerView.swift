@@ -15,6 +15,7 @@ struct PodcastPlayerView: View {
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = PodcastTranslationHandler()
@@ -71,12 +72,20 @@ struct PodcastPlayerView: View {
             }
         }
         .onDisappear {
+            // Save before teardown — stop() flips state to .idle which the
+            // onChange path would otherwise skip, losing up to 10s of progress.
+            saveProgress()
             loadTask?.cancel()
             loadTask = nil
             viewModel?.stop()
             viewModel = nil
             loadedEpisodeId = nil
             progressRestored = false
+        }
+        .onChange(of: scenePhase) { _, phase in
+            // App backgrounded / inactive → persist latest position; no
+            // .paused / .ready transition fires for a scene-phase change alone.
+            if phase != .active { saveProgress() }
         }
     }
 
@@ -233,6 +242,11 @@ struct PodcastPlayerView: View {
 
     private func saveProgress() {
         guard let vm = viewModel else { return }
+        // Guard against writing a stale VM's currentTime under the current
+        // episodeId during a fast episode swap — the old VM emits a .paused
+        // tick as part of stop(), and episodeId on the binding is already the
+        // new id by then.
+        guard loadedEpisodeId == episodeId else { return }
         let targetId = episodeId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId }
