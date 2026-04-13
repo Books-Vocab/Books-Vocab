@@ -245,17 +245,17 @@ struct PodcastPlayerView: View {
 
     @MainActor
     private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
-        let targetId = episodeRemoteId
-        // Sort by updatedAt DESC — CloudKit can legally produce duplicate rows
-        // for the same episode across devices (no @Attribute(.unique) — it's
-        // CloudKit-incompatible). Pick the newest so we don't rewind the user.
-        let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        // Sweep first so we read the dedup'd winner (avoids race where CloudKit
+        // pushed a stale row that sorts newer due to clock skew).
+        let progress = PodcastSyncService.sanitizeProgressDuplicates(
+            for: episodeRemoteId, context: modelContext
         )
-        if let progress = try? modelContext.fetch(descriptor).first,
-           progress.lastPlayedTime > 0,
-           !progress.completed {
+        // Flush any pending deletes from sweep — otherwise other fetches may
+        // see phantom rows until next saveProgress() trigger.
+        if modelContext.hasChanges {
+            try? modelContext.save()
+        }
+        if let progress, progress.lastPlayedTime > 0, !progress.completed {
             vm.seek(to: progress.lastPlayedTime)
         }
     }
@@ -283,20 +283,13 @@ struct PodcastPlayerView: View {
     /// progress during an episodeId swap, before `loadedEpisodeId` advances.
     private func saveProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
         if vm.currentTime == 0 { return }
-        let targetId = episodeRemoteId
-        // Sort newest-first + collapse duplicates from CloudKit into the newest.
-        let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId },
-            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
+        // Single chokepoint for dedup — collapses CloudKit-induced duplicates.
+        let winner = PodcastSyncService.sanitizeProgressDuplicates(
+            for: episodeRemoteId, context: modelContext
         )
-        let existing = (try? modelContext.fetch(descriptor)) ?? []
-        // Delete any older duplicates so the store converges to a single row.
-        for stale in existing.dropFirst() {
-            modelContext.delete(stale)
-        }
         let progress: PodcastProgress
-        if let newest = existing.first {
-            progress = newest
+        if let winner {
+            progress = winner
         } else {
             progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
             modelContext.insert(progress)
