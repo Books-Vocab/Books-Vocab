@@ -18,6 +18,7 @@ struct PodcastSentenceLevelView: View {
     let hostNames: [String]
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
+    let onPhraseTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
 
     @State private var isFollowing = true
@@ -171,6 +172,9 @@ struct PodcastSentenceLevelView: View {
                         .onTapGesture {
                             onWordTap(word.text, rs.sentenceText)
                         }
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            onPhraseTap(rs.sentenceText, rs.sentenceText)
+                        }
                 }
             }
             .animation(AppMotion.standardSpring, value: highlightedWordIndex)
@@ -183,6 +187,12 @@ struct PodcastSentenceLevelView: View {
                     Text(cue.word)
                         .font(skin.typography.body)
                         .foregroundStyle(textColor)
+                        .onTapGesture {
+                            onWordTap(cue.word, sentence.text)
+                        }
+                        .onLongPressGesture(minimumDuration: 0.35) {
+                            onPhraseTap(sentence.text, sentence.text)
+                        }
                 }
             }
         }
