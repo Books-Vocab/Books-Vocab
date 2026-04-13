@@ -387,7 +387,7 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
         def touch(self, card_id):
             self.touched_ids.add(card_id)
 
-        def batch_touch(self, card_ids):
+        def batch_touch(self, card_ids, *, notebook_id=None):
             self.touched_ids.update(card_ids)
 
     class _GraphCreatesLinks(_GraphWithPending):
@@ -453,7 +453,7 @@ def test_step_embed_and_judge_no_touch_when_no_links_created():
             super().__init__(card_ids)
             self.touched_ids: set[str] = set()
 
-        def batch_touch(self, card_ids):
+        def batch_touch(self, card_ids, *, notebook_id=None):
             self.touched_ids.update(card_ids)
 
     tracking_cards = _TrackingCards(ids)
@@ -508,7 +508,7 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
             super().__init__(card_ids)
             self.touched_ids: set[str] = set()
 
-        def batch_touch(self, card_ids):
+        def batch_touch(self, card_ids, *, notebook_id=None):
             self.touched_ids.update(card_ids)
 
     class _GraphWithRequeue(_GraphWithPending):

@@ -61,7 +61,7 @@ class _FakeCards:
     def touch(self, card_id: str):
         self.touched_ids.add(card_id)
 
-    def batch_touch(self, card_ids):
+    def batch_touch(self, card_ids, *, notebook_id=None):
         self.touched_ids.update(card_ids)
 
 

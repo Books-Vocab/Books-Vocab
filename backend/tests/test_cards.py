@@ -239,6 +239,21 @@ class TestBatchTouch:
         results = store.get_modified_since(ts)
         assert any(c.id == c1.id for c in results)
 
+    def test_notebook_scope_filters_out_other_notebook(self, store):
+        """With notebook_id, ids outside the notebook are silently skipped."""
+        c1 = store.add(content="alpha", meaning="first", notebook_id="nb_a")
+        c2 = store.add(content="beta", meaning="second", notebook_id="nb_b")
+        c2_original_ts = store.get(c2.id).updated_at
+        touched = store.batch_touch({c1.id, c2.id}, notebook_id="nb_a")
+        assert touched == 1
+        assert store.get(c2.id).updated_at == c2_original_ts
+
+    def test_no_notebook_scope_touches_all(self, store):
+        c1 = store.add(content="alpha", meaning="first", notebook_id="nb_a")
+        c2 = store.add(content="beta", meaning="second", notebook_id="nb_b")
+        touched = store.batch_touch({c1.id, c2.id})
+        assert touched == 2
+
 
 class TestBatchUpdateNoN1:
     """Verify batch_update uses a single WHERE IN query, not N individual SELECTs."""

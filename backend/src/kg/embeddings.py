@@ -80,6 +80,11 @@ class EmbeddingStore:
                 # the first element — coerce to 0 so sorting doesn't crash.
                 sorted_data = sorted(response.data, key=lambda d: d.index if d.index is not None else 0)
                 vecs = np.array([d.embedding for d in sorted_data], dtype=np.float32)
+                if vecs.ndim >= 2 and vecs.shape[1] != self.dim:
+                    raise ValueError(
+                        f"Embedding dim mismatch: got {vecs.shape[1]}, expected {self.dim} "
+                        f"(model={self.model!r}). Check EMBEDDING_DIM env var."
+                    )
                 return vecs
             except OpenAIError as e:
                 if attempt < 2:

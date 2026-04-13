@@ -386,15 +386,24 @@ class CardStore:
                 return True
             return False
 
-    def batch_touch(self, card_ids: set[str] | list[str]) -> int:
-        """Bump updated_at for multiple cards in a single transaction."""
+    def batch_touch(
+        self, card_ids: set[str] | list[str], *, notebook_id: str | None = None,
+    ) -> int:
+        """Bump updated_at for multiple cards in a single transaction.
+
+        If `notebook_id` is provided, only cards in that notebook are touched;
+        ids outside the notebook are silently skipped. This is a defense
+        against cross-notebook touch when callers derive ids from links that
+        should all belong to the same notebook.
+        """
         if not card_ids:
             return 0
         now = datetime.now(UTC)
+        conditions = [Card.id.in_(set(card_ids)), Card.is_deleted.is_(False)]
+        if notebook_id is not None:
+            conditions.append(Card.notebook_id == notebook_id)
         with Session(self.engine) as session:
-            cards = session.exec(
-                select(Card).where(Card.id.in_(set(card_ids)), Card.is_deleted.is_(False))
-            ).all()
+            cards = session.exec(select(Card).where(*conditions)).all()
             for card in cards:
                 card.updated_at = now
                 session.add(card)
