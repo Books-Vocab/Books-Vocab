@@ -14,6 +14,7 @@ struct PodcastPlayerView: View {
     @Environment(\.vocabSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.kgService) private var kgService
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = PodcastTranslationHandler()
@@ -133,9 +134,8 @@ struct PodcastPlayerView: View {
 
                 // Subtitle is small (~150 KB); fetch upfront so it's ready when audio plays.
                 var subtitleContent: String?
-                if let subtitleURLStr = episode.subtitleURL,
-                   let subtitleURL = URL(string: subtitleURLStr) {
-                    let (data, _) = try await URLSession.shared.data(from: subtitleURL)
+                if let subtitleURLStr = episode.subtitleURL {
+                    let data = try await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService)
                     subtitleContent = String(data: data, encoding: .utf8)
                 }
 

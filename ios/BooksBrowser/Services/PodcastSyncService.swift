@@ -40,6 +40,12 @@ struct PodcastEpisodeDetail: Codable {
 final class PodcastSyncService {
     private static let baseURL = AppURLs.domain
 
+    private let kgService: any KGServing
+
+    init(kgService: any KGServing) {
+        self.kgService = kgService
+    }
+
     static func episodeRemoteId(seriesId: String, episodeNumber: Int) -> String {
         "\(seriesId)_ep_\(String(format: "%02d", episodeNumber))"
     }
@@ -52,15 +58,28 @@ final class PodcastSyncService {
         "\(baseURL)/api/podcasts/\(seriesId)/\(episodeNumber)/subtitle"
     }
 
+    /// Shared helper so `PodcastPlayerView` 的 subtitle fetch 也能重用。
+    /// `/api/podcast-media/` StaticFiles mount 例外 — Starlette mount 旁路 FastAPI
+    /// dependency，audio.mp3 目前仍為公開（後續 PR 改自訂 endpoint 時再補 auth）。
+    static func authedData(from urlString: String, kgService: any KGServing) async throws -> Data {
+        guard let url = URL(string: urlString) else {
+            throw URLError(.badURL)
+        }
+        let token = try await kgService.currentAuthToken()
+        var request = URLRequest(url: url)
+        request.httpMethod = "GET"
+        request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        let (data, _) = try await URLSession.shared.data(for: request)
+        return data
+    }
+
     func fetchSeriesList() async throws -> [PodcastSeriesSummary] {
-        let url = URL(string: "\(Self.baseURL)/api/podcasts")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let data = try await Self.authedData(from: "\(Self.baseURL)/api/podcasts", kgService: kgService)
         return try JSONDecoder().decode([PodcastSeriesSummary].self, from: data)
     }
 
     func fetchSeriesDetail(seriesId: String) async throws -> PodcastSeriesDetail {
-        let url = URL(string: "\(Self.baseURL)/api/podcasts/\(seriesId)")!
-        let (data, _) = try await URLSession.shared.data(from: url)
+        let data = try await Self.authedData(from: "\(Self.baseURL)/api/podcasts/\(seriesId)", kgService: kgService)
         return try JSONDecoder().decode(PodcastSeriesDetail.self, from: data)
     }
 
@@ -76,7 +95,7 @@ final class PodcastSyncService {
             try context.save()
         } catch {
             // Best-effort — podcast sync must not block the app
-            print("[PodcastSync] sync failed: \(error)")
+            AppLog.kg.warning("[PodcastSync] sync failed: \(error.localizedDescription)")
         }
     }
 

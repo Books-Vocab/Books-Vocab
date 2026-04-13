@@ -10,6 +10,7 @@ protocol KGServing: AnyObject {
     var sessionExpiredReason: String? { get set }
     var lastBackgroundSyncError: String? { get set }
 
+    func currentAuthToken() async throws -> String
     func healthCheck() async
     func batchAdd(entries: [VocabularyEntry], notebookId: String) async throws -> KGAddResponse
     func triggerPipeline(notebookId: String) async throws
