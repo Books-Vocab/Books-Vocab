@@ -37,6 +37,10 @@ WORKSPACE="$(cd "$WORKSPACE" && pwd)"
 [[ -d "$WORKSPACE/scripts" ]]          || err "Missing scripts/ dir in $WORKSPACE"
 
 SERIES_ID="$(basename "$WORKSPACE")"
+# Must match backend _SERIES_ID_RE in routers/podcast.py — otherwise upload
+# succeeds but every API call returns 404.
+[[ "$SERIES_ID" =~ ^[a-z0-9_]+$ ]] \
+  || err "Invalid series_id '$SERIES_ID' — must match ^[a-z0-9_]+\$ (lowercase, digits, underscore)"
 info "Series: $SERIES_ID"
 
 # ── Create staging dir ───────────────────────────────────────────────────────
@@ -69,13 +73,20 @@ done
 [[ $EP_COUNT -gt 0 ]] || err "No ep_*_pro.mp3 files found in scripts/"
 ok "Staged $EP_COUNT episodes"
 
+# ── Fetch existing remote metadata (for createdAt preservation) ──────────────
+EXISTING_META=""
+if [[ $DRY_RUN -eq 0 ]]; then
+  EXISTING_META="$("${SSH_CMD[@]}" "cat $REMOTE_PODCAST_DIR/$SERIES_ID/metadata.json 2>/dev/null || true")"
+fi
+
 # ── Generate metadata.json ───────────────────────────────────────────────────
 OVERVIEW="$WORKSPACE/plan/overview.md"
 
-python3 - "$OVERVIEW" "$STAGING" "$SERIES_ID" <<'PYEOF'
+python3 - "$OVERVIEW" "$STAGING" "$SERIES_ID" "$EXISTING_META" <<'PYEOF'
 import sys, json, os, re, subprocess
 
 overview_path, staging_dir, series_id = sys.argv[1], sys.argv[2], sys.argv[3]
+existing_meta_raw = sys.argv[4] if len(sys.argv) > 4 else ""
 
 with open(overview_path, "r") as f:
     text = f.read()
@@ -135,6 +146,17 @@ from datetime import datetime, timezone
 total_duration = sum(e["durationSec"] for e in episodes)
 now = datetime.now(timezone.utc).isoformat(timespec="seconds")
 
+# Preserve createdAt from existing remote metadata (idempotent re-upload
+# must not reset series creation time).
+created_at = now
+if existing_meta_raw.strip():
+    try:
+        prev = json.loads(existing_meta_raw)
+        if isinstance(prev.get("createdAt"), str) and prev["createdAt"]:
+            created_at = prev["createdAt"]
+    except json.JSONDecodeError:
+        pass
+
 metadata = {
     "id": series_id,
     "title": title,
@@ -144,7 +166,7 @@ metadata = {
     "coverPattern": "waves",
     "totalDurationSec": total_duration,
     "episodes": episodes,
-    "createdAt": now,
+    "createdAt": created_at,
     "updatedAt": now,
 }
 
@@ -168,16 +190,21 @@ if [[ $DRY_RUN -eq 1 ]]; then
 fi
 
 # ── rsync to server ──────────────────────────────────────────────────────────
+# --partial + --delay-updates: interrupted transfers leave a .tmp partial
+# instead of corrupting the final file; finalized files swap in atomically
+# at the end. Prevents half-uploaded mp3 being served mid-transfer.
 info "Uploading to $SERVER:$REMOTE_PODCAST_DIR/$SERIES_ID/ ..."
-rsync -avz \
+rsync -avz --partial --partial-dir=.rsync-partial --delay-updates \
   -e "ssh -i $SSH_KEY -o StrictHostKeyChecking=accept-new -o BatchMode=yes" \
   "$STAGING/" \
   "$SERVER:$REMOTE_PODCAST_DIR/$SERIES_ID/"
 ok "Upload complete"
 
-# ── Rebuild index.json on remote ─────────────────────────────────────────────
+# ── Rebuild index.json on remote (flock-serialized) ──────────────────────────
+# flock prevents concurrent uploads from racing the index rebuild
+# (reader may observe other series' metadata mid-swap otherwise).
 info "Rebuilding index.json on server..."
-"${SSH_CMD[@]}" python3 - "$REMOTE_PODCAST_DIR" <<'REMOTE_PY'
+"${SSH_CMD[@]}" flock /tmp/podcast_index.lock python3 - "$REMOTE_PODCAST_DIR" <<'REMOTE_PY'
 import sys, json, os, glob
 
 podcast_dir = os.path.expanduser(sys.argv[1])
@@ -190,8 +217,10 @@ for meta_path in sorted(glob.glob(os.path.join(podcast_dir, "*/metadata.json")))
     index.append(entry)
 
 out = os.path.join(podcast_dir, "index.json")
-with open(out, "w") as f:
+tmp = out + ".tmp"
+with open(tmp, "w") as f:
     json.dump(index, f, indent=2, ensure_ascii=False)
+os.replace(tmp, out)  # atomic swap — reader never sees truncated JSON
 print(f"index.json: {len(index)} series")
 REMOTE_PY
 ok "index.json rebuilt"
