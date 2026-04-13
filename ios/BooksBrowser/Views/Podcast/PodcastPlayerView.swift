@@ -131,12 +131,7 @@ struct PodcastPlayerView: View {
 
                 vm.setLoading()
 
-                let (tmpURL, _) = try await URLSession.shared.download(from: audioURL)
-                let stableTmp = FileManager.default.temporaryDirectory
-                    .appendingPathComponent(UUID().uuidString)
-                    .appendingPathExtension("mp3")
-                try FileManager.default.moveItem(at: tmpURL, to: stableTmp)
-
+                // Subtitle is small (~150 KB); fetch upfront so it's ready when audio plays.
                 var subtitleContent: String?
                 if let subtitleURLStr = episode.subtitleURL,
                    let subtitleURL = URL(string: subtitleURLStr) {
@@ -144,8 +139,10 @@ struct PodcastPlayerView: View {
                     subtitleContent = String(data: data, encoding: .utf8)
                 }
 
+                // Audio streams via AVPlayer — pass the remote URL directly.
+                // No full-file download, playback starts as soon as first chunk buffers.
                 await MainActor.run {
-                    vm.loadEpisode(audioURL: stableTmp, subtitleContent: subtitleContent)
+                    vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
                 }
 
                 restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)

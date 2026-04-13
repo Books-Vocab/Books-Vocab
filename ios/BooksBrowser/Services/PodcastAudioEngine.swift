@@ -1,19 +1,22 @@
 import Foundation
 import AVFoundation
-import QuartzCore
 
+/// Streams podcast audio via AVPlayer (HTTP Range requests under the hood).
+/// Replaces the previous AVAudioEngine implementation which required the full file
+/// to be downloaded before playback could begin.
 final class PodcastAudioEngine: NSObject {
-    private var audioEngine = AVAudioEngine()
-    private var playerNode = AVAudioPlayerNode()
-    private var timePitchNode = AVAudioUnitTimePitch()
-    private var audioFile: AVAudioFile?
-    private var segmentStartTime: TimeInterval = 0
-    private var ignoreNextCompletion = false
-    private var displayLink: CADisplayLink?
+    private var player: AVPlayer?
+    private var playerItem: AVPlayerItem?
+    private var timeObserver: Any?
+    private var endObserver: NSObjectProtocol?
 
     private(set) var playbackRate: Float = 1.0
+    private(set) var duration: TimeInterval = 0
+
     var onTimeUpdate: ((TimeInterval) -> Void)?
     var onPlaybackFinished: (() -> Void)?
+    var onDurationLoaded: ((TimeInterval) -> Void)?
+    var onReadyToPlay: (() -> Void)?
 
     static let rateSteps: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -24,124 +27,125 @@ final class PodcastAudioEngine: NSObject {
         return rateSteps[(idx + 1) % rateSteps.count]
     }
 
-    override init() {
-        super.init()
-        audioEngine.attach(playerNode)
-        audioEngine.attach(timePitchNode)
-    }
-
     deinit {
-        displayLink?.invalidate()
-        audioEngine.stop()
+        removeObservers()
     }
 
     func loadAudio(url: URL) throws {
-        if audioEngine.isRunning { audioEngine.stop() }
-        ignoreNextCompletion = true
-        playerNode.stop()
+        removeObservers()
+        configureAudioSession()
 
-        audioFile = try AVAudioFile(forReading: url)
-        guard let audioFile else { throw PodcastAudioEngineError.invalidFile }
+        let asset = AVURLAsset(url: url)
+        let item = AVPlayerItem(asset: asset)
+        // Preserve pitch when rate != 1.0 (varispeed w/o chipmunk effect).
+        item.audioTimePitchAlgorithm = .timeDomain
+        playerItem = item
 
-        let format = audioFile.processingFormat
-        audioEngine.disconnectNodeOutput(playerNode)
-        audioEngine.disconnectNodeOutput(timePitchNode)
-        audioEngine.connect(playerNode, to: timePitchNode, format: format)
-        audioEngine.connect(timePitchNode, to: audioEngine.mainMixerNode, format: format)
-        timePitchNode.rate = playbackRate
+        let p = AVPlayer(playerItem: item)
+        p.automaticallyWaitsToMinimizeStalling = true
+        player = p
 
-        try audioEngine.start()
-        segmentStartTime = 0
-        scheduleFile()
-        ignoreNextCompletion = false
+        // Periodic time observer drives subtitle sync (~15 Hz — plenty for word highlight).
+        let interval = CMTime(seconds: 1.0 / 15.0, preferredTimescale: 600)
+        timeObserver = p.addPeriodicTimeObserver(forInterval: interval, queue: .main) { [weak self] t in
+            guard let self else { return }
+            let s = CMTimeGetSeconds(t)
+            if s.isFinite { self.onTimeUpdate?(s) }
+        }
+
+        endObserver = NotificationCenter.default.addObserver(
+            forName: .AVPlayerItemDidPlayToEndTime,
+            object: item,
+            queue: .main
+        ) { [weak self] _ in
+            self?.onPlaybackFinished?()
+        }
+
+        // Duration + readiness — loaded async from remote asset metadata.
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                let d = try await asset.load(.duration)
+                let s = CMTimeGetSeconds(d)
+                if s.isFinite, s > 0 {
+                    self.duration = s
+                    self.onDurationLoaded?(s)
+                }
+            } catch {
+                // Keep duration at 0 — player still streams, just scrubber UX degrades.
+            }
+            // Signal ready once the item is playable (first playable byte buffered).
+            _ = try? await asset.load(.isPlayable)
+            self.onReadyToPlay?()
+        }
     }
 
     func play() {
-        if !audioEngine.isRunning { try? audioEngine.start() }
-        playerNode.play()
-        startDisplayLink()
+        guard let p = player else { return }
+        p.play()
+        p.rate = playbackRate  // AVPlayer resets rate to 1.0 on play; re-apply.
     }
 
     func pause() {
-        playerNode.pause()
-        stopDisplayLink()
+        player?.pause()
     }
 
     func seek(to time: TimeInterval, autoResume: Bool) {
-        guard let audioFile else { return }
-        let sampleRate = audioFile.processingFormat.sampleRate
-        let startFrame = AVAudioFramePosition(time * sampleRate)
-        let frameCount = audioFile.length - startFrame
-        guard startFrame >= 0, frameCount > 0 else { return }
-
-        ignoreNextCompletion = true
-        playerNode.stop()
-        playerNode.scheduleSegment(
-            audioFile,
-            startingFrame: startFrame,
-            frameCount: AVAudioFrameCount(frameCount),
-            at: nil
-        ) { [weak self] in self?.handleCompletion() }
-        segmentStartTime = time
-        if autoResume { play() }
-        ignoreNextCompletion = false
+        guard let p = player else { return }
+        let clamped = max(0, duration > 0 ? min(time, duration) : time)
+        let cm = CMTime(seconds: clamped, preferredTimescale: 600)
+        p.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
+            guard let self else { return }
+            self.onTimeUpdate?(clamped)
+            if autoResume {
+                p.play()
+                p.rate = self.playbackRate
+            }
+        }
     }
 
     func setRate(_ rate: Float) {
         playbackRate = max(0.5, min(rate, 2.0))
-        timePitchNode.rate = playbackRate
-    }
-
-    var duration: TimeInterval {
-        guard let f = audioFile else { return 0 }
-        return Double(f.length) / f.processingFormat.sampleRate
+        // Only apply to an actively-playing player; otherwise AVPlayer treats non-zero
+        // rate as a play command even when we intended to stay paused.
+        if player?.timeControlStatus == .playing {
+            player?.rate = playbackRate
+        }
     }
 
     var currentTime: TimeInterval {
-        guard let nodeTime = playerNode.lastRenderTime,
-              let playerTime = playerNode.playerTime(forNodeTime: nodeTime) else {
-            return segmentStartTime
-        }
-        let sampleRate = audioFile?.processingFormat.sampleRate ?? 44100
-        return segmentStartTime + Double(playerTime.sampleTime) / sampleRate
+        guard let p = player else { return 0 }
+        let t = CMTimeGetSeconds(p.currentTime())
+        return t.isFinite ? t : 0
     }
 
-    var isPlaying: Bool { playerNode.isPlaying }
+    var isPlaying: Bool {
+        player?.timeControlStatus == .playing
+    }
 
     // MARK: - Private
 
-    private func scheduleFile() {
-        guard let audioFile else { return }
-        playerNode.scheduleFile(audioFile, at: nil) { [weak self] in
-            self?.handleCompletion()
+    private func configureAudioSession() {
+        #if os(iOS)
+        let session = AVAudioSession.sharedInstance()
+        try? session.setCategory(.playback, mode: .spokenAudio)
+        try? session.setActive(true)
+        #endif
+    }
+
+    private func removeObservers() {
+        if let p = player, let obs = timeObserver {
+            p.removeTimeObserver(obs)
         }
-    }
-
-    private func handleCompletion() {
-        guard !ignoreNextCompletion else {
-            ignoreNextCompletion = false
-            return
+        timeObserver = nil
+        if let obs = endObserver {
+            NotificationCenter.default.removeObserver(obs)
         }
-        DispatchQueue.main.async { [weak self] in
-            self?.stopDisplayLink()
-            self?.onPlaybackFinished?()
-        }
-    }
-
-    private func startDisplayLink() {
-        guard displayLink == nil else { return }
-        displayLink = CADisplayLink(target: self, selector: #selector(displayLinkFired))
-        displayLink?.preferredFrameRateRange = CAFrameRateRange(minimum: 15, maximum: 30, preferred: 30)
-        displayLink?.add(to: .main, forMode: .common)
-    }
-
-    private func stopDisplayLink() {
-        displayLink?.invalidate()
-        displayLink = nil
-    }
-
-    @objc private func displayLinkFired() {
-        onTimeUpdate?(currentTime)
+        endObserver = nil
+        player?.pause()
+        player = nil
+        playerItem = nil
+        duration = 0
     }
 }
 
