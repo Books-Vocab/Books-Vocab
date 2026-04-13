@@ -66,17 +66,33 @@ final class PodcastPlayerViewModel {
                 self?.state = .error(msg)
             }
         }
+        audioEngine.onSystemPause = { [weak self] in
+            MainActor.assumeIsolated {
+                // Keep VM state consistent with engine when the system forces
+                // pause (phone call, headphones unplug). UI icon won't lie.
+                if self?.state == .playing { self?.state = .paused }
+            }
+        }
+        audioEngine.onSystemResume = { [weak self] in
+            MainActor.assumeIsolated {
+                if self?.state == .paused { self?.state = .playing }
+            }
+        }
     }
 
     // MARK: - Loading
 
-    func loadEpisode(audioURL: URL, subtitleContent: String?) {
+    func loadEpisode(audioURL: URL, subtitleContent: String?, title: String = "") {
         state = .loading
         duration = 0
         audioEngine.loadAudio(url: audioURL)
         if let srt = subtitleContent {
             subtitleEngine.load(srtContent: srt)
         }
+        audioEngine.configureNowPlaying(
+            title: title,
+            artist: hostNames.joined(separator: " & ")
+        )
         // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 

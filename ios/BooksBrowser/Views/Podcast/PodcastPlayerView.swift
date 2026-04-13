@@ -206,8 +206,13 @@ struct PodcastPlayerView: View {
                 }
                 if Task.isCancelled { return }
 
+                let episodeTitle = episode.displayTitle
                 await MainActor.run {
-                    vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
+                    vm.loadEpisode(
+                        audioURL: audioURL,
+                        subtitleContent: subtitleContent,
+                        title: episodeTitle
+                    )
                 }
                 // restoreProgress is now triggered by .ready state observer,
                 // after AVPlayer's item has actually reached a seekable state.
@@ -242,11 +247,13 @@ struct PodcastPlayerView: View {
 
     private func saveProgress() {
         guard let vm = viewModel else { return }
-        // Guard against writing a stale VM's currentTime under the current
-        // episodeId during a fast episode swap — the old VM emits a .paused
-        // tick as part of stop(), and episodeId on the binding is already the
-        // new id by then.
+        // Guard 1: don't write stale VM's currentTime under NEW episodeId
+        // during a fast episode swap (old VM emits .paused during stop()).
         guard loadedEpisodeId == episodeId else { return }
+        // Guard 2: don't overwrite a saved lastPlayedTime with 0 during the
+        // window between AVPlayer reaching .ready and restoreProgress seeking
+        // to the saved position — scenePhase / onDisappear may fire in that gap.
+        if !progressRestored && vm.currentTime == 0 { return }
         let targetId = episodeId
         let descriptor = FetchDescriptor<PodcastProgress>(
             predicate: #Predicate { $0.episodeRemoteId == targetId }

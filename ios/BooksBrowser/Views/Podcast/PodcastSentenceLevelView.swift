@@ -64,7 +64,9 @@ struct PodcastSentenceLevelView: View {
                 }
             }
             .onAppear {
-                // One-shot initial scroll so the user lands at the current sentence.
+                // If currentId is already known at appear, do the one-shot scroll.
+                // Otherwise the .onChange below will handle it when the first
+                // sentence resolves after restoreProgress / first time-tick.
                 if !didInitialScroll, let id = currentId {
                     DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
                         proxy.scrollTo(id, anchor: .center)
@@ -73,8 +75,16 @@ struct PodcastSentenceLevelView: View {
                 }
             }
             .onChange(of: currentId) { _, newId in
+                guard let newId else { return }
+                // First non-nil currentId → one-shot initial scroll without animation
+                // so restored positions appear immediately.
+                if !didInitialScroll {
+                    proxy.scrollTo(newId, anchor: .center)
+                    didInitialScroll = true
+                    return
+                }
                 // Auto-follow: smoothly recenter when the sentence advances.
-                guard isFollowing, let newId else { return }
+                guard isFollowing else { return }
                 withAnimation(AppMotion.standardSpring) {
                     proxy.scrollTo(newId, anchor: .center)
                 }

@@ -1,5 +1,8 @@
 import Foundation
 import AVFoundation
+#if os(iOS)
+import MediaPlayer
+#endif
 
 /// Streams podcast audio via AVPlayer (HTTP Range requests under the hood).
 /// Replaces the previous AVAudioEngine implementation which required the full file
@@ -13,6 +16,10 @@ final class PodcastAudioEngine: NSObject {
     private var statusObserver: NSKeyValueObservation?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
+    private var stallWatchdog: Task<Void, Never>?
+    private var remoteCommandsRegistered = false
+    private var nowPlayingTitle: String = ""
+    private var nowPlayingArtist: String = ""
     // Incremented on every loadAudio; async tasks capture + compare to bail out
     // when a later load has superseded them (prevents stale duration / ready signals).
     private var loadGeneration: UInt64 = 0
@@ -25,6 +32,10 @@ final class PodcastAudioEngine: NSObject {
     var onDurationLoaded: ((TimeInterval) -> Void)?
     var onReadyToPlay: (() -> Void)?
     var onLoadFailed: ((String) -> Void)?
+    /// System forced playback to pause (interruption began, headphones unplugged).
+    var onSystemPause: (() -> Void)?
+    /// System hinted we should resume after interruption ended.
+    var onSystemResume: (() -> Void)?
 
     static let rateSteps: [Float] = [0.5, 0.75, 1.0, 1.25, 1.5, 2.0]
 
@@ -105,6 +116,9 @@ final class PodcastAudioEngine: NSObject {
                 if s.isFinite, s > 0 {
                     self.duration = s
                     self.onDurationLoaded?(s)
+                    #if os(iOS)
+                    self.updateNowPlayingInfo()
+                    #endif
                 }
             } catch {
                 // Keep duration at 0 — player still streams, just scrubber UX degrades.
@@ -132,10 +146,19 @@ final class PodcastAudioEngine: NSObject {
         guard let p = player else { return }
         p.play()
         p.rate = playbackRate  // AVPlayer resets rate to 1.0 on play; re-apply.
+        startStallWatchdog()
+        #if os(iOS)
+        updateNowPlayingInfo()
+        #endif
     }
 
     func pause() {
         player?.pause()
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
+        #if os(iOS)
+        updateNowPlayingInfo()
+        #endif
     }
 
     func seek(to time: TimeInterval, autoResume: Bool) {
@@ -149,6 +172,9 @@ final class PodcastAudioEngine: NSObject {
                 p.play()
                 p.rate = self.playbackRate
             }
+            #if os(iOS)
+            self.updateNowPlayingInfo()
+            #endif
         }
     }
 
@@ -199,8 +225,8 @@ final class PodcastAudioEngine: NSObject {
             switch type {
             case .began:
                 self?.player?.pause()
+                self?.onSystemPause?()
             case .ended:
-                // Reactivate session + auto-resume only if system hints it.
                 try? AVAudioSession.sharedInstance().setActive(true)
                 let opts = (info[AVAudioSessionInterruptionOptionKey] as? UInt).map {
                     AVAudioSession.InterruptionOptions(rawValue: $0)
@@ -208,6 +234,7 @@ final class PodcastAudioEngine: NSObject {
                 if opts.contains(.shouldResume) {
                     self?.player?.play()
                     self?.player?.rate = self?.playbackRate ?? 1.0
+                    self?.onSystemResume?()
                 }
             @unknown default:
                 break
@@ -226,6 +253,7 @@ final class PodcastAudioEngine: NSObject {
             // Headphones unplugged / previous device unavailable → pause per HIG.
             if reason == .oldDeviceUnavailable {
                 self?.player?.pause()
+                self?.onSystemPause?()
             }
         }
     }
@@ -237,7 +265,80 @@ final class PodcastAudioEngine: NSObject {
     /// generation check instead of firing callbacks on a torn-down VM.
     func stop() {
         loadGeneration &+= 1
+        stallWatchdog?.cancel()
+        stallWatchdog = nil
         removeObservers()
+    }
+
+    /// Populate lock-screen / Control Center metadata + wire remote commands
+    /// (play / pause / skip ±15s / scrubbing). Call from VM after loadEpisode
+    /// with the episode title + host names.
+    func configureNowPlaying(title: String, artist: String) {
+        #if os(iOS)
+        nowPlayingTitle = title
+        nowPlayingArtist = artist
+        registerRemoteCommands()
+        updateNowPlayingInfo()
+        #endif
+    }
+
+    #if os(iOS)
+    private func registerRemoteCommands() {
+        guard !remoteCommandsRegistered else { return }
+        remoteCommandsRegistered = true
+        let center = MPRemoteCommandCenter.shared()
+        center.playCommand.addTarget { [weak self] _ in
+            self?.play(); return .success
+        }
+        center.pauseCommand.addTarget { [weak self] _ in
+            self?.pause(); return .success
+        }
+        center.skipForwardCommand.preferredIntervals = [15]
+        center.skipForwardCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            self.seek(to: self.currentTime + 15, autoResume: self.isPlaying)
+            return .success
+        }
+        center.skipBackwardCommand.preferredIntervals = [15]
+        center.skipBackwardCommand.addTarget { [weak self] _ in
+            guard let self else { return .commandFailed }
+            self.seek(to: max(0, self.currentTime - 15), autoResume: self.isPlaying)
+            return .success
+        }
+        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+            guard let self,
+                  let pos = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
+            else { return .commandFailed }
+            self.seek(to: pos, autoResume: self.isPlaying)
+            return .success
+        }
+    }
+
+    private func updateNowPlayingInfo() {
+        var info: [String: Any] = [:]
+        info[MPMediaItemPropertyTitle] = nowPlayingTitle
+        info[MPMediaItemPropertyArtist] = nowPlayingArtist
+        if duration > 0 {
+            info[MPMediaItemPropertyPlaybackDuration] = duration
+        }
+        info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
+        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = info
+    }
+    #endif
+
+    /// Watchdog: if AVPlayer stays in `.waitingToPlayAtSpecifiedRate` for >15s
+    /// (network stall the AVFoundation error path won't catch), surface a
+    /// user-visible error instead of leaving the UI frozen.
+    private func startStallWatchdog() {
+        stallWatchdog?.cancel()
+        stallWatchdog = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(15))
+            guard let self, !Task.isCancelled else { return }
+            if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
+                self.onLoadFailed?("網路緩衝逾時")
+            }
+        }
     }
 
     private func removeObservers() {
@@ -270,6 +371,14 @@ final class PodcastAudioEngine: NSObject {
         player = nil
         playerItem = nil
         duration = 0
+        #if os(iOS)
+        // Clear lock-screen info and release session so other apps aren't ducked.
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: [.notifyOthersOnDeactivation]
+        )
+        #endif
     }
 }
 
