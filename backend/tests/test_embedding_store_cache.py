@@ -171,3 +171,47 @@ class TestUpdateDirtyWrite:
         with patch.object(store, "_save", wraps=store._save) as mock_save:
             store.add_batch([("c_new", "hello")])
             mock_save.assert_called_once(), "add_batch should still save immediately"
+
+
+# ---------------------------------------------------------------------------
+# 3. settings wiring — model/dim must flow from KGSettings into EmbeddingStore
+# ---------------------------------------------------------------------------
+
+class TestEmbeddingSettingsWiring:
+    def test_factory_reads_model_and_dim_from_settings(self, tmp_path: Path, monkeypatch):
+        """Regression: factory previously never passed settings.embedding_model /
+        settings.embedding_dim to EmbeddingStore. Env var was dead config."""
+        clear_store_cache()
+        monkeypatch.setenv("EMBEDDING_MODEL", "custom-test-model")
+        monkeypatch.setenv("EMBEDDING_DIM", "768")
+        try:
+            llm, _ = _make_tracked_llm()
+            store = create_embedding_store(tmp_path, llm=llm, notebook_id="default")
+            assert store.model == "custom-test-model"
+            assert store.dim == 768
+        finally:
+            clear_store_cache()
+
+    def test_explicit_args_override_settings(self, tmp_path: Path):
+        clear_store_cache()
+        try:
+            llm, _ = _make_tracked_llm()
+            store = create_embedding_store(
+                tmp_path, llm=llm, notebook_id="default",
+                model="explicit-model", dim=512,
+            )
+            assert store.model == "explicit-model"
+            assert store.dim == 512
+        finally:
+            clear_store_cache()
+
+    def test_cache_key_distinguishes_model(self, tmp_path: Path):
+        """Different model should return different cached instances."""
+        clear_store_cache()
+        try:
+            llm, _ = _make_tracked_llm()
+            s1 = create_embedding_store(tmp_path, llm=llm, model="m1", dim=768)
+            s2 = create_embedding_store(tmp_path, llm=llm, model="m2", dim=768)
+            assert s1 is not s2
+        finally:
+            clear_store_cache()
