@@ -19,6 +19,7 @@ struct PodcastPlayerView: View {
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = PodcastTranslationHandler()
     @State private var lastSavedTime: TimeInterval = 0
+    @State private var loadTask: Task<Void, Never>?
 
     var body: some View {
         Group {
@@ -40,6 +41,12 @@ struct PodcastPlayerView: View {
             if newState == .paused || newState == .ready {
                 saveProgress()
             }
+        }
+        .onDisappear {
+            loadTask?.cancel()
+            loadTask = nil
+            viewModel?.stop()
+            viewModel = nil
         }
     }
 
@@ -122,33 +129,39 @@ struct PodcastPlayerView: View {
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
 
-        Task {
+        loadTask?.cancel()
+        loadTask = Task { [weak vm] in
+            guard let vm else { return }
             do {
                 guard let audioURLStr = episode.audioURL,
                       let audioURL = URL(string: audioURLStr) else {
-                    vm.reportError("無音訊 URL")
+                    await MainActor.run { vm.reportError("無音訊 URL") }
                     return
                 }
 
-                vm.setLoading()
+                await MainActor.run { vm.setLoading() }
+                if Task.isCancelled { return }
 
-                // Subtitle is small (~150 KB); fetch upfront so it's ready when audio plays.
+                // Subtitle is best-effort — audio can play without it.
                 var subtitleContent: String?
                 if let subtitleURLStr = episode.subtitleURL {
-                    let data = try await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService)
-                    subtitleContent = String(data: data, encoding: .utf8)
+                    if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
+                        subtitleContent = String(data: data, encoding: .utf8)
+                    }
                 }
+                if Task.isCancelled { return }
 
-                // Audio streams via AVPlayer — pass the remote URL directly.
-                // No full-file download, playback starts as soon as first chunk buffers.
                 await MainActor.run {
                     vm.loadEpisode(audioURL: audioURL, subtitleContent: subtitleContent)
                 }
+                if Task.isCancelled { return }
 
-                restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)
+                await restoreProgress(vm: vm, episodeRemoteId: episode.remoteId)
+            } catch is CancellationError {
+                return
             } catch {
                 await MainActor.run {
-                    vm.reportError("下載失敗：\(error.localizedDescription)")
+                    vm.reportError("載入失敗：\(error.localizedDescription)")
                 }
             }
         }
@@ -187,7 +200,14 @@ struct PodcastPlayerView: View {
             modelContext.insert(progress)
         }
         progress.lastPlayedTime = vm.currentTime
-        progress.completed = (vm.state == .ready && vm.currentTime > 0 && vm.currentTime >= vm.duration - 1)
+        // completed must require a real duration — AVPlayer reports duration = 0
+        // until async asset metadata loads, which would otherwise trip
+        // `currentTime >= 0 - 1` = true and falsely mark a fresh episode complete.
+        progress.completed = (
+            vm.state == .ready
+            && vm.duration > 0
+            && vm.currentTime >= vm.duration - 1
+        )
         progress.updatedAt = Date()
         try? modelContext.save()
     }

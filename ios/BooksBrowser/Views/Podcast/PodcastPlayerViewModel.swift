@@ -59,6 +59,11 @@ final class PodcastPlayerViewModel {
                 if self.state == .loading { self.state = .ready }
             }
         }
+        audioEngine.onLoadFailed = { [weak self] msg in
+            MainActor.assumeIsolated {
+                self?.state = .error(msg)
+            }
+        }
     }
 
     // MARK: - Loading
@@ -66,16 +71,11 @@ final class PodcastPlayerViewModel {
     func loadEpisode(audioURL: URL, subtitleContent: String?) {
         state = .loading
         duration = 0
-        do {
-            try audioEngine.loadAudio(url: audioURL)
-            if let srt = subtitleContent {
-                subtitleEngine.load(srtContent: srt)
-            }
-            // With AVPlayer streaming, duration + readiness arrive asynchronously.
-            // state transitions to .ready via onReadyToPlay callback.
-        } catch {
-            state = .error(error.localizedDescription)
+        audioEngine.loadAudio(url: audioURL)
+        if let srt = subtitleContent {
+            subtitleEngine.load(srtContent: srt)
         }
+        // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 
     func setLoading() {
@@ -96,6 +96,12 @@ final class PodcastPlayerViewModel {
     func pause() {
         audioEngine.pause()
         state = .paused
+    }
+
+    /// Full teardown — used on view dismiss to release network + audio resources.
+    func stop() {
+        audioEngine.stop()
+        state = .idle
     }
 
     func togglePlayPause() {
@@ -161,10 +167,12 @@ final class PodcastPlayerViewModel {
             }
         }
 
-        // High-frequency path: update highlight index (just an Int, cheap)
-        if let hw = cue?.highlightedWord, let rs = renderState {
-            let normalized = hw.lowercased().trimmingCharacters(in: .punctuationCharacters)
-            highlightedWordIndex = rs.highlightIndex(for: normalized)
+        // High-frequency path: highlight = index of current cue within sentence.words.
+        // With compact SRT, sentence.words is 1:1 with word cues, so we find the cue
+        // position directly (no fuzzy text match needed).
+        if let cue, let sentence = currentSentence,
+           let idx = sentence.words.firstIndex(where: { $0.id == cue.id }) {
+            highlightedWordIndex = idx
         } else {
             highlightedWordIndex = -1
         }
