@@ -17,9 +17,10 @@ final class PodcastAudioEngine: NSObject {
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var stallWatchdog: Task<Void, Never>?
-    private var remoteCommandsRegistered = false
+    private var remoteCommandTargets: [(MPRemoteCommand, Any)] = []
     private var nowPlayingTitle: String = ""
     private var nowPlayingArtist: String = ""
+    private var timeControlObserver: NSKeyValueObservation?
     // Incremented on every loadAudio; async tasks capture + compare to bail out
     // when a later load has superseded them (prevents stale duration / ready signals).
     private var loadGeneration: UInt64 = 0
@@ -105,6 +106,25 @@ final class PodcastAudioEngine: NSObject {
             }
         }
 
+        // KVO on player.timeControlStatus — arms the stall watchdog precisely
+        // when buffering begins, and cancels it the moment playback resumes.
+        // Covers post-seek stalls without false positives after successful play.
+        timeControlObserver = p.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
+            guard let self else { return }
+            DispatchQueue.main.async {
+                guard gen == self.loadGeneration else { return }
+                switch observed.timeControlStatus {
+                case .waitingToPlayAtSpecifiedRate:
+                    self.startStallWatchdog()
+                case .playing, .paused:
+                    self.stallWatchdog?.cancel()
+                    self.stallWatchdog = nil
+                @unknown default:
+                    break
+                }
+            }
+        }
+
         // Duration + readiness — loaded async from remote asset metadata.
         // Capture `gen`; bail if a newer load has started by the time we resume.
         Task { @MainActor [weak self] in
@@ -146,7 +166,6 @@ final class PodcastAudioEngine: NSObject {
         guard let p = player else { return }
         p.play()
         p.rate = playbackRate  // AVPlayer resets rate to 1.0 on play; re-apply.
-        startStallWatchdog()
         #if os(iOS)
         updateNowPlayingInfo()
         #endif
@@ -268,6 +287,16 @@ final class PodcastAudioEngine: NSObject {
         stallWatchdog?.cancel()
         stallWatchdog = nil
         removeObservers()
+        #if os(iOS)
+        // Terminal-only teardown: unregister remote commands, clear lock-screen
+        // info, deactivate the audio session (avoids ducking-pulse on retries).
+        unregisterRemoteCommands()
+        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
+        try? AVAudioSession.sharedInstance().setActive(
+            false,
+            options: [.notifyOthersOnDeactivation]
+        )
+        #endif
     }
 
     /// Populate lock-screen / Control Center metadata + wire remote commands
@@ -284,34 +313,50 @@ final class PodcastAudioEngine: NSObject {
 
     #if os(iOS)
     private func registerRemoteCommands() {
-        guard !remoteCommandsRegistered else { return }
-        remoteCommandsRegistered = true
+        guard remoteCommandTargets.isEmpty else { return }
         let center = MPRemoteCommandCenter.shared()
-        center.playCommand.addTarget { [weak self] _ in
+        let play = center.playCommand.addTarget { [weak self] _ in
             self?.play(); return .success
         }
-        center.pauseCommand.addTarget { [weak self] _ in
+        remoteCommandTargets.append((center.playCommand, play))
+        let pause = center.pauseCommand.addTarget { [weak self] _ in
             self?.pause(); return .success
         }
+        remoteCommandTargets.append((center.pauseCommand, pause))
         center.skipForwardCommand.preferredIntervals = [15]
-        center.skipForwardCommand.addTarget { [weak self] _ in
+        let fwd = center.skipForwardCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            self.seek(to: self.currentTime + 15, autoResume: self.isPlaying)
+            // Use timeControlStatus != .paused as "intended to play" proxy —
+            // passes through stalls (.waitingToPlayAtSpecifiedRate) correctly.
+            let shouldResume = self.player?.timeControlStatus != .paused
+            self.seek(to: self.currentTime + 15, autoResume: shouldResume)
             return .success
         }
+        remoteCommandTargets.append((center.skipForwardCommand, fwd))
         center.skipBackwardCommand.preferredIntervals = [15]
-        center.skipBackwardCommand.addTarget { [weak self] _ in
+        let back = center.skipBackwardCommand.addTarget { [weak self] _ in
             guard let self else { return .commandFailed }
-            self.seek(to: max(0, self.currentTime - 15), autoResume: self.isPlaying)
+            let shouldResume = self.player?.timeControlStatus != .paused
+            self.seek(to: max(0, self.currentTime - 15), autoResume: shouldResume)
             return .success
         }
-        center.changePlaybackPositionCommand.addTarget { [weak self] event in
+        remoteCommandTargets.append((center.skipBackwardCommand, back))
+        let scrub = center.changePlaybackPositionCommand.addTarget { [weak self] event in
             guard let self,
                   let pos = (event as? MPChangePlaybackPositionCommandEvent)?.positionTime
             else { return .commandFailed }
-            self.seek(to: pos, autoResume: self.isPlaying)
+            let shouldResume = self.player?.timeControlStatus != .paused
+            self.seek(to: pos, autoResume: shouldResume)
             return .success
         }
+        remoteCommandTargets.append((center.changePlaybackPositionCommand, scrub))
+    }
+
+    private func unregisterRemoteCommands() {
+        for (command, token) in remoteCommandTargets {
+            command.removeTarget(token)
+        }
+        remoteCommandTargets.removeAll()
     }
 
     private func updateNowPlayingInfo() {
@@ -356,6 +401,8 @@ final class PodcastAudioEngine: NSObject {
         failObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        timeControlObserver?.invalidate()
+        timeControlObserver = nil
         if let obs = interruptionObserver {
             NotificationCenter.default.removeObserver(obs)
         }
@@ -371,14 +418,8 @@ final class PodcastAudioEngine: NSObject {
         player = nil
         playerItem = nil
         duration = 0
-        #if os(iOS)
-        // Clear lock-screen info and release session so other apps aren't ducked.
-        MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
-        try? AVAudioSession.sharedInstance().setActive(
-            false,
-            options: [.notifyOthersOnDeactivation]
-        )
-        #endif
+        // Session deactivation moved to stop() to avoid the
+        // deactivate→reactivate pulse on every loadAudio retry.
     }
 }
 

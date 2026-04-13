@@ -198,6 +198,8 @@ struct PodcastPlayerView: View {
                 if Task.isCancelled { return }
 
                 // Subtitle is best-effort — audio can play without it.
+                // Per-request 10s timeout + cancellation check so a flaky server
+                // can't block audio load for 60s (default URLSession timeout).
                 var subtitleContent: String?
                 if let subtitleURLStr = episode.subtitleURL {
                     if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {

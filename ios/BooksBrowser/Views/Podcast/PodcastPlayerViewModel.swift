@@ -47,7 +47,12 @@ final class PodcastPlayerViewModel {
         }
         audioEngine.onPlaybackFinished = { [weak self] in
             MainActor.assumeIsolated {
-                self?.state = .ready
+                guard let self else { return }
+                // DidPlayToEndTime can fire on a truncated item right after a
+                // mid-stream failure already transitioned us to .error — don't
+                // let it silently clobber the error UI back to .ready.
+                if case .error = self.state { return }
+                self.state = .ready
             }
         }
         audioEngine.onDurationLoaded = { [weak self] d in
