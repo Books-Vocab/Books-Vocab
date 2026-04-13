@@ -1,17 +1,13 @@
 import SwiftUI
 import SwiftData
 
-struct PodcastEpisodeDestination: Hashable {
-    let episodeId: String
-}
-
 private enum EpisodeSort: String, CaseIterable, Identifiable {
     case ascending, descending
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .ascending: return "由舊至新"
-        case .descending: return "由新至舊"
+        case .ascending: return "集數由小到大"
+        case .descending: return "集數由大到小"
         }
     }
     var systemImage: String {
@@ -44,12 +40,18 @@ struct PodcastEpisodeListView: View {
     private var episodes: [PodcastEpisode] {
         switch sort {
         case .ascending: return rawEpisodes
-        case .descending: return rawEpisodes.reversed()
+        case .descending: return Array(rawEpisodes.reversed())
         }
     }
 
     private var progressMap: [String: PodcastProgress] {
-        Dictionary(uniqueKeysWithValues: allProgress.map { ($0.episodeRemoteId, $0) })
+        let ids = Set(rawEpisodes.map(\.remoteId))
+        return Dictionary(
+            allProgress.lazy
+                .filter { ids.contains($0.episodeRemoteId) }
+                .map { ($0.episodeRemoteId, $0) },
+            uniquingKeysWith: { lhs, rhs in lhs.updatedAt >= rhs.updatedAt ? lhs : rhs }
+        )
     }
 
     private var continueEpisode: PodcastEpisode? {
@@ -152,18 +154,21 @@ struct PodcastEpisodeListView: View {
     private var heroActions: some View {
         if let target = continueEpisode {
             let progress = progressMap[target.remoteId]
+            let unavailable = !target.audioAvailable
             let label: String = {
+                if unavailable { return "音訊暫不可用" }
                 if allCompleted { return "重新播放" }
                 if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return "繼續播放" }
                 return "開始播放"
             }()
+            let icon = unavailable ? "icloud.slash" : "play.fill"
             NavigationLink {
                 PodcastPlayerView(episodeId: target.remoteId)
             } label: {
-                Label(label, systemImage: "play.fill")
+                Label(label, systemImage: icon)
             }
             .buttonStyle(.appAction(.primary))
-            .disabled(!target.audioAvailable)
+            .disabled(unavailable)
             .frame(maxWidth: 280)
         }
     }
@@ -233,8 +238,10 @@ struct PodcastEpisodeListView: View {
     }
 
     private func formatTotalDuration(_ sec: Double) -> String {
-        let h = Int(sec) / 3600
-        let m = (Int(sec) % 3600) / 60
+        guard sec.isFinite, sec > 0 else { return "" }
+        let total = Int(sec)
+        let h = total / 3600
+        let m = (total % 3600) / 60
         if h > 0 {
             return "共 \(h) 小時 \(m) 分"
         }

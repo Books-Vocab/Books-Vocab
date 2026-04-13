@@ -101,10 +101,9 @@ struct PodcastEpisodeRow: View {
     }
 
     private func formatDuration(_ sec: Double) -> String {
+        guard sec.isFinite, sec >= 0 else { return "--:--" }
         let total = Int(sec)
-        let m = total / 60
-        let s = total % 60
-        return String(format: "%d:%02d", m, s)
+        return String(format: "%d:%02d", total / 60, total % 60)
     }
 
     private func formatDate(_ date: Date) -> String {
