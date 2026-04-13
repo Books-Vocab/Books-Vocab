@@ -115,6 +115,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
                     color: remote.color,
                     isDefault: remote.isDefault
                 )
+                nb.coverPattern = remote.coverPattern
                 nb.sortOrder = remote.sortOrder
                 nb.syncStatus = 1
                 modelContext.insert(nb)
