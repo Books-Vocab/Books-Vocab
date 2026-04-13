@@ -10,7 +10,6 @@ final class PodcastAudioEngine: NSObject {
     private var timeObserver: Any?
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
-    private var stallObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
     // Incremented on every loadAudio; async tasks capture + compare to bail out
     // when a later load has superseded them (prevents stale duration / ready signals).
@@ -71,33 +70,25 @@ final class PodcastAudioEngine: NSObject {
         }
 
         // Mid-stream failure (connection drop, corrupted payload tail, timeout).
+        // `gen` capture: a later load must not inherit this old item's failure.
         failObserver = NotificationCenter.default.addObserver(
             forName: .AVPlayerItemFailedToPlayToEndTime,
             object: item,
             queue: .main
         ) { [weak self] note in
-            guard let self else { return }
+            guard let self, gen == self.loadGeneration else { return }
             let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             self.onLoadFailed?(err?.localizedDescription ?? "播放中斷")
-        }
-
-        // Network stall (buffer starved) — surfaces to UI as "緩衝中…" hint if desired.
-        stallObserver = NotificationCenter.default.addObserver(
-            forName: .AVPlayerItemPlaybackStalled,
-            object: item,
-            queue: .main
-        ) { [weak self] _ in
-            // Non-fatal: AVPlayer recovers automatically. Could expose via callback later.
-            _ = self
         }
 
         // KVO on item.status — catches failures that surface AFTER isPlayable probe
         // returned true (404 with range, corrupted headers discovered during decode).
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] observed, _ in
-            guard let self else { return }
-            if observed.status == .failed {
-                let msg = observed.error?.localizedDescription ?? "音訊項目失敗"
-                DispatchQueue.main.async { self.onLoadFailed?(msg) }
+            guard let self, observed.status == .failed else { return }
+            let msg = observed.error?.localizedDescription ?? "音訊項目失敗"
+            DispatchQueue.main.async {
+                guard gen == self.loadGeneration else { return }
+                self.onLoadFailed?(msg)
             }
         }
 
@@ -190,7 +181,10 @@ final class PodcastAudioEngine: NSObject {
 
     /// Full teardown — frees the AVPlayerItem so buffering stops and the asset
     /// reader releases its network handle. Call from view `.onDisappear`.
+    /// Bumps loadGeneration so any in-flight async load task bails on its next
+    /// generation check instead of firing callbacks on a torn-down VM.
     func stop() {
+        loadGeneration &+= 1
         removeObservers()
     }
 
@@ -207,10 +201,6 @@ final class PodcastAudioEngine: NSObject {
             NotificationCenter.default.removeObserver(obs)
         }
         failObserver = nil
-        if let obs = stallObserver {
-            NotificationCenter.default.removeObserver(obs)
-        }
-        stallObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
         player?.pause()

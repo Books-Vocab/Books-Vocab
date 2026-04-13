@@ -31,7 +31,12 @@ struct PodcastPlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        .task { loadEpisode() }
+        // `.task(id:)` reloads when episodeId changes (parent swap) and avoids
+        // re-firing on every appear cycle; guard against re-runs via viewModel check.
+        .task(id: episodeId) {
+            guard viewModel == nil else { return }
+            loadEpisode()
+        }
         .onChange(of: viewModel?.currentTime) { _, newTime in
             guard let vm = viewModel, let newTime,
                   vm.state == .playing else { return }
