@@ -3,7 +3,9 @@ import Foundation
 
 @Model
 final class PodcastProgress {
-    @Attribute(.unique) var episodeRemoteId: String = ""
+    // Note: NO @Attribute(.unique) — CloudKit doesn't support unique constraints.
+    // Uniqueness is enforced in application code (fetch by episodeRemoteId before insert).
+    var episodeRemoteId: String = ""
     var lastPlayedTime: Double = 0
     var completed: Bool = false
     var updatedAt: Date = Date()
