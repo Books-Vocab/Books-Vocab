@@ -25,9 +25,13 @@ from __future__ import annotations
 
 import argparse
 import io
+import json
 import os
 import re
+import shutil
+import subprocess
 import sys
+import tempfile
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from pathlib import Path
@@ -54,13 +58,22 @@ from pydub import AudioSegment
 
 GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "").strip()
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1").strip()
-TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-preview-tts").strip()
+# Vertex Gemini-TTS GA name (no `-preview`). Override via env if needed.
+TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-tts").strip()
+TTS_MAX_CONCURRENT = int(os.getenv("TTS_MAX_CONCURRENT", "3"))
+TTS_RETRY_ATTEMPTS = int(os.getenv("TTS_RETRY_ATTEMPTS", "4"))
 VOICE_SPEAKER1 = ""  # set from overview.md Voice Mapping
 VOICE_SPEAKER2 = ""
 MAX_WORDS_PER_BATCH = int(os.getenv("TTS_MAX_WORDS_PER_BATCH", "800"))
 SILENCE_MS = int(os.getenv("TTS_SILENCE_MS", "50"))
 OUTPUT_FORMAT = os.getenv("TTS_OUTPUT_FORMAT", "mp3").strip().lower()
 MP3_BITRATE = os.getenv("TTS_MP3_BITRATE", "192k").strip()
+
+# Mastering: EBU R128 loudness normalization. Disable with TTS_MASTER=0.
+MASTER_ENABLED = os.getenv("TTS_MASTER", "1").strip() != "0"
+MASTER_LUFS = float(os.getenv("TTS_MASTER_LUFS", "-16"))     # Apple Podcasts target
+MASTER_TP = float(os.getenv("TTS_MASTER_TP", "-1.5"))        # true peak ceiling
+MASTER_LRA = float(os.getenv("TTS_MASTER_LRA", "11"))        # loudness range
 
 # ─── Dynamic Host Config ───
 
@@ -96,6 +109,15 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
             f"expected 2 entries of form '**Host (Voice)**: SpeakerN'. "
             f"Got speakers={speaker_map}, voices=({VOICE_SPEAKER1!r}, {VOICE_SPEAKER2!r}). "
             f"Run tts-prep stage to fix."
+        )
+
+    # Architect writes the placeholder `(TBD)`; tts-prep is responsible for
+    # replacing it with a real Gemini voice. If we see TBD here, tts-prep
+    # didn't run — fail loud rather than ship to TTS with a bogus voice name.
+    if VOICE_SPEAKER1.upper() == "TBD" or VOICE_SPEAKER2.upper() == "TBD":
+        raise RuntimeError(
+            f"Voice Mapping still contains TBD placeholder in {overview_path}. "
+            f"Run the tts-prep pipeline stage to assign real voices before synthesizing."
         )
 
     # Build system prompt from host profiles
@@ -259,6 +281,36 @@ def audio_bytes_to_segment(audio_bytes: bytes, mime_type: str) -> AudioSegment:
     )
 
 
+def _generate_with_retry(client, prompt, speech_config, index):
+    """Call generate_content with exponential backoff for transient errors.
+
+    Vertex Gemini-TTS preview models have tight RPM. SDK has internal retry but
+    not enough under burst; this adds outer-level retry to handle 429/503/504.
+    """
+    import random
+    last_exc = None
+    for attempt in range(TTS_RETRY_ATTEMPTS):
+        try:
+            return client.models.generate_content(
+                model=TTS_MODEL,
+                contents=prompt,
+                config=genai_types.GenerateContentConfig(
+                    response_modalities=["AUDIO"],
+                    speech_config=speech_config,
+                ),
+            )
+        except Exception as e:
+            last_exc = e
+            name = type(e).__name__
+            transient = name in {"ResourceExhausted", "ServiceUnavailable", "DeadlineExceeded", "InternalServerError"}
+            if not transient or attempt == TTS_RETRY_ATTEMPTS - 1:
+                raise
+            backoff = (2 ** attempt) + random.random()
+            print(f"  batch {index}: {name} — retry {attempt + 1}/{TTS_RETRY_ATTEMPTS} after {backoff:.1f}s")
+            time.sleep(backoff)
+    raise last_exc  # pragma: no cover — loop always returns or raises
+
+
 def _synthesize_one(
     client: genai.Client,
     speech_config: genai_types.SpeechConfig,
@@ -271,14 +323,7 @@ def _synthesize_one(
     """Synthesize a single batch. Returns (index, segment)."""
     t0 = time.time()
 
-    response = client.models.generate_content(
-        model=TTS_MODEL,
-        contents=prompt,
-        config=genai_types.GenerateContentConfig(
-            response_modalities=["AUDIO"],
-            speech_config=speech_config,
-        ),
-    )
+    response = _generate_with_retry(client, prompt, speech_config, index)
 
     audio_data = None
     mime_type = "audio/pcm"
@@ -308,11 +353,12 @@ def synthesize_batches(
     batches: List[List[Dict[str, str]]],
 ) -> List[AudioSegment]:
     total = len(batches)
-    print(f"  Sending {total} batches in parallel...")
+    workers = max(1, min(total, TTS_MAX_CONCURRENT))
+    print(f"  Sending {total} batches ({workers} concurrent)...")
 
     results: dict[int, AudioSegment] = {}
 
-    with ThreadPoolExecutor(max_workers=total) as pool:
+    with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {}
         for i, batch in enumerate(batches, 1):
             prompt = format_prompt(system_instructions, batch)
@@ -331,6 +377,62 @@ def synthesize_batches(
     return [results[i] for i in range(1, total + 1)]
 
 
+def _master_with_loudnorm(src_wav: Path, dst: Path) -> bool:
+    """Two-pass EBU R128 loudness normalization via ffmpeg.
+
+    Targets MASTER_LUFS / MASTER_TP / MASTER_LRA. First pass measures, second
+    pass applies linear normalization with measured params (most accurate mode).
+    Returns True on success; on any failure caller should fall back.
+    """
+    if not shutil.which("ffmpeg"):
+        print("  [master] ffmpeg not found — skipping loudnorm")
+        return False
+
+    af_measure = (
+        f"loudnorm=I={MASTER_LUFS}:TP={MASTER_TP}:LRA={MASTER_LRA}:print_format=json"
+    )
+    try:
+        # Pass 1 — measure
+        measure = subprocess.run(
+            ["ffmpeg", "-hide_banner", "-nostats", "-i", str(src_wav),
+             "-af", af_measure, "-f", "null", "-"],
+            capture_output=True, text=True, timeout=180,
+        )
+        # ffmpeg writes the JSON block to stderr
+        m = re.search(r"\{[\s\S]*?\}", measure.stderr)
+        if not m:
+            print(f"  [master] pass1 produced no JSON — stderr tail: {measure.stderr[-200:]!r}")
+            return False
+        params = json.loads(m.group(0))
+
+        af_apply = (
+            f"loudnorm=I={MASTER_LUFS}:TP={MASTER_TP}:LRA={MASTER_LRA}"
+            f":measured_I={params['input_i']}"
+            f":measured_TP={params['input_tp']}"
+            f":measured_LRA={params['input_lra']}"
+            f":measured_thresh={params['input_thresh']}"
+            f":offset={params['target_offset']}"
+            f":linear=true:print_format=summary"
+        )
+
+        if OUTPUT_FORMAT == "mp3":
+            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
+                         "-af", af_apply, "-ar", "48000",
+                         "-codec:a", "libmp3lame", "-b:a", MP3_BITRATE, str(dst)]
+        else:
+            apply_cmd = ["ffmpeg", "-y", "-hide_banner", "-nostats", "-i", str(src_wav),
+                         "-af", af_apply, "-ar", "48000", str(dst)]
+
+        result = subprocess.run(apply_cmd, capture_output=True, text=True, timeout=180)
+        if result.returncode != 0:
+            print(f"  [master] pass2 failed (exit {result.returncode}): {result.stderr[-200:]!r}")
+            return False
+        return True
+    except (subprocess.TimeoutExpired, json.JSONDecodeError, KeyError, OSError) as e:
+        print(f"  [master] error: {e}")
+        return False
+
+
 def combine_and_export(segments: List[AudioSegment], output_path: Path) -> None:
     combined = AudioSegment.empty()
     silence = AudioSegment.silent(duration=SILENCE_MS)
@@ -339,13 +441,26 @@ def combine_and_export(segments: List[AudioSegment], output_path: Path) -> None:
         combined += seg.set_channels(2) + silence
 
     output_path.parent.mkdir(parents=True, exist_ok=True)
-
-    if OUTPUT_FORMAT == "mp3":
-        combined.export(str(output_path), format="mp3", bitrate=MP3_BITRATE)
-    else:
-        combined.export(str(output_path), format="wav")
-
     duration_s = len(combined) / 1000
+
+    mastered = False
+    if MASTER_ENABLED:
+        with tempfile.NamedTemporaryFile(suffix=".wav", delete=False) as tf:
+            tmp_wav = Path(tf.name)
+        try:
+            combined.export(str(tmp_wav), format="wav")
+            mastered = _master_with_loudnorm(tmp_wav, output_path)
+            if mastered:
+                print(f"  [master] loudnorm I={MASTER_LUFS} TP={MASTER_TP} LRA={MASTER_LRA} applied")
+        finally:
+            tmp_wav.unlink(missing_ok=True)
+
+    if not mastered:
+        if OUTPUT_FORMAT == "mp3":
+            combined.export(str(output_path), format="mp3", bitrate=MP3_BITRATE)
+        else:
+            combined.export(str(output_path), format="wav")
+
     size_mb = output_path.stat().st_size / (1024 * 1024)
     print(f"  → {output_path.name} ({duration_s:.0f}s, {size_mb:.1f}MB)")
 
