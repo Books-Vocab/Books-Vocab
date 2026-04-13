@@ -4,12 +4,15 @@ import SwiftData
 @Model
 final class PodcastSeries {
     var id: UUID = UUID()
-    var remoteId: String
-    var title: String
+    // Defaults on every stored property — SwiftData lightweight migration
+    // fails otherwise when new fields land, and this store is shared with
+    // VocabularyEntry / ReviewRecord / Notebook.
+    var remoteId: String = ""
+    var title: String = ""
     var color: String?
     var coverPattern: String?
     var coverImagePath: String?
-    var hostNames: [String]
+    var hostNames: [String] = []
     var episodeCount: Int = 0
     var totalDurationSec: Double = 0
     var sortOrder: Int = 0
