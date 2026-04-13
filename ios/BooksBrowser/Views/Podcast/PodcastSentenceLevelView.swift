@@ -40,21 +40,23 @@ struct PodcastSentenceLevelView: View {
                     .padding(.vertical, skin.spacing.sectionGap)
                     .padding(.horizontal, skin.spacing.cardPadding)
                 }
-                // User drag (pan on the transcript) disables follow mode.
-                // Scroll-wheel / flick-inertia also produce drag gestures, which is
-                // the correct semantic: any intentional movement breaks auto-follow.
+                // User drag disables follow mode. `minimumDistance: 24` avoids
+                // cancelling follow on a finger-tremor tap (10pt contact +
+                // small slide during release). Genuine scroll easily clears it.
                 .simultaneousGesture(
-                    DragGesture(minimumDistance: 6)
+                    DragGesture(minimumDistance: 24)
                         .onChanged { _ in
                             if isFollowing { isFollowing = false }
                         }
                 )
 
-                if !isFollowing, let id = currentId {
+                if !isFollowing {
                     followPill {
                         isFollowing = true
-                        withAnimation(AppMotion.standardSpring) {
-                            proxy.scrollTo(id, anchor: .center)
+                        if let id = currentId {
+                            withAnimation(AppMotion.standardSpring) {
+                                proxy.scrollTo(id, anchor: .center)
+                            }
                         }
                     }
                     .padding(.bottom, skin.spacing.sectionGap)
@@ -118,53 +120,60 @@ struct PodcastSentenceLevelView: View {
             ? bubbleTint.opacity(0.10)
             : skin.palette.mutedFill.opacity(0.35)
         let fg: Color = isCurrent ? skin.palette.primaryText : skin.palette.secondaryText
-        // Always render the sentence text with the same Text view; overlay the
-        // active-word underline when current. This keeps layout stable — no
-        // resize, no re-measure — so transitioning current state is purely a
-        // color/opacity interpolation, not a layout recomputation.
-        Text(sentence.text)
-            .font(skin.typography.body)
-            .foregroundStyle(fg)
-            .fixedSize(horizontal: false, vertical: true)
+        // All bubbles use CachedFlowLayout of per-word tokens — same layout
+        // algorithm whether current or not. This guarantees line breaks don't
+        // shift when a sentence becomes current (the prior design mixed a
+        // single wrapping Text with an overlay FlowLayout whose wrapping
+        // disagreed, producing visible misalignment + jank).
+        wordFlow(for: sentence, isCurrent: isCurrent, textColor: fg, tint: bubbleTint)
             .padding(.horizontal, 12)
             .padding(.vertical, 10)
             .background(bg, in: RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
-            .overlay(alignment: .topLeading) {
-                if isCurrent, let rs = renderState {
-                    tappableWordsOverlay(rs, tint: bubbleTint)
-                }
-            }
             .animation(AppMotion.contentFade, value: isCurrent)
     }
 
-    /// Overlay that mirrors the sentence layout and renders tappable words
-    /// with a sliding active-word underline. Layered on top of the same Text
-    /// so the underlying bubble doesn't shift size when the overlay appears.
     @ViewBuilder
-    private func tappableWordsOverlay(_ rs: SubtitleRenderState, tint: Color) -> some View {
-        CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
-            ForEach(rs.words) { word in
-                let isActive = word.id == highlightedWordIndex
-                Text(word.text)
-                    .font(skin.typography.body)
-                    .foregroundStyle(skin.palette.primaryText)
-                    .overlay(alignment: .bottom) {
-                        if isActive {
-                            Rectangle()
-                                .fill(tint)
-                                .frame(height: 1.5)
-                                .offset(y: 3)
-                                .transition(.opacity)
+    private func wordFlow(
+        for sentence: PodcastSentence,
+        isCurrent: Bool,
+        textColor: Color,
+        tint: Color
+    ) -> some View {
+        // When the sentence is current AND we have renderState for it, use the
+        // per-cue words so the active-word underline and word-tap map 1:1 to
+        // the audio. Otherwise derive stable tokens from sentence.text.
+        if isCurrent, let rs = renderState, rs.sentenceId == sentence.id {
+            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
+                ForEach(rs.words) { word in
+                    let isActive = word.id == highlightedWordIndex
+                    Text(word.text)
+                        .font(skin.typography.body)
+                        .foregroundStyle(textColor)
+                        .overlay(alignment: .bottom) {
+                            if isActive {
+                                Rectangle()
+                                    .fill(tint)
+                                    .frame(height: 1.5)
+                                    .offset(y: 3)
+                                    .transition(.opacity)
+                            }
                         }
-                    }
-                    .onTapGesture {
-                        onWordTap(word.text, rs.sentenceText)
-                    }
+                        .onTapGesture {
+                            onWordTap(word.text, rs.sentenceText)
+                        }
+                }
+            }
+            .animation(AppMotion.standardSpring, value: highlightedWordIndex)
+        } else {
+            CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
+                let tokens = sentence.text.split(separator: " ").map(String.init)
+                ForEach(Array(tokens.enumerated()), id: \.offset) { _, token in
+                    Text(token)
+                        .font(skin.typography.body)
+                        .foregroundStyle(textColor)
+                }
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .animation(AppMotion.standardSpring, value: highlightedWordIndex)
     }
 
     // MARK: - Follow pill

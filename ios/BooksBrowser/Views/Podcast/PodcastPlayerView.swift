@@ -38,10 +38,16 @@ struct PodcastPlayerView: View {
         // on parent-driven id swaps (e.g. future "next episode" button).
         .task(id: episodeId) {
             guard loadedEpisodeId != episodeId else { return }
+            // Cancel any in-flight load BEFORE tearing down the VM — otherwise
+            // the old task can still resume after stop() and call loadEpisode()
+            // on the now-detached VM, spawning a second AVPlayer.
+            loadTask?.cancel()
+            loadTask = nil
             viewModel?.stop()
             viewModel = nil
             loadedEpisodeId = episodeId
             progressRestored = false
+            lastSavedTime = 0
             loadEpisode()
         }
         .onChange(of: viewModel?.currentTime) { _, newTime in
@@ -52,9 +58,13 @@ struct PodcastPlayerView: View {
         .onChange(of: viewModel?.state) { _, newState in
             // Defer restoreProgress until the item is genuinely ready; seeking on
             // an un-ready AVPlayer item silently drops the target time.
+            // CRITICAL: if we just restored, do NOT fall through to saveProgress —
+            // vm.seek is async, currentTime is still 0 this tick, and saveProgress
+            // would overwrite lastPlayedTime with 0 before the seek lands.
             if newState == .ready, !progressRestored, let vm = viewModel {
                 progressRestored = true
                 restoreProgress(vm: vm, episodeRemoteId: episodeId)
+                return
             }
             if newState == .paused || newState == .ready {
                 saveProgress()
@@ -92,7 +102,7 @@ struct PodcastPlayerView: View {
                 Text(msg)
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
-                Button("重試") { loadEpisode() }
+                Button("重試") { reloadEpisode() }
                     .buttonStyle(.borderedProminent)
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -138,6 +148,18 @@ struct PodcastPlayerView: View {
         }
     }
 
+    /// Retry helper — resets per-load flags so the retry truly starts clean
+    /// (otherwise progressRestored stays true and restoreProgress never fires).
+    private func reloadEpisode() {
+        loadTask?.cancel()
+        loadTask = nil
+        viewModel?.stop()
+        viewModel = nil
+        progressRestored = false
+        lastSavedTime = 0
+        loadEpisode()
+    }
+
     private func loadEpisode() {
         let targetId = episodeId
         let descriptor = FetchDescriptor<PodcastEpisode>(
@@ -146,10 +168,14 @@ struct PodcastPlayerView: View {
         guard let episode = try? modelContext.fetch(descriptor).first,
               let series = episode.series else { return }
 
+        // Cancel stale task BEFORE installing the new VM so an in-flight
+        // closure can't land on the fresh VM.
+        loadTask?.cancel()
+        loadTask = nil
+
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
 
-        loadTask?.cancel()
         loadTask = Task { [weak vm] in
             guard let vm else { return }
             do {
@@ -228,7 +254,11 @@ struct PodcastPlayerView: View {
             && vm.currentTime >= vm.duration - 1
         )
         progress.updatedAt = Date()
-        try? modelContext.save()
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.app.error("PodcastProgress save failed: \(error.localizedDescription)")
+        }
     }
 }
 #endif
