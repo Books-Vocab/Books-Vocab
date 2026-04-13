@@ -10,11 +10,6 @@ enum PodcastPlayerState: Equatable {
     case error(String)
 }
 
-enum PodcastSubtitleDisplayMode {
-    case wordLevel
-    case sentenceLevel
-}
-
 @MainActor @Observable
 final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
@@ -25,13 +20,15 @@ final class PodcastPlayerViewModel {
     private(set) var renderState: SubtitleRenderState?
     private(set) var highlightedWordIndex: Int = -1
     private(set) var playbackRate: Float = 1.0
-    // .sentenceLevel is the chat-bubble transcript (primary UX).
-    // .wordLevel is a single-focus card retained as a secondary mode.
-    private(set) var displayMode: PodcastSubtitleDisplayMode = .sentenceLevel
     let hostNames: [String]
 
     // Translation — set by the player view
     var activeWordSelection: (word: String, context: String)?
+    var activePhraseSelection: (phrase: String, context: String)?
+    // Counters tick on every tap so the View's onChange fires even when the
+    // same word/phrase is tapped twice in a row (value-equal onChange is a no-op).
+    private(set) var wordTapTick: Int = 0
+    private(set) var phraseTapTick: Int = 0
 
     @ObservationIgnored
     private let audioEngine = PodcastAudioEngine()
@@ -162,18 +159,21 @@ final class PodcastPlayerViewModel {
         audioEngine.setRate(next)
     }
 
-    func setDisplayMode(_ mode: PodcastSubtitleDisplayMode) {
-        displayMode = mode
-    }
-
     // MARK: - Word Tap
 
     func handleWordTap(word: String, context: String) {
         activeWordSelection = (word, context)
+        wordTapTick &+= 1
+    }
+
+    func handlePhraseTap(phrase: String, context: String) {
+        activePhraseSelection = (phrase, context)
+        phraseTapTick &+= 1
     }
 
     func dismissWordSelection() {
         activeWordSelection = nil
+        activePhraseSelection = nil
     }
 
     // MARK: - Computed

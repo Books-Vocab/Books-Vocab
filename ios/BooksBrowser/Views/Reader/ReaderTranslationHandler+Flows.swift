@@ -7,7 +7,7 @@ extension ReaderTranslationHandler {
     func handleWordSelected(
         word: String,
         context: String,
-        vocabularyContext: ReaderVocabularyContext
+        vocabularyContext: any VocabularyContextProtocol
     ) {
         cancelCurrentTranslationTask()
         let normalizedWord = normalizeWord(word)
@@ -113,7 +113,7 @@ extension ReaderTranslationHandler {
     func handlePhraseSelected(
         phrase: String,
         context: String,
-        vocabularyContext: ReaderVocabularyContext
+        vocabularyContext: any VocabularyContextProtocol
     ) {
         cancelCurrentTranslationTask()
         let selection = WordSelection(word: phrase, context: context, position: .zero)

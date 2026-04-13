@@ -3,7 +3,7 @@ import SwiftUI
 import os
 
 extension ReaderTranslationHandler {
-    func deleteFromVocabulary(_ word: String, context: ReaderVocabularyContext) {
+    func deleteFromVocabulary(_ word: String, context: any VocabularyContextProtocol) {
         context.deleteEntry(matching: word)
         dismiss()
     }
@@ -29,7 +29,7 @@ extension ReaderTranslationHandler {
     func autoSaveToVocabulary(
         selection: WordSelection,
         result: TranslationResult,
-        context: ReaderVocabularyContext
+        context: any VocabularyContextProtocol
     ) {
         if let existing = context.existingEntry(matching: selection.word),
            existing.syncAction != .delete {
@@ -52,7 +52,7 @@ extension ReaderTranslationHandler {
 
     func guestSaveToVocabulary(
         selection: WordSelection,
-        context: ReaderVocabularyContext
+        context: any VocabularyContextProtocol
     ) {
         if let existing = context.existingEntry(matching: selection.word),
            existing.syncAction != .delete {
