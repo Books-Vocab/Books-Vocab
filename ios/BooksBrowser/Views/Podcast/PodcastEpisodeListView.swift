@@ -37,19 +37,22 @@ struct PodcastEpisodeListView: View {
     @Environment(\.vocabSkin) private var skin
     @Environment(\.modelContext) private var modelContext
 
-    @Query(sort: \PodcastEpisode.episodeNumber) private var allEpisodes: [PodcastEpisode]
-    @Query private var allProgress: [PodcastProgress]
-    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }) private var allSeries: [PodcastSeries]
-
+    // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
+    // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
+    // LocalStore，PodcastProgress 在 CloudStore），且 progressMap /
+    // continueEpisode 等 computed 在每次 body eval 都會重算 Dictionary
+    // → SwiftData observation 任何一邊 update 即觸發整個 view 重評。
+    // navigation push 動畫期間 parent view 仍 active，若此時 @Query
+    // 在 transition 中觸發 SwiftData refetch + main thread Dictionary
+    // rebuild，可能造成 UI freeze（使用者回報的「卡住、無錯誤」）。
+    @State private var seriesEpisodes: [PodcastEpisode] = []
+    @State private var progressArray: [PodcastProgress] = []
+    @State private var currentSeries: PodcastSeries?
     @State private var sort: EpisodeSort = .ascending
 
-    private var series: PodcastSeries? {
-        allSeries.first { $0.remoteId == seriesId }
-    }
+    private var series: PodcastSeries? { currentSeries }
 
-    private var rawEpisodes: [PodcastEpisode] {
-        allEpisodes.filter { $0.series?.remoteId == seriesId }
-    }
+    private var rawEpisodes: [PodcastEpisode] { seriesEpisodes }
 
     private var episodes: [PodcastEpisode] {
         switch sort {
@@ -61,7 +64,7 @@ struct PodcastEpisodeListView: View {
     private var progressMap: [String: PodcastProgress] {
         let ids = Set(rawEpisodes.map(\.remoteId))
         return Dictionary(
-            allProgress.lazy
+            progressArray.lazy
                 .filter { ids.contains($0.episodeRemoteId) }
                 .map { ($0.episodeRemoteId, $0) },
             uniquingKeysWith: { lhs, rhs in lhs.updatedAt >= rhs.updatedAt ? lhs : rhs }
@@ -113,6 +116,27 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .task(id: seriesId) {
+            await reloadFromStore()
+        }
+    }
+
+    @MainActor
+    private func reloadFromStore() async {
+        let sid = seriesId
+        let seriesDescriptor = FetchDescriptor<PodcastSeries>(
+            predicate: #Predicate { $0.remoteId == sid && !$0.isDeleted }
+        )
+        currentSeries = (try? modelContext.fetch(seriesDescriptor))?.first
+
+        let episodeDescriptor = FetchDescriptor<PodcastEpisode>(
+            sortBy: [SortDescriptor(\.episodeNumber)]
+        )
+        let allEps = (try? modelContext.fetch(episodeDescriptor)) ?? []
+        seriesEpisodes = allEps.filter { $0.series?.remoteId == sid }
+
+        let progressDescriptor = FetchDescriptor<PodcastProgress>()
+        progressArray = (try? modelContext.fetch(progressDescriptor)) ?? []
     }
 
     // MARK: - Hero
