@@ -43,11 +43,6 @@ struct PodcastControlsView: View {
             .foregroundStyle(skin.palette.accent)
 
             HStack {
-                HStack(spacing: 0) {
-                    modeButton("W", mode: .wordLevel)
-                    modeButton("S", mode: .sentenceLevel)
-                }
-                .background(skin.palette.mutedFill, in: Capsule())
                 Spacer()
                 Button { viewModel.cycleRate() } label: {
                     Text(viewModel.rateDisplayText)
@@ -112,31 +107,6 @@ struct PodcastControlsView: View {
     private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
         guard viewModel.duration > 0 else { return 0 }
         return CGFloat(activeTime / viewModel.duration) * totalWidth
-    }
-
-    @ViewBuilder
-    private func modeButton(_ label: String, mode: PodcastSubtitleDisplayMode) -> some View {
-        Button {
-            withAnimation(AppMotion.standardSpring) {
-                viewModel.setDisplayMode(mode)
-            }
-        } label: {
-            Text(label)
-                .font(skin.typography.monoLabel)
-                .padding(.horizontal, skin.spacing.chipHorizontalPadding)
-                .padding(.vertical, skin.spacing.chipVerticalPadding)
-                .background(
-                    viewModel.displayMode == mode
-                        ? skin.palette.accent.opacity(0.15)
-                        : Color.clear,
-                    in: Capsule()
-                )
-        }
-        .foregroundStyle(
-            viewModel.displayMode == mode
-                ? skin.palette.accent
-                : skin.palette.tertiaryText
-        )
     }
 
     private func formatTime(_ t: TimeInterval) -> String {
