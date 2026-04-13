@@ -2,86 +2,109 @@
 from __future__ import annotations
 
 import json
-from pathlib import Path
-from unittest.mock import patch
 
 import pytest
-from fastapi.testclient import TestClient
 
 
 @pytest.fixture()
-def podcast_dir(tmp_path):
-    """Create a tmp podcasts directory and patch _podcasts_dir to return it."""
-    podcasts = tmp_path / "podcasts"
-    podcasts.mkdir()
-    return podcasts
+def podcast_api(isolated_api):
+    podcasts = isolated_api.data_dir / "podcasts"
+    podcasts.mkdir(exist_ok=True)
+    return isolated_api, podcasts
 
 
-@pytest.fixture()
-def podcast_client(podcast_dir):
-    from kg.api import app
-    with patch("kg.routers.podcast._podcasts_dir", return_value=podcast_dir):
-        yield TestClient(app, raise_server_exceptions=False), podcast_dir
+def test_list_requires_auth(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts")
+    assert resp.status_code == 401
 
 
-def test_podcasts_list_returns_index(podcast_client):
-    client, podcasts = podcast_client
+def test_series_detail_requires_auth(podcast_api):
+    api, podcasts = podcast_api
+    (podcasts / "series_a").mkdir()
+    (podcasts / "series_a" / "metadata.json").write_text("{}")
+    resp = api.client.get("/api/podcasts/series_a")
+    assert resp.status_code == 401
+
+
+def test_subtitle_requires_auth(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/series_a/1/subtitle")
+    assert resp.status_code == 401
+
+
+def test_list_returns_index(podcast_api):
+    api, podcasts = podcast_api
     index = [{"id": "series_a", "title": "Series A"}]
     (podcasts / "index.json").write_text(json.dumps(index))
-    resp = client.get("/api/podcasts")
+    resp = api.client.get("/api/podcasts", headers=api.headers)
     assert resp.status_code == 200
     assert resp.json() == index
 
 
-def test_podcasts_list_empty_when_no_index(podcast_client):
-    client, _ = podcast_client
-    resp = client.get("/api/podcasts")
+def test_list_empty_when_no_index(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts", headers=api.headers)
     assert resp.status_code == 200
     assert resp.json() == []
 
 
-def test_podcasts_series_detail(podcast_client):
-    client, podcasts = podcast_client
+def test_series_detail(podcast_api):
+    api, podcasts = podcast_api
     series_dir = podcasts / "series_a"
     series_dir.mkdir()
     meta = {"id": "series_a", "title": "Series A", "episodes": 3}
     (series_dir / "metadata.json").write_text(json.dumps(meta))
-    resp = client.get("/api/podcasts/series_a")
+    resp = api.client.get("/api/podcasts/series_a", headers=api.headers)
     assert resp.status_code == 200
     assert resp.json() == meta
 
 
-def test_podcasts_series_not_found(podcast_client):
-    client, _ = podcast_client
-    resp = client.get("/api/podcasts/nonexistent")
+def test_series_not_found(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/nonexistent", headers=api.headers)
     assert resp.status_code == 404
 
 
-def test_podcasts_series_id_rejects_traversal(podcast_client):
-    client, _ = podcast_client
-    resp = client.get("/api/podcasts/../etc")
+def test_series_id_rejects_traversal(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/../etc", headers=api.headers)
     assert resp.status_code in (404, 422)
 
 
-def test_podcast_subtitle_endpoint(podcast_client):
-    client, podcasts = podcast_client
+def test_series_id_rejects_uppercase(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/SeriesA", headers=api.headers)
+    assert resp.status_code == 404
+
+
+def test_subtitle_endpoint(podcast_api):
+    api, podcasts = podcast_api
     ep_dir = podcasts / "series_a" / "ep_01"
     ep_dir.mkdir(parents=True)
     srt_content = "1\n00:00:00,000 --> 00:00:02,000\nHello world\n"
     (ep_dir / "subtitle.srt").write_text(srt_content)
-    resp = client.get("/api/podcasts/series_a/1/subtitle")
+    resp = api.client.get("/api/podcasts/series_a/1/subtitle", headers=api.headers)
     assert resp.status_code == 200
     assert resp.text == srt_content
 
 
-def test_podcast_subtitle_not_found(podcast_client):
-    client, podcasts = podcast_client
+def test_subtitle_not_found(podcast_api):
+    api, podcasts = podcast_api
     (podcasts / "series_a").mkdir()
-    resp = client.get("/api/podcasts/series_a/99/subtitle")
+    resp = api.client.get("/api/podcasts/series_a/99/subtitle", headers=api.headers)
     assert resp.status_code == 404
 
 
-def test_podcast_subtitle_rejects_traversal(podcast_client):
-    client, _ = podcast_client
-    resp = client.get("/api/podcasts/../evil/1/subtitle")
+def test_subtitle_rejects_traversal(podcast_api):
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/../evil/1/subtitle", headers=api.headers)
     assert resp.status_code in (404, 422)
+
+
+def test_podcast_media_mount_available_without_predeploy_dir(isolated_api):
+    """Regression: StaticFiles mount used to be gated by `if dir.exists()`,
+    which meant first-time uploads required a container restart. Verify the
+    mount path is always registered (404 for missing file, not 404 for missing mount)."""
+    resp = isolated_api.client.get("/api/podcast-media/nonexistent.mp3")
+    assert resp.status_code == 404
