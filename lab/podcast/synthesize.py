@@ -302,11 +302,20 @@ def _generate_with_retry(client, prompt, speech_config, index):
         except Exception as e:
             last_exc = e
             name = type(e).__name__
-            transient = name in {"ResourceExhausted", "ServiceUnavailable", "DeadlineExceeded", "InternalServerError"}
+            # google-genai raises genai.errors.APIError with numeric `.code`
+            # (HTTP status). api_core (gRPC path) raises named classes. Cover
+            # both so retry fires whether SDK is in Vertex-REST or gRPC mode.
+            code = getattr(e, "code", None) or getattr(e, "status_code", None)
+            transient = (
+                code in {408, 429, 500, 502, 503, 504}
+                or name in {"ResourceExhausted", "ServiceUnavailable",
+                            "DeadlineExceeded", "InternalServerError",
+                            "APIError", "ClientError", "ServerError"}
+            )
             if not transient or attempt == TTS_RETRY_ATTEMPTS - 1:
                 raise
             backoff = (2 ** attempt) + random.random()
-            print(f"  batch {index}: {name} — retry {attempt + 1}/{TTS_RETRY_ATTEMPTS} after {backoff:.1f}s")
+            print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{TTS_RETRY_ATTEMPTS} after {backoff:.1f}s")
             time.sleep(backoff)
     raise last_exc  # pragma: no cover — loop always returns or raises
 
