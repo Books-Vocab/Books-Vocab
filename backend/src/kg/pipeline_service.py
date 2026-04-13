@@ -24,14 +24,19 @@ def is_pipeline_running(user_id: str) -> bool:
         return _PIPELINE_RUNNING.get(user_id, False)
 
 
-def _touch_linked_cards(cards: Any, all_links: list[tuple]) -> None:
+def _touch_linked_cards(
+    cards: Any, all_links: list[tuple], *, notebook_id: str | None = None,
+) -> None:
     """Bump updated_at for all cards involved in newly created links.
 
     This ensures incremental sync (filtered by updated_at) delivers the
     new links to iOS clients.
     """
-    touched_ids = {cid for from_id, to_id, *_ in all_links for cid in (from_id, to_id)}
-    cards.batch_touch(touched_ids)
+    # Links are 5-tuples (from_id, to_id, kind, confidence, reason); index
+    # explicitly so a future dataclass/namedtuple migration fails loudly
+    # instead of silently shifting fields.
+    touched_ids = {cid for link in all_links for cid in (link[0], link[1])}
+    cards.batch_touch(touched_ids, notebook_id=notebook_id)
 
 
 async def _step_enrich(
@@ -313,11 +318,13 @@ async def _step_embed_and_judge(
         logger.warning("[%s] Judge interrupted at %d/%d, requeued %d",
                       uid, processed, len(futures), len(unprocessed_ids))
         if all_links:
-            graph.batch_add_links(all_links)
+            # Wrap both calls: a failure here must NOT mask the original
+            # judge-loop exception that we're about to re-raise.
             try:
-                _touch_linked_cards(cards, all_links)
+                graph.batch_add_links(all_links)
+                _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
             except Exception:
-                logger.warning("[%s] Failed to touch cards after partial link creation", uid)
+                logger.warning("[%s] Failed to persist partial links/touch", uid)
         raise
     finally:
         executor.shutdown(wait=False)
@@ -330,7 +337,7 @@ async def _step_embed_and_judge(
     # updated_at and iOS incremental sync (filtered by updated_at) never
     # sends the new links to the client.
     if created:
-        _touch_linked_cards(cards, all_links)
+        _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
 
     logger.info("[%s] Created %d links from %d cards", uid, len(created), len(pending))
     return len(created)
