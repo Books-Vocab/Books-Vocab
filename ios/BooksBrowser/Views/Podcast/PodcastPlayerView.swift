@@ -16,10 +16,31 @@ struct PodcastPlayerView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.toastCoordinator) private var toastCoordinator
+
+    @Query private var allVocabulary: [VocabularyEntry]
 
     @State private var viewModel: PodcastPlayerViewModel?
-    @State private var translationHandler = PodcastTranslationHandler()
+    @State private var translationHandler = ReaderTranslationHandler()
+    @State private var loadedSeries: PodcastSeries?
+    @State private var loadedEpisode: PodcastEpisode?
+    @State private var resolvedNotebookId: String?
+    @State private var autoPausedByTranslation: Bool = false
+    @State private var showSettingsPopover: Bool = false
+    @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
+    @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
     @State private var lastSavedTime: TimeInterval = 0
+
+    private var subtitleSize: PodcastSubtitleSize {
+        PodcastSubtitleSize(rawValue: subtitleSizeRaw) ?? .large
+    }
+
+    private var subtitleSizeBinding: Binding<PodcastSubtitleSize> {
+        Binding(
+            get: { PodcastSubtitleSize(rawValue: subtitleSizeRaw) ?? .large },
+            set: { subtitleSizeRaw = $0.rawValue }
+        )
+    }
     @State private var loadTask: Task<Void, Never>?
     @State private var loadedEpisodeId: String?
     @State private var progressRestored = false
@@ -28,6 +49,20 @@ struct PodcastPlayerView: View {
     // If tap STILL crashes with stub → navigation/listView side bug.
     // If tap NO LONGER crashes → bug is inside the full player body/init/onChange/task chain.
     private static let bisectStub = true
+
+    private var vocabularyContext: PodcastVocabularyContext? {
+        guard let series = loadedSeries,
+              let episode = loadedEpisode,
+              let nbId = resolvedNotebookId else { return nil }
+        return PodcastVocabularyContext(
+            vocabulary: allVocabulary,
+            modelContext: modelContext,
+            series: series,
+            episode: episode,
+            notebookId: nbId,
+            toastCoordinator: toastCoordinator
+        )
+    }
 
     var body: some View {
         if Self.bisectStub {
@@ -79,23 +114,30 @@ struct PodcastPlayerView: View {
         }
         .navigationBarTitleDisplayMode(.inline)
         .toolbar(.hidden, for: .tabBar)
-        // `.task(id:)` reloads when episodeId changes; loadedEpisodeId flag
-        // tracks which episode the current VM is loading so we correctly reload
-        // on parent-driven id swaps (e.g. future "next episode" button).
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                Button {
+                    showSettingsPopover = true
+                } label: {
+                    Image(systemName: "textformat.size")
+                }
+                .popover(isPresented: $showSettingsPopover, arrowEdge: .top) {
+                    PodcastSettingsPopover(
+                        subtitleSize: subtitleSizeBinding,
+                        autoPauseOnLookup: Binding(
+                            get: { autoPauseOnLookup },
+                            set: { autoPauseOnLookup = $0 }
+                        )
+                    )
+                    .presentationCompactAdaptation(.popover)
+                }
+            }
+        }
         .task(id: episodeId) {
             guard loadedEpisodeId != episodeId else { return }
-            // Save the OUTGOING episode's progress BEFORE tearing down the VM
-            // or advancing loadedEpisodeId. Otherwise the current-swap path
-            // loses up to the throttle window (~10s) of the previous episode's
-            // position: .paused/.ready transitions won't fire during the swap
-            // and the saveProgress guard would reject the write once
-            // loadedEpisodeId moves on.
             if let oldVm = viewModel, let oldId = loadedEpisodeId {
                 saveProgress(vm: oldVm, episodeRemoteId: oldId)
             }
-            // Cancel any in-flight load BEFORE tearing down the VM — otherwise
-            // the old task can still resume after stop() and call loadEpisode()
-            // on the now-detached VM, spawning a second AVPlayer.
             loadTask?.cancel()
             loadTask = nil
             viewModel?.stop()
@@ -105,21 +147,22 @@ struct PodcastPlayerView: View {
             lastSavedTime = 0
             loadEpisode()
         }
+        .onChange(of: allVocabulary) { _, newValue in
+            translationHandler.loadLookedUpWords(from: newValue)
+        }
+        .onAppear {
+            translationHandler.loadLookedUpWords(from: allVocabulary)
+        }
         .onDisappear {
-            // Save before teardown — shutdown() flips state to .idle which the
-            // onChange path would otherwise skip, losing up to 10s of progress.
             saveProgress()
             loadTask?.cancel()
             loadTask = nil
-            // shutdown = full teardown (session deactivate + remote commands off).
             viewModel?.shutdown()
             viewModel = nil
             loadedEpisodeId = nil
             progressRestored = false
         }
         .onChange(of: scenePhase) { _, phase in
-            // App backgrounded / inactive → persist latest position; no
-            // .paused / .ready transition fires for a scene-phase change alone.
             if phase != .active { saveProgress() }
         }
     }
@@ -154,6 +197,7 @@ struct PodcastPlayerView: View {
         case .ready, .playing, .paused:
             VStack(spacing: 0) {
                 PodcastSubtitleView(viewModel: vm)
+                    .dynamicTypeSize(subtitleSize.dynamicTypeSize)
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
@@ -163,37 +207,85 @@ struct PodcastPlayerView: View {
             }
             .background(theme.palette.pageBackground)
             .overlay(alignment: .bottom) {
-                if translationHandler.wordSelection != nil {
+                if let selection = translationHandler.wordSelection {
                     TranslationPanel(
-                        word: translationHandler.wordSelection!.word,
+                        word: selection.word,
                         result: translationHandler.translationResult,
                         isLoading: translationHandler.isTranslating,
                         isSaved: translationHandler.isSaved,
-                        isLoggedIn: true,
-                        isExpanded: false,
-                        explanation: nil,
-                        isLoadingExplanation: false,
-                        statusMessage: nil,
-                        isExplanationOnly: false,
+                        isLoggedIn: translationHandler.authManager.isLoggedIn,
+                        isExpanded: translationHandler.isExpanded,
+                        explanation: translationHandler.explanationText,
+                        isLoadingExplanation: translationHandler.isLoadingExplanation,
+                        statusMessage: translationHandler.statusMessage,
+                        isExplanationOnly: translationHandler.isExplanationOnly,
                         translationErrorMessage: translationHandler.translationErrorMessage,
-                        explanationErrorMessage: nil,
-                        onExpand: {},
-                        onDelete: {},
+                        explanationErrorMessage: translationHandler.explanationErrorMessage,
+                        onExpand: { translationHandler.handleExpand() },
+                        onDelete: {
+                            if let ctx = vocabularyContext {
+                                translationHandler.deleteFromVocabulary(selection.word, context: ctx)
+                            }
+                        },
                         onShowDetail: nil,
                         onDismiss: { translationHandler.dismiss() }
                     )
                     .transition(.readerPanelReveal)
                 }
             }
-            .onChange(of: vm.activeWordSelection?.word) { _, newWord in
-                guard let selection = vm.activeWordSelection else { return }
-                translationHandler.handleWordTap(word: selection.word, context: selection.context)
+            .onChange(of: vm.wordTapTick) { _, _ in
+                performWordTap()
+            }
+            .onChange(of: vm.phraseTapTick) { _, _ in
+                performPhraseTap()
+            }
+            .onChange(of: translationHandler.wordSelection?.word) { old, new in
+                handlePanelVisibilityChange(from: old, to: new, vm: vm)
             }
         }
     }
 
-    /// Retry helper — resets per-load flags so the retry truly starts clean
-    /// (otherwise progressRestored stays true and restoreProgress never fires).
+    private func handlePanelVisibilityChange(
+        from old: String?,
+        to new: String?,
+        vm: PodcastPlayerViewModel
+    ) {
+        guard autoPauseOnLookup else { return }
+        if old == nil, new != nil {
+            if vm.state == .playing {
+                vm.pause()
+                autoPausedByTranslation = true
+            }
+        } else if new == nil, autoPausedByTranslation {
+            autoPausedByTranslation = false
+            // Only resume if we're still in the paused state we put it in —
+            // respects manual play/pause / error / idle transitions during panel.
+            if vm.state == .paused { vm.play() }
+        }
+    }
+
+    private func performWordTap() {
+        guard let vm = viewModel,
+              let selection = vm.activeWordSelection,
+              let ctx = vocabularyContext else { return }
+        translationHandler.handleWordSelected(
+            word: selection.word,
+            context: selection.context,
+            vocabularyContext: ctx
+        )
+    }
+
+    private func performPhraseTap() {
+        guard let vm = viewModel,
+              let selection = vm.activePhraseSelection,
+              let ctx = vocabularyContext else { return }
+        translationHandler.handlePhraseSelected(
+            phrase: selection.phrase,
+            context: selection.context,
+            vocabularyContext: ctx
+        )
+    }
+
     private func reloadEpisode() {
         loadTask?.cancel()
         loadTask = nil
@@ -212,10 +304,15 @@ struct PodcastPlayerView: View {
         guard let episode = try? modelContext.fetch(descriptor).first,
               let series = episode.series else { return }
 
-        // Cancel stale task BEFORE installing the new VM so an in-flight
-        // closure can't land on the fresh VM.
         loadTask?.cancel()
         loadTask = nil
+
+        loadedSeries = series
+        loadedEpisode = episode
+        // Resolve notebookId once at episode load, not per-body-eval. Without
+        // this cache, existingEntry/saveEntry would each trigger a fetch.
+        let rawNotebookId = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+        resolvedNotebookId = VocabularyEntry.resolveNotebookId(rawNotebookId, in: modelContext)
 
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
@@ -232,9 +329,6 @@ struct PodcastPlayerView: View {
                 await MainActor.run { vm.setLoading() }
                 if Task.isCancelled { return }
 
-                // Subtitle is best-effort — audio can play without it.
-                // Per-request 10s timeout + cancellation check so a flaky server
-                // can't block audio load for 60s (default URLSession timeout).
                 var subtitleContent: String?
                 if let subtitleURLStr = episode.subtitleURL {
                     if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
@@ -245,10 +339,6 @@ struct PodcastPlayerView: View {
 
                 let episodeTitle = episode.displayTitle
                 await MainActor.run {
-                    // Second cancel gate — URLSession.data can complete before
-                    // the cancel signal propagates, and we don't want to call
-                    // loadEpisode on a VM whose stop() already ran (would
-                    // spawn a second AVPlayer on a torn-down engine).
                     guard !Task.isCancelled else { return }
                     vm.loadEpisode(
                         audioURL: audioURL,
@@ -256,8 +346,6 @@ struct PodcastPlayerView: View {
                         title: episodeTitle
                     )
                 }
-                // restoreProgress is now triggered by .ready state observer,
-                // after AVPlayer's item has actually reached a seekable state.
             } catch is CancellationError {
                 return
             } catch {
@@ -292,30 +380,27 @@ struct PodcastPlayerView: View {
         saveProgress()
     }
 
-    /// Current-VM / current-episode save (used by scenePhase, onChange, onDisappear).
     private func saveProgress() {
         guard let vm = viewModel else { return }
-        // Guard 1: don't write stale VM's currentTime under NEW episodeId
-        // during a fast episode swap (old VM emits .paused during stop()).
         guard loadedEpisodeId == episodeId else { return }
-        // Guard 2: don't overwrite a saved lastPlayedTime with 0 during the
-        // window between AVPlayer reaching .ready and restoreProgress seeking
-        // to the saved position — scenePhase / onDisappear may fire in that gap.
         if !progressRestored && vm.currentTime == 0 { return }
         saveProgress(vm: vm, episodeRemoteId: episodeId)
     }
 
-    /// Explicit-target save — used when we need to write the OUTGOING episode's
-    /// progress during an episodeId swap, before `loadedEpisodeId` advances.
     private func saveProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
         if vm.currentTime == 0 { return }
-        // Single chokepoint for dedup — collapses CloudKit-induced duplicates.
-        let winner = PodcastSyncService.sanitizeProgressDuplicates(
-            for: episodeRemoteId, context: modelContext
+        let targetId = episodeRemoteId
+        let descriptor = FetchDescriptor<PodcastProgress>(
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
+        let existing = (try? modelContext.fetch(descriptor)) ?? []
+        for stale in existing.dropFirst() {
+            modelContext.delete(stale)
+        }
         let progress: PodcastProgress
-        if let winner {
-            progress = winner
+        if let newest = existing.first {
+            progress = newest
         } else {
             progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
             modelContext.insert(progress)

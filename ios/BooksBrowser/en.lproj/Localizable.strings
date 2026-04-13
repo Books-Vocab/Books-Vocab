@@ -532,3 +532,8 @@
 
 // ── Reader Settings ──
 "用於校正閱讀器點擊熱區。" = "Used to calibrate reader tap zones.";
+
+// ── Podcast Settings ──
+"字幕大小" = "Subtitle Size";
+"查詞時自動暫停" = "Auto-pause on lookup";
+"點字幕查單字時暫停播放，關閉後恢復" = "Pauses playback when looking up a word; resumes on dismiss";
