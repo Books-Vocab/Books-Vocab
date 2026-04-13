@@ -24,6 +24,7 @@ struct PodcastPlayerView: View {
     @State private var translationHandler = ReaderTranslationHandler()
     @State private var loadedSeries: PodcastSeries?
     @State private var loadedEpisode: PodcastEpisode?
+    @State private var resolvedNotebookId: String?
     @State private var autoPausedByTranslation: Bool = false
     @State private var showSettingsPopover: Bool = false
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
@@ -49,22 +50,16 @@ struct PodcastPlayerView: View {
     // If tap NO LONGER crashes → bug is inside the full player body/init/onChange/task chain.
     private static let bisectStub = true
 
-    private var podcastNotebookId: String {
-        let raw = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
-        // Resolve once so existingEntry / saveEntry agree on scope. Without
-        // this, a stale activeNotebookId pointing to a deleted notebook would
-        // make existingEntry query "stale" while saveEntry writes "default".
-        return VocabularyEntry.resolveNotebookId(raw, in: modelContext)
-    }
-
     private var vocabularyContext: PodcastVocabularyContext? {
-        guard let series = loadedSeries, let episode = loadedEpisode else { return nil }
+        guard let series = loadedSeries,
+              let episode = loadedEpisode,
+              let nbId = resolvedNotebookId else { return nil }
         return PodcastVocabularyContext(
             vocabulary: allVocabulary,
             modelContext: modelContext,
             series: series,
             episode: episode,
-            notebookId: podcastNotebookId,
+            notebookId: nbId,
             toastCoordinator: toastCoordinator
         )
     }
@@ -314,6 +309,10 @@ struct PodcastPlayerView: View {
 
         loadedSeries = series
         loadedEpisode = episode
+        // Resolve notebookId once at episode load, not per-body-eval. Without
+        // this cache, existingEntry/saveEntry would each trigger a fetch.
+        let rawNotebookId = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+        resolvedNotebookId = VocabularyEntry.resolveNotebookId(rawNotebookId, in: modelContext)
 
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm

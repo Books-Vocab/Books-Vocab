@@ -33,10 +33,10 @@ struct PodcastSettingsPopover: View {
     var body: some View {
         VStack(alignment: .leading, spacing: skin.spacing.sectionGap) {
             VStack(alignment: .leading, spacing: skin.spacing.inlineGap) {
-                Text("字幕大小")
+                Text(L10n.string("字幕大小"))
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
-                Picker("字幕大小", selection: $subtitleSize) {
+                Picker(L10n.string("字幕大小"), selection: $subtitleSize) {
                     ForEach(PodcastSubtitleSize.allCases) { size in
                         Text(size.label).tag(size)
                     }
@@ -45,10 +45,10 @@ struct PodcastSettingsPopover: View {
             }
 
             Toggle(isOn: $autoPauseOnLookup) {
-                VStack(alignment: .leading, spacing: 2) {
-                    Text("查詞時自動暫停")
+                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                    Text(L10n.string("查詞時自動暫停"))
                         .font(skin.typography.body)
-                    Text("點字幕查單字時暫停播放，關閉後恢復")
+                    Text(L10n.string("點字幕查單字時暫停播放，關閉後恢復"))
                         .font(skin.typography.caption)
                         .foregroundStyle(skin.palette.secondaryText)
                 }
