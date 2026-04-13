@@ -74,13 +74,19 @@ final class PodcastPlayerViewModel {
         audioEngine.onSystemPause = { [weak self] in
             MainActor.assumeIsolated {
                 // Keep VM state consistent with engine when the system forces
-                // pause (phone call, headphones unplug). UI icon won't lie.
-                if self?.state == .playing { self?.state = .paused }
+                // pause. Handle .playing AND .loading — an interruption during
+                // load would otherwise leave VM stuck in .loading forever
+                // because no natural .ready transition happens post-interrupt.
+                guard let self else { return }
+                if self.state == .playing || self.state == .loading {
+                    self.state = .paused
+                }
             }
         }
         audioEngine.onSystemResume = { [weak self] in
             MainActor.assumeIsolated {
-                if self?.state == .paused { self?.state = .playing }
+                guard let self else { return }
+                if self.state == .paused { self.state = .playing }
             }
         }
     }

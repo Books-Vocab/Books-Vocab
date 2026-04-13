@@ -57,7 +57,13 @@ final class PodcastAudioEngine: NSObject {
         loadGeneration &+= 1
         let gen = loadGeneration
 
-        let asset = AVURLAsset(url: url)
+        // preferPreciseDuration: CBR/VBR MP3 duration from HTTP headers is a
+        // rough estimate; precise parsing prevents end-of-episode scrubber
+        // misalignment and subtitle drift.
+        let asset = AVURLAsset(
+            url: url,
+            options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
+        )
         let item = AVPlayerItem(asset: asset)
         // Preserve pitch when rate != 1.0 (varispeed w/o chipmunk effect).
         item.audioTimePitchAlgorithm = .timeDomain
@@ -81,6 +87,9 @@ final class PodcastAudioEngine: NSObject {
             queue: .main
         ) { [weak self] _ in
             self?.onPlaybackFinished?()
+            #if os(iOS)
+            self?.updateNowPlayingInfo(rateOverride: 0)
+            #endif
         }
 
         // Mid-stream failure (connection drop, corrupted payload tail, timeout).
@@ -170,10 +179,17 @@ final class PodcastAudioEngine: NSObject {
 
     func play() {
         guard let p = player else { return }
+        // Replay-after-end: AVPlayer.play() is a no-op once currentTime has
+        // reached duration (actionAtItemEnd defaults to .pause). Seek to 0
+        // first so tapping play on a finished episode actually replays it.
+        if duration > 0, currentTime >= duration - 0.1 {
+            p.seek(to: .zero, toleranceBefore: .zero, toleranceAfter: .zero)
+        }
         p.play()
         p.rate = playbackRate  // AVPlayer resets rate to 1.0 on play; re-apply.
         #if os(iOS)
-        updateNowPlayingInfo()
+        // Force intended rate — timeControlStatus lags reality on first play.
+        updateNowPlayingInfo(rateOverride: Double(playbackRate))
         #endif
     }
 
@@ -182,7 +198,7 @@ final class PodcastAudioEngine: NSObject {
         stallWatchdog?.cancel()
         stallWatchdog = nil
         #if os(iOS)
-        updateNowPlayingInfo()
+        updateNowPlayingInfo(rateOverride: 0)
         #endif
     }
 
@@ -250,6 +266,8 @@ final class PodcastAudioEngine: NSObject {
             switch type {
             case .began:
                 self?.player?.pause()
+                self?.stallWatchdog?.cancel()
+                self?.stallWatchdog = nil
                 self?.onSystemPause?()
             case .ended:
                 try? AVAudioSession.sharedInstance().setActive(true)
@@ -278,6 +296,8 @@ final class PodcastAudioEngine: NSObject {
             // Headphones unplugged / previous device unavailable → pause per HIG.
             if reason == .oldDeviceUnavailable {
                 self?.player?.pause()
+                self?.stallWatchdog?.cancel()
+                self?.stallWatchdog = nil
                 self?.onSystemPause?()
             }
         }
@@ -297,6 +317,15 @@ final class PodcastAudioEngine: NSObject {
         stallWatchdog?.cancel()
         stallWatchdog = nil
         removeObservers()
+        #if os(iOS)
+        // Unregister remote commands so a new engine can re-register cleanly.
+        // MPRemoteCommandCenter is a process-wide singleton; without this, every
+        // retry / episode swap would add a fresh target on top of the old one,
+        // producing a growing chain of handlers on dead engines. The new engine's
+        // configureNowPlaying() re-registers immediately so the lock-screen
+        // remains responsive throughout the handoff.
+        unregisterRemoteCommands()
+        #endif
     }
 
     /// True terminal teardown — use when the user is leaving the player entirely.
@@ -330,6 +359,17 @@ final class PodcastAudioEngine: NSObject {
     private func registerRemoteCommands() {
         guard remoteCommandTargets.isEmpty else { return }
         let center = MPRemoteCommandCenter.shared()
+        // Disable commands we don't support so lock-screen doesn't show dead
+        // buttons (prev/next, seek, shuffle, repeat).
+        center.nextTrackCommand.isEnabled = false
+        center.previousTrackCommand.isEnabled = false
+        center.seekForwardCommand.isEnabled = false
+        center.seekBackwardCommand.isEnabled = false
+        center.changeRepeatModeCommand.isEnabled = false
+        center.changeShuffleModeCommand.isEnabled = false
+        // changePlaybackPositionCommand is disabled by default — enable it
+        // explicitly so the lock-screen scrubber is draggable.
+        center.changePlaybackPositionCommand.isEnabled = true
         let play = center.playCommand.addTarget { [weak self] _ in
             self?.play(); return .success
         }
@@ -374,7 +414,11 @@ final class PodcastAudioEngine: NSObject {
         remoteCommandTargets.removeAll()
     }
 
-    private func updateNowPlayingInfo() {
+    /// Explicit override for the published playback rate. `play()` / `pause()`
+    /// pass what the user *intends* so the lock-screen icon flips immediately,
+    /// rather than sampling `timeControlStatus` which typically lags by one RTT
+    /// while AVPlayer buffers the first segment.
+    private func updateNowPlayingInfo(rateOverride: Double? = nil) {
         var info: [String: Any] = [:]
         info[MPMediaItemPropertyTitle] = nowPlayingTitle
         info[MPMediaItemPropertyArtist] = nowPlayingArtist
@@ -382,7 +426,8 @@ final class PodcastAudioEngine: NSObject {
             info[MPMediaItemPropertyPlaybackDuration] = duration
         }
         info[MPNowPlayingInfoPropertyElapsedPlaybackTime] = currentTime
-        info[MPNowPlayingInfoPropertyPlaybackRate] = isPlaying ? Double(playbackRate) : 0
+        let rate = rateOverride ?? (isPlaying ? Double(playbackRate) : 0)
+        info[MPNowPlayingInfoPropertyPlaybackRate] = rate
         MPNowPlayingInfoCenter.default().nowPlayingInfo = info
     }
     #endif

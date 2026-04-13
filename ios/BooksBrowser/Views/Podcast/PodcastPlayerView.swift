@@ -39,6 +39,15 @@ struct PodcastPlayerView: View {
         // on parent-driven id swaps (e.g. future "next episode" button).
         .task(id: episodeId) {
             guard loadedEpisodeId != episodeId else { return }
+            // Save the OUTGOING episode's progress BEFORE tearing down the VM
+            // or advancing loadedEpisodeId. Otherwise the current-swap path
+            // loses up to the throttle window (~10s) of the previous episode's
+            // position: .paused/.ready transitions won't fire during the swap
+            // and the saveProgress guard would reject the write once
+            // loadedEpisodeId moves on.
+            if let oldVm = viewModel, let oldId = loadedEpisodeId {
+                saveProgress(vm: oldVm, episodeRemoteId: oldId)
+            }
             // Cancel any in-flight load BEFORE tearing down the VM — otherwise
             // the old task can still resume after stop() and call loadEpisode()
             // on the now-detached VM, spawning a second AVPlayer.
@@ -211,6 +220,11 @@ struct PodcastPlayerView: View {
 
                 let episodeTitle = episode.displayTitle
                 await MainActor.run {
+                    // Second cancel gate — URLSession.data can complete before
+                    // the cancel signal propagates, and we don't want to call
+                    // loadEpisode on a VM whose stop() already ran (would
+                    // spawn a second AVPlayer on a torn-down engine).
+                    guard !Task.isCancelled else { return }
                     vm.loadEpisode(
                         audioURL: audioURL,
                         subtitleContent: subtitleContent,
@@ -232,8 +246,12 @@ struct PodcastPlayerView: View {
     @MainActor
     private func restoreProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
         let targetId = episodeRemoteId
+        // Sort by updatedAt DESC — CloudKit can legally produce duplicate rows
+        // for the same episode across devices (no @Attribute(.unique) — it's
+        // CloudKit-incompatible). Pick the newest so we don't rewind the user.
         let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId }
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
         if let progress = try? modelContext.fetch(descriptor).first,
            progress.lastPlayedTime > 0,
@@ -248,6 +266,7 @@ struct PodcastPlayerView: View {
         saveProgress()
     }
 
+    /// Current-VM / current-episode save (used by scenePhase, onChange, onDisappear).
     private func saveProgress() {
         guard let vm = viewModel else { return }
         // Guard 1: don't write stale VM's currentTime under NEW episodeId
@@ -257,21 +276,32 @@ struct PodcastPlayerView: View {
         // window between AVPlayer reaching .ready and restoreProgress seeking
         // to the saved position — scenePhase / onDisappear may fire in that gap.
         if !progressRestored && vm.currentTime == 0 { return }
-        let targetId = episodeId
+        saveProgress(vm: vm, episodeRemoteId: episodeId)
+    }
+
+    /// Explicit-target save — used when we need to write the OUTGOING episode's
+    /// progress during an episodeId swap, before `loadedEpisodeId` advances.
+    private func saveProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
+        if vm.currentTime == 0 { return }
+        let targetId = episodeRemoteId
+        // Sort newest-first + collapse duplicates from CloudKit into the newest.
         let descriptor = FetchDescriptor<PodcastProgress>(
-            predicate: #Predicate { $0.episodeRemoteId == targetId }
+            predicate: #Predicate { $0.episodeRemoteId == targetId },
+            sortBy: [SortDescriptor(\.updatedAt, order: .reverse)]
         )
+        let existing = (try? modelContext.fetch(descriptor)) ?? []
+        // Delete any older duplicates so the store converges to a single row.
+        for stale in existing.dropFirst() {
+            modelContext.delete(stale)
+        }
         let progress: PodcastProgress
-        if let existing = try? modelContext.fetch(descriptor).first {
-            progress = existing
+        if let newest = existing.first {
+            progress = newest
         } else {
-            progress = PodcastProgress(episodeRemoteId: episodeId)
+            progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
             modelContext.insert(progress)
         }
         progress.lastPlayedTime = vm.currentTime
-        // completed must require a real duration — AVPlayer reports duration = 0
-        // until async asset metadata loads, which would otherwise trip
-        // `currentTime >= 0 - 1` = true and falsely mark a fresh episode complete.
         progress.completed = (
             vm.state == .ready
             && vm.duration > 0
