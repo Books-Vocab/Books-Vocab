@@ -25,7 +25,9 @@ final class PodcastPlayerViewModel {
     private(set) var renderState: SubtitleRenderState?
     private(set) var highlightedWordIndex: Int = -1
     private(set) var playbackRate: Float = 1.0
-    private(set) var displayMode: PodcastSubtitleDisplayMode = .wordLevel
+    // .sentenceLevel is the chat-bubble transcript (primary UX).
+    // .wordLevel is a single-focus card retained as a secondary mode.
+    private(set) var displayMode: PodcastSubtitleDisplayMode = .sentenceLevel
     let hostNames: [String]
 
     // Translation — set by the player view
@@ -45,7 +47,12 @@ final class PodcastPlayerViewModel {
         }
         audioEngine.onPlaybackFinished = { [weak self] in
             MainActor.assumeIsolated {
-                self?.state = .ready
+                guard let self else { return }
+                // DidPlayToEndTime can fire on a truncated item right after a
+                // mid-stream failure already transitioned us to .error — don't
+                // let it silently clobber the error UI back to .ready.
+                if case .error = self.state { return }
+                self.state = .ready
             }
         }
         audioEngine.onDurationLoaded = { [weak self] d in
@@ -59,23 +66,45 @@ final class PodcastPlayerViewModel {
                 if self.state == .loading { self.state = .ready }
             }
         }
+        audioEngine.onLoadFailed = { [weak self] msg in
+            MainActor.assumeIsolated {
+                self?.state = .error(msg)
+            }
+        }
+        audioEngine.onSystemPause = { [weak self] in
+            MainActor.assumeIsolated {
+                // Keep VM state consistent with engine when the system forces
+                // pause. Handle .playing AND .loading — an interruption during
+                // load would otherwise leave VM stuck in .loading forever
+                // because no natural .ready transition happens post-interrupt.
+                guard let self else { return }
+                if self.state == .playing || self.state == .loading {
+                    self.state = .paused
+                }
+            }
+        }
+        audioEngine.onSystemResume = { [weak self] in
+            MainActor.assumeIsolated {
+                guard let self else { return }
+                if self.state == .paused { self.state = .playing }
+            }
+        }
     }
 
     // MARK: - Loading
 
-    func loadEpisode(audioURL: URL, subtitleContent: String?) {
+    func loadEpisode(audioURL: URL, subtitleContent: String?, title: String = "") {
         state = .loading
         duration = 0
-        do {
-            try audioEngine.loadAudio(url: audioURL)
-            if let srt = subtitleContent {
-                subtitleEngine.load(srtContent: srt)
-            }
-            // With AVPlayer streaming, duration + readiness arrive asynchronously.
-            // state transitions to .ready via onReadyToPlay callback.
-        } catch {
-            state = .error(error.localizedDescription)
+        audioEngine.loadAudio(url: audioURL)
+        if let srt = subtitleContent {
+            subtitleEngine.load(srtContent: srt)
         }
+        audioEngine.configureNowPlaying(
+            title: title,
+            artist: hostNames.joined(separator: " & ")
+        )
+        // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 
     func setLoading() {
@@ -96,6 +125,20 @@ final class PodcastPlayerViewModel {
     func pause() {
         audioEngine.pause()
         state = .paused
+    }
+
+    /// Mid-session teardown — releases the current player/item so a new load
+    /// can take over without a session-deactivation pulse. Use on retry / swap.
+    func stop() {
+        audioEngine.stop()
+        state = .idle
+    }
+
+    /// Terminal teardown — use on view dismiss to also release the audio
+    /// session + lock-screen metadata so other apps regain focus.
+    func shutdown() {
+        audioEngine.shutdown()
+        state = .idle
     }
 
     func togglePlayPause() {
@@ -161,10 +204,12 @@ final class PodcastPlayerViewModel {
             }
         }
 
-        // High-frequency path: update highlight index (just an Int, cheap)
-        if let hw = cue?.highlightedWord, let rs = renderState {
-            let normalized = hw.lowercased().trimmingCharacters(in: .punctuationCharacters)
-            highlightedWordIndex = rs.highlightIndex(for: normalized)
+        // High-frequency path: highlight = index of current cue within sentence.words.
+        // With compact SRT, sentence.words is 1:1 with word cues, so we find the cue
+        // position directly (no fuzzy text match needed).
+        if let cue, let sentence = currentSentence,
+           let idx = sentence.words.firstIndex(where: { $0.id == cue.id }) {
+            highlightedWordIndex = idx
         } else {
             highlightedWordIndex = -1
         }

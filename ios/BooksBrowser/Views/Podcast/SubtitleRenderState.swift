@@ -22,12 +22,12 @@ struct SubtitleRenderState: Equatable {
         self.speaker = sentence.speaker
         self.speakerIndex = hostNames.firstIndex(of: sentence.speaker)
 
-        let wordTexts = sentence.text.split(separator: " ").map(String.init)
-        self.words = wordTexts.enumerated().map { idx, text in
+        // Compact SRT: sentence.words is already 1 cue = 1 word, perfect 1:1 mapping.
+        self.words = sentence.words.enumerated().map { idx, cue in
             Word(
                 id: idx,
-                text: text,
-                normalizedText: text.lowercased().trimmingCharacters(in: .punctuationCharacters)
+                text: cue.word,
+                normalizedText: cue.word.lowercased().trimmingCharacters(in: .punctuationCharacters)
             )
         }
     }
