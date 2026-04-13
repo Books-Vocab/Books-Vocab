@@ -5,56 +5,239 @@ struct PodcastEpisodeDestination: Hashable {
     let episodeId: String
 }
 
+private enum EpisodeSort: String, CaseIterable, Identifiable {
+    case ascending, descending
+    var id: String { rawValue }
+    var label: String {
+        switch self {
+        case .ascending: return "由舊至新"
+        case .descending: return "由新至舊"
+        }
+    }
+    var systemImage: String {
+        switch self {
+        case .ascending: return "arrow.up"
+        case .descending: return "arrow.down"
+        }
+    }
+}
+
 struct PodcastEpisodeListView: View {
     let seriesId: String
     @Environment(\.vocabSkin) private var skin
-    @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
 
     @Query(sort: \PodcastEpisode.episodeNumber) private var allEpisodes: [PodcastEpisode]
     @Query private var allProgress: [PodcastProgress]
+    @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }) private var allSeries: [PodcastSeries]
+
+    @State private var sort: EpisodeSort = .ascending
+
+    private var series: PodcastSeries? {
+        allSeries.first { $0.remoteId == seriesId }
+    }
+
+    private var rawEpisodes: [PodcastEpisode] {
+        allEpisodes.filter { $0.series?.remoteId == seriesId }
+    }
 
     private var episodes: [PodcastEpisode] {
-        allEpisodes.filter { $0.series?.remoteId == seriesId }
+        switch sort {
+        case .ascending: return rawEpisodes
+        case .descending: return rawEpisodes.reversed()
+        }
     }
 
     private var progressMap: [String: PodcastProgress] {
         Dictionary(uniqueKeysWithValues: allProgress.map { ($0.episodeRemoteId, $0) })
     }
 
-    private var seriesTitle: String {
-        episodes.first?.series?.title ?? ""
+    private var continueEpisode: PodcastEpisode? {
+        let inProgress = rawEpisodes
+            .compactMap { ep -> (PodcastEpisode, PodcastProgress)? in
+                guard let p = progressMap[ep.remoteId], !p.completed, p.lastPlayedTime > 0 else { return nil }
+                return (ep, p)
+            }
+            .max { $0.1.updatedAt < $1.1.updatedAt }
+            .map { $0.0 }
+        if let inProgress { return inProgress }
+        if let firstUnplayed = rawEpisodes.first(where: { progressMap[$0.remoteId]?.completed != true }) {
+            return firstUnplayed
+        }
+        return rawEpisodes.first
+    }
+
+    private var allCompleted: Bool {
+        !rawEpisodes.isEmpty && rawEpisodes.allSatisfy { progressMap[$0.remoteId]?.completed == true }
+    }
+
+    private var phase: VocabScenePhase {
+        if rawEpisodes.isEmpty {
+            return .empty(
+                title: "尚無集數",
+                systemImage: "waveform.slash",
+                description: "此系列目前沒有可播放的集數",
+                action: nil
+            )
+        }
+        return .content
     }
 
     var body: some View {
-        Group {
-            if episodes.isEmpty {
-                VStack(spacing: skin.spacing.sectionGap) {
-                    Image(systemName: "waveform")
-                        .font(.largeTitle)
-                        .foregroundStyle(skin.palette.tertiaryText)
-                    Text("尚無集數")
-                        .font(skin.typography.sectionTitle)
-                        .foregroundStyle(skin.palette.secondaryText)
+        VocabSceneShell(phase: phase) {
+            ScrollView {
+                LazyVStack(spacing: skin.spacing.sectionGap) {
+                    heroHeader
+                    episodesSection
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else {
-                List {
-                    ForEach(episodes) { episode in
-                        NavigationLink {
-                            PodcastPlayerView(episodeId: episode.remoteId)
-                        } label: {
-                            PodcastEpisodeRow(
-                                episode: episode,
-                                progress: progressMap[episode.remoteId]
-                            )
-                        }
-                        .disabled(!episode.audioAvailable)
+                .padding(.horizontal, skin.spacing.cardPadding)
+                .padding(.bottom, skin.spacing.sheetSectionSpacing)
+            }
+            .background(skin.palette.pageBackground.ignoresSafeArea())
+        }
+        .navigationTitle(series?.title ?? "")
+        .navigationBarTitleDisplayMode(.inline)
+    }
+
+    // MARK: - Hero
+
+    private var heroHeader: some View {
+        VStack(spacing: skin.spacing.statusHeroGap) {
+            NotebookCoverView(
+                color: NotebookPalette.color(for: series?.color),
+                pattern: NotebookCoverPattern(rawValue: series?.coverPattern ?? "") ?? .waves,
+                coverImagePath: series?.coverImagePath,
+                name: series?.title ?? ""
+            )
+            .frame(width: 168, height: 168)
+            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
+            .shadow(color: skin.palette.shadow, radius: 18, x: 0, y: 8)
+            .padding(.top, skin.spacing.sectionGap)
+
+            Text(series?.title ?? "")
+                .font(skin.typography.displayTitle)
+                .foregroundStyle(skin.palette.primaryText)
+                .multilineTextAlignment(.center)
+                .lineLimit(3)
+
+            if let meta = heroMetaText {
+                Text(meta)
+                    .font(skin.typography.caption)
+                    .foregroundStyle(skin.palette.tertiaryText)
+                    .multilineTextAlignment(.center)
+            }
+
+            heroActions
+                .padding(.top, skin.spacing.inlineGap)
+        }
+        .padding(.bottom, skin.spacing.sectionGap)
+    }
+
+    private var heroMetaText: String? {
+        guard let series else { return nil }
+        var parts: [String] = []
+        if !series.hostNames.isEmpty {
+            parts.append(series.hostNames.joined(separator: ", "))
+        }
+        if series.episodeCount > 0 {
+            parts.append("\(series.episodeCount) 集")
+        }
+        if series.totalDurationSec > 0 {
+            parts.append(formatTotalDuration(series.totalDurationSec))
+        }
+        return parts.isEmpty ? nil : parts.joined(separator: " · ")
+    }
+
+    @ViewBuilder
+    private var heroActions: some View {
+        if let target = continueEpisode {
+            let progress = progressMap[target.remoteId]
+            let label: String = {
+                if allCompleted { return "重新播放" }
+                if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return "繼續播放" }
+                return "開始播放"
+            }()
+            NavigationLink {
+                PodcastPlayerView(episodeId: target.remoteId)
+            } label: {
+                Label(label, systemImage: "play.fill")
+            }
+            .buttonStyle(.appAction(.primary))
+            .disabled(!target.audioAvailable)
+            .frame(maxWidth: 280)
+        }
+    }
+
+    // MARK: - Episodes section
+
+    private var episodesSection: some View {
+        VStack(alignment: .leading, spacing: skin.spacing.inlineGap) {
+            HStack {
+                Text("集數")
+                    .font(skin.typography.sectionTitle)
+                    .foregroundStyle(skin.palette.primaryText)
+                Spacer()
+                sortMenu
+            }
+            .padding(.horizontal, skin.spacing.microGap)
+
+            VStack(spacing: 0) {
+                ForEach(Array(episodes.enumerated()), id: \.element.id) { index, episode in
+                    NavigationLink {
+                        PodcastPlayerView(episodeId: episode.remoteId)
+                    } label: {
+                        PodcastEpisodeRow(
+                            episode: episode,
+                            progress: progressMap[episode.remoteId]
+                        )
+                    }
+                    .buttonStyle(.plain)
+                    .disabled(!episode.audioAvailable)
+
+                    if index < episodes.count - 1 {
+                        Divider()
+                            .background(skin.palette.divider)
+                            .padding(.leading, skin.spacing.cardPadding)
                     }
                 }
-                .listStyle(.insetGrouped)
             }
+            .padding(.vertical, skin.spacing.microGap)
+            .background(
+                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+                    .fill(skin.palette.cardBackground)
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+                    .stroke(skin.palette.cardBorder, lineWidth: 0.5)
+            )
         }
-        .navigationTitle(seriesTitle)
+    }
+
+    private var sortMenu: some View {
+        Menu {
+            ForEach(EpisodeSort.allCases) { option in
+                Button {
+                    withAnimation(AppMotion.phaseChange) { sort = option }
+                } label: {
+                    Label(option.label, systemImage: option.systemImage)
+                }
+            }
+        } label: {
+            HStack(spacing: skin.spacing.tinyGap) {
+                Text(sort.label)
+                Image(systemName: "chevron.down")
+            }
+            .font(skin.typography.captionStrong)
+            .foregroundStyle(skin.palette.accent)
+        }
+    }
+
+    private func formatTotalDuration(_ sec: Double) -> String {
+        let h = Int(sec) / 3600
+        let m = (Int(sec) % 3600) / 60
+        if h > 0 {
+            return "共 \(h) 小時 \(m) 分"
+        }
+        return "共 \(m) 分鐘"
     }
 }
