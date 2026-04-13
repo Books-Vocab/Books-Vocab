@@ -111,7 +111,9 @@ Write `{workspace}/plan/overview.md`:
 - **[Host A Name] (TBD)**: Speaker1
 - **[Host B Name] (TBD)**: Speaker2
 
-(The `(TBD)` placeholder is replaced with the actual Gemini voice name by the `tts-prep` stage. Do NOT pick a voice yourself — that's tts-prep's job after seeing the finished scripts.)
+**Required**: write these two lines verbatim with `(TBD)` literally in the parentheses. The `tts-prep` stage substitutes `TBD` with the chosen Gemini voice after seeing the finished scripts — do NOT pick a voice yourself, and do NOT drop the `(TBD)` placeholder (synthesize.py's parser requires the `(...)` to be present).
+
+**Host name rule**: use a single-word host name (e.g. `Marcus`, `Priya`). Avoid spaces, hyphens, or surnames — the TTS parser matches speaker tags `**Name:**` with `\w+`, so multi-word names break audio generation silently.
 
 ## Audience
 - **Target listener**: [who this podcast is for]
