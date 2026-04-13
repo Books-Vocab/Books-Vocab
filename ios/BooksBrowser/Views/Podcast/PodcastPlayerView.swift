@@ -72,12 +72,13 @@ struct PodcastPlayerView: View {
             }
         }
         .onDisappear {
-            // Save before teardown — stop() flips state to .idle which the
+            // Save before teardown — shutdown() flips state to .idle which the
             // onChange path would otherwise skip, losing up to 10s of progress.
             saveProgress()
             loadTask?.cancel()
             loadTask = nil
-            viewModel?.stop()
+            // shutdown = full teardown (session deactivate + remote commands off).
+            viewModel?.shutdown()
             viewModel = nil
             loadedEpisodeId = nil
             progressRestored = false

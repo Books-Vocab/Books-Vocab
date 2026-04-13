@@ -121,9 +121,17 @@ final class PodcastPlayerViewModel {
         state = .paused
     }
 
-    /// Full teardown — used on view dismiss to release network + audio resources.
+    /// Mid-session teardown — releases the current player/item so a new load
+    /// can take over without a session-deactivation pulse. Use on retry / swap.
     func stop() {
         audioEngine.stop()
+        state = .idle
+    }
+
+    /// Terminal teardown — use on view dismiss to also release the audio
+    /// session + lock-screen metadata so other apps regain focus.
+    func shutdown() {
+        audioEngine.shutdown()
         state = .idle
     }
 

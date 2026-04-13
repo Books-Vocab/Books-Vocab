@@ -109,6 +109,9 @@ final class PodcastAudioEngine: NSObject {
         // KVO on player.timeControlStatus — arms the stall watchdog precisely
         // when buffering begins, and cancels it the moment playback resumes.
         // Covers post-seek stalls without false positives after successful play.
+        // Also refreshes lock-screen info so the play/pause icon matches reality
+        // (play() fires before timeControlStatus flips, which would otherwise
+        // freeze NowPlayingInfo.playbackRate at 0).
         timeControlObserver = p.observe(\.timeControlStatus, options: [.new]) { [weak self] observed, _ in
             guard let self else { return }
             DispatchQueue.main.async {
@@ -122,6 +125,9 @@ final class PodcastAudioEngine: NSObject {
                 @unknown default:
                     break
                 }
+                #if os(iOS)
+                self.updateNowPlayingInfo()
+                #endif
             }
         }
 
@@ -282,14 +288,23 @@ final class PodcastAudioEngine: NSObject {
     /// reader releases its network handle. Call from view `.onDisappear`.
     /// Bumps loadGeneration so any in-flight async load task bails on its next
     /// generation check instead of firing callbacks on a torn-down VM.
+    /// Release the current player + item + observers. Use when another load is
+    /// about to take over (retry / episode swap) — leaves audio session active
+    /// and remote commands registered so there's no ducking pulse or lock-screen
+    /// flicker during the handoff.
     func stop() {
         loadGeneration &+= 1
         stallWatchdog?.cancel()
         stallWatchdog = nil
         removeObservers()
+    }
+
+    /// True terminal teardown — use when the user is leaving the player entirely.
+    /// Also deactivates the audio session + clears lock-screen info + removes
+    /// remote-command targets so other apps (Spotify, etc.) regain audio focus.
+    func shutdown() {
+        stop()
         #if os(iOS)
-        // Terminal-only teardown: unregister remote commands, clear lock-screen
-        // info, deactivate the audio session (avoids ducking-pulse on retries).
         unregisterRemoteCommands()
         MPNowPlayingInfoCenter.default().nowPlayingInfo = nil
         try? AVAudioSession.sharedInstance().setActive(
