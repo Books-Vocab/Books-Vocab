@@ -63,7 +63,7 @@ struct PodcastSentenceLevelView: View {
                         }
                 )
 
-                if !isFollowing {
+                if !isFollowing && selectionState == nil {
                     followPill {
                         isFollowing = true
                         if let id = currentId {

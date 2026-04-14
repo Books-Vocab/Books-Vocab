@@ -113,7 +113,7 @@ extension ReaderTranslationHandler {
     func handlePhraseSelected(
         phrase: String,
         context: String,
-        vocabularyContext: any VocabularyContextProtocol
+        vocabularyContext: (any VocabularyContextProtocol)? = nil
     ) {
         cancelCurrentTranslationTask()
         let selection = WordSelection(word: phrase, context: context, position: .zero)
@@ -158,11 +158,13 @@ extension ReaderTranslationHandler {
                 }
                 guard !Task.isCancelled else { return }
                 await Task.yield()
-                autoSaveToVocabulary(
-                    selection: selection,
-                    result: result,
-                    context: vocabularyContext
-                )
+                if let vocabularyContext {
+                    autoSaveToVocabulary(
+                        selection: selection,
+                        result: result,
+                        context: vocabularyContext
+                    )
+                }
             } catch {
                 translationResult = nil
                 isTranslating = false
