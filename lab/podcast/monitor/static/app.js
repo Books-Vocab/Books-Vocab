@@ -12,8 +12,13 @@ const OPUS_CTX_MAX = 1_000_000; // 1M context
 const state = {
   ws: null,
   stages: {},          // stage -> { status, elapsed_s, started_ts }
-  tokensTotal: { in: 0, out: 0, cache: 0 },
-  lastCtx: 0,          // last assistant message's input_tokens
+  parallelEps: {       // per-stage per-episode runner status
+    scriptwrite: {},   // { 1: "running"|"done"|"failed", ... }
+    "script-review": {},
+  },
+  tokensTotal: { out: 0, cacheRead: 0, cacheCreate: 0, fresh: 0 },
+  lastCtx: 0,          // real context size from last assistant msg
+  peakCtx: 0,          // max context ever observed
   currentStage: null,  // label from last stage_start
   pipelineStartTs: null,
   pipelineEndTs: null,
@@ -21,6 +26,16 @@ const state = {
   maxFeed: 200,
   eventSource: null,
 };
+
+// Map an agent stage_label from events.jsonl to its pipeline stage + episode (if parallel).
+function parseLabel(label) {
+  if (!label) return { stage: null, ep: null };
+  let m = label.match(/^Scriptwriter EP(\d+)$/i);
+  if (m) return { stage: "scriptwrite", ep: Number(m[1]) };
+  m = label.match(/^Script Review EP(\d+)$/i);
+  if (m) return { stage: "script-review", ep: Number(m[1]) };
+  return { stage: null, ep: null };
+}
 
 const $ = (sel) => document.querySelector(sel);
 
@@ -147,9 +162,15 @@ function handleStreamEvent(obj) {
   const stageLabel = obj.stage_label || "";
   const ev = obj.event || {};
   const type = ev.type;
+  const { stage: pStage, ep } = parseLabel(stageLabel);
 
   if (type === "system") {
     if (ev.subtype === "init") {
+      // Mark parallel-ep as running on first event
+      if (pStage && ep != null) {
+        state.parallelEps[pStage] ||= {};
+        state.parallelEps[pStage][ep] = "running";
+      }
       pushFeed(ts, stageLabel, { kind: "sys", msg: `agent started (cwd=${ev.cwd || "?"})` });
     }
     return;
@@ -161,11 +182,18 @@ function handleStreamEvent(obj) {
     // Usage tokens
     const usage = msg.usage || {};
     if (usage.input_tokens !== undefined) {
-      // Cumulative per invocation: last assistant msg's input_tokens ≈ context size right now
-      state.lastCtx = usage.input_tokens || state.lastCtx;
-      state.tokensTotal.in += usage.input_tokens || 0;
+      // Real context size = fresh input + cache_read + cache_creation
+      // (Anthropic's `input_tokens` is only the fresh/new portion)
+      const freshIn = usage.input_tokens || 0;
+      const cacheRead = usage.cache_read_input_tokens || 0;
+      const cacheCreate = usage.cache_creation_input_tokens || 0;
+      const ctx = freshIn + cacheRead + cacheCreate;
+      state.lastCtx = ctx;
+      if (ctx > state.peakCtx) state.peakCtx = ctx;
+      state.tokensTotal.fresh += freshIn;
+      state.tokensTotal.cacheRead += cacheRead;
+      state.tokensTotal.cacheCreate += cacheCreate;
       state.tokensTotal.out += usage.output_tokens || 0;
-      state.tokensTotal.cache += (usage.cache_read_input_tokens || 0) + (usage.cache_creation_input_tokens || 0);
     }
     for (const part of content) {
       if (part.type === "tool_use") {
@@ -187,7 +215,15 @@ function handleStreamEvent(obj) {
   if (type === "result") {
     const dur = (ev.duration_ms || 0) / 1000;
     const turns = ev.num_turns;
-    pushFeed(ts, stageLabel, { kind: "result", msg: `done · ${dur.toFixed(0)}s · ${turns} turns` });
+    const isErr = !!ev.is_error;
+    if (pStage && ep != null) {
+      state.parallelEps[pStage] ||= {};
+      state.parallelEps[pStage][ep] = isErr ? "failed" : "done";
+    }
+    pushFeed(ts, stageLabel, {
+      kind: isErr ? "stage_fail" : "result",
+      msg: `${isErr ? "FAILED" : "done"} · ${dur.toFixed(0)}s · ${turns} turns`,
+    });
     return;
   }
 }
@@ -211,10 +247,36 @@ function renderStages() {
   for (const stage of STAGES) {
     const s = state.stages[stage] || { status: "pending" };
     const card = document.createElement("div");
-    card.className = `stage-card ${s.status || "pending"}`;
+    const isParallel = stage === "scriptwrite" || stage === "script-review";
+    card.className = `stage-card ${s.status || "pending"}${isParallel ? " stage-parallel" : ""}`;
+
+    let subGrid = "";
+    if (isParallel) {
+      const eps = state.parallelEps[stage] || {};
+      const epNums = Object.keys(eps).map(Number).sort((a, b) => a - b);
+      if (epNums.length) {
+        const running = epNums.filter(n => eps[n] === "running").length;
+        const done = epNums.filter(n => eps[n] === "done").length;
+        const failed = epNums.filter(n => eps[n] === "failed").length;
+        const tiles = epNums.map(n => {
+          const st = eps[n] || "pending";
+          return `<span class="ep-tile ${st}" title="EP${n} · ${st}">EP${n}</span>`;
+        }).join("");
+        subGrid = `
+          <div class="ep-summary">
+            <span>✓ ${done}</span>
+            <span>⦿ ${running}</span>
+            ${failed ? `<span class="fail">✗ ${failed}</span>` : ""}
+          </div>
+          <div class="ep-tiles">${tiles}</div>
+        `;
+      }
+    }
+
     card.innerHTML = `
       <div class="stage-title">${stage}</div>
       <div class="stage-status-chip ${s.status}">${s.status}</div>
+      ${subGrid}
       <div class="stage-meta">
         ${s.elapsed_s ? `<span class="k">elapsed</span> <span class="v tabular">${s.elapsed_s}s</span>` :
           s.started_ts ? `<span class="k">started</span> <span class="v tabular">${fmtTime(s.started_ts)}</span>` : ""}
@@ -235,19 +297,21 @@ function renderMetrics() {
   $("#m-elapsed").textContent = elapsed;
   $("#m-stage").textContent = state.currentStage || "—";
 
-  // Context
+  // Context (real size = fresh + cache_read + cache_creation)
   const ctx = state.lastCtx || 0;
   const pct = (ctx / OPUS_CTX_MAX) * 100;
   $("#m-ctx").textContent = fmtNum(ctx);
-  $("#m-ctx-pct").textContent = pct.toFixed(2) + "%";
+  $("#m-ctx-pct").textContent = pct < 0.01 && pct > 0 ? "<0.01%" : pct.toFixed(2) + "%";
   $("#m-ctx-bar").style.width = Math.min(100, pct) + "%";
+  const peakEl = document.querySelector("#m-ctx-peak");
+  if (peakEl) peakEl.textContent = fmtNum(state.peakCtx);
 
-  // Tokens total
-  const total = state.tokensTotal.in + state.tokensTotal.out;
-  $("#m-tok-total").textContent = fmtNum(total);
-  $("#m-tok-in").textContent = fmtNum(state.tokensTotal.in);
-  $("#m-tok-out").textContent = fmtNum(state.tokensTotal.out);
-  $("#m-tok-cache").textContent = fmtNum(state.tokensTotal.cache);
+  // Tokens: OUT is the only truly cumulative meaningful number (cost of generation).
+  // IN breakdown shows fresh vs cache split for research into caching effectiveness.
+  $("#m-tok-total").textContent = fmtNum(state.tokensTotal.out);
+  $("#m-tok-in").textContent = fmtNum(state.tokensTotal.fresh);
+  $("#m-tok-out").textContent = fmtNum(state.tokensTotal.cacheRead);
+  $("#m-tok-cache").textContent = fmtNum(state.tokensTotal.cacheCreate);
 }
 
 function renderFeed() {

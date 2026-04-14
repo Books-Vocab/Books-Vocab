@@ -8,6 +8,10 @@ lab/podcast/workspaces/
 lab/podcast/voice_samples/
 lab/podcast/__pycache__/
 lab/podcast/gen-lang-client-*.json
+lab/podcast/.claude/
+lab/podcast/.monitor.pid
+lab/podcast/monitor.log
+.agents/
 
 # Secrets
 .env

@@ -207,6 +207,80 @@ html, body {
   box-shadow: inset 3px 0 0 var(--dev);
 }
 
+.stage-card.stage-parallel {
+  grid-column: span 2;
+}
+
+.ep-summary {
+  display: flex;
+  gap: 12px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  color: var(--sub);
+  margin-top: 2px;
+}
+.ep-summary .fail { color: var(--dev); }
+
+.ep-tiles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.ep-tile {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 36px;
+  height: 22px;
+  padding: 0 6px;
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 500;
+  letter-spacing: 0.04em;
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  color: var(--sub);
+  background: var(--bg);
+  transition: all 0.2s ease;
+}
+.ep-tile.running {
+  border-color: var(--contra);
+  color: #FCFBFA;
+  background: var(--contra);
+  animation: pulse-tile 2s ease-in-out infinite;
+}
+.ep-tile.done {
+  border-color: var(--ink);
+  color: #FCFBFA;
+  background: var(--ink);
+}
+.ep-tile.failed {
+  border-color: var(--dev);
+  color: #FCFBFA;
+  background: var(--dev);
+}
+
+@keyframes pulse-tile {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(74, 107, 140, 0.3); }
+  50% { box-shadow: 0 0 0 3px rgba(74, 107, 140, 0.12); }
+}
+
+.stage-card.interrupted {
+  border-color: var(--sub);
+  background: repeating-linear-gradient(
+    45deg,
+    var(--surface),
+    var(--surface) 6px,
+    var(--borderL) 6px,
+    var(--borderL) 7px
+  );
+  box-shadow: inset 3px 0 0 var(--sub);
+  opacity: 0.6;
+}
+
 .stage-title {
   font-family: var(--mono);
   font-weight: 500;
