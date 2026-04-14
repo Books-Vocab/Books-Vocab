@@ -25,10 +25,12 @@ final class PodcastPlayerViewModel {
     // Translation — set by the player view
     var activeWordSelection: (word: String, context: String)?
     var activePhraseSelection: (phrase: String, context: String)?
+    var activeExplainSelection: (text: String, context: String)?
     // Counters tick on every tap so the View's onChange fires even when the
     // same word/phrase is tapped twice in a row (value-equal onChange is a no-op).
     private(set) var wordTapTick: Int = 0
     private(set) var phraseTapTick: Int = 0
+    private(set) var explainTapTick: Int = 0
 
     @ObservationIgnored
     private let audioEngine = PodcastAudioEngine()
@@ -163,17 +165,29 @@ final class PodcastPlayerViewModel {
 
     func handleWordTap(word: String, context: String) {
         activeWordSelection = (word, context)
+        activePhraseSelection = nil
+        activeExplainSelection = nil
         wordTapTick &+= 1
     }
 
     func handlePhraseTap(phrase: String, context: String) {
         activePhraseSelection = (phrase, context)
+        activeWordSelection = nil
+        activeExplainSelection = nil
         phraseTapTick &+= 1
+    }
+
+    func handleExplainTap(text: String, context: String) {
+        activeExplainSelection = (text, context)
+        activeWordSelection = nil
+        activePhraseSelection = nil
+        explainTapTick &+= 1
     }
 
     func dismissWordSelection() {
         activeWordSelection = nil
         activePhraseSelection = nil
+        activeExplainSelection = nil
     }
 
     // MARK: - Computed
