@@ -28,6 +28,7 @@ struct PodcastSentenceLevelView: View {
     let onSentenceTap: (PodcastSentence) -> Void
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
+    let onExplainTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
 
     @State private var isFollowing = true
@@ -157,6 +158,9 @@ struct PodcastSentenceLevelView: View {
                 ) { phrase, context in
                     selectionState = nil
                     onPhraseTap(phrase, context)
+                } onExplainSelection: { text, context in
+                    selectionState = nil
+                    onExplainTap(text, context)
                 }
             } else {
                 // All bubbles use CachedFlowLayout of per-word tokens — same layout
@@ -340,7 +344,8 @@ struct PodcastSentenceLevelView: View {
             subtitleSize: .xLarge,
             onSentenceTap: { _ in },
             onWordTap: { _, _ in },
-            onPhraseTap: { _, _ in }
+            onPhraseTap: { _, _ in },
+            onExplainTap: { _, _ in }
         )
     }
 }
