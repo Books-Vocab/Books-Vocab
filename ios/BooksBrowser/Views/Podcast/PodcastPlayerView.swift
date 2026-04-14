@@ -248,12 +248,11 @@ struct PodcastPlayerView: View {
 
     private func performPhraseTap() {
         guard let vm = viewModel,
-              let selection = vm.activePhraseSelection,
-              let ctx = vocabularyContext else { return }
+              let selection = vm.activePhraseSelection else { return }
         translationHandler.handlePhraseSelected(
             phrase: selection.phrase,
             context: selection.context,
-            vocabularyContext: ctx
+            vocabularyContext: vocabularyContext
         )
     }
 
