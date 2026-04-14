@@ -10,10 +10,10 @@ allowed-tools: Bash, Read, Write, Edit, Glob, Grep
 
 使用者提供一本書的路徑（EPUB），要求產生播客。
 
-## 管線總覽（11 階段）
+## 管線總覽（13 階段）
 
 ```
-EPUB → prep → analyst → architect → plan-review → enricher-gap → enricher → scriptwrite → script-review → tts-prep → synthesize → subtitle
+EPUB → prep → analyst → architect → plan-review → enricher-gap → enricher → scriptwrite → series-polish → script-review → tts-prep → synthesize → audio-qa → subtitle
 ```
 
 | # | 階段 | 工具 | 說明 |
@@ -25,10 +25,12 @@ EPUB → prep → analyst → architect → plan-review → enricher-gap → enr
 | 5 | `enricher-gap` | Claude agent | 識別研究需求：弱論證、需要類比的概念 |
 | 6 | `enricher` | Claude agent + web | 按研究清單搜尋外部佐證 |
 | 7 | `scriptwrite` | Claude agents ×N | 平行寫對話腳本（含 TTS 標籤） |
-| 8 | `script-review` | Claude agents ×N | QA gate：覆蓋率、反模式掃描、TTS tag 品質 |
-| 9 | `tts-prep` | Claude agent | 最終 TTS-readiness 審查：挑聲線配對、修 parse-breaking 錯誤、寫入 Voice Mapping |
-| 10 | `synthesize` | Vertex AI Gemini TTS | 腳本 → MP3 音訊（讀 overview Voice Mapping 套用聲線） |
-| 11 | `subtitle` | Whisper forced alignment | 音訊 + 腳本 → 詞級 SRT 字幕 |
+| 8 | `series-polish` | Claude agent（單） | 跨集拋光：callback 強化、running bits、人格一致性、系列弧收束 |
+| 9 | `script-review` | Claude agents ×N | QA gate：覆蓋率、反模式掃描、TTS tag 品質 |
+| 10 | `tts-prep` | Claude agent | 最終 TTS-readiness 審查：挑聲線配對、修 parse-breaking 錯誤、寫入 Voice Mapping |
+| 11 | `synthesize` | Vertex AI Gemini TTS + ffmpeg loudnorm | 腳本 → MP3 音訊（-16 LUFS mastering） |
+| 12 | `audio-qa` | pydub | wpm / silence / clipping 檢查 → `audio_qa.json`；FAIL 阻斷 |
+| 13 | `subtitle` | Whisper forced alignment | 音訊 + 腳本 → 詞級 SRT 字幕 |
 
 ## 完整 CLI 參考
 
@@ -77,12 +79,19 @@ uv run synthesize.py workspaces/<name>/scripts/ep_1_script.md
 uv run synthesize.py workspaces/<name>/scripts/
 uv run synthesize.py workspaces/<name>/scripts/ --dry-run
 
+# 音訊品質 QA（synthesize 後自動跑；也可獨立）
+uv run audio_qa.py workspaces/<name>/scripts/
+uv run audio_qa.py workspaces/<name>/scripts/ep_1_pro.mp3 --report qa.json --strict
+
 # 字幕對齊（不可平行，Whisper 吃記憶體）
 uv run subtitle.py workspaces/<name>/scripts/ep_1_script.md
 uv run subtitle.py workspaces/<name>/scripts/
 
 # 預覽播放
 uv run preview.py workspaces/<name>/scripts/ep_1_pro.mp3
+
+# 聲線預覽（TTS 前試聽 15s 前段，確認 voice pair）
+uv run voice_preview.py workspaces/<name>
 ```
 
 ### 除錯
@@ -106,7 +115,7 @@ cat workspaces/<name>/scripts/ep_1_review.md
 
 ### 可用 stage 名稱
 
-`prep` · `analyst` · `architect` · `plan-review` · `enricher-gap` · `enricher` · `scriptwrite` · `script-review` · `synthesize` · `subtitle`
+`prep` · `analyst` · `architect` · `plan-review` · `enricher-gap` · `enricher` · `scriptwrite` · `series-polish` · `script-review` · `tts-prep` · `synthesize` · `audio-qa` · `subtitle`
 
 ## 透明化機制
 
@@ -122,11 +131,23 @@ cat workspaces/<name>/scripts/ep_1_review.md
 - `overview.md` 的 Voice Mapping section 定義 name → Speaker1/Speaker2 映射
 - `synthesize.py` 和 `subtitle.py` 從 `overview.md` 動態讀取
 
-## 限制
+## 限制 / 依賴
 
 - `subtitle.py` 不可平行（Whisper 記憶體大）
-- `synthesize.py` 內部已平行（batch 同步送 API）
+- `synthesize.py` 內部已平行，但 `TTS_MAX_CONCURRENT=3`（避免撞 Vertex 429）
 - `scriptwrite` / `script-review` 平行度預設 3，用 `--parallel N` 調整
+- **`ffmpeg` 需安裝**（mastering loudnorm 用）；無 ffmpeg 時自動降級為純 export，音量不會正規化
+- Claude agent 每 stage 有 timeout（Enricher 2700s / Scriptwriter 1800s / Reviewer 1200s / 其他 1500s）
+
+## 常用環境變數
+
+| 變數 | 預設 | 說明 |
+|------|------|------|
+| `TTS_MODEL` | `gemini-2.5-flash-tts` | Vertex TTS 模型（Pro 版：`gemini-2.5-pro-tts`） |
+| `TTS_MAX_CONCURRENT` | `3` | TTS batch 並發上限 |
+| `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
+| `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |
+| `TTS_MASTER_LUFS` | `-16` | 目標整合響度（Apple Podcasts 標準） |
 
 ## Workspace 結構
 
@@ -148,8 +169,10 @@ workspaces/<slug>_<hash>/
   scripts/
     ep_N_script.md               ← 對話腳本
     ep_N_review.md               ← script QA 結果
-    ep_N_pro.mp3                 ← TTS 音訊
+    ep_N_pro.mp3                 ← TTS 音訊（loudnorm 過）
     ep_N_pro.srt                 ← 詞級字幕
+  audio_qa.json                  ← 音訊 QA 報告
+  claude_*.stderr.log            ← agent 失敗時的 stderr tail
 ```
 
 ## Agent 行為指引
