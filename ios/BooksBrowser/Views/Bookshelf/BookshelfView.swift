@@ -69,6 +69,8 @@ struct BookshelfView: View {
             }
             .navigationDestination(for: PodcastNavRoute.self) { route in
                 switch route {
+                case .series(let seriesRemoteId):
+                    PodcastEpisodeListView(seriesId: seriesRemoteId)
                 case .episode(let episodeRemoteId):
                     PodcastPlayerView(episodeId: episodeRemoteId)
                 }
@@ -213,9 +215,7 @@ struct BookshelfView: View {
                 }
 
                 ForEach(podcastSeries) { series in
-                    NavigationLink {
-                        PodcastEpisodeListView(seriesId: series.remoteId)
-                    } label: {
+                    NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
                         PodcastSeriesCard(series: series, coverHeight: coverHeight)
                     }
                     .buttonStyle(.liftable)
