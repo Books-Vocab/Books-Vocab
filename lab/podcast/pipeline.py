@@ -67,6 +67,9 @@ PROMPTS_DIR = ROOT / "prompts"
 WORKSPACES_DIR = ROOT / "workspaces"
 _UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
 MODEL = "opus[1m]"
+# Set PODCAST_VERBOSE=1 to stream claude CLI tool-use events live via stream-json
+_STREAM_JSON = os.getenv("PODCAST_VERBOSE") == "1"
+_VERBOSE_FLAGS = ["--output-format", "stream-json", "--verbose"] if _STREAM_JSON else []
 
 STAGES = [
     "prep", "analyst", "architect", "plan-review",
@@ -205,6 +208,49 @@ _STAGE_TIMEOUTS = {
 _DEFAULT_TIMEOUT = 1500
 
 
+def _fmt_tool_event(event: dict) -> str | None:
+    """Turn a stream-json event into a one-line human summary. Returns None to skip."""
+    etype = event.get("type")
+    if etype == "system":
+        sub = event.get("subtype", "")
+        if sub == "init":
+            return f"  · agent started (cwd={event.get('cwd', '?')})"
+        return None
+    if etype == "assistant":
+        msg = event.get("message", {})
+        lines: list[str] = []
+        for part in msg.get("content", []):
+            ptype = part.get("type")
+            if ptype == "tool_use":
+                name = part.get("name", "?")
+                inp = part.get("input", {})
+                if name in {"Read", "Write", "Edit"}:
+                    fp = inp.get("file_path", "")
+                    lines.append(f"  → {name} {fp}")
+                elif name == "Bash":
+                    cmd = inp.get("command", "")[:100]
+                    lines.append(f"  → Bash: {cmd}")
+                elif name == "Grep":
+                    lines.append(f"  → Grep '{inp.get('pattern', '')}' in {inp.get('path', '.')}")
+                elif name == "Glob":
+                    lines.append(f"  → Glob '{inp.get('pattern', '')}'")
+                elif name in {"WebFetch", "WebSearch"}:
+                    lines.append(f"  → {name}: {inp.get('url') or inp.get('query', '')[:80]}")
+                else:
+                    lines.append(f"  → {name}")
+            elif ptype == "text":
+                txt = (part.get("text") or "").strip()
+                if txt:
+                    # Claude's natural-language reply between tool calls — show first line
+                    first = txt.splitlines()[0][:160]
+                    lines.append(f"  💬 {first}")
+        return "\n".join(lines) if lines else None
+    if etype == "result":
+        dur = event.get("duration_ms", 0) / 1000
+        return f"  · done ({dur:.0f}s, turns={event.get('num_turns', '?')})"
+    return None
+
+
 def _run_claude_subprocess(
     cmd: list[str],
     workspace: Path,
@@ -214,18 +260,66 @@ def _run_claude_subprocess(
 ) -> tuple[bool, float]:
     """Shared subprocess runner with timeout + stderr tail capture.
 
-    stdout stays inherited (live progress on TTY). stderr is piped so failure
-    diagnostics can be persisted to pipeline_log.jsonl + a per-stage tail file.
+    If PODCAST_VERBOSE=1 (stream-json), stdout is piped through a line-reader
+    that pretty-prints tool-use events live. Otherwise stdout is inherited
+    (claude's natural-language summary goes straight to TTY).
     """
     t0 = time.time()
     stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
 
+    if _STREAM_JSON:
+        # Live tool-use rendering via stream-json NDJSON
+        proc = subprocess.Popen(
+            cmd,
+            cwd=str(workspace),
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            env=_UNBUF_ENV,
+            bufsize=1,
+        )
+        try:
+            for line in proc.stdout:  # type: ignore[union-attr]
+                line = line.strip()
+                if not line:
+                    continue
+                try:
+                    event = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                rendered = _fmt_tool_event(event)
+                if rendered:
+                    print(rendered, flush=True)
+            proc.wait(timeout=timeout)
+        except subprocess.TimeoutExpired:
+            proc.kill()
+            elapsed = time.time() - t0
+            raw = proc.stderr.read() if proc.stderr else ""
+            if raw:
+                stderr_log.write_text(raw[-2000:])
+            if log:
+                log.error(f"{label} TIMEOUT after {timeout}s",
+                          timeout=True, elapsed_s=round(elapsed, 1),
+                          stderr_tail=raw[-500:])
+            return False, elapsed
+        elapsed = time.time() - t0
+        stderr_text = proc.stderr.read() if proc.stderr else ""
+        success = proc.returncode == 0
+        if not success:
+            if stderr_text:
+                stderr_log.write_text(stderr_text)
+            if log:
+                log.error(f"{label} exited with code {proc.returncode}",
+                          stderr_tail=stderr_text[-500:])
+        return success, elapsed
+
+    # Non-verbose mode: inherit stdout
     try:
         proc = subprocess.run(
             cmd,
             cwd=str(workspace),
-            stdout=None,                  # inherit — keep live progress
-            stderr=subprocess.PIPE,       # capture for log
+            stdout=None,
+            stderr=subprocess.PIPE,
             text=True,
             env=_UNBUF_ENV,
             timeout=timeout,
@@ -272,7 +366,7 @@ def run_claude(
     if extra_tools:
         tools.extend(extra_tools)
 
-    cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", ",".join(tools)]
+    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", ",".join(tools)]
     timeout = _STAGE_TIMEOUTS.get(label, _DEFAULT_TIMEOUT)
 
     log.event("claude invocation", tools=tools, model=MODEL, prompt_len=len(prompt), timeout_s=timeout)
@@ -287,7 +381,7 @@ def run_scriptwriter(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nYou are writing Episode {ep_num}. Read the overview, then your episode plan at plan/episodes/ep_{ep_num:02d}.md, then the source chapters listed in it."
 
-    cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
     label = f"Scriptwriter EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Scriptwriter"]
 
@@ -304,7 +398,7 @@ def run_script_reviewer(workspace: Path, ep_num: int) -> tuple[int, bool]:
     prompt = prompt.replace("{N}", str(ep_num))
     prompt += f"\n\nReview Episode {ep_num}. Read overview.md, then ep_{ep_num:02d}.md plan, then ep_{ep_num}_script.md."
 
-    cmd = ["claude", "-p", prompt, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
+    cmd = ["claude", "-p", prompt, *_VERBOSE_FLAGS, "--model", MODEL, "--allowedTools", "Read,Write,Edit,Bash,Glob,Grep"]
     label = f"Script Review EP{ep_num}"
     timeout = _STAGE_TIMEOUTS["Script Review"]
 
