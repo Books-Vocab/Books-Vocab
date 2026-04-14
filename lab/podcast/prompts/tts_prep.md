@@ -69,18 +69,24 @@ or produce bad audio.
 ### Parse Rules synthesize.py uses
 
 The parser expects:
-- Speaker tags: `**HostName:**` at start of line (exact format, colon + space or newline)
-- Italic takeaway blocks: `*single line italicized*` → narrated by Speaker1
-- Any non-tag line that follows a speaker line becomes **continuation** of that speaker
-- TTS tags like `[excited]`, `[speaking slowly]`, and SSML `<break time="1s"/>`, `<prosody>` are passed through verbatim
+- Speaker tags: `**HostName:**` at start of line (exact format, colon + space or newline).
+- Structural lines `#`/`##`/`>`/`---`/HTML comment are SKIPPED (not concat'd onto previous turn). Parser removes them defensively, but a clean script shouldn't need that defense.
+- Any non-skip, non-tag line that follows a speaker line becomes **continuation** of that speaker.
+- Inline `**bold**` and `*italic*` emphasis are STRIPPED before TTS — authors should not use them, but parser sanitizes.
+- TTS tags like `[excited]`, `[speaking slowly]`, and SSML `<break time="1s"/>`, `<prosody>` are passed through verbatim.
 
 ### Hard Failures (must fix — edit the script in place)
 
-1. **Missing or malformed speaker tag** — e.g., `Maya:` (no bold), `**Maya**:` (colon outside bold), `** Maya:**` (leading space)
-2. **Unknown speaker name** — any `**XYZ:**` where XYZ is not one of the hosts in the Voice Mapping
-3. **Orphan text** before the first speaker tag (other than title/blockquote/hr) — will silently attach to nothing
-4. **Malformed SSML** — unclosed `<prosody>`, missing `/>` on `<break>`, unbalanced tags
-5. **Empty speaker turns** — `**Maya:** ` with nothing after, produces garbage audio
+1. **Missing or malformed speaker tag** — e.g., `Maya:` (no bold), `**Maya**:` (colon outside bold), `** Maya:**` (leading space).
+2. **Unknown speaker name** — any `**XYZ:**` where XYZ is not one of the hosts in the Voice Mapping. Parser now raises on these; must be fixed.
+3. **Orphan text** before the first speaker tag (other than title/blockquote) — will attach to nothing or get lost.
+4. **Inline `*emphasis*` or `**bold**` inside dialogue** — e.g. `**Dev:** This is *wild*.` → rewrite as `This is wild.` or `<emphasis level="strong">wild</emphasis>`. Parser strips them but authors must not introduce.
+5. **`---` horizontal rules or `##`/`###` section headers inside episode body** — remove them. Parser skips but they're forbidden by style.
+6. **Trailing italic `*takeaway*` line** — remove. Replace the beat with an explicit `**Host:**` turn (Sign-Off already covers this).
+7. **Malformed SSML** — unclosed `<prosody>`, missing `/>` on `<break>`, unbalanced tags.
+8. **Empty speaker turns** — `**Maya:** ` with nothing after, produces garbage audio.
+9. **Multi-word host name** — speaker tag like `**Host A:**` with a space. Host names must be single `\w+` token to be safe.
+10. **Missing `<!-- END_OF_SCRIPT -->` sentinel** at very end (pipeline resume logic depends on it).
 
 ### Soft Warnings (note in report but don't auto-fix)
 
@@ -89,12 +95,11 @@ The parser expects:
 3. Emotion tag diversity <3 unique tags across episode
 4. Any TTS tag on a line by itself outside a speaker turn
 
-### Allowed markdown (do not flag)
+### Allowed non-dialogue lines
 
-- `# Episode N: Title` header at top
-- `> Subtitle blockquote` right after header
-- `---` horizontal rules as section dividers
-- `## Section Heading` inside episode — ignore, parser skips these
+- `# Episode N: Title` header at top (first line only)
+- `> Subtitle blockquote` right after header (one line only)
+- `<!-- END_OF_SCRIPT -->` as the final line
 - Empty lines anywhere
 
 ---
