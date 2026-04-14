@@ -74,7 +74,10 @@ If the finale doesn't land, edit the closing 200-400 words. Do not rewrite the w
 
 - **Edit in place**: use the Edit tool on the existing `scripts/ep_N_script.md` files. Preserve all sentinel markers (especially the trailing `<!-- END_OF_SCRIPT -->`).
 - **Surgical, not rewrite**: each edit should change a handful of lines at most. If an episode needs more, flag it in the report instead.
+- **DO NOT modify the Cold Open** — first three speaker lines (Host A welcome / Host B topic hook / Host A bridge). They follow a fixed series template and establish Gemini TTS voice routing. Callbacks land in the main body only.
+- **DO NOT modify the Sign-Off** — last three speaker lines (Host A verdict / Host B Next-time / Host A catchphrase). Fixed by series format.
 - **No new TTS tags** unless you remove one first (keep tag density stable).
+- **Never introduce `---`, `##`/`###` section headers, inline `*emphasis*`, inline `**bold**` (except the speaker prefix `**Name:**`), or orphan italic lines.** These break the TTS parser.
 - **Preserve host names and voice** — don't accidentally make one host speak in the other's rhythm.
 - **Never delete content** unless it directly conflicts with a callback you're adding. Scriptwriters did the hard work; you're reinforcing, not second-guessing.
 

@@ -40,6 +40,16 @@ Run every check below. For each, write PASS or FAIL with details.
 - Check overview's host profiles have: name, role, personality, speaking style, verbal habits
 - Check each episode plan has host-specific focus/instructions
 - FAIL if host names or roles differ between overview and any episode plan
+- **Host name integrity**: each host name must be a single word (letters/digits/underscore only — no spaces, hyphens, or punctuation). The TTS parser uses `\w+` to match `**Name:**` speaker tags; multi-word names silently break audio. FAIL if violated.
+
+### 5b. Voice Mapping Placeholder
+- `overview.md` must contain a `### Voice Mapping` section with exactly two lines of form `- **<Host> (TBD)**: Speaker1` and `- **<Host> (TBD)**: Speaker2`.
+- Host names inside `()` placeholder must match the Host profiles above.
+- `(TBD)` must be literal — architect does not pick a voice; tts-prep substitutes it later. FAIL if a real voice name is already filled in at this stage or if the section is missing/malformed.
+
+### 5c. Series Format
+- `overview.md` must contain a `## Series Format` section with: show name, tagline, Host A sign-off catchphrase, and three-line Intro/Outro templates.
+- FAIL if the section is missing (scriptwriter depends on it for every episode's Cold Open / Sign-Off).
 
 ### 6. Scriptwriter Instructions Completeness
 - Each episode plan must have: read_files list, do_not_cover list, context_from_prev

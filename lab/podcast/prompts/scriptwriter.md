@@ -26,47 +26,42 @@ Read in this order:
 # Episode {N}: [Title]
 > [One-line episode description]
 
----
-
-## Cold Open
-
 **[Host A]:** Welcome to [Show name]. [Tagline]. I'm [Host A].
 
 **[Host B]:** And I'm [Host B]. Today: [episode-specific hook — 1 sentence grounded in THIS episode's content].
 
-**[Host A]:** [one-line bridge into the content — can be a question, a provocation, or a concrete entry point]
+**[Host A]:** [one-line bridge into the content — a question, a provocation, or a concrete entry point]
 
----
-
-**[Host A name]:** [dialogue — main body starts here]
+**[Host A name]:** [first line of main dialogue — the actual content starts here]
 
 **[Host B name]:** [dialogue]
 
 ...
 
----
+**[Host A]:** [one-line episode summary or verdict]
 
-## Sign-Off
-
-**[Host A]:** [one-line episode summary or show catchphrase]
-
-**[Host B]:** Next time: [hook_to_next, 1 sentence]. (For the finale episode: leave a question for the listener instead of a next-time hook.)
+**[Host B]:** Next time: [hook_to_next, 1 sentence]. (For the finale episode: leave a parting question for the listener instead.)
 
 **[Host A]:** [sign-off catchphrase defined in overview's Series Format]
-
----
-*[Takeaway line]*
 
 <!-- END_OF_SCRIPT -->
 ```
 
+### Strict formatting rules (TTS parser is fragile)
+
+- **No `---` horizontal rules anywhere** in the script body. Gemini will vocalize "dash dash dash."
+- **No `##` or `###` section headers** anywhere inside the dialogue.
+- **No inline `*emphasis*` or `**bold**` within dialogue text.** Reserve `**` exclusively for the speaker prefix `**Name:**` at the start of a line. Gemini will attempt to vocalize lone asterisks (e.g. "asterisk Let Me asterisk"). If you need emphasis, use `<emphasis level="strong">word</emphasis>`.
+- **No trailing italic `*takeaway*` line.** The Sign-Off's three speaker lines already deliver the closing beat. Any narration must be an explicit `**Host:**` turn.
+- The only non-dialogue lines allowed are: `# Episode N: Title`, `> subtitle`, blank lines, and the final `<!-- END_OF_SCRIPT -->` sentinel.
+
 ### Three structural requirements
 
-1. **Cold Open** — exactly three lines, follow `overview.md` Series Format's intro template. This is the listener's first 15 seconds and it also establishes Gemini TTS voice routing before any short reactions appear. Do NOT skip or shorten.
+1. **Cold Open** — first three speaker lines follow `overview.md` Series Format's intro template (Host A welcome → Host B topic hook → Host A bridge). First 15 seconds of listening AND establishes Gemini TTS voice routing before any short reactions appear. Do NOT skip or shorten.
 
-2. **Main body** — your episode's actual dialogue, written per all the craft guidelines below. Starts after the `---` divider that follows the Cold Open.
+2. **Main body** — your episode's actual dialogue, written per all the craft guidelines below.
 
-3. **Sign-Off** — exactly three lines, follow overview's sign-off template. The Next-time hook must reference a concrete element from the next episode's plan (or leave a lingering question for the finale).
+3. **Sign-Off** — last three speaker lines before the takeaway follow overview's sign-off template. The Next-time hook must reference a concrete element from the next episode's plan (or leave a lingering question for the finale).
 
 The trailing `<!-- END_OF_SCRIPT -->` HTML comment is a **mandatory completeness marker** — the pipeline uses it to verify the script wasn't truncated mid-write. Always end the file with this exact line.
 
@@ -209,7 +204,7 @@ After a heavy revelation or an emotional quote, don't rush to the next point. Us
 - A `<break time="2s"/>` or `<break time="3s"/>`
 - A one-word reaction ("Yeah.")
 - A trail-off ("That's... that's hard to sit with.")
-- A scene shift signaled by `---` in the script
+- A standalone one-word reaction line (e.g. `**Dev:** Yeah.`) as a beat
 
 At least **2-3 breath moments per episode**.
 
@@ -314,7 +309,7 @@ Before finalizing, verify:
 - [ ] At least one must-quote uses paraphrase-then-verify, not pure recitation
 - [ ] At least one moment of unresolved disagreement or honest uncertainty
 - [ ] Covering the names, both hosts still sound distinct
-- [ ] 2+ breath moments (long `<break>`, one-word reactions, `---` scene shifts)
+- [ ] 2+ breath moments (long `<break>`, one-word reactions, or a beat-line from either host)
 - [ ] Ending uses one of the 5 forms (open question / experiment / uncertainty / concrete hook / echo)
 - [ ] Tag palette spans 6+ distinct tags, not just 3 on repeat
 - [ ] Both hosts have roughly equal talk time (±15%)
