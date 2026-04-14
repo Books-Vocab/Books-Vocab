@@ -115,6 +115,23 @@ Write `{workspace}/plan/overview.md`:
 
 **Host name rule**: use a single-word host name (e.g. `Marcus`, `Priya`). Avoid spaces, hyphens, or surnames — the TTS parser matches speaker tags `**Name:**` with `\w+`, so multi-word names break audio generation silently.
 
+## Series Format
+
+Every episode opens with a standardized **Cold Open Intro** and closes with a **Sign-Off**. Design them once here; scriptwriter will apply the template to all episodes.
+
+- **Show name**: [AI-named, 2-4 words, matches the book's tone]
+- **Tagline**: [one sentence describing the show's angle]
+- **Intro template** (~15-20s, ~40-60 words):
+    - Line 1 — Host A: "Welcome to [Show]. [Tagline]. I'm [Host A]."
+    - Line 2 — Host B: "And I'm [Host B]. Today: [episode-specific hook, 1 sentence]."
+    - Line 3 — Host A: [one-line bridge into the content]
+- **Sign-off template** (~10-15s):
+    - Line 1 — Host A: [one-sentence summary or catchphrase]
+    - Line 2 — Host B: "Next time: [hook_to_next, 1 sentence]." (for finale: leave-behind question instead)
+    - Line 3 — Host A: [sign-off catchphrase, e.g. "See you then." / "Stay curious." — define once, use every episode]
+
+The intro's dual purpose: establish podcast identity AND give Gemini TTS both voices in substantial turns before any short reactions (cold-start voice routing safety).
+
 ## Audience
 - **Target listener**: [who this podcast is for]
 - **Assumed knowledge**: [what the listener already knows]
