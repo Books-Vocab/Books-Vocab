@@ -68,6 +68,10 @@ MAX_WORDS_PER_BATCH = int(os.getenv("TTS_MAX_WORDS_PER_BATCH", "800"))
 SILENCE_MS = int(os.getenv("TTS_SILENCE_MS", "50"))
 OUTPUT_FORMAT = os.getenv("TTS_OUTPUT_FORMAT", "mp3").strip().lower()
 MP3_BITRATE = os.getenv("TTS_MP3_BITRATE", "192k").strip()
+# Per-batch wall-clock timeout. A single stuck Gemini call should not block the
+# whole episode. Raised timeout → stuck batch re-queues on next run; cached
+# siblings on disk survive.
+TTS_BATCH_TIMEOUT = int(os.getenv("TTS_BATCH_TIMEOUT", "600"))  # 10 min / batch
 
 # Mastering: EBU R128 loudness normalization. Disable with TTS_MASTER=0.
 MASTER_ENABLED = os.getenv("TTS_MASTER", "1").strip() != "0"
@@ -160,30 +164,72 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
 
 # ─── Parse ───
 
-# Matches **AnyName:** at start of line
-_DIALOGUE_RE = re.compile(r"\*\*(\w+):\*\*\s*(.*)")
+# Matches **AnyName:** at start of line. `[^:*]+` allows multi-word / hyphenated
+# host names. Lookup into speaker_map is case-insensitive.
+_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
+
+# Lines that must be SKIPPED (never concat'd onto previous turn):
+#   Title `# ...`, subtitle `> ...`, horizontal rule `---`, section `## ...`,
+#   HTML comments (sentinel `<!-- END_OF_SCRIPT -->` etc.), stray `###`.
+_SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
+
+# Inline markdown emphasis that Gemini may literalize as "asterisk …". We keep
+# speaker prefix intact (matched first) then strip remaining *..* / **..**.
+_INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+_INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+
+
+def _sanitize_dialogue(text: str) -> str:
+    """Strip inline markdown emphasis from TTS-bound dialogue text."""
+    text = _INLINE_BOLD_RE.sub(r"\1", text)
+    text = _INLINE_ITALIC_RE.sub(r"\1", text)
+    return text
 
 
 def parse_script(path: Path, speaker_map: dict[str, str]) -> List[Dict[str, str]]:
-    """Parse a markdown script → list of {speaker, text} turns."""
+    """Parse a markdown script → list of {speaker, text} turns.
+
+    Hardened rules:
+    - Skip structural lines (title/subtitle/---/##/<!--...-->) instead of
+      concat'ing them onto the previous turn (Gemini would otherwise vocalize
+      "dash dash dash" or "END OF SCRIPT").
+    - Strip inline **bold** / *italic* emphasis from dialogue so asterisks
+      never reach the TTS prompt.
+    - Host name lookup is case-insensitive and raises on unknown names,
+      because silent drop + continuation-to-previous was a silent corruption
+      path (the wrong speaker would eat the rest of the line).
+    """
     text = path.read_text(encoding="utf-8")
     turns: list[Dict[str, str]] = []
+    lower_map = {k.lower(): v for k, v in speaker_map.items()}
 
-    for line in text.strip().splitlines():
-        m = _DIALOGUE_RE.match(line.strip())
+    for ln_idx, line in enumerate(text.splitlines(), 1):
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _SKIP_LINE_RE.match(stripped):
+            continue
+
+        m = _DIALOGUE_RE.match(stripped)
         if m:
-            name, dialogue = m.group(1), m.group(2).strip()
-            alias = speaker_map.get(name)
-            if alias and dialogue:
+            name = m.group(1).strip()
+            dialogue = _sanitize_dialogue(m.group(2).strip())
+            alias = lower_map.get(name.lower())
+            if not alias:
+                raise RuntimeError(
+                    f"{path.name}:{ln_idx}: unknown speaker **{name}:**. "
+                    f"Known hosts: {list(speaker_map.keys())}. Fix the script "
+                    f"or overview.md Voice Mapping."
+                )
+            if dialogue:
                 turns.append({"speaker": alias, "text": dialogue})
-        elif line.strip().startswith("*") and line.strip().endswith("*"):
-            # Italic takeaway → narrate as Speaker1
-            clean = line.strip().strip("*").strip()
-            if clean:
-                turns.append({"speaker": "Speaker1", "text": clean})
-        elif line.strip() and turns:
-            # Continuation of previous speaker
-            turns[-1]["text"] += " " + line.strip()
+            continue
+
+        # Non-dialogue, non-skip, non-blank line = continuation of previous
+        # speaker's text. Safe only because we already skipped structural
+        # markdown above.
+        if turns:
+            turns[-1]["text"] += " " + _sanitize_dialogue(stripped)
 
     return turns
 
@@ -328,8 +374,9 @@ def _synthesize_one(
     total: int,
     batch_words: int,
     turns_count: int,
+    cache_path: Path | None = None,
 ) -> tuple[int, AudioSegment]:
-    """Synthesize a single batch. Returns (index, segment)."""
+    """Synthesize a single batch. Caches to disk on success. Returns (index, segment)."""
     t0 = time.time()
 
     response = _generate_with_retry(client, prompt, speech_config, index)
@@ -351,6 +398,12 @@ def _synthesize_one(
     elapsed = time.time() - t0
     segment = audio_bytes_to_segment(audio_data, mime_type)
     duration_s = len(segment) / 1000
+
+    # Persist to disk immediately — survives subsequent stuck batches / crashes.
+    if cache_path:
+        cache_path.parent.mkdir(parents=True, exist_ok=True)
+        segment.export(str(cache_path), format="wav")
+
     print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {duration_s:.1f}s audio in {elapsed:.1f}s")
     return index, segment
 
@@ -360,29 +413,72 @@ def synthesize_batches(
     speech_config: genai_types.SpeechConfig,
     system_instructions: str,
     batches: List[List[Dict[str, str]]],
+    cache_dir: Path | None = None,
 ) -> List[AudioSegment]:
-    total = len(batches)
-    workers = max(1, min(total, TTS_MAX_CONCURRENT))
-    print(f"  Sending {total} batches ({workers} concurrent)...")
+    """Synthesize batches with per-batch disk caching + wall-clock timeout.
 
+    - Each successful batch writes `<cache_dir>/batch_N.wav` immediately.
+    - On re-run, batches whose cache file exists are loaded from disk (no API call).
+    - Each in-flight batch has a `TTS_BATCH_TIMEOUT` wall-clock cap — a stuck
+      batch raises TimeoutError, its siblings keep running, and the next run
+      only retries the missing one.
+    """
+    total = len(batches)
     results: dict[int, AudioSegment] = {}
 
+    # Phase 1 — load cached batches
+    pending: list[tuple[int, list[Dict[str, str]]]] = []
+    if cache_dir:
+        cache_dir.mkdir(parents=True, exist_ok=True)
+        for i, batch in enumerate(batches, 1):
+            cf = cache_dir / f"batch_{i:02d}.wav"
+            if cf.exists() and cf.stat().st_size > 0:
+                results[i] = AudioSegment.from_file(str(cf))
+                print(f"  batch {i}/{total}: loaded from cache ({len(results[i])/1000:.1f}s audio)")
+            else:
+                pending.append((i, batch))
+    else:
+        pending = list(enumerate(batches, 1))
+
+    if not pending:
+        print(f"  All {total} batches cached — skipping API calls")
+        return [results[i] for i in range(1, total + 1)]
+
+    workers = max(1, min(len(pending), TTS_MAX_CONCURRENT))
+    print(f"  Synthesizing {len(pending)}/{total} batches ({workers} concurrent, {TTS_BATCH_TIMEOUT}s per-batch timeout)...")
+
+    # Phase 2 — synthesize pending batches, isolate stuck ones via per-future timeout
     with ThreadPoolExecutor(max_workers=workers) as pool:
         futures = {}
-        for i, batch in enumerate(batches, 1):
+        for i, batch in pending:
             prompt = format_prompt(system_instructions, batch)
             batch_words = sum(_word_count(t["text"]) for t in batch)
+            cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
             fut = pool.submit(
                 _synthesize_one, client, speech_config, prompt,
-                i, total, batch_words, len(batch),
+                i, total, batch_words, len(batch), cache_path,
             )
             futures[fut] = i
 
+        stuck: list[int] = []
+        deadline = time.time() + TTS_BATCH_TIMEOUT
         for fut in as_completed(futures):
-            idx, segment = fut.result()
-            results[idx] = segment
+            i = futures[fut]
+            remaining = max(1, deadline - time.time())
+            try:
+                _, segment = fut.result(timeout=remaining)
+                results[i] = segment
+            except Exception as e:
+                name = type(e).__name__
+                print(f"  batch {i}/{total}: FAILED — {name}: {e!s}"[:200])
+                stuck.append(i)
 
-    # Reassemble in order
+    if stuck:
+        raise RuntimeError(
+            f"{len(stuck)}/{total} batches failed: {sorted(stuck)}. "
+            f"Successful batches are cached — re-run synthesize.py to resume."
+        )
+
     return [results[i] for i in range(1, total + 1)]
 
 
@@ -501,7 +597,10 @@ def process_file(
     batches = chunk_turns(turns, MAX_WORDS_PER_BATCH)
     print(f"  {len(batches)} batches (max {MAX_WORDS_PER_BATCH} words/batch)")
 
-    segments = synthesize_batches(client, speech_config, system_prompt, batches)
+    # Per-episode batch cache: scripts/.cache/ep_N/batch_MM.wav
+    stem = script_path.stem.replace("_script", "")
+    cache_dir = script_path.parent / ".cache" / stem
+    segments = synthesize_batches(client, speech_config, system_prompt, batches, cache_dir=cache_dir)
 
     ext = "mp3" if OUTPUT_FORMAT == "mp3" else "wav"
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3

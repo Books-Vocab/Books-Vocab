@@ -51,32 +51,59 @@ def _parse_overview_speakers(overview_path: Path) -> list[str]:
 
 # ─── Parse script → plain text ───
 
-_DIALOGUE_RE = re.compile(r"\*\*(\w+):\*\*\s*(.*)")
-# Strip voice direction tags: [excited], [laughing], [speaking slowly], etc.
+# Dialogue speaker line — mirror of synthesize.py (allow multi-word host names)
+_DIALOGUE_RE = re.compile(r"\*\*([^:*]+):\*\*\s*(.*)")
+# Structural lines to skip (never treated as dialogue/continuation) — mirror of synthesize.py
+_SKIP_LINE_RE = re.compile(r"^(#{1,6}\s|>\s|---\s*$|<!--.*-->\s*$)")
+# Inline emphasis stripped from spoken text — mirror of synthesize.py
+_INLINE_BOLD_RE = re.compile(r"\*\*([^*\n]+)\*\*")
+_INLINE_ITALIC_RE = re.compile(r"(?<!\*)\*([^*\n]+)\*(?!\*)")
+# Voice direction tags [excited] / [laughing] / [speaking slowly]
 _DIRECTION_RE = re.compile(r"\[.*?\]")
-# Strip SSML-like tags: <break time="0.5s"/>, <emphasis ...>...</emphasis>
+# SSML-like tags <break ... /> / <emphasis>...</emphasis> / <prosody ...>
 _SSML_RE = re.compile(r"<[^>]+>")
 
 
+def _clean_spoken(text: str) -> str:
+    """Strip inline emphasis + direction tags + SSML from dialogue — what the
+    listener actually hears, for forced-alignment ground truth."""
+    text = _INLINE_BOLD_RE.sub(r"\1", text)
+    text = _INLINE_ITALIC_RE.sub(r"\1", text)
+    text = _DIRECTION_RE.sub("", text)
+    text = _SSML_RE.sub("", text)
+    return " ".join(text.split())
+
+
 def script_to_segments(path: Path) -> list[tuple[str, str]]:
-    """Extract (speaker, dialogue) segments from markdown script."""
+    """Extract (speaker, dialogue) segments from markdown script.
+
+    Mirrors synthesize.py parse_script hardening so forced-alignment sees the
+    same word sequence that TTS synthesized.
+    """
     text = path.read_text(encoding="utf-8")
     segments: list[tuple[str, str]] = []
 
-    for line in text.strip().splitlines():
-        m = _DIALOGUE_RE.match(line.strip())
+    for line in text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            continue
+        if _SKIP_LINE_RE.match(stripped):
+            continue
+
+        m = _DIALOGUE_RE.match(stripped)
         if m:
             speaker = m.group(1).strip()
-            dialogue = m.group(2).strip()
-            dialogue = _DIRECTION_RE.sub("", dialogue)
-            dialogue = _SSML_RE.sub("", dialogue)
-            dialogue = " ".join(dialogue.split())
+            dialogue = _clean_spoken(m.group(2).strip())
             if dialogue:
                 segments.append((speaker, dialogue))
-        elif line.strip().startswith("*") and line.strip().endswith("*"):
-            clean = line.strip().strip("*").strip()
-            if clean:
-                segments.append(("", clean))
+            continue
+
+        # Continuation of previous speaker's text (rare; only after the skips).
+        if segments:
+            extra = _clean_spoken(stripped)
+            if extra:
+                speaker, prev = segments[-1]
+                segments[-1] = (speaker, f"{prev} {extra}")
 
     return segments
 
