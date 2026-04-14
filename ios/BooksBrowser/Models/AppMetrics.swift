@@ -255,6 +255,8 @@ enum PodcastPlayerMetrics {
     static let seekBarThumbShadowRadius: CGFloat = 4
     static let seekBarThumbShadowY: CGFloat = 2
     static let seekBarThumbShadowOpacity: Double = 0.15
+    static let controlsClusterSpacing: CGFloat = 8
+    static let controlsBottomPadding: CGFloat = 20
 }
 
 enum AppShadows {

@@ -15,7 +15,7 @@ struct PodcastControlsView: View {
     @State private var dragTime: TimeInterval = 0
 
     var body: some View {
-        VStack(spacing: skin.spacing.sectionGap) {
+        VStack(spacing: PodcastPlayerMetrics.controlsClusterSpacing) {
             seekBar
             HStack {
                 Text(formatTime(activeTime))
@@ -26,32 +26,34 @@ struct PodcastControlsView: View {
                     .font(skin.typography.monoLabel)
                     .foregroundStyle(skin.palette.tertiaryText)
             }
-            HStack(spacing: skin.spacing.controlGap) {
-                Button { viewModel.skip(seconds: -15) } label: {
-                    Image(systemName: "gobackward.15")
-                        .font(skin.typography.symbolLarge)
+            ZStack {
+                HStack(spacing: skin.spacing.controlGap) {
+                    Button { viewModel.skip(seconds: -15) } label: {
+                        Image(systemName: "gobackward.15")
+                            .font(skin.typography.symbolLarge)
+                    }
+                    Button { viewModel.togglePlayPause() } label: {
+                        Image(systemName: viewModel.state == .playing ? "pause.circle.fill" : "play.circle.fill")
+                            .font(skin.typography.symbolPlayback)
+                    }
+                    Button { viewModel.skip(seconds: 15) } label: {
+                        Image(systemName: "goforward.15")
+                            .font(skin.typography.symbolLarge)
+                    }
                 }
-                Button { viewModel.togglePlayPause() } label: {
-                    Image(systemName: viewModel.state == .playing ? "pause.circle.fill" : "play.circle.fill")
-                        .font(skin.typography.symbolPlayback)
-                }
-                Button { viewModel.skip(seconds: 15) } label: {
-                    Image(systemName: "goforward.15")
-                        .font(skin.typography.symbolLarge)
-                }
-            }
-            .foregroundStyle(skin.palette.accent)
+                .foregroundStyle(skin.palette.accent)
 
-            HStack {
-                Spacer()
-                Button { viewModel.cycleRate() } label: {
-                    Text(viewModel.rateDisplayText)
-                        .font(skin.typography.monoLabel)
-                        .padding(.horizontal, skin.spacing.chipHorizontalPadding)
-                        .padding(.vertical, skin.spacing.chipVerticalPadding)
-                        .background(skin.palette.mutedFill, in: Capsule())
+                HStack {
+                    Spacer()
+                    Button { viewModel.cycleRate() } label: {
+                        Text(viewModel.rateDisplayText)
+                            .font(skin.typography.monoLabel)
+                            .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
+                            .padding(.vertical, skin.spacing.compactChipVerticalPadding)
+                            .background(skin.palette.mutedFill, in: Capsule())
+                    }
+                    .foregroundStyle(skin.palette.primaryText)
                 }
-                .foregroundStyle(skin.palette.primaryText)
             }
         }
     }
