@@ -268,7 +268,10 @@ def _run_claude_subprocess(
     stderr_log = workspace / f"claude_{label.lower().replace(' ', '_')}.stderr.log"
 
     if _STREAM_JSON:
-        # Live tool-use rendering via stream-json NDJSON
+        # Live tool-use rendering via stream-json NDJSON. Also tees each event
+        # (wrapped with current stage label + timestamp) to workspace/events.jsonl
+        # so the monitor dashboard can stream tool-use + token usage live.
+        events_path = workspace / "events.jsonl"
         proc = subprocess.Popen(
             cmd,
             cwd=str(workspace),
@@ -279,17 +282,26 @@ def _run_claude_subprocess(
             bufsize=1,
         )
         try:
-            for line in proc.stdout:  # type: ignore[union-attr]
-                line = line.strip()
-                if not line:
-                    continue
-                try:
-                    event = json.loads(line)
-                except json.JSONDecodeError:
-                    continue
-                rendered = _fmt_tool_event(event)
-                if rendered:
-                    print(rendered, flush=True)
+            with events_path.open("a", encoding="utf-8") as ev_f:
+                for line in proc.stdout:  # type: ignore[union-attr]
+                    line = line.strip()
+                    if not line:
+                        continue
+                    try:
+                        event = json.loads(line)
+                    except json.JSONDecodeError:
+                        continue
+                    # Wrap with stage/label/ts for the monitor to correlate
+                    wrapped = {
+                        "ts": datetime.now().isoformat(timespec="seconds"),
+                        "stage_label": label,
+                        "event": event,
+                    }
+                    ev_f.write(json.dumps(wrapped, ensure_ascii=False) + "\n")
+                    ev_f.flush()
+                    rendered = _fmt_tool_event(event)
+                    if rendered:
+                        print(rendered, flush=True)
             proc.wait(timeout=timeout)
         except subprocess.TimeoutExpired:
             proc.kill()
