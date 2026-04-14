@@ -70,7 +70,9 @@ MODEL = "opus[1m]"
 
 STAGES = [
     "prep", "analyst", "architect", "plan-review",
-    "enricher-gap", "enricher", "scriptwrite", "script-review",
+    "enricher-gap", "enricher", "scriptwrite",
+    "series-polish",
+    "script-review",
     "tts-prep",
     "synthesize", "audio-qa", "subtitle",
 ]
@@ -478,6 +480,32 @@ def stage_script_review(workspace: Path, log: PipelineLog, max_parallel: int = 3
     return True
 
 
+def stage_series_polish(workspace: Path, log: PipelineLog) -> bool:
+    """Cross-episode polish pass: callbacks, running bits, character drift, series arc."""
+    ok = run_claude((PROMPTS_DIR / "series_polish.md").read_text(), workspace, "Series Polish", log)
+    if not ok:
+        return False
+
+    report = workspace / "plan" / "series_polish.md"
+    if not report.exists():
+        log.error("Series polish did not produce plan/series_polish.md")
+        return False
+
+    content = report.read_text()
+    if "STRUCTURAL_ISSUES_NEED_RESCRIPT" in content:
+        log.error("Series polish flagged structural drift — read plan/series_polish.md and re-scriptwrite flagged episodes")
+        return False
+
+    # Guard: every script must still end with the sentinel (polish mustn't have stripped it)
+    for f in (workspace / "scripts").glob("ep_*_script.md"):
+        if "END_OF_SCRIPT" not in f.read_text()[-200:]:
+            log.error(f"Series polish removed END_OF_SCRIPT marker from {f.name} — manual fix required")
+            return False
+
+    log.event("Series polish complete — cross-episode coherence strengthened")
+    return True
+
+
 def stage_tts_prep(workspace: Path, log: PipelineLog) -> bool:
     ok = run_claude((PROMPTS_DIR / "tts_prep.md").read_text(), workspace, "TTS Prep", log)
     if not ok:
@@ -804,6 +832,7 @@ examples:
         "enricher-gap": lambda: stage_enricher_gap(workspace, log),
         "enricher": lambda: stage_enricher(workspace, log),
         "scriptwrite": lambda: stage_scriptwriters(workspace, log, args.parallel, args.only_episode),
+        "series-polish": lambda: stage_series_polish(workspace, log),
         "script-review": lambda: stage_script_review(workspace, log, args.parallel, args.only_episode),
         "tts-prep": lambda: stage_tts_prep(workspace, log),
         "synthesize": lambda: stage_synthesize(workspace, log, args.only_episode),
