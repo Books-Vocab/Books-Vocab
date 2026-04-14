@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Podcast Pipeline Monitor</title>
+<link rel="stylesheet" href="/static/styles.css">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Noto+Sans+TC:wght@300;500;700&display=swap" rel="stylesheet">
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-brand">PODCAST · PIPELINE MONITOR</div>
+  <div class="nav-ws">
+    <label class="micro-label">WORKSPACE</label>
+    <select id="ws-select" class="ws-select"></select>
+  </div>
+  <div class="nav-status">
+    <span id="status-dot" class="status-dot"></span>
+    <span id="status-text" class="micro-label">IDLE</span>
+  </div>
+</nav>
+
+<main class="main">
+
+  <!-- Metrics row -->
+  <section class="metrics">
+    <div class="metric-card">
+      <div class="metric-label">ELAPSED</div>
+      <div class="metric-value" id="m-elapsed">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">CURRENT STAGE</div>
+      <div class="metric-value" id="m-stage">—</div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">CONTEXT · LAST INPUT</div>
+      <div class="metric-value tabular" id="m-ctx">0</div>
+      <div class="metric-sub"><span id="m-ctx-pct">0%</span> of 1M</div>
+      <div class="bar"><div class="bar-fill" id="m-ctx-bar"></div></div>
+    </div>
+    <div class="metric-card">
+      <div class="metric-label">TOKENS · TOTAL</div>
+      <div class="metric-value tabular" id="m-tok-total">0</div>
+      <div class="metric-sub">
+        IN <span class="tabular" id="m-tok-in">0</span> ·
+        OUT <span class="tabular" id="m-tok-out">0</span> ·
+        CACHED <span class="tabular" id="m-tok-cache">0</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- Stage grid -->
+  <section class="stage-grid" id="stage-grid"></section>
+
+  <!-- Live activity feed -->
+  <section class="activity">
+    <div class="activity-head">
+      <span class="micro-label">LIVE ACTIVITY</span>
+      <span class="activity-sub" id="activity-stage">—</span>
+    </div>
+    <div class="activity-feed" id="activity-feed"></div>
+  </section>
+
+</main>
+
+<script src="/static/app.js"></script>
+</body>
+</html>
