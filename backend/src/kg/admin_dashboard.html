@@ -418,11 +418,12 @@ tr.expandable:hover td { background: #f0ece4; }
   color: var(--sub);
 }
 /* Log panel */
-.log-toolbar {
+.log-toolbar, .host-toolbar {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 12px;
   margin-bottom: 12px;
+  padding: 0 16px;
   flex-wrap: wrap;
 }
 .log-filter-group { display: flex; gap: 4px; }
@@ -554,6 +555,7 @@ tr.expandable:hover td { background: #f0ece4; }
 <div class="tabs">
   <div class="tab active" data-tab="users" onclick="switchTab('users')">Users</div>
   <div class="tab" data-tab="logs" onclick="switchTab('logs')">Logs</div>
+  <div class="tab" data-tab="host" onclick="switchTab('host')">Host</div>
 </div>
 
 <div id="loading">載入中…</div>
@@ -590,6 +592,19 @@ tr.expandable:hover td { background: #f0ece4; }
         <tbody id="rows"></tbody>
       </table>
     </div>
+  </div>
+
+  <!-- ── Host panel ── -->
+  <div class="panel" id="panel-host">
+    <div class="host-toolbar">
+      <label class="log-auto">
+        <input type="checkbox" id="host-auto" onchange="toggleHostAuto(this)" checked> 自動刷新 (5s)
+      </label>
+      <span class="filter-count" id="host-updated"></span>
+    </div>
+    <div class="stats" id="host-cards"></div>
+    <div class="section-title" style="margin-top:16px">進程 / 磁碟</div>
+    <div id="host-detail" style="font-family:'JetBrains Mono',monospace;font-size:12px;color:var(--ink-light);padding:0 16px 16px"></div>
   </div>
 
   <!-- ── Logs panel ── -->
@@ -672,10 +687,12 @@ function switchTab(tab) {
   document.querySelectorAll('.tab').forEach(t => t.classList.toggle('active', t.dataset.tab === tab));
   document.querySelectorAll('.panel').forEach(p => p.classList.toggle('active', p.id === 'panel-' + tab));
   if (tab === 'logs') loadLogs();
+  if (tab === 'host') { loadHost(); ensureHostAuto(); } else stopHostAuto();
 }
 
 function refreshCurrent() {
   if (_tab === 'users') loadStats();
+  else if (_tab === 'host') loadHost();
   else loadLogs();
 }
 
@@ -908,6 +925,82 @@ function renderLogs() {
       <span class="log-msg">${r.msg.replace(/</g,'&lt;')}</span>
     </div>`
   ).join('');
+}
+
+/* ── Host metrics ── */
+let _hostTimer = null;
+function ensureHostAuto() {
+  const cb = document.getElementById('host-auto');
+  if (cb && cb.checked && !_hostTimer) {
+    _hostTimer = setInterval(loadHost, 5000);
+  }
+}
+function stopHostAuto() {
+  if (_hostTimer) { clearInterval(_hostTimer); _hostTimer = null; }
+}
+function toggleHostAuto(cb) {
+  stopHostAuto();
+  if (cb.checked) ensureHostAuto();
+}
+function fmtBytes(n) {
+  if (n == null) return '—';
+  const u = ['B','KB','MB','GB','TB'];
+  let i = 0, v = Number(n);
+  while (v >= 1024 && i < u.length - 1) { v /= 1024; i++; }
+  return v.toFixed(v < 10 && i > 0 ? 2 : 1) + u[i];
+}
+function fmtUptime(s) {
+  if (!s) return '—';
+  const d = Math.floor(s / 86400);
+  const h = Math.floor((s % 86400) / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  if (d > 0) return `${d}d ${h}h ${m}m`;
+  if (h > 0) return `${h}h ${m}m`;
+  return `${m}m`;
+}
+function hostBarColor(p) {
+  if (p >= 85) return 'quota-fill-high';
+  if (p >= 60) return 'quota-fill-mid';
+  return 'quota-fill-low';
+}
+async function loadHost() {
+  try {
+    const r = await adminFetch('/api/admin/host-metrics');
+    if (!r.ok) {
+      document.getElementById('host-cards').innerHTML = `<div class="stat"><div class="v">ERR ${r.status}</div><div class="l">載入失敗</div></div>`;
+      return;
+    }
+    renderHost(await r.json());
+    document.getElementById('host-updated').textContent = '更新於 ' + new Date().toLocaleTimeString('zh-TW',{hour12:false});
+  } catch(e) {
+    document.getElementById('host-cards').innerHTML = `<div class="stat"><div class="v">ERR</div><div class="l">${escapeHtml(String(e))}</div></div>`;
+  }
+}
+function renderHost(d) {
+  if (!d.available) {
+    document.getElementById('host-cards').innerHTML = `<div class="stat"><div class="v">N/A</div><div class="l">${escapeHtml(d.reason || 'unavailable')}</div></div>`;
+    document.getElementById('host-detail').innerHTML = '';
+    return;
+  }
+  const cpu = d.cpu || {}, mem = d.memory || {}, proc = d.process || {};
+  const memPct = mem.percent || 0;
+  const cpuPct = cpu.percent || 0;
+  const barCpu = `<div class="bar" style="margin-top:6px"><div class="bar-fill ${hostBarColor(cpuPct)}" style="width:${cpuPct}%"></div></div>`;
+  const barMem = `<div class="bar" style="margin-top:6px"><div class="bar-fill ${hostBarColor(memPct)}" style="width:${memPct}%"></div></div>`;
+  document.getElementById('host-cards').innerHTML = `
+    <div class="stat"><div class="v">${cpuPct.toFixed(1)}%</div><div class="l">CPU (${cpu.count} cores)</div>${barCpu}</div>
+    <div class="stat"><div class="v">${(cpu.load_1||0).toFixed(2)}</div><div class="l">Load 1m / 5m / 15m<br>${(cpu.load_5||0).toFixed(2)} / ${(cpu.load_15||0).toFixed(2)}</div></div>
+    <div class="stat"><div class="v">${memPct.toFixed(1)}%</div><div class="l">Memory ${fmtBytes(mem.used)} / ${fmtBytes(mem.total)}</div>${barMem}</div>
+    <div class="stat"><div class="v">${fmtBytes(proc.rss)}</div><div class="l">API Process RSS</div></div>
+    <div class="stat"><div class="v">${proc.threads||0}</div><div class="l">Threads${proc.fds!=null?` / FDs ${proc.fds}`:''}</div></div>
+    <div class="stat"><div class="v">${fmtUptime(proc.uptime_seconds)}</div><div class="l">Process Uptime</div></div>`;
+  const disks = (d.disks||[]).map(dk => {
+    const bar = `<div class="bar" style="display:inline-block;width:160px;vertical-align:middle;margin:0 8px"><div class="bar-fill ${hostBarColor(dk.percent)}" style="width:${dk.percent}%"></div></div>`;
+    return `<div style="padding:4px 0">
+      <code>${escapeHtml(dk.path)}</code> ${bar} ${dk.percent.toFixed(1)}% · ${fmtBytes(dk.used)} / ${fmtBytes(dk.total)} <span style="color:var(--sub)">(free ${fmtBytes(dk.free)})</span>
+    </div>`;
+  }).join('');
+  document.getElementById('host-detail').innerHTML = disks || '<span style="color:var(--sub)">無可讀磁碟</span>';
 }
 
 function stamp() {

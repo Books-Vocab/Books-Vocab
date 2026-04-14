@@ -133,6 +133,7 @@ def build_api_admin_router(
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
+    admin_host_metrics: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
@@ -155,6 +156,8 @@ def build_api_admin_router(
         router.get("/api/admin/translate-history", include_in_schema=False)(admin_translate_history)
     if admin_user_usage is not None:
         router.get("/api/admin/user-usage", include_in_schema=False)(admin_user_usage)
+    if admin_host_metrics is not None:
+        router.get("/api/admin/host-metrics", include_in_schema=False)(admin_host_metrics)
     return router
 
 
@@ -180,6 +183,7 @@ def build_admin_router(
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
+    admin_host_metrics: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
@@ -206,5 +210,6 @@ def build_admin_router(
         admin_judge_stats=admin_judge_stats,
         admin_translate_history=admin_translate_history,
         admin_user_usage=admin_user_usage,
+        admin_host_metrics=admin_host_metrics,
     )
     return login, html, api
