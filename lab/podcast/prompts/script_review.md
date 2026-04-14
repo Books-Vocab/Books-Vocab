@@ -56,6 +56,14 @@ Score each (PASS / NEEDS_WORK / FAIL) with specific line-number evidence:
 
 **h. Voice distinctness** — Cover the names and read 5 random exchanges. Can you tell who's speaking? If <4/5 identifiable → NEEDS_WORK on voice.
 
+**i. Cold Open compliance** — First three speaker lines (immediately after the `> subtitle` line) must match overview.md Series Format: Host A welcome (≥15 chars), Host B topic hook (≥15 chars), Host A bridge. Each must be a substantive line, not a short reaction — this establishes Gemini TTS voice routing. If any line is <15 chars or in wrong order → NEEDS_WORK.
+
+**j. Sign-Off compliance** — Last three speaker lines (immediately before `<!-- END_OF_SCRIPT -->`) must match overview.md Series Format: Host A verdict, Host B Next-time hook (or finale parting question), Host A catchphrase (exact match across all episodes). If pattern is broken → NEEDS_WORK.
+
+**k. TTS palette purity** — Every bracket tag must be in the scriptwriter palette (`[excited]` `[skeptical]` `[deadpan]` `[thoughtful]` `[amused]` `[somber]` `[uncertain]` `[warm]` `[empathetic]` `[sad]` `[surprised]` `[sarcastic]` `[happy]` `[serious]` `[tender]` `[speaking slowly]` `[speaking quickly]` `[whispering]` `[sighing]` `[laughing]` `[chuckling]`). Any out-of-palette tag (e.g. `[quietly]`, `[reading]`) → NEEDS_WORK; auto-fix by mapping to nearest allowed tag.
+
+**l. TTS parser cleanliness** — Script must NOT contain: `---` horizontal rules, `##` / `###` section headers, orphan italic lines `*text*` alone, inline `**bold**` or `*italic*` emphasis inside dialogue, multi-word speaker names. Any occurrence → NEEDS_WORK; fix via Edit (strip bold/italic, delete structural lines).
+
 ### 4. TTS Tag Health
 - Count emotion tags and list the **distinct** ones used (e.g. `[excited]`, `[thoughtful]`, `[somber]`, `[amused]`...)
 - Count pacing tags: `[speaking slowly]` `[speaking quickly]` `[whispering]` `[sighing]` `[laughing]` `[chuckling]`

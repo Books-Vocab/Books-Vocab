@@ -81,11 +81,17 @@ def analyze(audio_path: Path) -> dict:
     """Return findings dict for one audio file."""
     findings: list[tuple[str, str]] = []   # (level, message)
 
+    import time
+    t0 = time.time()
     seg = AudioSegment.from_file(str(audio_path))
+    print(f"    load: {time.time()-t0:.1f}s")
+
+    t1 = time.time()
     duration_s = len(seg) / 1000.0
     duration_min = duration_s / 60.0
     peak_dbfs = seg.max_dBFS
     avg_dbfs = seg.dBFS
+    print(f"    dBFS: {time.time()-t1:.1f}s")
 
     script = find_script(audio_path)
     word_count = script_word_count(script) if script else 0
@@ -103,8 +109,16 @@ def analyze(audio_path: Path) -> dict:
     elif wpm < WPM_MIN:
         findings.append(("WARN", f"wpm {wpm:.0f} < {WPM_MIN} — TTS may have hallucinated extra audio or excessive pauses"))
 
-    # 3. Long silence detection
-    silences = detect_silence(seg, min_silence_len=SILENCE_MAX_MS, silence_thresh=SILENCE_THRESH_DBFS)
+    # 3. Long silence detection — seek_step=500ms is 500x faster than default 1ms
+    # and plenty accurate for >4s gaps (we're not trying to find millisecond pops).
+    t2 = time.time()
+    silences = detect_silence(
+        seg,
+        min_silence_len=SILENCE_MAX_MS,
+        silence_thresh=SILENCE_THRESH_DBFS,
+        seek_step=500,
+    )
+    print(f"    silence: {time.time()-t2:.1f}s")
     long_gaps = [(s / 1000.0, e / 1000.0) for s, e in silences if (e - s) >= SILENCE_MAX_MS]
     if long_gaps:
         peek = ", ".join(f"{s:.1f}-{e:.1f}s" for s, e in long_gaps[:3])
