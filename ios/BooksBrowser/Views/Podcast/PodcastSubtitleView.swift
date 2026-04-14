@@ -12,7 +12,6 @@ struct PodcastSubtitleView: View {
             hostNames: viewModel.hostNames,
             subtitleSize: subtitleSize,
             onSentenceTap: { viewModel.seek(to: $0.startTime) },
-            onWordTap: viewModel.handleWordTap,
             onPhraseTap: viewModel.handlePhraseTap,
             onExplainTap: viewModel.handleExplainTap
         )

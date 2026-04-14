@@ -203,9 +203,6 @@ struct PodcastPlayerView: View {
                     .transition(.readerPanelReveal)
                 }
             }
-            .onChange(of: vm.wordTapTick) { _, _ in
-                performWordTap()
-            }
             .onChange(of: vm.phraseTapTick) { _, _ in
                 performPhraseTap()
             }
@@ -233,17 +230,6 @@ struct PodcastPlayerView: View {
             autoPausedByTranslation = false
             if vm.state == .paused { vm.play() }
         }
-    }
-
-    private func performWordTap() {
-        guard let vm = viewModel,
-              let selection = vm.activeWordSelection,
-              let ctx = vocabularyContext else { return }
-        translationHandler.handleWordSelected(
-            word: selection.word,
-            context: selection.context,
-            vocabularyContext: ctx
-        )
     }
 
     private func performPhraseTap() {

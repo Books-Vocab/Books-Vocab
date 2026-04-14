@@ -22,13 +22,11 @@ final class PodcastPlayerViewModel {
     private(set) var playbackRate: Float = 1.0
     let hostNames: [String]
 
-    // Translation — set by the player view
-    var activeWordSelection: (word: String, context: String)?
+    // Translation — set by the player view. Word/phrase merge into a single
+    // selection path: long-press enters UITextView selection mode, edit-menu
+    // actions dispatch translate or explain.
     var activePhraseSelection: (phrase: String, context: String)?
     var activeExplainSelection: (text: String, context: String)?
-    // Counters tick on every tap so the View's onChange fires even when the
-    // same word/phrase is tapped twice in a row (value-equal onChange is a no-op).
-    private(set) var wordTapTick: Int = 0
     private(set) var phraseTapTick: Int = 0
     private(set) var explainTapTick: Int = 0
 
@@ -161,31 +159,21 @@ final class PodcastPlayerViewModel {
         audioEngine.setRate(next)
     }
 
-    // MARK: - Word Tap
-
-    func handleWordTap(word: String, context: String) {
-        activeWordSelection = (word, context)
-        activePhraseSelection = nil
-        activeExplainSelection = nil
-        wordTapTick &+= 1
-    }
+    // MARK: - Selection
 
     func handlePhraseTap(phrase: String, context: String) {
         activePhraseSelection = (phrase, context)
-        activeWordSelection = nil
         activeExplainSelection = nil
         phraseTapTick &+= 1
     }
 
     func handleExplainTap(text: String, context: String) {
         activeExplainSelection = (text, context)
-        activeWordSelection = nil
         activePhraseSelection = nil
         explainTapTick &+= 1
     }
 
     func dismissWordSelection() {
-        activeWordSelection = nil
         activePhraseSelection = nil
         activeExplainSelection = nil
     }

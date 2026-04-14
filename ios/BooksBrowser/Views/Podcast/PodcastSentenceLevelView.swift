@@ -26,7 +26,6 @@ struct PodcastSentenceLevelView: View {
     let hostNames: [String]
     let subtitleSize: PodcastSubtitleSize
     let onSentenceTap: (PodcastSentence) -> Void
-    let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
     let onExplainTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
@@ -213,10 +212,7 @@ struct PodcastSentenceLevelView: View {
                                     .transition(.opacity)
                             }
                         }
-                        .onTapGesture {
-                            onWordTap(word.text, rs.sentenceText)
-                        }
-                        .onLongPressGesture(minimumDuration: 0.35) {
+                        .onLongPressGesture(minimumDuration: 0.2) {
                             enterSelectionMode(for: sentence, wordIndex: index)
                         }
                 }
@@ -231,10 +227,7 @@ struct PodcastSentenceLevelView: View {
                     Text(cue.word)
                         .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
-                        .onTapGesture {
-                            onWordTap(cue.word, sentence.text)
-                        }
-                        .onLongPressGesture(minimumDuration: 0.35) {
+                        .onLongPressGesture(minimumDuration: 0.2) {
                             enterSelectionMode(for: sentence, wordIndex: index)
                         }
                 }
@@ -345,7 +338,6 @@ struct PodcastSentenceLevelView: View {
             hostNames: ["Maya", "Kai"],
             subtitleSize: .xLarge,
             onSentenceTap: { _ in },
-            onWordTap: { _, _ in },
             onPhraseTap: { _, _ in },
             onExplainTap: { _, _ in }
         )
