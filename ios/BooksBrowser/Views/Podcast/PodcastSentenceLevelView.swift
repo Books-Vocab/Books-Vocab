@@ -30,6 +30,7 @@ struct PodcastSentenceLevelView: View {
     let onPhraseTap: (String, String) -> Void
     let onExplainTap: (String, String) -> Void
     @Environment(\.vocabSkin) private var skin
+    @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
 
     @State private var isFollowing = true
     @State private var didInitialScroll = false
@@ -199,11 +200,12 @@ struct PodcastSentenceLevelView: View {
             CachedFlowLayout(spacing: skin.spacing.wordRowVerticalGap) {
                 ForEach(Array(rs.words.enumerated()), id: \.element.id) { index, word in
                     let isActive = word.id == highlightedWordIndex
+                    let showsActiveUnderline = wordFollowEnabled && isActive
                     Text(word.text)
                         .font(subtitleSize.subtitleFont)
                         .foregroundStyle(textColor)
                         .overlay(alignment: .bottom) {
-                            if isActive {
+                            if showsActiveUnderline {
                                 Rectangle()
                                     .fill(tint)
                                     .frame(height: 1.5)

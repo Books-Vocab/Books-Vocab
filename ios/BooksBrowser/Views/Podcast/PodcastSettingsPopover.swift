@@ -59,6 +59,7 @@ enum PodcastSubtitleSize: String, CaseIterable, Identifiable {
 struct PodcastSettingsPopover: View {
     @Binding var subtitleSize: PodcastSubtitleSize
     @Binding var autoPauseOnLookup: Bool
+    @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
     @Environment(\.vocabSkin) private var skin
 
     var body: some View {
@@ -73,6 +74,16 @@ struct PodcastSettingsPopover: View {
                     }
                 }
                 .pickerStyle(.segmented)
+            }
+
+            Toggle(isOn: $wordFollowEnabled) {
+                VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                    Text(L10n.string("逐字跟隨"))
+                        .font(skin.typography.body)
+                    Text(L10n.string("顯示目前播放到的單字底線，關閉後改為純句子跟隨"))
+                        .font(skin.typography.caption)
+                        .foregroundStyle(skin.palette.secondaryText)
+                }
             }
 
             Toggle(isOn: $autoPauseOnLookup) {
