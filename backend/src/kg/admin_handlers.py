@@ -217,6 +217,98 @@ def admin_stats_response(
     return {"users": result, "judge": judge_stats}
 
 
+def admin_host_metrics_response() -> dict[str, Any]:
+    """Return real-time host metrics: CPU / memory / disk / load / process.
+
+    Degrades gracefully if psutil is unavailable (returns {"available": False, ...}).
+    """
+    try:
+        import os
+        import psutil
+    except ImportError:
+        return {"available": False, "reason": "psutil not installed"}
+
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_count = psutil.cpu_count(logical=True) or 1
+        load_avg = list(os.getloadavg()) if hasattr(os, "getloadavg") else [0.0, 0.0, 0.0]
+
+        vm = psutil.virtual_memory()
+        mem = {
+            "total": vm.total,
+            "available": vm.available,
+            "used": vm.used,
+            "percent": vm.percent,
+        }
+
+        disks: list[dict[str, Any]] = []
+        seen_mounts: set[str] = set()
+        # Only report the root mount + /app/data mount if distinct.
+        candidate_paths = ["/", "/app/data"]
+        for path in candidate_paths:
+            try:
+                if not os.path.exists(path):
+                    continue
+                du = psutil.disk_usage(path)
+                key = f"{du.total}"
+                if key in seen_mounts:
+                    continue
+                seen_mounts.add(key)
+                disks.append(
+                    {
+                        "path": path,
+                        "total": du.total,
+                        "used": du.used,
+                        "free": du.free,
+                        "percent": du.percent,
+                    }
+                )
+            except (OSError, PermissionError):
+                continue
+
+        proc = psutil.Process()
+        try:
+            p_rss = proc.memory_info().rss
+            p_cpu = proc.cpu_percent(interval=0.0)
+            p_threads = proc.num_threads()
+            try:
+                p_fds = proc.num_fds()  # POSIX only
+            except (AttributeError, OSError):
+                p_fds = None
+            p_create = proc.create_time()
+        except psutil.Error:
+            p_rss = p_cpu = p_threads = p_create = 0
+            p_fds = None
+
+        import time as _time
+        now = _time.time()
+        process_info = {
+            "rss": p_rss,
+            "cpu_percent": p_cpu,
+            "threads": p_threads,
+            "fds": p_fds,
+            "uptime_seconds": int(now - p_create) if p_create else 0,
+        }
+
+        return {
+            "available": True,
+            "timestamp": now,
+            "cpu": {
+                "percent": cpu_percent,
+                "count": cpu_count,
+                "load_1": load_avg[0],
+                "load_5": load_avg[1],
+                "load_15": load_avg[2],
+            },
+            "memory": mem,
+            "disks": disks,
+            "process": process_info,
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to collect host metrics")
+        return {"available": False, "reason": str(exc)}
+
+
 def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, Any]:
     """Return per-type usage (calls/cost/tokens) for a user, filtered by range.
 

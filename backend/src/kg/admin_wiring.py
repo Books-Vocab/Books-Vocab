@@ -8,6 +8,7 @@ from pathlib import Path
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
     admin_grant_pro_access_response,
+    admin_host_metrics_response,
     admin_last_test_run_response,
     admin_logs_response,
     admin_revoke_pro_access_response,
@@ -172,6 +173,10 @@ def create_admin_handlers(
         from .admin_handlers import admin_user_usage_response
         return admin_user_usage_response(user_id, range_=range)
 
+    def admin_host_metrics():
+        """Return real-time host metrics for admin dashboard."""
+        return admin_host_metrics_response()
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -196,5 +201,6 @@ def create_admin_handlers(
         "admin_judge_stats": admin_judge_stats,
         "admin_translate_history": admin_translate_history,
         "admin_user_usage": admin_user_usage,
+        "admin_host_metrics": admin_host_metrics,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
