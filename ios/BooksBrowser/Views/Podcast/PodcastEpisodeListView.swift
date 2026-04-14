@@ -12,6 +12,7 @@ import SwiftData
 /// 2 層 push 時出現內部卡死。改成 value-based + 統一在 NavigationStack root
 /// 註冊 destination，走正式 Apple 推薦路徑。
 enum PodcastNavRoute: Hashable {
+    case series(seriesRemoteId: String)
     case episode(episodeRemoteId: String)
 }
 
@@ -49,6 +50,8 @@ struct PodcastEpisodeListView: View {
     @State private var progressArray: [PodcastProgress] = []
     @State private var currentSeries: PodcastSeries?
     @State private var sort: EpisodeSort = .ascending
+    @State private var navigationLocked = false
+    @State private var navigationUnlockTask: Task<Void, Never>?
 
     private var series: PodcastSeries? { currentSeries }
 
@@ -116,6 +119,15 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .onAppear {
+            navigationUnlockTask?.cancel()
+            navigationUnlockTask = nil
+            navigationLocked = false
+        }
+        .onDisappear {
+            navigationUnlockTask?.cancel()
+            navigationUnlockTask = nil
+        }
         .task(id: seriesId) {
             await reloadFromStore()
         }
@@ -204,7 +216,12 @@ struct PodcastEpisodeListView: View {
                 Label(label, systemImage: icon)
             }
             .buttonStyle(.appAction(.primary))
-            .disabled(unavailable)
+            .disabled(unavailable || navigationLocked)
+            .simultaneousGesture(
+                TapGesture().onEnded {
+                    beginNavigationLock()
+                }
+            )
             .frame(maxWidth: 280)
         }
     }
@@ -232,7 +249,12 @@ struct PodcastEpisodeListView: View {
                         .contentShape(Rectangle())
                     }
                     .buttonStyle(.plain)
-                    .disabled(!episode.audioAvailable)
+                    .disabled(!episode.audioAvailable || navigationLocked)
+                    .simultaneousGesture(
+                        TapGesture().onEnded {
+                            beginNavigationLock()
+                        }
+                    )
 
                     if index < episodes.count - 1 {
                         Divider()
@@ -281,5 +303,18 @@ struct PodcastEpisodeListView: View {
             return "共 \(h) 小時 \(m) 分"
         }
         return "共 \(m) 分鐘"
+    }
+
+    @MainActor
+    private func beginNavigationLock() {
+        guard !navigationLocked else { return }
+        navigationLocked = true
+        navigationUnlockTask?.cancel()
+        navigationUnlockTask = Task { @MainActor in
+            try? await Task.sleep(for: .seconds(1))
+            guard !Task.isCancelled else { return }
+            navigationLocked = false
+            navigationUnlockTask = nil
+        }
     }
 }
