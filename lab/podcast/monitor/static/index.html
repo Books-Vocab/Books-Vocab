@@ -36,18 +36,21 @@
       <div class="metric-value" id="m-stage">—</div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">CONTEXT · LAST INPUT</div>
+      <div class="metric-label">CONTEXT · NOW</div>
       <div class="metric-value tabular" id="m-ctx">0</div>
-      <div class="metric-sub"><span id="m-ctx-pct">0%</span> of 1M</div>
+      <div class="metric-sub">
+        <span id="m-ctx-pct">0%</span> of 1M · PEAK
+        <span class="tabular" id="m-ctx-peak">0</span>
+      </div>
       <div class="bar"><div class="bar-fill" id="m-ctx-bar"></div></div>
     </div>
     <div class="metric-card">
-      <div class="metric-label">TOKENS · TOTAL</div>
+      <div class="metric-label">OUTPUT · CUMULATIVE</div>
       <div class="metric-value tabular" id="m-tok-total">0</div>
       <div class="metric-sub">
-        IN <span class="tabular" id="m-tok-in">0</span> ·
-        OUT <span class="tabular" id="m-tok-out">0</span> ·
-        CACHED <span class="tabular" id="m-tok-cache">0</span>
+        FRESH IN <span class="tabular" id="m-tok-in">0</span> ·
+        CACHE READ <span class="tabular" id="m-tok-out">0</span> ·
+        CACHE WRITE <span class="tabular" id="m-tok-cache">0</span>
       </div>
     </div>
   </section>
