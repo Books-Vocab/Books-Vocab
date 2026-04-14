@@ -9,9 +9,13 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
     let tintColor: UIColor
     let initialSelectionRange: NSRange?
     let onTranslateSelection: (String, String) -> Void
+    let onExplainSelection: (String, String) -> Void
 
     func makeCoordinator() -> Coordinator {
-        Coordinator(onTranslateSelection: onTranslateSelection)
+        Coordinator(
+            onTranslateSelection: onTranslateSelection,
+            onExplainSelection: onExplainSelection
+        )
     }
 
     func makeUIView(context: Context) -> UITextView {
@@ -78,12 +82,17 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
     final class Coordinator: NSObject, UITextViewDelegate {
         let onTranslateSelection: (String, String) -> Void
+        let onExplainSelection: (String, String) -> Void
         var currentText: String = ""
         var pendingSelectionRange: NSRange?
         var appliedSelectionKey: String?
 
-        init(onTranslateSelection: @escaping (String, String) -> Void) {
+        init(
+            onTranslateSelection: @escaping (String, String) -> Void,
+            onExplainSelection: @escaping (String, String) -> Void
+        ) {
             self.onTranslateSelection = onTranslateSelection
+            self.onExplainSelection = onExplainSelection
         }
 
         func applyInitialSelection(to textView: UITextView) {
@@ -102,31 +111,48 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
             editMenuForTextIn range: NSRange,
             suggestedActions: [UIMenuElement]
         ) -> UIMenu? {
-            guard range.length > 0 else {
-                return UIMenu(children: suggestedActions)
+            guard let selection = selectionPayload(for: range) else { return nil }
+
+            var actions: [UIMenuElement] = [
+                UIAction(
+                    title: "翻譯",
+                    image: UIImage(systemName: "character.book.closed")
+                ) { [weak self, weak textView] _ in
+                    guard let self, let textView else { return }
+                    self.onTranslateSelection(selection.text, selection.context)
+                    textView.resignFirstResponder()
+                }
+            ]
+
+            if shouldOfferExplain(for: selection.text) {
+                actions.append(
+                    UIAction(
+                        title: "解釋",
+                        image: UIImage(systemName: "text.magnifyingglass")
+                    ) { [weak self, weak textView] _ in
+                        guard let self, let textView else { return }
+                        self.onExplainSelection(selection.text, selection.context)
+                        textView.resignFirstResponder()
+                    }
+                )
             }
 
-            let translateAction = UIAction(
-                title: "翻譯",
-                image: UIImage(systemName: "character.book.closed")
-            ) { [weak self, weak textView] _ in
-                guard let self, let textView else { return }
-                self.translateSelection(in: textView, range: range)
-            }
-
-            return UIMenu(children: [translateAction] + suggestedActions)
+            return UIMenu(children: actions)
         }
 
-        private func translateSelection(in textView: UITextView, range: NSRange) {
-            guard let swiftRange = Range(range, in: currentText) else { return }
+        private func selectionPayload(for range: NSRange) -> (text: String, context: String)? {
+            guard let swiftRange = Range(range, in: currentText) else { return nil }
 
-            let phrase = currentText[swiftRange]
+            let selected = String(currentText[swiftRange])
                 .trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !phrase.isEmpty else { return }
+            guard !selected.isEmpty else { return nil }
 
             let context = buildMarkedContext(text: currentText, selectedRange: range)
-            onTranslateSelection(phrase, context)
-            textView.resignFirstResponder()
+            return (selected, context)
+        }
+
+        private func shouldOfferExplain(for selectionText: String) -> Bool {
+            selectionText.split(whereSeparator: \.isWhitespace).count == 1
         }
 
         private func buildMarkedContext(text: String, selectedRange: NSRange) -> String {
