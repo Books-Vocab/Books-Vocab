@@ -28,17 +28,45 @@ Read in this order:
 
 ---
 
-**[Host A name]:** [dialogue]
+## Cold Open
+
+**[Host A]:** Welcome to [Show name]. [Tagline]. I'm [Host A].
+
+**[Host B]:** And I'm [Host B]. Today: [episode-specific hook — 1 sentence grounded in THIS episode's content].
+
+**[Host A]:** [one-line bridge into the content — can be a question, a provocation, or a concrete entry point]
+
+---
+
+**[Host A name]:** [dialogue — main body starts here]
 
 **[Host B name]:** [dialogue]
 
 ...
 
 ---
+
+## Sign-Off
+
+**[Host A]:** [one-line episode summary or show catchphrase]
+
+**[Host B]:** Next time: [hook_to_next, 1 sentence]. (For the finale episode: leave a question for the listener instead of a next-time hook.)
+
+**[Host A]:** [sign-off catchphrase defined in overview's Series Format]
+
+---
 *[Takeaway line]*
 
 <!-- END_OF_SCRIPT -->
 ```
+
+### Three structural requirements
+
+1. **Cold Open** — exactly three lines, follow `overview.md` Series Format's intro template. This is the listener's first 15 seconds and it also establishes Gemini TTS voice routing before any short reactions appear. Do NOT skip or shorten.
+
+2. **Main body** — your episode's actual dialogue, written per all the craft guidelines below. Starts after the `---` divider that follows the Cold Open.
+
+3. **Sign-Off** — exactly three lines, follow overview's sign-off template. The Next-time hook must reference a concrete element from the next episode's plan (or leave a lingering question for the finale).
 
 The trailing `<!-- END_OF_SCRIPT -->` HTML comment is a **mandatory completeness marker** — the pipeline uses it to verify the script wasn't truncated mid-write. Always end the file with this exact line.
 
