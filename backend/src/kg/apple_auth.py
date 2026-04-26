@@ -73,15 +73,16 @@ def _get_rsa_public_key(kid: str) -> str | bytes:
     return pem
 
 
-def verify_apple_token(token: str, audience: str) -> str:
-    """Validate Apple Identity Token and return the user ID (sub).
+def verify_apple_token(token: str, audience: str) -> tuple[str, str | None, bool]:
+    """Validate Apple Identity Token and return ``(sub, email, email_verified)``.
 
-    Args:
-        token: The JWT identity token from Apple
-        audience: The App's Bundle ID (e.g. com.chentw.BooksBrowser)
+    Apple only includes ``email`` / ``email_verified`` on the **first**
+    sign-in; subsequent tokens carry ``sub`` only. Returning ``None`` for
+    email is therefore a normal case — callers must fall back to ``sub``-only
+    lookup. ``email_verified`` may be a string (``"true"``) or bool;
+    normalized here.
 
-    Returns:
-        The Apple User ID (sub) string.
+    Client-supplied emails MUST NOT be trusted — see C1 takeover regression.
     """
     try:
         # 1. Fetch the completely unverified header to get the 'kid'
@@ -108,7 +109,12 @@ def verify_apple_token(token: str, audience: str) -> str:
         if not sub:
             raise HTTPException(status_code=401, detail="Token missing subject (sub)")
 
-        return str(sub)
+        email_raw = decoded.get("email")
+        email = str(email_raw).strip().lower() if email_raw else None
+        # Apple may send "true" (str) or true (bool) — normalize.
+        email_verified = str(decoded.get("email_verified", "")).strip().lower() == "true"
+
+        return str(sub), email, email_verified
 
     except jwt.ExpiredSignatureError:
         raise HTTPException(status_code=401, detail="Token has expired")  # noqa: B904
