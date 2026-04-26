@@ -70,6 +70,32 @@ confirm() {
 
 run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式）
 
+# ── 安全函式 ──────────────────────────────────────────────────────────────────
+# uid 必須是 [A-Za-z0-9_-]，1-64 字元；任何 shell metachar / path traversal 一律拒絕
+validate_uid() {
+  local uid="$1"
+  if [[ -z "$uid" ]]; then
+    err "user_id 不可為空"
+  fi
+  if ! [[ "$uid" =~ ^[A-Za-z0-9_-]{1,64}$ ]]; then
+    err "非法 user_id：'$uid'（僅允許英數字、底線、連字號，長度 1-64）"
+  fi
+}
+
+# Production 互斥鎖：deploy/restart/migrate 並發保護
+# Mac 預設無 flock(1)，改用 mkdir 原子鎖
+DEPLOY_LOCK_DIR="/tmp/kg-deploy.lock"
+DEPLOY_LOCK_HELD=0
+acquire_deploy_lock() {
+  # 同 process 內已持有則略過（cmd_deploy → cmd_migrate 遞迴呼叫場景）
+  [[ "$DEPLOY_LOCK_HELD" == "1" ]] && return 0
+  if ! mkdir "$DEPLOY_LOCK_DIR" 2>/dev/null; then
+    err "另一個 deploy/restart/migrate 正在進行中（$DEPLOY_LOCK_DIR 已存在）。若確認無進行中操作，請手動 rmdir $DEPLOY_LOCK_DIR"
+  fi
+  DEPLOY_LOCK_HELD=1
+  trap 'rmdir "$DEPLOY_LOCK_DIR" 2>/dev/null || true' EXIT INT TERM
+}
+
 # ── 指令：env-check ───────────────────────────────────────────────────────────
 cmd_env_check() {
   section "檢查遠端 .env 環境變數"
@@ -210,6 +236,7 @@ PY
 #   - 無法取得上次 deploy sha（首次 deploy 或 VERSION 遺失）
 #   - DEPLOY_FULL=1 環境變數強制
 cmd_deploy() {
+  acquire_deploy_lock
   preflight
 
   local deploy_sha
@@ -243,13 +270,13 @@ cmd_deploy() {
     fi
   fi
 
-  # ── 檢查 working tree 是否與 HEAD 一致 ──
+  # ── 檢查 working tree 是否與 HEAD 一致（dirty 直接拒絕，不可 bypass）──
   local dirty
   dirty=$(cd "$LOCAL_DIR" && git diff --name-only HEAD -- . 2>/dev/null || true)
   if [[ -n "$dirty" ]]; then
-    echo "⚠️  Working tree 有未 commit 的變更，rsync 會把它們推上去："
-    echo "$dirty" | head -10
-    confirm "繼續部署？"
+    echo "✗ 拒絕在 dirty 工作區部署。以下檔案未 commit："
+    echo "$dirty" | head -20
+    err "請先 commit 或 stash 後再部署（DEVOPS_YES=1 不再 bypass dirty 檢查）"
   fi
 
   # ── Full path: backup + env-check ──
@@ -327,6 +354,7 @@ cmd_deploy() {
 # ── 指令：migrate ─────────────────────────────────────────────────────────────
 # 對所有用戶的 cards.db 執行 idempotent schema migration（在容器內執行）
 cmd_migrate() {
+  acquire_deploy_lock
   section "DB Migration"
   run_remote "docker exec knowledge-graph-api python3 -c \"
 import sqlite3, glob, os
@@ -359,6 +387,7 @@ for db in dbs:
 
 # ── 指令：restart ─────────────────────────────────────────────────────────────
 cmd_restart() {
+  acquire_deploy_lock
   info "重啟容器（不重新 build）"
   run_remote "docker compose -f $REMOTE_DIR/docker-compose.yml restart"
   sleep 3
@@ -491,6 +520,7 @@ cmd_users() {
 cmd_user_info() {
   local uid="${1:-}"
   [[ -z "$uid" ]] && err "用法: $0 user-info <user_id>"
+  validate_uid "$uid"
 
   section "用戶: $uid"
   run_remote "ls -lah $REMOTE_DIR/data/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
@@ -514,6 +544,7 @@ cmd_delete_user() {
   local uid="${1:-}"
   local yes_flag="${2:-}"
   [[ -z "$uid" ]] && err "用法: $0 delete-user <user_id> [--yes]"
+  validate_uid "$uid"
 
   info "即將刪除的資料:"
   run_remote "ls -lah $REMOTE_DIR/data/users/$uid/ 2>/dev/null || (echo '用戶不存在'; exit 1)"
@@ -587,7 +618,12 @@ cmd_container_script() {
   shift
   local interp
   [[ "$ext" == "py" ]] && interp="python3" || interp="bash"
-  run_remote "docker exec $CONTAINER $interp $remote_tmp $@"
+  # $@ 透過 SSH 會被 remote shell 重新解析，必須用 printf %q 安全序列化
+  local quoted_args=""
+  if [[ $# -gt 0 ]]; then
+    quoted_args=$(printf ' %q' "$@")
+  fi
+  run_remote "docker exec $CONTAINER $interp $remote_tmp$quoted_args"
   run_remote "docker exec $CONTAINER rm -f $remote_tmp"
   run_remote "rm -f $remote_tmp"
 }
