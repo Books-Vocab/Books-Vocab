@@ -339,7 +339,17 @@ struct BooksBrowserApp: App {
                 configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
             )
         } catch {
-            fatalError("Cannot create fallback in-memory ModelContainer: \(error)")
+            // Fail-soft: attempt a minimal-schema in-memory container so the app can still
+            // display AppStartupRecoveryView (driven by `startupFailure`) instead of crashing.
+            AppLog.app.critical("Fallback ModelContainer init failed: \(error.localizedDescription); attempting minimal schema")
+            if let minimal = try? ModelContainer(
+                for: Notebook.self,
+                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
+            ) {
+                return minimal
+            }
+            AppLog.app.critical("Minimal ModelContainer init also failed: \(error.localizedDescription)")
+            fatalError("Cannot create any ModelContainer: \(error)")
         }
     }
 

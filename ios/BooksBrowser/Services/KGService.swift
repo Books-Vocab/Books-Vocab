@@ -112,15 +112,22 @@ final class KGService: KGServing, LocalDataClearing {
         _isBackgroundSyncing = false
     }
 
+    /// Hardcoded last-resort fallback URL — guaranteed to parse, used only if both
+    /// the user-configured `serverURL` and `deployedServerURL` fail to parse.
+    private static let fallbackURL = URL(string: "https://wordnexus.lol")!
+
     var baseURL: URL {
         var clean = serverURL.trimmingCharacters(in: .whitespacesAndNewlines)
         if !clean.hasPrefix("http://") && !clean.hasPrefix("https://") {
             clean = "http://" + clean
         }
-        guard let url = URL(string: clean) ?? URL(string: Self.deployedServerURL) else {
-            fatalError("Invalid deployedServerURL constant: \(Self.deployedServerURL)")
+        if let url = URL(string: clean) ?? URL(string: Self.deployedServerURL) {
+            return url
         }
-        return url
+        // Should be unreachable — `deployedServerURL` is a compile-time literal.
+        // Fail-soft: log and return guaranteed fallback rather than crash.
+        AppLog.kg.error("Invalid deployedServerURL constant: \(Self.deployedServerURL) — using fallback")
+        return Self.fallbackURL
     }
 
     init(
