@@ -119,7 +119,8 @@ extension TodayReviewPresenter {
 
         // Safety fallback: if animation completion never fires (macOS edge case),
         // force-complete after a generous timeout to prevent UI deadlock.
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.8) {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: UInt64(0.8 * 1_000_000_000))
             completeFling()
         }
     }

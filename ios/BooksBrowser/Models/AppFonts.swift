@@ -237,7 +237,7 @@ enum AppFonts {
             switch state {
             case .didFinish:
                 AppLog.fonts.info("STSongti-TC download completed")
-                DispatchQueue.main.async {
+                Task { @MainActor in
                     NotificationCenter.default.post(name: .serifCJKFontDidBecomeAvailable, object: nil)
                 }
             case .didFailWithError:
