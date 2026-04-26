@@ -145,6 +145,21 @@ def test_apple_login_sets_oauth_state_cookie(web_auth_env):
     assert "oauth_state=" in set_cookie
 
 
+def test_login_page_sets_state_cookie_and_embeds_state(web_auth_env):
+    """`/login` is the natural entry that renders the Apple form; it must
+    set the state cookie AND embed the same nonce in the form so the POST
+    callback can validate. Without this, Apple users entering via /login
+    are 100% rejected at callback."""
+    resp = web_auth_env.client.get("/login", follow_redirects=False)
+    assert resp.status_code == 200
+    set_cookie = resp.headers.get("set-cookie", "")
+    assert "oauth_state=" in set_cookie
+    # Extract the cookie value to compare with form state
+    cookie_value = set_cookie.split("oauth_state=")[1].split(";")[0]
+    assert cookie_value
+    assert f'name="state" value="{cookie_value}"' in resp.text
+
+
 def test_apple_callback_missing_state_rejected(web_auth_env):
     web_auth_env.client.get("/auth/web/apple/login", follow_redirects=False)
     resp = web_auth_env.client.post(
