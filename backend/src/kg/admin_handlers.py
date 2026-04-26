@@ -2,6 +2,8 @@ from __future__ import annotations
 
 import hmac
 import logging
+import secrets
+import time
 from collections.abc import Callable
 from datetime import UTC, datetime
 from pathlib import Path
@@ -18,16 +20,44 @@ from .exceptions import NotFoundError
 
 
 ADMIN_COOKIE_NAME = "admin_session"
+ADMIN_COOKIE_TTL_SECONDS = 7 * 24 * 60 * 60  # 7 days
 
 
-def _sign_cookie(admin_token: str) -> str:
-    return hmac.new(admin_token.encode(), b"admin_session", "sha256").hexdigest()
+def _sign_payload(admin_token: str, payload: str) -> str:
+    return hmac.new(admin_token.encode(), payload.encode(), "sha256").hexdigest()
+
+
+def _build_cookie_value(admin_token: str, *, expires_at: int, nonce_hex: str | None = None) -> str:
+    """Build an expiry-bound, single-use-noncified admin session cookie.
+
+    Layout: ``"<expires_at>.<nonce_hex>.<sig_hex>"`` where the signature covers
+    ``"<expires_at>.<nonce_hex>"``. The nonce makes successive cookies distinct
+    so a leaked value cannot be re-derived from the admin token alone.
+    """
+    nonce = nonce_hex if nonce_hex is not None else secrets.token_hex(16)
+    payload = f"{expires_at}.{nonce}"
+    sig = _sign_payload(admin_token, payload)
+    return f"{payload}.{sig}"
+
+
+def _sign_cookie(admin_token: str, *, ttl_seconds: int = ADMIN_COOKIE_TTL_SECONDS) -> str:
+    expires_at = int(time.time()) + ttl_seconds
+    return _build_cookie_value(admin_token, expires_at=expires_at)
 
 
 def _verify_cookie(cookie_value: str, admin_token: str) -> bool:
     if not admin_token or not cookie_value:
         return False
-    return hmac.compare_digest(cookie_value, _sign_cookie(admin_token))
+    parts = cookie_value.split(".")
+    if len(parts) != 3:
+        return False
+    expires_at_str, nonce, sig = parts
+    if not expires_at_str.isdigit() or not nonce or not sig:
+        return False
+    expected_sig = _sign_payload(admin_token, f"{expires_at_str}.{nonce}")
+    if not hmac.compare_digest(sig, expected_sig):
+        return False
+    return time.time() <= int(expires_at_str)
 
 
 def _resolve_admin_token(token: str | None, authorization: str | None) -> str | None:
@@ -66,7 +96,7 @@ def _set_admin_cookie(response: HTMLResponse, admin_token: str) -> HTMLResponse:
         secure=True,
         samesite="lax",
         path="/",
-        max_age=60 * 60 * 24 * 30,  # 30 days
+        max_age=ADMIN_COOKIE_TTL_SECONDS,
     )
     return response
 
