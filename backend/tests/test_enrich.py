@@ -170,6 +170,34 @@ class TestEnrichCardsStream:
         assert running_msgs[-1]["current"] == 5
 
     @pytest.mark.asyncio
+    async def test_stream_queue_is_bounded(self):
+        """The internal asyncio.Queue must have a bounded maxsize so a slow
+        consumer can't let workers OOM the process with results."""
+        from kg import enrich as enrich_mod
+        from kg.enrich import enrich_cards_stream
+
+        captured: dict[str, int] = {}
+        original_queue = enrich_mod.asyncio.Queue
+
+        def spy_queue(*args, **kwargs):
+            captured["maxsize"] = kwargs.get("maxsize", 0 if not args else args[0])
+            return original_queue(*args, **kwargs)
+
+        resp = _mock_response(json.dumps([{"word": "x"}]))
+        llm = TrackedLLM(MagicMock(), "u_test")
+
+        with patch("kg.enrich.sync_retry", return_value=resp), \
+             patch.object(enrich_mod.asyncio, "Queue", side_effect=spy_queue):
+            cards = [_make_card()]
+            async for _ in enrich_cards_stream(llm, cards):
+                pass
+
+        assert captured.get("maxsize", 0) > 0, (
+            "enrich_cards_stream queue is unbounded — a stalled consumer "
+            "would let workers buffer unlimited messages."
+        )
+
+    @pytest.mark.asyncio
     async def test_stream_token_tracking_via_tracked_llm(self):
         """Token tracking now happens inside TrackedLLM.chat(), not in stream consumer."""
         from kg.enrich import enrich_cards_stream

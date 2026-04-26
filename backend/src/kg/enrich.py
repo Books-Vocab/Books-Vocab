@@ -156,7 +156,10 @@ async def enrich_cards_stream(
         except (OpenAIError, json.JSONDecodeError, KeyError, TypeError, OSError) as e:
             loop.call_soon_threadsafe(queue.put_nowait, {"type": "error", "error": str(e)})
 
-    queue = asyncio.Queue()
+    # Bounded queue: with max_workers=5 the natural in-flight count is small,
+    # but cap at 100 so a stalled consumer can't let workers buffer unlimited
+    # progress messages and OOM the process.
+    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
     loop = asyncio.get_running_loop()
 
     with ThreadPoolExecutor(max_workers=max_workers) as executor:
