@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request
+from fastapi import APIRouter, BackgroundTasks, Depends, Query, Request, Response
 
 from ..api_models import PipelineQueueResponse
 from ..deps import (
+    _apply_quota_headers,
     _card_store,
+    _check_quota,
     _embedding_store,
     _gemini_client,
     _graph_store,
@@ -18,6 +20,8 @@ from ..notebook import validate_notebook_access
 from ..pipeline_handlers import queue_pipeline_response
 from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..settings import KGSettings
+
+NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
 router = APIRouter()
 
@@ -37,17 +41,21 @@ async def _run_pipeline_background(user: dict, *, settings: KGSettings, force_en
 async def run_pipeline(
     background_tasks: BackgroundTasks,
     request: Request,
+    response: Response,
     user: dict = Depends(get_current_user),
     force_enrich: bool = False,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
 ):
     settings = request.app.state.kg_settings
+    quota = _check_quota(user, "pipeline", response)
     validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
 
     async def _bg(u: dict) -> None:
         await _run_pipeline_background(u, settings=settings, force_enrich=force_enrich, notebook_id=notebook_id)
 
-    return queue_pipeline_response(
+    result = queue_pipeline_response(
         background_tasks, user,
         run_pipeline_background_fn=_bg,
     )
+    _apply_quota_headers(response, quota)
+    return result
