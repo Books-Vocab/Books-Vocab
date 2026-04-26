@@ -568,15 +568,20 @@ private enum BookshelfPreviewData {
     }()
 
     @MainActor
-    static var containerWithBooks: ModelContainer = {
+    static var containerWithBooks: ModelContainer? = {
         let schema = Schema([Book.self, VocabularyEntry.self])
         let config = ModelConfiguration(isStoredInMemoryOnly: true)
-        let container = try! ModelContainer(for: schema, configurations: config)
-        let context = ModelContext(container)
-        context.insert(activeBook)
-        context.insert(placeholderBook)
-        try? context.save()
-        return container
+        do {
+            let container = try ModelContainer(for: schema, configurations: config)
+            let context = ModelContext(container)
+            context.insert(activeBook)
+            context.insert(placeholderBook)
+            try? context.save()
+            return container
+        } catch {
+            AppLog.app.warning("BookshelfPreviewData container failed: \(error.localizedDescription)")
+            return nil
+        }
     }()
 }
 
@@ -615,8 +620,12 @@ private struct BookCardPreviewScene: View {
 
 #Preview("Bookshelf / With Books") {
     AppThemeContainer {
-        BookshelfView()
-            .modelContainer(BookshelfPreviewData.containerWithBooks)
+        if let container = BookshelfPreviewData.containerWithBooks {
+            BookshelfView()
+                .modelContainer(container)
+        } else {
+            EmptyView()
+        }
     }
 }
 
