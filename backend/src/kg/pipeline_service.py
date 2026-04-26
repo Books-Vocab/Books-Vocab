@@ -15,13 +15,19 @@ from .retry import async_retry
 from .types import UserRecord
 from .vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
 
-_PIPELINE_RUNNING: dict[str, bool] = {}
+# Per-uid refcount of in-flight + queued pipeline runs. Refcount (not bool)
+# to defeat the race where the in-flight run's `finally` clears the flag
+# AFTER the queued run has set it (the bool-flag impl observed: in-flight
+# pop happens after lock release, queued set happens before lock acquire,
+# so pop can clobber set). With refcount, both increments are visible and
+# the flag only drops when every queued/running task has decremented.
+_PIPELINE_RUNNING: dict[str, int] = {}
 _PIPELINE_RUNNING_LOCK = threading.Lock()
 
 
 def is_pipeline_running(user_id: str) -> bool:
     with _PIPELINE_RUNNING_LOCK:
-        return _PIPELINE_RUNNING.get(user_id, False)
+        return _PIPELINE_RUNNING.get(user_id, 0) > 0
 
 
 def _touch_linked_cards(
@@ -431,81 +437,81 @@ async def run_pipeline_background(
     # causing cards in a second notebook to sit forever in pending_judge_<nb>.json
     # when iOS's post-2026-04-11 `triggerPipelinesIsolated` fires two triggers for
     # different notebooks back-to-back (new notebook + migrated orphan into default).
-    # Now: queue naturally via `async with lock`. Each step already has an early-exit
-    # path ("All cards already enriched" / "No pending cards to judge" / etc.) so
-    # duplicate triggers for the same notebook degrade to cheap no-ops.
+    # Now: queue naturally via `async with lock`. Duplicate triggers for the same
+    # notebook degrade to cheap no-ops via each step's early-exit path.
     if lock.locked():
         logger.info("[%s] Pipeline lock held, queueing notebook=%s.", uid, notebook_id)
-        # Pre-set _PIPELINE_RUNNING so the `X-Pipeline-Pending` header stays sticky
-        # across the queue transition. Otherwise there is a window between the
-        # in-flight run's early flag-clear (before ExternalSync) and our own
-        # `async with lock` acquisition where iOS could see pending=false and stop
-        # polling while our notebook's work has not yet started — reintroducing the
-        # "second notebook looks stale" UX symptom of the original incident.
-        with _PIPELINE_RUNNING_LOCK:
-            _PIPELINE_RUNNING[uid] = True
-
-    async with lock:
-        with _PIPELINE_RUNNING_LOCK:
-            _PIPELINE_RUNNING[uid] = True
-        run_id = uuid.uuid4().hex[:12]
-        trigger = "manual" if force_enrich else "background"
-        try:
-            from . import pipeline_log
-            pipeline_log.start_run(run_id, uid, notebook_id, trigger)
-        except Exception:
-            logger.warning("Failed to record pipeline telemetry", exc_info=True)
-        try:
-            logger.info("[%s] Pipeline started.", uid)
-
-            # Step isolation: each step catches its own errors so one failure
-            # never aborts subsequent steps.  The union covers LLM calls
-            # (OpenAIError), file/DB I/O (OSError), and data issues (ValueError,
-            # RuntimeError).
-
-            await _run_step(uid, "Enrich", lambda: _step_enrich(
-                uid, user,
-                card_store_factory=card_store_factory,
-                gemini_client_factory=gemini_client_factory,
-                logger=logger,
-                force=force_enrich,
-                notebook_id=notebook_id,
-                gemini_model=gemini_model,
-            ), logger=logger, retry=True, run_id=run_id)
-
-            await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
-                uid, user,
-                card_store_factory=card_store_factory,
-                graph_store_factory=graph_store_factory,
-                embedding_store_factory=embedding_store_factory,
-                gemini_client_factory=gemini_client_factory,
-                logger=logger,
-                link_kind_enum=link_kind_enum,
-                notebook_id=notebook_id,
-                gemini_model=gemini_model,
-            ), logger=logger, retry=True, run_id=run_id)
-
-            await _run_step(uid, "Difficulty", lambda: _step_difficulty(
-                uid, user,
-                card_store_factory=card_store_factory,
-                logger=logger,
-                notebook_id=notebook_id,
-            ), logger=logger, run_id=run_id)
-
-            logger.info("[%s] Pipeline completed.", uid)
+    # Increment refcount BEFORE awaiting the lock so a queued run keeps the
+    # `X-Pipeline-Pending` header sticky across the in-flight run's `finally`
+    # decrement. Bool flag would race: in-flight pop happens after lock release
+    # but queued set happens before lock acquire, so pop can clobber set.
+    with _PIPELINE_RUNNING_LOCK:
+        _PIPELINE_RUNNING[uid] = _PIPELINE_RUNNING.get(uid, 0) + 1
+    try:
+        async with lock:
+            run_id = uuid.uuid4().hex[:12]
+            trigger = "manual" if force_enrich else "background"
             try:
                 from . import pipeline_log
-                pipeline_log.end_run(run_id, "completed")
+                pipeline_log.start_run(run_id, uid, notebook_id, trigger)
             except Exception:
                 logger.warning("Failed to record pipeline telemetry", exc_info=True)
-
-        except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
-            logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
             try:
-                from . import pipeline_log
-                pipeline_log.end_run(run_id, "failed")
-            except Exception:
-                logger.warning("Failed to record pipeline telemetry", exc_info=True)
-        finally:
-            with _PIPELINE_RUNNING_LOCK:
+                logger.info("[%s] Pipeline started.", uid)
+
+                # Step isolation: each step catches its own errors so one
+                # failure never aborts subsequent steps. The union covers
+                # LLM calls (OpenAIError), file/DB I/O (OSError), and data
+                # issues (ValueError, RuntimeError).
+
+                await _run_step(uid, "Enrich", lambda: _step_enrich(
+                    uid, user,
+                    card_store_factory=card_store_factory,
+                    gemini_client_factory=gemini_client_factory,
+                    logger=logger,
+                    force=force_enrich,
+                    notebook_id=notebook_id,
+                    gemini_model=gemini_model,
+                ), logger=logger, retry=True, run_id=run_id)
+
+                await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
+                    uid, user,
+                    card_store_factory=card_store_factory,
+                    graph_store_factory=graph_store_factory,
+                    embedding_store_factory=embedding_store_factory,
+                    gemini_client_factory=gemini_client_factory,
+                    logger=logger,
+                    link_kind_enum=link_kind_enum,
+                    notebook_id=notebook_id,
+                    gemini_model=gemini_model,
+                ), logger=logger, retry=True, run_id=run_id)
+
+                await _run_step(uid, "Difficulty", lambda: _step_difficulty(
+                    uid, user,
+                    card_store_factory=card_store_factory,
+                    logger=logger,
+                    notebook_id=notebook_id,
+                ), logger=logger, run_id=run_id)
+
+                logger.info("[%s] Pipeline completed.", uid)
+                try:
+                    from . import pipeline_log
+                    pipeline_log.end_run(run_id, "completed")
+                except Exception:
+                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
+
+            except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
+                logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
+                try:
+                    from . import pipeline_log
+                    pipeline_log.end_run(run_id, "failed")
+                except Exception:
+                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
+    finally:
+        # Pair with the increment above. The outer try/finally guards
+        # against cancellation while awaiting `lock.__aenter__()` — the
+        # decrement still runs and we don't leak the refcount.
+        with _PIPELINE_RUNNING_LOCK:
+            _PIPELINE_RUNNING[uid] = _PIPELINE_RUNNING.get(uid, 0) - 1
+            if _PIPELINE_RUNNING[uid] <= 0:
                 _PIPELINE_RUNNING.pop(uid, None)
