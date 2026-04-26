@@ -65,7 +65,7 @@ struct SettingsReviewSection: View {
                 SettingsSectionHeader(title: "自訂參數", icon: "slider.horizontal.3")
 
                 VStack(spacing: 0) {
-                    paramRow(
+                    ParamRow(
                         label: "初始間隔",
                         value: formatHours(reviewSettingsStore.settings.customInitialIntervalHours),
                         onDecrement: { adjustParam(\.customInitialIntervalHours, by: -4, min: 4, max: 72) },
@@ -76,7 +76,7 @@ struct SettingsReviewSection: View {
 
                     SettingsDivider()
 
-                    paramRow(
+                    ParamRow(
                         label: "記得倍率",
                         value: formatMultiplier(reviewSettingsStore.settings.customRememberedMultiplier),
                         onDecrement: { adjustParam(\.customRememberedMultiplier, by: -0.1, min: 1.1, max: 5.0) },
@@ -87,7 +87,7 @@ struct SettingsReviewSection: View {
 
                     SettingsDivider()
 
-                    paramRow(
+                    ParamRow(
                         label: "忘記倍率",
                         value: formatMultiplier(reviewSettingsStore.settings.customForgotMultiplier),
                         onDecrement: { adjustParam(\.customForgotMultiplier, by: -0.05, min: 0.1, max: 0.9) },
@@ -98,7 +98,7 @@ struct SettingsReviewSection: View {
 
                     SettingsDivider()
 
-                    paramRow(
+                    ParamRow(
                         label: "最短間隔",
                         value: formatHours(reviewSettingsStore.settings.customMinimumIntervalHours),
                         onDecrement: { adjustParam(\.customMinimumIntervalHours, by: -2, min: 2, max: 24) },
@@ -109,7 +109,7 @@ struct SettingsReviewSection: View {
 
                     SettingsDivider()
 
-                    paramRow(
+                    ParamRow(
                         label: "最長間隔",
                         value: formatHours(reviewSettingsStore.settings.customMaximumIntervalHours),
                         onDecrement: { adjustParam(\.customMaximumIntervalHours, by: -120, min: 120, max: 8760) },
@@ -120,39 +120,40 @@ struct SettingsReviewSection: View {
                 }
                 .settingsCard()
             }
-            .transition(.statusRowReveal)
-            .animatePhaseChange(reviewSettingsStore.settings.mode)
         }
     }
 
-    private func paramRow(
-        label: String,
-        value: String,
-        onDecrement: @escaping () -> Void,
-        onIncrement: @escaping () -> Void,
-        canDecrement: Bool,
-        canIncrement: Bool
-    ) -> some View {
-        HStack(spacing: 0) {
-            Text(label.localized)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+    private struct ParamRow: View {
+        @Environment(\.vocabSkin) private var vocabSkin
+        let label: String
+        let value: String
+        let onDecrement: () -> Void
+        let onIncrement: () -> Void
+        let canDecrement: Bool
+        let canIncrement: Bool
 
-            Spacer()
-
-            HStack(spacing: AppSettingsMetrics.reviewStepperGap) {
-                SettingsStepperIconButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
-
-                Text(value)
-                    .font(vocabSkin.typography.monoBodyStrong)
+        var body: some View {
+            HStack(spacing: 0) {
+                Text(label.localized)
+                    .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.primaryText)
-                    .frame(minWidth: AppSettingsMetrics.reviewValueMinWidth, alignment: .center)
 
-                SettingsStepperIconButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
+                Spacer()
+
+                HStack(spacing: AppSettingsMetrics.reviewStepperGap) {
+                    SettingsStepperIconButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
+
+                    Text(value)
+                        .font(vocabSkin.typography.monoBodyStrong)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .frame(minWidth: AppSettingsMetrics.reviewValueMinWidth, alignment: .center)
+
+                    SettingsStepperIconButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
+                }
             }
+            .padding(.horizontal, vocabSkin.spacing.cardPadding)
+            .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
         }
-        .padding(.horizontal, vocabSkin.spacing.cardPadding)
-        .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
     }
 
     // MARK: - Footer
