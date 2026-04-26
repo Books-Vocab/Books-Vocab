@@ -360,12 +360,22 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
     _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
     try:
         with (
-            patch.object(auth_router_mod, "verify_google_token", new=AsyncMock(return_value="google-sub")),
-            patch.object(auth_router_mod, "verify_apple_token", return_value="apple-sub"),
+            patch.object(
+                auth_router_mod,
+                "verify_google_token",
+                new=AsyncMock(return_value=("google-sub", "same@example.com", True)),
+            ),
+            patch.object(
+                auth_router_mod,
+                "verify_apple_token",
+                return_value=("apple-sub", "same@example.com", True),
+            ),
         ):
+            # Linkage now driven by *token-derived verified email*, NOT by
+            # client-supplied req.email (C1 takeover regression).
             r_google = client.post(
                 "/auth/verify",
-                json={"provider": "google", "token": "g-token", "email": "same@example.com"},
+                json={"provider": "google", "token": "g-token"},
             )
             assert r_google.status_code == 200, r_google.text
             assert r_google.json()["user_id"] == "google-sub"
@@ -373,7 +383,7 @@ def test_auth_verify_links_google_and_apple_by_email(isolated_api):
 
             r_apple = client.post(
                 "/auth/verify",
-                json={"provider": "apple", "token": "a-token", "email": "same@example.com"},
+                json={"provider": "apple", "token": "a-token"},
             )
             assert r_apple.status_code == 200, r_apple.text
             assert r_apple.json()["user_id"] == "google-sub"
@@ -609,7 +619,11 @@ def test_auth_verify_response_contract(isolated_api):
     original_settings = app.state.kg_settings
     _swap_settings(replace(original_settings, google_client_id="fake-google-client"))
     try:
-        with patch.object(auth_router_mod, "verify_google_token", new=AsyncMock(return_value="contract-user-id")):
+        with patch.object(
+            auth_router_mod,
+            "verify_google_token",
+            new=AsyncMock(return_value=("contract-user-id", "contract@test.com", True)),
+        ):
             r = client.post(
                 "/auth/verify",
                 json={"provider": "google", "token": "g-tok", "email": "contract@test.com"},

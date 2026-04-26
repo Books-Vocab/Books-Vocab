@@ -20,9 +20,13 @@ class TestVerifyGoogleToken:
     async def test_happy_path(self):
         """Valid token returns sub."""
         with patch("kg.google_auth.id_token.verify_oauth2_token") as mock_verify:
-            mock_verify.return_value = {"sub": "google-user-456", "email": "u@gmail.com"}
+            mock_verify.return_value = {
+                "sub": "google-user-456",
+                "email": "U@Gmail.com",
+                "email_verified": True,
+            }
             result = await google_auth.verify_google_token("valid.token", CLIENT_ID)
-            assert result == "google-user-456"
+            assert result == ("google-user-456", "u@gmail.com", True)
             mock_verify.assert_called_once()
 
     @pytest.mark.asyncio
