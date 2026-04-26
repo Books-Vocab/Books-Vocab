@@ -2,58 +2,61 @@ import SwiftUI
 
 /// 全域 Environment 注入點
 /// App root 注入具體實例，View 與 Handler 依賴 protocol 類型
+///
+/// 設計：MainActor-isolated services 的 EnvironmentKey defaults 改用
+/// computed `static var`，將 `MainActor.assumeIsolated { ... }` 延遲到
+/// SwiftUI 實際讀取 default 的時點（保證在 main thread）。
+/// 相較於 `nonisolated(unsafe) static let`，避免靜態初始化時序未定的隱患。
 
-// MainActor-isolated services need manual EnvironmentKey because @Entry default
-// evaluates in nonisolated context. nonisolated(unsafe) + MainActor.assumeIsolated
-// is correct here: SwiftUI always evaluates EnvironmentKey defaults on the main
-// thread, and static let ensures one-time initialization.
 private struct SubscriptionManagerEnvironmentKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: any SubscriptionManaging = MainActor.assumeIsolated {
-        SubscriptionManager.shared
+    static var defaultValue: any SubscriptionManaging {
+        MainActor.assumeIsolated { SubscriptionManager.shared }
     }
 }
 
 #if os(iOS)
 private struct ReadiumServiceEnvironmentKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: any ReadiumServing = MainActor.assumeIsolated {
-        ReadiumService.shared
+    static var defaultValue: any ReadiumServing {
+        MainActor.assumeIsolated { ReadiumService.shared }
     }
 }
 
 private struct BookshelfImportServiceEnvironmentKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: any BookshelfImporting = MainActor.assumeIsolated {
-        BookshelfImportService(readiumService: ReadiumService.shared)
+    static var defaultValue: any BookshelfImporting {
+        MainActor.assumeIsolated {
+            BookshelfImportService(readiumService: ReadiumService.shared)
+        }
     }
 }
 #endif
 
 private struct AuthManagerEnvironmentKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: any AuthManaging = MainActor.assumeIsolated {
-        AuthManager.shared
+    static var defaultValue: any AuthManaging {
+        MainActor.assumeIsolated { AuthManager.shared }
     }
 }
 
 private struct KGServiceEnvironmentKey: EnvironmentKey {
-    nonisolated(unsafe) static let defaultValue: any KGServing = MainActor.assumeIsolated {
-        KGService()
+    static var defaultValue: any KGServing {
+        MainActor.assumeIsolated { KGService() }
     }
 }
 
 private struct ICloudDownloadManagerKey: EnvironmentKey {
-    static let defaultValue = MainActor.assumeIsolated {
-        ICloudDownloadManager()
+    static var defaultValue: ICloudDownloadManager {
+        MainActor.assumeIsolated { ICloudDownloadManager() }
     }
 }
 
 private struct SyncCoordinatorKey: EnvironmentKey {
-    static let defaultValue: SyncCoordinator = MainActor.assumeIsolated {
-        SyncCoordinator()
+    static var defaultValue: SyncCoordinator {
+        MainActor.assumeIsolated { SyncCoordinator() }
     }
 }
 
 private struct AppToastCoordinatorKey: EnvironmentKey {
-    static let defaultValue: AppToastCoordinator = MainActor.assumeIsolated {
-        AppToastCoordinator()
+    static var defaultValue: AppToastCoordinator {
+        MainActor.assumeIsolated { AppToastCoordinator() }
     }
 }
 
