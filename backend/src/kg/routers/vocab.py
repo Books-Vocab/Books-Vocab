@@ -23,8 +23,10 @@ from ..api_models import (
     VocabEntry,
 )
 from ..deps import (
+    _apply_quota_headers,
     _card_response,
     _card_store,
+    _check_quota,
     _daily_stats_store,
     _embedding_store,
     _gemini_client,
@@ -51,6 +53,8 @@ from ..vocab_handlers import (
     unhide_graph_link_response,
 )
 
+NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
+
 router = APIRouter()
 
 
@@ -58,7 +62,7 @@ router = APIRouter()
 def list_vocab(
     response: Response,
     since: str | None = None,
-    notebook_id: str | None = Query(None),
+    notebook_id: str | None = Query(None, pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     from ..pipeline_service import is_pipeline_running
@@ -79,7 +83,7 @@ def list_vocab(
 @router.post("/api/vocab/batch-delete", response_model=BatchDeleteResponse)
 def batch_delete(
     req: BatchDeleteRequest,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return batch_delete_response(
@@ -94,7 +98,7 @@ def batch_delete(
 @router.patch("/api/vocab/batch-archive", response_model=BatchArchiveResponse)
 def batch_archive(
     req: BatchArchiveRequest,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return batch_archive_response(
@@ -139,7 +143,7 @@ def push_review(
 @router.get("/api/vocab/{word}", response_model=CardResponse)
 def lookup_word(
     word: str,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return lookup_word_response(
@@ -153,14 +157,14 @@ def lookup_word(
 
 
 @router.patch("/api/vocab/{word}/archive", response_model=ArchiveWordResponse)
-def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default"), user: dict = Depends(get_current_user)):
+def archive_word(word: str, req: ArchiveWordRequest, notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN), user: dict = Depends(get_current_user)):
     return archive_word_response(word, req, user, card_store_factory=_card_store, graph_store_factory=_graph_store, notebook_store_factory=_notebook_store, notebook_id=notebook_id)
 
 
 @router.delete("/api/vocab/{word}", response_model=DeleteWordResponse)
 def delete_word(
     word: str,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return delete_word_response(
@@ -173,7 +177,7 @@ def delete_word(
 
 @router.get("/api/graph/links", response_model=list[GraphLinkResponse])
 def get_graph_links(
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return get_graph_links_response(
@@ -186,7 +190,7 @@ def get_graph_links(
 @router.post("/api/graph/links", response_model=GraphLinkResponse)
 def create_graph_link(
     req: ManualLinkRequest,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     return create_manual_link_response(
@@ -200,7 +204,7 @@ def create_graph_link(
 @router.patch("/api/graph/links/{link_id}/hide", status_code=204)
 def hide_graph_link(
     link_id: str,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     hide_graph_link_response(
@@ -213,7 +217,7 @@ def hide_graph_link(
 @router.patch("/api/graph/links/{link_id}/unhide", status_code=204)
 def unhide_graph_link(
     link_id: str,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     unhide_graph_link_response(
@@ -226,7 +230,7 @@ def unhide_graph_link(
 @router.delete("/api/graph/links/{link_id}", status_code=204)
 def delete_graph_link(
     link_id: str,
-    notebook_id: str = Query("default"),
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
     delete_graph_link_response(
@@ -239,10 +243,12 @@ def delete_graph_link(
 @router.post("/api/vocab", response_model=VocabAddResponse)
 def add_vocab(
     entries: list[VocabEntry],
-    notebook_id: str = Query("default"),
+    response: Response,
+    notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
-    return add_vocab_response(
+    quota = _check_quota(user, "vocab_add", response)
+    result = add_vocab_response(
         entries, user,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
         graph_store_factory=_graph_store, gemini_client_factory=_gemini_client,
@@ -250,3 +256,5 @@ def add_vocab(
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
+    _apply_quota_headers(response, quota)
+    return result
