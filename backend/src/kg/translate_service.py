@@ -144,7 +144,7 @@ async def _run_llm_translate(
     if not response.choices:
         if logger:
             logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
-        raise ExternalServiceError("Gemini returned empty response")
+        raise ExternalServiceError(f"{operation}/empty_response")
 
     raw = response.choices[0].message.content
     parsed = _parse_json_payload(raw)

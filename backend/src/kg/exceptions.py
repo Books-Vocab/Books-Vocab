@@ -41,13 +41,30 @@ class QuotaExceededError(KGError):
 
 
 class ExternalServiceError(KGError):
-    """Wraps failures from Gemini, App Store, etc."""
+    """Wraps failures from Gemini, App Store, etc.
+
+    Public surface (`to_detail`) only exposes a stable `label`. The original
+    exception (if any) is held on `self.exc` for logger consumption only —
+    never serialized to the client, to avoid leaking provider error strings,
+    model names, API keys, or stack hints.
+    """
     status_code = 502
+
+    def __init__(self, label: str, *, exc: BaseException | None = None, headers: dict | None = None):
+        self.label = label
+        self.exc = exc
+        super().__init__(label, headers=headers)
+
+    def to_detail(self) -> dict:
+        return {"code": "EXTERNAL_SERVICE_ERROR", "label": self.label}
 
 
 class LLMParseError(ExternalServiceError):
     """LLM returned unparseable output."""
     status_code = 502
+
+    def to_detail(self) -> dict:
+        return {"code": "LLM_PARSE_ERROR", "label": self.label}
 
 
 class BadRequestError(KGError):

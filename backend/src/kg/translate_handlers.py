@@ -39,12 +39,13 @@ async def _safe_translate(
         raise
     except OpenAIError as exc:
         if logger:
-            logger.error("%s OpenAI error: %s", label, exc, exc_info=True)
-        raise ExternalServiceError(f"{label} failed: {exc}") from exc
+            logger.exception("%s OpenAI error: %s", label, exc)
+        raise ExternalServiceError(label, exc=exc) from exc
     except (ValueError, KeyError, TypeError, RuntimeError) as exc:
         if logger:
-            logger.error("%s failed: %s", label, exc, exc_info=True)
-        raise HTTPException(500, f"{label} failed: {exc}") from exc
+            logger.exception("%s failed: %s", label, exc)
+        # Do not embed inner exception text in client-visible detail.
+        raise HTTPException(500, f"{label} failed") from exc
 
 
 async def translate_quick_response(
