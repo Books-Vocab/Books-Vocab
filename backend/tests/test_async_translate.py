@@ -99,3 +99,40 @@ async def test_async_translate_quota_check_blocks_exceeded():
         with pytest.raises(QuotaExceededError) as exc_info:
             _check_quota(user, "translate_quick", None)
     assert exc_info.value.status_code == 429
+
+
+@pytest.mark.asyncio
+async def test_translate_handler_does_not_leak_openai_exc_to_client():
+    """When upstream raises, ExternalServiceError.to_detail must not embed str(exc)."""
+    from openai import OpenAIError
+
+    from kg.exceptions import ExternalServiceError
+    from kg.translate_handlers import translate_quick_response
+
+    req = TranslateRequest(word="evoke", context="context")
+    user = {"id": "u_test", "config": {}, "record": None}
+
+    secret_msg = "API key sk-leak-me-123 invalid for model gemini-internal"
+
+    def raising_factory():
+        mock_create = AsyncMock(side_effect=OpenAIError(secret_msg))
+        return SimpleNamespace(
+            chat=SimpleNamespace(completions=SimpleNamespace(create=mock_create))
+        )
+
+    logger = MagicMock()
+    with pytest.raises(ExternalServiceError) as exc_info:
+        await translate_quick_response(
+            req, user,
+            gemini_client_factory=raising_factory,
+            logger=logger,
+        )
+    # The wire-format detail must NOT contain the inner exception string
+    detail = exc_info.value.to_detail()
+    serialized = str(detail)
+    assert "sk-leak-me-123" not in serialized
+    assert "gemini-internal" not in serialized
+    assert detail.get("label") == "translate/quick"
+    assert detail.get("code") == "EXTERNAL_SERVICE_ERROR"
+    # But the logger must have captured the full context for ops
+    assert logger.exception.called or logger.error.called
