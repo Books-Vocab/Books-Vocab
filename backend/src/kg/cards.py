@@ -41,6 +41,9 @@ class Card(SQLModel, table=True):
     is_deleted: bool = SQLField(default=False)
     is_archived: bool = SQLField(default=False)
     source: str | None = SQLField(default=None)  # JSON string
+    # NFC-normalized lowercased content for fast indexed case/Unicode-insensitive lookup.
+    # Populated on add/update; backfilled on schema migration.
+    content_nfc_lower: str = SQLField(default="", index=True)
 
     # Spaced-review state (synced from client)
     review_interval_hours: float = SQLField(default=12.0)
@@ -71,6 +74,7 @@ class CardStore:
             conn.exec_driver_sql("PRAGMA busy_timeout=30000;")
         Card.metadata.create_all(self.engine, tables=[Card.__table__], checkfirst=True)
         self._migrate_review_columns()
+        self._migrate_content_nfc_lower()
         with self.engine.connect() as conn:
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_updated_at ON card (updated_at)"
@@ -80,6 +84,10 @@ class CardStore:
             )
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_content_nocase ON card (content COLLATE NOCASE)"
+            )
+            conn.exec_driver_sql(
+                "CREATE INDEX IF NOT EXISTS ix_card_content_nfc_lower "
+                "ON card (content_nfc_lower)"
             )
             conn.exec_driver_sql(
                 "CREATE INDEX IF NOT EXISTS ix_card_notebook_id ON card (notebook_id)"
@@ -122,6 +130,32 @@ class CardStore:
                             raise
             conn.commit()
 
+    def _migrate_content_nfc_lower(self) -> None:
+        """Add and backfill `content_nfc_lower` for legacy DBs."""
+        with self.engine.connect() as conn:
+            cols = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(card)")}
+            if "content_nfc_lower" not in cols:
+                try:
+                    conn.exec_driver_sql(
+                        "ALTER TABLE card ADD COLUMN content_nfc_lower TEXT DEFAULT ''"
+                    )
+                except OperationalError as exc:
+                    if "duplicate column" not in str(exc).lower():
+                        logger.error("Migration failed for content_nfc_lower: %s", exc)
+                        raise
+            # Backfill any rows where the column is empty/null but content isn't.
+            rows = conn.exec_driver_sql(
+                "SELECT id, content FROM card "
+                "WHERE content_nfc_lower IS NULL OR content_nfc_lower = ''"
+            ).fetchall()
+            for card_id, content in rows:
+                if content:
+                    conn.exec_driver_sql(
+                        "UPDATE card SET content_nfc_lower = ? WHERE id = ?",
+                        (normalize_nfc_lower(content), card_id),
+                    )
+            conn.commit()
+
     def add(
         self,
         content: str,
@@ -155,6 +189,7 @@ class CardStore:
 
             card = Card(
                 content=content,
+                content_nfc_lower=normalize_nfc_lower(content),
                 meaning=meaning,
                 pos=pos,
                 examples=examples or [],
@@ -244,42 +279,20 @@ class CardStore:
             return session.get(Card, card_id)
 
     def find_by_content(self, content: str, notebook_id: str | None = None) -> Card | None:
-        """Case-insensitive lookup with Unicode NFC normalization.
+        """Indexed case- and Unicode-insensitive lookup via `content_nfc_lower`.
 
-        1. Exact match (uses ix_card_content index)
-        2. Case-insensitive via raw SQL COLLATE NOCASE
-        3. Fallback: Python-side NFC normalization for decomposed Unicode
-
-        When notebook_id is given, results are scoped to that notebook.
+        A single query against `ix_card_content_nfc_lower`; subsumes both
+        case-insensitive and decomposed-Unicode (e.g. café) matching.
         """
-        norm = normalize_nfc(content)
+        key = normalize_nfc_lower(content)
         with Session(self.engine) as session:
-            # 1. Exact match — uses index
-            stmt = select(Card).where(Card.content == norm, Card.is_deleted.is_(False))
+            stmt = select(Card).where(
+                Card.content_nfc_lower == key,
+                Card.is_deleted.is_(False),
+            )
             if notebook_id is not None:
                 stmt = stmt.where(Card.notebook_id == notebook_id)
-            result = session.exec(stmt).first()
-            if result:
-                return result
-            # 2. Case-insensitive via raw SQL
-            conn = session.connection()
-            nb_clause = " AND notebook_id = ?" if notebook_id is not None else ""
-            params = (norm, notebook_id) if notebook_id is not None else (norm,)
-            row = conn.exec_driver_sql(
-                f"SELECT id FROM card WHERE content = ? COLLATE NOCASE AND is_deleted = 0{nb_clause} LIMIT 1",
-                params,
-            ).first()
-            if row:
-                return session.get(Card, row[0])
-            # 3. NFC normalization fallback (handles decomposed Unicode like café)
-            fallback_stmt = select(Card).where(Card.is_deleted.is_(False))
-            if notebook_id is not None:
-                fallback_stmt = fallback_stmt.where(Card.notebook_id == notebook_id)
-            norm_lower = norm.lower()
-            for card in session.exec(fallback_stmt).all():
-                if normalize_nfc_lower(card.content) == norm_lower:
-                    return card
-            return None
+            return session.exec(stmt).first()
 
     def all(self, include_deleted: bool = False, notebook_id: str | None = None) -> Iterator[Card]:
         with Session(self.engine) as session:
@@ -420,6 +433,8 @@ class CardStore:
                     if hasattr(card, key) and getattr(card, key) != value:
                         setattr(card, key, value)
                         has_changes = True
+                if "content" in kwargs:
+                    card.content_nfc_lower = normalize_nfc_lower(card.content)
 
                 if has_changes:
                     card.updated_at = datetime.now(UTC)
