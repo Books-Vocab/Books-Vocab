@@ -121,7 +121,7 @@ def test_google_callback_with_matching_state_proceeds(web_auth_env):
         return fake_token_resp
 
     async def fake_verify(token, client_id):
-        return "google-user-123"
+        return "google-user-123", "test@example.com", True
 
     with patch("httpx.AsyncClient.post", new=fake_post), \
          patch("kg.routers.web_auth.verify_google_token", new=fake_verify):
