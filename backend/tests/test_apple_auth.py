@@ -63,14 +63,18 @@ class TestVerifyAppleToken:
             patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
         ):
             mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
-            mock_jwt.decode.return_value = {"sub": "apple-user-123"}
+            mock_jwt.decode.return_value = {
+                "sub": "apple-user-123",
+                "email": "User@Example.com",
+                "email_verified": "true",
+            }
             mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
             mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
             mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
             mock_jwt.PyJWTError = real_jwt.PyJWTError
 
             result = apple_auth.verify_apple_token("fake.token.here", AUDIENCE)
-            assert result == "apple-user-123"
+            assert result == ("apple-user-123", "user@example.com", True)
             mock_jwt.decode.assert_called_once()
 
     def test_jwks_cache_hit_no_refetch(self):
@@ -95,7 +99,8 @@ class TestVerifyAppleToken:
             mock_rsa.return_value.public_key.return_value = mock_key
 
             result = apple_auth.verify_apple_token("cached.token", AUDIENCE)
-            assert result == "user-cached"
+            # Apple may omit email on subsequent sign-ins.
+            assert result == ("user-cached", None, False)
             mock_client_cls.assert_not_called()
 
     def test_kid_not_in_cache_triggers_refetch(self):
@@ -116,7 +121,7 @@ class TestVerifyAppleToken:
             mock_jwt.PyJWTError = real_jwt.PyJWTError
 
             result = apple_auth.verify_apple_token("refetch.token", AUDIENCE)
-            assert result == "user-refetched"
+            assert result == ("user-refetched", None, False)
             # _get_rsa_public_key was called (which would internally refetch)
             mock_get_key.assert_called_once_with(FAKE_KID)
 
