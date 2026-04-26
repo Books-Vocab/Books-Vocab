@@ -34,7 +34,7 @@ struct NotebookListView: View {
 
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
-    @State private var activeNotebookId: String = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+    @AppStorage("activeNotebookId") private var activeNotebookId: String = "default"
     @State private var reviewFilter = NotebookFilter.load()
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
@@ -378,7 +378,6 @@ struct NotebookListView: View {
 
     private func setActiveNotebook(_ id: String) {
         activeNotebookId = id
-        UserDefaults.standard.set(id, forKey: "activeNotebookId")
     }
 }
 
