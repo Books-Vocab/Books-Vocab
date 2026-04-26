@@ -26,7 +26,7 @@ final class NetworkMonitor: @unchecked Sendable {
         monitor.pathUpdateHandler = { [weak self] path in
             let connected = path.status == .satisfied
             let interface = path.availableInterfaces.first?.type
-            DispatchQueue.main.async {
+            Task { @MainActor in
                 self?.isConnected = connected
                 self?.interfaceType = interface
             }

@@ -206,7 +206,8 @@ struct TodayReviewView: View {
         }
         .onAppear {
             guard !hasShownShortcutHint else { return }
-            DispatchQueue.main.asyncAfter(deadline: .now() + 3) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(3 * 1_000_000_000))
                 hasConsumedShortcutHint = true
                 hasShownShortcutHint = true
             }
