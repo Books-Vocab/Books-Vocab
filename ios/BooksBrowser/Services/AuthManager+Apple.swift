@@ -107,10 +107,13 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
             return window
         }
 
-        guard let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene else {
-            preconditionFailure("No UIWindowScene available for ASAuthorizationController")
+        // Fail-soft: if no UIWindowScene is available (e.g. background/extension context),
+        // return a detached UIWindow so the auth flow surfaces an error rather than crashing.
+        if let scene = UIApplication.shared.connectedScenes.first as? UIWindowScene {
+            return UIWindow(windowScene: scene)
         }
-        return UIWindow(windowScene: scene)
+        AppLog.auth.error("No UIWindowScene available for ASAuthorizationController — returning detached UIWindow")
+        return UIWindow(frame: .zero)
         #elseif os(macOS)
         return NSApplication.shared.keyWindow ?? NSWindow()
         #endif
