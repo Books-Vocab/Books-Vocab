@@ -82,12 +82,15 @@ async def google_callback(request: Request, code: str | None = None, error: str 
         raise HTTPException(status_code=401, detail="No id_token in Google response")
 
     # Verify id_token and resolve user (reuse existing infra)
-    provider_user_id = await verify_google_token(id_token_str, settings.google_client_id)
+    provider_user_id, token_email, email_verified = await verify_google_token(
+        id_token_str, settings.google_client_id
+    )
 
     load_users_fn = request.app.state.load_users
     save_users_fn = request.app.state.save_users
     canonical_user_id = _resolve_and_link_user(
-        provider_user_id, "google", email=None,
+        provider_user_id, "google",
+        email=token_email if email_verified else None,
         settings=settings, load_users_fn=load_users_fn, save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "google", settings=settings)
@@ -111,12 +114,15 @@ async def apple_callback(
     settings = request.app.state.kg_settings
 
     # Verify Apple id_token (reuse existing infra)
-    provider_user_id = verify_apple_token(id_token, settings.apple_bundle_id)
+    provider_user_id, token_email, email_verified = verify_apple_token(
+        id_token, settings.apple_bundle_id
+    )
 
     load_users_fn = request.app.state.load_users
     save_users_fn = request.app.state.save_users
     canonical_user_id = _resolve_and_link_user(
-        provider_user_id, "apple", email=None,
+        provider_user_id, "apple",
+        email=token_email if email_verified else None,
         settings=settings, load_users_fn=load_users_fn, save_users_fn=save_users_fn,
     )
     jwt_token = _create_jwt_token(canonical_user_id, "apple", settings=settings)

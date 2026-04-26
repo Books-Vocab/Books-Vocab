@@ -216,7 +216,11 @@ class ExplainResponse(BaseModel):
 class AuthVerifyRequest(BaseModel):
     provider: Literal["apple", "google"]
     token: str = Field(max_length=10000)
-    email: str | None = None  # Optional: email from provider
+    # NOTE: client-supplied `email` field is intentionally accepted-and-ignored
+    # (Pydantic drops unknown fields by default). Server trusts ONLY the
+    # provider-token-derived email for account linkage; see C1 takeover
+    # regression in tests/test_auth_takeover.py.
+    email: str | None = None
 
 
 class AuthVerifyResponse(BaseModel):
