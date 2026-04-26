@@ -462,3 +462,98 @@ class TestSoftDeleteByNotebook:
         assert count == 0
 
 
+class TestFindByContent:
+    def test_exact_match(self, store):
+        c = store.add(content="ephemeral", meaning="brief")
+        found = store.find_by_content("ephemeral")
+        assert found is not None and found.id == c.id
+
+    def test_case_insensitive(self, store):
+        c = store.add(content="Ephemeral", meaning="brief")
+        found = store.find_by_content("EPHEMERAL")
+        assert found is not None and found.id == c.id
+
+    def test_decomposed_unicode_matches_composed(self, store):
+        # composed form café (U+00E9)
+        c = store.add(content="café", meaning="咖啡館")
+        # decomposed form: cafe + U+0301 combining acute
+        decomposed = "café"
+        found = store.find_by_content(decomposed)
+        assert found is not None and found.id == c.id
+
+    def test_composed_query_finds_decomposed_storage(self, tmp_path):
+        # Reverse: stored decomposed, queried composed
+        store = CardStore(tmp_path / "cards.db")
+        c = store.add(content="café", meaning="咖啡館")
+        found = store.find_by_content("café")
+        assert found is not None and found.id == c.id
+
+    def test_excludes_deleted(self, store):
+        c = store.add(content="ephemeral", meaning="brief")
+        store.delete(c.id)
+        assert store.find_by_content("ephemeral") is None
+
+    def test_notebook_scope(self, store):
+        store.add(content="apple", meaning="蘋果", notebook_id="nb1")
+        c2 = store.add(content="apple", meaning="蘋果", notebook_id="nb2")
+        found = store.find_by_content("apple", notebook_id="nb2")
+        assert found is not None and found.id == c2.id
+
+    def test_not_found_returns_none(self, store):
+        assert store.find_by_content("missing") is None
+
+    def test_perf_with_large_dataset(self, tmp_path):
+        """find_by_content must use index, not scan whole table."""
+        import time
+        from sqlmodel import Session
+        from kg.text_utils import normalize_nfc_lower
+        store = CardStore(tmp_path / "cards_perf.db")
+        # Bulk insert 5000 cards via ORM in a single transaction
+        with Session(store.engine) as session:
+            for i in range(5000):
+                content = f"word{i:05d}"
+                session.add(Card(
+                    content=content,
+                    content_nfc_lower=normalize_nfc_lower(content),
+                    meaning="m",
+                ))
+            session.commit()
+        # Add a decomposed-unicode card to force a path that previously fell
+        # through to the full-scan fallback
+        store.add(content="café", meaning="咖啡館")
+
+        # Lookup with decomposed form — old code path scanned all 5001 rows
+        start = time.perf_counter()
+        for _ in range(50):
+            found = store.find_by_content("café")
+            assert found is not None
+        elapsed = time.perf_counter() - start
+        # 50 lookups should be well under 50ms total with an index
+        assert elapsed < 0.05, f"find_by_content too slow: {elapsed:.3f}s for 50 lookups"
+
+
+class TestNfcLowerMigration:
+    def test_backfill_populates_existing_rows(self, tmp_path):
+        """Pre-migration rows (NULL/empty content_nfc_lower) get backfilled on open."""
+        db_path = tmp_path / "legacy.db"
+        store = CardStore(db_path)
+        store.add(content="Café", meaning="咖啡館")
+        store.add(content="HELLO", meaning="哈囉")
+        # Simulate legacy rows: clear the column
+        with store.engine.connect() as conn:
+            conn.exec_driver_sql("UPDATE card SET content_nfc_lower = ''")
+            conn.commit()
+        store.close()
+
+        # Re-open: migration should backfill
+        store2 = CardStore(db_path)
+        with store2.engine.connect() as conn:
+            rows = dict(conn.exec_driver_sql(
+                "SELECT content, content_nfc_lower FROM card"
+            ).fetchall())
+        assert rows["Café"] == "café"
+        assert rows["HELLO"] == "hello"
+        # And lookups work
+        assert store2.find_by_content("CAFÉ") is not None
+        assert store2.find_by_content("hello") is not None
+
