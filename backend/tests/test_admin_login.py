@@ -105,8 +105,14 @@ def test_login_correct_password_redirects(admin_app):
     assert resp.status_code == 302
     assert resp.headers["location"] == "/admin"
     cookie_header = resp.headers.get("set-cookie", "")
-    expected = _sign_cookie(ADMIN_TOKEN)
-    assert f"admin_session={expected}" in cookie_header
+    # Cookie value is now an expiry-bound token (expires_at.nonce.sig);
+    # extract and verify it round-trips through _verify_cookie.
+    import re
+
+    from kg.admin_handlers import _verify_cookie
+    m = re.search(r"admin_session=([^;]+)", cookie_header)
+    assert m is not None
+    assert _verify_cookie(m.group(1), ADMIN_TOKEN)
 
 
 # ── 3. POST /admin/login wrong password → login page + error ──────────────
