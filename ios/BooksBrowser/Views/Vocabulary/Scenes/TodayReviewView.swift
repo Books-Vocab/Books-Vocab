@@ -65,6 +65,7 @@ struct TodayReviewView: View {
     @State private var explainSheetItem: CollocationExplainItem? = nil
     @State private var hasConsumedShortcutHint = false
     @AppStorage("kg_mac_review_shortcut_hint_shown") private var hasShownShortcutHint = false
+    @State private var shortcutHintTask: Task<Void, Never>?
 
     private let allEntries: [VocabularyEntry]
     let onClose: () -> Void
@@ -206,11 +207,17 @@ struct TodayReviewView: View {
         }
         .onAppear {
             guard !hasShownShortcutHint else { return }
-            Task { @MainActor in
+            shortcutHintTask?.cancel()
+            shortcutHintTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: UInt64(3 * 1_000_000_000))
+                guard !Task.isCancelled else { return }
                 hasConsumedShortcutHint = true
                 hasShownShortcutHint = true
             }
+        }
+        .onDisappear {
+            shortcutHintTask?.cancel()
+            shortcutHintTask = nil
         }
         #endif
     }
