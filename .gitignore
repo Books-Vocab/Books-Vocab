@@ -26,8 +26,14 @@ certs/
 *.xcodeproj/xcuserdata/
 
 # Runtime data
+backend/data/users/
 backend/data/*.db
 *.npy
+
+# Stray backend artifacts (root-level only; tests/ unaffected)
+backend/*.png
+backend/test_api.py
+backend/test_option_b.py
 
 # Python venv
 .venv/
