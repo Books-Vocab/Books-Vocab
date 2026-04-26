@@ -31,16 +31,43 @@ def _close_store(store: object) -> None:
 
 
 def _get_cached(key: str, factory):
+    """Cache-or-build with double-checked locking.
+
+    Builds (factory()) run *outside* `_STORE_CACHE_LOCK` so slow store init
+    (SQLite engine open + PRAGMAs + .npy load) doesn't serialise unrelated
+    cache lookups. If two callers race on the same missing key, both build
+    their own instance; the second arrival discards its build and returns
+    the already-cached one — duplicate close is harmless.
+    """
+    # Fast path: existing entry.
     with _STORE_CACHE_LOCK:
         if key in _STORE_CACHE:
             _STORE_CACHE.move_to_end(key)
             return _STORE_CACHE[key]
-        instance = factory()
-        _STORE_CACHE[key] = instance
+
+    # Build outside the lock.
+    instance = factory()
+
+    # Insert + evict under the lock; drop our build if another thread won.
+    with _STORE_CACHE_LOCK:
+        existing = _STORE_CACHE.get(key)
+        if existing is not None:
+            _STORE_CACHE.move_to_end(key)
+            evicted_self = instance
+            instance = existing
+        else:
+            _STORE_CACHE[key] = instance
+            evicted_self = None
+        evicted: list[object] = []
         while len(_STORE_CACHE) > _STORE_CACHE_MAX:
-            _, evicted = _STORE_CACHE.popitem(last=False)
-            _close_store(evicted)
-        return instance
+            _, victim = _STORE_CACHE.popitem(last=False)
+            evicted.append(victim)
+
+    if evicted_self is not None:
+        _close_store(evicted_self)
+    for victim in evicted:
+        _close_store(victim)
+    return instance
 
 
 def evict_notebook_cache(user_dir: Path, notebook_id: str) -> None:
