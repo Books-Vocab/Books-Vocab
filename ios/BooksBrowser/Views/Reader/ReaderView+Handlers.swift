@@ -40,7 +40,8 @@ extension ReaderView {
             readerState.underlineProgress = progress
         }
         if progress >= 1.0 {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.4) {
+            Task { @MainActor in
+                try? await Task.sleep(nanoseconds: UInt64(0.4 * 1_000_000_000))
                 withAnimation(AppMotion.contentFade) {
                     readerState.underlineProgress = nil
                 }
