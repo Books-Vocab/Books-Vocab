@@ -109,35 +109,27 @@ enum CardRichTextRenderer {
     //
     // 避免每次 SwiftUI body 求值都重跑 regex 截斷。
     // 同一 (markdown, radius, targetWord) 組合的結果不變，可安全快取。
-    // 只在 MainActor (SwiftUI body) 呼叫，無需同步保護。
+    // 使用 NSCache 取得 thread-safe 行為（SwiftUI 雖通常在 main 求值，
+    // 但 AttributedString 也可能在背景組裝；NSCache 內建鎖避免 race）。
 
-    private struct TruncationCacheKey: Hashable {
-        let raw: String
-        let radius: Int
-        let targetWord: String?
-    }
-
-    nonisolated(unsafe) private static var truncationCache: [TruncationCacheKey: String] = [:]
-    private static let cacheCapacity = 256
+    private static let truncationCache: NSCache<NSString, NSString> = {
+        let cache = NSCache<NSString, NSString>()
+        cache.countLimit = 256
+        return cache
+    }()
 
     static func clearTruncationCache() {
-        truncationCache.removeAll(keepingCapacity: false)
+        truncationCache.removeAllObjects()
     }
 
     private static func cachedTruncate(_ raw: String, radius: Int, targetWord: String?) -> String {
-        let key = TruncationCacheKey(raw: raw, radius: radius, targetWord: targetWord)
-        if let cached = truncationCache[key] {
-            return cached
-        }
-        if truncationCache.count >= cacheCapacity {
-            // Evict half instead of all to avoid cliff-edge cache miss storm
-            let keysToRemove = Array(truncationCache.keys.prefix(cacheCapacity / 2))
-            for key in keysToRemove {
-                truncationCache.removeValue(forKey: key)
-            }
+        // 組合單一 NSString key：用 \u{1F} (Unit Separator) 當分隔符，避免 raw 內容衝突
+        let keyString = "\(raw)\u{1F}\(radius)\u{1F}\(targetWord ?? "")" as NSString
+        if let cached = truncationCache.object(forKey: keyString) {
+            return cached as String
         }
         let result = truncateAroundMarkedWord(raw, radiusWords: radius, targetWordFallback: targetWord)
-        truncationCache[key] = result
+        truncationCache.setObject(result as NSString, forKey: keyString)
         return result
     }
 
