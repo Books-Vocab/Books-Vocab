@@ -112,8 +112,14 @@ def test_admin_ui_response_sets_signed_cookie():
         admin_html="<h1>Admin</h1>",
     )
     cookie_header = resp.headers.get("set-cookie", "")
-    expected_value = _sign_cookie("secret")
-    assert f"admin_session={expected_value}" in cookie_header
+    # Cookie value uses expiry-bound payload + signature; verify structure
+    # by extracting the value and confirming require_admin accepts it.
+    import re
+    m = re.search(r"admin_session=([^;]+)", cookie_header)
+    assert m is not None
+    cookie_value = m.group(1)
+    assert cookie_value.count(".") == 2
+    require_admin(None, admin_token="secret", authorization=None, cookie_token=cookie_value)
     assert "httponly" in cookie_header.lower()
     assert "secure" in cookie_header.lower()
     assert "samesite=lax" in cookie_header.lower()
@@ -139,3 +145,74 @@ def test_admin_tests_ui_response_sets_cookie():
     )
     cookie_header = resp.headers.get("set-cookie", "")
     assert "admin_session=" in cookie_header
+
+
+# ── expiry-bound cookie binding (C5) ──────────────────────────────────────────
+
+
+def test_sign_cookie_includes_expiry_and_nonce():
+    """Cookie value must encode expires_at + nonce + signature, not a fixed HMAC."""
+    a = _sign_cookie("secret")
+    b = _sign_cookie("secret")
+    # Two consecutive signs should differ (nonce randomness).
+    assert a != b
+    # Expected shape: "<expires_at>.<nonce_hex>.<sig_hex>".
+    assert a.count(".") == 2
+    expires_at, nonce, sig = a.split(".")
+    assert expires_at.isdigit()
+    assert len(nonce) == 32  # 16 bytes hex
+    assert len(sig) == 64  # sha256 hex
+
+
+def test_expired_cookie_rejected():
+    import time
+
+    from kg.admin_handlers import _build_cookie_value
+
+    expired_at = int(time.time()) - 10
+    expired = _build_cookie_value("secret", expires_at=expired_at)
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(None, admin_token="secret", authorization=None, cookie_token=expired)
+    assert exc_info.value.status_code == 403
+
+
+def test_tampered_payload_rejected():
+    """Modifying expires_at must invalidate the signature."""
+    signed = _sign_cookie("secret")
+    expires_at, nonce, sig = signed.split(".")
+    # Bump expires_at far into the future without re-signing.
+    tampered = f"{int(expires_at) + 10**9}.{nonce}.{sig}"
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(None, admin_token="secret", authorization=None, cookie_token=tampered)
+    assert exc_info.value.status_code == 403
+
+
+def test_tampered_signature_rejected():
+    signed = _sign_cookie("secret")
+    expires_at, nonce, _sig = signed.split(".")
+    bad_sig = "0" * 64
+    tampered = f"{expires_at}.{nonce}.{bad_sig}"
+    with pytest.raises(HTTPException) as exc_info:
+        require_admin(None, admin_token="secret", authorization=None, cookie_token=tampered)
+    assert exc_info.value.status_code == 403
+
+
+def test_malformed_cookie_rejected():
+    with pytest.raises(HTTPException):
+        require_admin(None, admin_token="secret", authorization=None, cookie_token="garbage")
+    with pytest.raises(HTTPException):
+        require_admin(None, admin_token="secret", authorization=None, cookie_token="a.b")
+
+
+def test_default_ttl_is_seven_days():
+    from kg.admin_handlers import ADMIN_COOKIE_TTL_SECONDS
+
+    assert ADMIN_COOKIE_TTL_SECONDS == 7 * 24 * 60 * 60
+
+
+def test_set_admin_cookie_uses_seven_day_max_age():
+    from kg.admin_handlers import admin_ui_response
+
+    resp = admin_ui_response(admin_token="secret", admin_html="<h1>Admin</h1>")
+    cookie_header = resp.headers.get("set-cookie", "")
+    assert f"max-age={7 * 24 * 60 * 60}" in cookie_header.lower()
