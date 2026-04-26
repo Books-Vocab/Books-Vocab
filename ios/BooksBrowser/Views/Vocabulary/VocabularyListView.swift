@@ -77,10 +77,8 @@ struct VocabularyListView: View {
                 debouncedSearchText = ""
                 return
             }
-            do {
-                try await Task.sleep(for: .milliseconds(300))
-                debouncedSearchText = searchText
-            } catch {}
+            try? await Task.sleep(for: .milliseconds(300))
+            debouncedSearchText = searchText
         }
         .onChange(of: coordinator.selectedEntry) { _, entry in
             if let entry, let detailRouter {
