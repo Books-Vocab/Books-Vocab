@@ -14,15 +14,12 @@ _session = _requests.Session()
 _session.timeout = 10
 
 
-async def verify_google_token(token: str, client_id: str) -> str:
-    """Validate Google ID Token and return the user ID (sub).
+async def verify_google_token(token: str, client_id: str) -> tuple[str, str | None, bool]:
+    """Validate Google ID Token and return ``(sub, email, email_verified)``.
 
-    Args:
-        token: The ID token from Google Sign-In
-        client_id: Your Google OAuth 2.0 Client ID (from Google Cloud Console)
-
-    Returns:
-        The Google User ID (sub) string.
+    Returns the token-derived email and verification flag so callers can
+    safely link accounts by email (only when verified). Client-supplied
+    emails MUST NOT be trusted — see C1 account-takeover regression.
     """
     try:
         # Verify the token using Google's official validation
@@ -34,7 +31,11 @@ async def verify_google_token(token: str, client_id: str) -> str:
         if not sub:
             raise HTTPException(status_code=401, detail="Token missing subject (sub)")
 
-        return str(sub)
+        email_raw = idinfo.get("email")
+        email = str(email_raw).strip().lower() if email_raw else None
+        email_verified = bool(idinfo.get("email_verified", False))
+
+        return str(sub), email, email_verified
 
     except ValueError as e:
         # Invalid token signature or claims
