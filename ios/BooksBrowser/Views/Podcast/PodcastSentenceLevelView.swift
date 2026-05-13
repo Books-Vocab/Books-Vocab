@@ -258,7 +258,7 @@ struct PodcastSentenceLevelView: View {
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.primaryText)
                 Image(systemName: "arrow.down")
-                    .font(.caption2)
+                    .font(skin.typography.iconTiny)
                     .foregroundStyle(skin.palette.secondaryText)
             }
             .padding(.horizontal, 14)
