@@ -114,9 +114,10 @@ struct LoginSheet: View {
             if isGoogle {
                 Text("G")
                     .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(AppBrandColors.googleRed)
+                    .foregroundStyle(vocabSkin.palette.primaryText)
                     .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
                     .background(Circle().fill(vocabSkin.palette.cardBackground))
+                    .overlay(Circle().stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
             } else if let systemImage {
                 Image(systemName: systemImage)
                     .font(vocabSkin.typography.iconTiny)

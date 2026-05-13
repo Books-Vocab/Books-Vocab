@@ -196,7 +196,7 @@ struct PodcastPlayerView: View {
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
                 Button("重試") { reloadEpisode() }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(.appCompactAction(.primary))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
 
