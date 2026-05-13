@@ -2,7 +2,7 @@
 tier: snapshot
 scope:
   - ios/BooksBrowser
-verified_against: 94eb395
+verified_against: c16321f
 -->
 
 # iOS Frontend Baseline
@@ -15,18 +15,18 @@ verified_against: 94eb395
 
 | 行數 | 路徑 |
 |------|------|
-| 660 | `Views/Bookshelf/BookshelfView.swift` |
-| 645 | `Views/Vocabulary/Skin/VocabSkin.swift` |
+| 666 | `Views/Vocabulary/Skin/VocabSkin.swift` |
+| 663 | `Views/Bookshelf/BookshelfView.swift` |
 | 602 | `Views/Reader/ReadiumNavigatorJS.swift` |
 | 514 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
 | 492 | `Views/Vocabulary/Components/CardDocumentView.swift` |
 | 491 | `Services/EPUBConverter.swift` |
 | 489 | `Services/PodcastAudioEngine.swift` |
 | 489 | `Services/KGService.swift` |
+| 471 | `Models/AppMetrics.swift` |
 | 442 | `Services/DemoDataProvider.swift` |
-| 420 | `Views/Vocabulary/Scenes/TodayReviewView.swift` |
 
-總 Swift 行數: 39449 / 256 檔案
+總 Swift 行數: 40170 / 260 檔案
 
 ---
 
@@ -34,8 +34,8 @@ verified_against: 94eb395
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 174 |
-| 含 #Preview 的檔案數 | 40 |
+| Views/ + UIComponents/ 檔案總數 | 177 |
+| 含 #Preview 的檔案數 | 43 |
 
 ---
 

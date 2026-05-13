@@ -2,7 +2,7 @@
 tier: reference
 scope:
   - ios/BooksBrowser
-verified_against: 4eaa92b
+verified_against: c16321f
 -->
 # UI State Matrix
 
@@ -198,6 +198,8 @@ Scope: `ios/BooksBrowser`
   Reader / Vocabulary / Settings 已開始收斂到 `AppStateMessage*` / `VocabStateMessageCard`
 - Big status hero：
   Vocabulary sync / graph 已有清楚的大狀態模式
+- Offline state：
+  `AppOfflineBanner` modifier 已掛在 `ContentView` 根層，連線中斷時自動覆蓋 destructive tint capsule（已知 light mode 對比未達 WCAG AA，待 polish）
 
 ### 仍然不一致的
 
@@ -209,6 +211,8 @@ Scope: `ios/BooksBrowser`
   某些成功狀態沒有顯示，只有資料靜默刷新
 - Empty state policy：
   部分畫面是顯式 empty state，部分畫面是 `EmptyView()`
+- Skeleton 載入：
+  `AppSkeletonLine` / `AppSkeletonCard` primitive 已備齊但目前 0 callsites，多數 loading 仍用 state message card
 
 ---
 
