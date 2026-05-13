@@ -15,6 +15,7 @@ import SwiftUI
 
 struct AppCompactActionButtonStyle: ButtonStyle {
     @Environment(\.appTheme) private var appTheme
+    @Environment(\.colorScheme) private var colorScheme
     let tone: AppActionTone
 
     func makeBody(configuration: Configuration) -> some View {
@@ -39,7 +40,13 @@ struct AppCompactActionButtonStyle: ButtonStyle {
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            return (.white, appTheme.palette.accentHero, appTheme.palette.accentHero)
+            // brandHeroDark (light fg in dark mode) 配 white text 對比 ~4.02:1，WCAG AA fail。
+            // 改用 brandHeroLight (深 indigo) 作 button bg —— 配 white text 對比 ~6.98:1 ✓ AA pass。
+            // light mode 仍走 palette.accentHero（= brandHeroLight）。
+            let bg = colorScheme == .dark
+                ? AppColors.brandHeroLight
+                : appTheme.palette.accentHero
+            return (.white, bg, bg)
         case .neutral:
             return (
                 appTheme.palette.primaryText,
