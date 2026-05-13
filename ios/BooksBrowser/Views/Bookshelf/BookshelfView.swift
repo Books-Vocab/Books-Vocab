@@ -313,6 +313,8 @@ struct BookCard: View {
                 Text(book.title)
                     .font(AppFonts.caption(weight: .medium))
                     .lineLimit(2)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.leading)
                     .foregroundStyle(appTheme.palette.primaryText)
 
@@ -320,6 +322,8 @@ struct BookCard: View {
                     .font(AppFonts.caption2())
                     .foregroundStyle(appTheme.palette.tertiaryText)
                     .lineLimit(1)
+                    .truncationMode(.tail)
+                    .minimumScaleFactor(0.85)
 
                 if let dateLastRead = book.dateLastRead {
                     Text(dateLastRead.relativeShort)
