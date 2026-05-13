@@ -1,3 +1,28 @@
+"""Podcast read API.
+
+Authorization model: **public-read for any authenticated user**. Podcasts are
+shared editorial content (curated audio + transcripts shipped by ops via
+``ops/podcast_upload.sh``); they are not per-user content and have no owner.
+Every endpoint here therefore only checks ``Depends(get_current_user)`` —
+authentication, not authorization — and serves the same payload to all callers.
+
+Hardening already in place:
+
+* ``series_id`` is constrained to ``^[a-z0-9_]+$`` via ``_SERIES_ID_RE`` so
+  path traversal (``../etc``), uppercase, dots, slashes are all rejected with
+  a 404 before any filesystem access.
+* ``ep_num`` is a FastAPI ``Path()`` parameter with ``ge=1, le=_MAX_EPISODE_NUM``
+  so non-integer / out-of-range values are rejected at the framework boundary
+  with a 422.
+* Corrupt JSON is logged and returned as a clean 500 instead of leaking a
+  ``JSONDecodeError`` traceback.
+
+If a future product decision turns podcasts into per-user content, the right
+move is to add an ``owner_id`` field to ``metadata.json`` and compare it to
+``user["id"]`` here — **not** to remove ``get_current_user`` and rely on the
+StaticFiles ``/api/podcast-media/`` mount being private (it is not).
+"""
+
 import json
 import logging
 import re
