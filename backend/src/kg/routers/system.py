@@ -4,8 +4,10 @@ from __future__ import annotations
 import time
 from pathlib import Path
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Depends
 from pydantic import BaseModel
+
+from ..deps import get_admin_user
 
 VERSION_FILE = Path("/app/VERSION")
 
@@ -42,3 +44,12 @@ def system_info() -> SystemInfoResponse:
         uptime_seconds=uptime_seconds,
         migration_version=migration_version,
     )
+
+
+@router.get("/api/system/sentry-test", include_in_schema=False)
+def sentry_test(_admin=Depends(get_admin_user)) -> dict:
+    """Trigger a deliberate exception so Sentry capture can be verified end-to-end.
+
+    Admin-only. Remove once integration is confirmed working (see Tier-1 followups).
+    """
+    raise RuntimeError("Sentry verification: deliberate test exception from /api/system/sentry-test")

@@ -157,6 +157,12 @@ from .routers.vocab import (  # noqa: F401
 
 load_dotenv()
 
+# Initialize Sentry early so module-level errors and the lifespan are captured.
+# No-op when SENTRY_DSN is unset.
+from .sentry_init import init_sentry  # noqa: E402
+
+init_sentry()
+
 
 def create_app(settings: KGSettings | None = None) -> FastAPI:
     atexit.register(clear_store_cache)
