@@ -2,7 +2,7 @@
 tier: structural
 scope:
   - ios/BooksBrowser
-verified_against: 05acfbf
+verified_against: 4061750
 -->
 # BooksBrowser UI Design System
 
