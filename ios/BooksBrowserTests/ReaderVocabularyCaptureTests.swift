@@ -136,6 +136,8 @@ struct ReaderVocabularyCaptureTests {
         #expect(saved.bookId == bookIdFromCapture, "bookId must be wired to the capture's source book")
         #expect(saved.context == "this is fresh context")
         #expect(saved.syncAction == .add)
+        #expect(saved.chapterTitle == nil,
+                "currentLocator: nil must round-trip to chapterTitle: nil — proves the locator passthrough wiring")
     }
 
     @Test func saveEntry_returnsFalseAndDoesNotDuplicateWhenActiveEntryExists() throws {
@@ -167,6 +169,7 @@ struct ReaderVocabularyCaptureTests {
         queued.syncStatus = 0  // pending — see queueDelete()
         ctx.insert(queued)
         try ctx.save()
+        let originalId = queued.persistentModelID
 
         let capture = makeCapture(ctx: ctx, vocabulary: [queued])
         let inserted = capture.saveEntry(
@@ -179,6 +182,8 @@ struct ReaderVocabularyCaptureTests {
         let all = try ctx.fetch(FetchDescriptor<VocabularyEntry>())
         #expect(all.count == 1, "restore must mutate in place, not insert a duplicate")
         let restored = try #require(all.first)
+        #expect(restored.persistentModelID == originalId,
+                "restore must mutate the SAME SwiftData row — a new row would break server-side correlation")
         #expect(restored.syncAction == .add, "restorePendingEntry() must flip the action back to .add")
         #expect(restored.translation == "新譯文", "restore must accept the latest translation")
         #expect(restored.rootForm == "ghost")
