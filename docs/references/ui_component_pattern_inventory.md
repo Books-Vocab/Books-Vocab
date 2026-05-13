@@ -3,11 +3,11 @@ tier: reference
 scope:
   - ios/BooksBrowser/UIComponents
   - ios/BooksBrowser/Views
-verified_against: 05acfbf
+verified_against: c16321f
 -->
 # UI Component & Pattern Inventory
 
-Date: 2026-04-01
+Date: 2026-05-13
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
@@ -57,6 +57,9 @@ Scope: `ios/BooksBrowser`
 - `AppTag`
 - `AppBanner` — 內嵌狀態橫幅（網路/同步/錯誤），支援 retry + dismiss 按鈕；跨場景持久展示，與 AppStateMessage* 的差異在於 AppBanner 是全畫面頂端固定欄而非 panel 內 transient 訊息
 - `AppSheetModifier` — `.appSheet(.large/.medium/.adaptive)` 統一 sheet presentation，取代各畫面散落的 `.sheet` / `.halfSheet` 呼叫
+- `AppCompactActionButtonStyle` — inline 小尺寸主行動按鈕（capsule，不撐滿寬度），透過 `.buttonStyle(.appCompactAction(.primary/.neutral/.outline/.destructive))` 套用；取代 4 處 `.borderedProminent.controlSize(.small)`；與 `AppActionButtonStyle`（全寬主按鈕）分工 — banner / card / toolbar 內 inline CTA 用此
+- `AppOfflineBanner` — 全 app 持久離線指示；`.appOfflineBanner()` modifier 訂閱 `NetworkMonitor.shared.isConnected`，斷線時頂部插入 24pt 細 banner，進場用 `AnyTransition.bannerReveal` + `AppMotion.emphasizedDecelerate`；現於 `ContentView` 套用一次（**已知 issue：light mode 對比 3.21:1 未達 WCAG AA**）
+- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；`primaryText.opacity(0.06↔0.14)` pulse（`AppMotion.subtleBreath`）；**目前 zero callsites，dormant**；新 loading state 應改用此元件而非自製 placeholder
 
 #### Toast 子系統
 
@@ -173,11 +176,21 @@ Scope: `ios/BooksBrowser`
 
 主要檔案：
 - `ios/BooksBrowser/Networking/RetryPolicy.swift`
-- `ios/BooksBrowser/UIComponents/AppMotion.swift`
+- `ios/BooksBrowser/Models/AppMetrics.swift` — AppSpacing / AppRadius / AppElevation / AppLayout / AppMotion / AppShadows / AppTransition / AppShellMetrics / AppBookshelfMetrics
+- `ios/BooksBrowser/Models/AppFonts.swift` — AppFonts.body/caption/display1/2 + Tracking + LineSpacing
+- `ios/BooksBrowser/Models/AppColors.swift` — semantic palette tokens（含 brandHero light/dark）
+- `ios/BooksBrowser/Models/AppTheme.swift` — `@Environment(\.appTheme)` 注入點，Palette/Typography 三組（light/dark/highContrast）
 
 核心元件 / token：
 - `RetryPolicy` — 網路重試策略，實作指數退避（exponential backoff）+ Retry-After header 解析；所有 authenticated request 統一使用，不各自硬編 retry 邏輯
+- `AppSpacing` — 8pt grid 語意 token（s0–s7 + `cardOuterPadding/innerGap/sectionGap`），取代 raw padding magic number
+- `AppRadius` — 4 主階圓角（`xs/sm/md/lg`）+ `pill`，禁用鄰近半階值
+- `AppElevation` — z0–z4 shadow token + `.appElevation(.zN)` modifier；dark mode 自動加強 opacity（**dormant：zero callsites**）
+- `AppLayout` — `maxReadableWidth/maxContentWidth` + `.appReadableFrame()` modifier（**dormant：zero callsites**）
+- `AppMotion` — 動畫語意層 token（`emphasizedDecelerate/Accelerate`、`subtleBreath`、`panelState`、`feedbackPulse`、`phaseChange`、`shimmer`、`TapFeedback` triplet）
 - Animation convenience methods — `View.animatePhaseChange()`、`View.animateFeedback()` 等擴充，將常用 `withAnimation` 組合收斂為語意化呼叫
+- `AppFonts.display1/display2` — 56/48pt serif hero typography（**dormant：zero callsites**）
+- `AppColors.brandHero(_:scheme)` + `AppTheme.palette.accentHero/accentSubtle/successBg/warningBg/infoBg/destructiveBg/borderStrong` — 品牌 hero + 狀態 bg 色彩 token
 
 責任：
 - 跨層共用的網路策略 model
@@ -360,8 +373,8 @@ Scope: `ios/BooksBrowser`
 
 現況：
 - Color / Font / Animation token 覆蓋率良好
-- 但 spacing / padding 仍有 200+ 處直接使用數字
-- 主要集中在 UIComponents、ReaderSettings、TranslationVocab、StatsPresenter
+- `AppSpacing` 8pt grid 已建立，但採用率低 — ReaderSettings、TranslationVocab、StatsPresenter 仍大量 raw 數字
+- 新增 UI 須優先採用 `AppSpacing.sN`
 
 影響：
 - spacing 不一致，難以全局調整
@@ -374,6 +387,25 @@ Scope: `ios/BooksBrowser`
 
 影響：
 - 開發時無法快速預覽，UI 變更驗證效率低
+
+### Gap 4: Dormant design system surface
+
+現況：
+- `AppSkeletonLine/Card`、`AppFonts.display1/2`、`.appReadableFrame()`、`.appElevation()` token 已定義但 zero callsites（約 60% PR #402 新 surface）
+- 已有 callsite 的：`AppCompactActionButtonStyle`（4 處）、`AppOfflineBanner`（ContentView 1 處）、`AppMotion.emphasizedDecelerate`（AppOfflineBanner 內部）
+
+影響：
+- token 漂移風險 — 定義與消費者語意可能脫節；安排 callsite migration 鎖定語意
+
+### Gap 5: 已知對比缺陷
+
+現況：
+- `AppOfflineBanner` light mode 對比 ≈ 3.21:1（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**
+- `accentHero` dark mode (`brandHeroDark`) 配 white text 4.02:1，目前僅 `AppCompactActionButtonStyle.primary` 內部 guard（改用 `brandHeroLight`）
+- `AppCompactActionButtonStyle` primary foreground 使用 raw `.white`（應替換為待新增 `onBrandHero` token）
+
+影響：
+- 視覺品牌一致性 + a11y 合規邊界；polish pass PR 處理
 
 ---
 
@@ -392,6 +424,11 @@ Scope: `ios/BooksBrowser`
 - 是大狀態切換？先看 `VocabStatusHero`
 - 是 list + tabs + search？先看 `VocabListCard` + `VocabTabSelector` + `VocabSearchField`
 - 是 panel / drawer / overlay？先看 `TranslationPanel` / `ReaderSettingsPanel` / `VocabOverlayHeader` + motion tokens
+- 是 inline 小型主 CTA？先看 `.buttonStyle(.appCompactAction(...))`，不直接 `.borderedProminent`
+- 是 loading list / card？先看 `AppSkeletonLine` / `AppSkeletonCard`（dormant 但已備齊）
+- 是離線 / 網路狀態提示？root 層套 `.appOfflineBanner()`；transient 錯誤仍用 `AppBanner` / `AppStateMessage*`
+- raw `.shadow(...)`？改用 `.appElevation(.zN)`
+- raw spacing 數字？改用 `AppSpacing.sN`
 
 ---
 

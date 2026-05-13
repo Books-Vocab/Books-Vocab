@@ -2,7 +2,7 @@
 tier: structural
 scope:
   - ios/BooksBrowser
-verified_against: 4061750
+verified_against: c16321f
 -->
 # BooksBrowser UI Design System
 
@@ -19,7 +19,7 @@ BooksBrowser 使用莫蘭迪色調的 design token 系統：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
-| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics` | 全 app chrome（toolbar、tab、banner、toast） |
+| App Shell | `AppTheme` / `AppColors` / `AppFonts` / `AppMetrics`（含 `AppSpacing`/`AppRadius`/`AppElevation`/`AppLayout`/`AppMotion`/`AppShadows`/`AppShellMetrics`） | 全 app chrome（toolbar、tab、banner、toast） |
 | Vocabulary Skin | `VocabSkin`（Palette / Typography / Spacing） | Vocabulary feature 所有 View |
 | Reader | `ReaderContentStyle` | EPUB/PDF reader 內容樣式 |
 
@@ -67,6 +67,11 @@ BooksBrowser 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.ea
 | `reviewNavigationSpring` | review 上一張 / 下一張 / 洗牌 | Today Review |
 | `reviewCardSwapSpring` | review 回答後換卡 | Today Review |
 | `toastPresent` | toast capsule 進出 | AppToast（全 app） |
+| `emphasizedDecelerate` | 非對稱進場曲線（Material 3） | AppOfflineBanner、未來 sheet/panel 進場 |
+| `emphasizedAccelerate` | 非對稱退場曲線（Material 3） | 未來 sheet/panel 退場 |
+| `subtleBreath` | 2.4s easeInOut autoreverse | `AppSkeleton` pulse、empty state 呼吸 |
+| `shimmer` | 1.4s linear repeatForever | skeleton mask（dormant，待 callsite） |
+| `TapFeedback` triplet | `scaleDown 0.97` / `opacityDip 0.92` / `animation` | PressableInteraction / ButtonStyle 統一按壓物理感 |
 
 ### Transition 語意層
 
@@ -112,3 +117,64 @@ BooksBrowser 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.ea
   回到 `docs/dev/ios-dev.md`
 - 若是要理解 UI 為何出現在某個資料流程中：
   回到 `docs/dev/architecture.md`
+- 若是要新增 spacing/radius/elevation 數值：
+  先在 `AppSpacing` / `AppRadius` / `AppElevation` 加 token，不可在 view 寫 magic number
+
+---
+
+## Layout / Spacing / Elevation token（Models/AppMetrics.swift）
+
+PR #402 七階段升級補完語意分層。新元件優先使用以下 token，舊 `AppMetrics.spacing*` 保留為相容別名。
+
+| Token tier | 內容 | 採用率 |
+|-----------|------|--------|
+| `AppSpacing` | 8pt grid：`s0=0/s1=4/s2=8/.../s7=64`、`hairline=1`；語意 alias `cardOuterPadding/innerGap/sectionGap` | 部分 — 新元件已切，舊 view 仍多 raw 數字 |
+| `AppRadius` | `xs=4/sm=8/md=12/lg=16/xl=24/pill=999`；禁用鄰近半階值（7/9/13/14/18） | 部分 |
+| `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.z2)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **dormant — zero callsites** |
+| `AppLayout` | `maxReadableWidth=680`、`maxContentWidth=920`、compact/regular/expanded page padding (20/32/48)；`.appReadableFrame()` modifier | **dormant — zero callsites** |
+| `AppFonts.display1/display2` | 56/48pt serif hero typography；hero / onboarding 用 | **dormant — zero callsites** |
+| `AppFonts.Tracking` / `LineSpacing` | letter-spacing / 行高 token | dormant |
+
+舊 `AppShadows.panelOpacity` 在本 PR 由 0.70 → 0.18（paper-tone shadows）；後續逐步以 `AppElevation` 取代分散的 paperFloat/cover/panel 命名。
+
+---
+
+## Color token：Brand Hero + 狀態 bg
+
+`AppColors.brandHeroLight` (HSB 232°/0.55/0.62) / `brandHeroDark` (232°/0.45/0.78) + `AppColors.brandHero(_:)` scheme-aware accessor。
+
+`AppTheme.Palette` 新欄位：
+- `accentHero` — 品牌 hero 主色（scheme-aware）
+- `accentSubtle` — 弱化 accent
+- `successBg` / `warningBg` / `infoBg` / `destructiveBg` — 10% tint 狀態背景，配狀態前景文字
+- `borderStrong` — 加強邊框（給 outline button 等）
+
+`VocabSkin.Palette` 已整合 brand hero 三色階。
+
+---
+
+## 新 primitives（UIComponents/）
+
+PR #402 引入：
+
+- `AppCompactActionButtonStyle` — 取代 `.borderedProminent.controlSize(.small)`，inline 主 CTA；`.appCompactAction(.primary/.neutral/.outline/.destructive)`
+- `AppOfflineBanner` — `.appOfflineBanner()` modifier，root 層套用；訂閱 `NetworkMonitor.shared.isConnected`
+- `AppSkeletonLine` / `AppSkeletonCard` — Loading 骨架 primitive；新 loading state 應改用此元件而非自製 placeholder（dormant，0 callsites）
+
+---
+
+## Dark Mode 故事
+
+- **Paper-tone 統一**：`AppShadows.panelOpacity` 0.70 → 0.18，整 app shadow 改走低對比浮紙語意。Reader/large panel 視覺層次降低，refactor 後續以 `AppElevation` 取代。
+- **Dark mode brand tint**：`accentHero` 在 dark mode 走 `brandHeroDark`；`AppElevationModifier` 在 dark mode 自動加強 shadow opacity，避免黑底黑影失語意。
+
+---
+
+## Known Polish Debt
+
+下列 issue 已知，列入後續 polish pass PR：
+
+1. **`AppOfflineBanner` light mode 對比 ≈ 3.21:1**（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**。修法：darken text 或 fall back 到 `primaryText` 配 destructive icon。
+2. **`accentHero` dark mode footgun**：`brandHeroDark` + white text = 4.02:1（逼近 WCAG AA 邊界）。目前僅 `AppCompactActionButtonStyle.primary` 內部 guard（dark mode 改走 `brandHeroLight`）；**其他 callsite 不要直接配 `.white`**，需待 `onBrandHero` token 抽出。
+3. **`AppCompactActionButtonStyle` primary foreground raw `.white`** — 待替換為 `onBrandHero` token。
+4. **Dormant tokens（~60% 新 surface）**：`AppSkeleton`、`display1/2`、`appReadableFrame`、`AppElevation` 已定義但 0 callsite，使用前注意可能無實際 reference 樣本。
