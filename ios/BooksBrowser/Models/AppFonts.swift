@@ -90,6 +90,19 @@ enum AppFonts {
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
+    // MARK: - Display 層級 (Brand / Hero) — serif
+
+    /// 最大型品牌展示字 — 56pt serif，用於 launch / brand pages / 主要儀式感畫面
+    /// 配合 tracking .tight 與 lineHeight .display 使用
+    static func display1(weight: Font.Weight = .semibold) -> Font {
+        serif(size: 56, bold: weight.isBold)
+    }
+
+    /// 次大型展示字 — 44pt serif，hero state、empty state 圖標下方主訊息
+    static func display2(weight: Font.Weight = .semibold) -> Font {
+        serif(size: 44, bold: weight.isBold)
+    }
+
     // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
@@ -144,6 +157,37 @@ enum AppFonts {
     /// Reader 進度條等寬細字 — 11pt ElmsSans mono
     static func monoProgress() -> Font {
         mono(size: 11)
+    }
+
+    // MARK: - Tracking Tokens (letter-spacing)
+    // 在 SwiftUI 用 `.tracking(AppFonts.Tracking.tight)` 套用
+
+    enum Tracking {
+        /// Display / hero 緊縮 — 配大字級降低視覺鬆散
+        static let tight: CGFloat = -0.4
+        /// 標準字距
+        static let normal: CGFloat = 0
+        /// Caption / micro / metadata 放寬 — 提升小字辨識
+        static let wide: CGFloat = 0.4
+        /// uppercase metadata 標籤（如「NEW」「BETA」）
+        static let uppercase: CGFloat = 0.8
+    }
+
+    // MARK: - Line Height Tokens
+    // 在 SwiftUI 用 `.lineSpacing(AppFonts.LineSpacing.body)` 套用
+    // 數值為 lineSpacing（額外行距），非絕對 leading
+
+    enum LineSpacing {
+        /// Display / hero — 緊湊 leading（行高約 1.05）
+        static let display: CGFloat = 0
+        /// 標題 — 略緊（行高約 1.15）
+        static let heading: CGFloat = 2
+        /// 內文 — 舒適閱讀（行高約 1.4）
+        static let body: CGFloat = 4
+        /// 長文閱讀 — 寬鬆（行高約 1.5）
+        static let reading: CGFloat = 6
+        /// Caption — 緊湊
+        static let caption: CGFloat = 1
     }
 
     // MARK: - UIKit Fonts (for Appearance API)
