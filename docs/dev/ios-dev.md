@@ -3,7 +3,7 @@ tier: operational
 scope:
   - ios/BooksBrowser
   - ops
-verified_against: 05acfbf
+verified_against: 4061750
 -->
 # BooksBrowser iOS 開發技能
 
