@@ -48,7 +48,7 @@ stream = client.chat.completions.create(
 )
 ```
 
-現行呼叫點：`lab/podcast_architect_poc.py`（book → production plan）。
+現行呼叫點：`lab/podcast/pipeline.py`（book → production plan）。PoC 已封存於 `lab/archive/podcast_architect_poc.py`。
 
 ## 運維注意
 
