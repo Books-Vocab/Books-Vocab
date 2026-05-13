@@ -297,6 +297,109 @@ enum AppShadows {
     static let toastY: CGFloat = 4
 }
 
+// MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
+// 新元件優先使用此 namespace；舊 token (AppMetrics.spacing*/cornerRadius*) 保留為相容別名。
+
+/// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
+enum AppSpacing {
+    static let zero: CGFloat = 0
+    /// hairline — 僅用於 divider / progress / 微縫隙
+    static let hairline: CGFloat = 1
+    static let s1: CGFloat = 4
+    static let s2: CGFloat = 8
+    static let s3: CGFloat = 12
+    static let s4: CGFloat = 16
+    static let s5: CGFloat = 20
+    static let s6: CGFloat = 24
+    static let s7: CGFloat = 32
+    static let s8: CGFloat = 40
+    static let s9: CGFloat = 48
+    static let s10: CGFloat = 64
+
+    /// Card 雙層 padding — 外緣比內項大，形成呼吸層次（Linear / Notion pattern）
+    static let cardOuterPadding: CGFloat = s6  // 24
+    static let cardInnerGap: CGFloat = s4      // 16
+    static let cardSectionGap: CGFloat = s3    // 12
+}
+
+/// Radius scale — 收斂到 4 主階 + hairline + pill。新元件不使用 7/9/13/14/18 等鄰近半階值。
+enum AppRadius {
+    static let none: CGFloat = 0
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 12
+    static let lg: CGFloat = 16
+    static let xl: CGFloat = 24
+    /// Capsule / pill — 直接用 `Capsule()` shape 即可，此值為 RoundedRectangle 場合的 fallback
+    static let pill: CGFloat = 999
+}
+
+/// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。
+/// 取代分散的「用途命名」shadow（paperFloat / cover / panel ...），但既有 AppShadows 仍保留為相容值。
+enum AppElevation {
+    case z0  // flush
+    case z1  // resting card / list row
+    case z2  // raised / hover / pressed up
+    case z3  // overlay (sheet, drawer, popover)
+    case z4  // modal / fullscreen overlay
+
+    var opacity: Double {
+        switch self {
+        case .z0: return 0
+        case .z1: return 0.04
+        case .z2: return 0.08
+        case .z3: return 0.12
+        case .z4: return 0.18
+        }
+    }
+
+    var radius: CGFloat {
+        switch self {
+        case .z0: return 0
+        case .z1: return 6
+        case .z2: return 14
+        case .z3: return 22
+        case .z4: return 32
+        }
+    }
+
+    var y: CGFloat {
+        switch self {
+        case .z0: return 0
+        case .z1: return 2
+        case .z2: return 6
+        case .z3: return 12
+        case .z4: return 18
+        }
+    }
+}
+
+/// 跨裝置 readable layout — iPad / macOS 內容寬度上限，避免長句鋪滿全寬。
+enum AppLayout {
+    /// 適合 body 閱讀的最大寬度（680pt ≈ 60-70 字元/行）
+    static let maxReadableWidth: CGFloat = 680
+    /// 適合卡片陣列的最大寬度
+    static let maxContentWidth: CGFloat = 920
+    /// compact (iPhone) horizontal padding
+    static let compactPagePadding: CGFloat = 20
+    /// regular (iPad portrait) horizontal padding
+    static let regularPagePadding: CGFloat = 32
+    /// expanded (iPad landscape / Mac) horizontal padding
+    static let expandedPagePadding: CGFloat = 48
+}
+
+extension View {
+    /// Apply elevation shadow token。使用 `.appElevation(.z2)` 取代 raw `.shadow(...)`。
+    func appElevation(_ z: AppElevation) -> some View {
+        shadow(color: .black.opacity(z.opacity), radius: z.radius, y: z.y)
+    }
+
+    /// 限制內容最大寬度並水平置中 — iPad / macOS readable layout
+    func appReadableFrame(maxWidth: CGFloat = AppLayout.maxReadableWidth) -> some View {
+        frame(maxWidth: maxWidth)
+    }
+}
+
 // MARK: - AppMotion Convenience Modifiers
 extension View {
     func animatePhaseChange<V: Equatable>(_ value: V) -> some View {
