@@ -11,9 +11,7 @@ import SwiftData
 /// 主介面 — Tab 導航
 struct ContentView: View {
     @Environment(\.authManager) private var authManager
-    @Environment(\.kgService) private var kgService
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.networkMonitor) private var networkMonitor
 
     #if os(macOS)
     @State private var showSettings = false
@@ -27,10 +25,6 @@ struct ContentView: View {
                 }
             }
 
-            if !networkMonitor.isConnected {
-                AppBanner(message: "目前沒有網路連線", systemImage: "wifi.slash")
-            }
-
             TabView {
                 #if os(iOS)
                 BookshelfView()
@@ -42,7 +36,7 @@ struct ContentView: View {
                     .tabItem { Label("總覽".localized, systemImage: "chart.bar") }
             }
         }
-        .animatePhaseChange(networkMonitor.isConnected)
+        .appOfflineBanner()
         .animatePhaseChange(authManager.isDemoMode)
         #if os(macOS)
         .toolbar {

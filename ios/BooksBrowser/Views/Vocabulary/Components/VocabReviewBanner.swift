@@ -104,28 +104,22 @@ struct VocabReviewBanner<FilterContent: View>: View {
                 }
             } label: {
                 Label(L10n.format("開始複習（%@）", "\(totalCount)"), systemImage: "play.fill")
-                    .font(skin.typography.captionStrong)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.appCompactAction(.primary))
         } else if dueCount > 0 {
             Button {
                 onStartDue()
             } label: {
                 Label("到期複習".localized, systemImage: "clock.badge")
-                    .font(skin.typography.captionStrong)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.appCompactAction(.primary))
         } else {
             Button {
                 onStartUnlearned()
             } label: {
                 Label("未學複習".localized, systemImage: "sparkles")
-                    .font(skin.typography.captionStrong)
             }
-            .buttonStyle(.borderedProminent)
-            .controlSize(.small)
+            .buttonStyle(.appCompactAction(.primary))
         }
     }
 }
