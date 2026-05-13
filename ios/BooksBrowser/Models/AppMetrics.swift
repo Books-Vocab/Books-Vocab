@@ -88,7 +88,7 @@ enum AppBookshelfMetrics {
     static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeightCompact: CGFloat = 210
     static let coverHeightRegular: CGFloat = 260
-    static let coverCornerRadius: CGFloat = 6
+    static let coverCornerRadius: CGFloat = 10
     static let coverShadowOpacity: Double = 0.10
     static let coverShadowRadius: CGFloat = 6
     static let coverShadowY: CGFloat = 3
@@ -287,7 +287,7 @@ enum AppShadows {
     static let toolbarDropY: CGFloat = -2
 
     // MARK: - 面板陰影（Reader overlay、大面板）
-    static let panelOpacity: Double = 0.70
+    static let panelOpacity: Double = 0.18
     static let panelRadius: CGFloat = 28
     static let panelY: CGFloat = 14
 

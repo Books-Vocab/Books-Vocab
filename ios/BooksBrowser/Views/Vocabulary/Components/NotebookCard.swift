@@ -130,7 +130,7 @@ struct NotebookAddCard: View {
     var body: some View {
         VStack(spacing: skin.spacing.inlineGap) {
             Image(systemName: "plus")
-                .font(.title2)
+                .font(skin.typography.symbolLarge)
                 .foregroundStyle(skin.palette.tertiaryText)
             Text("新增單字本".localized)
                 .font(skin.typography.caption)

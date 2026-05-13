@@ -151,7 +151,7 @@ struct NotebookCoverView: View {
                 }
 
                 Text(name)
-                    .font(.headline)
+                    .font(AppFonts.body(weight: .semibold))
                     .foregroundStyle(.white)
                     .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                     .lineLimit(2)
