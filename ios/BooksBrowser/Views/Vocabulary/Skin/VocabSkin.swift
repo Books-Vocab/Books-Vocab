@@ -26,6 +26,7 @@ struct VocabSkin {
         let stageBackground: Color
         let cardBackground: Color
         let cardBorder: Color
+        let borderStrong: Color
         let divider: Color
         let shadow: Color
         let primaryText: Color
@@ -34,13 +35,19 @@ struct VocabSkin {
         let quaternaryText: Color
         let translationText: Color
         let accent: Color
+        let accentHero: Color
+        let accentSubtle: Color
         let success: Color
+        let successBg: Color
         let tierIntermediate: Color
         let tierAdvanced: Color
         let warning: Color
+        let warningBg: Color
         let retry: Color
         let info: Color
+        let infoBg: Color
         let destructive: Color
+        let destructiveBg: Color
         let overdue: Color
         let highlightMark: Color
         let mutedFill: Color
@@ -508,6 +515,7 @@ extension VocabSkin {
                 stageBackground: theme.palette.stageBackground,
                 cardBackground: theme.palette.cardBackground,
                 cardBorder: theme.palette.cardBorder,
+                borderStrong: theme.palette.borderStrong,
                 divider: theme.palette.divider,
                 shadow: theme.palette.shadow,
                 primaryText: theme.palette.primaryText,
@@ -518,15 +526,21 @@ extension VocabSkin {
                     ? Color(red: 0.80, green: 0.72, blue: 0.64)
                     : Color(red: 0.54, green: 0.50, blue: 0.44),
                 accent: theme.palette.accent,
+                accentHero: theme.palette.accentHero,
+                accentSubtle: theme.palette.accentSubtle,
                 success: theme.palette.success,
+                successBg: theme.palette.successBg,
                 tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
                 tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
                 warning: theme.palette.warning,
+                warningBg: theme.palette.warningBg,
                 retry: theme.colorScheme == .dark
                     ? Color(hue: 0.08, saturation: 0.45, brightness: 0.78)
                     : Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
-                info: link,
+                info: theme.palette.info,
+                infoBg: theme.palette.infoBg,
                 destructive: theme.palette.destructive,
+                destructiveBg: theme.palette.destructiveBg,
                 overdue: theme.colorScheme == .dark
                     ? Color(red: 0.62, green: 0.48, blue: 0.72)
                     : Color(red: 0.56, green: 0.40, blue: 0.66),
@@ -573,6 +587,7 @@ extension VocabSkin {
             stageBackground: Color(red: 0.972, green: 0.970, blue: 0.964),
             cardBackground: Color(red: 0.989, green: 0.987, blue: 0.982),
             cardBorder: Color.black.opacity(0.048),
+            borderStrong: Color.black.opacity(0.12),
             divider: Color.black.opacity(0.05),
             shadow: Color.black.opacity(0.028),
             primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
@@ -581,13 +596,19 @@ extension VocabSkin {
             quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast
             translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
             accent: Color(red: 0.49, green: 0.56, blue: 0.64),
+            accentHero: AppColors.brandHeroLight,
+            accentSubtle: Color(red: 0.49, green: 0.56, blue: 0.64).opacity(0.12),
             success: Color(red: 0.50, green: 0.64, blue: 0.50),
+            successBg: Color(red: 0.50, green: 0.64, blue: 0.50).opacity(0.10),
             tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
             tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
             warning: Color(hue: 0.1, saturation: 0.8, brightness: 0.8),
+            warningBg: Color(hue: 0.1, saturation: 0.8, brightness: 0.8).opacity(0.10),
             retry: Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
-            info: Color(red: 0.47, green: 0.56, blue: 0.67),
+            info: AppColors.infoLight,
+            infoBg: AppColors.infoLight.opacity(0.10),
             destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
+            destructiveBg: Color(red: 0.73, green: 0.49, blue: 0.46).opacity(0.10),
             overdue: Color(red: 0.56, green: 0.40, blue: 0.66),
             highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
             mutedFill: Color.black.opacity(0.035),

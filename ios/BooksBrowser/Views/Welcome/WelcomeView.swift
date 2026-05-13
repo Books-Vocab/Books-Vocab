@@ -101,16 +101,12 @@ struct WelcomeView: View {
     private func pageView(_ page: WelcomePage) -> some View {
         VStack(spacing: AppMetrics.spacingMedium) {
             Image(systemName: page.icon)
-                .font(AppFonts.h2(weight: .medium))
+                .font(AppFonts.hero(weight: .regular))
                 .foregroundStyle(appTheme.palette.accent)
                 .frame(width: AppWelcomeMetrics.featureIconFrame, height: AppWelcomeMetrics.featureIconFrame)
-                .background(
-                    Circle()
-                        .fill(appTheme.palette.accent.opacity(0.10))
-                )
 
             Text(page.title.localized)
-                .font(AppFonts.h2(weight: .semibold))
+                .font(AppFonts.h1(weight: .semibold))
                 .foregroundStyle(appTheme.palette.primaryText)
 
             Text(page.subtitle.localized)

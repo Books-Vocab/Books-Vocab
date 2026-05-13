@@ -5,7 +5,7 @@ struct PodcastBadge: View {
 
     var body: some View {
         Image(systemName: "waveform")
-            .font(.caption2.weight(.bold))
+            .font(AppFonts.caption2(weight: .bold))
             .foregroundStyle(skin.palette.primaryTextMuted)
             .padding(.horizontal, skin.spacing.chipHorizontalPadding)
             .padding(.vertical, skin.spacing.chipVerticalPadding)

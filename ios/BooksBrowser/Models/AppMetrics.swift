@@ -88,7 +88,7 @@ enum AppBookshelfMetrics {
     static let placeholderTitleHorizontalPadding: CGFloat = 12
     static let coverHeightCompact: CGFloat = 210
     static let coverHeightRegular: CGFloat = 260
-    static let coverCornerRadius: CGFloat = 6
+    static let coverCornerRadius: CGFloat = 10
     static let coverShadowOpacity: Double = 0.10
     static let coverShadowRadius: CGFloat = 6
     static let coverShadowY: CGFloat = 3
@@ -164,6 +164,38 @@ enum AppMotion {
     static let loadingState = quickEaseOut
     static let listReorder = standardSpring
     static let chipSelect = chipSelectionEaseOut
+
+    // MARK: - Phase 5: Asymmetric Emphasized Easing
+    // Material Design 3 / Apple HIG 非對稱曲線：進場慢出（觀眾還在看）、退場快進（觀眾已轉移注意）。
+    // 是「絲滑感」與「Things 3 / Linear 質感」的核心曲線。
+
+    /// 進場曲線 — 緩入快出，配 sheet / panel / overlay reveal
+    /// timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4) — 標準 Material decelerate
+    static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
+
+    /// 退場曲線 — 快入慢出，配 sheet / panel / overlay dismiss
+    /// timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2) — 標準 Material accelerate
+    static let emphasizedAccelerate = Animation.timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2)
+
+    // MARK: - Phase 5: Continuous / Loading Motion
+
+    /// Shimmer / skeleton 連續呼吸動畫 — 配 LinearGradient mask 平移做骨架動效
+    static let shimmer = Animation.linear(duration: 1.4).repeatForever(autoreverses: false)
+
+    /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
+    static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
+
+    // MARK: - Phase 5: Tap Feedback Triplet (scale + opacity + haptic)
+    // 「按下去」物理感的三件套常量，供 PressableInteraction / ButtonStyle 內部使用
+
+    enum TapFeedback {
+        /// 按下時的縮放比例
+        static let scaleDown: CGFloat = 0.97
+        /// 按下時的透明度（opacity dip）
+        static let opacityDip: Double = 0.92
+        /// 對應的動畫曲線
+        static let animation = Animation.interactiveSpring(response: 0.18, dampingFraction: 0.7)
+    }
 }
 
 extension AnyTransition {
@@ -287,7 +319,7 @@ enum AppShadows {
     static let toolbarDropY: CGFloat = -2
 
     // MARK: - 面板陰影（Reader overlay、大面板）
-    static let panelOpacity: Double = 0.70
+    static let panelOpacity: Double = 0.18
     static let panelRadius: CGFloat = 28
     static let panelY: CGFloat = 14
 
@@ -295,6 +327,131 @@ enum AppShadows {
     static let toastOpacity: Double = 0.08
     static let toastRadius: CGFloat = 8
     static let toastY: CGFloat = 4
+}
+
+// MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
+// 新元件優先使用此 namespace；舊 token (AppMetrics.spacing*/cornerRadius*) 保留為相容別名。
+
+/// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
+enum AppSpacing {
+    static let zero: CGFloat = 0
+    /// hairline — 僅用於 divider / progress / 微縫隙
+    static let hairline: CGFloat = 1
+    static let s1: CGFloat = 4
+    static let s2: CGFloat = 8
+    static let s3: CGFloat = 12
+    static let s4: CGFloat = 16
+    static let s5: CGFloat = 20
+    static let s6: CGFloat = 24
+    static let s7: CGFloat = 32
+    static let s8: CGFloat = 40
+    static let s9: CGFloat = 48
+    static let s10: CGFloat = 64
+
+    /// Card 雙層 padding — 外緣比內項大，形成呼吸層次（Linear / Notion pattern）
+    static let cardOuterPadding: CGFloat = s6  // 24
+    static let cardInnerGap: CGFloat = s4      // 16
+    static let cardSectionGap: CGFloat = s3    // 12
+}
+
+/// Radius scale — 收斂到 4 主階 + hairline + pill。新元件不使用 7/9/13/14/18 等鄰近半階值。
+enum AppRadius {
+    static let none: CGFloat = 0
+    static let xs: CGFloat = 4
+    static let sm: CGFloat = 8
+    static let md: CGFloat = 12
+    static let lg: CGFloat = 16
+    static let xl: CGFloat = 24
+    /// Capsule / pill — 直接用 `Capsule()` shape 即可，此值為 RoundedRectangle 場合的 fallback
+    static let pill: CGFloat = 999
+}
+
+/// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。
+/// 取代分散的「用途命名」shadow（paperFloat / cover / panel ...），但既有 AppShadows 仍保留為相容值。
+enum AppElevation {
+    case z0  // flush
+    case z1  // resting card / list row
+    case z2  // raised / hover / pressed up
+    case z3  // overlay (sheet, drawer, popover)
+    case z4  // modal / fullscreen overlay
+
+    var opacity: Double {
+        switch self {
+        case .z0: return 0
+        case .z1: return 0.04
+        case .z2: return 0.08
+        case .z3: return 0.12
+        case .z4: return 0.18
+        }
+    }
+
+    var radius: CGFloat {
+        switch self {
+        case .z0: return 0
+        case .z1: return 6
+        case .z2: return 14
+        case .z3: return 22
+        case .z4: return 32
+        }
+    }
+
+    var y: CGFloat {
+        switch self {
+        case .z0: return 0
+        case .z1: return 2
+        case .z2: return 6
+        case .z3: return 12
+        case .z4: return 18
+        }
+    }
+}
+
+/// 跨裝置 readable layout — iPad / macOS 內容寬度上限，避免長句鋪滿全寬。
+enum AppLayout {
+    /// 適合 body 閱讀的最大寬度（680pt ≈ 60-70 字元/行）
+    static let maxReadableWidth: CGFloat = 680
+    /// 適合卡片陣列的最大寬度
+    static let maxContentWidth: CGFloat = 920
+    /// compact (iPhone) horizontal padding
+    static let compactPagePadding: CGFloat = 20
+    /// regular (iPad portrait) horizontal padding
+    static let regularPagePadding: CGFloat = 32
+    /// expanded (iPad landscape / Mac) horizontal padding
+    static let expandedPagePadding: CGFloat = 48
+}
+
+/// Theme-aware elevation modifier — 在 dark mode 自動加強陰影 opacity
+/// 否則黑底加黑影完全不可見，導致 elevation 語意失效。
+private struct AppElevationModifier: ViewModifier {
+    let z: AppElevation
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        // dark mode 上 black shadow 與 dark background 對比不足，
+        // 提高 opacity 至 1.8x 補回視覺層次（Material Dark Elevation pattern）
+        let darkBoost: Double = colorScheme == .dark ? 1.8 : 1.0
+        return content.shadow(
+            color: .black.opacity(z.opacity * darkBoost),
+            radius: z.radius,
+            y: z.y
+        )
+    }
+}
+
+extension View {
+    /// Apply elevation shadow token。使用 `.appElevation(.z2)` 取代 raw `.shadow(...)`。
+    /// 自動感知 light / dark mode 並調整 shadow 強度，dark mode 上會加強至 1.8x opacity。
+    func appElevation(_ z: AppElevation) -> some View {
+        modifier(AppElevationModifier(z: z))
+    }
+
+    /// 限制內容最大寬度並對齊 — iPad / macOS readable layout
+    func appReadableFrame(
+        maxWidth: CGFloat = AppLayout.maxReadableWidth,
+        alignment: Alignment = .center
+    ) -> some View {
+        frame(maxWidth: maxWidth, alignment: alignment)
+    }
 }
 
 // MARK: - AppMotion Convenience Modifiers

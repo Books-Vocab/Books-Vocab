@@ -90,6 +90,24 @@ enum AppFonts {
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
+    // MARK: - Display 層級 (Brand / Hero) — serif
+
+    /// 最大型品牌展示字 — 56pt serif，用於 launch / brand pages / 主要儀式感畫面
+    /// 配合 tracking .tight 與 lineSpacing .display 使用
+    ///
+    /// 注意：Athelas/ElmsSans 目前只有 Regular + Bold 兩階字檔，
+    /// `.medium / .semibold` 會 silently downgrade 為 Regular。
+    /// 預設為 `.bold` 確保預設呼叫即得到真實 Bold 字面。
+    static func display1(weight: Font.Weight = .bold) -> Font {
+        serif(size: 56, bold: weight.isBold)
+    }
+
+    /// 次大型展示字 — 48pt serif，hero state、empty state 圖標下方主訊息
+    /// （從 44pt 提到 48pt 拉開與 hero=40 的視覺差距，遵循 modular 1.2 ratio）
+    static func display2(weight: Font.Weight = .bold) -> Font {
+        serif(size: 48, bold: weight.isBold)
+    }
+
     // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
@@ -144,6 +162,40 @@ enum AppFonts {
     /// Reader 進度條等寬細字 — 11pt ElmsSans mono
     static func monoProgress() -> Font {
         mono(size: 11)
+    }
+
+    // MARK: - Tracking Tokens (letter-spacing)
+    // 在 SwiftUI 用 `.tracking(AppFonts.Tracking.tight)` 套用
+    // 數值單位 pt（絕對 letter-spacing）
+
+    enum Tracking {
+        /// Display / hero 緊縮 — 配大字級降低視覺鬆散
+        /// 在 56pt display1 上約 -0.021em，符合慣例
+        static let tight: CGFloat = -1.2
+        /// 標準字距
+        static let normal: CGFloat = 0
+        /// Body / metadata 微放寬
+        static let wide: CGFloat = 0.3
+        /// uppercase metadata 標籤（如「NEW」「BETA」），約 +0.07em on 12pt
+        static let uppercase: CGFloat = 0.8
+    }
+
+    // MARK: - Line Spacing Tokens
+    // 在 SwiftUI 用 `.lineSpacing(AppFonts.LineSpacing.body)` 套用
+    // 數值為 SwiftUI `.lineSpacing(x)`：每行之外額外加 x pt 行距，
+    // 真實 leading = font.lineHeight + x，不是固定行高倍率。
+
+    enum LineSpacing {
+        /// Display / hero — 0 額外行距，靠字體預設緊湊 leading
+        static let display: CGFloat = 0
+        /// 標題 — 微寬
+        static let heading: CGFloat = 2
+        /// 內文 — 舒適閱讀
+        static let body: CGFloat = 4
+        /// 長文閱讀 — 寬鬆
+        static let reading: CGFloat = 6
+        /// Caption — 略緊
+        static let caption: CGFloat = 1
     }
 
     // MARK: - UIKit Fonts (for Appearance API)

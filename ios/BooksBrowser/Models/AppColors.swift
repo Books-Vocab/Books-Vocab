@@ -37,6 +37,17 @@ enum AppColors {
     static let accentLight = Color(hue: 215/360, saturation: 0.28, brightness: 0.66)
     static let accentDark  = Color(hue: 215/360, saturation: 0.28, brightness: 0.70)
 
+    // ── Brand Hero（深靛藍 · 主行動色）────────────────────────────────
+    // 比 accent 更具份量，用於主要 CTA、登入、Today Review 啟動鍵
+    // 與灰藍 accent 區隔，作為產品品牌印象的核心色相
+    static let brandHeroLight = Color(hue: 232/360, saturation: 0.55, brightness: 0.62)
+    static let brandHeroDark  = Color(hue: 232/360, saturation: 0.45, brightness: 0.78)
+
+    // ── 資訊色（霧青）─────────────────────────────────────────────────
+    // 用於 info banner、提示訊息、tooltip 等中性提示
+    static let infoLight = Color(hue: 195/360, saturation: 0.30, brightness: 0.58)
+    static let infoDark  = Color(hue: 195/360, saturation: 0.28, brightness: 0.72)
+
     // ── 翻譯文字色（栗棕 · 明亮）──────────────────────────────────────
     // 如同上好信箋上的棕色墨水
     static let translationLight = Color(hue: 22/360, saturation: 0.26, brightness: 0.62)
@@ -112,6 +123,14 @@ extension AppColors {
 
     static func warning(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? warningDark : warningLight
+    }
+
+    static func brandHero(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? brandHeroDark : brandHeroLight
+    }
+
+    static func info(_ scheme: ColorScheme) -> Color {
+        scheme == .dark ? infoDark : infoLight
     }
 
     static func tier(_ tier: String, scheme: ColorScheme) -> (color: Color, label: String) {
