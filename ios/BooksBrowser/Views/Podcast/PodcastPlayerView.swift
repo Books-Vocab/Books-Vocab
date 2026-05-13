@@ -47,19 +47,13 @@ struct PodcastPlayerView: View {
         loadedEpisode?.series
     }
 
-    /// Notebook id derived synchronously from UserDefaults + SwiftData lookup,
-    /// so `vocabularyContext` becomes non-nil the instant the SwiftData row is
-    /// hydrated — no dependency on `.task` having completed.
-    private var resolvedNotebookId: String? {
-        let raw = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
-        return VocabularyEntry.resolveNotebookId(raw, in: modelContext)
-    }
+    private static let activeNotebookIdKey = "activeNotebookId"
 
     private var vocabularyContext: PodcastVocabularyContext? {
         Self.resolveVocabularyContext(
             episodeId: episodeId,
             modelContext: modelContext,
-            rawNotebookId: UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default",
+            rawNotebookId: UserDefaults.standard.string(forKey: Self.activeNotebookIdKey) ?? "default",
             toastCoordinator: toastCoordinator,
             vocabulary: allVocabulary
         )
@@ -321,11 +315,11 @@ struct PodcastPlayerView: View {
     }
 
     private func loadEpisode() {
-        // `loadedEpisode` / `loadedSeries` / `resolvedNotebookId` are now
-        // synchronous computed properties driven by `episodeId` + SwiftData +
-        // UserDefaults, so `vocabularyContext` is non-nil as soon as the row
-        // exists — no `.task` hydration race. This function only owns the
-        // audio/subtitle async load + viewModel lifecycle.
+        // `loadedEpisode` / `loadedSeries` / `vocabularyContext` are now
+        // synchronous computed properties (via `resolveVocabularyContext`)
+        // driven by `episodeId` + SwiftData + UserDefaults, so the context is
+        // non-nil as soon as the row exists — no `.task` hydration race. This
+        // function only owns the audio/subtitle async load + viewModel lifecycle.
         guard let episode = loadedEpisode,
               let series = loadedSeries else { return }
 

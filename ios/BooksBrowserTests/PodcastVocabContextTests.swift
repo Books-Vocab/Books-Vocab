@@ -71,19 +71,37 @@ struct PodcastVocabContextTests {
         #expect(before == nil)
 
         attachSeriesAndEpisode(epId: epId, in: ctx)
+        // Pre-existing vocabulary entry to prove the resolver wires the array
+        // through verbatim (PR #400 path uses `allVocabulary` for fast
+        // `existingEntry` lookup in the player tap handler).
+        let priorEntry = VocabularyEntry(
+            word: "alpha",
+            translation: "α",
+            context: "",
+            explanation: nil,
+            partOfSpeech: nil,
+            bookTitle: "B",
+            chapterTitle: "C"
+        )
+        ctx.insert(priorEntry)
         try ctx.save()
 
+        // Same frame — no `await`/`Task` between `save()` and re-resolve. The
+        // PR #400 contract is precisely that this synchronous call returns
+        // non-nil. Do not async-ify this path without rewriting the contract.
         let after = PodcastPlayerView.resolveVocabularyContext(
             episodeId: epId,
             modelContext: ctx,
             rawNotebookId: "default",
             toastCoordinator: toast,
-            vocabulary: []
+            vocabulary: [priorEntry]
         )
         #expect(after != nil, "PR #400 contract — synchronous resolver must produce a context the instant the SwiftData row exists, with no `.task` hydration required")
         #expect(after?.episode.remoteId == epId)
         #expect(after?.series.remoteId == "S1")
         #expect(after?.notebookId == "default")
+        #expect(after?.vocabulary.count == 1, "resolver must wire the vocabulary array through to the context verbatim")
+        #expect(after?.vocabulary.first?.word == "alpha")
     }
 
     @Test func resolveVocabularyContext_returnsNilWhenSeriesDetached() throws {
