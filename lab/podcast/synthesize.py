@@ -60,7 +60,7 @@ GCP_PROJECT_ID = os.getenv("GCP_PROJECT_ID", "").strip()
 GCP_LOCATION = os.getenv("GCP_LOCATION", "us-central1").strip()
 # Vertex Gemini-TTS GA name (no `-preview`). Override via env if needed.
 TTS_MODEL = os.getenv("TTS_MODEL", "gemini-2.5-flash-tts").strip()
-TTS_MAX_CONCURRENT = int(os.getenv("TTS_MAX_CONCURRENT", "3"))
+TTS_MAX_CONCURRENT = int(os.getenv("TTS_MAX_CONCURRENT", "10"))
 TTS_RETRY_ATTEMPTS = int(os.getenv("TTS_RETRY_ATTEMPTS", "4"))
 VOICE_SPEAKER1 = ""  # set from overview.md Voice Mapping
 VOICE_SPEAKER2 = ""
@@ -124,16 +124,22 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
             f"Run the tts-prep pipeline stage to assign real voices before synthesizing."
         )
 
-    # Build system prompt from host profiles
+    # Build system prompt from host profiles.
+    # IMPORTANT: do NOT use "Speaker1: ..." / "Speaker2: ..." format here —
+    # Gemini multi-speaker parses those lines as dialogue and will vocalize
+    # the persona description in that speaker's voice at the start of every
+    # batch, padding audio out to the model's max output (~655s). Use a plain
+    # narrative frame instead.
     prompt_parts = [
         "Read aloud as a two-host podcast conversation. Warm, intellectual, and engaging "
         "— like two smart friends discussing a book over coffee. Natural pacing with "
-        "pauses between speaker turns."
+        "pauses between speaker turns.",
+        "",
+        "Voice direction (do NOT speak these character notes — they are style guidance only):",
     ]
 
-    # Extract each host's profile section
+    # Extract each host's profile section — emit as style notes, NOT dialogue.
     for name, alias in speaker_map.items():
-        # Find the section for this host
         section_re = re.compile(
             rf"###\s+(?:Host [AB]:\s*)?{re.escape(name)}\s*\n(.*?)(?=\n###|\n##|\Z)",
             re.DOTALL,
@@ -141,7 +147,6 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
         section_match = section_re.search(text)
         if section_match:
             lines = section_match.group(1).strip().splitlines()
-            # Extract personality and speaking style
             personality = ""
             style = ""
             for line in lines:
@@ -151,11 +156,14 @@ def _parse_overview_hosts(overview_path: Path) -> tuple[dict[str, str], str]:
                     style = line.split(":", 1)[-1].strip()
             if personality or style:
                 desc = f"{personality} {style}".strip()
-                prompt_parts.append(f"\n{alias} ({name}): {desc}")
+                prompt_parts.append(f"- {name} (voiced by {alias}): {desc}")
 
     prompt_parts.append(
         "\nThey interrupt each other naturally, react with genuine surprise or amusement, "
         "and think together rather than taking turns lecturing."
+    )
+    prompt_parts.append(
+        "The dialogue to perform follows below. Speak ONLY the dialogue; do not read the voice direction."
     )
 
     print(f"  Hosts: {', '.join(f'{n} → {a}' for n, a in speaker_map.items())}")
@@ -241,10 +249,24 @@ def _word_count(text: str) -> int:
     return len(text.split())
 
 
+# Vertex gemini-2.5-pro-tts fails to emit STOP token when a batch ends on a
+# very short utterance (e.g. "Please.", "Stay honest.") and pads audio with
+# silence up to the model's 655s cap. Never end a batch on a turn shorter
+# than this threshold — carry the short turn forward to the next batch.
+MIN_BATCH_END_WORDS = 5
+
+
 def chunk_turns(
     turns: List[Dict[str, str]], max_words: int
 ) -> List[List[Dict[str, str]]]:
-    """Split turns into batches that fit within the word budget."""
+    """Split turns into batches that fit within the word budget.
+
+    Constraint: a batch never ends on a turn shorter than MIN_BATCH_END_WORDS.
+    Short closing turns trigger Vertex gemini-2.5-pro-tts to pad to its 655s
+    max-output ceiling (known bug, finishReason=OTHER, Google marked
+    WONTFIX on GitHub issue #922). We defensively roll short final turns
+    into the next batch so every boundary lands on a substantive sentence.
+    """
     if max_words <= 0:
         raise ValueError("max_words must be > 0")
 
@@ -262,6 +284,12 @@ def chunk_turns(
             )
 
         if current and current_words + turn_words > max_words:
+            # About to close out `current`. If its last turn is too short
+            # for safe EOS, don't close — keep accumulating (soft budget).
+            if _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS:
+                current.append(turn)
+                current_words += turn_words
+                continue
             batches.append(current)
             current = []
             current_words = 0
@@ -269,8 +297,15 @@ def chunk_turns(
         current.append(turn)
         current_words += turn_words
 
+    # Final batch: if it ends on a short turn AND has a prior batch, merge
+    # backward so the tail doesn't dangle on "Please." or similar.
     if current:
-        batches.append(current)
+        if len(current) >= 1 and _word_count(current[-1]["text"]) < MIN_BATCH_END_WORDS and batches:
+            # Pull the short tail into the previous batch so both sides safe
+            tail = current.pop()
+            batches[-1].append(tail)
+        if current:
+            batches.append(current)
 
     return batches
 
@@ -327,6 +362,28 @@ def audio_bytes_to_segment(audio_bytes: bytes, mime_type: str) -> AudioSegment:
     )
 
 
+# Trim trailing silence defense: Vertex gemini-2.5-pro-tts frequently pads
+# batches out to its 655s cap with silence after the last spoken word
+# (finishReason=OTHER bug, Google marked WONTFIX). This post-processes the
+# raw segment to cut anything quieter than -45 dBFS at the tail, keeping a
+# short natural breath.
+_TRAIL_SILENCE_THRESH_DBFS = -45
+_TRAIL_KEEP_MS = 400
+
+
+def _trim_trailing_silence(segment: AudioSegment) -> AudioSegment:
+    """Cut trailing near-silence, preserving a short natural tail."""
+    from pydub.silence import detect_leading_silence
+    reversed_ = segment.reverse()
+    trail_ms = detect_leading_silence(
+        reversed_, silence_threshold=_TRAIL_SILENCE_THRESH_DBFS, chunk_size=50
+    )
+    if trail_ms <= _TRAIL_KEEP_MS:
+        return segment
+    cut_to = len(segment) - (trail_ms - _TRAIL_KEEP_MS)
+    return segment[:cut_to]
+
+
 def _generate_with_retry(client, prompt, speech_config, index):
     """Call generate_content with exponential backoff for transient errors.
 
@@ -348,9 +405,6 @@ def _generate_with_retry(client, prompt, speech_config, index):
         except Exception as e:
             last_exc = e
             name = type(e).__name__
-            # google-genai raises genai.errors.APIError with numeric `.code`
-            # (HTTP status). api_core (gRPC path) raises named classes. Cover
-            # both so retry fires whether SDK is in Vertex-REST or gRPC mode.
             code = getattr(e, "code", None) or getattr(e, "status_code", None)
             transient = (
                 code in {408, 429, 500, 502, 503, 504}
@@ -360,7 +414,12 @@ def _generate_with_retry(client, prompt, speech_config, index):
             )
             if not transient or attempt == TTS_RETRY_ATTEMPTS - 1:
                 raise
-            backoff = (2 ** attempt) + random.random()
+            # 429 = per-minute quota exhausted; must wait ≥60s for quota reset.
+            # Other transients use standard exponential backoff.
+            if code == 429:
+                backoff = 60 + 15 * attempt + random.random() * 5
+            else:
+                backoff = (2 ** attempt) + random.random()
             print(f"  batch {index}: {name} code={code} — retry {attempt + 1}/{TTS_RETRY_ATTEMPTS} after {backoff:.1f}s")
             time.sleep(backoff)
     raise last_exc  # pragma: no cover — loop always returns or raises
@@ -397,14 +456,20 @@ def _synthesize_one(
 
     elapsed = time.time() - t0
     segment = audio_bytes_to_segment(audio_data, mime_type)
-    duration_s = len(segment) / 1000
+    raw_duration_s = len(segment) / 1000
+
+    # Trim trailing silence before caching — handles Vertex TTS padding bug.
+    segment = _trim_trailing_silence(segment)
+    trimmed_duration_s = len(segment) / 1000
+    trimmed_ms = int(raw_duration_s * 1000 - trimmed_duration_s * 1000)
 
     # Persist to disk immediately — survives subsequent stuck batches / crashes.
     if cache_path:
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         segment.export(str(cache_path), format="wav")
 
-    print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {duration_s:.1f}s audio in {elapsed:.1f}s")
+    trim_note = f" (trimmed {trimmed_ms/1000:.1f}s silence)" if trimmed_ms > 1000 else ""
+    print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}")
     return index, segment
 
 

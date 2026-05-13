@@ -49,19 +49,28 @@ rm -rf "$STAGING"
 mkdir -p "$STAGING"
 
 # ── Reorganize files into ep_NN/ dirs ────────────────────────────────────────
+# Accept either _pro.mp3 (Vertex Pro TTS) or _flash.mp3 (Vertex Flash TTS).
+# Prefer _pro if both exist (looped first; space-separated list used as poor-man's set).
 EP_COUNT=0
-for mp3 in "$WORKSPACE/scripts"/ep_*_pro.mp3; do
+SEEN_EPS=" "
+for mp3 in "$WORKSPACE/scripts"/ep_*_pro.mp3 "$WORKSPACE/scripts"/ep_*_flash.mp3; do
   [[ -f "$mp3" ]] || continue
-  # Extract episode number from ep_N_pro.mp3
   fname="$(basename "$mp3")"
   ep_num="${fname#ep_}"
   ep_num="${ep_num%%_*}"
+  # Skip if we already processed this episode number
+  case "$SEEN_EPS" in *" $ep_num "*) continue ;; esac
+  SEEN_EPS="$SEEN_EPS$ep_num "
+
+  # Derive suffix (pro / flash) from filename for SRT pairing
+  suffix="${fname%.mp3}"
+  suffix="${suffix##*_}"
   ep_dir="$(printf "ep_%02d" "$ep_num")"
 
   mkdir -p "$STAGING/$ep_dir"
   cp "$mp3" "$STAGING/$ep_dir/audio.mp3"
 
-  srt="$WORKSPACE/scripts/ep_${ep_num}_pro.srt"
+  srt="$WORKSPACE/scripts/ep_${ep_num}_${suffix}.srt"
   [[ -f "$srt" ]] && cp "$srt" "$STAGING/$ep_dir/subtitle.srt"
 
   script="$WORKSPACE/scripts/ep_${ep_num}_script.md"
@@ -70,7 +79,7 @@ for mp3 in "$WORKSPACE/scripts"/ep_*_pro.mp3; do
   EP_COUNT=$((EP_COUNT + 1))
 done
 
-[[ $EP_COUNT -gt 0 ]] || err "No ep_*_pro.mp3 files found in scripts/"
+[[ $EP_COUNT -gt 0 ]] || err "No ep_*_{pro,flash}.mp3 files found in scripts/"
 ok "Staged $EP_COUNT episodes"
 
 # ── Fetch existing remote metadata (for createdAt preservation) ──────────────
