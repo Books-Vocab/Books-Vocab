@@ -198,6 +198,12 @@ struct ReaderTranslationHandlerTests {
         #expect(handler.translationResult?.translation == "預存翻譯")
         #expect(handler.isSaved == true)
         #expect(handler.isTranslating == false)
+        // Full state-reset contract: fast path must clear ANY prior expanded /
+        // explanation / error state so the panel renders cleanly.
+        #expect(handler.isExpanded == false)
+        #expect(handler.explanationText == nil)
+        #expect(handler.translationErrorMessage == nil)
+        #expect(handler.explanationErrorMessage == nil)
     }
 
     // MARK: - handleWordSelected — guest path
@@ -211,9 +217,12 @@ struct ReaderTranslationHandlerTests {
         await drain(handler)
 
         #expect(service.quickCalls == 0, "guest tap must NOT hit the translation service")
+        #expect(service.phraseCalls == 0, "guest tap must NOT hit phrase service either")
+        #expect(service.explanationCalls == 0, "guest tap must NOT prefetch explanation")
         #expect(ctx.savedSelections.count == 1)
         #expect(ctx.savedTranslations.first == "")
         #expect(handler.isSaved == true)
+        #expect(handler.lookedUpWords.contains("epsilon"), "guest save must still track looked-up state for reader underlining")
     }
 
     // MARK: - handleWordSelected — fresh translate + autoSave
@@ -232,6 +241,8 @@ struct ReaderTranslationHandlerTests {
         #expect(handler.isTranslating == false)
         #expect(handler.translationErrorMessage == nil)
         #expect(ctx.savedTranslations.first == "rendered", "fresh translate path must auto-save through the protocol")
+        #expect(handler.isSaved == true, "autoSave must flip isSaved so the panel renders the saved state")
+        #expect(handler.lookedUpWords.contains("zeta"), "fresh save must also track looked-up state for reader underlining")
     }
 
     // MARK: - handleWordSelected — failure path
@@ -245,12 +256,52 @@ struct ReaderTranslationHandlerTests {
         handler.handleWordSelected(word: "eta", context: "ctx", vocabularyContext: ctx)
         await drain(handler)
 
+        #expect(service.quickCalls == 1, "failure must have come from the awaited service call, not a setup short-circuit")
         #expect(handler.translationResult == nil)
         #expect(handler.isTranslating == false)
         #expect(handler.translationErrorMessage != nil)
         #expect(handler.translationErrorMessage?.contains("boom") == true,
                 "failure message must surface the underlying error description")
         #expect(ctx.savedSelections.isEmpty, "failed translate must NOT auto-save anything")
+    }
+
+    // MARK: - handlePhraseSelected — success
+
+    @Test func handlePhraseSelected_freshTranslate_autoSavesWhenContextProvided() async {
+        let service = MockTranslating()
+        service.phraseResult = .success("片語譯文")
+        let handler = makeHandler(service: service)
+        let ctx = MockVocabContext()
+
+        handler.handlePhraseSelected(phrase: "in due course", context: "...", vocabularyContext: ctx)
+        await drain(handler)
+
+        #expect(service.phraseCalls == 1)
+        #expect(service.quickCalls == 0, "phrase tap must NOT hit the single-word path")
+        #expect(handler.translationResult?.translation == "片語譯文")
+        #expect(handler.isTranslating == false)
+        #expect(handler.translationErrorMessage == nil)
+        #expect(ctx.savedSelections.count == 1)
+        #expect(ctx.savedSelections.first?.word == "in due course",
+                "phrase WordSelection must preserve the full phrase text (no normalization)")
+        #expect(ctx.savedTranslations.first == "片語譯文")
+        #expect(handler.isSaved == true)
+    }
+
+    @Test func handlePhraseSelected_skipsAutoSaveWhenContextOmitted() async {
+        let service = MockTranslating()
+        service.phraseResult = .success("translated")
+        let handler = makeHandler(service: service)
+
+        // Nil vocabularyContext — phrase translation must still render, but
+        // there is nowhere to save it.
+        handler.handlePhraseSelected(phrase: "ad hoc", context: "...", vocabularyContext: nil)
+        await drain(handler)
+
+        #expect(service.phraseCalls == 1)
+        #expect(handler.translationResult?.translation == "translated")
+        #expect(handler.isSaved == false,
+                "no vocabContext provided → no autoSave path → isSaved must remain false")
     }
 
     // MARK: - deleteFromVocabulary
