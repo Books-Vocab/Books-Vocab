@@ -102,6 +102,33 @@ class TestRateLimitMiddlewareWhitelist:
             r = client.get("/openapi.json")
             assert r.status_code != 429, "/openapi.json must be exempt from rate limiting"
 
+    def test_google_oauth_callback_not_rate_limited(self, client):
+        """OAuth callbacks come from Google and ar single shots per login.
+        A rate-limit 429 on the callback means the user can't sign in. The
+        callback is naturally rare-per-IP but the limiter keys off the
+        Authorization header tail / XFF, both of which can collide across
+        users behind shared NAT. Exempt the path."""
+        from kg.rate_limit import api_limiter
+        api_limiter._requests.clear()
+        # Hammer with no auth — should never get 429. Real callback will
+        # error 400/401 (missing code / bad state) but must not be 429.
+        for _ in range(api_limiter.max_requests + 30):
+            r = client.get("/auth/web/google/callback")
+            assert r.status_code != 429, (
+                f"OAuth callback must be exempt from rate limiting (got {r.status_code})"
+            )
+
+    def test_apple_oauth_callback_not_rate_limited(self, client):
+        from kg.rate_limit import api_limiter
+        api_limiter._requests.clear()
+        for _ in range(api_limiter.max_requests + 30):
+            # Apple uses POST callback; the rate-limit middleware acts on all
+            # methods, so a POST without form body should still bypass.
+            r = client.post("/auth/web/apple/callback")
+            assert r.status_code != 429, (
+                f"Apple OAuth callback must be exempt from rate limiting (got {r.status_code})"
+            )
+
 
 # ============================================================================
 # Rate limit enforcement via middleware (429 + Retry-After)
