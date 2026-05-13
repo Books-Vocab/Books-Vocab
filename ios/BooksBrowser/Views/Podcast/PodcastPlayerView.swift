@@ -15,9 +15,6 @@ struct PodcastPlayerView: View {
 
     @State private var viewModel: PodcastPlayerViewModel?
     @State private var translationHandler = ReaderTranslationHandler()
-    @State private var loadedSeries: PodcastSeries?
-    @State private var loadedEpisode: PodcastEpisode?
-    @State private var resolvedNotebookId: String?
     @State private var autoPausedByTranslation: Bool = false
     @State private var showSettingsPopover: Bool = false
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
@@ -37,6 +34,30 @@ struct PodcastPlayerView: View {
     @State private var loadTask: Task<Void, Never>?
     @State private var loadedEpisodeId: String?
     @State private var progressRestored = false
+
+    /// Same-frame SwiftData fetch for the episode keyed by `episodeId`. Returns
+    /// nil only when the row isn't hydrated yet (cold start mid-sync). Cheap —
+    /// `fetch` with an indexed predicate is O(log n) and stays on the main
+    /// context.
+    private var loadedEpisode: PodcastEpisode? {
+        let targetId = episodeId
+        let descriptor = FetchDescriptor<PodcastEpisode>(
+            predicate: #Predicate { $0.remoteId == targetId }
+        )
+        return try? modelContext.fetch(descriptor).first
+    }
+
+    private var loadedSeries: PodcastSeries? {
+        loadedEpisode?.series
+    }
+
+    /// Notebook id derived synchronously from UserDefaults + SwiftData lookup,
+    /// so `vocabularyContext` becomes non-nil the instant the SwiftData row is
+    /// hydrated — no dependency on `.task` having completed.
+    private var resolvedNotebookId: String? {
+        let raw = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
+        return VocabularyEntry.resolveNotebookId(raw, in: modelContext)
+    }
 
     private var vocabularyContext: PodcastVocabularyContext? {
         guard let series = loadedSeries,
@@ -276,20 +297,16 @@ struct PodcastPlayerView: View {
     }
 
     private func loadEpisode() {
-        let targetId = episodeId
-        let descriptor = FetchDescriptor<PodcastEpisode>(
-            predicate: #Predicate { $0.remoteId == targetId }
-        )
-        guard let episode = try? modelContext.fetch(descriptor).first,
-              let series = episode.series else { return }
+        // `loadedEpisode` / `loadedSeries` / `resolvedNotebookId` are now
+        // synchronous computed properties driven by `episodeId` + SwiftData +
+        // UserDefaults, so `vocabularyContext` is non-nil as soon as the row
+        // exists — no `.task` hydration race. This function only owns the
+        // audio/subtitle async load + viewModel lifecycle.
+        guard let episode = loadedEpisode,
+              let series = loadedSeries else { return }
 
         loadTask?.cancel()
         loadTask = nil
-
-        loadedSeries = series
-        loadedEpisode = episode
-        let rawNotebookId = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
-        resolvedNotebookId = VocabularyEntry.resolveNotebookId(rawNotebookId, in: modelContext)
 
         let vm = PodcastPlayerViewModel(hostNames: series.hostNames)
         viewModel = vm
