@@ -420,15 +420,37 @@ enum AppLayout {
     static let expandedPagePadding: CGFloat = 48
 }
 
+/// Theme-aware elevation modifier — 在 dark mode 自動加強陰影 opacity
+/// 否則黑底加黑影完全不可見，導致 elevation 語意失效。
+private struct AppElevationModifier: ViewModifier {
+    let z: AppElevation
+    @Environment(\.colorScheme) private var colorScheme
+
+    func body(content: Content) -> some View {
+        // dark mode 上 black shadow 與 dark background 對比不足，
+        // 提高 opacity 至 1.8x 補回視覺層次（Material Dark Elevation pattern）
+        let darkBoost: Double = colorScheme == .dark ? 1.8 : 1.0
+        return content.shadow(
+            color: .black.opacity(z.opacity * darkBoost),
+            radius: z.radius,
+            y: z.y
+        )
+    }
+}
+
 extension View {
     /// Apply elevation shadow token。使用 `.appElevation(.z2)` 取代 raw `.shadow(...)`。
+    /// 自動感知 light / dark mode 並調整 shadow 強度，dark mode 上會加強至 1.8x opacity。
     func appElevation(_ z: AppElevation) -> some View {
-        shadow(color: .black.opacity(z.opacity), radius: z.radius, y: z.y)
+        modifier(AppElevationModifier(z: z))
     }
 
-    /// 限制內容最大寬度並水平置中 — iPad / macOS readable layout
-    func appReadableFrame(maxWidth: CGFloat = AppLayout.maxReadableWidth) -> some View {
-        frame(maxWidth: maxWidth)
+    /// 限制內容最大寬度並對齊 — iPad / macOS readable layout
+    func appReadableFrame(
+        maxWidth: CGFloat = AppLayout.maxReadableWidth,
+        alignment: Alignment = .center
+    ) -> some View {
+        frame(maxWidth: maxWidth, alignment: alignment)
     }
 }
 
