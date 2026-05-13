@@ -182,3 +182,73 @@ def test_podcast_media_mount_available_without_predeploy_dir(isolated_api):
     mount path is always registered (404 for missing file, not 404 for missing mount)."""
     resp = isolated_api.client.get("/api/podcast-media/nonexistent.mp3")
     assert resp.status_code == 404
+
+
+# ---------------------------------------------------------------------------
+# Authorization model contract: podcasts are public-read for any authenticated
+# user. This locks in the documented model in routers/podcast.py — any future
+# refactor that introduces ownership must update both the docstring and these
+# tests in lock-step.
+# ---------------------------------------------------------------------------
+
+
+def test_any_authenticated_user_can_read_any_series(podcast_api):
+    """Contract: podcasts have no owner_id. The user that lists/reads them is
+    irrelevant — every authenticated user sees the same content."""
+    api, podcasts = podcast_api
+    series_dir = podcasts / "series_pub"
+    series_dir.mkdir()
+    meta = {"id": "series_pub", "title": "Public", "episodes": 1}
+    (series_dir / "metadata.json").write_text(json.dumps(meta))
+
+    # The default isolated_api user can read.
+    resp_self = api.client.get("/api/podcasts/series_pub", headers=api.headers)
+    assert resp_self.status_code == 200
+    assert resp_self.json() == meta
+
+    # A different (mounted) user with their own JWT can read the same payload.
+    from conftest import make_jwt  # type: ignore
+    other_headers = {"Authorization": f"Bearer {make_jwt('other_user')}"}
+    resp_other = api.client.get("/api/podcasts/series_pub", headers=other_headers)
+    assert resp_other.status_code == 200
+    assert resp_other.json() == meta
+
+
+@pytest.mark.parametrize(
+    "bad_id",
+    [
+        "..",
+        "../etc",
+        "series.a",       # dot
+        "series-a",       # dash (regex requires underscore)
+        "series a",       # space
+        "series%2Fa",     # encoded slash — FastAPI passes raw "series/a" but
+                          # the path no longer matches the route, hence 404
+        "Series_A",       # uppercase
+        "%2e%2e",         # url-encoded ..
+    ],
+)
+def test_series_id_regex_rejects_bad_inputs(podcast_api, bad_id):
+    """All non-matching `series_id` values must 404 before any FS lookup."""
+    api, _ = podcast_api
+    resp = api.client.get(f"/api/podcasts/{bad_id}", headers=api.headers)
+    assert resp.status_code in (404, 422), (
+        f"series_id={bad_id!r} produced status {resp.status_code}"
+    )
+
+
+def test_subtitle_ep_num_rejects_non_integer(podcast_api):
+    """ep_num is typed `int` with Path(ge=1, le=999); strings must be 422."""
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/series_a/abc/subtitle", headers=api.headers)
+    assert resp.status_code == 422
+
+
+def test_subtitle_traversal_in_ep_segment_does_not_escape(podcast_api):
+    """A literal `..` placed as ep_num must be rejected by int parsing — it
+    must never be assembled into a path that escapes the series dir."""
+    api, _ = podcast_api
+    resp = api.client.get("/api/podcasts/series_a/../subtitle", headers=api.headers)
+    # FastAPI either 404s the route (no match) or 422s on int parsing; either
+    # is acceptable as long as we don't reach the filesystem with `..`.
+    assert resp.status_code in (404, 422)
