@@ -164,6 +164,38 @@ enum AppMotion {
     static let loadingState = quickEaseOut
     static let listReorder = standardSpring
     static let chipSelect = chipSelectionEaseOut
+
+    // MARK: - Phase 5: Asymmetric Emphasized Easing
+    // Material Design 3 / Apple HIG 非對稱曲線：進場慢出（觀眾還在看）、退場快進（觀眾已轉移注意）。
+    // 是「絲滑感」與「Things 3 / Linear 質感」的核心曲線。
+
+    /// 進場曲線 — 緩入快出，配 sheet / panel / overlay reveal
+    /// timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4) — 標準 Material decelerate
+    static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
+
+    /// 退場曲線 — 快入慢出，配 sheet / panel / overlay dismiss
+    /// timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2) — 標準 Material accelerate
+    static let emphasizedAccelerate = Animation.timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2)
+
+    // MARK: - Phase 5: Continuous / Loading Motion
+
+    /// Shimmer / skeleton 連續呼吸動畫 — 配 LinearGradient mask 平移做骨架動效
+    static let shimmer = Animation.linear(duration: 1.4).repeatForever(autoreverses: false)
+
+    /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
+    static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
+
+    // MARK: - Phase 5: Tap Feedback Triplet (scale + opacity + haptic)
+    // 「按下去」物理感的三件套常量，供 PressableInteraction / ButtonStyle 內部使用
+
+    enum TapFeedback {
+        /// 按下時的縮放比例
+        static let scaleDown: CGFloat = 0.97
+        /// 按下時的透明度（opacity dip）
+        static let opacityDip: Double = 0.92
+        /// 對應的動畫曲線
+        static let animation = Animation.interactiveSpring(response: 0.18, dampingFraction: 0.7)
+    }
 }
 
 extension AnyTransition {
