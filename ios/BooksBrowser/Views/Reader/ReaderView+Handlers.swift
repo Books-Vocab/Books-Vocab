@@ -9,7 +9,7 @@ extension ReaderView {
         }
         currentLocator = locator
         totalProgression = locator.locations.totalProgression ?? 0
-        book.lastReadLocatorJSON = locator.jsonString
+        book.lastReadLocatorJSON = (try? locator.jsonString()) ?? "{}"
         book.dateLastRead = Date()
         book.progression = totalProgression
     }
