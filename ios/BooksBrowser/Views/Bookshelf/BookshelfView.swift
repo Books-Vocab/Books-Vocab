@@ -323,7 +323,6 @@ struct BookCard: View {
                     .foregroundStyle(appTheme.palette.tertiaryText)
                     .lineLimit(1)
                     .truncationMode(.tail)
-                    .minimumScaleFactor(0.85)
 
                 if let dateLastRead = book.dateLastRead {
                     Text(dateLastRead.relativeShort)

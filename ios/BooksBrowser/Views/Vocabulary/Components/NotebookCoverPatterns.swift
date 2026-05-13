@@ -156,7 +156,7 @@ struct NotebookCoverView: View {
                     .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                     .lineLimit(2)
                     .truncationMode(.tail)
-                    .minimumScaleFactor(0.75)
+                    .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
                     .padding(.horizontal, 8)
             }

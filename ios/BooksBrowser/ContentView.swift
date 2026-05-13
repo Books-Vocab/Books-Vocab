@@ -11,7 +11,6 @@ import SwiftData
 /// 主介面 — Tab 導航
 struct ContentView: View {
     @Environment(\.authManager) private var authManager
-    @Environment(\.kgService) private var kgService
     @Environment(\.modelContext) private var modelContext
 
     #if os(macOS)

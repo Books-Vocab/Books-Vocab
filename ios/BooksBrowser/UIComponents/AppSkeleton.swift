@@ -29,10 +29,12 @@ struct AppSkeletonLine: View {
     }
 
     var body: some View {
-        // 使用 mutedFill（語意正確的「skeleton/disabled bg」token），
-        // 而非 tertiaryText（語意是文字色，當 fill 用會在 dark mode 偏顯眼）
+        // 用 primaryText.opacity 直接給顯式 alpha：
+        // - light mode primaryText 偏黑，0.06-0.14 在白底清楚可見
+        // - dark mode primaryText 偏白，0.06-0.14 在暗底清楚可見
+        // 在兩 mode 自動 invert 對比，pulse 振幅一致。
         RoundedRectangle(cornerRadius: AppRadius.xs, style: .continuous)
-            .fill(appTheme.palette.mutedFill.opacity(pulse ? 2.0 : 1.0))
+            .fill(appTheme.palette.primaryText.opacity(pulse ? 0.14 : 0.06))
             .frame(width: width, height: height)
             .frame(maxWidth: width == nil ? .infinity : nil, alignment: .leading)
             .animation(AppMotion.subtleBreath, value: pulse)
