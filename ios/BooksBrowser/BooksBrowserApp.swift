@@ -32,6 +32,9 @@ struct BooksBrowserApp: App {
     let startupFailure: AppStartupFailure?
 
     init() {
+        // Initialize crash reporting first so any subsequent startup failure is captured.
+        AppCrashReporting.bootstrap()
+
         #if os(iOS)
         AppFonts.ensureSerifCJKAvailable()
         AppFonts.configureGlobalAppearance()
@@ -214,6 +217,8 @@ struct BooksBrowserApp: App {
                     await subscriptionManager.refresh(using: kgService, authManager: authManager, force: false)
                 }
                 .onChange(of: authManager.isLoggedIn) { wasLoggedIn, isNowLoggedIn in
+                    // Tag Sentry scope with user id (clear on logout) — runs on every transition.
+                    AppCrashReporting.setUser(id: isNowLoggedIn ? authManager.userId : nil)
                     // Trigger sync immediately after login (scenePhase won't re-fire .active)
                     guard !wasLoggedIn, isNowLoggedIn, !authManager.isDemoMode else { return }
                     Task {

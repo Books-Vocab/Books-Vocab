@@ -13,6 +13,8 @@
 	</array>
 	<key>GIDClientID</key>
 	<string>420692527351-8m8bo0mi2l7d086cg77l071jgkpv3jso.apps.googleusercontent.com</string>
+	<key>SentryDSN</key>
+	<string></string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
