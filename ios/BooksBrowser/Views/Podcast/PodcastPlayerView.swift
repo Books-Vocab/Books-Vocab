@@ -40,31 +40,49 @@ struct PodcastPlayerView: View {
     /// `fetch` with an indexed predicate is O(log n) and stays on the main
     /// context.
     private var loadedEpisode: PodcastEpisode? {
-        let targetId = episodeId
-        let descriptor = FetchDescriptor<PodcastEpisode>(
-            predicate: #Predicate { $0.remoteId == targetId }
-        )
-        return try? modelContext.fetch(descriptor).first
+        Self.fetchEpisode(remoteId: episodeId, in: modelContext)
     }
 
     private var loadedSeries: PodcastSeries? {
         loadedEpisode?.series
     }
 
-    /// Notebook id derived synchronously from UserDefaults + SwiftData lookup,
-    /// so `vocabularyContext` becomes non-nil the instant the SwiftData row is
-    /// hydrated — no dependency on `.task` having completed.
-    private var resolvedNotebookId: String? {
-        let raw = UserDefaults.standard.string(forKey: "activeNotebookId") ?? "default"
-        return VocabularyEntry.resolveNotebookId(raw, in: modelContext)
-    }
+    private static let activeNotebookIdKey = "activeNotebookId"
 
     private var vocabularyContext: PodcastVocabularyContext? {
-        guard let series = loadedSeries,
-              let episode = loadedEpisode,
-              let nbId = resolvedNotebookId else { return nil }
+        Self.resolveVocabularyContext(
+            episodeId: episodeId,
+            modelContext: modelContext,
+            rawNotebookId: UserDefaults.standard.string(forKey: Self.activeNotebookIdKey) ?? "default",
+            toastCoordinator: toastCoordinator,
+            vocabulary: allVocabulary
+        )
+    }
+
+    /// Same logic as `vocabularyContext`, hoisted to a pure static so it is
+    /// directly testable without SwiftUI runtime. The race that PR #400 fixed
+    /// lives entirely inside this resolver: as long as the SwiftData episode
+    /// row exists, this returns non-nil — no `.task` hydration required.
+    static func fetchEpisode(remoteId: String, in context: ModelContext) -> PodcastEpisode? {
+        let target = remoteId
+        let descriptor = FetchDescriptor<PodcastEpisode>(
+            predicate: #Predicate { $0.remoteId == target }
+        )
+        return try? context.fetch(descriptor).first
+    }
+
+    static func resolveVocabularyContext(
+        episodeId: String,
+        modelContext: ModelContext,
+        rawNotebookId: String,
+        toastCoordinator: AppToastCoordinator,
+        vocabulary: [VocabularyEntry]
+    ) -> PodcastVocabularyContext? {
+        guard let episode = fetchEpisode(remoteId: episodeId, in: modelContext),
+              let series = episode.series else { return nil }
+        let nbId = VocabularyEntry.resolveNotebookId(rawNotebookId, in: modelContext)
         return PodcastVocabularyContext(
-            vocabulary: allVocabulary,
+            vocabulary: vocabulary,
             modelContext: modelContext,
             series: series,
             episode: episode,
@@ -297,11 +315,11 @@ struct PodcastPlayerView: View {
     }
 
     private func loadEpisode() {
-        // `loadedEpisode` / `loadedSeries` / `resolvedNotebookId` are now
-        // synchronous computed properties driven by `episodeId` + SwiftData +
-        // UserDefaults, so `vocabularyContext` is non-nil as soon as the row
-        // exists — no `.task` hydration race. This function only owns the
-        // audio/subtitle async load + viewModel lifecycle.
+        // `loadedEpisode` / `loadedSeries` / `vocabularyContext` are now
+        // synchronous computed properties (via `resolveVocabularyContext`)
+        // driven by `episodeId` + SwiftData + UserDefaults, so the context is
+        // non-nil as soon as the row exists — no `.task` hydration race. This
+        // function only owns the audio/subtitle async load + viewModel lifecycle.
         guard let episode = loadedEpisode,
               let series = loadedSeries else { return }
 
