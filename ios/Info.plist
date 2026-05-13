@@ -14,7 +14,7 @@
 	<key>GIDClientID</key>
 	<string>420692527351-8m8bo0mi2l7d086cg77l071jgkpv3jso.apps.googleusercontent.com</string>
 	<key>SentryDSN</key>
-	<string></string>
+	<string>https://0796fc3f39f26cfc049ee65459a258dd@o4511383207870464.ingest.us.sentry.io/4511383227990016</string>
 	<key>NSAppTransportSecurity</key>
 	<dict>
 		<key>NSAllowsLocalNetworking</key>
