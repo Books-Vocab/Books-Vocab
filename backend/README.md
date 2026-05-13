@@ -10,9 +10,9 @@
 - `src/kg/*_service.py`: translate / auth / vocab / pipeline / billing 等業務邏輯
 - `tests/test_api_module_compat.py`、`tests/test_api_startup_smoke.py`、`tests/test_route_registration.py`: 重構遷移的 guardrails
 
-> 💡 **後端開發入口**：部署、測試、格式規範與 debug 路徑，請先看：[👉 `../docs/backend-dev.md`](../docs/backend-dev.md)
+> 💡 **後端開發入口**：部署、測試、格式規範與 debug 路徑，請先看：[👉 `../docs/dev/backend-dev.md`](../docs/dev/backend-dev.md)
 >
-> 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../docs/architecture.md`](../docs/architecture.md)
+> 💡 **完整系統架構**：有關 KG 後端如何與 iOS 前端 (BooksBrowser) 透過 REST API 進行離線同步、多帳號授權、與帳戶隔離的技術細節，請參見：[👉 `../docs/dev/architecture.md`](../docs/dev/architecture.md)
 
 ## 快速啟動
 
@@ -30,7 +30,7 @@ uvicorn src.kg.api:app --reload --port 8000
 docker compose up -d --build
 ```
 
-詳細部署步驟請見 [`DEPLOYMENT.md`](DEPLOYMENT.md)。
+詳細部署步驟請見 [`../docs/dev/deploy.md`](../docs/dev/deploy.md)。
 
 ## API 與多用戶架構 (Multi-User)
 

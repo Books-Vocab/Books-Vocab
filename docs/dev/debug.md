@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: a5bcffc
+verified_against: 4061750
 -->
 # 伺服器排障指南
 

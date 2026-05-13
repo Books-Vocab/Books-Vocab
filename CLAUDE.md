@@ -15,22 +15,22 @@
 
 ## 對話啟動流程（每次對話強制執行）
 
-1. **Deep Scan** — 立即 `Skill("deep-scan")`，dispatch 5-7 個 opus agent 平行掃描全專案。不等結果，繼續下一步。
+1. **Deep Scan（inline dispatch）** — 立即 inline dispatch 5-7 個 opus general-purpose agent 平行掃描全專案（無對應 skill）。不等結果，繼續下一步。
 2. **掃描 skill 觸發條件** — 對照使用者的第一句話，凡符合已註冊 skill 的觸發描述，立即載入。「不確定是否符合」= 符合。
 3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
 4. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
 
-## Skill 系統（6 個 skill）
+## Skill 系統（7 個 skill）
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
-| `deep-scan` | 每次對話自動 + `/deep-scan` | 全專案平行掃描 |
 | `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
 | `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 | `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
+| `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
 
 ### Skill 規則
 
