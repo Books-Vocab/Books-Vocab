@@ -217,6 +217,107 @@ class TestEmbeddingSettingsWiring:
             clear_store_cache()
 
 
+class TestEmbeddingModelDimSidecar:
+    """Persisted sidecar (`embeddings_meta_{nb}.json`) must invalidate the
+    on-disk vectors when the active model or dim no longer match. Without it
+    the store loads stale vectors and crashes deep inside _embed() / vstack()
+    on the next add."""
+
+    def _seed_disk(self, tmp_path: Path, *, n: int, dim: int):
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        np.save(emb_path, np.random.rand(n, dim).astype(np.float32))
+        ids_path.write_text(json.dumps([f"c{i}" for i in range(n)]))
+        return emb_path, ids_path
+
+    def test_legacy_disk_files_without_sidecar_are_adopted(self, tmp_path: Path):
+        """Existing deployments have .npy + .json on disk but no sidecar yet.
+        Loading must assume they match the current model/dim and write the
+        sidecar in-place (one-shot migration)."""
+        emb_path, ids_path = self._seed_disk(tmp_path, n=2, dim=768)
+        sidecar = tmp_path / "embeddings_meta_default.json"
+        assert not sidecar.exists()
+
+        llm, _ = _make_tracked_llm()
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-current", dim=768)
+
+        # Migration: sidecar should now exist, recording current model/dim,
+        # and the original vectors should still be loaded.
+        assert sidecar.exists(), "legacy load must write the sidecar in-place"
+        meta = json.loads(sidecar.read_text())
+        assert meta["model"] == "m-current"
+        assert meta["dim"] == 768
+        assert store.count() == 2
+        assert store._embeddings.shape == (2, 768)
+
+    def test_sidecar_match_loads_normally(self, tmp_path: Path):
+        """Matching sidecar → vectors load, no rebuild."""
+        emb_path, ids_path = self._seed_disk(tmp_path, n=3, dim=512)
+        sidecar = tmp_path / "embeddings_meta_default.json"
+        sidecar.write_text(json.dumps({"model": "m-x", "dim": 512}))
+
+        llm, _ = _make_tracked_llm()
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-x", dim=512)
+        assert store.count() == 3
+
+    def test_dim_mismatch_invalidates_disk_files(self, tmp_path: Path):
+        """Sidecar dim != active dim → quarantine stale files, start empty."""
+        emb_path, ids_path = self._seed_disk(tmp_path, n=2, dim=768)
+        sidecar = tmp_path / "embeddings_meta_default.json"
+        sidecar.write_text(json.dumps({"model": "m-old", "dim": 768}))
+
+        llm, _ = _make_tracked_llm()
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-new", dim=1024)
+
+        assert store.count() == 0, "stale store must reset to empty"
+        # Legacy files quarantined (renamed away) so a re-embed cycle
+        # writes fresh data without colliding.
+        legacy_emb = tmp_path / "embeddings_default.npy.legacy_m-old_768"
+        legacy_ids = tmp_path / "card_ids_default.json.legacy_m-old_768"
+        assert legacy_emb.exists(), "stale .npy must be quarantined, not deleted"
+        assert legacy_ids.exists(), "stale ids must be quarantined, not deleted"
+        # Sidecar now reflects active model/dim.
+        meta = json.loads(sidecar.read_text())
+        assert meta["model"] == "m-new"
+        assert meta["dim"] == 1024
+
+    def test_model_mismatch_invalidates_disk_files(self, tmp_path: Path):
+        """Sidecar model != active model (same dim) → still invalidate."""
+        emb_path, ids_path = self._seed_disk(tmp_path, n=1, dim=768)
+        sidecar = tmp_path / "embeddings_meta_default.json"
+        sidecar.write_text(json.dumps({"model": "m-A", "dim": 768}))
+
+        llm, _ = _make_tracked_llm()
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-B", dim=768)
+        assert store.count() == 0
+
+    def test_after_invalidation_add_does_not_raise(self, tmp_path: Path):
+        """Regression: previously, after model/dim swap the next add() blew
+        up inside _embed when it tried to vstack vectors of different shapes
+        (the old vectors were still loaded). After invalidation, add must
+        proceed normally and write the new model/dim sidecar."""
+        emb_path, ids_path = self._seed_disk(tmp_path, n=2, dim=512)
+        (tmp_path / "embeddings_meta_default.json").write_text(
+            json.dumps({"model": "m-old", "dim": 512})
+        )
+
+        client = MagicMock()
+        resp = MagicMock()
+        resp.usage = MagicMock(prompt_tokens=10, total_tokens=10)
+        item = MagicMock()
+        item.index = 0
+        item.embedding = np.random.rand(1024).tolist()
+        resp.data = [item]
+        client.embeddings.create.return_value = resp
+        llm = TrackedLLM(client, "test_user")
+
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-new", dim=1024)
+        # Must NOT raise — old (n,512) vectors must have been dropped.
+        store.add("c_new", "hello")
+        assert store.count() == 1
+        assert store._embeddings.shape == (1, 1024)
+
+
 class TestEmbeddingDimGuard:
     def test_dim_mismatch_raises_valueerror(self, tmp_path: Path):
         """If upstream returns wrong dim, fail loudly instead of later

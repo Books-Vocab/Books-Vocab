@@ -228,10 +228,26 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
             return JSONResponse({"detail": "Request body too large"}, status_code=413)
         return await call_next(request)
 
+    # Rate-limit exempt prefixes. Compared with `path.startswith(p)` so any
+    # path that begins with one of these is bypassed.
+    #
+    # Why OAuth callbacks are exempt:
+    # * `/auth/web/google/callback` is reached by the user's browser after
+    #   Google's redirect — but the limiter key falls back to XFF / client.host
+    #   (no Authorization header yet), which collides across shared NAT and
+    #   can 429 unrelated users mid-login.
+    # * `/auth/web/apple/callback` is reached via a POST from Apple's servers
+    #   themselves, so every callback shares one source IP. With a Pro user
+    #   community larger than `API_RATE_LIMIT` per minute, Apple sign-in
+    #   would silently fail for everyone after the burst.
+    # The callbacks are state-validated (oauth_state cookie + provider state)
+    # and naturally rare per session, so abuse protection is already in place.
     _RATE_LIMIT_EXEMPT = {
         "/docs", "/openapi.json", "/privacy", "/support", "/terms", "/guide",
         "/api/billing/app-store/notifications",
         "/api/system/info",
+        "/auth/web/google/callback",
+        "/auth/web/apple/callback",
     }
 
     @app.middleware("http")
