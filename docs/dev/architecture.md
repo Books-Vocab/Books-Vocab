@@ -3,7 +3,7 @@ tier: structural
 scope:
   - ios/BooksBrowser
   - backend/src/kg
-verified_against: a5bcffc
+verified_against: 4061750
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
