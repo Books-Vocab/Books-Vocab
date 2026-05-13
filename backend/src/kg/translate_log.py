@@ -22,9 +22,8 @@ def _get_conn() -> sqlite3.Connection:
         db = _db_path()
         db.parent.mkdir(parents=True, exist_ok=True)
         _conn = sqlite3.connect(str(db), check_same_thread=False)
-        _conn.execute("PRAGMA journal_mode=WAL;")
-        _conn.execute("PRAGMA synchronous=NORMAL;")
-        _conn.execute("PRAGMA busy_timeout=30000;")
+        from .sqlite_utils import init_sqlite_pragmas
+        init_sqlite_pragmas(_conn)
         _conn.execute("""
             CREATE TABLE IF NOT EXISTS translate_log (
                 id          INTEGER PRIMARY KEY AUTOINCREMENT,
