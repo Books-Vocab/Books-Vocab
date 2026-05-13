@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 4061750
+verified_against: c16321f
 -->
 # 後端部署指南
 
@@ -93,6 +93,22 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appsto
 - 一般 key 要求值完全相同
 - host-specific path key（例如 App Store cert path）允許本地/遠端主機路徑不同，但要求檔名一致且位於各自主機的預期 `certs/` 目錄
 - 若 drift 存在，deploy 會直接失敗，避免 runtime 配置悄悄偏離
+
+### Sentry 錯誤追蹤
+
+Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費。
+
+| Env | Default | 用途 |
+|-----|---------|------|
+| `SENTRY_DSN` | （空）| 主開關；填入 DSN 才會啟動 |
+| `SENTRY_ENVIRONMENT` | `production` | release/staging/dev 環境標籤 |
+| `SENTRY_RELEASE` | fallback to `KG_VERSION` | 自動拿到 deploy 寫的 git SHA，無需手動設 |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.0` | trace 取樣率（0 = 關閉 perf 追蹤）|
+| `SENTRY_PROFILES_SAMPLE_RATE` | `0.0` | profile 取樣率（同上）|
+
+實作位於 `backend/src/kg/sentry_init.py`：FastAPI + Starlette + Logging integrations，auth header / cookie / OAuth code query 全部 scrub，`send_default_pii=False`、`include_local_variables=False`、`max_request_body_size="never"`。狀態暴露於 `/api/system/info`。
+
+iOS 端走 `Info.plist` `SentryDSN` 鍵，詳見 `docs/dev/ios-dev.md`。
 
 ### 新增 Card Schema 欄位（SQLite）
 
