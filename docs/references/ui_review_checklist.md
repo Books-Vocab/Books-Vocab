@@ -2,7 +2,7 @@
 tier: reference
 scope:
   - ios/BooksBrowser
-verified_against: 4eaa92b
+verified_against: 4061750
 -->
 # UI Review Checklist
 
