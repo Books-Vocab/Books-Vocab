@@ -2,7 +2,7 @@
 tier: operational
 scope:
   - backend/src/kg
-verified_against: 4061750
+verified_against: c16321f
 -->
 # KG Backend Dev Guide
 
@@ -71,6 +71,12 @@ pytest -q
 先看：
 - `docs/dev/architecture.md`
 - `docs/references/sync_lifecycle.md`
+
+### 查 Sentry 錯誤追蹤
+
+先看：
+- `docs/dev/deploy.md`（env keys + opt-in 模式）
+- `backend/src/kg/sentry_init.py`（scrubbing / integrations 實作）
 
 ## 維護規則
 

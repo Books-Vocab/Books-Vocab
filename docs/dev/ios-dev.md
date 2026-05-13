@@ -3,7 +3,7 @@ tier: operational
 scope:
   - ios/BooksBrowser
   - ops
-verified_against: 4061750
+verified_against: c16321f
 -->
 # BooksBrowser iOS 開發技能
 
@@ -60,6 +60,7 @@ verified_against: 4061750
 | `SyncCoordinator` | 同步協調（手動同步入口、orphan cleanup） |
 | `BookshelfImportService` | Multi-format import（EPUB/TXT/MD/PDF） |
 | `AppToastCoordinator` | Toast notification 管理（EnvironmentKey 注入） |
+| `AppCrashReporting` | Sentry bootstrap；opt-in via `Info.plist` `SentryDSN`；`bootstrap()` 於 `BooksBrowserApp.init()` 第一步呼叫；`setUser(id:)` 連動 `authManager.isLoggedIn` 變化；`record(_:context:)` 手動 capture |
 
 ### 主要 Views
 
@@ -93,6 +94,16 @@ Apple/Google SSO
   → 後端建立 data/users/<user_id>/ 隔離目錄
   → HTTP 401 → iOS 自動登出 + 清空 SwiftData
 ```
+
+### Crash Reporting（Sentry）
+
+- SPM dep `sentry-cocoa` 透過 `canImport(Sentry)` 守門 — 缺套件即 pure no-op，dev / PR build 不卡編譯
+- 啟用條件：`Info.plist` 設 `SentryDSN`（optional：`SentryEnvironment` 覆寫，否則 DEBUG = `debug` / Release = `production`）
+- DEBUG build 預設關閉；`SENTRY_ENABLED_IN_DEBUG=1` env 或 `-sentryTest` launch arg 強制開啟驗證
+- Release 命名：`<bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`；`dist=CFBundleVersion`（區分 TestFlight 多次 build）
+- 隱私：`sendDefaultPii=false`、`enableUserInteractionTracing=false`、HTTP breadcrumb URL 去 query string、`beforeSend` 丟棄 `CancellationError` / `NSURLErrorCancelled`
+- Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksBrowserApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
+- User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange（登出時清除，避免多帳戶污染）
 
 
 
