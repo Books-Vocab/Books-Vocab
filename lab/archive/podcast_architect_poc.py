@@ -2,6 +2,7 @@
 """Podcast Architect PoC — Book → Production Plan via claude-code-gateway."""
 
 import json
+import os
 import sys
 import time
 from pathlib import Path
@@ -12,8 +13,11 @@ from ebooklib import epub
 from openai import OpenAI
 
 # --- Config ---
+# NOTE: archived — superseded by lab/podcast/pipeline.py. Kept for history.
+# The previously hardcoded gateway token leaked via git history MUST be
+# rotated; reading from env now so this file can't re-leak.
 GATEWAY_URL = "https://wordnexus.lol/claude/v1"
-GATEWAY_TOKEN = "fOpJRuwVIjLr--dKKOMO8uxgGZW40YVwWhGxkKb4ISw"
+GATEWAY_TOKEN = os.environ["CCG_API_TOKEN"]
 MODEL = "opus"
 
 SYSTEM_PROMPT = """\
