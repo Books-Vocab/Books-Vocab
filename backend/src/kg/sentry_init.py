@@ -14,9 +14,46 @@ from __future__ import annotations
 
 import logging
 import os
+from typing import Any
 
 _logger = logging.getLogger(__name__)
 _initialized = False
+
+# Query/header/cookie keys whose values must never reach Sentry.
+_SCRUB_HEADER_KEYS = {"authorization", "cookie", "x-admin-token"}
+_SCRUB_QUERY_KEYS = {"token", "admin_session", "code", "id_token", "access_token"}
+
+
+def _scrub_event(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any]:
+    """Strip auth credentials from outgoing events before they ship."""
+    req = event.get("request")
+    if isinstance(req, dict):
+        qs = req.get("query_string")
+        if isinstance(qs, str) and qs:
+            req["query_string"] = _scrub_querystring(qs)
+        headers = req.get("headers")
+        if isinstance(headers, dict):
+            for key in list(headers.keys()):
+                if key.lower() in _SCRUB_HEADER_KEYS:
+                    headers[key] = "[scrubbed]"
+        cookies = req.get("cookies")
+        if isinstance(cookies, dict):
+            for key in list(cookies.keys()):
+                if "session" in key.lower() or "token" in key.lower():
+                    cookies[key] = "[scrubbed]"
+    return event
+
+
+def _scrub_querystring(qs: str) -> str:
+    parts = []
+    for chunk in qs.split("&"):
+        if "=" in chunk:
+            k, _ = chunk.split("=", 1)
+            if k.lower() in _SCRUB_QUERY_KEYS:
+                parts.append(f"{k}=[scrubbed]")
+                continue
+        parts.append(chunk)
+    return "&".join(parts)
 
 
 def init_sentry() -> bool:
@@ -61,11 +98,16 @@ def init_sentry() -> bool:
         traces_sample_rate=traces_rate,
         profiles_sample_rate=profiles_rate,
         send_default_pii=False,
+        include_local_variables=False,  # frame locals contain JWTs/passwords
+        max_request_body_size="never",
         attach_stacktrace=True,
+        before_send=_scrub_event,
         integrations=[
-            FastApiIntegration(transaction_style="endpoint"),
             StarletteIntegration(transaction_style="endpoint"),
-            LoggingIntegration(level=logging.INFO, event_level=logging.ERROR),
+            FastApiIntegration(transaction_style="endpoint"),
+            # Breadcrumbs from WARNING+. Event capture disabled — Starlette
+            # integration already captures exceptions; logger.error would double-report.
+            LoggingIntegration(level=logging.WARNING, event_level=None),
         ],
     )
     _initialized = True
