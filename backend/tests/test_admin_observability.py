@@ -58,6 +58,7 @@ def admin_app(tmp_path, monkeypatch):
     import kg.pipeline_log as pl
     import kg.judge_log as jl
     import kg.token_tracker as tt
+    import kg.translate_log as tl
     pl.DATA_DIR = data_dir
     pl.DB_PATH = data_dir / "pipeline_runs.db"
     jl.DATA_DIR = data_dir
@@ -66,6 +67,7 @@ def admin_app(tmp_path, monkeypatch):
     tt.DB_PATH = data_dir / "token_usage.db"
     pl._reset()
     jl._reset()
+    tl._reset()
     if hasattr(tt, "_reset"):
         tt._reset()
     else:
@@ -89,6 +91,7 @@ def admin_app(tmp_path, monkeypatch):
         app.state.kg_settings = original_settings
         pl._reset()
         jl._reset()
+        tl._reset()
         if tt._conn is not None:
             tt._conn.close()
             tt._conn = None
@@ -248,18 +251,18 @@ def test_judge_rejection_rate_24h(admin_app):
 # ── translate_cache_hit_rate_24h ──────────────────────────────────────────
 
 
-def test_translate_cache_hit_rate_uses_dedup_logic(admin_app):
+def test_translate_cache_hit_rate_uses_real_counter(admin_app):
+    """Hits come from translate_cache_hits counter; misses from translate_log rows."""
     import kg.translate_log as tl
-    # 1 distinct query repeated 3 times = 2 cache hits out of 3 calls = 66.7%
-    for _ in range(3):
-        tl.record(
-            user_id="u1", operation="translate_quick",
-            word="apple", context="I ate an apple.",
-            context_hash="hash_apple",
-            source_lang="en", target_lang="zh-Hant",
-            response_raw='{"t":"蘋果"}', latency_ms=100,
-        )
-    # 1 unique additional query — total 4 calls, 3 distinct → hits = 1
+
+    # 2 misses recorded (each = 1 LLM call)
+    tl.record(
+        user_id="u1", operation="translate_quick",
+        word="apple", context="I ate an apple.",
+        context_hash="hash_apple",
+        source_lang="en", target_lang="zh-Hant",
+        response_raw='{"t":"蘋果"}', latency_ms=100,
+    )
     tl.record(
         user_id="u2", operation="translate_quick",
         word="banana", context="I ate a banana.",
@@ -267,13 +270,30 @@ def test_translate_cache_hit_rate_uses_dedup_logic(admin_app):
         source_lang="en", target_lang="zh-Hant",
         response_raw='{"t":"香蕉"}', latency_ms=100,
     )
+    # 3 cache hits (short-circuited, never reach record())
+    for _ in range(3):
+        tl.record_cache_hit(
+            user_id="u1", operation="translate_quick",
+            word="apple", context_hash="hash_apple",
+            source_lang="en", target_lang="zh-Hant",
+        )
 
     body = _get(admin_app.client).json()
     m = body["translate_cache_hit_rate_24h"]
-    assert m["total"] == 4
-    assert m["distinct"] == 2  # apple + banana
-    assert m["hits"] == 2  # 4 - 2
-    assert m["rate"] == pytest.approx(0.5, abs=1e-3)
+    # total = hits + misses = 3 + 2 = 5; hit rate = 3/5 = 0.6
+    assert m["hits"] == 3
+    assert m["misses"] == 2
+    assert m["total"] == 5
+    assert m["rate"] == pytest.approx(0.6, abs=1e-3)
+
+
+def test_translate_cache_hit_rate_empty_returns_none_rate(admin_app):
+    body = _get(admin_app.client).json()
+    m = body["translate_cache_hit_rate_24h"]
+    assert m["hits"] == 0
+    assert m["misses"] == 0
+    assert m["total"] == 0
+    assert m["rate"] is None
 
 
 # ── daily_token_spend_7d ──────────────────────────────────────────────────
