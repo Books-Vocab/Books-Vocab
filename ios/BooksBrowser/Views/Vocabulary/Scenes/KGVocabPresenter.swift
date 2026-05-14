@@ -176,7 +176,7 @@ private struct KGVocabRow: View {
                 .onLongPressGesture(perform: onLongPress)
         }
         .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-        .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
+        .transition(.listSwap)
     }
 }
 

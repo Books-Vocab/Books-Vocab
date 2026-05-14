@@ -167,7 +167,7 @@ struct TodayReviewPresenter: View {
                     vocabSkin.palette.shadow.opacity(0.25)
                         .ignoresSafeArea()
                         .onTapGesture { onToggleHelp() }
-                        .transition(.opacity)
+                        .transition(.overlayFade)
 
                     shortcutHelpOverlay
                         .transition(.overlayFade)
