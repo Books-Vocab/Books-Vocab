@@ -261,8 +261,14 @@ struct BookshelfView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppMetrics.spacingMedium) {
-                ProgressView()
-                    .scaleEffect(1.0)
+                if let ratio = coordinator.loadingProgress {
+                    ProgressView(value: ratio, total: 1.0)
+                        .progressViewStyle(.linear)
+                        .frame(width: AppBookshelfMetrics.loadingProgressWidth)
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.0)
+                }
                 Text(coordinator.loadingMessage)
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
