@@ -27,6 +27,9 @@ final class PodcastAudioEngine: NSObject {
 
     private(set) var playbackRate: Float = 1.0
     private(set) var duration: TimeInterval = 0
+    /// Stable internal token derived from current audio URL — used for Sentry
+    /// breadcrumbs so playback events can be correlated. Not user-facing.
+    private var currentSourceToken: String?
 
     var onTimeUpdate: ((TimeInterval) -> Void)?
     var onPlaybackFinished: (() -> Void)?
@@ -56,6 +59,14 @@ final class PodcastAudioEngine: NSObject {
         configureAudioSession()
         loadGeneration &+= 1
         let gen = loadGeneration
+        // Extract `<seriesId>/ep_NN` from the standard podcast-media URL shape so
+        // playback breadcrumbs carry an internal token, not a full URL with query.
+        currentSourceToken = Self.sourceToken(from: url)
+        AppCrashReporting.addBreadcrumb(
+            category: "audio",
+            message: "audio.load",
+            data: ["source": currentSourceToken ?? "unknown"]
+        )
 
         // preferPreciseDuration: CBR/VBR MP3 duration from HTTP headers is a
         // rough estimate; precise parsing prevents end-of-episode scrubber
@@ -187,6 +198,11 @@ final class PodcastAudioEngine: NSObject {
 
     func play() {
         guard let p = player else { return }
+        AppCrashReporting.addBreadcrumb(
+            category: "audio",
+            message: "audio.play",
+            data: ["source": currentSourceToken ?? "unknown"]
+        )
         // Replay-after-end: AVPlayer.play() is a no-op once currentTime has
         // reached duration (actionAtItemEnd defaults to .pause). Seek to 0
         // first so tapping play on a finished episode actually replays it.
@@ -202,6 +218,11 @@ final class PodcastAudioEngine: NSObject {
     }
 
     func pause() {
+        AppCrashReporting.addBreadcrumb(
+            category: "audio",
+            message: "audio.pause",
+            data: ["source": currentSourceToken ?? "unknown"]
+        )
         player?.pause()
         stallWatchdog?.cancel()
         stallWatchdog = nil
@@ -213,6 +234,15 @@ final class PodcastAudioEngine: NSObject {
     func seek(to time: TimeInterval, autoResume: Bool) {
         guard let p = player else { return }
         let clamped = max(0, duration > 0 ? min(time, duration) : time)
+        AppCrashReporting.addBreadcrumb(
+            category: "audio",
+            message: "audio.seek",
+            data: [
+                "source": currentSourceToken ?? "unknown",
+                "to_sec": Int(clamped),
+                "auto_resume": autoResume
+            ]
+        )
         let cm = CMTime(seconds: clamped, preferredTimescale: 600)
         p.seek(to: cm, toleranceBefore: .zero, toleranceAfter: .zero) { [weak self] _ in
             guard let self else { return }
@@ -244,6 +274,17 @@ final class PodcastAudioEngine: NSObject {
 
     var isPlaying: Bool {
         player?.timeControlStatus == .playing
+    }
+
+    /// Derive a stable, PII-free token like `series_abc/ep_03` from podcast-media
+    /// URLs. Falls back to `lastPathComponent` for unknown shapes. Drops query.
+    fileprivate static func sourceToken(from url: URL) -> String {
+        let comps = url.pathComponents
+        if let mediaIdx = comps.firstIndex(of: "podcast-media"),
+           mediaIdx + 2 < comps.count {
+            return "\(comps[mediaIdx + 1])/\(comps[mediaIdx + 2])"
+        }
+        return url.deletingPathExtension().lastPathComponent
     }
 
     // MARK: - Private

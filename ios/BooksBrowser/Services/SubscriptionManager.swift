@@ -139,6 +139,9 @@ final class SubscriptionManager: SubscriptionManaging {
                     )
                 } catch {
                     AppLog.subscription.error("syncTransaction failed: \(error.localizedDescription)")
+                    if !(error is CancellationError) {
+                        AppCrashReporting.record(error, context: "subscription.sync.transaction")
+                    }
                 }
                 await self.refresh(using: kgService, authManager: authManager, force: true)
             }
