@@ -16,6 +16,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import UTC, datetime, timedelta
 
@@ -26,6 +27,24 @@ DEFAULT_DAYS_PIPELINE = 30
 DEFAULT_DAYS_JUDGE = 60
 DEFAULT_DAYS_TRANSLATE = 14
 DEFAULT_DAYS_TOKEN = 90
+
+
+def _env_days(var: str, fallback: int) -> int:
+    """Read ``<VAR>_RETENTION_DAYS`` env override; fall back to ``fallback``.
+
+    Invalid / non-positive values are ignored (logged via ``ValueError`` only
+    when negative — non-int falls through silently to keep production safe).
+    """
+    raw = os.environ.get(var)
+    if not raw:
+        return fallback
+    try:
+        days = int(raw)
+    except ValueError:
+        return fallback
+    if days < 0:
+        return fallback
+    return days
 
 
 def _cutoff(days: int) -> str:
@@ -52,32 +71,56 @@ def _delete_and_count(conn, table: str, column: str, cutoff: str) -> tuple[int, 
 # ─────────────────────────────────────────────────────────────────────────────
 
 
-def prune_pipeline_log(days: int = DEFAULT_DAYS_PIPELINE) -> tuple[int, int]:
-    """Delete pipeline_runs rows whose ``started_at`` is older than ``days``."""
+def prune_pipeline_log(days: int | None = None) -> tuple[int, int]:
+    """Delete pipeline_runs rows whose ``started_at`` is older than ``days``.
+
+    When ``days`` is ``None``, falls back to ``PIPELINE_LOG_RETENTION_DAYS``
+    env var, then ``DEFAULT_DAYS_PIPELINE``.
+    """
+    if days is None:
+        days = _env_days("PIPELINE_LOG_RETENTION_DAYS", DEFAULT_DAYS_PIPELINE)
     cutoff = _cutoff(days)
     with pipeline_log._lock:
         conn = pipeline_log._get_conn()
         return _delete_and_count(conn, "pipeline_runs", "started_at", cutoff)
 
 
-def prune_judge_log(days: int = DEFAULT_DAYS_JUDGE) -> tuple[int, int]:
-    """Delete judge_log rows whose ``created_at`` is older than ``days``."""
+def prune_judge_log(days: int | None = None) -> tuple[int, int]:
+    """Delete judge_log rows whose ``created_at`` is older than ``days``.
+
+    When ``days`` is ``None``, falls back to ``JUDGE_LOG_RETENTION_DAYS``
+    env var, then ``DEFAULT_DAYS_JUDGE``.
+    """
+    if days is None:
+        days = _env_days("JUDGE_LOG_RETENTION_DAYS", DEFAULT_DAYS_JUDGE)
     cutoff = _cutoff(days)
     with judge_log._lock:
         conn = judge_log._get_conn()
         return _delete_and_count(conn, "judge_log", "created_at", cutoff)
 
 
-def prune_translate_log(days: int = DEFAULT_DAYS_TRANSLATE) -> tuple[int, int]:
-    """Delete translate_log rows whose ``created_at`` is older than ``days``."""
+def prune_translate_log(days: int | None = None) -> tuple[int, int]:
+    """Delete translate_log rows whose ``created_at`` is older than ``days``.
+
+    When ``days`` is ``None``, falls back to ``TRANSLATE_LOG_RETENTION_DAYS``
+    env var, then ``DEFAULT_DAYS_TRANSLATE``.
+    """
+    if days is None:
+        days = _env_days("TRANSLATE_LOG_RETENTION_DAYS", DEFAULT_DAYS_TRANSLATE)
     cutoff = _cutoff(days)
     with translate_log._lock:
         conn = translate_log._get_conn()
         return _delete_and_count(conn, "translate_log", "created_at", cutoff)
 
 
-def prune_token_usage(days: int = DEFAULT_DAYS_TOKEN) -> tuple[int, int]:
-    """Delete token_usage rows whose ``created_at`` is older than ``days``."""
+def prune_token_usage(days: int | None = None) -> tuple[int, int]:
+    """Delete token_usage rows whose ``created_at`` is older than ``days``.
+
+    When ``days`` is ``None``, falls back to ``TOKEN_USAGE_RETENTION_DAYS``
+    env var, then ``DEFAULT_DAYS_TOKEN``.
+    """
+    if days is None:
+        days = _env_days("TOKEN_USAGE_RETENTION_DAYS", DEFAULT_DAYS_TOKEN)
     cutoff = _cutoff(days)
     with token_tracker._lock:
         conn = token_tracker._get_conn()
