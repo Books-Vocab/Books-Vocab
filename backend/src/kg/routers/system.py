@@ -1,13 +1,17 @@
 """System-level observability endpoint — no auth required."""
 from __future__ import annotations
 
+import logging
 import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
 
+from .. import observability_alerts
 from ..deps import get_admin_user
+
+_logger = logging.getLogger(__name__)
 
 VERSION_FILE = Path("/app/VERSION")
 
@@ -37,6 +41,14 @@ def system_info() -> SystemInfoResponse:
     uptime_seconds = int(time.time() - _STARTED_AT)
 
     migration_version = MIGRATION_NAMES[-1] if MIGRATION_NAMES else "none"
+
+    # Piggyback threshold alerts on this frequently-polled endpoint.
+    # `run_all_checks` itself swallows exceptions; the outer guard is belt-and-
+    # suspenders to ensure /api/system/info never 500s for an observability bug.
+    try:
+        observability_alerts.run_all_checks()
+    except Exception:  # pragma: no cover — defensive
+        _logger.warning("observability alerts run_all_checks failed", exc_info=True)
 
     return SystemInfoResponse(
         version=version,
