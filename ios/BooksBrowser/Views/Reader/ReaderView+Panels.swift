@@ -54,14 +54,20 @@ extension ReaderView {
     }
 
     func readerErrorState(_ error: String) -> some View {
-        ScrollView {
+        let presentation = readerErrorPresentation(for: error)
+        return ScrollView {
             VStack {
                 Spacer(minLength: ReaderPresentationMetrics.Preview.topInset)
 
                 AppEmptyStateCard(
-                    title: "無法開啟書籍".localized,
-                    systemImage: "exclamationmark.triangle",
-                    description: error
+                    title: presentation.title,
+                    systemImage: presentation.systemImage,
+                    description: presentation.description,
+                    action: AppEmptyStateAction(
+                        title: "重試載入".localized,
+                        systemImage: "arrow.clockwise",
+                        handler: { retryLoadPublication() }
+                    )
                 )
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
@@ -70,6 +76,32 @@ extension ReaderView {
             .frame(maxWidth: .infinity)
         }
         .background(viewConfiguration.paperColor.ignoresSafeArea())
+    }
+
+    /// 根據錯誤訊息與當前網路狀態，挑選合適的圖示／標題／敘述。
+    /// 不解析後端錯誤碼，僅作字串啟發式分類，足以服務「等 iCloud / 離線 / 一般失敗」三種主場景。
+    private func readerErrorPresentation(for error: String) -> ReaderErrorPresentation {
+        let offline = !NetworkMonitor.shared.isConnected
+        let lower = error.lowercased()
+        if lower.contains("icloud") {
+            return ReaderErrorPresentation(
+                title: "iCloud 下載失敗".localized,
+                systemImage: "icloud.slash",
+                description: error
+            )
+        }
+        if offline || lower.contains("offline") || lower.contains("internet") || lower.contains("network") {
+            return ReaderErrorPresentation(
+                title: "目前無法連線".localized,
+                systemImage: "wifi.slash",
+                description: "請確認網路或 iCloud 同步狀態後再試一次。\n\n".localized + error
+            )
+        }
+        return ReaderErrorPresentation(
+            title: "無法開啟書籍".localized,
+            systemImage: "exclamationmark.triangle",
+            description: error
+        )
     }
 
     @ViewBuilder
@@ -112,9 +144,22 @@ extension ReaderView {
                     handler.dismiss()
                     closeOverlay(.translation)
                 },
-                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true }
+                onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil,
+                onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
+                    ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                    : nil
             )
         }
     }
+}
+
+/// Reader 載入失敗時，UI 呈現所需的 三元組（title / 圖示 / 敘述）。
+struct ReaderErrorPresentation {
+    let title: String
+    let systemImage: String
+    let description: String
 }
 #endif
