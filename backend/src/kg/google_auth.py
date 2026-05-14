@@ -33,7 +33,15 @@ async def verify_google_token(token: str, client_id: str) -> tuple[str, str | No
 
         email_raw = idinfo.get("email")
         email = str(email_raw).strip().lower() if email_raw else None
-        email_verified = bool(idinfo.get("email_verified", False))
+        # Some providers (and some google-auth payloads from test/proxy
+        # environments) deliver email_verified as a string ("true"/"false")
+        # rather than a bool. bool("false") is truthy in Python, so we
+        # cannot rely on plain bool() coercion — normalize explicitly.
+        raw_verified = idinfo.get("email_verified", False)
+        if isinstance(raw_verified, str):
+            email_verified = raw_verified.strip().lower() == "true"
+        else:
+            email_verified = bool(raw_verified)
 
         return str(sub), email, email_verified
 
