@@ -1054,20 +1054,26 @@ async function loadObservability() {
   }
 }
 
+// Observability warn thresholds (module-level const for single source of truth)
+const JUDGE_REJECT_WARN = 0.4;   // judge rejection rate above this turns red
+const PIPELINE_FAIL_WARN = 0.1;  // pipeline failure rate above this turns red
+
 function renderObservability(d) {
   const tc = d.translate_cache_hit_rate_24h || {};
   const pf = d.pipeline_failure_rate_24h || {};
   const jr = d.judge_rejection_rate_24h || {};
   const tk = d.daily_token_spend_7d || { total: 0, days: [] };
 
-  // judge rejection threshold: warn if >40%
-  const jrClass = (jr.rate != null && jr.rate > 0.4) ? 'style="color:var(--dev)"' : '';
-  const pfClass = (pf.rate != null && pf.rate > 0.1) ? 'style="color:var(--dev)"' : '';
+  const jrClass = (jr.rate != null && jr.rate > JUDGE_REJECT_WARN) ? 'style="color:var(--dev)"' : '';
+  const pfClass = (pf.rate != null && pf.rate > PIPELINE_FAIL_WARN) ? 'style="color:var(--dev)"' : '';
+  const tcNote = tc.note ? escapeHtml(tc.note) : '';
+  const jrTitle = `紅字閾值：拒絕率 > ${(JUDGE_REJECT_WARN * 100).toFixed(0)}%`;
+  const pfTitle = `紅字閾值：失敗率 > ${(PIPELINE_FAIL_WARN * 100).toFixed(0)}%`;
 
   document.getElementById('obs-summary').innerHTML = `
-    <div class="stat"><div class="v">${fmtRate(tc.rate)}</div><div class="l">Translate Cache Hit 24h (${tc.total||0} 次)</div></div>
-    <div class="stat"><div class="v" ${pfClass}>${fmtRate(pf.rate)}</div><div class="l">Pipeline 失敗率 24h (${pf.failed||0}/${pf.total||0})</div></div>
-    <div class="stat"><div class="v" ${jrClass}>${fmtRate(jr.rate)}</div><div class="l">Judge 拒絕率 24h (${jr.rejected||0}/${jr.total||0})</div></div>
+    <div class="stat" title="${tcNote}"><div class="v">${fmtRate(tc.rate)}</div><div class="l">Translate Cache Hit 24h (${tc.total||0} 次)</div></div>
+    <div class="stat" title="${pfTitle}"><div class="v" ${pfClass}>${fmtRate(pf.rate)}</div><div class="l">Pipeline 失敗率 24h (${pf.failed||0}/${pf.total||0})</div></div>
+    <div class="stat" title="${jrTitle}"><div class="v" ${jrClass}>${fmtRate(jr.rate)}</div><div class="l">Judge 拒絕率 24h (${jr.rejected||0}/${jr.total||0})</div></div>
     <div class="stat"><div class="v">${fmt(tk.total)}</div><div class="l">Token 用量 7d (總計)</div></div>
     <div class="stat"><div class="v">${(d.pipeline_step_p95_24h && d.pipeline_step_p95_24h.steps || []).length}</div><div class="l">活躍 Pipeline Step</div></div>`;
 

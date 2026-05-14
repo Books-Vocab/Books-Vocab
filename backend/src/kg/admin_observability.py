@@ -81,6 +81,9 @@ def _pipeline_step_p95_24h() -> dict[str, Any]:
 
     Parses the ``steps`` JSON column from each run started in window. Skips
     steps without both ``started_at`` and ``ended_at``.
+
+    Scale note: Python-side parse, O(N); assumes < 10k runs/24h. 大流量需改
+    SQL 物化視圖（pre-aggregated step durations table + scheduled refresh）。
     """
     from . import pipeline_log as pl
 
