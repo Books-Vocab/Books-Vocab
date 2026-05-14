@@ -166,49 +166,40 @@ def _judge_rejection_rate_24h() -> dict[str, Any]:
 
 
 def _translate_cache_hit_rate_24h() -> dict[str, Any]:
-    """Approximate cache hit rate over the last 24h.
+    """Precise cache hit rate over the last 24h.
 
-    translate_log records *every* LLM call (cache misses) — successful cache
-    hits short-circuit before record() so they are NOT in the table. Therefore
-    we estimate the user-perceived hit rate as the fraction of *recorded*
-    calls whose cache-key tuple already appeared at least once before this
-    24h window or earlier in the window:
+    Sources:
+      - hits   = COUNT(translate_cache_hits) — incremented on every cache
+                 short-circuit by translate_service via record_cache_hit().
+      - misses = COUNT(translate_log)        — one row per LLM call (cache miss).
 
-        hits  ≈ total_calls - distinct_keys
-        rate  ≈ hits / total_calls
+        rate = hits / (hits + misses)
 
-    This is a lower bound on actual hit rate (true hits never reach
-    translate_log), and is the best signal available without a dedicated
-    hit-counter table.
+    Both tables share translate_log.db so the read is one connection.
     """
     from . import translate_log as tl
 
     cutoff = _cutoff_iso(24)
     with tl._lock:
         conn = tl._get_conn()
-        total_row = conn.execute(
+        misses_row = conn.execute(
             "SELECT COUNT(*) FROM translate_log WHERE created_at >= ?",
             (cutoff,),
         ).fetchone()
-        distinct_row = conn.execute(
-            "SELECT COUNT(*) FROM ("
-            "  SELECT word, context_hash, source_lang, target_lang, operation "
-            "  FROM translate_log "
-            "  WHERE created_at >= ? "
-            "  GROUP BY word, context_hash, source_lang, target_lang, operation"
-            ")",
+        hits_row = conn.execute(
+            "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
             (cutoff,),
         ).fetchone()
-    total = (total_row[0] or 0) if total_row else 0
-    distinct = (distinct_row[0] or 0) if distinct_row else 0
-    hits = max(0, total - distinct)
+    misses = (misses_row[0] or 0) if misses_row else 0
+    hits = (hits_row[0] or 0) if hits_row else 0
+    total = hits + misses
     return {
-        "total": total,
-        "distinct": distinct,
         "hits": hits,
+        "misses": misses,
+        "total": total,
         "rate": round(hits / total, 4) if total > 0 else None,
         "window_hours": 24,
-        "note": "lower-bound estimate from translate_log dedup; true cache hits short-circuit before recording",
+        "note": "precise counter: hits from translate_cache_hits, misses from translate_log",
     }
 
 

@@ -41,6 +41,22 @@ def _get_conn() -> sqlite3.Connection:
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
+        # Precise cache-hit counter: every short-circuited cache hit gets one row.
+        # Separate table so the existing translate_log (= misses / LLM calls) stays
+        # canonical and we can compute hit rate = hits / (hits + misses).
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS translate_cache_hits (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT,
+                operation   TEXT NOT NULL,
+                word        TEXT NOT NULL,
+                context_hash TEXT NOT NULL,
+                source_lang TEXT NOT NULL,
+                target_lang TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
         _conn.commit()
     return _conn
 
@@ -72,6 +88,43 @@ def record(*, user_id, operation, word, context, context_hash, source_lang, targ
             (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, int(latency_ms or 0), now),
         )
         conn.commit()
+
+def record_cache_hit(
+    *,
+    user_id: str | None,
+    operation: str,
+    word: str,
+    context_hash: str,
+    source_lang: str,
+    target_lang: str,
+) -> None:
+    """Record one translate cache hit.
+
+    Called from `translate_service` whenever `lookup()` short-circuits an LLM
+    call. Counts toward the precise cache hit rate exposed by admin
+    observability. user_id may be None for anonymous/unauth calls — still
+    counted.
+    """
+    now = datetime.now(UTC).isoformat()
+    with _lock:
+        conn = _get_conn()
+        conn.execute(
+            "INSERT INTO translate_cache_hits (user_id, operation, word, context_hash, source_lang, target_lang, created_at) VALUES (?,?,?,?,?,?,?)",
+            (user_id, operation, word, context_hash, source_lang, target_lang, now),
+        )
+        conn.commit()
+
+
+def count_cache_hits_since(cutoff_iso: str) -> int:
+    """Count cache hits recorded since ``cutoff_iso`` (ISO-8601 UTC string)."""
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
+            (cutoff_iso,),
+        ).fetchone()
+    return int(row[0] or 0) if row else 0
+
 
 def get_log(user_id: str, *, limit: int = 200) -> list[dict]:
     with _lock:
