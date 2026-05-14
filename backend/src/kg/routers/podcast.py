@@ -1,4 +1,4 @@
-"""Podcast read API.
+r"""Podcast read API.
 
 Authorization model: **public-read for any authenticated user**. Podcasts are
 shared editorial content (curated audio + transcripts shipped by ops via
@@ -8,9 +8,11 @@ authentication, not authorization — and serves the same payload to all callers
 
 Hardening already in place:
 
-* ``series_id`` is constrained to ``^[a-z0-9_]+$`` via ``_SERIES_ID_RE`` so
-  path traversal (``../etc``), uppercase, dots, slashes are all rejected with
-  a 404 before any filesystem access.
+* ``series_id`` is constrained to ``\A[a-z0-9_]+\Z`` via ``_SERIES_ID_RE`` so
+  path traversal (``../etc``), uppercase, dots, slashes, and trailing newlines
+  are all rejected with a 404 before any filesystem access. The ``\A``/``\Z``
+  anchors are chosen over ``^``/``$`` so that ``series_a\n`` is rejected too
+  (Python's ``$`` matches end-of-string *or* just before a trailing ``\n``).
 * ``ep_num`` is a FastAPI ``Path()`` parameter with ``ge=1, le=_MAX_EPISODE_NUM``
   so non-integer / out-of-range values are rejected at the framework boundary
   with a 422.
@@ -37,7 +39,7 @@ from ..deps import get_current_user
 logger = logging.getLogger(__name__)
 
 router = APIRouter(tags=["podcast"])
-_SERIES_ID_RE = re.compile(r"^[a-z0-9_]+$")
+_SERIES_ID_RE = re.compile(r"\A[a-z0-9_]+\Z")
 _MAX_EPISODE_NUM = 999
 
 
