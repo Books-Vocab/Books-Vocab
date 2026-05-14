@@ -54,6 +54,12 @@ struct NotebookListView: View {
         NavigationStack(path: $navigationPath) {
             ScrollView {
                 VStack(spacing: skin.spacing.sectionGap) {
+                    if let message = coordinator.reconcileError {
+                        reconcileErrorBanner(message: message)
+                            .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                            .transition(.statusRowReveal)
+                    }
+
                     if !pendingEntries.isEmpty {
                         TipView(SyncPendingTip())
                             .padding(.horizontal, skin.metrics.listRowHorizontalInset)
@@ -262,6 +268,33 @@ struct NotebookListView: View {
         }
         if let url {
             coordinator.exportURL = url
+        }
+    }
+
+    // MARK: - Reconcile Error Banner
+
+    /// 同步失敗時的 inline 錯誤橫幅：清單仍顯示本地資料，並提醒可手動重試。
+    /// 對齊 `ui_state_matrix.md` 的「partial failure → 明確 inline error」方向，
+    /// 不沉默吞掉 fetchNotebooks 錯誤。
+    @ViewBuilder
+    private func reconcileErrorBanner(message: String) -> some View {
+        AppStateMessageCard(
+            title: "單字本同步失敗".localized,
+            systemImage: "exclamationmark.triangle",
+            description: message
+        ) {
+            Button("重試".localized) {
+                Task { @MainActor in
+                    await coordinator.reconcileNotebooks(
+                        authManager: authManager,
+                        currentNotebooks: notebooks,
+                        allEntries: allEntries,
+                        modelContext: modelContext,
+                        kgService: kgService
+                    )
+                }
+            }
+            .buttonStyle(.appCompactAction(.primary))
         }
     }
 

@@ -48,6 +48,11 @@ import SwiftData
 final class NotebookListCoordinator: NotebookListCoordinating {
     var exportURL: URL?
 
+    /// reconcile 失敗訊息；nil = 未失敗或已恢復。
+    /// View 透過此值顯示 inline error banner + retry CTA。fetch 成功一律清空，
+    /// 避免殘留 stale error。
+    var reconcileError: String?
+
     /// 從 server 拉 notebook 清單並與本地 reconcile：
     /// - remote 新增 → 本地 insert
     /// - remote 同名 remoteId → 更新欄位（含 isDeleted，對應遠端刪除）
@@ -75,6 +80,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
                 modelContext.insert(nb)
                 modelContext.safeSave()
             }
+            // 本地已有 notebook 時 fetch 失敗仍要 inline error 提示，讓使用者
+            // 知道清單可能不是最新且可手動重試。空清單情境上面已 fallback 本地預設。
+            if !currentNotebooks.isEmpty {
+                reconcileError = error.localizedDescription
+            }
             return
         }
 
@@ -84,6 +94,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
             allLocal = try modelContext.fetch(FetchDescriptor<Notebook>())
         } catch {
             AppLog.kg.error("fetch all notebooks failed: \(error.localizedDescription)")
+            reconcileError = error.localizedDescription
             return
         }
 
@@ -147,6 +158,7 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         }
 
         modelContext.safeSave()
+        reconcileError = nil
     }
 
     /// 將指定 notebook 集合下尚未刪除的 entries 排入刪除 queue。
