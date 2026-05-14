@@ -98,13 +98,15 @@ struct VocabEmptyStateContent: View {
     let systemImage: String
     let description: String
     let guidanceText: String?
+    let action: AppEmptyStateAction?
     let symbolBounce: Bool
 
-    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, symbolBounce: Bool = false) {
+    init(title: String, systemImage: String, description: String, guidanceText: String? = nil, action: AppEmptyStateAction? = nil, symbolBounce: Bool = false) {
         self.title = title
         self.systemImage = systemImage
         self.description = description
         self.guidanceText = guidanceText
+        self.action = action
         self.symbolBounce = symbolBounce
     }
 
@@ -114,6 +116,7 @@ struct VocabEmptyStateContent: View {
             systemImage: systemImage,
             description: description,
             guidanceText: guidanceText,
+            action: action,
             symbolBounce: symbolBounce,
             style: .vocab(vocabSkin)
         )
