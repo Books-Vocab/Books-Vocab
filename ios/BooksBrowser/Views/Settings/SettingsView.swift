@@ -69,19 +69,19 @@ struct SettingsView: View {
         .toastSheet(isPresented: $coordinator.showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
         }
-        .alert("刪除帳號與雲端資料？".localized, isPresented: $coordinator.showDeleteAccountConfirm) {
-            Button("取消".localized, role: .cancel) {}
-            Button("確認刪除".localized, role: .destructive) {
-                Task {
-                    await coordinator.deleteAccount(
-                        authManager: authManager,
-                        kgService: kgService,
-                        modelContext: modelContext
-                    )
-                }
-            }
-        } message: {
-            Text("此操作會永久刪除帳號、雲端生詞資料與同步設定，且無法復原。".localized)
+        .toastSheet(isPresented: $coordinator.showDeleteAccountConfirm) {
+            SettingsDeleteAccountSheet(
+                onConfirm: {
+                    Task {
+                        await coordinator.deleteAccount(
+                            authManager: authManager,
+                            kgService: kgService,
+                            modelContext: modelContext
+                        )
+                    }
+                },
+                isDeleting: coordinator.isDeletingAccount
+            )
         }
         .alert("刪除失敗".localized, isPresented: Binding(
             get: { coordinator.deleteAccountError != nil },
