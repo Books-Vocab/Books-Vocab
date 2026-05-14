@@ -113,15 +113,36 @@ def _list_graph_files(user_dir: Path) -> list[tuple[str, Path]]:
     return out
 
 
-def _atomic_write_json(path: Path, data: Any) -> None:
-    """Write ``data`` to ``path`` atomically.
+#: Maximum number of timestamped ``.bak.<ts>`` files retained per graph file.
+#: Older backups are pruned (oldest first) after each successful rewrite to
+#: prevent unbounded growth in ``users/<uid>/`` directories.
+_BAK_RETENTION = 3
 
-    Sequence: write tmp → fsync(tmp) → backup existing → os.replace(tmp, path).
-    ``os.replace`` is the POSIX-atomic rename primitive; ``Path.replace`` wraps
-    it but we use ``os.replace`` directly with string paths to keep the
-    semantics obvious. fsync ensures the tmp payload is on disk before rename
-    so a crash can't leave a half-written file under ``path``.
+
+def _prune_old_backups(path: Path) -> None:
+    """Keep only the newest ``_BAK_RETENTION`` ``<path>.bak.<ts>`` files."""
+    parent = path.parent
+    stem = path.name  # includes ``.json``
+    pattern = f"{stem}.bak.*"
+    backups = sorted(parent.glob(pattern))  # lexicographic on .bak.<ts> == chronological
+    excess = len(backups) - _BAK_RETENTION
+    for old in backups[: max(0, excess)]:
+        try:
+            old.unlink()
+        except OSError:
+            logger.warning("Could not prune old backup %s", old)
+
+
+def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write ``data`` to ``path`` atomically with timestamped backup retention.
+
+    Sequence: write tmp → fsync(tmp) → timestamped backup of existing → rename.
+    ``os.replace`` is the POSIX-atomic rename primitive. fsync ensures the tmp
+    payload is on disk before rename so a crash can't leave a half-written file
+    under ``path``. Old backups beyond ``_BAK_RETENTION`` are pruned.
     """
+    import time
+
     tmp = path.with_suffix(".json.tmp")
     payload = json.dumps(data, indent=2, ensure_ascii=False)
     tmp.write_text(payload)
@@ -133,8 +154,13 @@ def _atomic_write_json(path: Path, data: Any) -> None:
     finally:
         os.close(fd)
     if path.exists():
-        os.replace(str(path), str(path.with_suffix(".json.bak")))
+        # Timestamped backup so retention can prune oldest first. Resolution is
+        # nanoseconds to keep filenames unique under rapid successive rewrites.
+        ts = time.strftime("%Y%m%dT%H%M%S") + f"_{time.time_ns() % 1_000_000_000:09d}"
+        backup = path.with_suffix(f".json.bak.{ts}")
+        os.replace(str(path), str(backup))
     os.replace(str(tmp), str(path))
+    _prune_old_backups(path)
 
 
 # ---------------------------------------------------------------------------
@@ -162,15 +188,23 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
     cards_orphan: list[dict[str, Any]] = []
     graph_orphan: list[dict[str, Any]] = []
     judge_orphan: list[dict[str, Any]] = []
+    # Built once per user during the cards/graph pass and reused below for the
+    # judge_log orphan check — re-scanning cards.db a second time was wasteful
+    # and risked a TOCTOU race with concurrent writes.
+    user_live_cards: dict[str, set[str]] = {}
 
     for uid, udir in user_dirs:
         cards_db = udir / "cards.db"
         nb_db = udir / "notebooks.db"
-        live_card_ids = set(_live_cards(cards_db).keys())
+        # Single pass over cards.db: walk all rows once and derive both the
+        # live-id set (for graph/judge checks) and the orphan list.
+        all_card_rows = _all_cards_with_state(cards_db)
+        live_card_ids = {cid for cid, _nb, is_del in all_card_rows if not is_del}
+        user_live_cards[uid] = live_card_ids
         nb_ids = _live_notebook_ids(nb_db)
 
         # 1. cards → notebook
-        for cid, nb_id, is_deleted in _all_cards_with_state(cards_db):
+        for cid, nb_id, is_deleted in all_card_rows:
             if is_deleted:
                 continue
             if nb_id not in nb_ids:
@@ -208,12 +242,7 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                         "missing": missing,
                     })
 
-    # Build a global per-user live-cards index for judge_log scan.
-    user_live_cards: dict[str, set[str]] = {}
-    for uid, udir in user_dirs:
-        user_live_cards[uid] = set(_live_cards(udir / "cards.db").keys())
-
-    # 4. judge_log
+    # 4. judge_log — reuses ``user_live_cards`` populated in the loop above.
     judge_db = data_dir / "judge_log.db"
     if judge_db.exists():
         with sqlite3.connect(str(judge_db)) as conn:
@@ -250,6 +279,8 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                 })
 
     # 3. translate_log → user
+    # ``sample_ids`` (≤10) lets an admin spot-check ghost rows in dry-run
+    # reports before authorising a destructive ``fix --confirm`` run.
     translate_orphan: list[dict[str, Any]] = []
     translate_db = data_dir / "translate_log.db"
     if translate_db.exists():
@@ -260,9 +291,19 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                 ).fetchall()
             except sqlite3.OperationalError:
                 rows = []
-        for uid, count in rows:
-            if uid and uid not in user_ids:
-                translate_orphan.append({"user_id": uid, "rows": count})
+            for uid, count in rows:
+                if uid and uid not in user_ids:
+                    sample = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT id FROM translate_log WHERE user_id = ? "
+                            "ORDER BY id LIMIT 10",
+                            (uid,),
+                        ).fetchall()
+                    ]
+                    translate_orphan.append(
+                        {"user_id": uid, "rows": count, "sample_ids": sample}
+                    )
 
     # 5. token_usage → user
     token_orphan: list[dict[str, Any]] = []
@@ -275,9 +316,19 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                 ).fetchall()
             except sqlite3.OperationalError:
                 rows = []
-        for uid, count in rows:
-            if uid and uid not in user_ids:
-                token_orphan.append({"user_id": uid, "rows": count})
+            for uid, count in rows:
+                if uid and uid not in user_ids:
+                    sample = [
+                        r[0]
+                        for r in conn.execute(
+                            "SELECT id FROM token_usage WHERE user_id = ? "
+                            "ORDER BY id LIMIT 10",
+                            (uid,),
+                        ).fetchall()
+                    ]
+                    token_orphan.append(
+                        {"user_id": uid, "rows": count, "sample_ids": sample}
+                    )
 
     report = {
         "cards_orphan_notebook": {"count": len(cards_orphan), "items": cards_orphan},
@@ -296,6 +347,16 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
 # Fix
 # ---------------------------------------------------------------------------
 
+class OrphanFixAborted(RuntimeError):
+    """Raised when ``fix()`` detects a graph file mutated mid-run.
+
+    The fixer captures each graph file's ``mtime`` immediately before the
+    rewrite phase begins; if the same path's ``mtime`` no longer matches at
+    write time, another writer raced us and we abort rather than clobber it.
+    Recover by running ``scan`` again (or quiescing the API) and retrying.
+    """
+
+
 def fix(
     *,
     data_dir: Path,
@@ -307,18 +368,18 @@ def fix(
     Safety:
       - ``confirm`` must be ``True`` (raises ``ValueError`` otherwise).
       - ``dry_run=True`` reports counts without mutating anything.
+      - Graph rewrites are guarded by an ``mtime`` check captured before the
+        mutate phase; if any ``graph_*.json`` changed after scan,
+        :class:`OrphanFixAborted` is raised before further writes.
+      - Card soft-deletes go through ``CardStore`` so writes share the same
+        per-process lock as the running API.
 
     Operational notes:
-      - **Run during backend downtime or a low-traffic window.** This function
-        rewrites ``graph_*.json`` files and issues bulk SQLite ``DELETE`` /
-        ``UPDATE`` against ``cards.db``, ``judge_log.db``, ``translate_log.db``
-        and ``token_usage.db``. There is no app-level cross-file lock around
-        the multi-step rewrite, so concurrent writers can race with us.
-      - **If the caller holds an existing graph_links / cards lock, invoke
-        ``fix()`` while still holding it** — pass-through is the safest way to
-        guarantee the graph file we read in :func:`scan` is the same one we
-        rewrite here. Otherwise prefer to quiesce the API (or stop the
-        container) before calling.
+      - **CLI/offline tool only.** The admin endpoint deliberately imports
+        :func:`scan` (read-only) and never :func:`fix`. Run during backend
+        downtime or after stopping the API container.
+      - There is no cross-process lock around the multi-step rewrite, so even
+        with the mtime guard, prefer to quiesce the API before calling.
     """
     if not confirm:
         raise ValueError(
@@ -356,9 +417,13 @@ def fix(
         return summary
 
     # --- mutate ---
+    # Lazy CardStore import keeps the CLI usable without the full app context.
+    from .cards import CardStore
+
     user_ids = _load_user_ids(data_dir)
 
-    # 1. soft-delete orphan cards
+    # 1. soft-delete orphan cards via CardStore.delete — shares the API's
+    # in-process write lock and uses the canonical soft-delete code path.
     cards_by_user: dict[str, list[str]] = {}
     for item in report["cards_orphan_notebook"]["items"]:
         cards_by_user.setdefault(item["user_id"], []).append(item["card_id"])
@@ -366,24 +431,37 @@ def fix(
         cards_db = data_dir / "users" / uid / "cards.db"
         if not cards_db.exists():
             continue
-        with sqlite3.connect(str(cards_db)) as conn:
-            conn.executemany(
-                "UPDATE card SET is_deleted = 1 WHERE id = ?",
-                [(cid,) for cid in card_ids],
-            )
-            conn.commit()
+        store = CardStore(cards_db)
+        for cid in card_ids:
+            store.delete(cid)
 
-    # 2. strip orphan graph links — group by (user, notebook) file
+    # 2. strip orphan graph links — group by (user, notebook) file.
+    # Capture mtime per file before any rewrite so a racing writer is detected
+    # before we clobber its changes. We don't hold a cross-process lock here,
+    # so this guard is the next best thing: re-scan and abort on drift.
     graph_by_file: dict[tuple[str, str], set[str]] = {}
     for item in report["graph_links_orphan_card"]["items"]:
         key = (item["user_id"], item["notebook_id"])
         link_id = item.get("link_id")
         if link_id is not None:
             graph_by_file.setdefault(key, set()).add(link_id)
+    mtimes: dict[Path, float] = {}
+    for (uid, nb_id), _ in graph_by_file.items():
+        graph_path = data_dir / "users" / uid / f"graph_{nb_id}.json"
+        if graph_path.exists():
+            mtimes[graph_path] = graph_path.stat().st_mtime_ns
     for (uid, nb_id), bad_link_ids in graph_by_file.items():
         graph_path = data_dir / "users" / uid / f"graph_{nb_id}.json"
         if not graph_path.exists():
             continue
+        # mtime guard — abort the entire fix if any racing writer touched it.
+        current_mtime = graph_path.stat().st_mtime_ns
+        if mtimes.get(graph_path) != current_mtime:
+            raise OrphanFixAborted(
+                f"graph file {graph_path} changed mid-run "
+                f"(expected mtime_ns={mtimes.get(graph_path)}, "
+                f"got {current_mtime}); aborting before clobbering."
+            )
         try:
             links = json.loads(graph_path.read_text())
         except (OSError, json.JSONDecodeError):

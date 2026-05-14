@@ -255,10 +255,21 @@ def create_admin_handlers(
             admin_token=runtime_settings_fn().admin_token,
         )
 
-    def admin_orphans_scan():
-        """Return a read-only data-consistency scan report."""
+    async def admin_orphans_scan():
+        """Return a read-only data-consistency scan report.
+
+        ``orphan_scan.scan`` is synchronous + heavy I/O (walks every users/<uid>
+        directory, opens 5 SQLite databases, parses ``graph_*.json``). Running
+        it directly on the FastAPI event loop blocks every other request for
+        the duration of the scan, so we hand it off to a worker thread via
+        ``run_in_threadpool``.
+        """
+        from starlette.concurrency import run_in_threadpool
+
         from .orphan_scan import scan
-        return scan(data_dir=runtime_settings_fn().data_dir)
+        return await run_in_threadpool(
+            scan, data_dir=runtime_settings_fn().data_dir
+        )
 
     return {
         "admin_ui": admin_ui,

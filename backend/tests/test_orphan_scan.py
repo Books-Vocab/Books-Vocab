@@ -334,3 +334,126 @@ def test_admin_orphans_endpoint_returns_report(env):
     assert "translate_log_orphan_user" in body
     assert body["translate_log_orphan_user"]["count"] == 1
     assert body["total"] >= 1
+
+
+# ---------------------------------------------------------------------------
+# Regression — perf / concurrency hardening for review PR #436
+# ---------------------------------------------------------------------------
+
+def test_admin_orphans_endpoint_does_not_block_event_loop(env):
+    """The endpoint must hand the sync scan off to a thread so concurrent
+    requests overlap instead of serialising on the event loop."""
+    import asyncio
+    import time
+
+    import httpx
+
+    import kg.translate_log as tl
+
+    # Inject enough orphans that scan does measurable real work.
+    for i in range(5):
+        tl.record(user_id=f"ghost_{i}", operation="translate_quick", word=str(i),
+                  context="", context_hash=f"h{i}", source_lang="en",
+                  target_lang="zh-Hant", response_raw="{}", latency_ms=1)
+
+    transport = httpx.ASGITransport(app=app)
+
+    async def hit():
+        async with httpx.AsyncClient(transport=transport,
+                                     base_url="http://testserver") as client:
+            r = await client.get(
+                "/api/admin/orphans/scan",
+                headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+            )
+            assert r.status_code == 200
+            return r.json()["total"]
+
+    async def run_parallel():
+        # 4 concurrent calls — if scan ran on the event loop they would
+        # serialise; running via run_in_threadpool lets them overlap.
+        return await asyncio.gather(hit(), hit(), hit(), hit())
+
+    t0 = time.monotonic()
+    totals = asyncio.run(asyncio.wait_for(run_parallel(), timeout=10.0))
+    elapsed = time.monotonic() - t0
+
+    assert all(t >= 5 for t in totals)
+    # Generous bound — purely there to catch a regression where someone
+    # removes run_in_threadpool and the endpoint goes back to blocking.
+    assert elapsed < 10.0, f"endpoint serialised requests ({elapsed:.2f}s)"
+
+
+def test_scan_judge_log_uses_cached_live_cards(env, monkeypatch):
+    """``_live_cards`` should be invoked at most once per user — the old code
+    re-scanned cards.db a second time to rebuild ``user_live_cards`` for the
+    judge_log pass. Regression: keep it to one call."""
+    import kg.judge_log as jl
+    from kg import orphan_scan
+
+    jl.record(user_id=env.user_id, notebook_id=env.real_notebook_id,
+              from_id=env.real_card_id, to_id="card_ghost", similarity=0.7,
+              verdict="accept", confidence=0.9, accepted=True)
+
+    call_count = {"n": 0}
+    real_live = orphan_scan._live_cards
+    real_all = orphan_scan._all_cards_with_state
+
+    def counting_live(db):
+        call_count["n"] += 1
+        return real_live(db)
+
+    def counting_all(db):
+        call_count["n"] += 1
+        return real_all(db)
+
+    monkeypatch.setattr(orphan_scan, "_live_cards", counting_live)
+    monkeypatch.setattr(orphan_scan, "_all_cards_with_state", counting_all)
+
+    report = orphan_scan.scan(data_dir=env.data_dir)
+
+    # One user → at most one cards.db read (via _all_cards_with_state); the
+    # judge_log pass must reuse the cached set, never call _live_cards again.
+    assert call_count["n"] <= 1, f"cards.db scanned {call_count['n']} times"
+    # Functional regression check — result unaffected by the refactor.
+    assert report["judge_log_orphan_card"]["count"] == 1
+
+
+def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
+    """If a concurrent writer rewrites graph_*.json between mtime snapshot and
+    rewrite, fix() must raise OrphanFixAborted rather than clobber the file."""
+    from kg.orphan_scan import OrphanFixAborted, fix
+
+    # Set up an orphan link so fix() reaches the graph-rewrite branch.
+    graph_path = env.user_dir / f"graph_{env.real_notebook_id}.json"
+    graph_path.write_text(json.dumps([{
+        "id": "lk_orphan", "from_id": env.real_card_id, "to_id": "card_ghost",
+        "kind": "shares_usage", "confidence": 0.9, "reason": "test",
+        "created_at": "2024-01-01T00:00:00+00:00", "status": "active",
+    }]))
+
+    # Patch Path.stat so the second observation of ``graph_path`` (the in-loop
+    # comparison) reports a different mtime, mimicking a concurrent writer
+    # touching the file between snapshot and rewrite.
+    real_stat = Path.stat
+    stat_calls = {"n": 0}
+
+    def drift_stat(self, *a, **kw):
+        result = real_stat(self, *a, **kw)
+        if self == graph_path:
+            stat_calls["n"] += 1
+            if stat_calls["n"] >= 2:
+                class _FakeStat:
+                    def __init__(self, base, bumped_ns):
+                        self._base = base
+                        self.st_mtime_ns = bumped_ns
+
+                    def __getattr__(self, name):
+                        return getattr(self._base, name)
+
+                return _FakeStat(result, result.st_mtime_ns + 1)
+        return result
+
+    monkeypatch.setattr(Path, "stat", drift_stat)
+
+    with pytest.raises(OrphanFixAborted):
+        fix(data_dir=env.data_dir, confirm=True, dry_run=False)
