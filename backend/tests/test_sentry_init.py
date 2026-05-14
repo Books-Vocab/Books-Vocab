@@ -269,3 +269,89 @@ def test_resolve_release_treats_empty_strings_as_missing(monkeypatch, tmp_path):
     version_file = tmp_path / "VERSION"
     version_file.write_text("")
     assert _resolve_release(version_file=version_file) is None
+
+
+# ---------------------------------------------------------------------------
+# init_sentry kwargs: SENTRY_TRACES_SAMPLE_RATE must produce a flat
+# traces_sample_rate (no traces_sampler), so operators can pin a fixed APM
+# rate from env without re-deploying. Regression guard for review feedback
+# pointing out the flat-override branch had no coverage.
+# ---------------------------------------------------------------------------
+
+def _reset_sentry_module_state(monkeypatch):
+    """Reset module-level singleton so init_sentry() runs each test fresh."""
+    import kg.sentry_init as si
+
+    monkeypatch.setattr(si, "_initialized", False, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", None, raising=False)
+
+
+def _patch_sentry_sdk(monkeypatch):
+    """Stub sentry_sdk.init so we capture init_kwargs without contacting Sentry."""
+    import sys
+    import types
+
+    captured: dict = {}
+
+    fake_module = types.ModuleType("sentry_sdk")
+
+    def fake_init(**kwargs):
+        captured["init_kwargs"] = kwargs
+
+    fake_module.init = fake_init  # type: ignore[attr-defined]
+    fake_module.set_user = lambda payload: None  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "sentry_sdk", fake_module)
+
+    # Integrations are imported by name in init_sentry; stub them too so the
+    # import inside init_sentry doesn't reach real sentry internals.
+    for name in (
+        "sentry_sdk.integrations.fastapi",
+        "sentry_sdk.integrations.starlette",
+        "sentry_sdk.integrations.logging",
+    ):
+        mod = types.ModuleType(name)
+        # Each integration is constructed with kwargs; make it a no-op callable.
+        cls_name = {
+            "sentry_sdk.integrations.fastapi": "FastApiIntegration",
+            "sentry_sdk.integrations.starlette": "StarletteIntegration",
+            "sentry_sdk.integrations.logging": "LoggingIntegration",
+        }[name]
+        setattr(mod, cls_name, lambda *a, **kw: object())
+        monkeypatch.setitem(sys.modules, name, mod)
+
+    return captured
+
+
+def test_init_sentry_flat_override_uses_traces_sample_rate(monkeypatch):
+    """SENTRY_TRACES_SAMPLE_RATE=0.5 must short-circuit the per-path sampler."""
+    _reset_sentry_module_state(monkeypatch)
+    captured = _patch_sentry_sdk(monkeypatch)
+
+    monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.example/1")
+    monkeypatch.setenv("SENTRY_TRACES_SAMPLE_RATE", "0.5")
+    # Clear release sources so we don't accidentally read host /app/VERSION.
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.delenv("KG_VERSION", raising=False)
+
+    assert init_sentry() is True
+    kwargs = captured["init_kwargs"]
+    assert kwargs.get("traces_sample_rate") == 0.5
+    assert "traces_sampler" not in kwargs, (
+        "flat env override must replace the per-path sampler, not run alongside it"
+    )
+
+
+def test_init_sentry_default_uses_traces_sampler(monkeypatch):
+    """Without SENTRY_TRACES_SAMPLE_RATE, the per-path sampler stays wired."""
+    _reset_sentry_module_state(monkeypatch)
+    captured = _patch_sentry_sdk(monkeypatch)
+
+    monkeypatch.setenv("SENTRY_DSN", "https://public@sentry.example/1")
+    monkeypatch.delenv("SENTRY_TRACES_SAMPLE_RATE", raising=False)
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.delenv("KG_VERSION", raising=False)
+
+    assert init_sentry() is True
+    kwargs = captured["init_kwargs"]
+    assert "traces_sample_rate" not in kwargs
+    assert callable(kwargs.get("traces_sampler"))

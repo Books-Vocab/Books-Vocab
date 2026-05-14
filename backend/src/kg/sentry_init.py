@@ -226,8 +226,12 @@ def bind_user(user_id: str | None) -> None:
     sendDefaultPii is off and we want to keep it that way.
 
     No-op when Sentry isn't initialized (dev/test, or DSN unset in prod).
-    Falsy ``user_id`` clears the scope (so an unauthenticated handler can't
-    inherit the previous request's uid in workers that reuse coroutines).
+    Falsy ``user_id`` clears the scope — a clear hook reserved for a future
+    optional-auth dependency. The current ``get_current_user`` uses
+    ``HTTPBearer(auto_error=True)``, so unauthenticated requests are rejected
+    before this line runs and cannot reach an authenticated handler with a
+    stale uid; the clear branch is kept so adding an optional-auth path later
+    is a one-line change rather than a scope-leak audit.
     """
     if not _initialized or _sentry_module is None:
         return
