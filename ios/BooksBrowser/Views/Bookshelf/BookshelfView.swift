@@ -65,6 +65,16 @@ struct BookshelfView: View {
                         .transition(.overlayFade)
                 }
             }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let message = coordinator.errorMessage, !coordinator.showError {
+                    importErrorBanner(message: message)
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                        .padding(.top, AppMetrics.spacingSmall)
+                        .transition(.statusRowReveal)
+                }
+            }
+            .animation(AppMotion.phaseChange, value: coordinator.showError)
+            .animation(AppMotion.phaseChange, value: coordinator.errorMessage)
             .navigationTitle("書庫".localized)
             .largeNavigationBarTitle()
             .animatePhaseChange(books.isEmpty)
@@ -263,6 +273,31 @@ struct BookshelfView: View {
                 .foregroundStyle(appTheme.palette.quaternaryText)
                 .frame(maxWidth: .infinity)
                 .padding(.vertical, AppMetrics.spacingSmall)
+        }
+    }
+
+    // MARK: - 匯入錯誤橫幅
+
+    /// Alert 關閉後仍持續顯示的 inline error；提供「再試匯入」與「關閉」CTA。
+    /// 對齊 `ui_state_matrix.md`：alert 是 transient，inline banner 是 persistent。
+    @ViewBuilder
+    private func importErrorBanner(message: String) -> some View {
+        AppStateMessageCard(
+            title: coordinator.errorDiagnosis.map { "匯入錯誤・\($0)".localized } ?? "匯入錯誤".localized,
+            systemImage: "exclamationmark.triangle",
+            description: message.localized
+        ) {
+            HStack(spacing: AppMetrics.spacingSmall) {
+                Button("再試匯入".localized) {
+                    coordinator.presentImporter()
+                }
+                .buttonStyle(.appCompactAction(.primary))
+
+                Button("關閉".localized) {
+                    coordinator.clearError()
+                }
+                .buttonStyle(.appCompactAction(.outline))
+            }
         }
     }
 

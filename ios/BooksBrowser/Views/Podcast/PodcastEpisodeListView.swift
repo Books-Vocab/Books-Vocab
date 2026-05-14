@@ -52,6 +52,11 @@ struct PodcastEpisodeListView: View {
     @State private var sort: EpisodeSort = .ascending
     @State private var navigationLocked = false
     @State private var navigationUnlockTask: Task<Void, Never>?
+    /// hasLoadedOnce 區分「首次未載入 (.loading)」與「載入後空集數 (.empty)」，
+    /// 避免 0 集 series 在 task 啟動前閃 empty。
+    @State private var hasLoadedOnce = false
+    @State private var isLoading = false
+    @State private var loadError: String?
 
     private var series: PodcastSeries? { currentSeries }
 
@@ -94,7 +99,22 @@ struct PodcastEpisodeListView: View {
     }
 
     private var phase: VocabScenePhase {
-        if rawEpisodes.isEmpty {
+        if isLoading && !hasLoadedOnce {
+            return .loading(
+                title: "載入集數...",
+                systemImage: "arrow.clockwise"
+            )
+        }
+        if loadError != nil, rawEpisodes.isEmpty {
+            return .error(
+                title: "無法載入集數",
+                systemImage: "exclamationmark.triangle",
+                retryAction: {
+                    Task { await reloadFromStore() }
+                }
+            )
+        }
+        if rawEpisodes.isEmpty && hasLoadedOnce {
             return .empty(
                 title: "尚無集數",
                 systemImage: "waveform.slash",
@@ -141,19 +161,32 @@ struct PodcastEpisodeListView: View {
     @MainActor
     private func reloadFromStore() async {
         let sid = seriesId
-        let seriesDescriptor = FetchDescriptor<PodcastSeries>(
-            predicate: #Predicate { $0.remoteId == sid && !$0.isDeleted }
-        )
-        currentSeries = (try? modelContext.fetch(seriesDescriptor))?.first
+        isLoading = true
+        defer {
+            isLoading = false
+            hasLoadedOnce = true
+        }
 
-        let episodeDescriptor = FetchDescriptor<PodcastEpisode>(
-            sortBy: [SortDescriptor(\.episodeNumber)]
-        )
-        let allEps = (try? modelContext.fetch(episodeDescriptor)) ?? []
-        seriesEpisodes = allEps.filter { $0.series?.remoteId == sid }
+        do {
+            let seriesDescriptor = FetchDescriptor<PodcastSeries>(
+                predicate: #Predicate { $0.remoteId == sid && !$0.isDeleted }
+            )
+            currentSeries = try modelContext.fetch(seriesDescriptor).first
 
-        let progressDescriptor = FetchDescriptor<PodcastProgress>()
-        progressArray = (try? modelContext.fetch(progressDescriptor)) ?? []
+            let episodeDescriptor = FetchDescriptor<PodcastEpisode>(
+                sortBy: [SortDescriptor(\.episodeNumber)]
+            )
+            let allEps = try modelContext.fetch(episodeDescriptor)
+            seriesEpisodes = allEps.filter { $0.series?.remoteId == sid }
+
+            let progressDescriptor = FetchDescriptor<PodcastProgress>()
+            progressArray = try modelContext.fetch(progressDescriptor)
+
+            loadError = nil
+        } catch {
+            AppLog.app.error("[Podcast] reloadFromStore failed: \(error.localizedDescription)")
+            loadError = error.localizedDescription
+        }
     }
 
     // MARK: - Follow toggle
