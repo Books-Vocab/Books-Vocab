@@ -42,12 +42,14 @@ struct VocabSearchField: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var text: String
     let prompt: String
+    var isFocused: FocusState<Bool>.Binding? = nil
 
     var body: some View {
         AppSearchField(
             text: $text,
             prompt: prompt,
-            style: .vocab(vocabSkin)
+            style: .vocab(vocabSkin),
+            isFocused: isFocused
         )
     }
 }
