@@ -177,6 +177,11 @@ def create_admin_handlers(
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
 
+    def admin_observability():
+        """Return site-wide aggregated observability metrics (24h / 7d)."""
+        from .admin_observability import collect_observability
+        return collect_observability()
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -202,5 +207,6 @@ def create_admin_handlers(
         "admin_translate_history": admin_translate_history,
         "admin_user_usage": admin_user_usage,
         "admin_host_metrics": admin_host_metrics,
+        "admin_observability": admin_observability,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
