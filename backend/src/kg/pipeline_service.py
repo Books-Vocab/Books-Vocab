@@ -292,20 +292,52 @@ async def _step_embed_and_judge(
     }
     to_link_counts: dict[str, int] = {}
 
+    # Per-card similarity map for audit logging when degree cap forces a
+    # reject — built lazily so we only pay if a cap actually fires.
+    sims_by_card: dict[str, dict[str, float]] = {
+        cid: s for cid, _, _, s, _, _ in judge_tasks
+    }
+
+    def _log_degree_cap(from_id: str, to_id: str, judgement) -> None:
+        """Record an LLM-accepted candidate that was rejected solely
+        because the from-side or to-side hit MAX_DEGREE. Keeps the
+        judge_log audit trail honest: rate analysis can otherwise
+        misread these as model-quality rejects.
+        """
+        if not uid:
+            return
+        try:
+            from . import judge_log
+            judge_log.record(
+                user_id=uid, notebook_id=notebook_id,
+                from_id=from_id, to_id=to_id,
+                similarity=sims_by_card.get(from_id, {}).get(to_id),
+                verdict=judgement.link, confidence=judgement.confidence,
+                accepted=False, reject_reason="degree_cap",
+                reason=judgement.reason, source="auto",
+            )
+        except Exception:
+            logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
+
     processed = 0
     try:
         for card_id, fut in futures:
             results = await fut
             processed += 1
+            # NOTE: do NOT `break` on from-cap — we still need to walk
+            # remaining results so over-cap accepted candidates get
+            # logged as degree_cap rejects (audit trail).
             for other_id, judgement in results.items():
                 if judgement is None:
                     continue
                 if from_link_counts[card_id] >= MAX_DEGREE:
-                    break  # card_id already at cap
+                    _log_degree_cap(card_id, other_id, judgement)
+                    continue  # from-side at cap; keep logging surplus
                 # Initialize to-side count on first access
                 if other_id not in to_link_counts:
                     to_link_counts[other_id] = _active_degree(other_id)
                 if to_link_counts[other_id] >= MAX_DEGREE:
+                    _log_degree_cap(card_id, other_id, judgement)
                     continue
                 all_links.append((
                     card_id, other_id,
