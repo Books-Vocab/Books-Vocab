@@ -72,7 +72,7 @@ struct PodcastSentenceLevelView: View {
                         }
                     }
                     .padding(.bottom, skin.spacing.sectionGap)
-                    .transition(.opacity.combined(with: .move(edge: .bottom)))
+                    .transition(.readerPanelReveal)
                 }
             }
             .onAppear {
@@ -120,7 +120,7 @@ struct PodcastSentenceLevelView: View {
                     Text(sentence.speaker)
                         .font(subtitleSize.speakerFont)
                         .foregroundStyle(tint(for: idx).opacity(isCurrent || isSelecting ? 0.88 : 0.58))
-                        .transition(.opacity)
+                        .transition(.overlayFade)
                 }
                 bubbleContent(sentence: sentence, idx: idx, isCurrent: isCurrent, isSelecting: isSelecting)
             }
@@ -209,7 +209,7 @@ struct PodcastSentenceLevelView: View {
                                     .fill(tint)
                                     .frame(height: 1.5)
                                     .offset(y: 3)
-                                    .transition(.opacity)
+                                    .transition(.overlayFade)
                             }
                         }
                         .onTapGesture {

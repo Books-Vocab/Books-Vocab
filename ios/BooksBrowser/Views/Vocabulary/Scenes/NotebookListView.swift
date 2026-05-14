@@ -104,7 +104,7 @@ struct NotebookListView: View {
                                     )
                                 }
                                 .buttonStyle(.plain)
-                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
+                                .transition(.listSwap)
                             }
 
                             if authManager.isLoggedIn {
@@ -395,7 +395,7 @@ private struct DetailPresentation: ViewModifier {
                                 inlineDetailPanel
                                     .frame(width: dragWidth ?? effectivePanelWidth)
                             }
-                            .transition(.move(edge: .trailing).combined(with: .opacity))
+                            .transition(.drawerReveal)
                         }
                     }
                     .animation(AppMotion.standardSpring, value: detailState.hasDetail)
