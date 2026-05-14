@@ -59,8 +59,12 @@ enum AppCrashReporting {
             }
             options.attachStacktrace = true
             options.sendDefaultPii = false
-            options.enableAutoPerformanceTracing = false
-            options.tracesSampleRate = 0.0
+            // Performance tracing：release build 0.05 baseline，DEBUG 預設 0。
+            // `SENTRY_TRACES_SAMPLE_RATE` env 覆寫（QA / 局部觀測用，介於 0.0–1.0）。
+            // 啟用 autoPerformanceTracing 才能讓 SwiftUI / URLSession spans 進 Sentry。
+            let tracesRate = Self.resolveTracesSampleRate()
+            options.enableAutoPerformanceTracing = tracesRate > 0
+            options.tracesSampleRate = NSNumber(value: tracesRate)
             options.maxBreadcrumbs = 100
             options.enableUserInteractionTracing = false  // a11y labels may carry user text
             options.beforeBreadcrumb = { crumb in
@@ -183,6 +187,22 @@ enum AppCrashReporting {
         return "debug"
         #else
         return "production"
+        #endif
+    }
+
+    /// Traces sample rate resolution：
+    /// 1. `SENTRY_TRACES_SAMPLE_RATE` env（QA / local override）
+    /// 2. Release：0.05（與 backend hot path rate 對齊）
+    /// 3. DEBUG：0.0（避免雜訊 + 配額浪費）
+    private static func resolveTracesSampleRate() -> Double {
+        if let raw = ProcessInfo.processInfo.environment["SENTRY_TRACES_SAMPLE_RATE"],
+           let parsed = Double(raw) {
+            return min(max(parsed, 0.0), 1.0)
+        }
+        #if DEBUG
+        return 0.0
+        #else
+        return 0.05
         #endif
     }
 
