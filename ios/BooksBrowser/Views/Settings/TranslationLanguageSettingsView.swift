@@ -2,14 +2,35 @@ import SwiftUI
 
 struct TranslationLanguageSettingsView: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appTheme) private var appTheme
 
     @Binding var sourceLang: TranslationLanguage
     @Binding var targetLang: TranslationLanguage
-    let onChanged: (TranslationLanguage, TranslationLanguage) -> Void
+    let onChanged: (TranslationLanguage, TranslationLanguage) async -> Bool
+
+    @State private var savingLanguageID: String? = nil
+    @State private var saveError: String? = nil
 
     var body: some View {
         ScrollView {
             VStack(spacing: AppShellMetrics.sectionSpacing) {
+                if let saveError {
+                    AppStateMessageCard(
+                        title: "儲存失敗".localized,
+                        systemImage: "exclamationmark.triangle",
+                        description: saveError,
+                        style: .themed(appTheme)
+                    ) {
+                        Button("關閉".localized) {
+                            withAnimation(AppMotion.panelState) {
+                                self.saveError = nil
+                            }
+                        }
+                        .font(vocabSkin.typography.caption.weight(.semibold))
+                        .foregroundStyle(appTheme.palette.accent)
+                    }
+                }
+
                 // Source language section
                 VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
                     SettingsSectionHeader(title: "閱讀語言", icon: "book")
@@ -19,8 +40,9 @@ struct TranslationLanguageSettingsView: View {
                             if index > 0 { SettingsDivider() }
                             languageRow(lang, isSelected: lang == sourceLang) {
                                 guard sourceLang != lang else { return }
+                                let previous = sourceLang
                                 sourceLang = lang
-                                onChanged(sourceLang, targetLang)
+                                Task { await commit(source: lang, target: targetLang, savingID: lang.id, rollback: { sourceLang = previous }) }
                             }
                         }
                     }
@@ -38,8 +60,9 @@ struct TranslationLanguageSettingsView: View {
                             if index > 0 { SettingsDivider() }
                             languageRow(lang, isSelected: lang == targetLang) {
                                 guard targetLang != lang else { return }
+                                let previous = targetLang
                                 targetLang = lang
-                                onChanged(sourceLang, targetLang)
+                                Task { await commit(source: sourceLang, target: lang, savingID: lang.id, rollback: { targetLang = previous }) }
                             }
                         }
                     }
@@ -57,12 +80,33 @@ struct TranslationLanguageSettingsView: View {
         .inlineNavigationBarTitle()
     }
 
+    private func commit(
+        source: TranslationLanguage,
+        target: TranslationLanguage,
+        savingID: String,
+        rollback: @escaping () -> Void
+    ) async {
+        withAnimation(AppMotion.panelState) {
+            savingLanguageID = savingID
+            saveError = nil
+        }
+        let ok = await onChanged(source, target)
+        withAnimation(AppMotion.panelState) {
+            savingLanguageID = nil
+            if !ok {
+                saveError = "請檢查網路後再試一次".localized
+                rollback()
+            }
+        }
+    }
+
     private func languageRow(
         _ lang: TranslationLanguage,
         isSelected: Bool,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
+        let isSaving = savingLanguageID == lang.id
+        return Button(action: action) {
             SettingsSelectableRow(isSelected: isSelected) {
                 Text(lang.flagEmoji)
                     .font(vocabSkin.typography.body)
@@ -70,9 +114,16 @@ struct TranslationLanguageSettingsView: View {
                 Text(lang.nativeName)
                     .font(vocabSkin.typography.body)
                     .foregroundStyle(vocabSkin.palette.primaryText)
+
+                if isSaving {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(vocabSkin.palette.accent)
+                }
             }
         }
         .buttonStyle(.plain)
+        .disabled(savingLanguageID != nil)
     }
 }
 
@@ -82,7 +133,7 @@ struct TranslationLanguageSettingsView: View {
             TranslationLanguageSettingsView(
                 sourceLang: .constant(.en),
                 targetLang: .constant(.zhHant),
-                onChanged: { _, _ in }
+                onChanged: { _, _ in true }
             )
         }
     }
@@ -94,7 +145,19 @@ struct TranslationLanguageSettingsView: View {
             TranslationLanguageSettingsView(
                 sourceLang: .constant(.ja),
                 targetLang: .constant(.en),
-                onChanged: { _, _ in }
+                onChanged: { _, _ in true }
+            )
+        }
+    }
+}
+
+#Preview("Translation Language / Save Failure") {
+    AppThemeContainer {
+        NavigationStack {
+            TranslationLanguageSettingsView(
+                sourceLang: .constant(.en),
+                targetLang: .constant(.zhHant),
+                onChanged: { _, _ in false }
             )
         }
     }
