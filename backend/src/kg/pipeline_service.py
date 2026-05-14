@@ -11,6 +11,7 @@ from typing import Any
 
 from openai import OpenAIError
 
+from .exceptions import KGError
 from .retry import async_retry
 from .types import UserRecord
 from .vocab_graph import CANDIDATE_K, MAX_DEGREE, SIMILARITY_THRESHOLD
@@ -331,6 +332,16 @@ async def _step_embed_and_judge(
                 _touch_linked_cards(cards, all_links, notebook_id=notebook_id)
             except Exception:
                 logger.warning("[%s] Failed to persist partial links/touch", uid)
+        # Drain in-flight futures: their exceptions are unobserved otherwise,
+        # and asyncio logs "Future exception was never retrieved" at ERROR
+        # level on GC. We're already aborting; cancel pending and silently
+        # consume any exception already raised.
+        for _cid, fut in futures[processed:]:
+            if not fut.done():
+                fut.cancel()
+                continue
+            if not fut.cancelled():
+                fut.exception()  # mark as retrieved; return value discarded
         raise
     finally:
         executor.shutdown(wait=False)
@@ -371,7 +382,12 @@ async def _step_difficulty(
     return scored
 
 
-_STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError)
+# KGError covers QuotaExceededError raised mid-pipeline by TrackedLLM-quota
+# guards (or any future service-layer guard). Without it, quota exhaustion
+# leaks out of `_run_step` AND `run_pipeline_background`, leaving the run
+# stuck "running" in pipeline_log telemetry and bubbling a 429-style error
+# to a background task with no HTTP context to catch it.
+_STEP_ERRORS = (OpenAIError, OSError, ValueError, RuntimeError, KGError)
 
 
 async def _run_step(
@@ -383,8 +399,16 @@ async def _run_step(
     retry: bool = False,
     retryable_exceptions: tuple = (OpenAIError, OSError),
     run_id: str | None = None,
-) -> None:
-    """Execute a pipeline step with uniform error handling."""
+) -> str:
+    """Execute a pipeline step with uniform error handling.
+
+    Returns the step's terminal status: "ok", "failed", or "quota_exhausted".
+    Quota exhaustion is a distinct outcome — caller (run_pipeline_background)
+    short-circuits subsequent steps so the user's day-budget isn't burned on
+    no-op work and the pipeline_log run reflects the actual halt reason.
+    """
+    from .exceptions import QuotaExceededError
+
     if run_id:
         try:
             from . import pipeline_log
@@ -407,6 +431,18 @@ async def _run_step(
                 pipeline_log.end_step(run_id, name, status="ok", items=items)
             except Exception:
                 logger.warning("Failed to record pipeline telemetry", exc_info=True)
+        return "ok"
+    except QuotaExceededError as exc:
+        # Distinct from generic failure: caller short-circuits remaining steps
+        # so we don't spam the LLM with calls that will all 429.
+        logger.warning("[%s] %s halted on quota exhaustion: %s", uid, name, exc)
+        if run_id:
+            try:
+                from . import pipeline_log
+                pipeline_log.end_step(run_id, name, status="quota_exhausted", error=str(exc))
+            except Exception:
+                logger.warning("Failed to record pipeline telemetry", exc_info=True)
+        return "quota_exhausted"
     except _STEP_ERRORS as exc:
         logger.error("[%s] %s failed: %s", uid, name, exc, exc_info=True)
         if run_id:
@@ -415,6 +451,7 @@ async def _run_step(
                 pipeline_log.end_step(run_id, name, status="failed", error=str(exc))
             except Exception:
                 logger.warning("Failed to record pipeline telemetry", exc_info=True)
+        return "failed"
 
 
 async def run_pipeline_background(
@@ -464,7 +501,9 @@ async def run_pipeline_background(
                 # LLM calls (OpenAIError), file/DB I/O (OSError), and data
                 # issues (ValueError, RuntimeError).
 
-                await _run_step(uid, "Enrich", lambda: _step_enrich(
+                pipeline_status = "completed"
+
+                status = await _run_step(uid, "Enrich", lambda: _step_enrich(
                     uid, user,
                     card_store_factory=card_store_factory,
                     gemini_client_factory=gemini_client_factory,
@@ -473,34 +512,51 @@ async def run_pipeline_background(
                     notebook_id=notebook_id,
                     gemini_model=gemini_model,
                 ), logger=logger, retry=True, run_id=run_id)
+                if status == "quota_exhausted":
+                    pipeline_status = "quota_exhausted"
 
-                await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
-                    uid, user,
-                    card_store_factory=card_store_factory,
-                    graph_store_factory=graph_store_factory,
-                    embedding_store_factory=embedding_store_factory,
-                    gemini_client_factory=gemini_client_factory,
-                    logger=logger,
-                    link_kind_enum=link_kind_enum,
-                    notebook_id=notebook_id,
-                    gemini_model=gemini_model,
-                ), logger=logger, retry=True, run_id=run_id)
+                if pipeline_status != "quota_exhausted":
+                    status = await _run_step(uid, "EmbedAndJudge", lambda: _step_embed_and_judge(
+                        uid, user,
+                        card_store_factory=card_store_factory,
+                        graph_store_factory=graph_store_factory,
+                        embedding_store_factory=embedding_store_factory,
+                        gemini_client_factory=gemini_client_factory,
+                        logger=logger,
+                        link_kind_enum=link_kind_enum,
+                        notebook_id=notebook_id,
+                        gemini_model=gemini_model,
+                    ), logger=logger, retry=True, run_id=run_id)
+                    if status == "quota_exhausted":
+                        pipeline_status = "quota_exhausted"
 
-                await _run_step(uid, "Difficulty", lambda: _step_difficulty(
-                    uid, user,
-                    card_store_factory=card_store_factory,
-                    logger=logger,
-                    notebook_id=notebook_id,
-                ), logger=logger, run_id=run_id)
+                if pipeline_status != "quota_exhausted":
+                    # Difficulty is purely local (zipf lookup), no LLM cost,
+                    # so we always run it unless an earlier step quota-halted
+                    # (in which case the user is in a soft-degraded state and
+                    # we want a clean halt boundary).
+                    await _run_step(uid, "Difficulty", lambda: _step_difficulty(
+                        uid, user,
+                        card_store_factory=card_store_factory,
+                        logger=logger,
+                        notebook_id=notebook_id,
+                    ), logger=logger, run_id=run_id)
 
-                logger.info("[%s] Pipeline completed.", uid)
+                if pipeline_status == "quota_exhausted":
+                    logger.warning("[%s] Pipeline halted: quota exhausted.", uid)
+                else:
+                    logger.info("[%s] Pipeline completed.", uid)
                 try:
                     from . import pipeline_log
-                    pipeline_log.end_run(run_id, "completed")
+                    pipeline_log.end_run(run_id, pipeline_status)
                 except Exception:
                     logger.warning("Failed to record pipeline telemetry", exc_info=True)
 
-            except (OpenAIError, OSError, ValueError, RuntimeError) as exc:
+            except _STEP_ERRORS as exc:
+                # Mirrors `_STEP_ERRORS` so any unexpected leak from a step
+                # (including QuotaExceededError, which `_run_step` already
+                # catches via the same tuple) gets logged + telemetry-closed
+                # instead of crashing the background task.
                 logger.error("[%s] Pipeline unexpected error: %s", uid, exc, exc_info=True)
                 try:
                     from . import pipeline_log
