@@ -118,6 +118,16 @@ final class PodcastSyncService {
             fetchedDetails: details,
             context: context
         )
+        // Pull authoritative cross-device progress and merge under LWW.
+        // Failure here must NOT abort the series sync — progress is auxiliary,
+        // missing it falls back to local SwiftData like before this endpoint
+        // existed.
+        do {
+            let remote = try await fetchAllProgress()
+            Self.mergeRemoteProgress(remote: remote, context: context)
+        } catch {
+            AppLog.kg.warning("[PodcastSync] progress fetch failed: \(error.localizedDescription)")
+        }
         do {
             try context.save()
         } catch {
