@@ -16,6 +16,9 @@ final class PodcastSeries {
     var episodeCount: Int = 0
     var totalDurationSec: Double = 0
     var sortOrder: Int = 0
+    /// 使用者「追蹤」標記。Server 不下發此欄位，純本機偏好。
+    /// Series list 排序：isFollowed desc → sortOrder asc。
+    var isFollowed: Bool = false
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
     var isDeleted: Bool = false
