@@ -32,6 +32,8 @@ struct StatsPresenter: View {
     @State private var contentReady = false
     @State private var graphLinks: [KGGraphLink]?
     @State private var graphHolder = GraphThumbnailHolder()
+    @State private var loadError: Bool = false
+    @State private var retryToken: Int = 0
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
 
@@ -46,10 +48,7 @@ struct StatsPresenter: View {
     }
 
     var body: some View {
-        VocabSceneShell(phase: summary == nil
-            ? .loading(title: "計算統計資料...".localized, systemImage: "chart.bar")
-            : .content
-        ) {
+        VocabSceneShell(phase: currentPhase) {
             if let summary {
                 ScrollView {
                     VStack(spacing: vocabSkin.spacing.sectionGap) {
@@ -105,7 +104,7 @@ struct StatsPresenter: View {
             // @Model so @Query observers across stats/graph/word-detail views
             // refresh automatically on any mutation (see spec:
             // docs/superpowers/specs/ — SwiftData migration for KGGraphLink).
-            graphLinks = await loadGraphLinks()
+            await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
@@ -126,12 +125,65 @@ struct StatsPresenter: View {
             : reviewRecords
     }
 
-    private func loadGraphLinks() async -> [KGGraphLink] {
+    private func loadGraphLinks() async {
         if authManager.isDemoMode {
-            return DemoDataProvider.demoGraphLinks
+            graphLinks = DemoDataProvider.demoGraphLinks
+            loadError = false
+            return
         }
-        guard authManager.isLoggedIn else { return [] }
-        return (try? await kgService.pullGraphLinks()) ?? []
+        guard authManager.isLoggedIn else {
+            graphLinks = []
+            loadError = false
+            return
+        }
+        do {
+            graphLinks = try await kgService.pullGraphLinks()
+            loadError = false
+        } catch {
+            // Only surface error if we have no cached data to show
+            if graphLinks == nil {
+                loadError = true
+            }
+            graphLinks = graphLinks ?? []
+        }
+    }
+
+    // MARK: - Phase Resolution
+
+    private var currentPhase: VocabScenePhase {
+        if loadError && summary == nil {
+            return .error(
+                title: "無法載入統計資料".localized,
+                systemImage: "exclamationmark.triangle",
+                retryAction: { retryLoad() }
+            )
+        }
+        guard let summary else {
+            return .loading(
+                title: "計算統計資料...".localized,
+                systemImage: "chart.bar"
+            )
+        }
+        if isSummaryEmpty(summary) {
+            return .empty(
+                title: "尚無學習資料".localized,
+                systemImage: "chart.bar.xaxis",
+                description: "完成同步並開始複習後，這裡會顯示你的進度與預測。".localized
+            )
+        }
+        return .content
+    }
+
+    private func isSummaryEmpty(_ summary: StatsPresentation.Summary) -> Bool {
+        summary.totalCards == 0
+            && summary.activity.values.allSatisfy { $0 == 0 }
+            && summary.currentStreak == 0
+            && summary.longestStreak == 0
+    }
+
+    private func retryLoad() {
+        loadError = false
+        retryToken &+= 1
     }
 
     private var summaryKey: Int {
@@ -154,6 +206,7 @@ struct StatsPresenter: View {
         hasher.combine(syncedEntries.count)
         hasher.combine(authManager.isLoggedIn)
         hasher.combine(authManager.isDemoMode)
+        hasher.combine(retryToken)
         return hasher.finalize()
     }
 
