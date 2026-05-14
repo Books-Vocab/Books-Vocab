@@ -339,6 +339,22 @@ cmd_deploy() {
     cmd_env_drift
   fi
 
+  # ── Sentry release 驗證 ──
+  # 容器內 sentry_init._resolve_release() 依序讀 SENTRY_RELEASE / KG_VERSION /
+  # /app/VERSION。我們透過 /api/system/info 確認 deploy_sha 已生效，這樣
+  # Sentry 端的 release tag 能對齊 commit，做 regression diff 才有意義。
+  section "Sentry release 驗證"
+  local sysinfo_url="http://localhost:8000/api/system/info"
+  local reported_version
+  reported_version=$(run_remote "curl -s $sysinfo_url" 2>/dev/null \
+    | python3 -c "import json,sys; print(json.load(sys.stdin).get('version','unknown'))" 2>/dev/null \
+    || echo "unknown")
+  if [[ "$reported_version" == "$deploy_sha" ]]; then
+    ok "Sentry release = $deploy_sha (api/system/info 對齊)"
+  else
+    echo "⚠ /api/system/info 回報 version=$reported_version 但本次 deploy_sha=$deploy_sha；Sentry release 可能會用 $reported_version"
+  fi
+
   # ── 記錄部署日誌 ──
   mkdir -p "$BACKUP_DIR"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
