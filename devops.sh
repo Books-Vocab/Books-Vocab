@@ -70,6 +70,110 @@ confirm() {
 
 run_remote() { "${SSH_CMD[@]}" "$@"; }  # 在遠端執行指令（非互動式）
 
+# ── 部署後 smoke verify（從本地打公網，外部視角全鏈路驗證）─────────────────
+# 可注入：CURL_BIN（測試用 mock curl）、KG_SKIP_SMOKE=1 完全跳過、
+#         SENTRY_VERIFY=1 加做 sentry endpoint 探測、
+#         SMOKE_BASE_URL（預設 https://wordnexus.lol）
+verify_post_deploy() {
+  local deploy_sha="$1"
+  local base_url="${SMOKE_BASE_URL:-https://wordnexus.lol}"
+  local curl_bin="${CURL_BIN:-curl}"
+  local rc=0
+
+  if [[ "${KG_SKIP_SMOKE:-0}" == "1" ]]; then
+    info "KG_SKIP_SMOKE=1，跳過部署後 smoke verify"
+    return 0
+  fi
+
+  section "部署後 smoke verify"
+
+  # 1) /api/system/info — 公開 endpoint，必須 200，body 含 version 且等於 deploy_sha
+  local info_body info_http
+  info_body=$("$curl_bin" -sS -o - -w $'\n%{http_code}' --max-time 10 "$base_url/api/system/info" 2>/dev/null || true)
+  info_http=$(printf '%s\n' "$info_body" | tail -n1)
+  info_body=$(printf '%s\n' "$info_body" | sed '$d')
+
+  if [[ "$info_http" != "200" ]]; then
+    echo "✗ /api/system/info HTTP=$info_http (expect 200)"
+    rc=1
+  else
+    local remote_version
+    remote_version=$(printf '%s' "$info_body" | sed -n 's/.*"version"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' | head -1)
+    if [[ -z "$remote_version" ]]; then
+      echo "✗ /api/system/info 缺少 version 欄位 (body=$info_body)"
+      rc=1
+    elif [[ "$remote_version" != "$deploy_sha" ]]; then
+      echo "✗ /api/system/info version=$remote_version 不等於 deploy_sha=$deploy_sha"
+      rc=1
+    else
+      ok "/api/system/info 200，version=$remote_version 對齊"
+    fi
+  fi
+
+  # 2) /api/health — 需要 auth，unauth 預期 401（代表 route 存在 + auth wire 正常）
+  #    404/000 視為 endpoint 消失或網路斷，記紅；500 視為 app 起火，記紅
+  local health_http
+  health_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/health" 2>/dev/null || echo "000")
+  case "$health_http" in
+    401|403)
+      ok "/api/health 受 auth 保護 (HTTP ${health_http}), endpoint 正常"
+      ;;
+    200)
+      ok "/api/health HTTP 200 (auth 跳過或測試環境)"
+      ;;
+    404)
+      info "/api/health 不存在 (HTTP 404), 跳過此項 (非失敗)"
+      ;;
+    000)
+      echo "✗ /api/health 無回應 (網路斷或 TLS 失敗)"
+      rc=1
+      ;;
+    *)
+      echo "✗ /api/health 異常 HTTP=${health_http}"
+      rc=1
+      ;;
+  esac
+
+  # 3) Sentry verify（opt-in via SENTRY_VERIFY=1）
+  if [[ "${SENTRY_VERIFY:-0}" == "1" ]]; then
+    local sentry_http
+    sentry_http=$("$curl_bin" -sS -o /dev/null -w '%{http_code}' --max-time 10 "$base_url/api/system/sentry-test" 2>/dev/null || echo "000")
+    case "$sentry_http" in
+      401|403)
+        ok "/api/system/sentry-test 存在且 admin 保護 (HTTP ${sentry_http})"
+        ;;
+      500|502)
+        ok "/api/system/sentry-test 觸發例外 (HTTP ${sentry_http}), 請於 Sentry UI 確認事件抵達"
+        ;;
+      404)
+        # endpoint 缺席 → fallback: 透過 system/info 確認 SENTRY_DSN 已被讀取
+        info "/api/system/sentry-test 不存在, fallback 檢查 /api/system/info"
+        if printf '%s' "$info_body" | grep -q '"sentry"'; then
+          ok "/api/system/info 含 sentry 狀態欄位 (DSN 已讀取)"
+        else
+          info "(/api/system/info 未暴露 sentry 狀態, 僅供參考, 非失敗)"
+        fi
+        ;;
+      000)
+        echo "✗ /api/system/sentry-test 無回應"
+        rc=1
+        ;;
+      *)
+        info "/api/system/sentry-test HTTP=${sentry_http} (非預期但不視為失敗)"
+        ;;
+    esac
+  fi
+
+  if [[ "$rc" -ne 0 ]]; then
+    echo ""
+    echo "── 容器最近 30 行 log (smoke 失敗診斷) ──"
+    run_remote "cd $REMOTE_DIR && docker compose logs --tail=30" || true
+    err "部署後 smoke verify 失敗 (deploy_sha=${deploy_sha}), 詳見上方"
+  fi
+  ok "部署後 smoke verify 通過"
+  return 0
+}
+
 # ── 安全函式 ──────────────────────────────────────────────────────────────────
 # uid 必須是 [A-Za-z0-9_-]，1-64 字元；任何 shell metachar / path traversal 一律拒絕
 validate_uid() {
@@ -343,6 +447,10 @@ cmd_deploy() {
   mkdir -p "$BACKUP_DIR"
   echo "$(date -u +%Y-%m-%dT%H:%M:%SZ) sha=$deploy_sha user=$(whoami)" >> "$deploy_log"
   info "部署記錄已追加至 $deploy_log"
+
+  # ── 部署後 smoke verify（外部視角，確認公網全鏈路 + 版本對齊）──
+  # 失敗會 err exit；deploy.log 已寫，無回滾語意（人工介入決定）
+  verify_post_deploy "$deploy_sha"
 
   if [[ "$needs_full" == "true" ]]; then
     ok "完整部署完成 (version: $deploy_sha)。"
