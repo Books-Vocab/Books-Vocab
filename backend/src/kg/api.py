@@ -214,12 +214,17 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     )
 
     from .request_context import request_id_var
+    from . import sentry_init as _sentry_init
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):
         request_id = request.headers.get("X-Request-ID") or _uuid.uuid4().hex[:16]
         request.state.request_id = request_id
         token = request_id_var.set(request_id)
+        # Tag the Sentry scope so error events / traces carry the same
+        # correlation id surfaced in logs + the X-Request-ID response header.
+        # No-op when Sentry isn't initialized (dev/test).
+        _sentry_init.tag_request_id(request_id)
         try:
             response = await call_next(request)
         finally:
