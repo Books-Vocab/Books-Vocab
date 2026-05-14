@@ -359,6 +359,22 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     app.include_router(html_r)
     app.include_router(api_r)
 
+    # Deprecation logger for the legacy public mount below. Authenticated
+    # iOS clients should use /api/podcasts/{series_id}/{ep_num}/audio instead.
+    # Track real-world usage so we can pick a safe removal date.
+    _deprecation_log = logging.getLogger("kg.podcast_media_deprecation")
+
+    @app.middleware("http")
+    async def _log_legacy_podcast_media_hits(request, call_next):  # type: ignore[no-untyped-def]
+        if request.url.path.startswith("/api/podcast-media/"):
+            _deprecation_log.warning(
+                "legacy public podcast-media hit: path=%s ua=%r — switch to "
+                "/api/podcasts/{series_id}/{ep_num}/audio",
+                request.url.path,
+                request.headers.get("user-agent", ""),
+            )
+        return await call_next(request)
+
     # StaticFiles mount MUST be after all routers to avoid path shadowing.
     # Always mount — create the dir if missing so uploads land correctly without restart.
     _podcasts_path = settings.podcasts_dir
