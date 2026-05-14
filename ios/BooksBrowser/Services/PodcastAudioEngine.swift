@@ -51,7 +51,7 @@ final class PodcastAudioEngine: NSObject {
         removeObservers()
     }
 
-    func loadAudio(url: URL) {
+    func loadAudio(url: URL, httpHeaders: [String: String] = [:]) {
         removeObservers()
         configureAudioSession()
         loadGeneration &+= 1
@@ -60,10 +60,18 @@ final class PodcastAudioEngine: NSObject {
         // preferPreciseDuration: CBR/VBR MP3 duration from HTTP headers is a
         // rough estimate; precise parsing prevents end-of-episode scrubber
         // misalignment and subtitle drift.
-        let asset = AVURLAsset(
-            url: url,
-            options: [AVURLAssetPreferPreciseDurationAndTimingKey: true]
-        )
+        //
+        // AVURLAssetHTTPHeaderFieldsKey is a private-but-stable AVFoundation
+        // option that lets us attach `Authorization: Bearer …` to the Range
+        // requests AVPlayer issues. Required for the authenticated
+        // `/api/podcasts/{id}/{n}/audio` endpoint.
+        var assetOptions: [String: Any] = [
+            AVURLAssetPreferPreciseDurationAndTimingKey: true
+        ]
+        if !httpHeaders.isEmpty {
+            assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = httpHeaders
+        }
+        let asset = AVURLAsset(url: url, options: assetOptions)
         let item = AVPlayerItem(asset: asset)
         // Preserve pitch when rate != 1.0 (varispeed w/o chipmunk effect).
         item.audioTimePitchAlgorithm = .timeDomain
