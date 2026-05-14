@@ -144,6 +144,7 @@ extension KGService {
             return
         }
 
+        AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
         var failures: [String] = []
 
         // Phase 1: push review states & daily stats in parallel
@@ -221,8 +222,15 @@ extension KGService {
         if failures.isEmpty {
             lastBackgroundSyncError = nil
             lastSyncDate = .now
+            AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.end.success")
         } else {
             lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failures.joined(separator: ", "))
+            AppCrashReporting.addBreadcrumb(
+                category: "sync",
+                message: "sync.end.partial",
+                level: "warning",
+                data: ["failures": failures]
+            )
         }
     }
 
