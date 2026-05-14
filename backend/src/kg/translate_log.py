@@ -7,10 +7,35 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-CACHE_TTL_DAYS = 30
+CACHE_TTL_DAYS_DEFAULT = 30
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+
+
+def _cache_ttl_days() -> int:
+    """Resolve translate cache TTL (days) from env on every call.
+
+    Env: ``TRANSLATE_CACHE_TTL_DAYS``.
+
+    Semantics:
+      - unset / empty string → default (``CACHE_TTL_DAYS_DEFAULT`` = 30 days)
+      - non-integer (e.g. ``"30.5"``, ``"abc"``) → fallback to default
+      - negative integer (e.g. ``"-5"``) → fallback to default
+      - **``"0"`` → disable cache** (always miss): ``lookup()`` uses
+        ``created_at > now - 0 days``, so every existing row is filtered out.
+        Use this to force fresh LLM calls after a prompt change without a
+        code release.
+      - positive integer → that many days
+    """
+    raw = os.getenv("TRANSLATE_CACHE_TTL_DAYS")
+    if raw is None or raw == "":
+        return CACHE_TTL_DAYS_DEFAULT
+    try:
+        val = int(raw)
+    except ValueError:
+        return CACHE_TTL_DAYS_DEFAULT
+    return val if val >= 0 else CACHE_TTL_DAYS_DEFAULT
 
 def _db_path() -> Path:
     data_dir = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
@@ -68,7 +93,7 @@ def _reset() -> None:
             _conn = None
 
 def lookup(word: str, context_hash: str, source_lang: str, target_lang: str, operation: str) -> str | None:
-    cutoff = (datetime.now(UTC) - timedelta(days=CACHE_TTL_DAYS)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=_cache_ttl_days())).isoformat()
     with _lock:
         conn = _get_conn()
         row = conn.execute(
