@@ -185,6 +185,122 @@ def test_podcast_media_mount_available_without_predeploy_dir(isolated_api):
 
 
 # ---------------------------------------------------------------------------
+# Legacy public /api/podcast-media/ StaticFiles mount contract.
+# These tests target the mount itself (NOT the authenticated /audio endpoint).
+# The mount is unconditionally registered (see api.py) and serves files from
+# the import-time `podcasts_dir`, so we write fixtures to the live mount dir
+# and clean up in `finally` blocks. Backward-compat for shipped iOS clients
+# during the deprecation window.
+# ---------------------------------------------------------------------------
+
+
+@pytest.fixture()
+def _media_mount_dir():
+    """Resolve the live podcast-media mount directory and yield it.
+
+    StaticFiles binds at app-import time, so `isolated_api` cannot redirect
+    the mount to tmp_path. We must operate on the real directory.
+    """
+    from kg.api import app
+    mount = next(
+        (r for r in app.routes if getattr(r, "name", None) == "podcast-media"),
+        None,
+    )
+    assert mount is not None, "podcast-media mount missing"
+    return Path(mount.app.directory)
+
+
+def test_podcast_media_serves_audio_file_200(isolated_api, _media_mount_dir):
+    """Full GET on a fixture .mp3 must return 200 + audio/mpeg + exact bytes."""
+    series = "series_media_200_test"
+    ep_dir = _media_mount_dir / series / "ep_01"
+    ep_dir.mkdir(parents=True, exist_ok=True)
+    payload = bytes(range(256)) * 16  # 4 KB deterministic
+    audio = ep_dir / "audio.mp3"
+    try:
+        audio.write_bytes(payload)
+        resp = isolated_api.client.get(
+            f"/api/podcast-media/{series}/ep_01/audio.mp3"
+        )
+        assert resp.status_code == 200
+        assert resp.content == payload
+        ctype = resp.headers.get("content-type", "")
+        assert ctype.startswith("audio/mpeg"), f"got content-type={ctype!r}"
+        assert resp.headers.get("content-length") == str(len(payload))
+    finally:
+        audio.unlink(missing_ok=True)
+        try:
+            ep_dir.rmdir()
+            ep_dir.parent.rmdir()
+        except OSError:
+            pass
+
+
+def test_podcast_media_range_request_returns_206(isolated_api, _media_mount_dir):
+    """`Range: bytes=0-1023` must return 206 + Content-Range + exactly 1024 bytes.
+
+    Tighter contract than `test_media_mount_supports_range` (which only
+    checks a 100-byte slice): locks in the kilobyte-aligned slice AVPlayer
+    typically issues on first prefetch.
+    """
+    series = "series_media_range_test"
+    ep_dir = _media_mount_dir / series / "ep_02"
+    ep_dir.mkdir(parents=True, exist_ok=True)
+    payload = bytes(range(256)) * 32  # 8 KB — must exceed 1024 for slice
+    audio = ep_dir / "audio.mp3"
+    try:
+        audio.write_bytes(payload)
+        resp = isolated_api.client.get(
+            f"/api/podcast-media/{series}/ep_02/audio.mp3",
+            headers={"Range": "bytes=0-1023"},
+        )
+        assert resp.status_code == 206
+        assert resp.headers.get("content-range") == f"bytes 0-1023/{len(payload)}"
+        assert resp.headers.get("content-length") == "1024"
+        assert len(resp.content) == 1024
+        assert resp.content == payload[:1024]
+    finally:
+        audio.unlink(missing_ok=True)
+        try:
+            ep_dir.rmdir()
+            ep_dir.parent.rmdir()
+        except OSError:
+            pass
+
+
+@pytest.mark.parametrize(
+    "bad_path",
+    [
+        "../../../etc/passwd",
+        "..%2F..%2Fetc%2Fpasswd",
+        "%2e%2e/%2e%2e/etc/passwd",
+        "series_a/../../etc/passwd",
+        "series_a/ep_01/../../../etc/passwd",
+    ],
+)
+def test_podcast_media_path_traversal_rejected(isolated_api, bad_path):
+    """Path traversal attempts against the StaticFiles mount must not leak
+    filesystem contents. Starlette StaticFiles resolves the requested path
+    against the configured directory and refuses to escape it; we lock in
+    that contract via a status assertion and a negative-content check.
+    """
+    resp = isolated_api.client.get(f"/api/podcast-media/{bad_path}")
+    # 404 (file not found within mount), 400 (bad request), or 403/redirect
+    # are all acceptable — what matters is NO 200 leaking host files.
+    assert resp.status_code in (400, 403, 404), (
+        f"path={bad_path!r} produced status {resp.status_code} "
+        f"(must reject, not serve)"
+    )
+    # Defensive: even if some future change returns 200 for a normalized
+    # path that happens to exist inside the mount, it must never contain
+    # /etc/passwd shibboleths.
+    body = resp.content or b""
+    assert b"root:" not in body and b"/bin/" not in body, (
+        "response body looks like /etc/passwd content"
+    )
+
+
+# ---------------------------------------------------------------------------
 # Authorization model contract: podcasts are public-read for any authenticated
 # user. This locks in the documented model in routers/podcast.py — any future
 # refactor that introduces ownership must update both the docstring and these
