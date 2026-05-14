@@ -339,11 +339,14 @@ struct SettingsAuthSummary: View {
                         .foregroundStyle(vocabSkin.palette.primaryText)
                         .lineLimit(1)
 
-                    if isProActive {
-                        SettingsProBadge()
-                            .transition(AppTransition.modalSwap)
-                            .accessibilityLabel("Pro 訂閱已啟用".localized)
+                    ZStack {
+                        if isProActive {
+                            SettingsProBadge()
+                                .transition(AppTransition.modalSwap)
+                                .accessibilityLabel("Pro 訂閱已啟用".localized)
+                        }
                     }
+                    .animation(AppMotion.modalSwapSpring, value: isProActive)
                 }
 
                 if let email = state.email, !email.isEmpty {
@@ -353,7 +356,6 @@ struct SettingsAuthSummary: View {
                         .lineLimit(1)
                 }
             }
-            .animation(AppMotion.modalSwapSpring, value: isProActive)
 
             Spacer()
 
