@@ -30,7 +30,7 @@ from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path as PathParam, Request
-from fastapi.responses import PlainTextResponse, Response, StreamingResponse
+from fastapi.responses import PlainTextResponse, StreamingResponse
 
 from ..deps import get_current_user
 
