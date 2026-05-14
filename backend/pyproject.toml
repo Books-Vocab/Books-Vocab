@@ -28,6 +28,23 @@ dependencies = [
 [project.scripts]
 kg-server = "uvicorn:main"
 
+# Dev / test dependencies. PEP 735 dependency group — installed by
+# `uv sync` (uv installs the default `dev` group automatically) but excluded
+# from the runtime wheel.
+#
+# Why this is required: when pytest is not present in the project venv,
+# `uv run pytest` silently falls back to a Homebrew system Python (e.g. 3.14)
+# that lacks `sentry-sdk`. That made `import sentry_sdk` inside
+# `kg.observability_alerts` fail, `_sentry_sdk` resolved to `None`, and every
+# `_emit` short-circuited at the `_sentry_sdk is None` guard — manifesting as
+# 8 flaky-looking test failures whose stubs never recorded a call. Pinning
+# pytest into the venv eliminates that interpreter mismatch entirely.
+[dependency-groups]
+dev = [
+    "pytest>=8.0,<10.0",
+    "pytest-asyncio>=0.26,<2.0",
+]
+
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
