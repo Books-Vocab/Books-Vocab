@@ -283,6 +283,64 @@ class TestCheckTranslateLatencyP95:
 
 
 # ---------------------------------------------------------------------------
+# Threshold boundary contract — pins inclusive vs exclusive semantics so
+# refactors can't silently flip them. The three checks intentionally differ:
+#
+#   pipeline.count   >= threshold   (>=)  — `if count < threshold: return`
+#   judge.rate       >  threshold   (>)   — `if rate <= threshold: return`
+#   translate.p95_ms >  threshold   (>)   — `if p95 <= threshold_ms: return`
+#
+# Pipeline is inclusive because an integer count crossing the threshold is
+# unambiguous; the rate/latency checks are exclusive so that operators can set
+# `threshold = baseline` without false-positives from sample noise touching it
+# exactly.
+# ---------------------------------------------------------------------------
+
+
+class TestThresholdBoundary:
+    """One test per check that pins the boundary direction explicitly.
+
+    These exist alongside the per-check boundary tests above; they collect the
+    contract in one place so an accidental `<` → `<=` flip in any of the three
+    checks shows up here as a labelled failure rather than a stray red elsewhere.
+    """
+
+    def test_pipeline_failures_boundary_is_inclusive(self, sentry_stub):
+        # threshold=5 → exactly 5 failures SHOULD alert (>=)
+        for i in range(5):
+            _insert_pipeline_run(f"r{i}", "failed", started_minutes_ago=10)
+        observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert len(sentry_stub.calls) == 1, "pipeline check must be inclusive (>=)"
+
+    def test_judge_rejection_rate_boundary_is_exclusive(self, sentry_stub):
+        # threshold=0.5 → rate==0.5 must NOT alert (strict >)
+        for _ in range(5):
+            _insert_judge_decision(accepted=True, minutes_ago=10)
+        for _ in range(5):
+            _insert_judge_decision(accepted=False, minutes_ago=10)
+        observability_alerts.check_judge_rejection_rate(
+            window_min=60, min_total=10, threshold=0.5,
+        )
+        assert sentry_stub.calls == [], "judge rate check must be exclusive (>)"
+
+    def test_translate_latency_p95_boundary_is_exclusive(self, sentry_stub):
+        # Build 20 samples where p95 == threshold_ms exactly. Inclusive p95
+        # index = ceil(0.95 * 20) - 1 = 18 (0-indexed). So sample[18] must be
+        # the boundary value. With samples sorted ascending, we need indices
+        # 0..18 == 5000 and 19 == 5000 too (all equal). That gives p95 == 5000
+        # which must NOT trigger (rule is strict >).
+        for _ in range(20):
+            _insert_translate_log(latency_ms=5000, minutes_ago=5)
+        observability_alerts.check_translate_latency_p95(
+            window_min=15, threshold_ms=5000,
+        )
+        assert sentry_stub.calls == [], (
+            "translate p95 check must be exclusive (>) — equal to threshold "
+            "should not alert"
+        )
+
+
+# ---------------------------------------------------------------------------
 # Cooldown
 # ---------------------------------------------------------------------------
 
@@ -329,6 +387,39 @@ class TestCooldown:
         assert len(sentry_stub.calls) == 2
         alerts = {c["tags"]["alert"] for c in sentry_stub.calls}
         assert alerts == {"pipeline_failures", "judge_rejection_rate"}
+
+
+class TestCooldownIsolation:
+    """Verify the autouse fixture really clears `_cooldown_state` between tests.
+
+    Without this, a Sentry alert fired in one test would suppress the same
+    alert in the next test (cooldown is 30 minutes). The pair below is the
+    canary: if isolation breaks, the second test fails with `len == 0`.
+    Splitting the assertion across two test methods exercises the fixture's
+    teardown path, not just the setup path.
+    """
+
+    def test_first_test_stamps_pipeline_cooldown(self, sentry_stub):
+        # Sanity: cooldown dict is empty at start (fixture cleared it).
+        assert observability_alerts._cooldown_state == {}
+        for i in range(6):
+            _insert_pipeline_run(f"r{i}", "failed", started_minutes_ago=10)
+        observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert "pipeline_failures" in observability_alerts._cooldown_state
+        assert len(sentry_stub.calls) == 1
+
+    def test_second_test_sees_fresh_cooldown(self, sentry_stub):
+        # Critical: the previous test left a `pipeline_failures` cooldown
+        # stamp. If the autouse fixture didn't clear it, this alert would be
+        # suppressed and `sentry_stub.calls` would be empty.
+        assert observability_alerts._cooldown_state == {}, (
+            "fixture must clear cooldown state — leak from prior test breaks "
+            "every cooldown-sensitive assertion downstream"
+        )
+        for i in range(6):
+            _insert_pipeline_run(f"r{i}", "failed", started_minutes_ago=10)
+        observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert len(sentry_stub.calls) == 1
 
 
 # ---------------------------------------------------------------------------
