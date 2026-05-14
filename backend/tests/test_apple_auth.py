@@ -229,6 +229,155 @@ class TestVerifyAppleToken:
             assert exc_info.value.status_code == 401
             assert "sub" in exc_info.value.detail.lower()
 
+    # --- Malformed claims / clock-skew regression tests ---
+
+    def test_apple_token_missing_email_falls_back_gracefully(self):
+        """Apple omits email on subsequent sign-ins.
+
+        With a valid sub but no email claim the function must NOT raise —
+        callers fall back to sub-only lookup. Returned tuple shape stays
+        ``(sub, None, False)``.
+        """
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            # Resign-in token: sub only, no email / email_verified
+            mock_jwt.decode.return_value = {"sub": "apple-resignin-sub"}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            sub, email, verified = apple_auth.verify_apple_token("resignin.token", AUDIENCE)
+            assert sub == "apple-resignin-sub"
+            assert email is None
+            assert verified is False
+
+    def test_apple_token_with_empty_string_email_falls_back_gracefully(self):
+        """Empty-string email is treated as absent, not as a valid address."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {
+                "sub": "apple-empty-email",
+                "email": "",
+                "email_verified": "true",
+            }
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            sub, email, _verified = apple_auth.verify_apple_token("empty.token", AUDIENCE)
+            assert sub == "apple-empty-email"
+            # "" must NOT be returned as a real email (would corrupt _email_index)
+            assert email in (None, "")
+            # Either falsy is acceptable; explicit guard:
+            assert not email
+
+    def test_apple_token_expired_at_boundary(self):
+        """Token whose exp is now-1s must be rejected with 401.
+
+        PyJWT raises ExpiredSignatureError once exp <= now; we mirror that
+        as a 401 surfaced to the API.
+        """
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+            # PyJWT detects exp <= now and raises before we can read claims.
+            mock_jwt.decode.side_effect = real_jwt.ExpiredSignatureError(
+                "Signature has expired"
+            )
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("boundary-expired.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+            assert "expired" in exc_info.value.detail.lower()
+
+    def test_apple_token_with_future_iat_rejected(self):
+        """Tokens with iat far in the future must be rejected (clock-skew attack).
+
+        PyJWT validates ``iat`` only when ``options={"verify_iat": True}``
+        OR raises ``ImmatureSignatureError`` when ``nbf`` is set. For Apple
+        tokens we surface PyJWT's verdict; an iat 60s ahead should raise
+        ImmatureSignatureError (a ``PyJWTError`` subclass) which we map to 401.
+        """
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+            mock_jwt.ImmatureSignatureError = real_jwt.ImmatureSignatureError
+            # Simulate PyJWT rejecting an iat 60s in the future.
+            mock_jwt.decode.side_effect = real_jwt.ImmatureSignatureError(
+                "The token is not yet valid (iat)"
+            )
+
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token("future-iat.token", AUDIENCE)
+            assert exc_info.value.status_code == 401
+
+    def test_apple_token_with_iat_within_clock_skew_grace_accepted(self):
+        """iat <= 30s in the future falls within the clock-skew grace window.
+
+        Real Apple/PyJWT default leeway is 0s, but our handler delegates
+        entirely to PyJWT.decode — if PyJWT accepts the token, we accept
+        and return (sub, email, verified). Documents the contract:
+        we do NOT add an extra future-iat check beyond PyJWT's leeway.
+        """
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {
+                "sub": "skew-ok",
+                "iat": int(time.time()) + 20,  # 20s ahead, within typical grace
+            }
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            sub, _email, _verified = apple_auth.verify_apple_token("grace.token", AUDIENCE)
+            assert sub == "skew-ok"
+
+    def test_apple_token_with_non_string_email_does_not_crash(self):
+        """Defensive: an unexpected email type (int) must not raise TypeError."""
+        with (
+            patch("kg.apple_auth.jwt") as mock_jwt,
+            patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM),
+        ):
+            mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}
+            mock_jwt.decode.return_value = {
+                "sub": "weird-email",
+                "email": 12345,
+                "email_verified": True,
+            }
+            mock_jwt.ExpiredSignatureError = real_jwt.ExpiredSignatureError
+            mock_jwt.InvalidAudienceError = real_jwt.InvalidAudienceError
+            mock_jwt.InvalidIssuerError = real_jwt.InvalidIssuerError
+            mock_jwt.PyJWTError = real_jwt.PyJWTError
+
+            # Must not raise; coerced to string and lowered.
+            sub, email, _ = apple_auth.verify_apple_token("weird.token", AUDIENCE)
+            assert sub == "weird-email"
+            assert email == "12345"
+
 
 class TestFetchApplePublicKeys:
     """Tests for _fetch_apple_public_keys."""
