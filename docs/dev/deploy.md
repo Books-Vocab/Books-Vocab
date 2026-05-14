@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: c16321f
+verified_against: d37c113
 -->
 # 後端部署指南
 
@@ -49,11 +49,39 @@ cd ~/kg
 ./devops.sh logs 50     # 如有問題查日誌
 ```
 
-`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build → migrate → health check → env-drift → **追加 deploy.log**（非通過自動中止）。
+`deploy` 內部流程：backup → env-check → **寫入 VERSION（git SHA）** → rsync → docker build → migrate → 容器內 health check → env-drift → **追加 deploy.log** → **外部 smoke verify**（非通過自動中止）。
 
 部署完成後可透過兩種方式確認遠端版本：
 - `./devops.sh status` — 顯示部署版本 + 最近 5 筆部署記錄
 - `curl https://wordnexus.lol/api/system/info` — 無需 auth，回傳 version、uptime、migration 狀態
+
+### 外部 smoke verify（deploy 末段自動執行）
+
+容器健康檢查只走 `localhost:8000/docs`，無法保證 Caddy/TLS/公網路徑完好。`cmd_deploy` 末段會從本地透過公網打三層 verify：
+
+1. `GET https://wordnexus.lol/api/system/info` — 預期 HTTP 200，**且** body 內 `version` 欄位必須等於本次 `git rev-parse --short HEAD`。版本不對齊 = rsync/build 未生效，立刻失敗。
+2. `GET https://wordnexus.lol/api/health` — unauth 預期 401/403（受 `Depends(get_current_user)` 保護，代表 endpoint 存在 + auth 系統 wire 正常）。HTTP 404 = endpoint 從 router 消失，**視為跳過**而非失敗（保留向後相容空間）；HTTP 000/500 = 真的壞，失敗。
+3. `SENTRY_VERIFY=1` 時：`GET /api/system/sentry-test` — endpoint 是 admin-only，unauth 預期 401/403；若 endpoint 已被移除（404）則 fallback 檢查 `/api/system/info` body 是否含 `sentry` 欄位作為「DSN 已讀取」的存在性證據。
+
+任何一層失敗：紅字錯誤 + 自動印出容器最近 30 行 log + 非零 exit。`deploy.log` 已寫入（無回滾語意），需人工 `./devops.sh logs 100` + 決定是否 rollback。
+
+#### 控制 env
+
+| Env | 預設 | 用途 |
+|-----|------|------|
+| `KG_SKIP_SMOKE=1` | 0 | 完全跳過 smoke verify（緊急 deploy 用，不建議） |
+| `SENTRY_VERIFY=1` | 0 | 額外加做 sentry endpoint 探測 |
+| `SMOKE_BASE_URL` | `https://wordnexus.lol` | 改打 staging / 自訂 domain |
+| `CURL_BIN` | `curl` | 注入 mock curl（測試專用，見 `ops/tests/test_deploy_smoke.sh`） |
+
+預估開銷：3 個 curl 串行，每個 `--max-time 10`，順利情況下加 < 1 秒；失敗情境最多多 ~30 秒。
+
+#### 排查
+
+- `version=X 不等於 deploy_sha=Y` → rsync 沒同步 / VERSION 檔沒寫入 / 容器沒 rebuild。檢查 `run_remote "cat $REMOTE_DIR/VERSION"` 與 `docker compose ps`。
+- `health 000` → 公網斷線、TLS 失敗、Caddy 沒起。`./devops.sh run "sudo systemctl status caddy"`。
+- `health 500` → app 起來但 auth middleware 起火。看 `docker compose logs --tail=100`。
+- sentry endpoint 期待 401 但拿到 200 → admin auth 失效，立即查 `get_admin_user`。
 
 ---
 
