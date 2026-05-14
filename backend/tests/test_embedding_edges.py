@@ -83,9 +83,9 @@ class TestEmbeddingDimMismatchClearError:
     def test_sidecar_lies_about_dim_load_fails_loud(self, tmp_path: Path):
         """A corrupted/hand-edited sidecar claims dim=768, matching the
         active config, but the .npy on disk is actually 1536-dim. The
-        active store loads them, then the next add via vstack would blow
-        up with a numpy ValueError. We want that to surface — not be
-        silently swallowed."""
+        active store must reject this at load time — not silently load
+        a stale matrix that corrupts find_similar / cosine math until
+        the next vstack accidentally surfaces it."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
         meta_path = tmp_path / "embeddings_meta_default.json"
@@ -97,11 +97,65 @@ class TestEmbeddingDimMismatchClearError:
 
         client = _mock_client_with_dim(dim=768)
         llm = TrackedLLM(client, "u")
-        store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
-        # Vectors loaded despite real shape != declared dim (current behaviour).
-        # The next add must fail loudly rather than corrupt the matrix silently.
+        # Construction itself triggers _load → must raise immediately.
         with pytest.raises(ValueError):
-            store.add("c_new", "hello")
+            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+
+    def test_load_raises_on_shape_mismatch(self, tmp_path: Path):
+        """Front-loaded guard: when on-disk .npy shape disagrees with
+        the active ``dim``, ``_load`` must raise a clear ValueError
+        naming both dims and the env var — without waiting for the
+        next add_batch/vstack to expose corruption. Empty stores
+        (shape[0]==0) and legacy stores (no sidecar) both flow through
+        the same check."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        # Real disk shape is 1536, sidecar lies and says 768.
+        np.save(emb_path, np.random.rand(3, 1536).astype(np.float32))
+        ids_path.write_text(json.dumps(["a", "b", "c"]))
+        meta_path.write_text(json.dumps({"model": "m-active", "dim": 768, "created_at": "x"}))
+
+        client = _mock_client_with_dim(dim=768)
+        llm = TrackedLLM(client, "u")
+        with pytest.raises(ValueError) as exc_info:
+            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        msg = str(exc_info.value)
+        assert "dim mismatch" in msg.lower(), f"got: {msg!r}"
+        assert "1536" in msg and "768" in msg, f"got: {msg!r}"
+        assert "EMBEDDING_DIM" in msg, f"got: {msg!r}"
+
+    def test_load_raises_on_shape_mismatch_legacy_no_sidecar(self, tmp_path: Path):
+        """Legacy path (no sidecar) must also be guarded: shape check
+        before adopting the on-disk vectors as the active store."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        # No sidecar — legacy deployment.
+        np.save(emb_path, np.random.rand(2, 1536).astype(np.float32))
+        ids_path.write_text(json.dumps(["a", "b"]))
+
+        client = _mock_client_with_dim(dim=768)
+        llm = TrackedLLM(client, "u")
+        with pytest.raises(ValueError):
+            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+
+    def test_load_allows_empty_npy(self, tmp_path: Path):
+        """An empty (0, dim) .npy must not trip the shape guard — the
+        store is effectively unpopulated and any dim claim is moot
+        until the first add."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        # 0 rows; the trailing dim is "wrong" on paper but harmless.
+        np.save(emb_path, np.zeros((0, 1536), dtype=np.float32))
+        ids_path.write_text(json.dumps([]))
+        meta_path.write_text(json.dumps({"model": "m-active", "dim": 768, "created_at": "x"}))
+
+        client = _mock_client_with_dim(dim=768)
+        llm = TrackedLLM(client, "u")
+        # Should not raise; sidecar-mismatch path will quarantine + start empty.
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        assert store.count() == 0
 
 
 # --------------------------------------------------------------------- #
