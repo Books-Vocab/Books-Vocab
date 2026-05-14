@@ -31,6 +31,10 @@ struct SettingsAccountDetailView: View {
             VStack(spacing: AppShellMetrics.sectionSpacing) {
                 accountInfoCard
 
+                if authState.isLoggedIn {
+                    dataManagementCard
+                }
+
                 if let danger = dangerState {
                     dangerCard(danger)
                 }
@@ -42,6 +46,23 @@ struct SettingsAccountDetailView: View {
         .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("帳號詳情".localized)
         .inlineNavigationBarTitle()
+    }
+
+    private var dataManagementCard: some View {
+        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            SettingsSectionHeader(title: "資料管理".localized, icon: "tray.and.arrow.up")
+
+            VStack(spacing: 0) {
+                SettingsNavigationRow(
+                    icon: "square.and.arrow.up",
+                    label: "匯出全部單字 CSV".localized,
+                    action: actions.exportVocabularyCSV
+                )
+            }
+            .settingsCard()
+
+            SettingsSectionFooter("將所有單字本內的單字匯出為 CSV，方便備份或匯入其他工具。".localized)
+        }
     }
 
     private var accountInfoCard: some View {
