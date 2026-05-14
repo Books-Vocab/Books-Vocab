@@ -259,7 +259,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.loggedOut,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -275,7 +275,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.subscribedActive,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -291,7 +291,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.subscriptionLoading,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -307,7 +307,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.deletingAccount,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -323,7 +323,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.pricingUnavailable,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: nil,
                 debugLocalServerURL: nil,
                 actions: SettingsPresenterPreviewData.noopActions
@@ -339,7 +339,7 @@ enum SettingsPresenterPreviewData {
                 state: SettingsPresenterPreviewData.debugBackendLocal,
                 translationSourceLang: .constant(.en),
                 translationTargetLang: .constant(.zhHant),
-                onTranslationLanguageChanged: { _, _ in },
+                onTranslationLanguageChanged: { _, _ in true },
                 manualLoginUserId: .constant("debug-user-id"),
                 debugLocalServerURL: .constant("http://127.0.0.1:8000"),
                 actions: SettingsPresenterPreviewData.noopActions

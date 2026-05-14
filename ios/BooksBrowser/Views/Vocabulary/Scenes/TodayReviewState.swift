@@ -298,7 +298,8 @@ final class TodayReviewState {
     func submit(
         _ feedback: ReviewFeedback,
         container: ModelContainer,
-        reviewSettings: ReviewSettings
+        reviewSettings: ReviewSettings,
+        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
         guard currentEntry != nil else { return }
         if scoring.hasAnswer(at: currentIndex) {
@@ -320,7 +321,8 @@ final class TodayReviewState {
             queueBaselines: queueBaselines,
             submittedAnswers: scoring.submittedAnswers,
             container: container,
-            reviewSettings: reviewSettings
+            reviewSettings: reviewSettings,
+            onSaveFailure: onSaveFailure
         )
         persistSnapshot()
         revealStage = .front
