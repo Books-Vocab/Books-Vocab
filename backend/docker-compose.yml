@@ -10,6 +10,12 @@ services:
     volumes:
       - ./data:/app/data
       - ./certs:/app/certs:ro
+      # devops.sh cmd_deploy writes the deploy SHA to ./VERSION on host and
+      # rsyncs it to the remote. Mount it read-only so sentry_init._resolve_release()
+      # and /api/system/info can both report the deployed commit. Without this
+      # mount, /app/VERSION never exists inside the container and the Sentry
+      # release tag silently degrades to None.
+      - ./VERSION:/app/VERSION:ro
     env_file:
       - .env
     deploy:
