@@ -118,7 +118,9 @@ class EmbeddingStore:
         if meta is None:
             # Legacy: trust the on-disk files match the active model/dim,
             # and lock that in by writing the sidecar.
-            self._embeddings = np.load(self.embeddings_path)
+            vectors = np.load(self.embeddings_path)
+            self._assert_shape_matches_dim(vectors)
+            self._embeddings = vectors
             self._ids = json.loads(self.ids_path.read_text())
             self._id_set = set(self._ids)
             self._invalidate_norms()
@@ -128,7 +130,13 @@ class EmbeddingStore:
         stale_model = meta.get("model")
         stale_dim = meta.get("dim")
         if stale_model == self.model and stale_dim == self.dim:
-            self._embeddings = np.load(self.embeddings_path)
+            vectors = np.load(self.embeddings_path)
+            # Defence in depth: sidecar can lie (corruption / hand-edit /
+            # half-finished migration). Reject on shape mismatch so the
+            # error surfaces here, not later inside find_similar's cosine
+            # math (silent corruption) or add_batch's vstack (cryptic).
+            self._assert_shape_matches_dim(vectors)
+            self._embeddings = vectors
             self._ids = json.loads(self.ids_path.read_text())
             self._id_set = set(self._ids)
             self._invalidate_norms()
@@ -144,6 +152,27 @@ class EmbeddingStore:
         self._quarantine_stale(str(stale_model), int(stale_dim) if isinstance(stale_dim, int) else 0)
         # Sidecar must reflect active config now.
         self._write_meta()
+
+    def _assert_shape_matches_dim(self, vectors: np.ndarray) -> None:
+        """Guard against silent dim corruption at load time.
+
+        Empty matrices (``shape[0] == 0``) are allowed: there is nothing
+        to mis-interpret yet, and the next ``add_batch`` will populate
+        with the active ``dim``. Anything populated must match ``self.dim``
+        exactly — otherwise ``find_similar`` would silently compute cosine
+        on stale vectors of a different dim (returns numbers, not crashes),
+        which is the precise corruption window we are closing.
+        """
+        if vectors.ndim != 2:
+            raise ValueError(
+                f"embedding store shape invalid: ndim={vectors.ndim}, expected 2 "
+                f"(file={self.embeddings_path})"
+            )
+        if vectors.shape[0] > 0 and vectors.shape[1] != self.dim:
+            raise ValueError(
+                f"embedding dim mismatch: loaded {vectors.shape[1]}, expected {self.dim} "
+                f"(check EMBEDDING_DIM env or rebuild store at {self.embeddings_path})"
+            )
 
     def _invalidate_norms(self) -> None:
         self._norms = None
