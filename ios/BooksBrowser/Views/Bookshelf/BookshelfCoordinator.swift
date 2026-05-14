@@ -9,6 +9,7 @@ import os
     var isLoading: Bool { get }
     var loadingMessage: String { get }
     var errorMessage: String? { get }
+    var errorDiagnosis: String? { get }
     var showError: Bool { get set }
     var showSettings: Bool { get set }
     func presentImporter()
@@ -24,6 +25,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     var isLoading = false
     var loadingMessage = ""
     var errorMessage: String?
+    var errorDiagnosis: String?
     var showError = false
     var showSettings = false
 
@@ -37,6 +39,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
     func dismissError() {
         errorMessage = nil
+        errorDiagnosis = nil
         showError = false
     }
 
@@ -48,23 +51,33 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     ) {
         switch result {
         case .success(let urls):
-            guard let url = urls.first else { return }
-            let ext = url.pathExtension.lowercased()
-            let importMethod: (URL) async throws -> ImportedBookDraft
-            switch ext {
-            case "epub": importMethod = importService.importBook
-            case "txt":  importMethod = importService.importTXT
-            case "md":   importMethod = importService.importMD
-            case "pdf":  importMethod = importService.importPDF
-            default:
-                errorMessage = "不支援的格式：.\(ext)"
-                showError = true
-                return
-            }
-            performImport(url: url, modelContext: modelContext, method: importMethod, toastCoordinator: toastCoordinator)
+            guard !urls.isEmpty else { return }
+            performBatchImport(
+                urls: urls,
+                modelContext: modelContext,
+                importService: importService,
+                toastCoordinator: toastCoordinator
+            )
         case .failure(let error):
-            errorMessage = error.localizedDescription
+            let typed = BookshelfImportError.classify(error)
+            errorMessage = typed.errorDescription
+            errorDiagnosis = typed.diagnosisLabel
             showError = true
+        }
+    }
+
+    /// Resolve the appropriate import method for a given file extension.
+    /// Returns nil if the extension is not supported.
+    private func importMethod(
+        for ext: String,
+        using service: any BookshelfImporting
+    ) -> ((URL) async throws -> ImportedBookDraft)? {
+        switch ext {
+        case "epub": return service.importBook
+        case "txt":  return service.importTXT
+        case "md":   return service.importMD
+        case "pdf":  return service.importPDF
+        default:     return nil
         }
     }
 
@@ -91,51 +104,96 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         }
     }
 
-    private func performImport(
-        url: URL,
+    private func performBatchImport(
+        urls: [URL],
         modelContext: ModelContext,
-        method: @escaping (URL) async throws -> ImportedBookDraft,
+        importService: any BookshelfImporting,
         toastCoordinator: AppToastCoordinator
     ) {
         isLoading = true
-        loadingMessage = L10n.string("正在匯入...")
+        let total = urls.count
+        loadingMessage = total > 1
+            ? L10n.string("正在匯入 1 / \(total)...")
+            : L10n.string("正在匯入...")
 
         Task {
-            do {
-                AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
+            var succeeded = 0
+            var failures: [(name: String, diagnosed: BookshelfImportError)] = []
 
-                let draft = try await method(url)
-                AppLog.book.info("Import succeeded: \(draft.fileName)")
-                AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
-
-                loadingMessage = L10n.string("正在儲存...")
-
-                let book = Book(
-                    title: draft.title,
-                    author: draft.author,
-                    coverImageData: draft.coverImageData,
-                    fileName: draft.fileName,
-                    format: draft.format
-                )
-
-                modelContext.insert(book)
-                if modelContext.safeSaveWithToast(toastCoordinator) {
-                    EPUBGuideTip().invalidate(reason: .actionPerformed)
-                    AppLog.book.info("Book saved: \(book.title)")
-                    toastCoordinator.success("已匯入")
+            for (index, url) in urls.enumerated() {
+                if total > 1 {
+                    loadingMessage = L10n.string("正在匯入 \(index + 1) / \(total)...")
                 }
 
-                isLoading = false
-                loadingMessage = ""
-            } catch {
-                AppLog.book.error("BookshelfCoordinator import error: \(error.localizedDescription)")
-                AppLog.book.error("Error type: \(String(describing: type(of: error)))")
-                isLoading = false
-                loadingMessage = ""
-                errorMessage = "\(error)"
+                let ext = url.pathExtension.lowercased()
+                guard let method = importMethod(for: ext, using: importService) else {
+                    failures.append((url.lastPathComponent, .unsupportedExtension(ext)))
+                    continue
+                }
+
+                do {
+                    AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
+                    let draft = try await method(url)
+                    AppLog.book.info("Import succeeded: \(draft.fileName)")
+                    AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
+
+                    let book = Book(
+                        title: draft.title,
+                        author: draft.author,
+                        coverImageData: draft.coverImageData,
+                        fileName: draft.fileName,
+                        format: draft.format
+                    )
+                    modelContext.insert(book)
+                    if modelContext.safeSaveWithToast(toastCoordinator) {
+                        AppLog.book.info("Book saved: \(book.title)")
+                        succeeded += 1
+                    } else {
+                        failures.append((url.lastPathComponent, .unknown(underlying: "儲存失敗")))
+                    }
+                } catch {
+                    AppLog.book.error("BookshelfCoordinator import error: \(error.localizedDescription)")
+                    AppLog.book.error("Error type: \(String(describing: type(of: error)))")
+                    let diagnosed = BookshelfImportError.classify(error, sourceURL: url)
+                    failures.append((url.lastPathComponent, diagnosed))
+                }
+            }
+
+            isLoading = false
+            loadingMessage = ""
+
+            if succeeded > 0 {
+                EPUBGuideTip().invalidate(reason: .actionPerformed)
+            }
+
+            // 結果回報：依成功/失敗組合決定 toast vs alert
+            switch (succeeded, failures.count) {
+            case (let s, 0) where s == 1:
+                toastCoordinator.success("已匯入")
+            case (let s, 0):
+                toastCoordinator.success("已匯入 \(s) 本")
+            case (0, 1):
+                let f = failures[0]
+                errorMessage = f.diagnosed.errorDescription ?? f.name
+                errorDiagnosis = f.diagnosed.diagnosisLabel
+                showError = true
+            case (0, let n):
+                errorMessage = batchFailureMessage(failures: failures)
+                errorDiagnosis = "\(n) 本匯入失敗"
+                showError = true
+            case (let s, let n):
+                toastCoordinator.warning("已匯入 \(s) 本，\(n) 本失敗")
+                errorMessage = batchFailureMessage(failures: failures)
+                errorDiagnosis = "部分匯入失敗"
                 showError = true
             }
         }
+    }
+
+    private func batchFailureMessage(failures: [(name: String, diagnosed: BookshelfImportError)]) -> String {
+        failures
+            .map { "・\($0.name)：\($0.diagnosed.diagnosisLabel)" }
+            .joined(separator: "\n")
     }
 }
 #endif
