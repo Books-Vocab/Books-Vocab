@@ -40,6 +40,7 @@ struct WordDetailPresenter: View {
                         systemImage: state.systemImage,
                         onClose: { onClose?() },
                         trailing: {
+                            shareButton
                             if let onEdit {
                                 VocabChromeIconButton(systemImage: "pencil", label: "編輯".localized, action: onEdit)
                             }
@@ -199,6 +200,23 @@ struct WordDetailPresenter: View {
         }
         .font(vocabSkin.typography.caption)
         .foregroundStyle(vocabSkin.palette.quaternaryText)
+    }
+
+    @ViewBuilder
+    private var shareButton: some View {
+        ShareLink(item: state.card.document.plainTextExport(), subject: Text(state.title)) {
+            VocabChromeSurface(
+                fill: vocabSkin.palette.cardBackground,
+                border: vocabSkin.palette.cardBorder
+            ) {
+                Image(systemName: "square.and.arrow.up")
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+            }
+        }
+        .buttonStyle(.plain)
+        .accessibilityLabel("分享".localized)
     }
 
     private func excludeFromReaderToggle(onToggle: @escaping () -> Void) -> some View {
