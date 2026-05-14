@@ -22,7 +22,8 @@ enum SettingsPresenterPreviewData {
         openSupport: {},
         requestAppRating: {},
         resync: {},
-        toggleAutoSync: { _ in }
+        toggleAutoSync: { _ in },
+        exportVocabularyCSV: {}
     )
 
     static let loggedOut = SettingsPresenterState(
