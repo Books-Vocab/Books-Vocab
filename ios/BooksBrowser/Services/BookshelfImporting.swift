@@ -27,6 +27,11 @@ final class BookshelfImportService: BookshelfImporting {
     }
 
     func importBook(from sourceURL: URL) async throws -> ImportedBookDraft {
+        AppCrashReporting.addBreadcrumb(
+            category: "import",
+            message: "import.start",
+            data: ["format": "epub", "ext": sourceURL.pathExtension]
+        )
         let (fileName, publication) = try await readiumService.importEPUB(from: sourceURL)
         let metadata = readiumService.extractMetadata(from: publication)
         let coverData = await readiumService.extractCover(from: publication)
@@ -41,6 +46,7 @@ final class BookshelfImportService: BookshelfImporting {
     }
 
     func importTXT(from url: URL) async throws -> ImportedBookDraft {
+        AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "txt"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
         }
@@ -72,6 +78,7 @@ final class BookshelfImportService: BookshelfImporting {
     }
 
     func importMD(from url: URL) async throws -> ImportedBookDraft {
+        AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "md"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
         }
@@ -103,6 +110,7 @@ final class BookshelfImportService: BookshelfImporting {
     }
 
     func importPDF(from url: URL) async throws -> ImportedBookDraft {
+        AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "pdf"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
         }

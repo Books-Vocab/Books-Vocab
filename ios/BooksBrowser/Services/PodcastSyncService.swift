@@ -95,6 +95,9 @@ final class PodcastSyncService {
         } catch {
             // List fetch failure → skip reconcile (空 list 會誤刪所有 series).
             AppLog.kg.warning("[PodcastSync] list fetch failed: \(error.localizedDescription)")
+            if !(error is CancellationError) {
+                AppCrashReporting.record(error, context: "podcast.sync.list")
+            }
             return
         }
         var details: [String: PodcastSeriesDetail] = [:]
@@ -105,6 +108,9 @@ final class PodcastSyncService {
                 upsertSeries(detail: detail, context: context)
             } catch {
                 AppLog.kg.warning("[PodcastSync] detail fetch failed for \(summary.id): \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "podcast.sync.detail")
+                }
             }
         }
         Self.reconcileLocalState(
@@ -116,6 +122,7 @@ final class PodcastSyncService {
             try context.save()
         } catch {
             AppLog.kg.warning("[PodcastSync] context save failed: \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "podcast.sync.save")
         }
     }
 
