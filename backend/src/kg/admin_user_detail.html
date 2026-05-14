@@ -779,6 +779,26 @@ body {
             <div class="usage-detail" id="usage-detail"></div>
           </div>
         </div>
+        <!-- AI Cost Summary (per-user, defaults to current month) -->
+        <div class="section-block collapsed" data-section="cost">
+          <div class="section-header">
+            <span class="section-chevron">▸</span>
+            <div class="section-title">AI Cost Summary</div>
+            <div class="section-header-right">
+              <div class="range-tabs" id="cost-range-tabs" role="tablist">
+                <button class="range-tab" data-range="24h">24h</button>
+                <button class="range-tab" data-range="7d">7d</button>
+                <button class="range-tab" data-range="30d">30d</button>
+                <button class="range-tab active" data-range="month">Month</button>
+                <button class="range-tab" data-range="all">All</button>
+              </div>
+              <div class="section-chip" id="cost-chip"></div>
+            </div>
+          </div>
+          <div class="section-body">
+            <div id="cost-summary"></div>
+          </div>
+        </div>
         <!-- Recent Activity (merged timeline) -->
         <div class="section-block collapsed" data-section="activity">
           <div class="section-header">
@@ -1210,6 +1230,117 @@ function renderUsageTable(data) {
     <div class="usage-legend">↑ input tokens · ↓ output tokens · 範圍：${escapeHtml(rangeLabel)}</div>
   `;
   chip.innerHTML = `<strong>${totalCalls}</strong> calls <span class="dot">·</span> <strong>$${totalCost.toFixed(4)}</strong> cost`;
+}
+
+/* ── AI Cost Summary (per-user, default current calendar month) ── */
+let _currentCostRange = 'month';
+
+async function loadCostRange(range) {
+  _currentCostRange = range;
+  document.querySelectorAll('#cost-range-tabs .range-tab').forEach(btn => {
+    btn.classList.toggle('active', btn.dataset.range === range);
+  });
+  const container = document.getElementById('cost-summary');
+  container.innerHTML = '<div class="no-data">載入中…</div>';
+  try {
+    const r = await adminFetch('/api/admin/user-cost-summary?user_id=' + encodeURIComponent(USER_ID) + '&range=' + range);
+    if (!r.ok) {
+      container.innerHTML = '<div class="no-data">載入失敗 (' + r.status + ')</div>';
+      return;
+    }
+    renderCostSummary(await r.json());
+  } catch (e) {
+    container.innerHTML = '<div class="no-data">錯誤: ' + escapeHtml(String(e)) + '</div>';
+  }
+}
+
+function renderCostSummary(data) {
+  const container = document.getElementById('cost-summary');
+  const chip = document.getElementById('cost-chip');
+  if (!data) {
+    container.innerHTML = '<div class="no-data">載入失敗</div>';
+    if (chip) chip.innerHTML = '';
+    return;
+  }
+  const totalCalls = data.total_calls || 0;
+  const totalCost = data.total_cost_usd || 0;
+  const totalIn = data.total_input_tokens || 0;
+  const totalOut = data.total_output_tokens || 0;
+  const range = data.range || _currentCostRange;
+  const rangeLabelMap = {'24h': '近 24 小時', '7d': '近 7 天', '30d': '近 30 天', 'month': '本月', 'all': '全期'};
+  const rangeLabel = rangeLabelMap[range] || range;
+
+  if (totalCalls === 0) {
+    container.innerHTML = '<div class="no-data">無 AI 呼叫紀錄（' + escapeHtml(rangeLabel) + '）</div>';
+    if (chip) chip.innerHTML = '';
+    return;
+  }
+
+  const serviceOrder = ['translate', 'pipeline', 'judge', 'other'];
+  const services = data.by_service || {};
+  const serviceKeys = [
+    ...serviceOrder.filter(k => services[k]),
+    ...Object.keys(services).filter(k => !serviceOrder.includes(k)),
+  ];
+  const serviceRows = serviceKeys.map(k => {
+    const s = services[k];
+    return `<tr>
+      <td>${escapeHtml(k)}</td>
+      <td class="num">${(s.calls || 0).toLocaleString()}</td>
+      <td class="num">$${(s.cost_usd || 0).toFixed(4)}</td>
+      <td class="num sub">${fmt(s.input_tokens || 0)}</td>
+      <td class="num sub">${fmt(s.output_tokens || 0)}</td>
+    </tr>`;
+  }).join('');
+
+  const models = data.by_model || {};
+  const modelKeys = Object.keys(models).sort();
+  const modelRows = modelKeys.map(k => {
+    const m = models[k];
+    return `<tr>
+      <td>${escapeHtml(k)}</td>
+      <td class="num">${(m.calls || 0).toLocaleString()}</td>
+      <td class="num">$${(m.cost_usd || 0).toFixed(4)}</td>
+      <td class="num sub">${fmt(m.input_tokens || 0)}</td>
+      <td class="num sub">${fmt(m.output_tokens || 0)}</td>
+    </tr>`;
+  }).join('');
+
+  const pa = data.pricing_assumptions || {};
+  const inPerM = pa.input_usd_per_m_tokens;
+  const outPerM = pa.output_usd_per_m_tokens;
+  const embPerM = pa.embed_usd_per_m_tokens;
+
+  container.innerHTML = `
+    <div class="usage-detail">
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.12em;margin:4px 0 6px;">By Service</div>
+      <table class="usage-table">
+        <thead><tr><th>Service</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Tok In ↑</th><th class="num">Tok Out ↓</th></tr></thead>
+        <tbody>${serviceRows}</tbody>
+        <tfoot><tr>
+          <td>Total</td>
+          <td class="num">${totalCalls.toLocaleString()}</td>
+          <td class="num">$${totalCost.toFixed(4)}</td>
+          <td class="num sub">${fmt(totalIn)}</td>
+          <td class="num sub">${fmt(totalOut)}</td>
+        </tr></tfoot>
+      </table>
+
+      <div style="font-family:'JetBrains Mono',monospace;font-size:10px;color:var(--sub);text-transform:uppercase;letter-spacing:.12em;margin:14px 0 6px;">By Model</div>
+      <table class="usage-table">
+        <thead><tr><th>Model</th><th class="num">Calls</th><th class="num">Cost</th><th class="num">Tok In ↑</th><th class="num">Tok Out ↓</th></tr></thead>
+        <tbody>${modelRows}</tbody>
+      </table>
+
+      <div class="usage-legend">
+        範圍：${escapeHtml(rangeLabel)} · 估價：input $${inPerM}/M · output $${outPerM}/M · embed $${embPerM}/M
+        · model 由 call_type 推斷（embed → ${escapeHtml(pa.embed_model || '')}, others → ${escapeHtml(pa.default_model || '')}）
+      </div>
+    </div>
+  `;
+  if (chip) {
+    chip.innerHTML = `<strong>${totalCalls}</strong> calls <span class="dot">·</span> <strong>$${totalCost.toFixed(4)}</strong> cost`;
+  }
 }
 
 /* ── Deferred rendering for canvas-based sections ── */
@@ -1892,7 +2023,7 @@ function clearTranslateSearch() {
 
 async function loadPage() {
   try {
-    const [statsR, densityR, playbackR, pipelineR, judgeR, translateR, activityR] = await Promise.all([
+    const [statsR, densityR, playbackR, pipelineR, judgeR, translateR, activityR, costR] = await Promise.all([
       adminFetch('/api/admin/stats'),
       adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
@@ -1900,6 +2031,7 @@ async function loadPage() {
       adminFetch('/api/admin/judge-stats?user_id=' + encodeURIComponent(USER_ID)),
       adminFetch('/api/admin/translate-history?user_id=' + encodeURIComponent(USER_ID)),
       adminFetch('/api/admin/user-activity?user_id=' + encodeURIComponent(USER_ID) + '&hours=24'),
+      adminFetch('/api/admin/user-cost-summary?user_id=' + encodeURIComponent(USER_ID) + '&range=month'),
     ]);
 
     if (!statsR.ok) {
@@ -1953,6 +2085,12 @@ async function loadPage() {
       renderActivityTimeline(null);
     }
 
+    if (costR.ok) {
+      renderCostSummary(await costR.json());
+    } else {
+      renderCostSummary(null);
+    }
+
   } catch (e) {
     document.getElementById('loading').textContent = 'Error: ' + e;
   }
@@ -1972,6 +2110,16 @@ document.getElementById('usage-range-tabs').addEventListener('click', function(e
   const block = btn.closest('.section-block');
   if (block && block.classList.contains('collapsed')) block.classList.remove('collapsed');
   if (range && range !== _currentUsageRange) loadUsageRange(range);
+});
+
+document.getElementById('cost-range-tabs').addEventListener('click', function(e) {
+  e.stopPropagation();
+  const btn = e.target.closest('.range-tab');
+  if (!btn) return;
+  const range = btn.dataset.range;
+  const block = btn.closest('.section-block');
+  if (block && block.classList.contains('collapsed')) block.classList.remove('collapsed');
+  if (range && range !== _currentCostRange) loadCostRange(range);
 });
 
 /* ── Section collapse toggle (click on section-header) ── */
