@@ -99,7 +99,7 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                 AppCrashReporting.addBreadcrumb(
                     category: "auth",
                     message: "login.fail",
-                    level: "warning",
+                    level: .warning,
                     data: ["provider": "apple", "stage": "verify"]
                 )
                 if !(error is CancellationError) {

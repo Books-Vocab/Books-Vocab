@@ -228,7 +228,7 @@ extension KGService {
             AppCrashReporting.addBreadcrumb(
                 category: "sync",
                 message: "sync.end.partial",
-                level: "warning",
+                level: .warning,
                 data: ["failures": failures]
             )
         }

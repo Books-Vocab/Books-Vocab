@@ -96,7 +96,7 @@ extension AuthManager {
                 AppCrashReporting.addBreadcrumb(
                     category: "auth",
                     message: "login.fail",
-                    level: "warning",
+                    level: .warning,
                     data: ["provider": "google", "stage": "verify"]
                 )
                 if !(error is CancellationError) {

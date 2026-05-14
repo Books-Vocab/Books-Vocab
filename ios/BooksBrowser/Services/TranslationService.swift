@@ -166,14 +166,19 @@ final class TranslationService: Translating {
         }
     }
 
-    /// Filter helper: skip noise (cancel, quota_exhausted, offline) so Sentry only
-    /// sees real translation failures (decode/server/unexpected).
+    /// Filter helper: only forward server-side / parser / unexpected failures to Sentry.
+    /// User-recoverable conditions (offline, login expired, quota exhausted, 429 rate-limit,
+    /// missing token) are surfaced via `.userRecoverable` and dropped here to avoid
+    /// flooding Sentry during token rotation / network blips.
     private func recordTranslationFailureIfNeeded(_ error: Error, context: String) {
         if error is CancellationError { return }
         if let tErr = error as? TranslationError {
-            // .quotaExhausted = user policy, not a defect
-            // .apiError covering offline/login-expired is user-facing too
-            if case .quotaExhausted = tErr { return }
+            switch tErr {
+            case .quotaExhausted, .userRecoverable:
+                return
+            case .apiError, .parseError:
+                break
+            }
         }
         if let urlErr = error as? URLError,
            urlErr.code == .cancelled || urlErr.code == .notConnectedToInternet {
@@ -209,9 +214,9 @@ final class TranslationService: Translating {
                 }
                 return try await callBackend(endpoint: endpoint, word: word, context: context)
             } catch let error as TranslationError {
-                // quota_exhausted / 401 不重試
+                // quota_exhausted / 401 / user-recoverable 不重試
                 switch error {
-                case .quotaExhausted, .parseError:
+                case .quotaExhausted, .parseError, .userRecoverable:
                     throw error
                 case .apiError:
                     lastError = error
@@ -238,7 +243,7 @@ final class TranslationService: Translating {
 
     private func callBackend(endpoint: String, word: String, context: String) async throws -> Data {
         guard NetworkMonitor.shared.isConnected else {
-            throw TranslationError.apiError(L10n.string("目前沒有網路連線"))
+            throw TranslationError.userRecoverable(L10n.string("目前沒有網路連線"))
         }
 
         let baseURL = backendURL.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -257,10 +262,10 @@ final class TranslationService: Translating {
 
         // 帶上授權 Header (因為 /api/translate 是受保護的端點)
         guard let token = await authSession.token else {
-            throw TranslationError.apiError(L10n.string("未登入，無法調用翻譯 API"))
+            throw TranslationError.userRecoverable(L10n.string("未登入，無法調用翻譯 API"))
         }
         if JWTExpiry.isExpired(token) {
-            throw TranslationError.apiError(L10n.string("登入已過期，請重新登入"))
+            throw TranslationError.userRecoverable(L10n.string("登入已過期，請重新登入"))
         }
         request.addValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
 
@@ -292,7 +297,7 @@ final class TranslationService: Translating {
             )
 
             if httpResponse.statusCode == 401 {
-                throw TranslationError.apiError(L10n.string("登入憑證已失效，請重新登入"))
+                throw TranslationError.userRecoverable(L10n.string("登入憑證已失效，請重新登入"))
             }
             if httpResponse.statusCode == 429 {
                 // Prefer structured JSON check, fallback to string match
@@ -307,7 +312,7 @@ final class TranslationService: Translating {
                 if isQuotaExhausted {
                     throw TranslationError.quotaExhausted(quotaStore.resetText)
                 }
-                throw TranslationError.apiError(L10n.string("請求過於頻繁，請稍後再試"))
+                throw TranslationError.userRecoverable(L10n.string("請求過於頻繁，請稍後再試"))
             }
             throw TranslationError.apiError(L10n.format("後端伺服器錯誤 (%@)", "\(httpResponse.statusCode)"))
         }
@@ -319,15 +324,21 @@ final class TranslationService: Translating {
 }
 
 enum TranslationError: LocalizedError {
+    /// 真實後端/transport 錯誤（5xx、解碼前的 HTTP 異常、misconfig 等），值得進 Sentry。
     case apiError(String)
+    /// JSON 解碼失敗等 parser 錯誤。
     case parseError(String)
+    /// 額度用盡：使用者政策，非缺陷。
     case quotaExhausted(String)
+    /// 使用者可自行恢復的條件：離線、未登入、登入過期、429 限速。**不**進 Sentry。
+    case userRecoverable(String)
 
     var errorDescription: String? {
         switch self {
         case .apiError(let msg): return L10n.format("API 錯誤：%@", msg)
         case .parseError(let msg): return L10n.format("解析錯誤：%@", msg)
         case .quotaExhausted(let resetText): return L10n.format("今日額度已用完，%@", resetText)
+        case .userRecoverable(let msg): return msg
         }
     }
 }
