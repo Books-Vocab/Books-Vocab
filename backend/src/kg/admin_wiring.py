@@ -259,9 +259,21 @@ def create_admin_handlers(
         return collect_trends(window_days=days)
 
     def admin_log_retention_run():
-        """Manually trigger log-retention pruners across all 4 log DBs."""
+        """Manually trigger log-retention pruners across all 4 log DBs.
+
+        Response shape merges the nested per-DB report with flat
+        ``{pipeline,judge,translate,token}_deleted`` aliases for downstream
+        consumers (cron-style monitors / dashboards) that prefer a flat map.
+        """
         from .log_retention import run_all
-        return run_all()
+        report = run_all()
+        return {
+            **report,
+            "pipeline_deleted": report["pipeline_log"]["deleted"],
+            "judge_deleted": report["judge_log"]["deleted"],
+            "translate_deleted": report["translate_log"]["deleted"],
+            "token_deleted": report["token_usage"]["deleted"],
+        }
 
     def admin_audit(since: str | None = None, limit: int = 100):
         """Return recent admin mutation audit log entries."""
