@@ -21,6 +21,7 @@ struct SettingsView: View {
     @Environment(\.reviewSettingsStore) var reviewSettingsStore
     @Environment(\.autoSyncSettingsStore) var autoSyncSettingsStore
     @State var coordinator = SettingsCoordinator()
+    @State var exportURL: URL?
     /// Predicate 對應 shouldAppearInKnowledgeList — 僅用於 displayCardCount
     @Query(filter: #Predicate<VocabularyEntry> {
         $0.syncStatus == 1 &&
@@ -68,6 +69,9 @@ struct SettingsView: View {
         }
         .toastSheet(isPresented: $coordinator.showSubscriptionPaywall) {
             SubscriptionPaywallSheet()
+        }
+        .toastSheet(item: $exportURL) { url in
+            PlatformShareView(url: url)
         }
         .toastSheet(isPresented: $coordinator.showDeleteAccountConfirm) {
             SettingsDeleteAccountSheet(

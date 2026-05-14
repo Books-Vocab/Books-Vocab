@@ -147,7 +147,14 @@ extension SettingsView {
                     await coordinator.resync(kgService: kgService, modelContext: modelContext)
                 }
             },
-            toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) }
+            toggleAutoSync: { autoSyncSettingsStore.setEnabled($0) },
+            exportVocabularyCSV: {
+                if let url = VocabularyExporter.exportAsCSV(entries: allEntries) {
+                    exportURL = url
+                } else {
+                    toastCoordinator.error("匯出失敗")
+                }
+            }
         )
     }
 
