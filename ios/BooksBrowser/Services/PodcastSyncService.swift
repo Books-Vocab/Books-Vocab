@@ -40,7 +40,9 @@ struct PodcastEpisodeDetail: Codable {
 final class PodcastSyncService {
     private static let baseURL = AppURLs.domain
 
-    private let kgService: any KGServing
+    // 同檔案以外的 extension（如 PodcastProgressSync.swift）需要 access；
+    // 改 internal 不對外暴露，僅在 module 內可見。
+    let kgService: any KGServing
 
     init(kgService: any KGServing) {
         self.kgService = kgService
