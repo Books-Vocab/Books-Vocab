@@ -123,6 +123,7 @@ async def test_cache_hit_skips_llm(tmp_path, monkeypatch):
         context=ctx, context_hash=ctx_hash,
         source_lang="en", target_lang="zh-Hant",
         response_raw='{"t":"喚起","p":"v.","r":"evoke"}', latency_ms=100,
+        model="gemini-2.5-flash-lite",
     )
 
     client = _fake_async_client('{"t":"SHOULD NOT BE CALLED"}')

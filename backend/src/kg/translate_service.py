@@ -125,8 +125,8 @@ async def _run_llm_translate(
     word_key = req.word.strip().lower()
     ctx_hash = _compute_context_hash(ctx)
 
-    # Cache lookup
-    cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation)
+    # Cache lookup — model is part of the key (see translate_log.lookup docstring).
+    cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation, model)
     if cached is not None:
         # Record precise hit counter for admin observability. Short-circuits
         # never reach record(); without this they'd be invisible to metrics.
@@ -138,6 +138,7 @@ async def _run_llm_translate(
                 context_hash=ctx_hash,
                 source_lang=source_lang,
                 target_lang=target_lang,
+                model=model,
             )
         except Exception:  # noqa: BLE001 — observability must never break translation
             if logger:
@@ -170,6 +171,7 @@ async def _run_llm_translate(
             word=word_key, context=ctx, context_hash=ctx_hash,
             source_lang=source_lang, target_lang=target_lang,
             response_raw=raw, latency_ms=latency_ms,
+            model=model,
         )
 
     return parsed
