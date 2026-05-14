@@ -40,13 +40,18 @@ struct VocabularyListPresenter<Content: View>: View {
         .onTapGesture {
             dismissKeyboard()
         }
-        .background(
-            Button("") {
-                if showsSearchField { searchFocused = true }
+        .background {
+            if showsSearchField {
+                Button {
+                    searchFocused = true
+                } label: {
+                    EmptyView()
+                }
+                .keyboardShortcut("f", modifiers: .command)
+                .frame(width: 0, height: 0)
+                .hidden()
+                .accessibilityHidden(true)
             }
-            .keyboardShortcut("f", modifiers: .command)
-            .opacity(0)
-            .accessibilityHidden(true)
-        )
+        }
     }
 }
