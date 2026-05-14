@@ -7,7 +7,12 @@ auth header values in event payload).
 """
 from __future__ import annotations
 
-from kg.sentry_init import _scrub_event, _scrub_querystring, init_sentry
+from kg.sentry_init import (
+    _resolve_release,
+    _scrub_event,
+    _scrub_querystring,
+    init_sentry,
+)
 
 
 def test_init_sentry_no_dsn_is_noop(monkeypatch):
@@ -67,3 +72,46 @@ def test_scrub_event_tolerates_missing_request():
 def test_scrub_event_tolerates_non_dict_subfields():
     event = {"request": {"headers": "garbled", "cookies": []}}
     assert _scrub_event(event, {}) == event
+
+
+# ---------------------------------------------------------------------------
+# Release resolution: env override → KG_VERSION → /app/VERSION file
+# ---------------------------------------------------------------------------
+
+def test_resolve_release_prefers_sentry_release_env(monkeypatch, tmp_path):
+    monkeypatch.setenv("SENTRY_RELEASE", "abc1234")
+    monkeypatch.setenv("KG_VERSION", "should-be-ignored")
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("file-shadowed")
+    assert _resolve_release(version_file=version_file) == "abc1234"
+
+
+def test_resolve_release_falls_back_to_kg_version(monkeypatch, tmp_path):
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.setenv("KG_VERSION", "deadbeef")
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("file-shadowed")
+    assert _resolve_release(version_file=version_file) == "deadbeef"
+
+
+def test_resolve_release_falls_back_to_version_file(monkeypatch, tmp_path):
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.delenv("KG_VERSION", raising=False)
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("  cafef00d\n")
+    assert _resolve_release(version_file=version_file) == "cafef00d"
+
+
+def test_resolve_release_returns_none_when_nothing_available(monkeypatch, tmp_path):
+    monkeypatch.delenv("SENTRY_RELEASE", raising=False)
+    monkeypatch.delenv("KG_VERSION", raising=False)
+    version_file = tmp_path / "VERSION"  # does not exist
+    assert _resolve_release(version_file=version_file) is None
+
+
+def test_resolve_release_treats_empty_strings_as_missing(monkeypatch, tmp_path):
+    monkeypatch.setenv("SENTRY_RELEASE", "   ")
+    monkeypatch.setenv("KG_VERSION", "")
+    version_file = tmp_path / "VERSION"
+    version_file.write_text("")
+    assert _resolve_release(version_file=version_file) is None
