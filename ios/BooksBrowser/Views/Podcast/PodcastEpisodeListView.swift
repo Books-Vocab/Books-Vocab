@@ -119,6 +119,11 @@ struct PodcastEpisodeListView: View {
         }
         .navigationTitle(series?.title ?? "")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                followToggleButton
+            }
+        }
         .onAppear {
             navigationUnlockTask?.cancel()
             navigationUnlockTask = nil
@@ -149,6 +154,32 @@ struct PodcastEpisodeListView: View {
 
         let progressDescriptor = FetchDescriptor<PodcastProgress>()
         progressArray = (try? modelContext.fetch(progressDescriptor)) ?? []
+    }
+
+    // MARK: - Follow toggle
+
+    private var followToggleButton: some View {
+        let isFollowed = currentSeries?.isFollowed == true
+        return Button(action: toggleFollow) {
+            AppToolbarGlyph(systemImage: isFollowed ? "star.fill" : "star")
+        }
+        .disabled(currentSeries == nil)
+        .accessibilityLabel(isFollowed ? "取消追蹤" : "追蹤")
+        .accessibilityIdentifier("podcast.followToggle")
+    }
+
+    @MainActor
+    private func toggleFollow() {
+        guard let target = currentSeries else { return }
+        withAnimation(AppMotion.phaseChange) {
+            target.isFollowed.toggle()
+            target.updatedAt = Date()
+        }
+        do {
+            try modelContext.save()
+        } catch {
+            AppLog.app.warning("[Podcast] follow toggle save failed: \(error.localizedDescription)")
+        }
     }
 
     // MARK: - Hero

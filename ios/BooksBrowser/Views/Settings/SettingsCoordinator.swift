@@ -100,9 +100,13 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         do {
             try await kgService.deleteAccount()
+            // 成功後關閉 confirm sheet，再觸發 logout（logout 會清理 Settings 畫面）
+            showDeleteAccountConfirm = false
             authManager.logout(modelContainer: modelContext.container, reason: "delete_account")
         } catch {
             deleteAccountError = L10n.format("無法刪除帳號：%@", error.localizedDescription)
+            // 失敗時關閉 confirm sheet，讓使用者看到錯誤 alert
+            showDeleteAccountConfirm = false
         }
     }
 

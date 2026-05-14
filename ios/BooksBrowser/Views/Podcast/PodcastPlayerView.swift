@@ -20,6 +20,7 @@ struct PodcastPlayerView: View {
     @AppStorage("podcast.autoPauseOnLookup") private var autoPauseOnLookup: Bool = true
     @AppStorage("podcast.subtitleSize") private var subtitleSizeRaw: String = PodcastSubtitleSize.large.rawValue
     @State private var lastSavedTime: TimeInterval = 0
+    @State private var pushState = PodcastProgressPushState()
 
     private var subtitleSize: PodcastSubtitleSize {
         PodcastSubtitleSize(rawValue: subtitleSizeRaw) ?? .large
@@ -142,7 +143,7 @@ struct PodcastPlayerView: View {
         .task(id: episodeId) {
             guard loadedEpisodeId != episodeId else { return }
             if let oldVm = viewModel, let oldId = loadedEpisodeId {
-                saveProgress(vm: oldVm, episodeRemoteId: oldId)
+                saveProgress(vm: oldVm, episodeRemoteId: oldId, reason: .episodeSwitch)
             }
             loadTask?.cancel()
             loadTask = nil
@@ -151,6 +152,7 @@ struct PodcastPlayerView: View {
             loadedEpisodeId = episodeId
             progressRestored = false
             lastSavedTime = 0
+            pushState = PodcastProgressPushState()
             loadEpisode()
         }
         .onChange(of: allVocabulary) { _, newValue in
@@ -311,6 +313,7 @@ struct PodcastPlayerView: View {
         viewModel = nil
         progressRestored = false
         lastSavedTime = 0
+        pushState = PodcastProgressPushState()
         loadEpisode()
     }
 
@@ -395,17 +398,21 @@ struct PodcastPlayerView: View {
     private func saveProgressIfNeeded(time: TimeInterval) {
         guard abs(time - lastSavedTime) > 10 else { return }
         lastSavedTime = time
-        saveProgress()
+        saveProgress(reason: .tick)
     }
 
-    private func saveProgress() {
+    private func saveProgress(reason: PodcastProgressPushState.Reason = .pause) {
         guard let vm = viewModel else { return }
         guard loadedEpisodeId == episodeId else { return }
         if !progressRestored && vm.currentTime == 0 { return }
-        saveProgress(vm: vm, episodeRemoteId: episodeId)
+        saveProgress(vm: vm, episodeRemoteId: episodeId, reason: reason)
     }
 
-    private func saveProgress(vm: PodcastPlayerViewModel, episodeRemoteId: String) {
+    private func saveProgress(
+        vm: PodcastPlayerViewModel,
+        episodeRemoteId: String,
+        reason: PodcastProgressPushState.Reason = .pause
+    ) {
         if vm.currentTime == 0 { return }
         let targetId = episodeRemoteId
         let descriptor = FetchDescriptor<PodcastProgress>(
@@ -423,17 +430,51 @@ struct PodcastPlayerView: View {
             progress = PodcastProgress(episodeRemoteId: episodeRemoteId)
             modelContext.insert(progress)
         }
+        let now = Date()
         progress.lastPlayedTime = vm.currentTime
         progress.completed = (
             vm.state == .ready
             && vm.duration > 0
             && vm.currentTime >= vm.duration - 1
         )
-        progress.updatedAt = Date()
+        progress.updatedAt = now
         do {
             try modelContext.save()
         } catch {
             AppLog.app.error("PodcastProgress save failed: \(error.localizedDescription)")
+        }
+
+        // Mirror the same write to the backend under the throttle policy.
+        // Throttle lives in PodcastProgressPushState (unit-tested). Capture
+        // values on the main actor; the detached Task uses the snapshot only.
+        let shouldPush = pushState.shouldPush(
+            position: vm.currentTime,
+            duration: vm.duration,
+            now: now,
+            reason: reason
+        )
+        guard shouldPush,
+              let parsed = PodcastSyncService.parseEpisodeRemoteId(episodeRemoteId) else { return }
+        let captured = (
+            seriesId: parsed.seriesId,
+            episodeNumber: parsed.episodeNumber,
+            positionSec: vm.currentTime,
+            durationSec: vm.duration,
+            updatedAt: now
+        )
+        let service = PodcastSyncService(kgService: kgService)
+        Task.detached(priority: .utility) {
+            do {
+                try await service.pushProgress(
+                    seriesId: captured.seriesId,
+                    episodeNumber: captured.episodeNumber,
+                    positionSec: captured.positionSec,
+                    durationSec: captured.durationSec,
+                    updatedAt: captured.updatedAt
+                )
+            } catch {
+                AppLog.kg.warning("[PodcastSync] progress push failed: \(error.localizedDescription)")
+            }
         }
     }
 }

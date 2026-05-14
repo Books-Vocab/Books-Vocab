@@ -26,6 +26,19 @@ struct BookshelfView: View {
     @Query(sort: \Book.dateLastRead, order: .reverse) private var books: [Book]
     @Query(filter: #Predicate<PodcastSeries> { !$0.isDeleted }, sort: \.sortOrder)
     private var podcastSeries: [PodcastSeries]
+
+    /// 已追蹤的浮上來；同組內維持 server `sortOrder`。`@Query` macro 不支援多重
+    /// SortDescriptor，這裡 in-memory 穩定排序（O(n log n)，series 數 << 100）。
+    private var sortedPodcastSeries: [PodcastSeries] {
+        podcastSeries.enumerated()
+            .sorted { lhs, rhs in
+                if lhs.element.isFollowed != rhs.element.isFollowed {
+                    return lhs.element.isFollowed && !rhs.element.isFollowed
+                }
+                return lhs.offset < rhs.offset
+            }
+            .map(\.element)
+    }
     @State private var coordinator = BookshelfCoordinator()
     @State private var showLoginSheet = false
 
@@ -98,7 +111,7 @@ struct BookshelfView: View {
                     UTType(filenameExtension: "md") ?? .data,
                     .pdf,
                 ],
-                allowsMultipleSelection: false
+                allowsMultipleSelection: true
             ) { result in
                 coordinator.handleFileImport(
                     result,
@@ -107,7 +120,10 @@ struct BookshelfView: View {
                     toastCoordinator: toastCoordinator
                 )
             }
-            .alert("匯入錯誤".localized, isPresented: $coordinator.showError) {
+            .alert(
+                coordinator.errorDiagnosis.map { "匯入錯誤・\($0)".localized } ?? "匯入錯誤".localized,
+                isPresented: $coordinator.showError
+            ) {
                 Button("確定".localized, role: .cancel, action: coordinator.dismissError)
             } message: {
                 Text((coordinator.errorMessage ?? "未知錯誤").localized)
@@ -214,7 +230,7 @@ struct BookshelfView: View {
                     }
                 }
 
-                ForEach(podcastSeries) { series in
+                ForEach(sortedPodcastSeries) { series in
                     NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
                         PodcastSeriesCard(series: series, coverHeight: coverHeight)
                     }
@@ -258,8 +274,14 @@ struct BookshelfView: View {
                 .ignoresSafeArea()
 
             VStack(spacing: AppMetrics.spacingMedium) {
-                ProgressView()
-                    .scaleEffect(1.0)
+                if let ratio = coordinator.loadingProgress {
+                    ProgressView(value: ratio, total: 1.0)
+                        .progressViewStyle(.linear)
+                        .frame(width: AppBookshelfMetrics.loadingProgressWidth)
+                } else {
+                    ProgressView()
+                        .scaleEffect(1.0)
+                }
                 Text(coordinator.loadingMessage)
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
@@ -500,6 +522,17 @@ struct PodcastSeriesCard: View {
                         .padding(AppMetrics.spacingExtraSmall)
                         .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
                         .padding(AppMetrics.spacingSmall)
+                }
+                .overlay(alignment: .topLeading) {
+                    if series.isFollowed {
+                        Image(systemName: "star.fill")
+                            .font(AppFonts.caption2(weight: .bold))
+                            .foregroundStyle(appTheme.palette.accent)
+                            .padding(AppMetrics.spacingExtraSmall)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
+                            .padding(AppMetrics.spacingSmall)
+                            .accessibilityLabel("已追蹤")
+                    }
                 }
                 .shadow(
                     color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),

@@ -477,6 +477,82 @@ body {
 .translate-detail-row { display: flex; gap: 8px; margin-bottom: 4px; }
 .translate-detail-label { color: var(--sub); min-width: 80px; font-size: 11px; font-family: 'JetBrains Mono', monospace; }
 .translate-detail-value { color: var(--ink); word-break: break-word; }
+/* Translate search toolbar */
+.translate-toolbar {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.translate-toolbar input[type=text],
+.translate-toolbar select {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 4px 8px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  background: var(--surface);
+  color: var(--ink);
+}
+.translate-toolbar input[type=text] { flex: 1; min-width: 140px; }
+.translate-toolbar input[type=text]:focus,
+.translate-toolbar select:focus { border-color: var(--ink); outline: none; }
+.translate-toolbar .btn-mini { padding: 4px 10px; font-size: 11px; }
+.translate-toolbar .toolbar-status { color: var(--sub); font-size: 10px; font-family: 'JetBrains Mono', monospace; margin-left: auto; }
+/* Activity timeline */
+#activity-feed {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  max-height: 400px;
+  overflow-y: auto;
+}
+#activity-feed::-webkit-scrollbar { width: 8px; }
+#activity-feed::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+.activity-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 5px 12px;
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  border-bottom: 1px solid var(--border-l);
+}
+.activity-row:last-child { border-bottom: none; }
+.activity-type {
+  padding: 1px 6px;
+  border: 1px solid var(--border);
+  border-radius: 2px;
+  font-size: 10px;
+  letter-spacing: .06em;
+  text-transform: uppercase;
+  min-width: 64px;
+  text-align: center;
+}
+.activity-type.t-translate { background: #f6f4ef; }
+.activity-type.t-pipeline { background: #eef3ed; }
+.activity-type.t-judge { background: #f3eef0; }
+.activity-detail { color: var(--ink); flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.activity-time { color: var(--sub); margin-left: auto; }
+.activity-status.s-ok { color: var(--ink); }
+.activity-status.s-failed, .activity-status.s-rejected { color: var(--dev); }
+.activity-controls {
+  display: flex;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+.activity-controls .range-tab {
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  padding: 3px 10px;
+  background: var(--surface);
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--ink);
+}
+.activity-controls .range-tab.active { background: var(--ink); color: var(--surface); border-color: var(--ink); }
 /* Sub-divider inside detail-section */
 .detail-divider { border-top: 1px solid var(--border); margin: 8px 0; padding-top: 6px; }
 /* KPI row */
@@ -703,6 +779,23 @@ body {
             <div class="usage-detail" id="usage-detail"></div>
           </div>
         </div>
+        <!-- Recent Activity (merged timeline) -->
+        <div class="section-block collapsed" data-section="activity">
+          <div class="section-header">
+            <span class="section-chevron">▸</span>
+            <div class="section-title">Recent Activity</div>
+            <div class="section-chip" id="activity-chip"></div>
+          </div>
+          <div class="section-body">
+            <div class="activity-controls" id="activity-range-tabs" role="tablist" aria-label="Activity window">
+              <button class="range-tab active" data-hours="24" role="tab" aria-selected="true">24h</button>
+              <button class="range-tab" data-hours="72" role="tab" aria-selected="false">72h</button>
+              <button class="range-tab" data-hours="168" role="tab" aria-selected="false">7d</button>
+            </div>
+            <div id="activity-no-data" class="no-data" style="display:none">無近期活動</div>
+            <div id="activity-feed" style="display:none"></div>
+          </div>
+        </div>
         <!-- Pipeline Analytics -->
         <div class="section-block collapsed" data-section="pipeline">
           <div class="section-header">
@@ -725,6 +818,18 @@ body {
             <div class="section-chip" id="translate-chip"></div>
           </div>
           <div class="section-body">
+            <div class="translate-toolbar" id="translate-toolbar">
+              <input type="text" id="translate-q" placeholder="搜尋 word / context…" aria-label="搜尋 word 或 context">
+              <select id="translate-op" aria-label="篩選 operation">
+                <option value="">all ops</option>
+                <option value="translate_quick">quick</option>
+                <option value="translate_phrase">phrase</option>
+                <option value="translate_explain">explain</option>
+              </select>
+              <button class="btn btn-mini" id="translate-search-btn">搜尋</button>
+              <button class="btn btn-mini" id="translate-clear-btn">清除</button>
+              <span class="toolbar-status" id="translate-status"></span>
+            </div>
             <div id="translate-no-data" class="no-data" style="display:none">無翻譯紀錄</div>
             <div id="translate-history" style="display:none">
               <div id="translate-entries"></div>
@@ -1682,15 +1787,119 @@ function renderTranslateHistory(data) {
   }).join('');
 }
 
+/* ── Recent Activity timeline ── */
+let _activityHours = 24;
+
+function fmtRelTime(iso) {
+  if (!iso) return '—';
+  try {
+    const diffMs = Date.now() - new Date(iso).getTime();
+    const sec = Math.max(0, Math.round(diffMs / 1000));
+    if (sec < 60) return sec + 's ago';
+    const min = Math.round(sec / 60);
+    if (min < 60) return min + 'm ago';
+    const hr = Math.round(min / 60);
+    if (hr < 48) return hr + 'h ago';
+    return Math.round(hr / 24) + 'd ago';
+  } catch { return '—'; }
+}
+
+function renderActivityTimeline(data) {
+  const noData = document.getElementById('activity-no-data');
+  const feed = document.getElementById('activity-feed');
+  const chip = document.getElementById('activity-chip');
+  if (!data || !data.events || data.events.length === 0) {
+    feed.style.display = 'none';
+    noData.style.display = '';
+    chip.innerHTML = data && data.hours ? `<span class="dot">·</span> last ${data.hours}h` : '';
+    return;
+  }
+  noData.style.display = 'none';
+  feed.style.display = '';
+  const c = data.counts || {};
+  chip.innerHTML = `<strong>${data.events.length}</strong> events <span class="dot">·</span> ${c.translate||0} tr · ${c.pipeline||0} pl · ${c.judge||0} jd <span class="dot">·</span> ${data.hours}h`;
+
+  feed.innerHTML = data.events.map(ev => {
+    let detail = '';
+    let statusCls = '';
+    if (ev.type === 'translate') {
+      const op = ev.operation ? ev.operation.replace('translate_','') : '?';
+      detail = `<span style="color:var(--sub)">[${escapeHtml(op)}]</span> ${escapeHtml(ev.word || '')}`;
+    } else if (ev.type === 'pipeline') {
+      statusCls = ev.status === 'ok' || ev.status === 'completed' ? 's-ok' : (ev.status === 'failed' ? 's-failed' : '');
+      const dur = ev.duration_s != null ? ` · ${ev.duration_s}s` : '';
+      detail = `<span class="activity-status ${statusCls}">${escapeHtml(ev.status||'?')}</span><span style="color:var(--sub)"> · ${escapeHtml(ev.trigger||'?')} · ${escapeHtml(ev.run_id||'')}${dur}</span>`;
+    } else if (ev.type === 'judge') {
+      statusCls = ev.accepted ? 's-ok' : 's-rejected';
+      const conf = ev.confidence != null ? ` · conf ${ev.confidence.toFixed(2)}` : '';
+      detail = `<span class="activity-status ${statusCls}">${ev.accepted ? 'accept' : 'reject'}</span><span style="color:var(--sub)"> · ${escapeHtml(ev.verdict||'?')}${conf}</span>`;
+    } else {
+      detail = escapeHtml(JSON.stringify(ev));
+    }
+    return `<div class="activity-row">
+      <span class="activity-type t-${ev.type}">${ev.type}</span>
+      <span class="activity-detail">${detail}</span>
+      <span class="activity-time" title="${escapeHtml(ev.created_at||'')}">${fmtRelTime(ev.created_at)}</span>
+    </div>`;
+  }).join('');
+}
+
+async function loadActivity(hours) {
+  _activityHours = hours;
+  try {
+    const r = await adminFetch('/api/admin/user-activity?user_id=' + encodeURIComponent(USER_ID) + '&hours=' + hours);
+    if (!r.ok) { renderActivityTimeline(null); return; }
+    const data = await r.json();
+    renderActivityTimeline(data);
+  } catch { renderActivityTimeline(null); }
+}
+
+/* ── Translate history search ── */
+let _translateSearchSeq = 0;
+
+async function searchTranslate() {
+  const q = (document.getElementById('translate-q').value || '').trim();
+  const op = document.getElementById('translate-op').value || '';
+  const status = document.getElementById('translate-status');
+  const seq = ++_translateSearchSeq;
+  status.textContent = '搜尋中…';
+  const params = new URLSearchParams({ user_id: USER_ID, limit: '200' });
+  if (q) params.set('q', q);
+  if (op) params.set('op', op);
+  try {
+    const r = await adminFetch('/api/admin/translate-history?' + params.toString());
+    if (seq !== _translateSearchSeq) return; // stale
+    if (!r.ok) {
+      status.textContent = '錯誤 ' + r.status;
+      renderTranslateHistory(null);
+      return;
+    }
+    const data = await r.json();
+    renderTranslateHistory(data);
+    const n = (data.history || []).length;
+    status.textContent = (q || op) ? `${n} 筆 (filtered)` : `${n} 筆`;
+  } catch (e) {
+    if (seq !== _translateSearchSeq) return;
+    status.textContent = '錯誤';
+  }
+}
+
+function clearTranslateSearch() {
+  document.getElementById('translate-q').value = '';
+  document.getElementById('translate-op').value = '';
+  searchTranslate();
+}
+
 async function loadPage() {
   try {
-    const [statsR, densityR, playbackR, pipelineR, judgeR, translateR] = await Promise.all([
+    const [statsR, densityR, playbackR, pipelineR, judgeR, translateR, activityR] = await Promise.all([
       adminFetch('/api/admin/stats'),
       adminFetch('/api/admin/graph-density?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/graph-playback?user_id=' + encodeURIComponent(USER_ID) + '&notebook_id=default'),
       adminFetch('/api/admin/pipeline-runs?user_id=' + encodeURIComponent(USER_ID)),
       adminFetch('/api/admin/judge-stats?user_id=' + encodeURIComponent(USER_ID)),
       adminFetch('/api/admin/translate-history?user_id=' + encodeURIComponent(USER_ID)),
+      adminFetch('/api/admin/user-activity?user_id=' + encodeURIComponent(USER_ID) + '&hours=24'),
     ]);
 
     if (!statsR.ok) {
@@ -1730,8 +1939,18 @@ async function loadPage() {
     if (translateR.ok) {
       const translateData = await translateR.json();
       renderTranslateHistory(translateData);
+      const n = (translateData.history || []).length;
+      const status = document.getElementById('translate-status');
+      if (status) status.textContent = n + ' 筆';
     } else {
       renderTranslateHistory(null);
+    }
+
+    if (activityR.ok) {
+      const activityData = await activityR.json();
+      renderActivityTimeline(activityData);
+    } else {
+      renderActivityTimeline(null);
     }
 
   } catch (e) {
@@ -1787,6 +2006,44 @@ function toggleCollapse(containerId, header) {
   el.classList.toggle('open');
   header.setAttribute('aria-expanded', el.classList.contains('open') ? 'true' : 'false');
 }
+
+/* ── Translate search wiring ── */
+(function wireTranslateSearch() {
+  const btn = document.getElementById('translate-search-btn');
+  const clearBtn = document.getElementById('translate-clear-btn');
+  const q = document.getElementById('translate-q');
+  const op = document.getElementById('translate-op');
+  if (!btn || !q) return;
+  // Stop the toolbar clicks from collapsing the section.
+  const toolbar = document.getElementById('translate-toolbar');
+  if (toolbar) toolbar.addEventListener('click', e => e.stopPropagation());
+  btn.addEventListener('click', e => { e.preventDefault(); searchTranslate(); });
+  clearBtn.addEventListener('click', e => { e.preventDefault(); clearTranslateSearch(); });
+  q.addEventListener('keydown', e => { if (e.key === 'Enter') { e.preventDefault(); searchTranslate(); } });
+  op.addEventListener('change', () => searchTranslate());
+})();
+
+/* ── Activity range tabs wiring ── */
+(function wireActivityRange() {
+  const tabs = document.getElementById('activity-range-tabs');
+  if (!tabs) return;
+  tabs.addEventListener('click', function(e) {
+    e.stopPropagation();
+    const btn = e.target.closest('.range-tab');
+    if (!btn) return;
+    const hours = parseInt(btn.dataset.hours, 10);
+    if (!hours || hours === _activityHours) return;
+    tabs.querySelectorAll('.range-tab').forEach(t => {
+      const on = t === btn;
+      t.classList.toggle('active', on);
+      t.setAttribute('aria-selected', on ? 'true' : 'false');
+    });
+    // Auto-open section if collapsed
+    const block = btn.closest('.section-block');
+    if (block && block.classList.contains('collapsed')) block.classList.remove('collapsed');
+    loadActivity(hours);
+  });
+})();
 
 loadPage();
 </script>

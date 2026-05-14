@@ -55,6 +55,52 @@ struct SubscriptionPaywallSheet: View {
         ]
     }
 
+    /// Free vs Pro 對照表 — 強化升級決策資訊密度
+    private var comparisonRows: [SettingsPlanComparisonRow] {
+        [
+            .init(
+                title: "閱讀器（EPUB/PDF/TXT/MD）".localized,
+                freeMark: .check,
+                proMark: .check
+            ),
+            .init(
+                title: "本地生詞捕捉".localized,
+                freeMark: .check,
+                proMark: .check
+            ),
+            .init(
+                title: "AI 翻譯與語境解釋".localized,
+                freeMark: .label("有限".localized),
+                proMark: .check
+            ),
+            .init(
+                title: "雲端同步與跨裝置狀態".localized,
+                freeMark: .label("有限".localized),
+                proMark: .check
+            ),
+            .init(
+                title: "知識圖譜與關聯卡片".localized,
+                freeMark: .label("有限".localized),
+                proMark: .check
+            ),
+            .init(
+                title: "間隔複習（Today Review）".localized,
+                freeMark: .label("有限".localized),
+                proMark: .check
+            ),
+            .init(
+                title: "Podcast 跨集播放".localized,
+                freeMark: .label("有限".localized),
+                proMark: .check
+            ),
+            .init(
+                title: "每日 AI 額度".localized,
+                freeMark: .label("1x"),
+                proMark: .label("10x")
+            )
+        ]
+    }
+
     var body: some View {
         NavigationStack {
             ScrollView {
@@ -188,6 +234,9 @@ struct SubscriptionPaywallSheet: View {
                 borderTone: vocabSkin.palette.cardBorder,
                 items: paywallFeatures
             )
+
+            // Free vs Pro 對照表
+            SettingsPlanComparisonTable(rows: comparisonRows)
 
             // CTA 按鈕（強烈）
             VStack(spacing: vocabSkin.spacing.controlGap) {

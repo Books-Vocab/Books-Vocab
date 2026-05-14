@@ -96,6 +96,7 @@ enum AppBookshelfMetrics {
     static let progressBarAccentOpacity: Double = 0.55
     static let progressBarSpacing: CGFloat = 6
     static let loadingOverlayPadding: CGFloat = 28
+    static let loadingProgressWidth: CGFloat = 180
     static let badgePadding: CGFloat = 6
     static let badgeForeground: Color = .white
 }

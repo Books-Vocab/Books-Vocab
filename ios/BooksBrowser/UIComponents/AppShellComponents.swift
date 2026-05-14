@@ -132,6 +132,7 @@ struct AppSearchField: View {
     @Binding var text: String
     let prompt: String
     let style: AppSearchFieldStyle
+    var isFocused: FocusState<Bool>.Binding? = nil
 
     var body: some View {
         HStack(spacing: 8) {
@@ -139,7 +140,7 @@ struct AppSearchField: View {
                 .font(style.iconFont)
                 .foregroundStyle(style.iconColor)
 
-            TextField(prompt.localized, text: $text)
+            focusableTextField
                 .platformTextInputConfig()
                 .font(style.textFont)
                 .foregroundStyle(style.textColor)
@@ -165,6 +166,16 @@ struct AppSearchField: View {
             RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
                 .stroke(style.border, lineWidth: 1)
         )
+    }
+
+    @ViewBuilder
+    private var focusableTextField: some View {
+        if let isFocused {
+            TextField(prompt.localized, text: $text)
+                .focused(isFocused)
+        } else {
+            TextField(prompt.localized, text: $text)
+        }
     }
 }
 

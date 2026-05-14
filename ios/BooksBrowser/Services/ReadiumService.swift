@@ -66,7 +66,7 @@ final class ReadiumService: ReadiumServing {
 
     /// 匯入 EPUB 檔案到 App Documents
     /// - Returns: (儲存的檔名, Publication)
-    func importEPUB(from sourceURL: URL) async throws -> (fileName: String, publication: Publication) {
+    func importEPUB(from sourceURL: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> (fileName: String, publication: Publication) {
         AppLog.readium.info("importEPUB from: \(sourceURL.path)")
         let sourceAccess = sourceURL.startAccessingSecurityScopedResource()
         AppLog.readium.info("Security scoped access: \(sourceAccess)")
@@ -81,8 +81,8 @@ final class ReadiumService: ReadiumServing {
         let destinationURL = Book.booksDirectory.appendingPathComponent(fileName)
         AppLog.readium.info("Destination: \(destinationURL.path)")
 
-        // 複製到 App Documents
-        try FileManager.default.copyItem(at: sourceURL, to: destinationURL)
+        // 以分塊複製避免大檔卡住主執行緒；回報進度
+        try await BookshelfImportService.copyFileChunked(from: sourceURL, to: destinationURL, progress: progress)
         AppLog.readium.info("File copied successfully")
 
         // 開啟 Publication 以提取 metadata

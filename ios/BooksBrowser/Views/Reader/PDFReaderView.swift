@@ -107,7 +107,13 @@ struct PDFReaderView: View {
                             showTranslation = false
                         }
                     },
-                    onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true }
+                    onLogin: authManager.isLoggedIn ? nil : { showLoginSheet = true },
+                    onRetryTranslation: (handler.translationErrorMessage != nil && handler.lastLookup != nil)
+                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                        : nil,
+                    onRetryExplanation: (handler.explanationErrorMessage != nil && handler.lastLookup != nil)
+                        ? { handler.retryLastLookup(vocabularyContext: vocabularyContext) }
+                        : nil
                 )
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
                 .transition(.readerPanelReveal)
@@ -124,12 +130,26 @@ struct PDFReaderView: View {
 
     private func loadDocument() {
         let url = book.fileURL
+        let fm = FileManager.default
+        if !fm.isReadableFile(atPath: url.path) {
+            // iCloud 占位符 / 未下載：給較具體的提示
+            loadError = "PDF 檔案尚未從 iCloud 下載完成或已被移除。請確認檔案可在「檔案」App 中開啟後再試一次。".localized
+            AppLog.reader.error("PDF unreadable at: \(url.lastPathComponent)")
+            return
+        }
         guard let document = PDFDocument(url: url) else {
-            loadError = "無法載入 PDF 檔案".localized
+            loadError = "無法載入 PDF 檔案。檔案可能已損毀，或格式不受支援。".localized
             AppLog.reader.error("PDF load failed: \(url.lastPathComponent)")
             return
         }
+        loadError = nil
         pdfDocument = document
+    }
+
+    private func retryLoad() {
+        loadError = nil
+        pdfDocument = nil
+        loadDocument()
     }
 
     // MARK: - State Views
@@ -152,7 +172,12 @@ struct PDFReaderView: View {
                 AppEmptyStateCard(
                     title: "無法開啟 PDF".localized,
                     systemImage: "exclamationmark.triangle",
-                    description: message
+                    description: message,
+                    action: AppEmptyStateAction(
+                        title: "重試載入".localized,
+                        systemImage: "arrow.clockwise",
+                        handler: retryLoad
+                    )
                 )
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 

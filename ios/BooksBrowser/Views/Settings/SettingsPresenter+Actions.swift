@@ -237,6 +237,100 @@ struct SettingsSubscriptionFeatureItem: Identifiable {
     var id: String { title }
 }
 
+/// Paywall Free vs Pro 對照表的單行資料
+struct SettingsPlanComparisonRow: Identifiable {
+    enum Mark {
+        case check
+        case cross
+        case label(String)
+    }
+
+    let title: String
+    let freeMark: Mark
+    let proMark: Mark
+
+    var id: String { title }
+}
+
+/// Paywall 用 Free vs Pro 功能對照表
+///
+/// 用途：取代「只列 Pro 有什麼」的單欄 bullet list，直接呈現兩欄差異，
+/// 提升決策資訊密度（業界做法：Notion / Linear / Cursor 訂閱頁）。
+struct SettingsPlanComparisonTable: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+    let rows: [SettingsPlanComparisonRow]
+
+    var body: some View {
+        SettingsFeaturePanel(borderTone: vocabSkin.palette.cardBorder) {
+            VStack(spacing: 0) {
+                headerRow
+
+                ForEach(Array(rows.enumerated()), id: \.element.id) { index, row in
+                    Rectangle()
+                        .fill(vocabSkin.palette.divider.opacity(0.5))
+                        .frame(height: 1)
+                        .padding(.vertical, vocabSkin.spacing.microGap)
+
+                    comparisonRow(row, isLast: index == rows.count - 1)
+                }
+            }
+        }
+    }
+
+    private var headerRow: some View {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
+            Text("功能".localized)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            Text("Free")
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .frame(width: 52, alignment: .center)
+
+            Text("Pro")
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.accent)
+                .frame(width: 52, alignment: .center)
+        }
+    }
+
+    private func comparisonRow(_ row: SettingsPlanComparisonRow, isLast _: Bool) -> some View {
+        HStack(spacing: vocabSkin.spacing.controlGap) {
+            Text(row.title)
+                .font(vocabSkin.typography.body)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+
+            markView(row.freeMark, isProColumn: false)
+                .frame(width: 52, alignment: .center)
+
+            markView(row.proMark, isProColumn: true)
+                .frame(width: 52, alignment: .center)
+        }
+    }
+
+    @ViewBuilder
+    private func markView(_ mark: SettingsPlanComparisonRow.Mark, isProColumn: Bool) -> some View {
+        switch mark {
+        case .check:
+            Image(systemName: "checkmark.circle.fill")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(isProColumn ? vocabSkin.palette.accent : vocabSkin.palette.success)
+        case .cross:
+            Image(systemName: "minus")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.quaternaryText)
+        case .label(let text):
+            Text(text)
+                .font(vocabSkin.typography.caption)
+                .foregroundStyle(isProColumn ? vocabSkin.palette.accent : vocabSkin.palette.secondaryText)
+        }
+    }
+}
+
 struct SettingsSubscriptionFeatureList: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let borderTone: Color

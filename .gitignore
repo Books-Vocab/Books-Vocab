@@ -1,6 +1,7 @@
 .DS_Store
 backups/
 plan/
+dist/
 
 # lab/ — track source code only; ignore binaries/credentials/sandboxes
 lab/claude-code-gateway/

@@ -11,7 +11,10 @@
   <!-- Header -->
   <header class="kg-header">
     <h1 class="kg-header__title">KG 詞彙</h1>
-    <button class="kg-theme-btn" id="themeBtn" title="切換主題">🌗</button>
+    <div class="kg-header__actions">
+      <button class="kg-theme-btn" id="themeBtn" title="切換主題">🌗</button>
+      <button class="kg-theme-btn" id="settingsBtn" title="設定" aria-label="開啟設定">⚙️</button>
+    </div>
   </header>
 
   <!-- Search -->
@@ -37,8 +40,9 @@
 
   <!-- State: Error -->
   <div class="kg-state kg-state--error kg-error" id="stateError" hidden>
-    <span class="kg-error__icon">⚠️</span>
-    <p class="kg-error__title">載入失敗</p>
+    <span class="kg-error__icon" id="errorIcon">⚠️</span>
+    <p class="kg-error__title" id="errorTitle">載入失敗</p>
+    <p class="kg-error__subtitle" id="errorSubtitle" hidden></p>
     <button class="kg-error__retry" id="retryBtn">重試</button>
   </div>
 

@@ -132,13 +132,21 @@ def build_api_admin_router(
     admin_pipeline_runs: Callable[..., Any] | None = None,
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
+    admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
+    admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_log_retention_run: Callable[..., Any] | None = None,
+    admin_audit: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
     router.get("/api/admin/logs", include_in_schema=False)(admin_logs)
+    # NOTE: static "/users/search" MUST register before dynamic "/users/{user_id}/…"
+    # otherwise FastAPI greedy-matches "search" as user_id.
+    if admin_users_search is not None:
+        router.get("/api/admin/users/search", include_in_schema=False)(admin_users_search)
     router.get("/api/admin/users/{user_id}/entitlement", include_in_schema=False)(admin_user_entitlement)
     router.post("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_grant_pro_access)
     router.delete("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_revoke_pro_access)
@@ -155,12 +163,18 @@ def build_api_admin_router(
         router.get("/api/admin/judge-stats", include_in_schema=False)(admin_judge_stats)
     if admin_translate_history is not None:
         router.get("/api/admin/translate-history", include_in_schema=False)(admin_translate_history)
+    if admin_user_activity is not None:
+        router.get("/api/admin/user-activity", include_in_schema=False)(admin_user_activity)
     if admin_user_usage is not None:
         router.get("/api/admin/user-usage", include_in_schema=False)(admin_user_usage)
     if admin_host_metrics is not None:
         router.get("/api/admin/host-metrics", include_in_schema=False)(admin_host_metrics)
     if admin_observability is not None:
         router.get("/api/admin/observability", include_in_schema=False)(admin_observability)
+    if admin_log_retention_run is not None:
+        router.post("/api/admin/log-retention/run", include_in_schema=False)(admin_log_retention_run)
+    if admin_audit is not None:
+        router.get("/api/admin/audit", include_in_schema=False)(admin_audit)
     return router
 
 
@@ -185,9 +199,13 @@ def build_admin_router(
     admin_pipeline_runs: Callable[..., Any] | None = None,
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
+    admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
+    admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_log_retention_run: Callable[..., Any] | None = None,
+    admin_audit: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
@@ -213,8 +231,12 @@ def build_admin_router(
         admin_pipeline_runs=admin_pipeline_runs,
         admin_judge_stats=admin_judge_stats,
         admin_translate_history=admin_translate_history,
+        admin_user_activity=admin_user_activity,
         admin_user_usage=admin_user_usage,
         admin_host_metrics=admin_host_metrics,
+        admin_users_search=admin_users_search,
         admin_observability=admin_observability,
+        admin_log_retention_run=admin_log_retention_run,
+        admin_audit=admin_audit,
     )
     return login, html, api

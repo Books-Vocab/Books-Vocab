@@ -7,10 +7,35 @@ import threading
 from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
-CACHE_TTL_DAYS = 30
+CACHE_TTL_DAYS_DEFAULT = 30
 
 _lock = threading.Lock()
 _conn: sqlite3.Connection | None = None
+
+
+def _cache_ttl_days() -> int:
+    """Resolve translate cache TTL (days) from env on every call.
+
+    Env: ``TRANSLATE_CACHE_TTL_DAYS``.
+
+    Semantics:
+      - unset / empty string → default (``CACHE_TTL_DAYS_DEFAULT`` = 30 days)
+      - non-integer (e.g. ``"30.5"``, ``"abc"``) → fallback to default
+      - negative integer (e.g. ``"-5"``) → fallback to default
+      - **``"0"`` → disable cache** (always miss): ``lookup()`` uses
+        ``created_at > now - 0 days``, so every existing row is filtered out.
+        Use this to force fresh LLM calls after a prompt change without a
+        code release.
+      - positive integer → that many days
+    """
+    raw = os.getenv("TRANSLATE_CACHE_TTL_DAYS")
+    if raw is None or raw == "":
+        return CACHE_TTL_DAYS_DEFAULT
+    try:
+        val = int(raw)
+    except ValueError:
+        return CACHE_TTL_DAYS_DEFAULT
+    return val if val >= 0 else CACHE_TTL_DAYS_DEFAULT
 
 def _db_path() -> Path:
     data_dir = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent.parent.parent / "data")))
@@ -41,6 +66,22 @@ def _get_conn() -> sqlite3.Connection:
         """)
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
+        # Precise cache-hit counter: every short-circuited cache hit gets one row.
+        # Separate table so the existing translate_log (= misses / LLM calls) stays
+        # canonical and we can compute hit rate = hits / (hits + misses).
+        _conn.execute("""
+            CREATE TABLE IF NOT EXISTS translate_cache_hits (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                user_id     TEXT,
+                operation   TEXT NOT NULL,
+                word        TEXT NOT NULL,
+                context_hash TEXT NOT NULL,
+                source_lang TEXT NOT NULL,
+                target_lang TEXT NOT NULL,
+                created_at  TEXT NOT NULL
+            )
+        """)
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
         _conn.commit()
     return _conn
 
@@ -52,7 +93,7 @@ def _reset() -> None:
             _conn = None
 
 def lookup(word: str, context_hash: str, source_lang: str, target_lang: str, operation: str) -> str | None:
-    cutoff = (datetime.now(UTC) - timedelta(days=CACHE_TTL_DAYS)).isoformat()
+    cutoff = (datetime.now(UTC) - timedelta(days=_cache_ttl_days())).isoformat()
     with _lock:
         conn = _get_conn()
         row = conn.execute(
@@ -73,12 +114,87 @@ def record(*, user_id, operation, word, context, context_hash, source_lang, targ
         )
         conn.commit()
 
-def get_log(user_id: str, *, limit: int = 200) -> list[dict]:
+def record_cache_hit(
+    *,
+    user_id: str | None,
+    operation: str,
+    word: str,
+    context_hash: str,
+    source_lang: str,
+    target_lang: str,
+) -> None:
+    """Record one translate cache hit.
+
+    Called from `translate_service` whenever `lookup()` short-circuits an LLM
+    call. Counts toward the precise cache hit rate exposed by admin
+    observability. user_id may be None for anonymous/unauth calls — still
+    counted.
+    """
+    now = datetime.now(UTC).isoformat()
     with _lock:
         conn = _get_conn()
-        rows = conn.execute(
-            "SELECT * FROM translate_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-            (user_id, limit),
-        ).fetchall()
+        conn.execute(
+            "INSERT INTO translate_cache_hits (user_id, operation, word, context_hash, source_lang, target_lang, created_at) VALUES (?,?,?,?,?,?,?)",
+            (user_id, operation, word, context_hash, source_lang, target_lang, now),
+        )
+        conn.commit()
+
+
+def count_cache_hits_since(cutoff_iso: str) -> int:
+    """Count cache hits recorded since ``cutoff_iso`` (ISO-8601 UTC string)."""
+    with _lock:
+        conn = _get_conn()
+        row = conn.execute(
+            "SELECT COUNT(*) FROM translate_cache_hits WHERE created_at >= ?",
+            (cutoff_iso,),
+        ).fetchone()
+    return int(row[0] or 0) if row else 0
+
+
+def get_log(
+    user_id: str,
+    *,
+    limit: int = 200,
+    q: str | None = None,
+    op: str | None = None,
+) -> list[dict]:
+    """Return translate log entries for a user, newest first.
+
+    Filters:
+      - ``op``: exact match against ``operation`` (e.g. ``translate_quick``).
+      - ``q``: case-insensitive substring match against ``word`` OR ``context``.
+        SQL ``LIKE`` wildcards (``%``, ``_``) inside ``q`` are escaped via an
+        explicit ``ESCAPE`` clause so admin search input can't accidentally
+        match everything.
+    """
+    where = ["user_id = ?"]
+    params: list = [user_id]
+
+    if op:
+        where.append("operation = ?")
+        params.append(op)
+
+    q_clean = (q or "").strip()
+    if q_clean:
+        escaped = (
+            q_clean.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        like = f"%{escaped}%"
+        where.append("(LOWER(word) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(context,'')) LIKE LOWER(?) ESCAPE '\\')")
+        params.extend([like, like])
+
+    sql = (
+        "SELECT * FROM translate_log WHERE "
+        + " AND ".join(where)
+        + " ORDER BY id DESC LIMIT ?"
+    )
+    params.append(limit)
+
+
+    with _lock:
+        conn = _get_conn()
+        rows = conn.execute(sql, tuple(params)).fetchall()
     cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at"]
     return [dict(zip(cols, row)) for row in rows]

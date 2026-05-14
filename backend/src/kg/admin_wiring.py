@@ -5,8 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from fastapi import Cookie, Header, Query
+
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
+    admin_actor_fingerprint,
+    admin_audit_response,
     admin_grant_pro_access_response,
     admin_host_metrics_response,
     admin_last_test_run_response,
@@ -84,8 +88,27 @@ def create_admin_handlers(
             current_admin_grant_record=current_admin_grant_record_fn,
         )
 
-    def admin_grant_pro_access(req: AdminGrantRequest, user_id: str):
+    def _actor_from_request(
+        token: str | None,
+        authorization: str | None,
+        admin_session: str | None,
+    ) -> str:
+        return admin_actor_fingerprint(
+            token=token,
+            authorization=authorization,
+            cookie_token=admin_session,
+            admin_token=runtime_settings_fn().admin_token,
+        )
+
+    def admin_grant_pro_access(
+        req: AdminGrantRequest,
+        user_id: str,
+        token: str | None = Query(None),
+        authorization: str | None = Header(None),
+        admin_session: str | None = Cookie(None),
+    ):
         """Manually grant Pro access for a user through the admin surface."""
+        actor = _actor_from_request(token, authorization, admin_session)
         return admin_grant_pro_access_response(
             user_id,
             req,
@@ -94,10 +117,17 @@ def create_admin_handlers(
             save_users=save_users_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
+            admin_uid=actor,
         )
 
-    def admin_revoke_pro_access(user_id: str):
+    def admin_revoke_pro_access(
+        user_id: str,
+        token: str | None = Query(None),
+        authorization: str | None = Header(None),
+        admin_session: str | None = Cookie(None),
+    ):
         """Remove manual Pro access for a user through the admin surface."""
+        actor = _actor_from_request(token, authorization, admin_session)
         return admin_revoke_pro_access_response(
             user_id,
             users_lock_file=runtime_users_lock_file_fn(),
@@ -105,6 +135,7 @@ def create_admin_handlers(
             save_users=save_users_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
+            admin_uid=actor,
         )
 
     def admin_run_tests(req: AdminTestRunRequest | None = None):
@@ -163,10 +194,31 @@ def create_admin_handlers(
         from .judge_log import get_acceptance_stats
         return get_acceptance_stats(user_id=user_id)
 
-    def admin_translate_history(user_id: str, limit: int = 50):
-        """Return translate/explain call history for a user."""
+    def admin_translate_history(
+        user_id: str,
+        limit: int = 50,
+        q: str | None = None,
+        op: str | None = None,
+    ):
+        """Return translate/explain call history for a user, with optional search/filter.
+
+        Query params:
+          - ``q``: case-insensitive substring filter over word/context.
+          - ``op``: exact operation filter (``translate_quick`` /
+            ``translate_phrase`` / ``translate_explain``).
+        """
         from .translate_log import get_log
-        return {"user_id": user_id, "history": get_log(user_id, limit=min(limit, 200))}
+        return {
+            "user_id": user_id,
+            "history": get_log(user_id, limit=min(limit, 200), q=q, op=op),
+            "q": q or "",
+            "op": op or "",
+        }
+
+    def admin_user_activity(user_id: str, hours: int = 24):
+        """Return merged recent-activity timeline (translate + pipeline + judge)."""
+        from .admin_user_activity import get_user_activity
+        return get_user_activity(user_id, hours=hours)
 
     def admin_user_usage(user_id: str, range: str = "24h"):
         """Return per-type usage breakdown for a user, filtered by time range."""
@@ -177,10 +229,24 @@ def create_admin_handlers(
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
 
+    def admin_users_search(q: str = "", limit: int = 50):
+        """Search users by uid prefix / email substring / display name substring."""
+        from .admin_users_search import search_users
+        return search_users(load_users_fn(), q=q, limit=limit)
+
     def admin_observability():
         """Return site-wide aggregated observability metrics (24h / 7d)."""
         from .admin_observability import collect_observability
         return collect_observability()
+
+    def admin_log_retention_run():
+        """Manually trigger log-retention pruners across all 4 log DBs."""
+        from .log_retention import run_all
+        return run_all()
+
+    def admin_audit(since: str | None = None, limit: int = 100):
+        """Return recent admin mutation audit log entries."""
+        return admin_audit_response(since=since, limit=limit)
 
     def admin_user_detail_ui():
         """User detail page UI."""
@@ -205,8 +271,12 @@ def create_admin_handlers(
         "admin_pipeline_runs": admin_pipeline_runs,
         "admin_judge_stats": admin_judge_stats,
         "admin_translate_history": admin_translate_history,
+        "admin_user_activity": admin_user_activity,
         "admin_user_usage": admin_user_usage,
         "admin_host_metrics": admin_host_metrics,
+        "admin_users_search": admin_users_search,
         "admin_observability": admin_observability,
+        "admin_log_retention_run": admin_log_retention_run,
+        "admin_audit": admin_audit,
         "admin_user_detail_ui": admin_user_detail_ui,
     }

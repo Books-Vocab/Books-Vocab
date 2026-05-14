@@ -128,6 +128,20 @@ async def _run_llm_translate(
     # Cache lookup
     cached = translate_log.lookup(word_key, ctx_hash, source_lang, target_lang, operation)
     if cached is not None:
+        # Record precise hit counter for admin observability. Short-circuits
+        # never reach record(); without this they'd be invisible to metrics.
+        try:
+            translate_log.record_cache_hit(
+                user_id=getattr(llm, "user_id", None),
+                operation=operation,
+                word=word_key,
+                context_hash=ctx_hash,
+                source_lang=source_lang,
+                target_lang=target_lang,
+            )
+        except Exception:  # noqa: BLE001 — observability must never break translation
+            if logger:
+                logger.exception("record_cache_hit failed (non-fatal)")
         return _parse_json_payload(cached)
 
     # LLM call with latency tracking
