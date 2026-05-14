@@ -98,7 +98,7 @@ struct BookshelfView: View {
                     UTType(filenameExtension: "md") ?? .data,
                     .pdf,
                 ],
-                allowsMultipleSelection: false
+                allowsMultipleSelection: true
             ) { result in
                 coordinator.handleFileImport(
                     result,
@@ -107,7 +107,10 @@ struct BookshelfView: View {
                     toastCoordinator: toastCoordinator
                 )
             }
-            .alert("匯入錯誤".localized, isPresented: $coordinator.showError) {
+            .alert(
+                coordinator.errorDiagnosis.map { "匯入錯誤・\($0)".localized } ?? "匯入錯誤".localized,
+                isPresented: $coordinator.showError
+            ) {
                 Button("確定".localized, role: .cancel, action: coordinator.dismissError)
             } message: {
                 Text((coordinator.errorMessage ?? "未知錯誤").localized)
