@@ -2,6 +2,7 @@ import SwiftUI
 
 struct VocabularyListPresenter<Content: View>: View {
     @Environment(\.vocabSkin) private var vocabSkin
+    @FocusState private var searchFocused: Bool
 
     let showsSearchField: Bool
     @Binding var searchText: String
@@ -22,7 +23,8 @@ struct VocabularyListPresenter<Content: View>: View {
             if showsSearchField {
                 VocabSearchField(
                     text: $searchText,
-                    prompt: "搜尋單字".localized
+                    prompt: "搜尋單字".localized,
+                    isFocused: $searchFocused
                 )
                 .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
                 .padding(.vertical, vocabSkin.metrics.pageSectionVerticalInset)
@@ -38,5 +40,13 @@ struct VocabularyListPresenter<Content: View>: View {
         .onTapGesture {
             dismissKeyboard()
         }
+        .background(
+            Button("") {
+                if showsSearchField { searchFocused = true }
+            }
+            .keyboardShortcut("f", modifiers: .command)
+            .opacity(0)
+            .accessibilityHidden(true)
+        )
     }
 }
