@@ -35,6 +35,7 @@ struct NotebookListView: View {
     @State private var showCreateSheet = false
     @State private var editingNotebook: Notebook?
     @AppStorage("activeNotebookId") private var activeNotebookId: String = "default"
+    @AppStorage(NotebookSortOption.storageKey) private var sortOptionRaw: String = NotebookSortOption.manual.rawValue
     @State private var reviewFilter = NotebookFilter.load()
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
@@ -45,11 +46,16 @@ struct NotebookListView: View {
 
     private var layoutMode: LayoutMode { LayoutMode(horizontalSizeClass: sizeClass) }
 
+    private var sortOption: NotebookSortOption {
+        NotebookSortOption(rawValue: sortOptionRaw) ?? .manual
+    }
+
     var body: some View {
         let stats = Self.computeNotebookStats(allEntries, pendingEntries: pendingEntries)
         let (filteredDueEntries, filteredUnlearnedEntries) = Self.computeFilteredEntries(allEntries, filter: reviewFilter)
         let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
         let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
+        let sortedNotebooks = sortOption.sort(notebooks, stats: stats)
 
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -82,7 +88,7 @@ struct NotebookListView: View {
                         emptyState
                     } else {
                         LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
-                            ForEach(notebooks) { notebook in
+                            ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
                                 NavigationLink(value: notebook.remoteId) {
                                     NotebookCard(
@@ -130,6 +136,11 @@ struct NotebookListView: View {
             .navigationTitle("單字本".localized)
             .largeNavigationBarTitle()
             .toolbar {
+                ToolbarItem(placement: .confirmationAction) {
+                    sortMenu
+                        .disabled(notebooks.isEmpty)
+                }
+
                 ToolbarItem(placement: .confirmationAction) {
                     Button {
                         showArchiveList = true
@@ -253,7 +264,32 @@ struct NotebookListView: View {
         ))
     }
 
-    // MARK: - Export
+    // MARK: - Sort Menu
+
+    @ViewBuilder
+    private var sortMenu: some View {
+        Menu {
+            Picker(selection: Binding(
+                get: { sortOption },
+                set: { newValue in
+                    withAnimation(AppMotion.standardSpring) {
+                        sortOptionRaw = newValue.rawValue
+                    }
+                }
+            )) {
+                ForEach(NotebookSortOption.allCases) { option in
+                    Label(option.label.localized, systemImage: option.systemImage).tag(option)
+                }
+            } label: {
+                Text("排序方式".localized)
+            }
+        } label: {
+            Image(systemName: "arrow.up.arrow.down")
+                .accessibilityLabel("排序".localized)
+        }
+    }
+
+    // MARK: - Export Menu
 
     private func exportNotebook(_ notebook: Notebook, format: NotebookExportFormat) {
         let entries = allEntries.filter { $0.notebookId == notebook.remoteId }
@@ -306,7 +342,12 @@ struct NotebookListView: View {
             VocabSceneShell(phase: .empty(
                 title: "還沒有單字本".localized,
                 systemImage: "books.vertical",
-                description: "同步完成後會自動建立預設單字本".localized
+                description: "建立第一本，開始整理你的單字".localized,
+                action: .init(
+                    title: "建立第一本單字本",
+                    systemImage: "plus.circle.fill",
+                    handler: { showCreateSheet = true }
+                )
             )) {
                 EmptyView()
             }
