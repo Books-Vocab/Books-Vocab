@@ -569,7 +569,8 @@ tr.expandable:hover td { background: #f0ece4; }
     <div class="stats" id="summary"></div>
     <div class="section-title">用戶明細</div>
     <div class="filter-bar">
-      <input class="filter-input" id="user-search" type="text" placeholder="搜尋 email / user ID…" oninput="applyFilters()">
+      <input class="filter-input" id="user-search" type="text" placeholder="搜尋 uid / email / 名稱（client + server）…" oninput="applyFilters()">
+      <span class="filter-count" id="server-hit-count"></span>
       <div class="filter-group">
         <button class="filter-chip active" data-filter="all" onclick="setProviderFilter(this,'all')">全部</button>
         <button class="filter-chip" data-filter="google" onclick="setProviderFilter(this,'google')">Google</button>
@@ -777,6 +778,35 @@ function applyFilters() {
   });
   document.getElementById('filter-count').textContent = filtered.length + ' / ' + _usersData.length + ' 用戶';
   renderUserRows(filtered);
+  scheduleServerSearch(q);
+}
+
+/* ── Server-side search (uid / email / displayName) ── */
+let _serverSearchTimer = null;
+let _serverSearchSeq = 0;
+function scheduleServerSearch(q) {
+  if (_serverSearchTimer) clearTimeout(_serverSearchTimer);
+  const span = document.getElementById('server-hit-count');
+  if (!span) return;
+  const query = (q || '').trim();
+  if (!query) { span.textContent = ''; return; }
+  _serverSearchTimer = setTimeout(() => runServerSearch(query), 250);
+}
+async function runServerSearch(query) {
+  const seq = ++_serverSearchSeq;
+  const span = document.getElementById('server-hit-count');
+  span.textContent = '伺服器搜尋中…';
+  try {
+    const r = await adminFetch('/api/admin/users/search?q=' + encodeURIComponent(query) + '&limit=50');
+    if (seq !== _serverSearchSeq) return;
+    if (!r.ok) { span.textContent = '伺服器搜尋失敗 (' + r.status + ')'; return; }
+    const data = await r.json();
+    const hits = (data.users || []).length;
+    span.textContent = '伺服器命中 ' + hits + ' / ' + (data.total ?? 0);
+  } catch (e) {
+    if (seq !== _serverSearchSeq) return;
+    span.textContent = '伺服器搜尋錯誤';
+  }
 }
 
 /* ── Grant Modal ── */
