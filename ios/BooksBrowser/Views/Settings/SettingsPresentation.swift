@@ -112,4 +112,5 @@ struct SettingsPresenterActions {
     let requestAppRating: () -> Void
     let resync: () -> Void
     let toggleAutoSync: (Bool) -> Void
+    let exportVocabularyCSV: () -> Void
 }
