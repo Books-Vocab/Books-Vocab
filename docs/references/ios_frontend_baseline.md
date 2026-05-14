@@ -2,12 +2,12 @@
 tier: snapshot
 scope:
   - ios/BooksBrowser
-verified_against: 942ebf6
+verified_against: b9f07d7
 -->
 
 # iOS Frontend Baseline
 
-基線日期: 2026-05-14
+基線日期: 2026-05-15
 
 ---
 
@@ -15,18 +15,18 @@ verified_against: 942ebf6
 
 | 行數 | 路徑 |
 |------|------|
-| 696 | `Views/Bookshelf/BookshelfView.swift` |
+| 731 | `Views/Bookshelf/BookshelfView.swift` |
 | 666 | `Views/Vocabulary/Skin/VocabSkin.swift` |
 | 602 | `Views/Reader/ReadiumNavigatorJS.swift` |
+| 559 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 551 | `Services/KGService.swift` |
 | 541 | `BooksBrowserApp.swift` |
 | 538 | `Services/PodcastAudioEngine.swift` |
 | 524 | `Services/EPUBConverter.swift` |
 | 523 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
-| 495 | `Services/KGService.swift` |
 | 495 | `Models/AppMetrics.swift` |
-| 492 | `Views/Vocabulary/Components/CardDocumentView.swift` |
 
-總 Swift 行數: 42554 / 263 檔案
+總 Swift 行數: 43000 / 264 檔案
 
 ---
 
@@ -43,5 +43,5 @@ verified_against: 942ebf6
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 102 |
+| @MainActor | 105 |
 | async func | 0 |
