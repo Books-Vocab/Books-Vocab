@@ -547,6 +547,8 @@ tr.expandable:hover td { background: #f0ece4; }
   </div>
   <div class="nav-actions">
     <span id="ts"></span>
+    <span id="sentry-ping-status" style="font-family:'JetBrains Mono',monospace;font-size:11px;color:var(--sub)"></span>
+    <button class="btn" id="sentry-ping-btn" onclick="sentryPing()" title="Send a smoke event to Sentry — verifies DSN wiring after deploy">Sentry Ping</button>
     <a class="btn" id="admin-tests-link" href="/admin/tests">Admin Test</a>
     <button class="btn btn-cta" onclick="refreshCurrent()">Refresh</button>
   </div>
@@ -740,6 +742,42 @@ function refreshCurrent() {
   else if (_tab === 'host') loadHost();
   else if (_tab === 'obs') loadObservability();
   else loadLogs();
+}
+
+/* ── Sentry smoke ping — confirms DSN is wired after deploy ── */
+async function sentryPing() {
+  const btn = document.getElementById('sentry-ping-btn');
+  const status = document.getElementById('sentry-ping-status');
+  if (!btn || !status) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Pinging…';
+  status.textContent = '';
+  try {
+    const resp = await adminFetch('/api/admin/sentry/ping', { method: 'POST' });
+    if (resp.status === 403) {
+      status.textContent = 'auth failed (403)';
+      return;
+    }
+    if (!resp.ok) {
+      status.textContent = 'http ' + resp.status;
+      return;
+    }
+    const body = await resp.json();
+    if (body.sent) {
+      const eid = body.event_id ? (' · ' + body.event_id.slice(0, 8)) : '';
+      status.textContent = 'sent ✓' + eid;
+    } else if (body.is_active === false) {
+      status.textContent = 'inactive (no DSN)';
+    } else {
+      status.textContent = 'dispatch failed';
+    }
+  } catch (err) {
+    status.textContent = 'error: ' + (err && err.message ? err.message : 'unknown');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = original;
+  }
 }
 
 /* Helpers */
