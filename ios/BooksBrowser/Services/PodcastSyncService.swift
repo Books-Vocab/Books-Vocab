@@ -51,16 +51,16 @@ final class PodcastSyncService {
     }
 
     static func audioURL(seriesId: String, episodeNumber: Int) -> String {
-        "\(baseURL)/api/podcast-media/\(seriesId)/ep_\(String(format: "%02d", episodeNumber))/audio.mp3"
+        // Authenticated endpoint with HTTP Range support. AVPlayer attaches the
+        // Bearer token via `AVURLAssetHTTPHeaderFieldsKey` (see `PodcastPlayerView`).
+        "\(baseURL)/api/podcasts/\(seriesId)/\(episodeNumber)/audio"
     }
 
     static func subtitleURL(seriesId: String, episodeNumber: Int) -> String {
         "\(baseURL)/api/podcasts/\(seriesId)/\(episodeNumber)/subtitle"
     }
 
-    /// Shared helper so `PodcastPlayerView` 的 subtitle fetch 也能重用。
-    /// `/api/podcast-media/` StaticFiles mount 例外 — Starlette mount 旁路 FastAPI
-    /// dependency，audio.mp3 目前仍為公開（後續 PR 改自訂 endpoint 時再補 auth）。
+    /// Shared helper so `PodcastPlayerView` 的 subtitle / audio metadata fetch 也能重用。
     static func authedData(from urlString: String, kgService: any KGServing) async throws -> Data {
         guard let url = URL(string: urlString) else {
             throw URLError(.badURL)
