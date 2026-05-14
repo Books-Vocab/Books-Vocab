@@ -135,6 +135,7 @@ def build_api_admin_router(
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_log_retention_run: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
@@ -161,6 +162,8 @@ def build_api_admin_router(
         router.get("/api/admin/host-metrics", include_in_schema=False)(admin_host_metrics)
     if admin_observability is not None:
         router.get("/api/admin/observability", include_in_schema=False)(admin_observability)
+    if admin_log_retention_run is not None:
+        router.post("/api/admin/log-retention/run", include_in_schema=False)(admin_log_retention_run)
     return router
 
 
@@ -188,6 +191,7 @@ def build_admin_router(
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_log_retention_run: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
@@ -216,5 +220,6 @@ def build_admin_router(
         admin_user_usage=admin_user_usage,
         admin_host_metrics=admin_host_metrics,
         admin_observability=admin_observability,
+        admin_log_retention_run=admin_log_retention_run,
     )
     return login, html, api
