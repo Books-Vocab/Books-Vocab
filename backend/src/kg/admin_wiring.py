@@ -163,10 +163,31 @@ def create_admin_handlers(
         from .judge_log import get_acceptance_stats
         return get_acceptance_stats(user_id=user_id)
 
-    def admin_translate_history(user_id: str, limit: int = 50):
-        """Return translate/explain call history for a user."""
+    def admin_translate_history(
+        user_id: str,
+        limit: int = 50,
+        q: str | None = None,
+        op: str | None = None,
+    ):
+        """Return translate/explain call history for a user, with optional search/filter.
+
+        Query params:
+          - ``q``: case-insensitive substring filter over word/context.
+          - ``op``: exact operation filter (``translate_quick`` /
+            ``translate_phrase`` / ``translate_explain``).
+        """
         from .translate_log import get_log
-        return {"user_id": user_id, "history": get_log(user_id, limit=min(limit, 200))}
+        return {
+            "user_id": user_id,
+            "history": get_log(user_id, limit=min(limit, 200), q=q, op=op),
+            "q": q or "",
+            "op": op or "",
+        }
+
+    def admin_user_activity(user_id: str, hours: int = 24):
+        """Return merged recent-activity timeline (translate + pipeline + judge)."""
+        from .admin_user_activity import get_user_activity
+        return get_user_activity(user_id, hours=hours)
 
     def admin_user_usage(user_id: str, range: str = "24h"):
         """Return per-type usage breakdown for a user, filtered by time range."""
@@ -210,6 +231,7 @@ def create_admin_handlers(
         "admin_pipeline_runs": admin_pipeline_runs,
         "admin_judge_stats": admin_judge_stats,
         "admin_translate_history": admin_translate_history,
+        "admin_user_activity": admin_user_activity,
         "admin_user_usage": admin_user_usage,
         "admin_host_metrics": admin_host_metrics,
         "admin_observability": admin_observability,
