@@ -82,6 +82,21 @@ enum AppWelcomeMetrics {
     static let featureIconFrame: CGFloat = 64
     static let subtitleHorizontalPadding: CGFloat = 40
     static let bottomPadding: CGFloat = 40
+
+    // Step indicator capsule（自繪 page control）
+    static let stepIndicatorActiveWidth: CGFloat = 22
+    static let stepIndicatorInactiveWidth: CGFloat = 6
+    static let stepIndicatorHeight: CGFloat = 6
+    static let stepIndicatorInactiveOpacity: Double = 0.25
+
+    // Feature icon halo（accent 圓形背景）
+    static let iconHaloPadding: CGFloat = 16
+    static let iconHaloOpacity: Double = 0.10
+
+    // Page typography / layout
+    static let stepLabelTracking: CGFloat = 1.4
+    static let captionTopPadding: CGFloat = 2
+    static let pageContentSpacing: CGFloat = 4
 }
 
 enum AppBookshelfMetrics {
@@ -177,6 +192,10 @@ enum AppMotion {
     /// 退場曲線 — 快入慢出，配 sheet / panel / overlay dismiss
     /// timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2) — 標準 Material accelerate
     static let emphasizedAccelerate = Animation.timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2)
+
+    /// Step indicator / pagination indicator 寬度切換
+    /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
+    static let indicatorTransition = Animation.easeOut(duration: 0.25)
 
     // MARK: - Phase 5: Continuous / Loading Motion
 
