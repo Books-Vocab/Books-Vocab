@@ -113,7 +113,10 @@ enum KnowledgeGraphPresentation {
         isLoggedIn: Bool,
         isLoading: Bool,
         errorMessage: String?,
-        nodes: [KnowledgeGraphNode]
+        nodes: [KnowledgeGraphNode],
+        syncedEntryCount: Int = 0,
+        linkCount: Int = 0,
+        showsIsolatedNodes: Bool = false
     ) -> KnowledgeGraphPresenter.State.EmptyState? {
         if !isLoggedIn {
             return .init(
@@ -137,6 +140,21 @@ enum KnowledgeGraphPresentation {
             )
         }
         if nodes.isEmpty {
+            // 細分：有同步單字但無連結 vs 完全無單字
+            if syncedEntryCount > 0 && linkCount == 0 {
+                return .init(
+                    title: "尚無知識連結".localized,
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    description: "持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。".localized
+                )
+            }
+            if syncedEntryCount > 0 && !showsIsolatedNodes {
+                return .init(
+                    title: "目前無已連結節點".localized,
+                    systemImage: "point.3.connected.trianglepath.dotted",
+                    description: "可在設定中開啟「孤立節點」以瀏覽所有已收錄單字。".localized
+                )
+            }
             return .init(
                 title: "知識圖譜為空".localized,
                 systemImage: "point.3.connected.trianglepath.dotted",
