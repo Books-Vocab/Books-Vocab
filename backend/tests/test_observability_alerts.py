@@ -39,23 +39,25 @@ def _isolate_log_dbs(tmp_path, monkeypatch):
 
 
 class _SentryStub:
-    """Lightweight replacement for sentry_sdk.capture_message — records calls."""
+    """Strict stub mirroring `observability_alerts._capture` — records calls.
+
+    Signature is strict on purpose: it matches the internal `_capture(message,
+    level, tags)` contract. Any drift (e.g. stray kwargs from a buggy `_emit`)
+    must surface as a TypeError, not be silently swallowed.
+    """
 
     def __init__(self) -> None:
         self.calls: list[dict] = []
 
-    def __call__(self, message: str, level: str = "info", **kwargs) -> None:
-        # sentry_sdk.capture_message signature accepts level= kwarg.
-        # tags must be set via with sentry_sdk.push_scope(); but we use the
-        # simpler stub that just records everything passed.
-        self.calls.append({"message": message, "level": level, **kwargs})
+    def __call__(self, message: str, level: str, tags: dict) -> None:
+        self.calls.append({"message": message, "level": level, "tags": dict(tags)})
 
 
 @pytest.fixture()
 def sentry_stub(monkeypatch):
-    """Replace observability_alerts._emit's capture_message reference."""
+    """Replace observability_alerts._capture with a strict-signature recorder."""
     stub = _SentryStub()
-    monkeypatch.setattr(observability_alerts, "_capture_message", stub)
+    monkeypatch.setattr(observability_alerts, "_capture", stub)
     return stub
 
 
@@ -147,10 +149,20 @@ class TestCheckPipelineFailures:
         observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
         assert sentry_stub.calls == []
 
-    def test_interrupted_status_counted_as_failure(self, sentry_stub):
-        for i in range(5):
+    def test_interrupted_status_not_alerted_by_default(self, sentry_stub):
+        # `interrupted` is operational (user-cancelled / shutdown) and should
+        # not contribute to failure alerts unless explicitly opted in.
+        for i in range(10):
             _insert_pipeline_run(f"r{i}", "interrupted", started_minutes_ago=5)
         observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert sentry_stub.calls == []
+
+    def test_interrupted_counted_when_opt_in(self, sentry_stub):
+        for i in range(5):
+            _insert_pipeline_run(f"r{i}", "interrupted", started_minutes_ago=5)
+        observability_alerts.check_pipeline_failures(
+            window_min=60, threshold=5, include_interrupted=True,
+        )
         assert len(sentry_stub.calls) == 1
 
 
@@ -355,11 +367,49 @@ class TestRunAll:
 class TestSentryGuard:
     def test_emit_no_op_when_sentry_unavailable(self, monkeypatch):
         # Even if check decides to alert, missing sentry_sdk should not crash.
-        monkeypatch.setattr(observability_alerts, "_capture_message", None)
+        monkeypatch.setattr(observability_alerts, "_sentry_sdk", None)
         for i in range(6):
             _insert_pipeline_run(f"r{i}", "failed", started_minutes_ago=10)
         # Should be a no-op (no exception, no Sentry call).
         observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+
+    def test_capture_uses_new_scope_for_tags(self, monkeypatch):
+        """Regression: tags must flow through an explicit scope, not kwargs.
+
+        `sentry_sdk.capture_message` in 2.x still forwards `tags=` via
+        `**scope_kwargs`, but that surface is deprecated and disappears in
+        3.x. `push_scope` itself is also deprecated in 2.x. We therefore
+        route tags through `new_scope().set_tag()` and call
+        `capture_message` with the strict `(message, level=)` signature.
+        """
+        recorded: dict = {"capture": [], "scope_tags": {}}
+
+        class _FakeScope:
+            def set_tag(self, key, value):
+                recorded["scope_tags"][key] = value
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, *exc):
+                return False
+
+        def _fake_capture_message(message, level=None):
+            recorded["capture"].append({"message": message, "level": level})
+
+        class _FakeSDK:
+            @staticmethod
+            def new_scope():
+                return _FakeScope()
+
+            capture_message = staticmethod(_fake_capture_message)
+
+        monkeypatch.setattr(observability_alerts, "_sentry_sdk", _FakeSDK)
+        observability_alerts._capture(
+            "msg", "error", {"alert": "x", "n": 3},
+        )
+        assert recorded["capture"] == [{"message": "msg", "level": "error"}]
+        assert recorded["scope_tags"] == {"alert": "x", "n": 3}
 
 
 class TestSystemInfoTriggersChecks:

@@ -8,16 +8,25 @@ Design notes
 ------------
 * No background scheduler. Triggered piggyback-style from /api/system/info,
   which is hit by health probes, iOS, and the admin dashboard frequently
-  enough to provide minute-resolution alerting.
+  enough to provide minute-resolution alerting. Trade-off: `/api/system/info`
+  becomes the single point of failure for alerting — if probes stop hitting
+  it (e.g. probe outage, route regression) alerts silently halt. Acceptable
+  because the same endpoint is the canary used externally to detect outages.
 * Per-alert in-memory cooldown (default 30 min) suppresses duplicate
   notifications within the same process. Multi-worker deployments will get
   one alert per worker per cooldown window — acceptable since Sentry
   dedupes on issue fingerprint downstream.
 * Schema-readonly: queries never mutate the underlying log tables.
+* Sentry tag routing: although `sentry_sdk.capture_message` in 2.x technically
+  accepts `tags=` via `**scope_kwargs`, that kwarg surface is deprecated and
+  slated for removal in 3.x. We attach tags through an explicit scope
+  (`new_scope().set_tag()`) so behaviour is stable across SDK majors. The
+  `_capture` helper is the only edge that touches Sentry and is the test seam
+  used by `tests/`.
 
 Public API
 ----------
-check_pipeline_failures(window_min, threshold)
+check_pipeline_failures(window_min, threshold, include_interrupted=False)
 check_judge_rejection_rate(window_min, min_total, threshold)
 check_translate_latency_p95(window_min, threshold_ms)
 run_all_checks()  — calls all three with module defaults.
@@ -26,7 +35,7 @@ from __future__ import annotations
 
 import logging
 from datetime import UTC, datetime, timedelta
-from typing import Any, Callable
+from typing import Any
 
 from . import judge_log, pipeline_log, translate_log
 
@@ -36,13 +45,29 @@ _logger = logging.getLogger(__name__)
 # Sentry binding (rebindable for tests).
 # ---------------------------------------------------------------------------
 
-_capture_message: Callable[..., Any] | None
 try:
-    import sentry_sdk
-
-    _capture_message = sentry_sdk.capture_message  # type: ignore[assignment]
+    import sentry_sdk as _sentry_sdk  # type: ignore[assignment]
 except ImportError:  # pragma: no cover — sentry-sdk is a declared dep
-    _capture_message = None
+    _sentry_sdk = None  # type: ignore[assignment]
+
+
+def _capture(message: str, level: str, tags: dict[str, Any]) -> None:
+    """Send a Sentry message with tags routed through an explicit scope.
+
+    This is the ONE edge that touches Sentry — tests monkeypatch this with a
+    strict-signature stub. `sentry_sdk.capture_message` in 2.x technically
+    forwards `tags=` via `**scope_kwargs`, but that path is deprecated and
+    scheduled for removal in 3.x. `push_scope` itself is also deprecated in
+    2.x in favour of `new_scope` / `isolation_scope`, so we use `new_scope`
+    to stay forward-compatible: tags applied to the forked scope flow into
+    the captured event and the scope is torn down on `__exit__`.
+    """
+    if _sentry_sdk is None:
+        return
+    with _sentry_sdk.new_scope() as scope:
+        for k, v in tags.items():
+            scope.set_tag(k, v)
+        _sentry_sdk.capture_message(message, level=level)
 
 
 # ---------------------------------------------------------------------------
@@ -82,12 +107,11 @@ def _emit(*, alert_key: str, level: str, message: str, tags: dict[str, Any]) -> 
     """Send Sentry capture_message respecting cooldown + availability."""
     if _within_cooldown(alert_key):
         return
-    capture = _capture_message
-    if capture is None:
+    if _sentry_sdk is None:
         return
     payload_tags = {"alert": alert_key, **tags}
     try:
-        capture(message, level=level, tags=payload_tags)
+        _capture(message, level, payload_tags)
     except Exception:
         _logger.warning("sentry capture_message failed", exc_info=True)
         return
@@ -99,24 +123,37 @@ def _emit(*, alert_key: str, level: str, message: str, tags: dict[str, Any]) -> 
 # ---------------------------------------------------------------------------
 
 
-_FAILURE_STATUSES = ("failed", "error", "interrupted")
+# Hard failure statuses. `interrupted` is operational (user-cancelled or
+# graceful shutdown) and is excluded from alerting by default — opt in via
+# `include_interrupted=True` if you want to surface those too.
+_FAILURE_STATUSES: tuple[str, ...] = ("failed", "error")
+_INTERRUPTED_STATUSES: tuple[str, ...] = ("interrupted",)
 
 
 def check_pipeline_failures(
     *,
     window_min: int = PIPELINE_WINDOW_MIN,
     threshold: int = PIPELINE_FAILURE_THRESHOLD,
+    include_interrupted: bool = False,
 ) -> None:
-    """Emit Sentry error if pipeline failures in last `window_min` >= threshold."""
+    """Emit Sentry error if pipeline failures in last `window_min` >= threshold.
+
+    `interrupted` runs are excluded from the failure count by default. Pass
+    `include_interrupted=True` to fold them in (useful when operators want
+    visibility into cancellations alongside hard failures).
+    """
+    statuses = _FAILURE_STATUSES + (
+        _INTERRUPTED_STATUSES if include_interrupted else ()
+    )
     cutoff = (_now() - timedelta(minutes=window_min)).isoformat()
-    placeholders = ",".join("?" for _ in _FAILURE_STATUSES)
+    placeholders = ",".join("?" for _ in statuses)
     try:
         conn = pipeline_log._get_conn()
         with pipeline_log._lock:
             row = conn.execute(
                 f"SELECT COUNT(*) FROM pipeline_runs "
                 f"WHERE status IN ({placeholders}) AND started_at >= ?",
-                (*_FAILURE_STATUSES, cutoff),
+                (*statuses, cutoff),
             ).fetchone()
     except Exception:
         _logger.warning("pipeline failure check query failed", exc_info=True)
