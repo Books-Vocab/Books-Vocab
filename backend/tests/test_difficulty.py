@@ -77,6 +77,38 @@ class TestGetTier:
         assert core_tier.tag == "core"
 
 
+class TestDifficultyByFrequency:
+    """Tier assignment driven by Zipf frequency — common / rare / unknown."""
+
+    def test_difficulty_zipf_common_word_low_score(self):
+        # High-frequency words ("the", "and") sit at Zipf ~7.4-7.7,
+        # comfortably above the 3.44 core threshold — i.e. low difficulty.
+        for word in ("the", "and"):
+            z = get_zipf(word)
+            assert z >= 3.44, f"expected {word!r} to be core-frequency, got {z}"
+            tier = get_tier(word)
+            assert tier.tag == "core", f"expected {word!r} to map to core tier, got {tier.tag}"
+
+    def test_difficulty_zipf_rare_word_high_score(self):
+        # "perspicacious" is a genuinely uncommon English word (Zipf ~1.7),
+        # well under the 2.55 advanced threshold — i.e. high difficulty.
+        z = get_zipf("perspicacious")
+        assert z < 2.55, f"expected perspicacious to fall below advanced threshold, got {z}"
+        tier = get_tier("perspicacious")
+        assert tier.tag == "rare"
+        assert tier.css_class == "diff-rare"
+
+    def test_difficulty_unknown_word_fallback(self):
+        # Pure gibberish must not crash and must degrade to the rare tier
+        # (Zipf == 0.0 falls through every threshold).
+        for word in ("asdjkl", "xqzvbnmtyuiop"):
+            z = get_zipf(word)
+            assert z == 0.0, f"expected unknown word {word!r} to have Zipf 0.0, got {z}"
+            tier = get_tier(word)
+            assert tier.tag == "rare", f"expected unknown word {word!r} to map to rare tier"
+            assert isinstance(tier, DifficultyTier)
+
+
 def test_get_zipf_is_cached():
     from kg.difficulty import get_zipf
     # Clear any existing cache
