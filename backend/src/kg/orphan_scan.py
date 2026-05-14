@@ -25,6 +25,7 @@ from __future__ import annotations
 import argparse
 import json
 import logging
+import os
 import sqlite3
 import sys
 from pathlib import Path
@@ -113,11 +114,27 @@ def _list_graph_files(user_dir: Path) -> list[tuple[str, Path]]:
 
 
 def _atomic_write_json(path: Path, data: Any) -> None:
+    """Write ``data`` to ``path`` atomically.
+
+    Sequence: write tmp → fsync(tmp) → backup existing → os.replace(tmp, path).
+    ``os.replace`` is the POSIX-atomic rename primitive; ``Path.replace`` wraps
+    it but we use ``os.replace`` directly with string paths to keep the
+    semantics obvious. fsync ensures the tmp payload is on disk before rename
+    so a crash can't leave a half-written file under ``path``.
+    """
     tmp = path.with_suffix(".json.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False))
+    payload = json.dumps(data, indent=2, ensure_ascii=False)
+    tmp.write_text(payload)
+    # Flush payload to disk before rename — without this a power loss between
+    # rename and writeback can leave ``path`` pointing at zero-byte content.
+    fd = os.open(str(tmp), os.O_RDONLY)
+    try:
+        os.fsync(fd)
+    finally:
+        os.close(fd)
     if path.exists():
-        path.replace(path.with_suffix(".json.bak"))
-    tmp.replace(path)
+        os.replace(str(path), str(path.with_suffix(".json.bak")))
+    os.replace(str(tmp), str(path))
 
 
 # ---------------------------------------------------------------------------
@@ -190,10 +207,6 @@ def scan(*, data_dir: Path) -> dict[str, Any]:
                         "to_id": to_id,
                         "missing": missing,
                     })
-
-        # 4. judge_log → cards (per user, scoped by notebook)
-        # done in batch below by aggregating live_card_ids per user.
-        # (placeholder; actual scan after loop using global cards index)
 
     # Build a global per-user live-cards index for judge_log scan.
     user_live_cards: dict[str, set[str]] = {}
@@ -294,6 +307,18 @@ def fix(
     Safety:
       - ``confirm`` must be ``True`` (raises ``ValueError`` otherwise).
       - ``dry_run=True`` reports counts without mutating anything.
+
+    Operational notes:
+      - **Run during backend downtime or a low-traffic window.** This function
+        rewrites ``graph_*.json`` files and issues bulk SQLite ``DELETE`` /
+        ``UPDATE`` against ``cards.db``, ``judge_log.db``, ``translate_log.db``
+        and ``token_usage.db``. There is no app-level cross-file lock around
+        the multi-step rewrite, so concurrent writers can race with us.
+      - **If the caller holds an existing graph_links / cards lock, invoke
+        ``fix()`` while still holding it** — pass-through is the safest way to
+        guarantee the graph file we read in :func:`scan` is the same one we
+        rewrite here. Otherwise prefer to quiesce the API (or stop the
+        container) before calling.
     """
     if not confirm:
         raise ValueError(
@@ -428,11 +453,16 @@ def main(argv: list[str] | None = None) -> int:
         prog="kg.orphan_scan",
         description="Scan KG data for orphan rows; optionally clean them up.",
     )
-    parser.add_argument(
+    # --report and --fix are the two mutually-exclusive actions. One must be
+    # specified explicitly — there is no implicit default, so an accidental
+    # bare invocation prints help and exits non-zero instead of silently
+    # running a scan.
+    action = parser.add_mutually_exclusive_group()
+    action.add_argument(
         "--report", action="store_true",
-        help="Print the orphan scan report and exit (default if no flag set).",
+        help="Print the orphan scan report and exit.",
     )
-    parser.add_argument(
+    action.add_argument(
         "--fix", action="store_true",
         help="Run the fixer.  Requires --confirm to actually mutate; "
              "without --confirm, runs in dry-run mode.",
@@ -452,6 +482,14 @@ def main(argv: list[str] | None = None) -> int:
     )
     args = parser.parse_args(argv)
 
+    if not (args.report or args.fix):
+        parser.print_help(sys.stderr)
+        print(
+            "\nerror: one of --report or --fix is required.",
+            file=sys.stderr,
+        )
+        return 2
+
     data_dir = Path(args.data_dir) if args.data_dir else _resolve_data_dir()
 
     if args.fix:
@@ -466,7 +504,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(summary, indent=2, ensure_ascii=False))
         return 0
 
-    # default = --report
+    # args.report is True (mutex group guarantees this branch).
     report = scan(data_dir=data_dir)
     print(json.dumps(report, indent=2, ensure_ascii=False))
     return 0
