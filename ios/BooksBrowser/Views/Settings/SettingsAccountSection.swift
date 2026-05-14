@@ -342,7 +342,7 @@ struct SettingsAuthSummary: View {
                     ZStack {
                         if isProActive {
                             SettingsProBadge()
-                                .transition(AppTransition.modalSwap)
+                                .transition(.modalSwap)
                                 .accessibilityLabel("Pro 訂閱已啟用".localized)
                         }
                     }

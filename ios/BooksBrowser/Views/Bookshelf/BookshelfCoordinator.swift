@@ -75,7 +75,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     private func importMethod(
         for ext: String,
         using service: any BookshelfImporting
-    ) -> ((URL, @Sendable (Double) -> Void) async throws -> ImportedBookDraft)? {
+    ) -> ((URL, @escaping @Sendable (Double) -> Void) async throws -> ImportedBookDraft)? {
         switch ext {
         case "epub": return { try await service.importBook(from: $0, progress: $1) }
         case "txt":  return { try await service.importTXT(from: $0, progress: $1) }

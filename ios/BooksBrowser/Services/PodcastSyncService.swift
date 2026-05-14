@@ -40,7 +40,7 @@ struct PodcastEpisodeDetail: Codable {
 final class PodcastSyncService {
     private static let baseURL = AppURLs.domain
 
-    private let kgService: any KGServing
+    let kgService: any KGServing
 
     init(kgService: any KGServing) {
         self.kgService = kgService
