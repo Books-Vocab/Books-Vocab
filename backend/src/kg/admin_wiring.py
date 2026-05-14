@@ -225,6 +225,20 @@ def create_admin_handlers(
         from .admin_handlers import admin_user_usage_response
         return admin_user_usage_response(user_id, range_=range)
 
+    def admin_user_cost_summary(user_id: str, range: str = "month"):
+        """Return per-service / per-model AI cost summary for a user.
+
+        ``range`` accepts ``24h`` / ``7d`` / ``30d`` / ``month`` (default,
+        current calendar month UTC) / ``all``.
+        """
+        from fastapi import HTTPException
+
+        from .admin_cost_summary import get_user_cost_summary
+        try:
+            return get_user_cost_summary(user_id, range_=range)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from exc
+
     def admin_host_metrics():
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
@@ -273,6 +287,7 @@ def create_admin_handlers(
         "admin_translate_history": admin_translate_history,
         "admin_user_activity": admin_user_activity,
         "admin_user_usage": admin_user_usage,
+        "admin_user_cost_summary": admin_user_cost_summary,
         "admin_host_metrics": admin_host_metrics,
         "admin_users_search": admin_users_search,
         "admin_observability": admin_observability,
