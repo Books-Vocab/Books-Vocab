@@ -10,6 +10,11 @@ import os
 
 extension AuthManager {
     func loginWithApple(modelContainer: ModelContainer? = nil) {
+        AppCrashReporting.addBreadcrumb(
+            category: "auth",
+            message: "login.start",
+            data: ["provider": "apple"]
+        )
         let request = ASAuthorizationAppleIDProvider().createRequest()
         request.requestedScopes = [.fullName, .email]
 
@@ -82,10 +87,24 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                     modelContainer: modelContainer
                 )
                 AppAnalytics.track(.loginCompleted(provider: "apple"))
+                AppCrashReporting.addBreadcrumb(
+                    category: "auth",
+                    message: "login.success",
+                    data: ["provider": "apple"]
+                )
             } catch {
                 AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                 authManager.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 AppAnalytics.track(.loginFailed(provider: "apple", error: error.localizedDescription))
+                AppCrashReporting.addBreadcrumb(
+                    category: "auth",
+                    message: "login.fail",
+                    level: .warning,
+                    data: ["provider": "apple", "stage": "verify"]
+                )
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "auth.apple.verify")
+                }
             }
         }
     }
@@ -96,6 +115,13 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
     ) {
         AppLog.auth.error("Apple Sign-In error: \(error.localizedDescription)")
         AppAnalytics.track(.loginFailed(provider: "apple", error: error.localizedDescription))
+        // ASAuthorizationError.canceled is user-initiated dismissal; don't ship.
+        let nsError = error as NSError
+        let isUserCancel = nsError.domain == "com.apple.AuthenticationServices.AuthorizationError"
+            && nsError.code == ASAuthorizationError.canceled.rawValue
+        if !isUserCancel {
+            AppCrashReporting.record(error, context: "auth.apple.controller")
+        }
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {

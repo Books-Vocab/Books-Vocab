@@ -115,6 +115,7 @@ extension KGService {
             try await actor.clearVocabularyData(reason: reason)
         } catch {
             AppLog.kg.error("clearVocabularyData failed: \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "kg.local.clear")
         }
 
         let defaults = UserDefaults.standard
@@ -143,6 +144,7 @@ extension KGService {
             return
         }
 
+        AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.start")
         var failures: [String] = []
 
         // Phase 1: push review states & daily stats in parallel
@@ -174,6 +176,9 @@ extension KGService {
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
+                }
                 failures.append(label)
             }
         }
@@ -207,6 +212,9 @@ extension KGService {
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
+                }
                 failures.append(label)
             }
         }
@@ -214,8 +222,15 @@ extension KGService {
         if failures.isEmpty {
             lastBackgroundSyncError = nil
             lastSyncDate = .now
+            AppCrashReporting.addBreadcrumb(category: "sync", message: "sync.end.success")
         } else {
             lastBackgroundSyncError = L10n.format("背景同步部分失敗：%@", failures.joined(separator: ", "))
+            AppCrashReporting.addBreadcrumb(
+                category: "sync",
+                message: "sync.end.partial",
+                level: .warning,
+                data: ["failures": failures]
+            )
         }
     }
 

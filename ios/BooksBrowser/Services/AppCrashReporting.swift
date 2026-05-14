@@ -23,6 +23,17 @@ import Sentry
 
 enum AppCrashReporting {
 
+    /// Strongly-typed breadcrumb severity. Avoids the silent-fallback risk of
+    /// stringly-typed levels (typos like `"err"` previously degraded to `.info`).
+    enum BreadcrumbLevel: String {
+        case debug
+        case info
+        case warning
+        case error
+        case fatal
+    }
+
+
     private static let logger = Logger(
         subsystem: Bundle.main.bundleIdentifier ?? "com.wordnexus.BooksBrowser",
         category: "CrashReporting"
@@ -100,6 +111,33 @@ enum AppCrashReporting {
         #endif
     }
 
+    /// Drop a breadcrumb describing a user action or significant state change.
+    /// Safe to call when Sentry is inactive (no-op). Coexists with the
+    /// HTTP-URL query-strip filter installed in `bootstrap()`'s `beforeBreadcrumb`.
+    ///
+    /// - Parameters:
+    ///   - category: short bucket tag, e.g. `"audio"`, `"sync"`, `"auth"`.
+    ///   - message: human-readable, **never** include PII or auth tokens.
+    ///   - level: `.info` (default) / `.warning` / `.error` / `.debug` / `.fatal`.
+    ///   - data: optional structured payload, **never** include PII or tokens.
+    static func addBreadcrumb(
+        category: String,
+        message: String,
+        level: BreadcrumbLevel = .info,
+        data: [String: Any]? = nil
+    ) {
+        #if canImport(Sentry)
+        let crumb = Breadcrumb()
+        crumb.category = category
+        crumb.message = message
+        crumb.level = sentryLevel(from: level)
+        if let data { crumb.data = data }
+        SentrySDK.addBreadcrumb(crumb)
+        #else
+        _ = (category, message, level, data)
+        #endif
+    }
+
     /// Tag the current user (for filtering in Sentry dashboard).
     /// Pass nil on logout to clear.
     static func setUser(id: String?) {
@@ -119,6 +157,18 @@ enum AppCrashReporting {
     }
 
     // MARK: - private
+
+    #if canImport(Sentry)
+    private static func sentryLevel(from level: BreadcrumbLevel) -> SentryLevel {
+        switch level {
+        case .debug: return .debug
+        case .info: return .info
+        case .warning: return .warning
+        case .error: return .error
+        case .fatal: return .fatal
+        }
+    }
+    #endif
 
     private static func readDSN() -> String? {
         Bundle.main.object(forInfoDictionaryKey: "SentryDSN") as? String

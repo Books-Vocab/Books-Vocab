@@ -62,6 +62,9 @@ extension SubscriptionManager {
                     AppLog.subscription.info("Sync succeeded")
                 } catch {
                     AppLog.subscription.warning("Sync failed: \(error.localizedDescription)")
+                    if !(error is CancellationError) {
+                        AppCrashReporting.record(error, context: "subscription.purchase.sync")
+                    }
                 }
                 await refresh(using: kgService, authManager: authManager, force: true)
                 if hasProAccess {
@@ -80,6 +83,11 @@ extension SubscriptionManager {
         } catch {
             purchaseStatusMessage = L10n.format("購買失敗：%@", error.localizedDescription)
             lastError = error.localizedDescription
+            // Filter StoreKit user-cancel and offline: those are recoverable / user-driven
+            if !(error is CancellationError),
+               !(error is StoreKitError) {
+                AppCrashReporting.record(error, context: "subscription.purchase")
+            }
         }
     }
 
@@ -100,6 +108,9 @@ extension SubscriptionManager {
         } catch {
             purchaseStatusMessage = L10n.format("恢復失敗：%@", error.localizedDescription)
             lastError = error.localizedDescription
+            if !(error is CancellationError) {
+                AppCrashReporting.record(error, context: "subscription.restore")
+            }
         }
     }
 }

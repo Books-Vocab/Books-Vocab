@@ -10,6 +10,11 @@ import os
 
 extension AuthManager {
     func loginWithGoogle(modelContainer: ModelContainer? = nil) {
+        AppCrashReporting.addBreadcrumb(
+            category: "auth",
+            message: "login.start",
+            data: ["provider": "google"]
+        )
         #if os(iOS)
         let window = UIApplication.shared.connectedScenes
             .flatMap { ($0 as? UIWindowScene)?.windows ?? [] }
@@ -42,6 +47,12 @@ extension AuthManager {
         if let error = error {
             AppLog.auth.error("Google Sign-In error: \(error.localizedDescription)")
             AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
+            // GIDSignInError.canceled = user dismissal; don't ship.
+            let nsError = error as NSError
+            let isUserCancel = nsError.domain == "com.google.GIDSignIn" && nsError.code == -5
+            if !isUserCancel {
+                AppCrashReporting.record(error, context: "auth.google.sdk")
+            }
             return
         }
 
@@ -73,10 +84,24 @@ extension AuthManager {
                     modelContainer: modelContainer
                 )
                 AppAnalytics.track(.loginCompleted(provider: "google"))
+                AppCrashReporting.addBreadcrumb(
+                    category: "auth",
+                    message: "login.success",
+                    data: ["provider": "google"]
+                )
             } catch {
                 AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                 self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
+                AppCrashReporting.addBreadcrumb(
+                    category: "auth",
+                    message: "login.fail",
+                    level: .warning,
+                    data: ["provider": "google", "stage": "verify"]
+                )
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "auth.google.verify")
+                }
             }
         }
     }
