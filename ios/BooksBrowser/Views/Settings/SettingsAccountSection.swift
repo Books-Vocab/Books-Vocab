@@ -158,7 +158,10 @@ struct SettingsAccountSection: View {
         SettingsCardNavigationRow(
             action: { onShowAccountDetail?() }
         ) {
-            SettingsAuthSummary(state: state)
+            SettingsAuthSummary(
+                state: state,
+                isProActive: subscription?.isActive ?? false
+            )
         }
     }
 
@@ -218,6 +221,27 @@ struct SettingsAccountSection: View {
             return pricingUnavailableMessage
         }
         return subscription.summary
+    }
+}
+
+// MARK: - Pro Badge
+
+struct SettingsProBadge: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    var body: some View {
+        HStack(spacing: vocabSkin.spacing.microGap) {
+            Image(systemName: "sparkles")
+                .font(vocabSkin.typography.captionStrong)
+            Text("PRO".localized)
+                .font(vocabSkin.typography.monoLabel)
+        }
+        .foregroundStyle(vocabSkin.palette.accent)
+        .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
+        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+        .background(vocabSkin.palette.accent.opacity(0.12))
+        .clipShape(Capsule())
+        .accessibilityElement(children: .combine)
     }
 }
 
@@ -302,18 +326,34 @@ private struct SettingsAuthButton<Leading: View>: View {
 struct SettingsAuthSummary: View {
     @Environment(\.vocabSkin) private var vocabSkin
     let state: SettingsPresenterState.AuthSection
+    var isProActive: Bool = false
 
     var body: some View {
         HStack(spacing: AppSettingsMetrics.accountRowSpacing) {
             avatar
 
-            SettingsTitleSubtitleStack(
-                title: state.displayName,
-                subtitle: state.email,
-                titleFont: vocabSkin.typography.sectionTitle,
-                titleColor: vocabSkin.palette.primaryText,
-                subtitleColor: vocabSkin.palette.secondaryText
-            )
+            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+                HStack(spacing: vocabSkin.spacing.microGap) {
+                    Text(state.displayName)
+                        .font(vocabSkin.typography.sectionTitle)
+                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .lineLimit(1)
+
+                    if isProActive {
+                        SettingsProBadge()
+                            .transition(AppTransition.modalSwap)
+                            .accessibilityLabel("Pro 訂閱已啟用".localized)
+                    }
+                }
+
+                if let email = state.email, !email.isEmpty {
+                    Text(email)
+                        .font(vocabSkin.typography.caption)
+                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .lineLimit(1)
+                }
+            }
+            .animation(AppMotion.modalSwapSpring, value: isProActive)
 
             Spacer()
 
