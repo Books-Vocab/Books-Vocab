@@ -134,6 +134,141 @@ class TestEnrichCards:
 
 
 # ---------------------------------------------------------------------------
+# Hardening: malformed JSON / atomicity / token audit on success+failure
+# ---------------------------------------------------------------------------
+
+
+def _client_returning(content: str, prompt_tokens: int = 30,
+                     completion_tokens: int = 15) -> MagicMock:
+    """Build a MagicMock OpenAI client whose chat.completions.create() returns
+    a response shaped like a real OpenAI ChatCompletion."""
+    client = MagicMock()
+    client.chat.completions.create.return_value = _mock_response(
+        content, prompt_tokens=prompt_tokens, completion_tokens=completion_tokens
+    )
+    return client
+
+
+class TestEnrichHardening:
+    """Failure-mode contracts: malformed JSON, atomicity, token audit."""
+
+    # -- 1. malformed LLM JSON ------------------------------------------------
+    def test_enrich_handles_malformed_llm_json_response(self):
+        """LLM returns truncated / non-JSON garbage.
+
+        Contract:
+          - enrich_cards must surface a deterministic, catchable error
+            (json.JSONDecodeError) rather than crashing with TypeError /
+            AttributeError or silently returning bogus data.
+          - The underlying LLM call must have been attempted (not short-
+            circuited before reaching the client).
+        """
+        truncated = '[{"word": "hello", "pos": "n.", "note": "incomp'  # cut mid-string
+        client = _client_returning(truncated)
+        llm = TrackedLLM(client, "u_malformed")
+        cards = [_make_card("hello", "你好")]
+
+        with pytest.raises(json.JSONDecodeError):
+            enrich_cards(llm, cards)
+
+        # The LLM was actually invoked exactly once — failure is in parse, not setup
+        assert client.chat.completions.create.call_count == 1
+
+        # And a second variant: pure garbage (no json at all)
+        client2 = _client_returning("<<<not json>>>")
+        llm2 = TrackedLLM(client2, "u_malformed2")
+        with pytest.raises(json.JSONDecodeError):
+            enrich_cards(llm2, cards)
+
+    # -- 2. atomicity: caller's Card untouched on failure --------------------
+    def test_enrich_preserves_user_metadata_on_failure(self):
+        """When enrich fails mid-flow, the caller's Card objects must not be
+        mutated. enrich_cards returns enrichment dicts; merging is the
+        caller's responsibility — but the input list must remain pristine
+        even if the LLM call fails. This guards against accidental in-place
+        edits inside _build_prompt or future helpers."""
+        card = _make_card("abandon", "放棄", ["He abandoned the project."])
+        card.pos = "v."
+        card.note = "user-written note"
+        card.collocations = ["abandon hope"]
+
+        # snapshot (deep copy of mutable fields)
+        before = {
+            "id": card.id,
+            "content": card.content,
+            "meaning": card.meaning,
+            "pos": card.pos,
+            "note": card.note,
+            "examples": list(card.examples),
+            "collocations": list(card.collocations),
+        }
+
+        client = _client_returning('{"this":"is": "broken')  # malformed
+        llm = TrackedLLM(client, "u_atomic")
+
+        with pytest.raises(json.JSONDecodeError):
+            enrich_cards(llm, [card])
+
+        # card identity + every captured field unchanged
+        assert card.id == before["id"]
+        assert card.content == before["content"]
+        assert card.meaning == before["meaning"]
+        assert card.pos == before["pos"]
+        assert card.note == before["note"]
+        assert card.examples == before["examples"]
+        assert card.collocations == before["collocations"]
+
+    # -- 3. token audit on BOTH success and failure --------------------------
+    @patch("kg.tracked_llm.record")
+    def test_enrich_token_usage_recorded_on_both_success_and_failure(self, mock_record):
+        """Audit invariant: every LLM round-trip that returns a usage block
+        must be recorded — regardless of whether downstream parsing succeeds.
+
+        This matters because token cost is incurred the moment the provider
+        responds. If we only recorded on success, we'd undercount quota usage
+        whenever the model emits malformed JSON (a common failure mode for
+        cheaper models).
+        """
+        # --- success path ---
+        good_client = _client_returning(
+            json.dumps([{"word": "ok", "pos": "n.", "note": "fine"}]),
+            prompt_tokens=42, completion_tokens=17,
+        )
+        good_llm = TrackedLLM(good_client, "u_success")
+        result = enrich_cards(good_llm, [_make_card("ok", "好")])
+        assert result == [{"word": "ok", "pos": "n.", "note": "fine"}]
+
+        # one record call from success path
+        assert mock_record.call_count == 1
+        success_call = mock_record.call_args_list[0]
+        # signature: record(user_id, call_type, prompt_tokens, completion_tokens)
+        assert success_call.args[0] == "u_success"
+        assert success_call.args[1] == "enrich"
+        assert success_call.args[2] == 42
+        assert success_call.args[3] == 17
+
+        # --- failure path (malformed JSON, but LLM did return usage) ---
+        bad_client = _client_returning(
+            '[{"word": "x", "pos":',   # truncated mid-token
+            prompt_tokens=99, completion_tokens=4,
+        )
+        bad_llm = TrackedLLM(bad_client, "u_failure")
+        with pytest.raises(json.JSONDecodeError):
+            enrich_cards(bad_llm, [_make_card("x", "X")])
+
+        # second record call should still have fired — audit not skipped
+        assert mock_record.call_count == 2, (
+            "token usage was not recorded on parse-failure path — "
+            "audit/quota will undercount whenever the model emits malformed JSON"
+        )
+        failure_call = mock_record.call_args_list[1]
+        assert failure_call.args[0] == "u_failure"
+        assert failure_call.args[1] == "enrich"
+        assert failure_call.args[2] == 99
+        assert failure_call.args[3] == 4
+
+
+# ---------------------------------------------------------------------------
 # enrich_cards_stream
 # ---------------------------------------------------------------------------
 
