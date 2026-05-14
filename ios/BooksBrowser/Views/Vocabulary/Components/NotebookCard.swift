@@ -1,5 +1,18 @@
 import SwiftUI
 
+enum NotebookExportFormat {
+    case csv, json, anki
+}
+
+struct NotebookCardActions {
+    var setActive: (() -> Void)?
+    var rename: (() -> Void)?
+    var editCover: (() -> Void)?
+    var export: ((NotebookExportFormat) -> Void)?
+    var delete: (() -> Void)?
+    var canDelete: Bool = true
+}
+
 struct NotebookCardData {
     let name: String
     let color: String?
@@ -19,6 +32,7 @@ struct NotebookCard: View {
     @Environment(\.vocabSkin) private var skin
 
     let data: NotebookCardData
+    var actions: NotebookCardActions = NotebookCardActions()
 
     private var coverColor: Color {
         NotebookPalette.color(for: data.color)
@@ -113,6 +127,63 @@ struct NotebookCard: View {
         )
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityDescription)
+        .contextMenu {
+            if let setActive = actions.setActive, !data.isActive {
+                Button {
+                    setActive()
+                } label: {
+                    Label("設為使用中".localized, systemImage: "checkmark.circle")
+                }
+            }
+
+            if let rename = actions.rename {
+                Button {
+                    rename()
+                } label: {
+                    Label("重新命名".localized, systemImage: "pencil")
+                }
+            }
+
+            if let editCover = actions.editCover {
+                Button {
+                    editCover()
+                } label: {
+                    Label("封面設定".localized, systemImage: "paintpalette")
+                }
+            }
+
+            if let export = actions.export {
+                Divider()
+                Menu {
+                    Button {
+                        export(.csv)
+                    } label: {
+                        Label("CSV", systemImage: "tablecells")
+                    }
+                    Button {
+                        export(.json)
+                    } label: {
+                        Label("JSON", systemImage: "curlybraces")
+                    }
+                    Button {
+                        export(.anki)
+                    } label: {
+                        Label("Anki TSV", systemImage: "rectangle.stack")
+                    }
+                } label: {
+                    Label("匯出".localized, systemImage: "square.and.arrow.up")
+                }
+            }
+
+            if let delete = actions.delete, actions.canDelete {
+                Divider()
+                Button(role: .destructive) {
+                    delete()
+                } label: {
+                    Label("刪除".localized, systemImage: "trash")
+                }
+            }
+        }
     }
 
     private var accessibilityDescription: String {

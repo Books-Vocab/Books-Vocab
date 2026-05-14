@@ -79,48 +79,32 @@ struct NotebookListView: View {
                             ForEach(notebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
                                 NavigationLink(value: notebook.remoteId) {
-                                    NotebookCard(data: NotebookCardData(
-                                        name: notebook.name,
-                                        color: notebook.color,
-                                        coverPattern: notebook.coverPattern,
-                                        coverImagePath: notebook.coverImagePath,
-                                        cardCount: s.cardCount,
-                                        dueCount: s.dueCount,
-                                        unlearnedCount: s.unlearnedCount,
-                                        reviewedCount: s.reviewedCount,
-                                        pendingCount: s.pendingCount,
-                                        lastActivity: s.lastActivity,
-                                        isActive: notebook.remoteId == activeNotebookId
-                                    ))
+                                    NotebookCard(
+                                        data: NotebookCardData(
+                                            name: notebook.name,
+                                            color: notebook.color,
+                                            coverPattern: notebook.coverPattern,
+                                            coverImagePath: notebook.coverImagePath,
+                                            cardCount: s.cardCount,
+                                            dueCount: s.dueCount,
+                                            unlearnedCount: s.unlearnedCount,
+                                            reviewedCount: s.reviewedCount,
+                                            pendingCount: s.pendingCount,
+                                            lastActivity: s.lastActivity,
+                                            isActive: notebook.remoteId == activeNotebookId
+                                        ),
+                                        actions: NotebookCardActions(
+                                            setActive: { setActiveNotebook(notebook.remoteId) },
+                                            rename: { editingNotebook = notebook },
+                                            editCover: { editingNotebook = notebook },
+                                            export: { format in exportNotebook(notebook, format: format) },
+                                            delete: { notebookToDelete = notebook },
+                                            canDelete: !notebook.isDefault
+                                        )
+                                    )
                                 }
                                 .buttonStyle(.plain)
                                 .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
-                                .contextMenu {
-                                    Button {
-                                        setActiveNotebook(notebook.remoteId)
-                                    } label: {
-                                        Label("設為使用中".localized, systemImage: "checkmark.circle")
-                                    }
-
-                                    Button {
-                                        editingNotebook = notebook
-                                    } label: {
-                                        Label("編輯".localized, systemImage: "pencil")
-                                    }
-
-                                    Divider()
-
-                                    exportMenu(for: notebook)
-
-                                    if !notebook.isDefault {
-                                        Divider()
-                                        Button(role: .destructive) {
-                                            notebookToDelete = notebook
-                                        } label: {
-                                            Label("刪除".localized, systemImage: "trash")
-                                        }
-                                    }
-                                }
                             }
 
                             if authManager.isLoggedIn {
@@ -262,35 +246,21 @@ struct NotebookListView: View {
         ))
     }
 
-    // MARK: - Export Menu
+    // MARK: - Export
 
-    @ViewBuilder
-    private func exportMenu(for notebook: Notebook) -> some View {
+    private func exportNotebook(_ notebook: Notebook, format: NotebookExportFormat) {
         let entries = allEntries.filter { $0.notebookId == notebook.remoteId }
-        Menu {
-            Button {
-                if let url = VocabularyExporter.exportAsCSV(entries: entries) {
-                    coordinator.exportURL = url
-                }
-            } label: {
-                Label("CSV", systemImage: "tablecells")
-            }
-            Button {
-                if let url = VocabularyExporter.exportAsJSON(entries: entries) {
-                    coordinator.exportURL = url
-                }
-            } label: {
-                Label("JSON", systemImage: "curlybraces")
-            }
-            Button {
-                if let url = VocabularyExporter.exportAsAnki(entries: entries) {
-                    coordinator.exportURL = url
-                }
-            } label: {
-                Label("Anki TSV", systemImage: "rectangle.stack")
-            }
-        } label: {
-            Label("匯出".localized, systemImage: "square.and.arrow.up")
+        let url: URL?
+        switch format {
+        case .csv:
+            url = VocabularyExporter.exportAsCSV(entries: entries)
+        case .json:
+            url = VocabularyExporter.exportAsJSON(entries: entries)
+        case .anki:
+            url = VocabularyExporter.exportAsAnki(entries: entries)
+        }
+        if let url {
+            coordinator.exportURL = url
         }
     }
 
