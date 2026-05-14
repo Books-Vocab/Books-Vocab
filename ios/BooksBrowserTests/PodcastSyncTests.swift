@@ -32,8 +32,9 @@ struct PodcastSyncTests {
     }
 
     @Test func audio_url_format() {
+        // Authenticated endpoint replaces the public StaticFiles path.
         let url = PodcastSyncService.audioURL(seriesId: "flow_950f1a7d", episodeNumber: 1)
-        #expect(url == "https://wordnexus.lol/api/podcast-media/flow_950f1a7d/ep_01/audio.mp3")
+        #expect(url == "https://wordnexus.lol/api/podcasts/flow_950f1a7d/1/audio")
     }
 
     @Test func subtitle_url_format() {
