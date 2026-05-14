@@ -220,6 +220,10 @@ extension AnyTransition {
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
     static let listInsert: AnyTransition = .opacity.combined(with: .offset(y: 8))
     static let listRemove: AnyTransition = .opacity
+    /// 列表內容批次替換（insert + remove asymmetric 包裝）
+    static let listSwap: AnyTransition = .asymmetric(insertion: .listInsert, removal: .listRemove)
+    /// 抽屜 / drawer 從右側滑入並淡入
+    static let drawerReveal: AnyTransition = .move(edge: .trailing).combined(with: .opacity)
     /// Sync phase 切換（blur replace）
     static let phaseBlurSwap: AnyTransition = .init(.blurReplace)
     /// 選取模式 checkbox 顯現

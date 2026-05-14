@@ -172,7 +172,7 @@ struct AppStartupRecoveryView: View {
                 appTheme.palette.cardBackground,
                 in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
             )
-            .transition(.opacity)
+            .transition(.overlayFade)
 
         case .retryFailed:
             recoveryNoticeBanner(
@@ -256,7 +256,7 @@ struct AppStartupRecoveryView: View {
             RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
                 .stroke(fg.opacity(0.32), lineWidth: 1)
         }
-        .transition(.opacity)
+        .transition(.overlayFade)
     }
 
     private var isWorking: Bool {
