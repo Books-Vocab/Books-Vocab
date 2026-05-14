@@ -8,6 +8,8 @@ import os
     var isImporting: Bool { get set }
     var isLoading: Bool { get }
     var loadingMessage: String { get }
+    /// 目前匯入的進度（0.0–1.0）；nil 表示未知或尚未取得（顯示 indeterminate spinner）。
+    var loadingProgress: Double? { get }
     var errorMessage: String? { get }
     var errorDiagnosis: String? { get }
     var showError: Bool { get set }
@@ -24,6 +26,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     var isImporting = false
     var isLoading = false
     var loadingMessage = ""
+    var loadingProgress: Double?
     var errorMessage: String?
     var errorDiagnosis: String?
     var showError = false
@@ -68,15 +71,16 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
     /// Resolve the appropriate import method for a given file extension.
     /// Returns nil if the extension is not supported.
+    /// 回傳的 closure 接受 URL + 進度 callback；callback 由背景執行緒呼叫。
     private func importMethod(
         for ext: String,
         using service: any BookshelfImporting
-    ) -> ((URL) async throws -> ImportedBookDraft)? {
+    ) -> ((URL, @Sendable (Double) -> Void) async throws -> ImportedBookDraft)? {
         switch ext {
-        case "epub": return service.importBook
-        case "txt":  return service.importTXT
-        case "md":   return service.importMD
-        case "pdf":  return service.importPDF
+        case "epub": return { try await service.importBook(from: $0, progress: $1) }
+        case "txt":  return { try await service.importTXT(from: $0, progress: $1) }
+        case "md":   return { try await service.importMD(from: $0, progress: $1) }
+        case "pdf":  return { try await service.importPDF(from: $0, progress: $1) }
         default:     return nil
         }
     }
@@ -111,6 +115,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         toastCoordinator: AppToastCoordinator
     ) {
         isLoading = true
+        loadingProgress = nil
         let total = urls.count
         loadingMessage = total > 1
             ? L10n.string("正在匯入 1 / \(total)...")
@@ -124,6 +129,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                 if total > 1 {
                     loadingMessage = L10n.string("正在匯入 \(index + 1) / \(total)...")
                 }
+                loadingProgress = 0.0
 
                 let ext = url.pathExtension.lowercased()
                 guard let method = importMethod(for: ext, using: importService) else {
@@ -131,9 +137,16 @@ final class BookshelfCoordinator: BookshelfCoordinating {
                     continue
                 }
 
+                // 背景 callback hop 回 MainActor 更新 UI
+                let onProgress: @Sendable (Double) -> Void = { ratio in
+                    Task { @MainActor [weak self] in
+                        self?.loadingProgress = ratio
+                    }
+                }
+
                 do {
                     AppLog.book.info("BookshelfCoordinator: starting import from \(url)")
-                    let draft = try await method(url)
+                    let draft = try await method(url, onProgress)
                     AppLog.book.info("Import succeeded: \(draft.fileName)")
                     AppLog.book.info("Book draft: title=\(draft.title), author=\(draft.author), coverBytes=\(draft.coverImageData?.count ?? 0)")
 
@@ -161,6 +174,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
             isLoading = false
             loadingMessage = ""
+            loadingProgress = nil
 
             if succeeded > 0 {
                 EPUBGuideTip().invalidate(reason: .actionPerformed)

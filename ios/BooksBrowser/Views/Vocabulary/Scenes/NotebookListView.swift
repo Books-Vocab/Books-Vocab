@@ -139,6 +139,7 @@ struct NotebookListView: View {
                         Image(systemName: "plus")
                     }
                     .disabled(!authManager.isLoggedIn)
+                    .keyboardShortcut("n", modifiers: .command)
                 }
             }
             .navigationDestination(for: String.self) { notebookId in
