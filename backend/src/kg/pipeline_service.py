@@ -563,6 +563,24 @@ async def run_pipeline_background(
                     pipeline_log.end_run(run_id, "failed")
                 except Exception:
                     logger.warning("Failed to record pipeline telemetry", exc_info=True)
+            except Exception as exc:
+                # Defensive catch-all: when a queued run reaches the body
+                # AFTER its owning user/notebook was deleted, store factories
+                # can raise anything (KeyError from a missing user dict,
+                # custom AppErrors, etc.). The lock-queue rewrite means
+                # such queued runs always reach this code; we must absorb
+                # the failure here so the exception doesn't escape into
+                # caller / asyncio.gather and so refcount unwinds cleanly.
+                logger.error(
+                    "[%s] Pipeline aborted due to non-recoverable error "
+                    "(user/notebook may have been deleted mid-queue): %s",
+                    uid, exc, exc_info=True,
+                )
+                try:
+                    from . import pipeline_log
+                    pipeline_log.end_run(run_id, "failed")
+                except Exception:
+                    logger.warning("Failed to record pipeline telemetry", exc_info=True)
     finally:
         # Pair with the increment above. The outer try/finally guards
         # against cancellation while awaiting `lock.__aenter__()` — the
