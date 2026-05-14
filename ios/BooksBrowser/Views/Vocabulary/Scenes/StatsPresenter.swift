@@ -32,7 +32,7 @@ struct StatsPresenter: View {
     @State private var contentReady = false
     @State private var graphLinks: [KGGraphLink]?
     @State private var graphHolder = GraphThumbnailHolder()
-    @State private var loadError: Bool = false
+    @State private var graphLoadError: Bool = false
     @State private var retryToken: Int = 0
 
     private static let sixMonthsAgo = Calendar.current.date(byAdding: .month, value: -6, to: Date()) ?? Date()
@@ -97,13 +97,15 @@ struct StatsPresenter: View {
         }
         .task(id: graphKey) {
             // Fetches account-level links. Re-runs only when graphKey changes
-            // (auth state or entries.count), NOT on every view appearance —
-            // appearance ≠ staleness. Known gap: hide/unhide while entries.count
-            // is stable will not auto-refresh the thumbnail until the next auth
-            // event or card add/remove. Long-term fix: promote KGGraphLink to
-            // @Model so @Query observers across stats/graph/word-detail views
-            // refresh automatically on any mutation (see spec:
-            // docs/superpowers/specs/ — SwiftData migration for KGGraphLink).
+            // (auth state, entries.count, or retryToken bump from the inline
+            // error retry button), NOT on every view appearance — appearance ≠
+            // staleness. Known gap: hide/unhide while entries.count is stable
+            // will not auto-refresh the thumbnail until the next auth event,
+            // card add/remove, or manual retry. Long-term fix: promote
+            // KGGraphLink to @Model so @Query observers across stats/graph/
+            // word-detail views refresh automatically on any mutation (see
+            // spec: docs/superpowers/specs/ — SwiftData migration for
+            // KGGraphLink).
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {
@@ -128,36 +130,34 @@ struct StatsPresenter: View {
     private func loadGraphLinks() async {
         if authManager.isDemoMode {
             graphLinks = DemoDataProvider.demoGraphLinks
-            loadError = false
+            graphLoadError = false
             return
         }
         guard authManager.isLoggedIn else {
             graphLinks = []
-            loadError = false
+            graphLoadError = false
             return
         }
         do {
             graphLinks = try await kgService.pullGraphLinks()
-            loadError = false
+            graphLoadError = false
         } catch {
-            // Only surface error if we have no cached data to show
-            if graphLinks == nil {
-                loadError = true
-            }
-            graphLinks = graphLinks ?? []
+            // Failure is scoped to the graph card only — summary is built from
+            // local syncedEntries and never fails. If we have cached links,
+            // keep showing them but flag staleness via a dot in the header.
+            // If we have nothing yet, surface error inside the graph body
+            // (not page-level).
+            graphLoadError = true
         }
     }
 
     // MARK: - Phase Resolution
 
     private var currentPhase: VocabScenePhase {
-        if loadError && summary == nil {
-            return .error(
-                title: "無法載入統計資料".localized,
-                systemImage: "exclamationmark.triangle",
-                retryAction: { retryLoad() }
-            )
-        }
+        // Note: no page-level .error phase. `summary` is computed from local
+        // `syncedEntries` (a SwiftData @Query) and cannot fail — so the only
+        // failure mode is `pullGraphLinks`, which is scoped to the graph card
+        // (handled inline via graphLoadError + retry button in graphEntryBody).
         guard let summary else {
             return .loading(
                 title: "計算統計資料...".localized,
@@ -181,8 +181,8 @@ struct StatsPresenter: View {
             && summary.longestStreak == 0
     }
 
-    private func retryLoad() {
-        loadError = false
+    private func retryGraphLoad() {
+        graphLoadError = false
         retryToken &+= 1
     }
 
@@ -198,9 +198,11 @@ struct StatsPresenter: View {
     /// Graph thumbnail refresh trigger. `pullGraphLinks` is an account-level
     /// API — it returns ALL links regardless of notebook filter — so filter
     /// changes must NOT invalidate this cache (filter only affects local node
-    /// filtering downstream). `forecastDays` is similarly irrelevant. Only
-    /// auth toggles and entries.count (new cards may trigger backend link
-    /// generation) should trigger a re-pull.
+    /// filtering downstream). `forecastDays` is similarly irrelevant. Auth
+    /// toggles and entries.count (new cards may trigger backend link
+    /// generation) trigger a re-pull; `retryToken` is bumped by the inline
+    /// retry button so users can re-fetch after a network failure without
+    /// changing other state.
     private var graphKey: Int {
         var hasher = Hasher()
         hasher.combine(syncedEntries.count)
@@ -212,6 +214,7 @@ struct StatsPresenter: View {
 
     // MARK: - Graph Entry
 
+    @ViewBuilder
     private var graphEntrySection: some View {
         let nodes = graphThumbnailNodes
         let nodeIDs = Set(nodes.map(\.id))
@@ -219,33 +222,78 @@ struct StatsPresenter: View {
             KnowledgeGraphPresentation.edges(from: $0, validNodeIDs: nodeIDs)
         } ?? []
 
-        return NavigationLink {
-            KnowledgeGraphView(allEntries: filteredEntries)
-        } label: {
+        if graphLoadError && graphLinks == nil {
+            // No cached data — show a non-navigating card with retry. Avoids
+            // pushing the user into KnowledgeGraphView with empty state.
             VocabCard(padding: 0) {
                 VStack(spacing: 0) {
-                    graphEntryHeader(nodeCount: nodes.count)
+                    graphEntryHeader(nodeCount: 0, showsChevron: false)
                         .padding(vocabSkin.metrics.cardBlockPadding)
-
-                    graphEntryBody(nodes: nodes, edges: edges)
+                    graphErrorBody
                         #if os(macOS)
                         .frame(minHeight: 280)
                         #else
                         .aspectRatio(1, contentMode: .fit)
                         #endif
+                }
+            }
+        } else {
+            NavigationLink {
+                KnowledgeGraphView(allEntries: filteredEntries)
+            } label: {
+                VocabCard(padding: 0) {
+                    VStack(spacing: 0) {
+                        graphEntryHeader(nodeCount: nodes.count, showsChevron: true)
+                            .padding(vocabSkin.metrics.cardBlockPadding)
 
-                    if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
-                        healthBar(ratio: avgRatio)
-                            .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
-                            .padding(.bottom, 8)
+                        graphEntryBody(nodes: nodes, edges: edges)
+                            #if os(macOS)
+                            .frame(minHeight: 280)
+                            #else
+                            .aspectRatio(1, contentMode: .fit)
+                            #endif
+
+                        if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
+                            healthBar(ratio: avgRatio)
+                                .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+                                .padding(.bottom, 8)
+                        }
                     }
                 }
             }
+            .buttonStyle(.liftable)
         }
-        .buttonStyle(.liftable)
     }
 
-    private func graphEntryHeader(nodeCount: Int) -> some View {
+    private var graphErrorBody: some View {
+        VStack(spacing: vocabSkin.spacing.inlineGap) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(vocabSkin.typography.iconMedium)
+                .foregroundStyle(vocabSkin.palette.warning)
+            Text("關聯圖載入失敗".localized)
+                .font(vocabSkin.typography.captionStrong)
+                .foregroundStyle(vocabSkin.palette.primaryText)
+            Button {
+                retryGraphLoad()
+            } label: {
+                HStack(spacing: vocabSkin.spacing.microGap) {
+                    Image(systemName: "arrow.clockwise")
+                        .font(vocabSkin.typography.iconSmall)
+                    Text("重試".localized)
+                        .font(vocabSkin.typography.captionStrong)
+                }
+                .padding(.horizontal, vocabSkin.spacing.inlineGap)
+                .padding(.vertical, vocabSkin.spacing.microGap)
+                .background(vocabSkin.palette.warningBg, in: Capsule())
+                .foregroundStyle(vocabSkin.palette.warning)
+            }
+            .buttonStyle(.plain)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(vocabSkin.metrics.cardBlockPadding)
+    }
+
+    private func graphEntryHeader(nodeCount: Int, showsChevron: Bool) -> some View {
         HStack(spacing: vocabSkin.spacing.inlineGap) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .font(vocabSkin.typography.iconMedium)
@@ -253,15 +301,24 @@ struct StatsPresenter: View {
             Text("關聯圖".localized)
                 .font(vocabSkin.typography.captionStrong)
                 .foregroundStyle(vocabSkin.palette.primaryText)
+            if graphLoadError && graphLinks != nil {
+                // Stale dot — we have cached links but the latest pull failed.
+                Circle()
+                    .fill(vocabSkin.palette.warning)
+                    .frame(width: 6, height: 6)
+                    .accessibilityLabel(Text("資料可能不是最新".localized))
+            }
             Spacer()
             if let graphLinks, !graphLinks.isEmpty {
                 Text("\(nodeCount) 詞 · \(graphLinks.count) 連結")
                     .font(vocabSkin.typography.monoLabel)
                     .foregroundStyle(vocabSkin.palette.quaternaryText)
             }
-            Image(systemName: "chevron.right")
-                .font(vocabSkin.typography.iconSmall)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+            if showsChevron {
+                Image(systemName: "chevron.right")
+                    .font(vocabSkin.typography.iconSmall)
+                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+            }
         }
     }
 
