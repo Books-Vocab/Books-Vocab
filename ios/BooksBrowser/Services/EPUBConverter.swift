@@ -311,10 +311,12 @@ private struct SimpleMarkdownToHTML {
 
 struct EPUBConverter {
     static let maxBytes = 20 * 1024 * 1024 // 20 MB
+    /// 每讀 ~500 KB 觸發一次 progress callback。
+    static let progressChunkBytes = 512 * 1024
 
     /// Convert a plain-text file to EPUB3.
-    func convertTXT(at url: URL, title: String) throws -> URL {
-        let data = try loadAndValidate(url)
+    func convertTXT(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
+        let data = try loadAndValidate(url, progress: progress)
         let text = try decodeText(data)
         let chapters = splitTXTIntoChapters(text, charsPerChapter: 5000)
         let htmlChapters = chapters.enumerated().map { idx, body in
@@ -324,8 +326,8 @@ struct EPUBConverter {
     }
 
     /// Convert a Markdown file to EPUB3.
-    func convertMD(at url: URL, title: String) throws -> URL {
-        let data = try loadAndValidate(url)
+    func convertMD(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
+        let data = try loadAndValidate(url, progress: progress)
         guard let text = String(data: data, encoding: .utf8) else {
             throw EPUBConverterError.encodingFailed
         }
@@ -336,12 +338,43 @@ struct EPUBConverter {
 
     // MARK: - Private
 
-    private func loadAndValidate(_ url: URL) throws -> Data {
-        let data = try Data(contentsOf: url)
-        if data.count > Self.maxBytes {
-            throw EPUBConverterError.fileTooLarge(data.count)
+    /// 以 ~512 KB 區塊讀取檔案，每塊回報一次進度（0.0–1.0）。
+    /// 避免 `Data(contentsOf:)` 一次性吃掉大檔造成主執行緒（或單一 task）長時間無回應。
+    private func loadAndValidate(_ url: URL, progress: (@Sendable (Double) -> Void)? = nil) throws -> Data {
+        let attrs = try FileManager.default.attributesOfItem(atPath: url.path)
+        let totalBytes = (attrs[.size] as? NSNumber)?.intValue ?? 0
+        if totalBytes > Self.maxBytes {
+            throw EPUBConverterError.fileTooLarge(totalBytes)
         }
-        return data
+
+        // totalBytes == 0 時直接走原路徑（保留行為）；否則 chunked read
+        guard totalBytes > 0 else {
+            let data = try Data(contentsOf: url)
+            progress?(1.0)
+            return data
+        }
+
+        let handle = try FileHandle(forReadingFrom: url)
+        defer { try? handle.close() }
+
+        var buffer = Data()
+        buffer.reserveCapacity(totalBytes)
+        var readSoFar = 0
+        progress?(0.0)
+
+        while true {
+            let chunk = try handle.read(upToCount: Self.progressChunkBytes) ?? Data()
+            if chunk.isEmpty { break }
+            buffer.append(chunk)
+            readSoFar += chunk.count
+            if readSoFar > Self.maxBytes {
+                throw EPUBConverterError.fileTooLarge(readSoFar)
+            }
+            let ratio = min(1.0, Double(readSoFar) / Double(totalBytes))
+            progress?(ratio)
+        }
+        progress?(1.0)
+        return buffer
     }
 
     private func decodeText(_ data: Data) throws -> String {
