@@ -382,6 +382,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     from starlette.staticfiles import StaticFiles
     app.mount("/api/podcast-media/", StaticFiles(directory=str(_podcasts_path)), name="podcast-media")
 
+    # Pin the podcast_progress singleton to the same per-instance data_dir
+    # as the rest of the app state — keeps test isolation honest when
+    # conftest swaps the settings without touching env vars.
+    from . import podcast_progress as _progress_store
+    _progress_store.set_data_dir(settings.data_dir)
+
     return app
 
 
