@@ -118,6 +118,42 @@ extension CardDocument {
         }
         return []
     }
+
+    /// 將整張卡片組成可分享的純文字（單字 / 例句 / 翻譯 / 搭配 / 來源）
+    func plainTextExport() -> String {
+        var lines: [String] = []
+        for block in blocks {
+            switch block {
+            case .hero(let hero):
+                var head = hero.word
+                if let pos = hero.partOfSpeech, !pos.isEmpty {
+                    head += " (\(pos))"
+                }
+                lines.append(head)
+            case .example(let paragraph):
+                let text = paragraph.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                if !text.isEmpty { lines.append(text) }
+            case .meaning(let meaning):
+                if !meaning.title.isEmpty {
+                    lines.append(meaning.title)
+                }
+                for paragraph in meaning.paragraphs {
+                    let text = paragraph.plainText.trimmingCharacters(in: .whitespacesAndNewlines)
+                    if !text.isEmpty { lines.append(text) }
+                }
+            case .collocations(let items):
+                let joined = items.joined(separator: ", ")
+                if !joined.isEmpty { lines.append(joined) }
+            case .source(let source):
+                var parts = [source.bookTitle]
+                if let chapter = source.chapterTitle { parts.append(chapter) }
+                lines.append("— " + parts.joined(separator: " · "))
+            case .divider:
+                continue
+            }
+        }
+        return lines.joined(separator: "\n\n")
+    }
 }
 
 enum CardDocumentInline: Identifiable {
