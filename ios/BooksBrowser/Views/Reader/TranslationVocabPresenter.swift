@@ -20,6 +20,8 @@ struct TranslationVocabPresenter: View {
     let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
     var onLogin: (() -> Void)? = nil
+    var onRetryTranslation: (() -> Void)? = nil
+    var onRetryExplanation: (() -> Void)? = nil
 
     var body: some View {
         VocabCard(padding: 0) {
@@ -154,6 +156,13 @@ struct TranslationVocabPresenter: View {
                 description: message
             )
 
+            if let onRetryTranslation {
+                Button(action: onRetryTranslation) {
+                    Label("重試翻譯".localized, systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(.vocabAction())
+            }
+
             footerToolbar(showChevron: false, timerValue: state.statusTimerText)
         }
     }
@@ -211,11 +220,20 @@ struct TranslationVocabPresenter: View {
             }
             .padding(.vertical, vocabSkin.spacing.tinyGap)
         case .error(let errorMessage):
-            VocabStateMessageCard(
-                title: "語境解釋暫時無法載入".localized,
-                systemImage: "exclamationmark.triangle.fill",
-                description: errorMessage
-            )
+            VStack(alignment: .leading, spacing: 10) {
+                VocabStateMessageCard(
+                    title: "語境解釋暫時無法載入".localized,
+                    systemImage: "exclamationmark.triangle.fill",
+                    description: errorMessage
+                )
+
+                if let onRetryExplanation {
+                    Button(action: onRetryExplanation) {
+                        Label("重試解釋".localized, systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(.vocabAction())
+                }
+            }
             .padding(.vertical, vocabSkin.spacing.tinyGap)
         case .content(let explanation):
             Text(explanation)

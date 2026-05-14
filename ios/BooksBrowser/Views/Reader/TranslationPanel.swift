@@ -30,6 +30,10 @@ struct TranslationPanel: View {
     let onShowDetail: (() -> Void)?
     let onDismiss: () -> Void
     var onLogin: (() -> Void)? = nil
+    /// 翻譯失敗時，error card 內顯示「重試」CTA；nil 則隱藏（preview / 未提供 retry 來源時）
+    var onRetryTranslation: (() -> Void)? = nil
+    /// 語境解釋失敗時的「重試」CTA；nil 則隱藏
+    var onRetryExplanation: (() -> Void)? = nil
 
     @Environment(\.speechService) private var speechService
     @State private var dragOffset: CGFloat = 0
@@ -117,7 +121,9 @@ struct TranslationPanel: View {
             onDelete: onDelete,
             onShowDetail: onShowDetail,
             onDismiss: onDismiss,
-            onLogin: onLogin
+            onLogin: onLogin,
+            onRetryTranslation: onRetryTranslation,
+            onRetryExplanation: onRetryExplanation
         )
     }
 }
