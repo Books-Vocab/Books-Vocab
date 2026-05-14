@@ -1,0 +1,138 @@
+//
+//  TodayReviewPhaseView.swift
+//  BooksBrowser
+//
+//  TodayReview 四態包裝層：loading / empty / error / session。
+//  對齊 StatsPresenter / NotebookListView 採用的 VocabSceneShell pattern。
+//  TodayReviewView 本身負責 session 內容；本檔只處理外層狀態矩陣。
+//
+
+import SwiftUI
+
+/// TodayReview 的場景狀態。
+///
+/// - loading：父層仍在計算今日 due（罕見；entries fetch 通常同步）。
+/// - empty：今日無待複習卡片，呈現 empty state 提示。
+/// - failure：資料拉取失敗（含網路 / SwiftData 異常），提供 retry。
+/// - session：已備齊 entries，正常顯示 TodayReviewView。
+enum TodayReviewPhase {
+    case loading
+    case empty
+    case failure(retry: () -> Void)
+    case session(
+        entries: [VocabularyEntry],
+        allEntries: [VocabularyEntry],
+        currentUserID: String?
+    )
+}
+
+/// 將 TodayReview 包成統一狀態矩陣（loading / empty / error / success）。
+///
+/// 使用情境：
+/// - 既有 caller（NotebookListView）可繼續直接建 `TodayReviewView`，行為不變。
+/// - 新 caller 或 robustness 強化路徑可改用本 view，獲得完整 phase 覆蓋。
+struct TodayReviewPhaseView: View {
+    let phase: TodayReviewPhase
+    let onClose: () -> Void
+
+    var body: some View {
+        switch phase {
+        case .loading:
+            VocabSceneShell(phase: .loading(
+                title: "準備今日複習...".localized,
+                systemImage: "rectangle.stack"
+            )) {
+                EmptyView()
+            }
+            .animatePhaseChange(0)
+
+        case .empty:
+            VocabSceneShell(phase: .empty(
+                title: "今日沒有待複習的卡片".localized,
+                systemImage: "checkmark.seal",
+                description: "稍後再回來，或先去探索新單字。".localized,
+                action: .init(
+                    title: "關閉".localized,
+                    systemImage: "xmark",
+                    handler: onClose
+                )
+            )) {
+                EmptyView()
+            }
+            .animatePhaseChange(1)
+
+        case .failure(let retry):
+            VocabSceneShell(phase: .error(
+                title: "無法載入今日複習".localized,
+                systemImage: "exclamationmark.triangle",
+                retryAction: retry
+            )) {
+                EmptyView()
+            }
+            .animatePhaseChange(2)
+
+        case .session(let entries, let allEntries, let currentUserID):
+            TodayReviewView(
+                entries: entries,
+                allEntries: allEntries,
+                currentUserID: currentUserID,
+                onClose: onClose
+            )
+            .animatePhaseChange(3)
+        }
+    }
+}
+
+// MARK: - Preview
+
+#Preview("TodayReviewPhase / Loading") {
+    AppThemeContainer {
+        TodayReviewPhaseView(phase: .loading, onClose: {})
+    }
+}
+
+#Preview("TodayReviewPhase / Empty") {
+    AppThemeContainer {
+        TodayReviewPhaseView(phase: .empty, onClose: {})
+    }
+}
+
+#Preview("TodayReviewPhase / Error") {
+    AppThemeContainer {
+        TodayReviewPhaseView(
+            phase: .failure(retry: {}),
+            onClose: {}
+        )
+    }
+}
+
+#Preview("TodayReviewPhase / Session") {
+    AppThemeContainer {
+        TodayReviewPhaseView(
+            phase: .session(
+                entries: TodayReviewPhasePreviewData.sampleEntries,
+                allEntries: TodayReviewPhasePreviewData.sampleEntries,
+                currentUserID: "preview-user"
+            ),
+            onClose: {}
+        )
+        .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
+    }
+}
+
+private enum TodayReviewPhasePreviewData {
+    static let sampleEntries: [VocabularyEntry] = {
+        let e1 = VocabularyEntry(
+            word: "meticulous",
+            translation: "一絲不苟的",
+            context: "The editor was meticulous about every detail.",
+            explanation: "做事非常細心、注意細節。",
+            partOfSpeech: "adj.",
+            bookTitle: "Designing Interfaces",
+            chapterTitle: "Writing Tone"
+        )
+        e1.syncState = .synced
+        e1.reviewMode = .recognition
+        return [e1]
+    }()
+}
