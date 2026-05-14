@@ -132,6 +132,7 @@ def build_api_admin_router(
     admin_pipeline_runs: Callable[..., Any] | None = None,
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
+    admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
@@ -156,6 +157,8 @@ def build_api_admin_router(
         router.get("/api/admin/judge-stats", include_in_schema=False)(admin_judge_stats)
     if admin_translate_history is not None:
         router.get("/api/admin/translate-history", include_in_schema=False)(admin_translate_history)
+    if admin_user_activity is not None:
+        router.get("/api/admin/user-activity", include_in_schema=False)(admin_user_activity)
     if admin_user_usage is not None:
         router.get("/api/admin/user-usage", include_in_schema=False)(admin_user_usage)
     if admin_host_metrics is not None:
@@ -188,6 +191,7 @@ def build_admin_router(
     admin_pipeline_runs: Callable[..., Any] | None = None,
     admin_judge_stats: Callable[..., Any] | None = None,
     admin_translate_history: Callable[..., Any] | None = None,
+    admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
@@ -217,6 +221,7 @@ def build_admin_router(
         admin_pipeline_runs=admin_pipeline_runs,
         admin_judge_stats=admin_judge_stats,
         admin_translate_history=admin_translate_history,
+        admin_user_activity=admin_user_activity,
         admin_user_usage=admin_user_usage,
         admin_host_metrics=admin_host_metrics,
         admin_observability=admin_observability,
