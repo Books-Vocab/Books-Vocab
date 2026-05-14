@@ -255,6 +255,11 @@ def create_admin_handlers(
             admin_token=runtime_settings_fn().admin_token,
         )
 
+    def admin_orphans_scan():
+        """Return a read-only data-consistency scan report."""
+        from .orphan_scan import scan
+        return scan(data_dir=runtime_settings_fn().data_dir)
+
     return {
         "admin_ui": admin_ui,
         "admin_stats": admin_stats,
@@ -279,4 +284,5 @@ def create_admin_handlers(
         "admin_log_retention_run": admin_log_retention_run,
         "admin_audit": admin_audit,
         "admin_user_detail_ui": admin_user_detail_ui,
+        "admin_orphans_scan": admin_orphans_scan,
     }

@@ -139,6 +139,7 @@ def build_api_admin_router(
     admin_observability: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
     admin_audit: Callable[..., Any] | None = None,
+    admin_orphans_scan: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
@@ -175,6 +176,8 @@ def build_api_admin_router(
         router.post("/api/admin/log-retention/run", include_in_schema=False)(admin_log_retention_run)
     if admin_audit is not None:
         router.get("/api/admin/audit", include_in_schema=False)(admin_audit)
+    if admin_orphans_scan is not None:
+        router.get("/api/admin/orphans/scan", include_in_schema=False)(admin_orphans_scan)
     return router
 
 
@@ -206,6 +209,7 @@ def build_admin_router(
     admin_observability: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
     admin_audit: Callable[..., Any] | None = None,
+    admin_orphans_scan: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
     runtime_settings_fn: Callable | None = None,
 ) -> tuple[APIRouter, APIRouter, APIRouter]:
@@ -238,5 +242,6 @@ def build_admin_router(
         admin_observability=admin_observability,
         admin_log_retention_run=admin_log_retention_run,
         admin_audit=admin_audit,
+        admin_orphans_scan=admin_orphans_scan,
     )
     return login, html, api
