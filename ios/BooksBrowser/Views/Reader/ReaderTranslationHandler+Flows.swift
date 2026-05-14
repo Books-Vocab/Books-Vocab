@@ -13,6 +13,7 @@ extension ReaderTranslationHandler {
         let normalizedWord = normalizeWord(word)
         let selection = WordSelection(word: normalizedWord, context: context, position: .zero)
         wordSelection = selection
+        lastLookup = LastLookup(kind: .word, text: word, context: context)
 
         if let existing = vocabularyContext.existingEntry(matching: word),
            existing.syncAction != .delete {
@@ -118,6 +119,7 @@ extension ReaderTranslationHandler {
         cancelCurrentTranslationTask()
         let selection = WordSelection(word: phrase, context: context, position: .zero)
         wordSelection = selection
+        lastLookup = LastLookup(kind: .phrase, text: phrase, context: context)
 
         withAnimation(AppMotion.panelState) {
             isTranslating = true
@@ -179,6 +181,7 @@ extension ReaderTranslationHandler {
         cancelCurrentTranslationTask()
         let selection = WordSelection(word: text, context: context, position: .zero)
         wordSelection = selection
+        lastLookup = LastLookup(kind: .explain, text: text, context: context)
 
         withAnimation(AppMotion.panelState) {
             isTranslating = false
@@ -220,6 +223,21 @@ extension ReaderTranslationHandler {
             }
         }
         replaceCurrentTranslationTask(with: task)
+    }
+
+    /// 重試最近一次失敗的翻譯／解釋。等同於使用者再點一次原本的單字／片語／explain。
+    /// 注意：phrase 與 word 都需要 `vocabularyContext` 才能 autoSave；如未提供則僅執行翻譯但不存庫。
+    func retryLastLookup(vocabularyContext: (any VocabularyContextProtocol)? = nil) {
+        guard let last = lastLookup else { return }
+        switch last.kind {
+        case .word:
+            guard let ctx = vocabularyContext else { return }
+            handleWordSelected(word: last.text, context: last.context, vocabularyContext: ctx)
+        case .phrase:
+            handlePhraseSelected(phrase: last.text, context: last.context, vocabularyContext: vocabularyContext)
+        case .explain:
+            handleExplainSelected(text: last.text, context: last.context)
+        }
     }
 
     func handleExpand() {

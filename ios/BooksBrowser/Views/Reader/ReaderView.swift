@@ -165,6 +165,16 @@ struct ReaderView: View {
 
     // MARK: - 載入 Publication
 
+    /// 從錯誤狀態回到 loading 並重新呼叫 `loadPublication()`。
+    /// 在 error overlay 上的「重試載入」按鈕觸發。
+    func retryLoadPublication() {
+        readerState.errorMessage = nil
+        readerState.isLoading = true
+        readerState.isWebViewReady = false
+        readerState.loadingPhase = L10n.string("開啟書本…")
+        Task { await loadPublication() }
+    }
+
     private func loadPublication() async {
         do {
             let loader = ReaderPublicationLoader(
