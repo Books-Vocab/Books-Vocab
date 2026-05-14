@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import hashlib
 import hmac
 import logging
 import secrets
@@ -150,6 +151,41 @@ def admin_login_post(password: str, *, admin_password: str, admin_token: str) ->
     resp = RedirectResponse("/admin", status_code=302)
     _set_admin_cookie(resp, admin_token)
     return resp
+
+
+def admin_actor_fingerprint(
+    *,
+    token: str | None,
+    authorization: str | None,
+    cookie_token: str | None,
+    admin_token: str,
+) -> str:
+    """Derive a stable 8-char fingerprint identifying the authenticated admin
+    actor from the request's own auth material.
+
+    Precedence: Bearer / token query (raw admin token) → cookie value (signed
+    session). We hash with the server-side ``admin_token`` as salt so the
+    fingerprint never leaks the raw credential and remains stable across
+    requests from the same auth source.
+
+    Always returns a non-empty string. Falls back to ``"admin"`` if no auth
+    material is present (which should not happen under the admin auth
+    dependency, but keeps audit rows non-NULL).
+    """
+    if not admin_token:
+        return "admin"
+    raw = _resolve_admin_token(token, authorization)
+    source = "token"
+    material: str | None = raw
+    if material is None and cookie_token:
+        material = cookie_token
+        source = "cookie"
+    if not material:
+        return "admin"
+    digest = hashlib.sha256(
+        f"{source}|{admin_token}|{material}".encode()
+    ).hexdigest()
+    return digest[:8]
 
 
 def check_admin_auth(
@@ -468,9 +504,17 @@ def admin_grant_pro_access_response(
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
+    from .admin_audit import record_audit
+
     now_iso = datetime.now(tz=UTC).isoformat()
-    return _mutate_admin_grant(
+    # Trust only the server-derived fingerprint for the actor; ignore any
+    # client-supplied ``req.granted_by`` so the audit + grant record cannot
+    # be spoofed from the request body.
+    actor = (admin_uid or "admin").strip() or "admin"
+    reason = req.reason.strip() if isinstance(req.reason, str) and req.reason.strip() else None
+    resp = _mutate_admin_grant(
         user_id,
         users_lock_file=users_lock_file,
         load_users=load_users, save_users=save_users,
@@ -483,11 +527,18 @@ def admin_grant_pro_access_response(
             "source": "admin",
             "expires_at": req.expires_at,
             "granted_at": now_iso,
-            "granted_by": (req.granted_by or "admin").strip() or "admin",
-            "reason": req.reason.strip() if isinstance(req.reason, str) and req.reason.strip() else None,
+            "granted_by": actor,
+            "reason": reason,
             "last_synced_at": now_iso,
         },
     )
+    record_audit(
+        admin_uid=actor,
+        action="grant_pro",
+        target_uid=user_id,
+        payload={"expires_at": req.expires_at, "reason": reason},
+    )
+    return resp
 
 
 def admin_revoke_pro_access_response(
@@ -498,9 +549,12 @@ def admin_revoke_pro_access_response(
     save_users: Callable[[dict[str, dict[str, Any]]], None],
     current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
     build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    admin_uid: str | None = None,
 ) -> AdminUserEntitlementResponse:
+    from .admin_audit import record_audit
+
     now_iso = datetime.now(tz=UTC).isoformat()
-    return _mutate_admin_grant(
+    resp = _mutate_admin_grant(
         user_id,
         users_lock_file=users_lock_file,
         load_users=load_users, save_users=save_users,
@@ -513,3 +567,22 @@ def admin_revoke_pro_access_response(
             "last_synced_at": now_iso,
         },
     )
+    record_audit(
+        admin_uid=admin_uid,
+        action="revoke_pro",
+        target_uid=user_id,
+        payload={},
+    )
+    return resp
+
+
+def admin_audit_response(
+    *,
+    since: str | None = None,
+    limit: int = 100,
+) -> dict[str, Any]:
+    """Return recent admin audit log entries, newest-first."""
+    from .admin_audit import list_audit
+
+    rows = list_audit(since=since, limit=limit)
+    return {"audit": rows, "count": len(rows)}
