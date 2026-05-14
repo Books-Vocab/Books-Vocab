@@ -67,6 +67,7 @@ def _judge_rejects_by_day(cutoff_iso: str) -> dict[str, int]:
             "SELECT substr(created_at, 1, 10) AS d, COUNT(*) "
             "FROM judge_log "
             "WHERE created_at >= ? AND source = 'auto' AND accepted = 0 "
+            "  AND (reject_reason IS NULL OR reject_reason != 'degree_cap') "
             "GROUP BY d",
             (cutoff_iso,),
         ).fetchall()
