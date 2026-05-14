@@ -16,7 +16,8 @@ import GoogleSignIn
 struct BooksBrowserApp: App {
     @StateObject private var appLanguage = AppLanguageStore.shared
     @StateObject private var appearanceStore = AppAppearanceStore.shared
-    let modelContainer: ModelContainer
+    @State private var modelContainer: ModelContainer
+    @State private var startupFailure: AppStartupFailure?
     let authManager = AuthManager.shared
     let kgService = KGService()
     let subscriptionManager = SubscriptionManager.shared
@@ -29,7 +30,7 @@ struct BooksBrowserApp: App {
     let networkMonitor = NetworkMonitor.shared
     let syncCoordinator = SyncCoordinator()
     let toastCoordinator = AppToastCoordinator()
-    let startupFailure: AppStartupFailure?
+    private let localDataCleaner: any LocalDataClearing = LocalDataCleanerService()
 
     init() {
         // Initialize crash reporting first so any subsequent startup failure is captured.
@@ -45,6 +46,22 @@ struct BooksBrowserApp: App {
         #endif
         bookFileManager = LocalBookFileManager()
 
+        let outcome = Self.bootstrapModelContainer()
+        _modelContainer = State(initialValue: outcome.container)
+        _startupFailure = State(initialValue: outcome.failure)
+
+        // Always recover orphan book files (idempotent — skips files with existing records)
+        Self.recoverOrphanBooks(container: outcome.container)
+    }
+
+    /// Encapsulates the full ModelContainer bootstrap path so it can be re-run
+    /// from `AppStartupRecoveryView` when the first attempt fails.
+    private struct BootstrapOutcome {
+        let container: ModelContainer
+        let failure: AppStartupFailure?
+    }
+
+    private static func bootstrapModelContainer() -> BootstrapOutcome {
         let localConfig = ModelConfiguration(
             "LocalStore",
             schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
@@ -60,32 +77,31 @@ struct BooksBrowserApp: App {
         let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]
 
         do {
-            modelContainer = try ModelContainer(
+            let container = try ModelContainer(
                 for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
                 configurations: localConfig, cloudConfig
             )
-            startupFailure = nil
-            AuthManager.shared.modelContainer = modelContainer
-            Self.runMigrationIfNeeded(container: modelContainer)
+            AuthManager.shared.modelContainer = container
+            Self.runMigrationIfNeeded(container: container)
             AppLog.app.info("ModelContainer initialized — models: \(allModels.map { String(describing: $0) }.joined(separator: ", "))")
+            return BootstrapOutcome(container: container, failure: nil)
         } catch {
             AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
 
             // 嘗試刪除損壞的本機 store 後重試
             if let retryContainer = Self.retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
-                modelContainer = retryContainer
-                startupFailure = nil
                 AuthManager.shared.modelContainer = retryContainer
                 AppLog.app.warning("ModelContainer recovered after store reset — user data will re-sync from server")
-            } else {
-                AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
-                startupFailure = AppStartupFailure.storageInitialization(error: error)
-                modelContainer = Self.makeFallbackModelContainer()
+                return BootstrapOutcome(container: retryContainer, failure: nil)
             }
-        }
 
-        // Always recover orphan book files (idempotent — skips files with existing records)
-        Self.recoverOrphanBooks(container: modelContainer)
+            AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
+            let fallback = Self.makeFallbackModelContainer()
+            return BootstrapOutcome(
+                container: fallback,
+                failure: AppStartupFailure.storageInitialization(error: error)
+            )
+        }
     }
 
     private static func runMigrationIfNeeded(container: ModelContainer) {
@@ -182,7 +198,10 @@ struct BooksBrowserApp: App {
     @ViewBuilder
     private var rootView: some View {
         if let startupFailure {
-            AppStartupRecoveryView(failure: startupFailure)
+            AppStartupRecoveryView(
+                failure: startupFailure,
+                actions: makeStartupRecoveryActions()
+            )
         } else {
             ContentView()
                 .modifier(AutoSyncMonitor())
@@ -335,6 +354,103 @@ struct BooksBrowserApp: App {
             for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
             configurations: localOnlyConfig
         )
+    }
+
+    // MARK: - Startup Recovery Actions
+
+    @MainActor
+    private func makeStartupRecoveryActions() -> AppStartupRecoveryActions {
+        AppStartupRecoveryActions(
+            retry: { @MainActor in
+                AppLog.app.info("AppStartupRecoveryView: retry requested")
+                let outcome = Self.bootstrapModelContainer()
+                if outcome.failure == nil {
+                    // 重建成功 — 替換 container 並關閉 recovery 畫面。SwiftUI 會以新 container 重掛 view tree。
+                    modelContainer = outcome.container
+                    startupFailure = nil
+                    Self.recoverOrphanBooks(container: outcome.container)
+                    AppLog.app.info("AppStartupRecoveryView: retry succeeded — switching to main UI")
+                    return true
+                }
+                AppLog.app.warning("AppStartupRecoveryView: retry failed — still in recovery mode")
+                return false
+            },
+            clearLocalCache: { @MainActor [localDataCleaner, modelContainer] in
+                AppLog.app.info("AppStartupRecoveryView: clearLocalCache requested")
+                // LocalDataCleanerService 透過 BackgroundSyncActor 清 in-memory fallback container 內的
+                // VocabularyEntry / ReviewRecord / Notebook，以及與同步相關的 UserDefaults 標記。
+                // 對 in-memory store 而言主要效果是清 UserDefaults — 為下次 retry 移除可能造成
+                // migration crash 的殘留狀態。雲端資料不受影響（remote 仍保留，登入後會 re-sync）。
+                await localDataCleaner.clearLocalData(
+                    container: modelContainer,
+                    reason: "startup-recovery"
+                )
+                // 額外清除 store 檔案以便下一次 retry 走「全新建立」路徑。
+                Self.purgePersistentStoreFiles()
+                AppCrashReporting.record(
+                    NSError(
+                        domain: "AppStartupRecovery",
+                        code: 1,
+                        userInfo: [NSLocalizedDescriptionKey: "User cleared local cache from startup recovery view"]
+                    ),
+                    context: "startup-recovery-clear-cache"
+                )
+                return true
+            },
+            supportMailURL: { failure in
+                Self.composeSupportMailURL(for: failure)
+            }
+        )
+    }
+
+    /// Best-effort 刪除已知的 SwiftData store files —
+    /// 與 `retryAfterStoreReset` 使用同樣的檔名（LocalStore / CloudStore + shm/wal）。
+    private static func purgePersistentStoreFiles() {
+        // 用 ModelConfiguration 反推 store URL，避免硬編路徑。
+        let localURL = ModelConfiguration(
+            "LocalStore",
+            schema: Schema([Notebook.self]),
+            cloudKitDatabase: .none
+        ).url
+        let cloudURL = ModelConfiguration(
+            "CloudStore",
+            schema: Schema([Book.self]),
+            cloudKitDatabase: .automatic
+        ).url
+        for storeURL in [localURL, cloudURL] {
+            for path in [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")] {
+                try? FileManager.default.removeItem(at: path)
+            }
+            AppLog.app.info("purgePersistentStoreFiles: removed \(storeURL.lastPathComponent)")
+        }
+    }
+
+    private static func composeSupportMailURL(for failure: AppStartupFailure) -> URL? {
+        let recipient = "support@wordnexus.lol"
+        let version = (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "-"
+        let build = (Bundle.main.infoDictionary?["CFBundleVersion"] as? String) ?? "-"
+        let bundleId = Bundle.main.bundleIdentifier ?? "-"
+
+        let subject = L10n.string("[WordNexus] 啟動保護模式 — 需要技術協助")
+        let bodyLines = [
+            L10n.string("您好，我的 App 在啟動時觸發保護模式，需要技術協助。"),
+            "",
+            L10n.string("--- 請保留以下技術資訊 ---"),
+            "Bundle: \(bundleId)",
+            "Version: \(version) (\(build))",
+            "Failure: \(failure.title)",
+            "Detail: \(failure.technicalDetails)"
+        ]
+        let body = bodyLines.joined(separator: "\n")
+
+        var components = URLComponents()
+        components.scheme = "mailto"
+        components.path = recipient
+        components.queryItems = [
+            URLQueryItem(name: "subject", value: subject),
+            URLQueryItem(name: "body", value: body)
+        ]
+        return components.url
     }
 
     private static func makeFallbackModelContainer() -> ModelContainer {
