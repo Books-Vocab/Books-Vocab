@@ -367,7 +367,7 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     @app.middleware("http")
     async def _log_legacy_podcast_media_hits(request, call_next):  # type: ignore[no-untyped-def]
         if request.url.path.startswith("/api/podcast-media/"):
-            _deprecation_log.warning(
+            _deprecation_log.info(
                 "legacy public podcast-media hit: path=%s ua=%r — switch to "
                 "/api/podcasts/{series_id}/{ep_num}/audio",
                 request.url.path,

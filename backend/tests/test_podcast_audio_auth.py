@@ -97,14 +97,27 @@ def test_audio_range_unsatisfiable_416(audio_api):
     assert resp.headers.get("content-range") == f"bytes */{len(PAYLOAD)}"
 
 
-def test_audio_malformed_range_falls_back_to_200(audio_api):
-    """RFC 7233: invalid Range header should be ignored (200 full body)."""
+@pytest.mark.parametrize(
+    "bad_range",
+    [
+        "garbage",
+        "bytes=garbage",
+        "bytes=-0",  # suffix=0 — zero-length suffix, treat as malformed
+        "bytes=-",  # bare dash, no numbers
+        "bytes=0-50,60-70",  # multi-range — not supported, fall back
+        "bytes=-5-10",  # negative start
+        "bytes=abc-def",  # non-numeric bounds
+        "bytes=10-5",  # end < start
+    ],
+)
+def test_audio_malformed_range_falls_back_to_200(audio_api, bad_range):
+    """RFC 7233: invalid/unsupported Range header should be ignored (200 full body)."""
     api, _ = audio_api
     resp = api.client.get(
         "/api/podcasts/series_a/1/audio",
-        headers={**api.headers, "Range": "garbage"},
+        headers={**api.headers, "Range": bad_range},
     )
-    assert resp.status_code == 200
+    assert resp.status_code == 200, f"Range={bad_range!r} should fall back to 200"
     assert resp.content == PAYLOAD
 
 
@@ -178,17 +191,26 @@ def test_static_mount_still_accessible_for_backward_compat(audio_api):
     assert media_mount is not None, "legacy podcast-media mount must stay registered"
 
 
-def test_static_mount_logs_deprecation_warning(audio_api, caplog):
-    """Each hit on the legacy public mount must emit a warning so we can
+def test_static_mount_logs_deprecation_hit(audio_api, caplog):
+    """Each hit on the legacy public mount must emit an INFO log so we can
     track real-world usage and pick a safe deprecation date.
+
+    Level is INFO (not WARNING) because legacy traffic from shipped iOS
+    clients is *expected* during the deprecation window — alerting on it
+    would be noise. See review feedback on PR worktree-agent-ab37cf664ac45cf2c.
 
     The middleware sees the request before StaticFiles 404s it, so we can
     test on a path that doesn't need a real file."""
     import logging
     api, _ = audio_api
-    with caplog.at_level(logging.WARNING, logger="kg.podcast_media_deprecation"):
+    with caplog.at_level(logging.INFO, logger="kg.podcast_media_deprecation"):
         api.client.get("/api/podcast-media/anything/audio.mp3")
-    msgs = [r.getMessage() for r in caplog.records if r.name == "kg.podcast_media_deprecation"]
+    records = [r for r in caplog.records if r.name == "kg.podcast_media_deprecation"]
+    msgs = [r.getMessage() for r in records]
     assert any("podcast-media" in m for m in msgs), (
-        f"expected deprecation warning, got: {msgs}"
+        f"expected deprecation log, got: {msgs}"
+    )
+    # Verify level is INFO, not WARNING (review feedback).
+    assert all(r.levelno == logging.INFO for r in records), (
+        f"deprecation logs must be INFO, got: {[(r.levelname, r.getMessage()) for r in records]}"
     )
