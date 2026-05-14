@@ -182,6 +182,11 @@ def create_admin_handlers(
         from .admin_observability import collect_observability
         return collect_observability()
 
+    def admin_log_retention_run():
+        """Manually trigger log-retention pruners across all 4 log DBs."""
+        from .log_retention import run_all
+        return run_all()
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -208,5 +213,6 @@ def create_admin_handlers(
         "admin_user_usage": admin_user_usage,
         "admin_host_metrics": admin_host_metrics,
         "admin_observability": admin_observability,
+        "admin_log_retention_run": admin_log_retention_run,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
