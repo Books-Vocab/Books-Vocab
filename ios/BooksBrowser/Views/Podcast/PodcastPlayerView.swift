@@ -331,39 +331,49 @@ struct PodcastPlayerView: View {
 
         loadTask = Task { [weak vm] in
             guard let vm else { return }
+            guard let audioURLStr = episode.audioURL,
+                  let audioURL = URL(string: audioURLStr) else {
+                await MainActor.run { vm.reportError("無音訊 URL") }
+                return
+            }
+
+            await MainActor.run { vm.setLoading() }
+            if Task.isCancelled { return }
+
+            var subtitleContent: String?
+            if let subtitleURLStr = episode.subtitleURL {
+                if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
+                    subtitleContent = String(data: data, encoding: .utf8)
+                }
+            }
+            if Task.isCancelled { return }
+
+            // Fetch the auth token AFTER subtitle so token refresh latency
+            // doesn't block subtitle load, and so the token reflects the
+            // latest state right before AVPlayer issues its first Range request.
+            let audioHeaders: [String: String]
             do {
-                guard let audioURLStr = episode.audioURL,
-                      let audioURL = URL(string: audioURLStr) else {
-                    await MainActor.run { vm.reportError("無音訊 URL") }
-                    return
-                }
-
-                await MainActor.run { vm.setLoading() }
-                if Task.isCancelled { return }
-
-                var subtitleContent: String?
-                if let subtitleURLStr = episode.subtitleURL {
-                    if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
-                        subtitleContent = String(data: data, encoding: .utf8)
-                    }
-                }
-                if Task.isCancelled { return }
-
-                let episodeTitle = episode.displayTitle
-                await MainActor.run {
-                    guard !Task.isCancelled else { return }
-                    vm.loadEpisode(
-                        audioURL: audioURL,
-                        subtitleContent: subtitleContent,
-                        title: episodeTitle
-                    )
-                }
+                let token = try await kgService.currentAuthToken()
+                audioHeaders = ["Authorization": "Bearer \(token)"]
             } catch is CancellationError {
                 return
             } catch {
                 await MainActor.run {
-                    vm.reportError("載入失敗：\(error.localizedDescription)")
+                    vm.reportError("無法取得認證 token：\(error.localizedDescription)")
                 }
+                return
+            }
+            if Task.isCancelled { return }
+
+            let episodeTitle = episode.displayTitle
+            await MainActor.run {
+                guard !Task.isCancelled else { return }
+                vm.loadEpisode(
+                    audioURL: audioURL,
+                    subtitleContent: subtitleContent,
+                    title: episodeTitle,
+                    audioHTTPHeaders: audioHeaders
+                )
             }
         }
     }
