@@ -64,8 +64,6 @@ def _get_conn() -> sqlite3.Connection:
                 created_at  TEXT NOT NULL
             )
         """)
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation)")
-        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
         # Precise cache-hit counter: every short-circuited cache hit gets one row.
         # Separate table so the existing translate_log (= misses / LLM calls) stays
         # canonical and we can compute hit rate = hits / (hits + misses).
@@ -81,6 +79,21 @@ def _get_conn() -> sqlite3.Connection:
                 created_at  TEXT NOT NULL
             )
         """)
+        # Migration: add `model` column to both tables for cache-key inclusion.
+        # Translation output is model-dependent (prompt format, instruction
+        # following, style), so switching model must invalidate prior cache rows.
+        # Pre-migration rows default to model='' — they only match requests that
+        # also pass model='' (none in current code paths), so legacy entries
+        # expire naturally via TTL without being served to mismatched callers.
+        for table in ("translate_log", "translate_cache_hits"):
+            cols = {r[1] for r in _conn.execute(f"PRAGMA table_info({table})").fetchall()}
+            if "model" not in cols:
+                _conn.execute(f"ALTER TABLE {table} ADD COLUMN model TEXT NOT NULL DEFAULT ''")
+        # Rebuild cache lookup index to include model. Old name retained for
+        # any external observers; content now covers the new key shape.
+        _conn.execute("DROP INDEX IF EXISTS idx_tl_cache")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_cache ON translate_log(word, context_hash, source_lang, target_lang, operation, model)")
+        _conn.execute("CREATE INDEX IF NOT EXISTS idx_tl_user ON translate_log(user_id, created_at)")
         _conn.execute("CREATE INDEX IF NOT EXISTS idx_tch_created ON translate_cache_hits(created_at)")
         _conn.commit()
     return _conn
@@ -92,25 +105,40 @@ def _reset() -> None:
             _conn.close()
             _conn = None
 
-def lookup(word: str, context_hash: str, source_lang: str, target_lang: str, operation: str) -> str | None:
+def lookup(
+    word: str,
+    context_hash: str,
+    source_lang: str,
+    target_lang: str,
+    operation: str,
+    model: str = "",
+) -> str | None:
+    """Return cached LLM response for the given key (incl. model), or None.
+
+    `model` is part of the cache key — different models produce different
+    outputs (prompt format, instruction-following, style), so a row written
+    by one model must not satisfy a request for another. Default `""` keeps
+    legacy callers (tests, scripts) compiling; production paths in
+    `translate_service` always pass an explicit model.
+    """
     cutoff = (datetime.now(UTC) - timedelta(days=_cache_ttl_days())).isoformat()
     with _lock:
         conn = _get_conn()
         row = conn.execute(
-            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? AND created_at>? ORDER BY id DESC LIMIT 1",
-            (word, context_hash, source_lang, target_lang, operation, cutoff),
+            "SELECT response_raw FROM translate_log WHERE word=? AND context_hash=? AND source_lang=? AND target_lang=? AND operation=? AND model=? AND created_at>? ORDER BY id DESC LIMIT 1",
+            (word, context_hash, source_lang, target_lang, operation, model, cutoff),
         ).fetchone()
     return row[0] if row else None
 
-def record(*, user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms) -> None:
+def record(*, user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms, model: str = "") -> None:
     if not user_id:
         return
     now = datetime.now(UTC).isoformat()
     with _lock:
         conn = _get_conn()
         conn.execute(
-            "INSERT INTO translate_log (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms, created_at) VALUES (?,?,?,?,?,?,?,?,?,?)",
-            (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, int(latency_ms or 0), now),
+            "INSERT INTO translate_log (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, latency_ms, created_at, model) VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+            (user_id, operation, word, context, context_hash, source_lang, target_lang, response_raw, int(latency_ms or 0), now, model),
         )
         conn.commit()
 
@@ -122,20 +150,21 @@ def record_cache_hit(
     context_hash: str,
     source_lang: str,
     target_lang: str,
+    model: str = "",
 ) -> None:
     """Record one translate cache hit.
 
     Called from `translate_service` whenever `lookup()` short-circuits an LLM
     call. Counts toward the precise cache hit rate exposed by admin
     observability. user_id may be None for anonymous/unauth calls — still
-    counted.
+    counted. `model` is captured for parity with the miss table.
     """
     now = datetime.now(UTC).isoformat()
     with _lock:
         conn = _get_conn()
         conn.execute(
-            "INSERT INTO translate_cache_hits (user_id, operation, word, context_hash, source_lang, target_lang, created_at) VALUES (?,?,?,?,?,?,?)",
-            (user_id, operation, word, context_hash, source_lang, target_lang, now),
+            "INSERT INTO translate_cache_hits (user_id, operation, word, context_hash, source_lang, target_lang, created_at, model) VALUES (?,?,?,?,?,?,?,?)",
+            (user_id, operation, word, context_hash, source_lang, target_lang, now, model),
         )
         conn.commit()
 
