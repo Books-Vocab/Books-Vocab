@@ -1,3 +1,13 @@
+"""Translate service — LLM-backed quick/phrase/explain flows.
+
+Singleflight limitation: `_INFLIGHT` is a process-local dict, so dedup applies
+only within a single worker. In multi-worker deploys (uvicorn --workers N,
+gunicorn, etc.) each worker maintains its own in-flight map; the worst case
+is N concurrent LLM calls for the same input (one per worker), still bounded
+and far cheaper than per-request fan-out. Cross-worker dedup would require a
+shared coordinator (Redis SETNX + pub/sub, etc.) and is intentionally out of
+scope here.
+"""
 from __future__ import annotations
 
 import asyncio
@@ -18,6 +28,13 @@ from .exceptions import ExternalServiceError
 # users / inputs never collide. Entries are removed in `finally` so a failed
 # call doesn't poison subsequent attempts.
 _INFLIGHT: dict[tuple, asyncio.Future] = {}
+
+# Followers awaiting the leader's future cap their wait at this many seconds.
+# Aligned with typical LLM p99 latency (Gemini flash-lite ~2-10s, with headroom
+# for retries inside the SDK). A hung leader (network stall, infinite retry)
+# would otherwise cascade-hang every follower indefinitely. On timeout the
+# follower raises TimeoutError; the request fails fast and the client retries.
+_INFLIGHT_WAIT_TIMEOUT_S: float = 120.0
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
@@ -163,9 +180,13 @@ async def _run_llm_translate(
     )
     existing = _INFLIGHT.get(inflight_key)
     if existing is not None:
-        return await existing
+        # Bound the follower's wait so a hung leader (LLM stall, frozen
+        # network) doesn't cascade-hang every concurrent caller. TimeoutError
+        # surfaces to the client as a normal failure; the leader entry is
+        # cleaned up by its own finally block.
+        return await asyncio.wait_for(existing, timeout=_INFLIGHT_WAIT_TIMEOUT_S)
 
-    loop = asyncio.get_event_loop()
+    loop = asyncio.get_running_loop()
     fut: asyncio.Future = loop.create_future()
     _INFLIGHT[inflight_key] = fut
     try:
