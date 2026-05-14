@@ -396,3 +396,57 @@ def test_admin_endpoint_runs_all_pruners(admin_app):
     assert body["judge_log"]["deleted"] == 1
     assert body["translate_log"]["deleted"] == 1
     assert body["token_usage"]["deleted"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# Env-driven retention windows + empty-table safety + admin response shape
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_prune_judge_log_respects_retention_days_env(isolated_logs, monkeypatch):
+    """``JUDGE_LOG_RETENTION_DAYS`` env var must drive ``prune_judge_log()``
+    default window when caller does not pass ``days=``."""
+    monkeypatch.setenv("JUDGE_LOG_RETENTION_DAYS", "7")
+
+    for _ in range(5):
+        _insert_judge_row(_iso(8))   # 8 days ago → must be pruned under 7d window
+    for _ in range(5):
+        _insert_judge_row(_iso(0))   # today → must survive
+
+    deleted, remaining = log_retention.prune_judge_log()  # uses env default
+
+    assert deleted == 5
+    assert remaining == 5
+
+
+def test_prune_translate_log_safe_with_no_data(isolated_logs):
+    """Pruning an empty translate_log table must not raise and must report 0/0."""
+    # Force schema creation without inserting any rows.
+    translate_log._get_conn()
+
+    deleted, remaining = log_retention.prune_translate_log(days=14)
+
+    assert deleted == 0
+    assert remaining == 0
+
+
+def test_admin_trigger_prune_endpoint_returns_counts(admin_app):
+    """Admin trigger endpoint returns deletion counts under flat keys
+    (``judge_deleted`` / ``translate_deleted`` / ``pipeline_deleted``) and 403 without auth."""
+    # No auth → 403.
+    resp_no_auth = admin_app.client.post("/api/admin/log-retention/run")
+    assert resp_no_auth.status_code == 403
+
+    _insert_pipeline_row(_iso(40))
+    _insert_judge_row(_iso(80))
+    _insert_translate_row(_iso(20))
+
+    resp = admin_app.client.post(
+        "/api/admin/log-retention/run",
+        headers={"Authorization": f"Bearer {ADMIN_TOKEN}"},
+    )
+    assert resp.status_code == 200, resp.text
+    body = resp.json()
+    assert body["pipeline_deleted"] == 1
+    assert body["judge_deleted"] == 1
+    assert body["translate_deleted"] == 1
