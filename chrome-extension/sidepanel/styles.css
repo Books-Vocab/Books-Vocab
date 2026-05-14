@@ -40,6 +40,12 @@ body {
   color: var(--text-primary);
 }
 
+.kg-header__actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-xs);
+}
+
 .kg-theme-btn {
   display: flex;
   align-items: center;
@@ -174,10 +180,17 @@ body {
 }
 
 .kg-error__title {
-  margin: 0 0 var(--sp-md);
+  margin: 0 0 var(--sp-xs);
   font-size: var(--text-section-title);
   color: var(--text-secondary);
   font-weight: 600;
+}
+
+.kg-error__subtitle {
+  margin: 0 0 var(--sp-md);
+  font-size: var(--text-subhead);
+  color: var(--text-tertiary);
+  max-width: 260px;
 }
 
 .kg-error__retry {

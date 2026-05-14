@@ -14,7 +14,19 @@ const stateContent = $('#stateContent');
 const searchInput  = $('#searchInput');
 const searchCount  = $('#searchCount');
 const themeBtn     = $('#themeBtn');
+const settingsBtn  = $('#settingsBtn');
 const retryBtn     = $('#retryBtn');
+const errorIcon    = $('#errorIcon');
+const errorTitle   = $('#errorTitle');
+const errorSubtitle = $('#errorSubtitle');
+
+/**
+ * Current retry action — varies by error kind.
+ * - 'reload'   : re-call loadVocabList
+ * - 'login'    : open options page (login entry)
+ * @type {'reload'|'login'}
+ */
+let retryAction = 'reload';
 
 // ---------------------------------------------------------------------------
 // State
@@ -37,11 +49,37 @@ document.addEventListener('DOMContentLoaded', async () => {
   updateThemeBtn(theme);
 
   themeBtn.addEventListener('click', cycleTheme);
-  retryBtn.addEventListener('click', loadVocabList);
+  settingsBtn.addEventListener('click', openSettings);
+  retryBtn.addEventListener('click', onRetry);
   searchInput.addEventListener('input', debounce(onSearch, 300));
+
+  // Auto-reload when auth token changes (e.g. login completed in another tab).
+  chrome.storage.onChanged.addListener((changes, area) => {
+    if (area === 'local' && changes.auth_token) {
+      loadVocabList();
+    }
+  });
 
   loadVocabList();
 });
+
+/** Open the extension options page in a new tab. */
+function openSettings() {
+  if (chrome.runtime.openOptionsPage) {
+    chrome.runtime.openOptionsPage();
+  } else {
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+  }
+}
+
+/** Retry button dispatcher — login flow vs. plain reload. */
+function onRetry() {
+  if (retryAction === 'login') {
+    openSettings();
+  } else {
+    loadVocabList();
+  }
+}
 
 // ---------------------------------------------------------------------------
 // Theme
@@ -87,7 +125,8 @@ async function loadVocabList() {
     const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
 
     if (response && response.error) {
-      throw new Error(response.message || '載入失敗');
+      showErrorFromResponse(response);
+      return;
     }
 
     // Response is the vocab array (or object with items)
@@ -103,8 +142,65 @@ async function loadVocabList() {
     }
   } catch (err) {
     console.error('[KG] loadVocabList failed:', err);
-    setState('error');
+    showErrorFromResponse({ error: true, message: String(err) });
   }
+}
+
+/**
+ * Render the error state with messaging keyed off the API error code/status.
+ * Updates icon, title, subtitle, retry button label, and the retry action.
+ * @param {{error: true, code?: string, status?: number, message?: string}} response
+ */
+function showErrorFromResponse(response) {
+  const code = response.code;
+  const status = response.status;
+
+  let icon = '⚠️';
+  let title = '載入失敗';
+  let subtitle = '';
+  let btnLabel = '重試';
+  let action = 'reload';
+
+  if (code === 'auth_expired' || status === 401) {
+    icon = '🔒';
+    title = '請先登入';
+    subtitle = '登入後即可同步詞彙';
+    btnLabel = '前往登入';
+    action = 'login';
+  } else if (code === 'quota_exceeded' || status === 403) {
+    icon = '⏳';
+    title = '已達使用上限';
+    subtitle = '請稍後再試，或於設定查看額度';
+    btnLabel = '重試';
+    action = 'reload';
+  } else if (code === 'network_error' || status === 0) {
+    icon = '📡';
+    title = '無法連線';
+    subtitle = '請檢查網路後重試';
+    btnLabel = '重試';
+    action = 'reload';
+  } else if (typeof status === 'number' && status >= 500) {
+    icon = '🛠️';
+    title = '伺服器忙碌中';
+    subtitle = '稍後再試';
+    btnLabel = '重試';
+    action = 'reload';
+  } else if (response.message) {
+    subtitle = response.message;
+  }
+
+  errorIcon.textContent = icon;
+  errorTitle.textContent = title;
+  if (subtitle) {
+    errorSubtitle.textContent = subtitle;
+    errorSubtitle.hidden = false;
+  } else {
+    errorSubtitle.textContent = '';
+    errorSubtitle.hidden = true;
+  }
+  retryBtn.textContent = btnLabel;
+  retryAction = action;
+  setState('error');
 }
 
 // ---------------------------------------------------------------------------
