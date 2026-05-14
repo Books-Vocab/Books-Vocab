@@ -16,7 +16,10 @@ import os
     var showSettings: Bool { get set }
     func presentImporter()
     func presentSettings()
+    /// 關閉即時 alert，但保留 errorMessage / errorDiagnosis 供 inline banner 持續顯示
     func dismissError()
+    /// 完全清掉 inline error 狀態（由 banner 的 dismiss CTA 呼叫）
+    func clearError()
     func handleFileImport(_ result: Result<[URL], Error>, modelContext: ModelContext, importService: any BookshelfImporting, toastCoordinator: AppToastCoordinator)
     func deleteBook(_ book: Book, modelContext: ModelContext, fileManager: any BookFileManaging, toastCoordinator: AppToastCoordinator)
 }
@@ -33,6 +36,8 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     var showSettings = false
 
     func presentImporter() {
+        // 新一輪匯入觸發前清掉殘留的 inline error，避免持續顯示已過期的失敗訊息
+        clearError()
         isImporting = true
     }
 
@@ -41,6 +46,11 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     }
 
     func dismissError() {
+        // 只關 alert；errorMessage / errorDiagnosis 由 inline banner 接手呈現持續性錯誤
+        showError = false
+    }
+
+    func clearError() {
         errorMessage = nil
         errorDiagnosis = nil
         showError = false
@@ -75,7 +85,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
     private func importMethod(
         for ext: String,
         using service: any BookshelfImporting
-    ) -> ((URL, @Sendable (Double) -> Void) async throws -> ImportedBookDraft)? {
+    ) -> ((URL, @escaping @Sendable (Double) -> Void) async throws -> ImportedBookDraft)? {
         switch ext {
         case "epub": return { try await service.importBook(from: $0, progress: $1) }
         case "txt":  return { try await service.importTXT(from: $0, progress: $1) }
