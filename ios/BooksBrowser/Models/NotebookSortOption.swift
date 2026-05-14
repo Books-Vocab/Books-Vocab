@@ -1,0 +1,104 @@
+//
+//  NotebookSortOption.swift
+//  BooksBrowser
+//
+//  單字本書架排序選項 — 預設 manual（sortOrder asc）
+
+import Foundation
+
+enum NotebookSortOption: String, CaseIterable, Identifiable {
+    case manual          // 手動排序（沿用 sortOrder，含 isDefault 優先）
+    case nameAsc         // 名稱 A→Z
+    case nameDesc        // 名稱 Z→A
+    case createdNewest   // 建立時間 新→舊
+    case createdOldest   // 建立時間 舊→新
+    case updatedNewest   // 最後更新 新→舊
+    case cardCountDesc   // 卡片數 多→少
+    case dueCountDesc    // 待複習 多→少
+    case lastActivity    // 最近活動 新→舊
+
+    var id: String { rawValue }
+
+    var label: String {
+        switch self {
+        case .manual:        return "手動排序"
+        case .nameAsc:       return "名稱 A→Z"
+        case .nameDesc:      return "名稱 Z→A"
+        case .createdNewest: return "最新建立"
+        case .createdOldest: return "最早建立"
+        case .updatedNewest: return "最近更新"
+        case .cardCountDesc: return "卡片最多"
+        case .dueCountDesc:  return "待複習最多"
+        case .lastActivity:  return "最近活動"
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .manual:        return "hand.draw"
+        case .nameAsc:       return "textformat.abc"
+        case .nameDesc:      return "textformat.abc.dottedunderline"
+        case .createdNewest: return "calendar.badge.plus"
+        case .createdOldest: return "calendar"
+        case .updatedNewest: return "clock.arrow.circlepath"
+        case .cardCountDesc: return "rectangle.stack.fill"
+        case .dueCountDesc:  return "bell.badge"
+        case .lastActivity:  return "sparkles"
+        }
+    }
+
+    /// UserDefaults persistence key
+    static let storageKey = "notebookSortOption"
+
+    static func load() -> NotebookSortOption {
+        guard let raw = UserDefaults.standard.string(forKey: storageKey),
+              let value = NotebookSortOption(rawValue: raw) else {
+            return .manual
+        }
+        return value
+    }
+
+    func save() {
+        UserDefaults.standard.set(rawValue, forKey: Self.storageKey)
+    }
+}
+
+extension NotebookSortOption {
+    /// 依排序選項對 notebooks 排序。預設 notebook (`isDefault == true`) 永遠放最前面。
+    /// 需要從 `NotebookListView` 提供已計算好的 stats（避免重算 O(n)）。
+    func sort(
+        _ notebooks: [Notebook],
+        stats: [String: NotebookListView.NotebookStats]
+    ) -> [Notebook] {
+        let comparator: (Notebook, Notebook) -> Bool
+        switch self {
+        case .manual:
+            comparator = { $0.sortOrder < $1.sortOrder }
+        case .nameAsc:
+            comparator = { $0.name.localizedStandardCompare($1.name) == .orderedAscending }
+        case .nameDesc:
+            comparator = { $0.name.localizedStandardCompare($1.name) == .orderedDescending }
+        case .createdNewest:
+            comparator = { $0.createdAt > $1.createdAt }
+        case .createdOldest:
+            comparator = { $0.createdAt < $1.createdAt }
+        case .updatedNewest:
+            comparator = { $0.updatedAt > $1.updatedAt }
+        case .cardCountDesc:
+            comparator = { (stats[$0.remoteId]?.cardCount ?? 0) > (stats[$1.remoteId]?.cardCount ?? 0) }
+        case .dueCountDesc:
+            comparator = { (stats[$0.remoteId]?.dueCount ?? 0) > (stats[$1.remoteId]?.dueCount ?? 0) }
+        case .lastActivity:
+            comparator = {
+                let l = stats[$0.remoteId]?.lastActivity ?? .distantPast
+                let r = stats[$1.remoteId]?.lastActivity ?? .distantPast
+                return l > r
+            }
+        }
+        return notebooks.sorted { lhs, rhs in
+            // 預設 notebook 永遠最前
+            if lhs.isDefault != rhs.isDefault { return lhs.isDefault }
+            return comparator(lhs, rhs)
+        }
+    }
+}
