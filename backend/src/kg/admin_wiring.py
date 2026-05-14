@@ -5,8 +5,12 @@ from __future__ import annotations
 from collections.abc import Callable
 from pathlib import Path
 
+from fastapi import Cookie, Header, Query
+
 from .admin_assets import ADMIN_HTML, ADMIN_TESTS_HTML, ADMIN_USER_DETAIL_HTML
 from .admin_handlers import (
+    admin_actor_fingerprint,
+    admin_audit_response,
     admin_grant_pro_access_response,
     admin_host_metrics_response,
     admin_last_test_run_response,
@@ -84,8 +88,27 @@ def create_admin_handlers(
             current_admin_grant_record=current_admin_grant_record_fn,
         )
 
-    def admin_grant_pro_access(req: AdminGrantRequest, user_id: str):
+    def _actor_from_request(
+        token: str | None,
+        authorization: str | None,
+        admin_session: str | None,
+    ) -> str:
+        return admin_actor_fingerprint(
+            token=token,
+            authorization=authorization,
+            cookie_token=admin_session,
+            admin_token=runtime_settings_fn().admin_token,
+        )
+
+    def admin_grant_pro_access(
+        req: AdminGrantRequest,
+        user_id: str,
+        token: str | None = Query(None),
+        authorization: str | None = Header(None),
+        admin_session: str | None = Cookie(None),
+    ):
         """Manually grant Pro access for a user through the admin surface."""
+        actor = _actor_from_request(token, authorization, admin_session)
         return admin_grant_pro_access_response(
             user_id,
             req,
@@ -94,10 +117,17 @@ def create_admin_handlers(
             save_users=save_users_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
+            admin_uid=actor,
         )
 
-    def admin_revoke_pro_access(user_id: str):
+    def admin_revoke_pro_access(
+        user_id: str,
+        token: str | None = Query(None),
+        authorization: str | None = Header(None),
+        admin_session: str | None = Cookie(None),
+    ):
         """Remove manual Pro access for a user through the admin surface."""
+        actor = _actor_from_request(token, authorization, admin_session)
         return admin_revoke_pro_access_response(
             user_id,
             users_lock_file=runtime_users_lock_file_fn(),
@@ -105,6 +135,7 @@ def create_admin_handlers(
             save_users=save_users_fn,
             current_admin_grant_record=current_admin_grant_record_fn,
             build_entitlements_response=build_entitlements_response_fn,
+            admin_uid=actor,
         )
 
     def admin_run_tests(req: AdminTestRunRequest | None = None):
@@ -213,6 +244,10 @@ def create_admin_handlers(
         from .log_retention import run_all
         return run_all()
 
+    def admin_audit(since: str | None = None, limit: int = 100):
+        """Return recent admin mutation audit log entries."""
+        return admin_audit_response(since=since, limit=limit)
+
     def admin_user_detail_ui():
         """User detail page UI."""
         return admin_ui_response(
@@ -242,5 +277,6 @@ def create_admin_handlers(
         "admin_users_search": admin_users_search,
         "admin_observability": admin_observability,
         "admin_log_retention_run": admin_log_retention_run,
+        "admin_audit": admin_audit,
         "admin_user_detail_ui": admin_user_detail_ui,
     }
