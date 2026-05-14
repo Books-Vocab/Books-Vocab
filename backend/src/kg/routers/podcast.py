@@ -28,12 +28,15 @@ StaticFiles ``/api/podcast-media/`` mount being private (it is not).
 import json
 import logging
 import re
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Annotated
 
 from fastapi import APIRouter, Depends, Header, HTTPException, Path as PathParam, Request
 from fastapi.responses import PlainTextResponse, StreamingResponse
+from pydantic import BaseModel, Field
 
+from .. import podcast_progress as progress_store
 from ..deps import get_current_user
 
 logger = logging.getLogger(__name__)
@@ -66,6 +69,95 @@ def list_podcasts(request: Request, user: dict = Depends(get_current_user)):
     if not index_file.exists():
         return []
     return _read_json_file(index_file, context="index")
+
+
+# ---------------------------------------------------------------------------
+# Per-user playback progress
+# ---------------------------------------------------------------------------
+#
+# CloudKit drift between devices was the original symptom: a user resuming
+# on phone after listening on Mac would land at zero. The fix here is to
+# treat the backend as the durable, cross-device anchor for `(position_sec,
+# duration_sec, updated_at)` per `(user, series, episode)`. iOS still owns
+# its local SwiftData copy for offline + scrubbing latency; this endpoint
+# is the merge point on app foreground / background save.
+#
+# The routes below are registered BEFORE `/api/podcasts/{series_id}` so the
+# literal `progress` and `{ep_num}/progress` paths win over the dynamic
+# series-detail route. (FastAPI matches by registration order.)
+
+
+class _ProgressPayload(BaseModel):
+    position_sec: float = Field(ge=0.0)
+    duration_sec: float = Field(ge=0.0)
+    updated_at: str
+
+
+def _canonical_updated_at(raw: str) -> str:
+    """Validate + canonicalise ``updated_at`` to UTC ISO8601.
+
+    Done as a helper rather than a Pydantic ``field_validator`` because
+    Pydantic v2 stuffs the originating exception object into the error
+    ``ctx``, which the project's existing validation_error_handler then
+    cannot JSON-serialise (it returns ``exc.errors()`` verbatim). Raising
+    ``HTTPException(422)`` from the route body sidesteps that path entirely.
+    """
+    try:
+        dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+    except (TypeError, ValueError, AttributeError):
+        raise HTTPException(status_code=422, detail="updated_at must be ISO8601")
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc).isoformat()
+
+
+@router.get("/api/podcasts/progress")
+def list_user_progress(user: dict = Depends(get_current_user)):
+    """Return every progress row for the calling user."""
+    items = progress_store.list_for_user(user_id=user["id"])
+    return {"items": items}
+
+
+@router.post("/api/podcasts/{series_id}/{ep_num}/progress")
+def upsert_user_progress(
+    series_id: str,
+    ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
+    payload: _ProgressPayload,
+    user: dict = Depends(get_current_user),
+):
+    """Last-write-wins upsert keyed by ``(user, series, ep)``.
+
+    A stale write (older ``updated_at`` than the stored row) is accepted at
+    the HTTP layer (200) but discarded at the store layer — the response
+    body reflects the current authoritative row so the client can converge
+    its local copy without a second GET.
+    """
+    if not _SERIES_ID_RE.match(series_id):
+        raise HTTPException(404)
+    return progress_store.upsert(
+        user_id=user["id"],
+        series_id=series_id,
+        ep_num=ep_num,
+        position_sec=payload.position_sec,
+        duration_sec=payload.duration_sec,
+        updated_at=_canonical_updated_at(payload.updated_at),
+    )
+
+
+@router.get("/api/podcasts/{series_id}/{ep_num}/progress")
+def get_user_progress(
+    series_id: str,
+    ep_num: Annotated[int, PathParam(ge=1, le=_MAX_EPISODE_NUM)],
+    user: dict = Depends(get_current_user),
+):
+    if not _SERIES_ID_RE.match(series_id):
+        raise HTTPException(404)
+    row = progress_store.get_single(
+        user_id=user["id"], series_id=series_id, ep_num=ep_num,
+    )
+    if row is None:
+        raise HTTPException(404, detail="No progress")
+    return row
 
 
 @router.get("/api/podcasts/{series_id}")

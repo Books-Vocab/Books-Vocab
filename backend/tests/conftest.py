@@ -43,8 +43,10 @@ def _swap_settings(new_settings):
     from kg.user_store import CachedUserStore, normalize_users_payload
     from kg.billing import default_subscription_payload
     from kg.api import app
+    import kg.podcast_progress as _pp
 
     app.state.kg_settings = new_settings
+    _pp.set_data_dir(new_settings.data_dir)
 
     def _normalize(users):
         from kg.secret_store import encrypt_value
@@ -87,6 +89,16 @@ def _isolate_translate_log():
     conn.commit()
     yield
     tl._reset()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_podcast_progress():
+    """Reset podcast_progress singleton so each test's KG_DATA_DIR fixture
+    gets a fresh DB file under its tmp_path."""
+    import kg.podcast_progress as pp
+    pp._reset()
+    yield
+    pp._reset()
 
 
 @pytest.fixture()
