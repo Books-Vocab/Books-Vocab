@@ -248,6 +248,50 @@ def test_judge_rejection_rate_24h(admin_app):
     assert m["rate"] == pytest.approx(0.25, abs=1e-3)
 
 
+def test_admin_observability_judge_rejection_rate_excludes_degree_cap(admin_app):
+    """``_judge_rejection_rate_24h`` measures **model** decisions on the
+    admin /observability panel. Rows with ``reject_reason='degree_cap'``
+    are pipeline cap evictions (not model rejections) and must be excluded
+    from both numerator and denominator — mirroring ``get_acceptance_stats``.
+
+    Seed: 5 model rejects + 3 degree_cap rejects + 2 accepted →
+    panel rate must be 5/(5+2)=5/7, NOT 5/10 or 8/10.
+    """
+    import kg.judge_log as jl
+
+    # 2 model-accepted
+    for i in range(2):
+        jl.record(
+            user_id="u_obs", notebook_id="nb",
+            from_id="a", to_id=f"acc_{i}",
+            similarity=0.8, verdict="shares_usage", confidence=0.9,
+            accepted=True,
+        )
+    # 5 model-rejected
+    for i in range(5):
+        jl.record(
+            user_id="u_obs", notebook_id="nb",
+            from_id="a", to_id=f"rej_{i}",
+            similarity=0.6, verdict="not_applicable", confidence=0.3,
+            accepted=False, reject_reason="low_confidence",
+        )
+    # 3 degree_cap rejects — must NOT affect rate
+    for i in range(3):
+        jl.record(
+            user_id="u_obs", notebook_id="nb",
+            from_id="a", to_id=f"cap_{i}",
+            similarity=0.85, verdict="shares_usage", confidence=0.9,
+            accepted=False, reject_reason="degree_cap",
+        )
+
+    body = _get(admin_app.client).json()
+    m = body["judge_rejection_rate_24h"]
+    # 2 accepted + 5 model rejected; 3 cap rows excluded.
+    assert m["total"] == 7
+    assert m["rejected"] == 5
+    assert m["rate"] == pytest.approx(5 / 7, abs=1e-3)
+
+
 # ── translate_cache_hit_rate_24h ──────────────────────────────────────────
 
 

@@ -86,6 +86,38 @@ def record(
         conn.commit()
 
 
+def update_to_rejected(
+    from_id: str,
+    to_id: str,
+    *,
+    reason: str,
+    source: str = "auto",
+) -> bool:
+    """Flip the most recent ``(from_id, to_id, source, accepted=1)`` row into
+    ``accepted=0`` with ``reject_reason=reason``.
+
+    Used when the LLM accepted a candidate but a downstream constraint
+    (e.g. degree cap) rejected it. Mutating the existing row — rather than
+    appending a second one — keeps ``get_acceptance_stats`` from double-counting
+    the candidate against the model's acceptance rate.
+
+    Returns ``True`` iff a row was updated.
+    """
+    with _lock:
+        conn = _get_conn()
+        cur = conn.execute(
+            "UPDATE judge_log SET accepted=0, reject_reason=? "
+            "WHERE id = ("
+            "  SELECT id FROM judge_log "
+            "  WHERE from_id=? AND to_id=? AND source=? AND accepted=1 "
+            "  ORDER BY id DESC LIMIT 1"
+            ")",
+            (reason, from_id, to_id, source),
+        )
+        conn.commit()
+        return cur.rowcount > 0
+
+
 def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) -> list[dict]:
     """Retrieve judge log entries for a user."""
     with _lock:
@@ -111,19 +143,30 @@ def get_log(user_id: str, *, notebook_id: str | None = None, limit: int = 1000) 
 
 
 def get_acceptance_stats(*, user_id: str | None = None) -> dict:
-    """Return judge acceptance stats. Optionally filtered by user_id."""
+    """Return judge acceptance stats. Optionally filtered by user_id.
+
+    Excludes rows with ``reject_reason='degree_cap'`` — those are pipeline
+    cap evictions, not model decisions, so they would otherwise depress
+    the apparent model acceptance rate.
+    """
     if not DB_PATH.exists():
         return {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
+    base_where = (
+        "source = 'auto' "
+        "AND (reject_reason IS NULL OR reject_reason != 'degree_cap')"
+    )
     with _lock:
         conn = _get_conn()
         if user_id is not None:
             row = conn.execute(
-                "SELECT COUNT(*) AS total, SUM(accepted) AS accepted FROM judge_log WHERE source = 'auto' AND user_id = ?",
+                f"SELECT COUNT(*) AS total, SUM(accepted) AS accepted "
+                f"FROM judge_log WHERE {base_where} AND user_id = ?",
                 (user_id,),
             ).fetchone()
         else:
             row = conn.execute(
-                "SELECT COUNT(*) AS total, SUM(accepted) AS accepted FROM judge_log WHERE source = 'auto'"
+                f"SELECT COUNT(*) AS total, SUM(accepted) AS accepted "
+                f"FROM judge_log WHERE {base_where}"
             ).fetchone()
     total = row[0] or 0
     accepted = row[1] or 0
