@@ -143,3 +143,100 @@ async def test_translate_concurrent_same_input_dedup():
         f"Expected dedup → 1 LLM call, got {llm.chat_async.await_count}. "
         "Concurrent identical requests must share a single in-flight LLM call."
     )
+
+
+@pytest.mark.asyncio
+async def test_translate_concurrent_dedup_n_callers_only_one_llm():
+    """N=5 concurrent identical requests → LLM called exactly once.
+
+    Pins that dedup scales beyond pairs: a burst of N followers must all share
+    the leader's single LLM call, not split into pairs or partially dedup.
+    """
+    from kg.api_models import TranslateRequest
+    from kg.translate_service import run_quick_translate
+
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
+
+    call_started = asyncio.Event()
+    release = asyncio.Event()
+
+    async def slow_chat(*args, **kwargs):
+        call_started.set()
+        await release.wait()
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
+            usage=None,
+        )
+
+    llm = SimpleNamespace(chat_async=AsyncMock(side_effect=slow_chat), user_id="u_test")
+    import logging
+    logger = logging.getLogger("test")
+
+    # Fire leader first so it owns the in-flight entry before followers race.
+    leader = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+    await call_started.wait()
+
+    followers = [
+        asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+        for _ in range(4)
+    ]
+    # Let followers reach the dedup point before unblocking the LLM.
+    await asyncio.sleep(0.05)
+    release.set()
+
+    results = await asyncio.gather(leader, *followers)
+    assert len(results) == 5
+    for r in results:
+        assert r.t == "喚起"
+    assert llm.chat_async.await_count == 1, (
+        f"Expected singleflight dedup of N=5 → 1 LLM call, got {llm.chat_async.await_count}."
+    )
+
+
+@pytest.mark.asyncio
+async def test_translate_singleflight_timeout_releases_follower(monkeypatch):
+    """Follower must not wait forever on a hung leader.
+
+    If the leader stalls (LLM hang, network freeze), followers awaiting its
+    future would otherwise block indefinitely. The wait_for bound surfaces
+    TimeoutError so the request fails fast instead of cascading the hang.
+    """
+    from kg.api_models import TranslateRequest
+    from kg.translate_service import run_quick_translate
+
+    # Shrink the timeout so the test runs in well under a second.
+    monkeypatch.setattr("kg.translate_service._INFLIGHT_WAIT_TIMEOUT_S", 0.1)
+
+    req = TranslateRequest(word="evoke", context="The story evokes memories.")
+    user = {"id": "u_test", "config": {"translation": {"source_lang": "en", "target_lang": "zh-Hant"}}}
+
+    leader_started = asyncio.Event()
+    never = asyncio.Event()  # never set → leader hangs
+
+    async def hang_chat(*args, **kwargs):
+        leader_started.set()
+        await never.wait()  # simulate indefinite LLM stall
+        return SimpleNamespace(
+            choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"x"}'))],
+            usage=None,
+        )
+
+    llm = SimpleNamespace(chat_async=AsyncMock(side_effect=hang_chat), user_id="u_test")
+    import logging
+    logger = logging.getLogger("test")
+
+    leader = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+    await leader_started.wait()  # leader now holds the in-flight slot
+    follower = asyncio.create_task(run_quick_translate(req, user, llm=llm, logger=logger))
+
+    # Follower must hit wait_for timeout, not hang with the leader.
+    with pytest.raises(asyncio.TimeoutError):
+        await asyncio.wait_for(follower, timeout=2.0)
+
+    # Clean up the still-hung leader so the test doesn't leak a pending task.
+    leader.cancel()
+    try:
+        await leader
+    except (asyncio.CancelledError, BaseException):
+        pass
