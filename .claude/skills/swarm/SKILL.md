@@ -21,12 +21,54 @@ user-invocable: true
 
 ## 鐵律（違反 = 換 codex）
 
-1. **不問** — 不問「需要嗎？」「要繼續嗎？」「希望這樣做嗎？」「方向對嗎？」。能猜就猜，猜錯使用者會說。
-2. **≥10 agents 並行**（永遠）— 每收到一條完工通知，立即派 2+ 條（reviewer + 下一條 dev）。低於 10 就加新 track。
-3. **全部背景**（CLAUDE.md 鐵律 #7）— Agent + 耗時 Bash 一律 `run_in_background: true`。主線不阻塞。
-4. **逐項 review**（CLAUDE.md 鐵律 #4）— 每 PR 都派 reviewer，PASS 才 merge。
-5. **報告精簡** — 短句 + `result:` 結尾。不要列出「已 dispatch 13 個 agent」之類流水帳。
-6. **不停** — 直到使用者求饒或所有合理 track 都 merged。
+1. **小改不問**（見下方 Scope）— 維護性、擴展性、健康度、小功能改動自主決定，不問「需要嗎？」「方向對嗎？」。能猜就猜，猜錯使用者會說。
+2. **大改先討論**（不可繞過）— 觸及產品定位 / 新增大功能 / 改既有功能語意 / 後端 schema 變更 / 移除既有功能 → **停下來和使用者討論一句話**。不討論就動 = 規範違反，會被換 codex。
+3. **≥10 agents 並行**（永遠）— 每收到一條完工通知，立即派 2+ 條（reviewer + 下一條 dev）。低於 10 就加新 track。
+4. **全部背景**（CLAUDE.md 鐵律 #7）— Agent + 耗時 Bash 一律 `run_in_background: true`。主線不阻塞。
+5. **逐項 review**（CLAUDE.md 鐵律 #4）— 每 PR 都派 reviewer，PASS 才 merge。
+6. **報告精簡** — 短句 + `result:` 結尾。不要列出「已 dispatch 13 個 agent」之類流水帳。
+7. **不停** — 直到使用者求饒或所有合理 track 都 merged。
+
+## Scope — 該動什麼 / 不該動什麼
+
+Swarm 模式的工作軸線**只**沿著這四條走：
+
+### ✅ 自主可動（不問使用者）
+
+| 類別 | 範例 |
+|---|---|
+| **維護性** | refactor / 拆檔 / 重命名 / 註解補完 / 既有 API 內部優化 |
+| **擴展性** | 抽 helper / 加 enum case / 加 hook 點 / 加 callback 參數（default nil 向後相容）|
+| **健康度** | 補測試 / 補 state matrix / 補 error retry / 補 empty state / 補 observability hook / 修 reviewer 提的 NEEDS-FIX / 修 lint / 修小 bug / 修 race / 補 token 化 |
+| **小功能** | 既有畫面加 UI affordance（context menu / sort menu / share button / shortcut / badge）/ 既有 endpoint 加 filter param / admin 加觀測欄位 |
+
+判準：**動完後使用者不會感到「咦？這個變化我沒同意過」**。
+
+### 🛑 必須先討論一句（不可自主）
+
+| 類別 | 範例 |
+|---|---|
+| **產品定位變更** | 改主要 user flow / 改首頁佈局 / 改訂閱模式 |
+| **新增大功能** | 全新模組（如「加 social feed」）/ 新增 endpoint group / 新平台支援 |
+| **改既有功能語意** | 把「快取永久」改「30 天 TTL」這種 behavior change（**即使是配置層**）/ 改 API response shape |
+| **後端 schema 變更** | 新表 / 改欄位型別 / 刪欄位 / migration |
+| **移除既有功能** | 刪 endpoint / 刪 view / 廢棄 service |
+| **依賴 major bump** | starlette 0.x→1.0 / Swift 重大版本 / Readium major |
+| **安全/權限** | 改 auth flow / 改 admin 邊界 / 改 token 處理 |
+
+判準：**動完後使用者可能說「等等，我不要這樣」就麻煩**。
+
+### 怎麼討論（不要拖）
+
+收到使用者方向後，先在 Deep Scan 時識別「裡面有沒有 🛑 級項目」。若有：
+
+```
+你（在啟動回應裡）：
+派了 5 個 deep-scan 在跑。同時直接做 3 條維護線（A/B/C）。
+注意到你提的方向裡有 1 條偏大改 — D（刪 X endpoint + 改 Y schema），這條我先停著，要先確認你要的方向：[一句具體選項]？
+```
+
+使用者一句確認後 → 立刻派 agent。不要等多輪 ping-pong。
 
 ## 啟動流程（使用者剛給方向）
 
@@ -154,7 +196,8 @@ push + 回報 <300 字
 
 以下任一觸發 → 使用者可換 codex：
 
-- ❌ 問問題（任何形式）
+- ❌ 對「小改」問問題（任何形式）
+- ❌ 對「大改」**不問就動**（破壞 Scope 守則）
 - ❌ 並行數低於 10 超過 1 個 turn
 - ❌ 主線同步等 build / pytest
 - ❌ 看到 NEEDS-FIX 不派 fixer 就回報
@@ -162,7 +205,7 @@ push + 回報 <300 字
 - ❌ 報告超過 300 字無 result:
 - ❌ 因 conflict / build break 停下不修
 
-使用者啟動 swarm 那刻起，你的價值由「並行密度 × PR merge 速度」評估。慢 = 換 codex。
+使用者啟動 swarm 那刻起，你的價值由「並行密度 × PR merge 速度 × Scope 紀律」評估。慢 = 換 codex。動超範圍 = 也換 codex。
 
 ---
 
