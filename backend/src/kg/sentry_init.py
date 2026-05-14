@@ -30,6 +30,21 @@ _DEFAULT_VERSION_FILE = Path("/app/VERSION")
 _SCRUB_HEADER_KEYS = {"authorization", "cookie", "x-admin-token"}
 _SCRUB_QUERY_KEYS = {"token", "admin_session", "code", "id_token", "access_token"}
 
+# Per-path APM sampling. Keep LLM-call hot paths observable (slow + costly),
+# drop pure-health endpoints, baseline everything else.
+#
+# Rates picked to keep monthly trace volume ≪ Sentry free tier (10k spans/mo):
+#   • /api/pipeline + /api/translate + /api/explain ≈ ~5k req/mo at current
+#     traffic → 5% = ~250 traces/mo, comfortable headroom.
+#   • baseline 1% covers CRUD endpoints (~20k req/mo → ~200 traces/mo).
+#   • health endpoints hit every 30s by docker healthcheck → would dominate
+#     trace volume if sampled at all.
+_TRACES_HOT_PATHS = ("/api/pipeline", "/api/translate", "/api/explain")
+_TRACES_DROP_PATHS = ("/api/system/info", "/api/health", "/health")
+_TRACES_HOT_RATE = 0.05
+_TRACES_BASELINE_RATE = 0.01
+_TRACES_DROP_RATE = 0.0
+
 
 def _scrub_event(event: dict[str, Any], _hint: dict[str, Any]) -> dict[str, Any]:
     """Strip auth credentials from outgoing events before they ship."""
@@ -61,6 +76,32 @@ def _scrub_querystring(qs: str) -> str:
                 continue
         parts.append(chunk)
     return "&".join(parts)
+
+
+def _traces_sampler(sampling_context: dict[str, Any]) -> float:
+    """Per-path APM sampling rate.
+
+    Sentry calls this for every transaction. Returning 0 drops the trace
+    entirely (no span ever leaves the process), so health-check noise costs
+    us nothing. Returning >0 means the trace is kept with that probability.
+    """
+    path = ""
+    scope = sampling_context.get("asgi_scope") if isinstance(sampling_context, dict) else None
+    if isinstance(scope, dict):
+        raw = scope.get("path")
+        if isinstance(raw, str):
+            path = raw
+
+    if not path:
+        return _TRACES_BASELINE_RATE
+
+    for drop in _TRACES_DROP_PATHS:
+        if path == drop or path.startswith(drop + "/"):
+            return _TRACES_DROP_RATE
+    for hot in _TRACES_HOT_PATHS:
+        if path == hot or path.startswith(hot + "/"):
+            return _TRACES_HOT_RATE
+    return _TRACES_BASELINE_RATE
 
 
 def _resolve_release(version_file: Path | None = None) -> str | None:
@@ -122,32 +163,47 @@ def init_sentry() -> bool:
             _logger.warning("%s=%r is not a float; using default %s", name, raw, default)
             return default
 
-    traces_rate = _float_env("SENTRY_TRACES_SAMPLE_RATE", 0.0)
     profiles_rate = _float_env("SENTRY_PROFILES_SAMPLE_RATE", 0.0)
 
-    sentry_sdk.init(
-        dsn=dsn,
-        environment=environment,
-        release=release,
-        traces_sample_rate=traces_rate,
-        profiles_sample_rate=profiles_rate,
-        send_default_pii=False,
-        include_local_variables=False,  # frame locals contain JWTs/passwords
-        max_request_body_size="never",
-        attach_stacktrace=True,
-        before_send=_scrub_event,
-        integrations=[
+    # Use traces_sampler (per-transaction callback) instead of a flat
+    # traces_sample_rate. The flat rate was 0.0 in production, which gave us
+    # zero APM signal. The sampler keeps health-check noise out while letting
+    # us see the LLM hot paths. SENTRY_TRACES_SAMPLE_RATE env is still honored
+    # as a debug override (set non-zero to bypass the per-path logic).
+    flat_override = _float_env("SENTRY_TRACES_SAMPLE_RATE", 0.0)
+    init_kwargs: dict[str, Any] = {
+        "dsn": dsn,
+        "environment": environment,
+        "release": release,
+        "profiles_sample_rate": profiles_rate,
+        "send_default_pii": False,
+        "include_local_variables": False,  # frame locals contain JWTs/passwords
+        "max_request_body_size": "never",
+        "attach_stacktrace": True,
+        "before_send": _scrub_event,
+        "before_send_transaction": _scrub_event,  # same scrub for trace payloads
+        "integrations": [
             StarletteIntegration(transaction_style="endpoint"),
             FastApiIntegration(transaction_style="endpoint"),
             # Breadcrumbs from WARNING+. Event capture disabled — Starlette
             # integration already captures exceptions; logger.error would double-report.
             LoggingIntegration(level=logging.WARNING, event_level=None),
         ],
-    )
+    }
+    if flat_override > 0:
+        init_kwargs["traces_sample_rate"] = flat_override
+        traces_strategy = f"flat={flat_override}"
+    else:
+        init_kwargs["traces_sampler"] = _traces_sampler
+        traces_strategy = (
+            f"sampler(hot={_TRACES_HOT_RATE},base={_TRACES_BASELINE_RATE},drop=health)"
+        )
+
+    sentry_sdk.init(**init_kwargs)
     _initialized = True
     _logger.info(
         "Sentry initialized env=%s release=%s traces=%s profiles=%s",
-        environment, release or "-", traces_rate, profiles_rate,
+        environment, release or "-", traces_strategy, profiles_rate,
     )
     return True
 

@@ -11,6 +11,7 @@ from kg.sentry_init import (
     _resolve_release,
     _scrub_event,
     _scrub_querystring,
+    _traces_sampler,
     init_sentry,
 )
 
@@ -107,6 +108,47 @@ def test_resolve_release_returns_none_when_nothing_available(monkeypatch, tmp_pa
     monkeypatch.delenv("KG_VERSION", raising=False)
     version_file = tmp_path / "VERSION"  # does not exist
     assert _resolve_release(version_file=version_file) is None
+
+
+# ---------------------------------------------------------------------------
+# Traces sampler: per-path rates so APM bill stays bounded while we keep
+# observability on the LLM-call hot paths.
+# ---------------------------------------------------------------------------
+
+def _ctx(path: str) -> dict:
+    """Minimal traces_sampler context resembling what sentry hands us."""
+    return {
+        "asgi_scope": {"type": "http", "path": path},
+        "transaction_context": {"name": path, "op": "http.server"},
+    }
+
+
+def test_traces_sampler_hot_llm_paths_get_5pct():
+    for path in ("/api/pipeline", "/api/translate", "/api/explain"):
+        assert _traces_sampler(_ctx(path)) == 0.05, path
+
+
+def test_traces_sampler_hot_llm_paths_match_subroutes():
+    # /api/pipeline/run, /api/translate/batch etc. share the same prefix rate.
+    assert _traces_sampler(_ctx("/api/pipeline/run")) == 0.05
+    assert _traces_sampler(_ctx("/api/translate/batch")) == 0.05
+
+
+def test_traces_sampler_health_paths_dropped():
+    for path in ("/api/system/info", "/api/health", "/health"):
+        assert _traces_sampler(_ctx(path)) == 0.0, path
+
+
+def test_traces_sampler_default_baseline_1pct():
+    assert _traces_sampler(_ctx("/api/vocabulary/list")) == 0.01
+    assert _traces_sampler(_ctx("/api/notebooks")) == 0.01
+
+
+def test_traces_sampler_handles_missing_path():
+    # Defensive: sentry sometimes hands a context without asgi_scope (websockets,
+    # background workers). Must not crash; default to baseline.
+    assert _traces_sampler({}) == 0.01
+    assert _traces_sampler({"asgi_scope": {}}) == 0.01
 
 
 def test_resolve_release_treats_empty_strings_as_missing(monkeypatch, tmp_path):
