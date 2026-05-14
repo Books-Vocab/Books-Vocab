@@ -17,7 +17,7 @@ import os
     func clearDeleteAccountError()
     func presentSubscriptionPaywall()
     func deleteAccount(authManager: any AuthManaging, kgService: any KGServing, modelContext: ModelContext) async
-    func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator)
+    func updateTranslationLanguage(source: TranslationLanguage, target: TranslationLanguage, authManager: any AuthManaging, kgService: any KGServing, toastCoordinator: AppToastCoordinator) async -> Bool
 }
 
 @Observable @MainActor
@@ -110,31 +110,34 @@ final class SettingsCoordinator: SettingsCoordinating {
         }
     }
 
+    /// 回傳 true 代表已儲存（或免儲存的 guest 路徑），false 代表遠端 update 失敗。
+    /// 失敗時除了回傳 false 也會顯示 toast，呼叫端可選擇額外 inline 反饋。
+    @discardableResult
     func updateTranslationLanguage(
         source: TranslationLanguage,
         target: TranslationLanguage,
         authManager: any AuthManaging,
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
-    ) {
+    ) async -> Bool {
         translationSourceLang = source
         translationTargetLang = target
         TranslationLanguage.currentSource = source
         TranslationLanguage.currentTarget = target
 
-        guard authManager.isLoggedIn else { return }
-        Task {
-            do {
-                _ = try await kgService.updateTranslationConfig(
-                    KGTranslationConfig(
-                        source_lang: source.rawValue,
-                        target_lang: target.rawValue
-                    )
+        guard authManager.isLoggedIn else { return true }
+        do {
+            _ = try await kgService.updateTranslationConfig(
+                KGTranslationConfig(
+                    source_lang: source.rawValue,
+                    target_lang: target.rawValue
                 )
-            } catch {
-                toastCoordinator.error("設定儲存失敗")
-                AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
-            }
+            )
+            return true
+        } catch {
+            toastCoordinator.error("設定儲存失敗")
+            AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
+            return false
         }
     }
 

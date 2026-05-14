@@ -16,7 +16,7 @@ struct SettingsPresenter: View {
     let state: SettingsPresenterState
     let translationSourceLang: Binding<TranslationLanguage>
     let translationTargetLang: Binding<TranslationLanguage>
-    let onTranslationLanguageChanged: (TranslationLanguage, TranslationLanguage) -> Void
+    let onTranslationLanguageChanged: (TranslationLanguage, TranslationLanguage) async -> Bool
     let manualLoginUserId: Binding<String>?
     let debugLocalServerURL: Binding<String>?
     let actions: SettingsPresenterActions

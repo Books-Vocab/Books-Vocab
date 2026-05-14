@@ -54,6 +54,7 @@ struct CollocationExplainItem: Identifiable {
 struct TodayReviewView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
+    @Environment(\.toastCoordinator) private var toastCoordinator
 
     @State private var state: TodayReviewState
 
@@ -289,12 +290,24 @@ struct TodayReviewView: View {
 
         case .forgot:
             guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            state.submit(.forgot, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            let toast = toastCoordinator
+            state.submit(
+                .forgot,
+                container: modelContext.container,
+                reviewSettings: reviewSettingsStore.settings,
+                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+            )
             return true
 
         case .remembered:
             guard !state.isAutoPlaying, state.currentEntry != nil else { return false }
-            state.submit(.remembered, container: modelContext.container, reviewSettings: reviewSettingsStore.settings)
+            let toast = toastCoordinator
+            state.submit(
+                .remembered,
+                container: modelContext.container,
+                reviewSettings: reviewSettingsStore.settings,
+                onSaveFailure: { toast.error("複習結果未存檔，請稍後再試") }
+            )
             return true
 
         case .previous:
