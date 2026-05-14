@@ -126,17 +126,33 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appsto
 
 Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費。
 
+#### Backend env vars
+
 | Env | Default | 用途 |
 |-----|---------|------|
 | `SENTRY_DSN` | （空）| 主開關；填入 DSN 才會啟動 |
 | `SENTRY_ENVIRONMENT` | `production` | release/staging/dev 環境標籤 |
-| `SENTRY_RELEASE` | fallback to `KG_VERSION` | 自動拿到 deploy 寫的 git SHA，無需手動設 |
-| `SENTRY_TRACES_SAMPLE_RATE` | `0.0` | trace 取樣率（0 = 關閉 perf 追蹤）|
-| `SENTRY_PROFILES_SAMPLE_RATE` | `0.0` | profile 取樣率（同上）|
+| `SENTRY_RELEASE` | fallback：`KG_VERSION` → `/app/VERSION` | deploy 寫的 git SHA，通常無需手動設 |
+| `SENTRY_TRACES_SAMPLE_RATE` | `0.0`（哨兵）| **非 0** 時整層 flat 取樣（debug override）；**0** 時走 per-path `_traces_sampler`：LLM hot paths（pipeline/translate/explain）0.05、health/info 0.0、其他 baseline 0.01 |
+| `SENTRY_PROFILES_SAMPLE_RATE` | `0.0` | profile 取樣率（保留，目前生產不開）|
 
-實作位於 `backend/src/kg/sentry_init.py`：FastAPI + Starlette + Logging integrations，auth header / cookie / OAuth code query 全部 scrub，`send_default_pii=False`、`include_local_variables=False`、`max_request_body_size="never"`。狀態暴露於 `/api/system/info`。
+實作：`backend/src/kg/sentry_init.py`
+- **Scrub**：`Authorization` / `Cookie` / `X-Admin-Token` header，含 `session` / `token` 的 cookie 鍵，OAuth query（`token` / `admin_session` / `code` / `id_token` / `access_token`）
+- **Hardening**：`send_default_pii=False`、`include_local_variables=False`、`max_request_body_size="never"`、`attach_stacktrace=True`
+- **User context**：auth dependency 透過 `bind_user(user_id)` 標記 scope，登出無 PII 洩漏
+- **Logging**：WARNING+ 轉 breadcrumb，event_level=None 避免與 Starlette exception capture 重複
+- 狀態暴露於 `/api/system/info`
 
-iOS 端走 `Info.plist` `SentryDSN` 鍵，詳見 `docs/dev/ios-dev.md`。
+#### iOS env / Info.plist
+
+iOS 端（`ios/BooksBrowser/Services/AppCrashReporting.swift`）：
+- `Info.plist` `SentryDSN` 鍵為主開關（空 → 全 no-op）
+- `Info.plist` `SentryEnvironment` 可覆寫；無覆寫時 `#if DEBUG` → `"debug"`，release → `"production"`
+- `releaseName = <bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`、`dist = CFBundleVersion`（區分共用版號的 TestFlight build）
+- `tracesSampleRate`：release 預設 `0.05`、DEBUG 預設 `0.0`；env `SENTRY_TRACES_SAMPLE_RATE`（launch arg / scheme env）可覆寫
+- DEBUG build 預設 `enabled=false`；`SENTRY_ENABLED_IN_DEBUG=1` 或 `-sentryTest` launch arg 啟用
+- `setUser(id:)` 連動 `authManager.isLoggedIn` — 登出時清除避免多帳戶污染
+- HTTP breadcrumb 自動 strip query string、`CancellationError`/`NSURLErrorCancelled` 由 `beforeSend` 丟棄
 
 ### 新增 Card Schema 欄位（SQLite）
 
