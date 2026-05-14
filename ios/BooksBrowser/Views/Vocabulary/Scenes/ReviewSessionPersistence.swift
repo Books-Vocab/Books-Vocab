@@ -142,7 +142,8 @@ enum ReviewSessionPersistence {
         queueBaselines: [TodayReviewSessionSnapshotStore.ReviewBaseline],
         submittedAnswers: [Int: TodayReviewState.SubmittedAnswer],
         container: ModelContainer,
-        reviewSettings: ReviewSettings
+        reviewSettings: ReviewSettings,
+        onSaveFailure: (@MainActor @Sendable () -> Void)? = nil
     ) {
         guard index < queuePersistenceIDs.count,
               index < queueBaselines.count,
@@ -174,7 +175,11 @@ enum ReviewSessionPersistence {
             }
 
             if !ctx.safeSave() {
-                AppLog.data.error("flushSubmittedAnswer: failed to save review result for \(entry.word)")
+                let word = entry.word
+                AppLog.data.error("flushSubmittedAnswer: failed to save review result for \(word)")
+                if let onSaveFailure {
+                    await onSaveFailure()
+                }
             }
         }
     }

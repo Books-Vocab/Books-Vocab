@@ -34,7 +34,7 @@ struct SettingsView: View {
             translationSourceLang: translationSourceLangBinding,
             translationTargetLang: translationTargetLangBinding,
             onTranslationLanguageChanged: { source, target in
-                coordinator.updateTranslationLanguage(
+                await coordinator.updateTranslationLanguage(
                     source: source,
                     target: target,
                     authManager: authManager,
