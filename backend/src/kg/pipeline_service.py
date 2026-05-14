@@ -299,23 +299,34 @@ async def _step_embed_and_judge(
     }
 
     def _log_degree_cap(from_id: str, to_id: str, judgement) -> None:
-        """Record an LLM-accepted candidate that was rejected solely
-        because the from-side or to-side hit MAX_DEGREE. Keeps the
-        judge_log audit trail honest: rate analysis can otherwise
-        misread these as model-quality rejects.
+        """Mark an LLM-accepted candidate as cap-evicted in judge_log.
+
+        ``Judge.evaluate_batch`` has already inserted an ``accepted=1`` row
+        for this candidate. Inserting a second ``accepted=0`` row would
+        double-count the pair and pollute ``get_acceptance_stats``. Instead,
+        flip the existing row to ``accepted=0`` with
+        ``reject_reason='degree_cap'`` so the audit trail tells "LLM
+        accepted, pipeline capped" without inflating the denominator.
         """
         if not uid:
             return
         try:
             from . import judge_log
-            judge_log.record(
-                user_id=uid, notebook_id=notebook_id,
-                from_id=from_id, to_id=to_id,
-                similarity=sims_by_card.get(from_id, {}).get(to_id),
-                verdict=judgement.link, confidence=judgement.confidence,
-                accepted=False, reject_reason="degree_cap",
-                reason=judgement.reason, source="auto",
+            updated = judge_log.update_to_rejected(
+                from_id, to_id, reason="degree_cap",
             )
+            if not updated:
+                # Fallback: no prior accepted row (e.g. judge bypassed
+                # logging). Insert a fresh degree_cap row so the eviction
+                # is still observable.
+                judge_log.record(
+                    user_id=uid, notebook_id=notebook_id,
+                    from_id=from_id, to_id=to_id,
+                    similarity=sims_by_card.get(from_id, {}).get(to_id),
+                    verdict=judgement.link, confidence=judgement.confidence,
+                    accepted=False, reject_reason="degree_cap",
+                    reason=judgement.reason, source="auto",
+                )
         except Exception:
             logger.warning("[%s] Failed to write degree_cap judge_log", uid, exc_info=True)
 

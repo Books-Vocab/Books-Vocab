@@ -191,7 +191,8 @@ def check_judge_rejection_rate(
                 "SELECT COUNT(*) AS total, "
                 "       SUM(CASE WHEN accepted = 0 THEN 1 ELSE 0 END) AS rejected "
                 "FROM judge_log "
-                "WHERE source = 'auto' AND created_at >= ?",
+                "WHERE source = 'auto' AND created_at >= ? "
+                "  AND (reject_reason IS NULL OR reject_reason != 'degree_cap')",
                 (cutoff,),
             ).fetchone()
     except Exception:

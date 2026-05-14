@@ -229,13 +229,15 @@ class _FakeLogger:
 
 
 def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
-    """A card with current_degree such that only K slots remain. The
-    judge returns K+extra accepted candidates. The pipeline must:
+    """A card with only K slots left where the **real** ``Judge.evaluate_batch``
+    accepts all N candidates (N > K). The pipeline must:
       - create only K links (respect cap on the from-side),
-      - record the over-cap accepted candidates in judge_log with
-        accepted=False and reject_reason='degree_cap', so the audit
-        trail explains why a semantically-accepted candidate didn't
-        become a link.
+      - flip the surplus rows that ``evaluate_batch`` already wrote as
+        ``accepted=1`` into ``accepted=0, reject_reason='degree_cap'``,
+      - end up with **N** rows total (no double-count) — exactly K with
+        ``accepted=1`` and N-K with ``reject_reason='degree_cap'``,
+      - report a model acceptance rate of K/K = 1.0 via
+        ``get_acceptance_stats`` (cap evictions excluded).
     """
     judge_log = _fresh_judge_log(tmp_path, monkeypatch)
 
@@ -243,13 +245,10 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
     from kg.pipeline_service import _step_embed_and_judge
 
     available_slots = 2
-    # Seed c1 with (MAX_DEGREE - available_slots) existing active links so
-    # it has exactly `available_slots` slots left.
     existing = [SimpleNamespace(id=f"existing{i}", status="active")
                 for i in range(MAX_DEGREE - available_slots)]
 
-    # 5 candidates — exceed remaining cap by 3.
-    cand_ids = [f"c{i}" for i in range(2, 7)]
+    cand_ids = [f"c{i}" for i in range(2, 7)]  # 5 candidates
     cards_list = [_make_card("c1", "target", "意義")] + [
         _make_card(cid, cid, f"m_{cid}") for cid in cand_ids
     ]
@@ -262,66 +261,139 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
     graph = _FakeGraph(pending=["c1"], links={"c1": existing})
     logger = _FakeLogger()
 
-    # Patched Judge that accepts ALL candidates → forces pipeline to
-    # enforce the cap and decide what to do with the surplus.
-    import kg.judge as judge_mod
-    orig_judge = judge_mod.Judge
+    # Real Judge with a mocked LLM client returning an "accept all" batch
+    # response. evaluate_batch will itself write accepted=1 rows for every
+    # candidate — exactly the path that exposed the original double-count bug.
+    accept_items = [
+        {"word": cid, "link": "shares_usage", "confidence": 0.9, "reason": "ok"}
+        for cid in cand_ids
+    ]
+    mock_client = _mock_client_returning(json.dumps(accept_items))
 
-    class CapJudge:
-        def __init__(self, llm, **kwargs):
-            self.user_id = kwargs.get("user_id", "")
-            self.notebook_id = kwargs.get("notebook_id", "default")
+    asyncio.run(_step_embed_and_judge(
+        "user_cap", {"id": "user_cap", "dir": Path("/tmp/user_cap"), "config": {}},
+        card_store_factory=lambda d: cards,
+        graph_store_factory=lambda d, notebook_id="default": graph,
+        embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+        gemini_client_factory=lambda: mock_client,
+        logger=logger,
+        link_kind_enum=lambda v: v,
+    ))
 
-        def evaluate_batch(self, target_word, target_meaning, candidates,
-                           *, from_id="", similarities=None, max_links=None):
-            # Accept every candidate.
-            results = {}
-            for cid, _, _ in candidates:
-                results[cid] = Judgement(
-                    link="shares_usage", confidence=0.9, reason="ok",
-                )
-            # Mirror the real Judge: write accepted entries to judge_log.
-            from kg import judge_log as jl
-            for cid, _, _ in candidates:
-                jl.record(
-                    user_id=self.user_id, notebook_id=self.notebook_id,
-                    from_id=from_id, to_id=cid,
-                    similarity=(similarities or {}).get(cid),
-                    verdict="shares_usage", confidence=0.9,
-                    accepted=True, reject_reason=None,
-                    reason="ok", source="auto",
-                )
-            return results
-
-    judge_mod.Judge = CapJudge
-    try:
-        asyncio.run(_step_embed_and_judge(
-            "user_cap", {"id": "user_cap", "dir": Path("/tmp/user_cap"), "config": {}},
-            card_store_factory=lambda d: cards,
-            graph_store_factory=lambda d, notebook_id="default": graph,
-            embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            gemini_client_factory=lambda: None,
-            logger=logger,
-            link_kind_enum=lambda v: v,
-        ))
-    finally:
-        judge_mod.Judge = orig_judge
-
-    # Only `available_slots` links should be created — cap respected.
+    # Cap respected on the from-side.
     assert len(graph.created_links) == available_slots
 
-    # Surplus candidates must be in judge_log as degree-cap rejects so
-    # auditors can tell apart "LLM rejected" from "we ran out of room".
     rows = judge_log.get_log("user_cap", notebook_id="default", limit=100)
-    cap_rejects = [r for r in rows if r["reject_reason"] == "degree_cap"]
-    assert len(cap_rejects) == len(cand_ids) - available_slots, (
-        f"Expected {len(cand_ids) - available_slots} degree_cap rejects, "
-        f"got {len(cap_rejects)}; rows={rows}"
+    by_id = {r["to_id"]: r for r in rows}
+
+    # Every candidate is represented EXACTLY ONCE — no second row from
+    # the degree_cap logger.
+    assert set(by_id.keys()) == set(cand_ids), (
+        f"Expected exactly one row per candidate, got rows={rows}"
     )
+    assert len(rows) == len(cand_ids)
+
+    cap_rejects = [r for r in rows if r["reject_reason"] == "degree_cap"]
+    accepted = [r for r in rows if r["accepted"] and r["reject_reason"] is None]
+    assert len(cap_rejects) == len(cand_ids) - available_slots
+    assert len(accepted) == available_slots
     for r in cap_rejects:
         assert r["accepted"] is False
         assert r["from_id"] == "c1"
         assert r["to_id"] in cand_ids
+        # Verdict from the LLM is preserved on the flipped row.
+        assert r["verdict"] == "shares_usage"
+
+    # Acceptance stats: cap evictions are NOT counted against the model.
+    # K accepts survive, N-K are excluded → rate is 1.0.
+    stats = judge_log.get_acceptance_stats(user_id="user_cap")
+    assert stats["total"] == available_slots
+    assert stats["accepted"] == available_slots
+    assert stats["rate"] == 1.0
+
+    judge_log._reset()
+
+
+# ── Regression: get_acceptance_stats excludes degree_cap rejects ─
+
+
+def test_judge_log_get_acceptance_stats_excludes_degree_cap_rejects(
+    tmp_path, monkeypatch,
+):
+    """``get_acceptance_stats`` measures **model** decisions. Rows whose
+    rejection came from a pipeline cap eviction (``reject_reason='degree_cap'``)
+    are not model decisions and must not appear in the denominator.
+
+    Seed 5 accepted + 1 model reject + 2 degree_cap rejects → model
+    acceptance is 5 / (5+1) = 0.8333, NOT 5/8.
+    """
+    judge_log = _fresh_judge_log(tmp_path, monkeypatch)
+
+    for i in range(5):
+        judge_log.record(
+            user_id="u_stats", notebook_id="nb", from_id="a", to_id=f"acc_{i}",
+            similarity=0.8, verdict="shares_usage", confidence=0.9,
+            accepted=True, reject_reason=None, reason="ok", source="auto",
+        )
+    judge_log.record(
+        user_id="u_stats", notebook_id="nb", from_id="a", to_id="rej_model",
+        similarity=0.6, verdict="not_applicable", confidence=0.3,
+        accepted=False, reject_reason="low_confidence",
+        reason="no link", source="auto",
+    )
+    for i in range(2):
+        judge_log.record(
+            user_id="u_stats", notebook_id="nb", from_id="a", to_id=f"cap_{i}",
+            similarity=0.85, verdict="shares_usage", confidence=0.9,
+            accepted=False, reject_reason="degree_cap",
+            reason="ok", source="auto",
+        )
+
+    stats = judge_log.get_acceptance_stats(user_id="u_stats")
+    # 5 accepted + 1 model reject in denominator; 2 cap rows excluded.
+    assert stats["total"] == 6
+    assert stats["accepted"] == 5
+    assert stats["rejected"] == 1
+    assert abs(stats["rate"] - (5 / 6)) < 1e-4
+
+    # Global view: same exclusion applies.
+    glob = judge_log.get_acceptance_stats()
+    assert glob["total"] == 6
+    assert glob["accepted"] == 5
+
+    judge_log._reset()
+
+
+# ── Regression: update_to_rejected flips the latest accepted row ─
+
+
+def test_judge_log_update_to_rejected_flips_existing_row(tmp_path, monkeypatch):
+    """``update_to_rejected`` must mutate the latest matching accepted
+    row instead of inserting a new one — otherwise the pair gets
+    double-counted in stats.
+    """
+    judge_log = _fresh_judge_log(tmp_path, monkeypatch)
+
+    judge_log.record(
+        user_id="u_upd", notebook_id="nb", from_id="x", to_id="y",
+        similarity=0.9, verdict="shares_usage", confidence=0.92,
+        accepted=True, reject_reason=None, reason="ok", source="auto",
+    )
+
+    updated = judge_log.update_to_rejected("x", "y", reason="degree_cap")
+    assert updated is True
+
+    rows = judge_log.get_log("u_upd", limit=10)
+    assert len(rows) == 1  # no second row inserted
+    assert rows[0]["accepted"] is False
+    assert rows[0]["reject_reason"] == "degree_cap"
+    # Verdict / confidence are preserved on the flipped row.
+    assert rows[0]["verdict"] == "shares_usage"
+    assert abs(rows[0]["confidence"] - 0.92) < 1e-6
+
+    # Calling again with no matching accepted row returns False (idempotent).
+    updated2 = judge_log.update_to_rejected("x", "y", reason="degree_cap")
+    assert updated2 is False
 
     judge_log._reset()
 
