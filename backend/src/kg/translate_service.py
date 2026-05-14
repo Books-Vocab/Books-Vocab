@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import hashlib
 import json
 import logging
@@ -9,6 +10,14 @@ from typing import Any
 
 from . import translate_log
 from .exceptions import ExternalServiceError
+
+# In-flight request dedup ("singleflight"). When multiple coroutines fire
+# the same translate request before the first one finishes, they share the
+# first coroutine's future instead of each calling the LLM. The key is the
+# full cache key (user + word + ctx hash + langs + op + model), so different
+# users / inputs never collide. Entries are removed in `finally` so a failed
+# call doesn't poison subsequent attempts.
+_INFLIGHT: dict[tuple, asyncio.Future] = {}
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
@@ -145,36 +154,64 @@ async def _run_llm_translate(
                 logger.exception("record_cache_hit failed (non-fatal)")
         return _parse_json_payload(cached)
 
-    # LLM call with latency tracking
-    t0 = time.monotonic()
-    response = await llm.chat_async(
-        operation,
-        model=model,
-        messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang)}],
-        temperature=0.3,
-        response_format={"type": "json_object"},
+    # In-flight dedup: if an identical request is already running for this
+    # user, await its future instead of firing a second LLM call. Keyed by
+    # the full cache key so different users / inputs never share state.
+    inflight_key = (
+        getattr(llm, "user_id", None),
+        word_key, ctx_hash, source_lang, target_lang, operation, model,
     )
-    latency_ms = int((time.monotonic() - t0) * 1000)
+    existing = _INFLIGHT.get(inflight_key)
+    if existing is not None:
+        return await existing
 
-    if not response.choices:
-        if logger:
-            logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
-        raise ExternalServiceError(f"{operation}/empty_response")
-
-    raw = response.choices[0].message.content
-    parsed = _parse_json_payload(raw)
-
-    # Only cache non-empty, meaningful responses
-    if raw and parsed and any(parsed.values()):
-        translate_log.record(
-            user_id=llm.user_id, operation=operation,
-            word=word_key, context=ctx, context_hash=ctx_hash,
-            source_lang=source_lang, target_lang=target_lang,
-            response_raw=raw, latency_ms=latency_ms,
+    loop = asyncio.get_event_loop()
+    fut: asyncio.Future = loop.create_future()
+    _INFLIGHT[inflight_key] = fut
+    try:
+        # LLM call with latency tracking
+        t0 = time.monotonic()
+        response = await llm.chat_async(
+            operation,
             model=model,
+            messages=[{"role": "user", "content": prompt_fn(req, source_lang, target_lang)}],
+            temperature=0.3,
+            response_format={"type": "json_object"},
         )
+        latency_ms = int((time.monotonic() - t0) * 1000)
 
-    return parsed
+        if not response.choices:
+            if logger:
+                logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
+            err = ExternalServiceError(f"{operation}/empty_response")
+            fut.set_exception(err)
+            raise err
+
+        raw = response.choices[0].message.content
+        parsed = _parse_json_payload(raw)
+
+        # Only cache non-empty, meaningful responses
+        if raw and parsed and any(parsed.values()):
+            translate_log.record(
+                user_id=llm.user_id, operation=operation,
+                word=word_key, context=ctx, context_hash=ctx_hash,
+                source_lang=source_lang, target_lang=target_lang,
+                response_raw=raw, latency_ms=latency_ms,
+                model=model,
+            )
+
+        fut.set_result(parsed)
+        return parsed
+    except BaseException as exc:
+        if not fut.done():
+            fut.set_exception(exc)
+        raise
+    finally:
+        # Remove only if it's still our entry (defensive against any
+        # future reentrancy). Followers awaiting `fut` already have the
+        # reference; popping the dict doesn't affect them.
+        if _INFLIGHT.get(inflight_key) is fut:
+            _INFLIGHT.pop(inflight_key, None)
 
 
 async def run_quick_translate(req: TranslateRequest, user: dict[str, Any], *, llm: Any, logger: logging.Logger, model: str = "gemini-2.5-flash-lite") -> QuickTranslateResponse:
