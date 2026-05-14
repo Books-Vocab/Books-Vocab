@@ -28,6 +28,7 @@ from .billing import (
 )
 from .difficulty import get_tier
 from .graph import LINK_LABELS, GraphStore, LinkKind
+from .sentry_init import bind_user
 from .service_factories import (
     create_async_gemini_client,
     create_card_store,
@@ -91,12 +92,16 @@ def get_current_user(
 ) -> UserRecord:
     settings = request.app.state.kg_settings
     load_users_fn = request.app.state.load_users
-    return resolve_current_user(
+    user = resolve_current_user(
         credentials.credentials,
         settings=settings,
         load_users=load_users_fn,
         parse_datetime=_parse_datetime,
     )
+    # Tag Sentry scope with uid so error groups + traces cluster per-user.
+    # No-op when Sentry isn't initialized; id-only so no PII leaks.
+    bind_user(user.get("id"))
+    return user
 
 
 # ---------------------------------------------------------------------------

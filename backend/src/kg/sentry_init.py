@@ -20,6 +20,10 @@ from typing import Any
 
 _logger = logging.getLogger(__name__)
 _initialized = False
+# Cached reference to the sentry_sdk module after a successful init().
+# Stored at module scope so bind_user() can avoid re-importing on every
+# authenticated request (hot path).
+_sentry_module: Any | None = None
 
 # Production: deploy.sh writes the deploy SHA to /app/VERSION (rsync'd into the
 # container). Acts as the last-resort release identifier when no env override
@@ -200,6 +204,8 @@ def init_sentry() -> bool:
         )
 
     sentry_sdk.init(**init_kwargs)
+    global _sentry_module
+    _sentry_module = sentry_sdk
     _initialized = True
     _logger.info(
         "Sentry initialized env=%s release=%s traces=%s profiles=%s",
@@ -210,3 +216,25 @@ def init_sentry() -> bool:
 
 def is_active() -> bool:
     return _initialized
+
+
+def bind_user(user_id: str | None) -> None:
+    """Tag the current Sentry scope with ``user_id`` (and nothing else).
+
+    Called from the auth dependency so error events / traces are clusterable
+    per-user without leaking PII. We deliberately omit email, IP, username —
+    sendDefaultPii is off and we want to keep it that way.
+
+    No-op when Sentry isn't initialized (dev/test, or DSN unset in prod).
+    Falsy ``user_id`` clears the scope (so an unauthenticated handler can't
+    inherit the previous request's uid in workers that reuse coroutines).
+    """
+    if not _initialized or _sentry_module is None:
+        return
+    try:
+        if user_id:
+            _sentry_module.set_user({"id": user_id})
+        else:
+            _sentry_module.set_user(None)
+    except Exception:  # pragma: no cover — sentry must never break the request
+        _logger.exception("bind_user failed; suppressing to keep request flow")

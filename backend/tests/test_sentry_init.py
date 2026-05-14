@@ -12,6 +12,7 @@ from kg.sentry_init import (
     _scrub_event,
     _scrub_querystring,
     _traces_sampler,
+    bind_user,
     init_sentry,
 )
 
@@ -144,11 +145,122 @@ def test_traces_sampler_default_baseline_1pct():
     assert _traces_sampler(_ctx("/api/notebooks")) == 0.01
 
 
+# ---------------------------------------------------------------------------
+# bind_user: ties uid to the current Sentry scope so error groups are
+# clusterable by user without sending email / IP / username.
+# ---------------------------------------------------------------------------
+
+def test_bind_user_no_op_when_sentry_inactive(monkeypatch):
+    # SENTRY_DSN unset → init returns False → bind_user must silently do nothing
+    monkeypatch.delenv("SENTRY_DSN", raising=False)
+    # Must not raise even though sentry isn't initialized.
+    bind_user("uid-123")
+    bind_user(None)
+    bind_user("")
+
+
+def test_bind_user_only_sends_id(monkeypatch):
+    """When Sentry is active, only {'id': uid} reaches set_user — no PII."""
+    captured: list = []
+
+    class FakeSentry:
+        @staticmethod
+        def set_user(payload):
+            captured.append(payload)
+
+    import kg.sentry_init as si
+
+    # Force the "sentry active" branch without standing up a real DSN.
+    monkeypatch.setattr(si, "_initialized", True, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", FakeSentry, raising=False)
+
+    si.bind_user("user-xyz")
+    assert captured == [{"id": "user-xyz"}]
+    # Defensive: must not leak email / username / ip_address keys even if
+    # somebody adds them later by accident.
+    for entry in captured:
+        assert set(entry.keys()) == {"id"}
+
+
+def test_bind_user_clears_scope_when_uid_none(monkeypatch):
+    """Unauthenticated request path should clear any stale uid."""
+    captured: list = []
+
+    class FakeSentry:
+        @staticmethod
+        def set_user(payload):
+            captured.append(payload)
+
+    import kg.sentry_init as si
+    monkeypatch.setattr(si, "_initialized", True, raising=False)
+    monkeypatch.setattr(si, "_sentry_module", FakeSentry, raising=False)
+
+    si.bind_user(None)
+    si.bind_user("")
+    # Both call paths must clear the scope (sentry uses None payload for clear).
+    assert captured == [None, None]
+
+
 def test_traces_sampler_handles_missing_path():
     # Defensive: sentry sometimes hands a context without asgi_scope (websockets,
     # background workers). Must not crash; default to baseline.
     assert _traces_sampler({}) == 0.01
     assert _traces_sampler({"asgi_scope": {}}) == 0.01
+
+
+# ---------------------------------------------------------------------------
+# deps.get_current_user → sentry_init.bind_user wiring
+# ---------------------------------------------------------------------------
+
+def test_get_current_user_binds_uid_to_sentry(tmp_path, monkeypatch):
+    """Authenticated request must surface uid to Sentry scope."""
+    import json
+    from datetime import UTC, datetime, timedelta
+    from types import SimpleNamespace
+
+    import jwt as pyjwt
+    from fastapi.security import HTTPAuthorizationCredentials
+
+    from kg import deps
+    from kg.settings import KGSettings
+
+    captured: list = []
+    monkeypatch.setattr(
+        deps, "bind_user", lambda uid: captured.append(uid), raising=True
+    )
+
+    user_id = "uid-binds-to-sentry"
+    secret = "test-secret-for-this-test-only-1234567"
+    users_file = tmp_path / "users.json"
+    users_file.write_text(json.dumps({user_id: {"config": {}}}))
+
+    settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret=secret,
+        jwt_algorithm="HS256",
+    )
+    token = pyjwt.encode(
+        {
+            "sub": user_id,
+            "iat": datetime.now(tz=UTC),
+            "exp": datetime.now(tz=UTC) + timedelta(hours=1),
+        },
+        secret,
+        algorithm="HS256",
+    )
+
+    fake_app = SimpleNamespace(
+        state=SimpleNamespace(
+            kg_settings=settings,
+            load_users=lambda: json.loads(users_file.read_text()),
+        )
+    )
+    fake_request = SimpleNamespace(app=fake_app)
+    creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
+
+    result = deps.get_current_user(fake_request, creds)  # type: ignore[arg-type]
+    assert result["id"] == user_id
+    assert captured == [user_id], "bind_user should be called with the uid on auth success"
 
 
 def test_resolve_release_treats_empty_strings_as_missing(monkeypatch, tmp_path):
