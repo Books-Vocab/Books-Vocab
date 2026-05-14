@@ -294,6 +294,27 @@ private enum KnowledgeGraphPresenterPreviewData {
         ),
         showsSettings: false
     )
+
+    static let noLinksState = KnowledgeGraphPresenter.State(
+        emptyState: .init(
+            title: "尚無知識連結",
+            systemImage: "point.3.connected.trianglepath.dotted",
+            description: "持續收錄相關單字，系統會自動建立關聯。或在設定中開啟「孤立節點」以瀏覽所有單字。"
+        ),
+        nodes: [],
+        edges: [],
+        graphTheme: KnowledgeGraphPresentation.theme(for: .previewNeutral),
+        forces: GraphForces(
+            repel: 0.76,
+            linkDistance: 120,
+            linkStrength: 0.32,
+            centerStrength: 0.24,
+            baseNodeRadius: 4.2,
+            collideRadius: 1.3,
+            linkThickness: 1.1
+        ),
+        showsSettings: false
+    )
 }
 
 #Preview("Knowledge Graph / Settings") {
@@ -308,6 +329,14 @@ private enum KnowledgeGraphPresenterPreviewData {
     AppThemeContainer {
         KnowledgeGraphPresenterPreviewHarness(
             state: KnowledgeGraphPresenterPreviewData.emptyState
+        )
+    }
+}
+
+#Preview("Knowledge Graph / No Links") {
+    AppThemeContainer {
+        KnowledgeGraphPresenterPreviewHarness(
+            state: KnowledgeGraphPresenterPreviewData.noLinksState
         )
     }
 }

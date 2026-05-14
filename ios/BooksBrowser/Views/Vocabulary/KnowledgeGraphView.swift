@@ -52,12 +52,20 @@ struct KnowledgeGraphView: View {
             validNodeIDs: Set(nodes.map(\.id))
         )
 
+        let syncedEntryCount = allEntries.reduce(into: 0) { acc, entry in
+            if entry.isSynced, entry.syncAction != .delete, !entry.isArchived, entry.kgCardId != nil {
+                acc += 1
+            }
+        }
         return .init(
             emptyState: KnowledgeGraphPresentation.emptyState(
                 isLoggedIn: authManager.isLoggedIn,
                 isLoading: coordinator.isLoading,
                 errorMessage: coordinator.errorMessage,
-                nodes: nodes
+                nodes: nodes,
+                syncedEntryCount: syncedEntryCount,
+                linkCount: coordinator.links.count,
+                showsIsolatedNodes: coordinator.showsIsolatedNodes
             ),
             nodes: nodes,
             edges: edges,
