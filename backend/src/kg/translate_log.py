@@ -126,12 +126,50 @@ def count_cache_hits_since(cutoff_iso: str) -> int:
     return int(row[0] or 0) if row else 0
 
 
-def get_log(user_id: str, *, limit: int = 200) -> list[dict]:
+def get_log(
+    user_id: str,
+    *,
+    limit: int = 200,
+    q: str | None = None,
+    op: str | None = None,
+) -> list[dict]:
+    """Return translate log entries for a user, newest first.
+
+    Filters:
+      - ``op``: exact match against ``operation`` (e.g. ``translate_quick``).
+      - ``q``: case-insensitive substring match against ``word`` OR ``context``.
+        SQL ``LIKE`` wildcards (``%``, ``_``) inside ``q`` are escaped via an
+        explicit ``ESCAPE`` clause so admin search input can't accidentally
+        match everything.
+    """
+    where = ["user_id = ?"]
+    params: list = [user_id]
+
+    if op:
+        where.append("operation = ?")
+        params.append(op)
+
+    q_clean = (q or "").strip()
+    if q_clean:
+        escaped = (
+            q_clean.replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
+        )
+        like = f"%{escaped}%"
+        where.append("(LOWER(word) LIKE LOWER(?) ESCAPE '\\' OR LOWER(IFNULL(context,'')) LIKE LOWER(?) ESCAPE '\\')")
+        params.extend([like, like])
+
+    sql = (
+        "SELECT * FROM translate_log WHERE "
+        + " AND ".join(where)
+        + " ORDER BY id DESC LIMIT ?"
+    )
+    params.append(limit)
+
+
     with _lock:
         conn = _get_conn()
-        rows = conn.execute(
-            "SELECT * FROM translate_log WHERE user_id = ? ORDER BY id DESC LIMIT ?",
-            (user_id, limit),
-        ).fetchall()
+        rows = conn.execute(sql, tuple(params)).fetchall()
     cols = ["id","user_id","operation","word","context","context_hash","source_lang","target_lang","response_raw","latency_ms","created_at"]
     return [dict(zip(cols, row)) for row in rows]
