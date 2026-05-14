@@ -12,10 +12,26 @@ struct ImportedBookDraft {
 
 @MainActor
 protocol BookshelfImporting: AnyObject {
-    func importBook(from sourceURL: URL) async throws -> ImportedBookDraft
-    func importTXT(from url: URL) async throws -> ImportedBookDraft
-    func importMD(from url: URL) async throws -> ImportedBookDraft
-    func importPDF(from url: URL) async throws -> ImportedBookDraft
+    func importBook(from sourceURL: URL, progress: (@Sendable (Double) -> Void)?) async throws -> ImportedBookDraft
+    func importTXT(from url: URL, progress: (@Sendable (Double) -> Void)?) async throws -> ImportedBookDraft
+    func importMD(from url: URL, progress: (@Sendable (Double) -> Void)?) async throws -> ImportedBookDraft
+    func importPDF(from url: URL, progress: (@Sendable (Double) -> Void)?) async throws -> ImportedBookDraft
+}
+
+extension BookshelfImporting {
+    // 既有呼叫點向後相容
+    func importBook(from sourceURL: URL) async throws -> ImportedBookDraft {
+        try await importBook(from: sourceURL, progress: nil)
+    }
+    func importTXT(from url: URL) async throws -> ImportedBookDraft {
+        try await importTXT(from: url, progress: nil)
+    }
+    func importMD(from url: URL) async throws -> ImportedBookDraft {
+        try await importMD(from: url, progress: nil)
+    }
+    func importPDF(from url: URL) async throws -> ImportedBookDraft {
+        try await importPDF(from: url, progress: nil)
+    }
 }
 
 @MainActor
@@ -26,13 +42,13 @@ final class BookshelfImportService: BookshelfImporting {
         self.readiumService = readiumService
     }
 
-    func importBook(from sourceURL: URL) async throws -> ImportedBookDraft {
+    func importBook(from sourceURL: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> ImportedBookDraft {
         AppCrashReporting.addBreadcrumb(
             category: "import",
             message: "import.start",
             data: ["format": "epub", "ext": sourceURL.pathExtension]
         )
-        let (fileName, publication) = try await readiumService.importEPUB(from: sourceURL)
+        let (fileName, publication) = try await readiumService.importEPUB(from: sourceURL, progress: progress)
         let metadata = readiumService.extractMetadata(from: publication)
         let coverData = await readiumService.extractCover(from: publication)
 
@@ -45,7 +61,7 @@ final class BookshelfImportService: BookshelfImporting {
         )
     }
 
-    func importTXT(from url: URL) async throws -> ImportedBookDraft {
+    func importTXT(from url: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> ImportedBookDraft {
         AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "txt"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
@@ -54,7 +70,7 @@ final class BookshelfImportService: BookshelfImporting {
 
         let title = url.deletingPathExtension().lastPathComponent
         let epubTmp = try await Task.detached {
-            try EPUBConverter().convertTXT(at: url, title: title)
+            try EPUBConverter().convertTXT(at: url, title: title, progress: progress)
         }.value
 
         let fileName = epubTmp.lastPathComponent
@@ -77,7 +93,7 @@ final class BookshelfImportService: BookshelfImporting {
         )
     }
 
-    func importMD(from url: URL) async throws -> ImportedBookDraft {
+    func importMD(from url: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> ImportedBookDraft {
         AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "md"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
@@ -86,7 +102,7 @@ final class BookshelfImportService: BookshelfImporting {
 
         let title = url.deletingPathExtension().lastPathComponent
         let epubTmp = try await Task.detached {
-            try EPUBConverter().convertMD(at: url, title: title)
+            try EPUBConverter().convertMD(at: url, title: title, progress: progress)
         }.value
 
         let fileName = epubTmp.lastPathComponent
@@ -109,7 +125,7 @@ final class BookshelfImportService: BookshelfImporting {
         )
     }
 
-    func importPDF(from url: URL) async throws -> ImportedBookDraft {
+    func importPDF(from url: URL, progress: (@Sendable (Double) -> Void)? = nil) async throws -> ImportedBookDraft {
         AppCrashReporting.addBreadcrumb(category: "import", message: "import.start", data: ["format": "pdf"])
         guard url.startAccessingSecurityScopedResource() else {
             throw BookshelfImportError.securityScopeAccessFailed
@@ -121,7 +137,7 @@ final class BookshelfImportService: BookshelfImporting {
         let dest = Book.booksDirectory.appendingPathComponent(fileName)
         let fm = FileManager.default
         try fm.createDirectory(at: Book.booksDirectory, withIntermediateDirectories: true)
-        try fm.copyItem(at: url, to: dest)
+        try await Self.copyFileChunked(from: url, to: dest, progress: progress)
 
         let coverData = PDFDocument(url: dest)
             .flatMap { $0.page(at: 0)?.thumbnail(of: CGSize(width: 300, height: 400), for: .artBox) }
@@ -134,6 +150,41 @@ final class BookshelfImportService: BookshelfImporting {
             fileName: fileName,
             format: .pdf
         )
+    }
+
+    /// 以 ~512 KB 區塊複製檔案，每塊回報一次進度。背景執行緒執行避免阻塞 MainActor。
+    nonisolated static func copyFileChunked(
+        from src: URL,
+        to dst: URL,
+        chunkBytes: Int = 512 * 1024,
+        progress: (@Sendable (Double) -> Void)? = nil
+    ) async throws {
+        try await Task.detached(priority: .userInitiated) {
+            let attrs = try FileManager.default.attributesOfItem(atPath: src.path)
+            let totalBytes = (attrs[.size] as? NSNumber)?.int64Value ?? 0
+            let fm = FileManager.default
+            if fm.fileExists(atPath: dst.path) { try fm.removeItem(at: dst) }
+            fm.createFile(atPath: dst.path, contents: nil)
+
+            let reader = try FileHandle(forReadingFrom: src)
+            defer { try? reader.close() }
+            let writer = try FileHandle(forWritingTo: dst)
+            defer { try? writer.close() }
+
+            var written: Int64 = 0
+            progress?(0.0)
+            while true {
+                let chunk = try reader.read(upToCount: chunkBytes) ?? Data()
+                if chunk.isEmpty { break }
+                try writer.write(contentsOf: chunk)
+                written += Int64(chunk.count)
+                if totalBytes > 0 {
+                    let ratio = min(1.0, Double(written) / Double(totalBytes))
+                    progress?(ratio)
+                }
+            }
+            progress?(1.0)
+        }.value
     }
 }
 
