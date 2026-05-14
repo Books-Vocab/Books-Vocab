@@ -70,28 +70,33 @@ struct SubscriptionPaywallSheet: View {
             ),
             .init(
                 title: "AI 翻譯與語境解釋".localized,
-                freeMark: .cross,
+                freeMark: .label("有限".localized),
                 proMark: .check
             ),
             .init(
                 title: "雲端同步與跨裝置狀態".localized,
-                freeMark: .cross,
+                freeMark: .label("有限".localized),
                 proMark: .check
             ),
             .init(
                 title: "知識圖譜與關聯卡片".localized,
-                freeMark: .cross,
+                freeMark: .label("有限".localized),
                 proMark: .check
             ),
             .init(
                 title: "間隔複習（Today Review）".localized,
-                freeMark: .cross,
+                freeMark: .label("有限".localized),
                 proMark: .check
             ),
             .init(
                 title: "Podcast 跨集播放".localized,
-                freeMark: .cross,
+                freeMark: .label("有限".localized),
                 proMark: .check
+            ),
+            .init(
+                title: "每日 AI 額度".localized,
+                freeMark: .label("1x"),
+                proMark: .label("10x")
             )
         ]
     }

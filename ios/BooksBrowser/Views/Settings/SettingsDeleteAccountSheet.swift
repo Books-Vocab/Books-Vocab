@@ -23,6 +23,7 @@ struct SettingsDeleteAccountSheet: View {
     @State private var ackNoSupport = false
     @State private var confirmText = ""
     @State private var countdownRemaining = SettingsDeleteAccountSheet.countdownSeconds
+    @State private var countdownTask: Task<Void, Never>?
 
     /// 倒數秒數 — 給使用者反悔的視覺壓力
     private static let countdownSeconds = 5
@@ -82,6 +83,8 @@ struct SettingsDeleteAccountSheet: View {
                 if ready {
                     startCountdown()
                 } else {
+                    countdownTask?.cancel()
+                    countdownTask = nil
                     countdownRemaining = Self.countdownSeconds
                 }
             }
@@ -271,10 +274,12 @@ struct SettingsDeleteAccountSheet: View {
     // MARK: - Countdown
 
     private func startCountdown() {
+        countdownTask?.cancel()
         countdownRemaining = Self.countdownSeconds
-        Task { @MainActor in
+        countdownTask = Task { @MainActor in
             while countdownRemaining > 0 {
                 try? await Task.sleep(nanoseconds: 1_000_000_000)
+                if Task.isCancelled { return }
                 // 若使用者中途取消確認，allAcknowledged/confirmTextMatches 變 false → stop
                 guard allAcknowledged && confirmTextMatches else {
                     countdownRemaining = Self.countdownSeconds
