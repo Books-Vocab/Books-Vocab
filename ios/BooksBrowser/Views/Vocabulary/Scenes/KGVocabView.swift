@@ -106,7 +106,8 @@ struct KGVocabView: View {
             emptyState: .init(
                 title: emptyStateTitle,
                 systemImage: emptyStateIcon,
-                description: emptyStateDescription
+                description: emptyStateDescription,
+                action: emptyStateAction
             )
         )
 
@@ -253,13 +254,17 @@ struct KGVocabView: View {
     }
 
     private var emptyStateDescription: String {
-        if syncedEntries.isEmpty { return "同步完成後，這裡會顯示你的雲端單字。".localized }
+        if syncedEntries.isEmpty {
+            return "在書架閱讀時長按生字加入單字本，或重新整理以拉取雲端已有資料。".localized
+        }
         if !searchText.isEmpty { return "試試其他關鍵字，或取消部分篩選條件。".localized }
         if !selectedReviewStates.isEmpty { return "試試取消部分篩選條件，或切換排序方式。".localized }
         return "同步完成後，這裡會顯示你的雲端單字。".localized
     }
 
     private var emptyStateIcon: String {
+        if syncedEntries.isEmpty { return "books.vertical" }
+        if !searchText.isEmpty { return "magnifyingglass" }
         if selectedReviewStates.count == 1, let state = selectedReviewStates.first {
             switch state {
             case .unlearned: return "sparkles"
@@ -268,6 +273,29 @@ struct KGVocabView: View {
             }
         }
         return "line.3.horizontal.decrease.circle"
+    }
+
+    /// CTA：僅在「整本 notebook 完全沒卡」時提供 — 觸發強制同步以拉雲端資料。
+    /// 搜尋/篩選導致為空時不顯示 CTA（清掉條件即可）。
+    private var emptyStateAction: AppEmptyStateAction? {
+        guard syncedEntries.isEmpty,
+              searchText.isEmpty,
+              selectedReviewStates.isEmpty,
+              authManager.isLoggedIn else {
+            return nil
+        }
+        return AppEmptyStateAction(
+            title: "重新整理".localized,
+            systemImage: "arrow.clockwise",
+            handler: {
+                Task {
+                    await coordinator.forceRefresh(
+                        kgService: kgService,
+                        modelContext: modelContext
+                    )
+                }
+            }
+        )
     }
 
     // MARK: - Helpers

@@ -14,6 +14,14 @@ struct KGVocabPresenter: View {
             let title: String
             let systemImage: String
             let description: String
+            let action: AppEmptyStateAction?
+
+            init(title: String, systemImage: String, description: String, action: AppEmptyStateAction? = nil) {
+                self.title = title
+                self.systemImage = systemImage
+                self.description = description
+                self.action = action
+            }
         }
 
         struct RowItem: Identifiable {
@@ -73,49 +81,32 @@ struct KGVocabPresenter: View {
                             title: state.emptyState.title,
                             systemImage: state.emptyState.systemImage,
                             description: state.emptyState.description,
-                            guidanceText: "嘗試切換篩選條件或新增單字"
+                            guidanceText: state.emptyState.action == nil ? "嘗試切換篩選條件或新增單字" : nil,
+                            action: state.emptyState.action
                         )
                         .padding(vocabSkin.metrics.listRowHorizontalInset)
                         .padding(.vertical, vocabSkin.metrics.listEmptyStateVerticalInset)
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
-                                HStack(spacing: vocabSkin.spacing.inlineGap) {
-                                    if selectionState.isSelecting {
-                                        Image(systemName: selectionState.selectedIDs.contains(item.id) ? "checkmark.circle.fill" : "circle")
-                                            .font(vocabSkin.typography.iconMedium)
-                                            .foregroundStyle(
-                                                selectionState.selectedIDs.contains(item.id)
-                                                    ? vocabSkin.palette.accent
-                                                    : vocabSkin.palette.quaternaryText
-                                            )
-                                            .onTapGesture { selectionState.toggle(item.id) }
-                                            .transition(.selectionReveal)
+                                KGVocabRow(
+                                    entry: item.entry,
+                                    isSelecting: selectionState.isSelecting,
+                                    isSelected: selectionState.selectedIDs.contains(item.id),
+                                    onTap: {
+                                        if selectionState.isSelecting {
+                                            selectionState.toggle(item.id)
+                                        } else {
+                                            onRowTapped(item.id)
+                                        }
+                                    },
+                                    onToggleSelection: { selectionState.toggle(item.id) },
+                                    onLongPress: {
+                                        if !selectionState.isSelecting {
+                                            onLongPress(item.id)
+                                        }
                                     }
-
-                                    WordRow(viewData: item.entry.wordRowViewData(
-                                        showsReviewState: false,
-                                        showsSourceContext: false,
-                                        showsDifficultyTier: false,
-                                        showsReviewProgress: true
-                                    ))
-                                        .contentShape(Rectangle())
-                                        .onTapGesture {
-                                            if selectionState.isSelecting {
-                                                selectionState.toggle(item.id)
-                                            } else {
-                                                onRowTapped(item.id)
-                                            }
-                                        }
-                                        .onLongPressGesture {
-                                            if !selectionState.isSelecting {
-                                                onLongPress(item.id)
-                                            }
-                                        }
-                                }
-                                .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                                .animateSpring(selectionState.isSelecting)
-                                .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
+                                )
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
@@ -125,6 +116,7 @@ struct KGVocabPresenter: View {
                                 }
                             }
                         }
+                        .animateSpring(selectionState.isSelecting)
                     }
                     }
                 }
@@ -139,6 +131,52 @@ struct KGVocabPresenter: View {
         }
         .animateSpring(state.banner == nil)
         } // end outer VStack
+    }
+}
+
+/// 單字列 — 抽出為獨立 View，使 SwiftUI diff 工作量隨可見 row 數，而非全資料集數量。
+///
+/// 設計重點：
+/// 1. 接受 minimal props（`isSelecting`/`isSelected` 兩個 Bool），不再傳整個 `SelectionModeState` observable，
+///    避免 list 中每個 row 都訂閱 selection state 變動而觸發重繪。
+/// 2. 不在 row 內部掛 `.animateSpring(selectionState.isSelecting)`，500+ rows 時可省下 500+ 個 animation observer。
+///    動畫由父層容器（`LazyVStack`）統一驅動。
+private struct KGVocabRow: View {
+    @Environment(\.vocabSkin) private var vocabSkin
+
+    let entry: VocabularyEntry
+    let isSelecting: Bool
+    let isSelected: Bool
+    let onTap: () -> Void
+    let onToggleSelection: () -> Void
+    let onLongPress: () -> Void
+
+    var body: some View {
+        HStack(spacing: vocabSkin.spacing.inlineGap) {
+            if isSelecting {
+                Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
+                    .font(vocabSkin.typography.iconMedium)
+                    .foregroundStyle(
+                        isSelected
+                            ? vocabSkin.palette.accent
+                            : vocabSkin.palette.quaternaryText
+                    )
+                    .onTapGesture(perform: onToggleSelection)
+                    .transition(.selectionReveal)
+            }
+
+            WordRow(viewData: entry.wordRowViewData(
+                showsReviewState: false,
+                showsSourceContext: false,
+                showsDifficultyTier: false,
+                showsReviewProgress: true
+            ))
+                .contentShape(Rectangle())
+                .onTapGesture(perform: onTap)
+                .onLongPressGesture(perform: onLongPress)
+        }
+        .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+        .transition(.asymmetric(insertion: .listInsert, removal: .listRemove))
     }
 }
 
