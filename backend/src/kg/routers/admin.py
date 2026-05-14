@@ -135,12 +135,17 @@ def build_api_admin_router(
     admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
+    admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
 ) -> APIRouter:
     router = APIRouter(dependencies=[Depends(get_admin_user)])
     router.get("/api/admin/stats", include_in_schema=False)(admin_stats)
     router.get("/api/admin/logs", include_in_schema=False)(admin_logs)
+    # NOTE: static "/users/search" MUST register before dynamic "/users/{user_id}/…"
+    # otherwise FastAPI greedy-matches "search" as user_id.
+    if admin_users_search is not None:
+        router.get("/api/admin/users/search", include_in_schema=False)(admin_users_search)
     router.get("/api/admin/users/{user_id}/entitlement", include_in_schema=False)(admin_user_entitlement)
     router.post("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_grant_pro_access)
     router.delete("/api/admin/users/{user_id}/admin-grant", include_in_schema=False)(admin_revoke_pro_access)
@@ -194,6 +199,7 @@ def build_admin_router(
     admin_user_activity: Callable[..., Any] | None = None,
     admin_user_usage: Callable[..., Any] | None = None,
     admin_host_metrics: Callable[..., Any] | None = None,
+    admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
     admin_user_detail_ui: Callable[..., Any] | None = None,
@@ -224,6 +230,7 @@ def build_admin_router(
         admin_user_activity=admin_user_activity,
         admin_user_usage=admin_user_usage,
         admin_host_metrics=admin_host_metrics,
+        admin_users_search=admin_users_search,
         admin_observability=admin_observability,
         admin_log_retention_run=admin_log_retention_run,
     )

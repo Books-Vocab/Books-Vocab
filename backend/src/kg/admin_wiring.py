@@ -198,6 +198,11 @@ def create_admin_handlers(
         """Return real-time host metrics for admin dashboard."""
         return admin_host_metrics_response()
 
+    def admin_users_search(q: str = "", limit: int = 50):
+        """Search users by uid prefix / email substring / display name substring."""
+        from .admin_users_search import search_users
+        return search_users(load_users_fn(), q=q, limit=limit)
+
     def admin_observability():
         """Return site-wide aggregated observability metrics (24h / 7d)."""
         from .admin_observability import collect_observability
@@ -234,6 +239,7 @@ def create_admin_handlers(
         "admin_user_activity": admin_user_activity,
         "admin_user_usage": admin_user_usage,
         "admin_host_metrics": admin_host_metrics,
+        "admin_users_search": admin_users_search,
         "admin_observability": admin_observability,
         "admin_log_retention_run": admin_log_retention_run,
         "admin_user_detail_ui": admin_user_detail_ui,
