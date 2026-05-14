@@ -92,10 +92,15 @@ final class PodcastPlayerViewModel {
 
     // MARK: - Loading
 
-    func loadEpisode(audioURL: URL, subtitleContent: String?, title: String = "") {
+    func loadEpisode(
+        audioURL: URL,
+        subtitleContent: String?,
+        title: String = "",
+        audioHTTPHeaders: [String: String] = [:]
+    ) {
         state = .loading
         duration = 0
-        audioEngine.loadAudio(url: audioURL)
+        audioEngine.loadAudio(url: audioURL, httpHeaders: audioHTTPHeaders)
         if let srt = subtitleContent {
             subtitleEngine.load(srtContent: srt)
         }
