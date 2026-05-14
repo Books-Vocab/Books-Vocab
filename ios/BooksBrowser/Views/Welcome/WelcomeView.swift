@@ -63,6 +63,7 @@ struct WelcomeView: View {
             #endif
             .frame(height: AppWelcomeMetrics.pageHeight)
             .animateContentFade(currentPage)
+            .accessibilityHint(Text("左右滑動切換步驟".localized))
 
             // 自繪 page indicator（避免 UIPageControl tint 跨平台不一致）
             stepIndicator
@@ -90,6 +91,7 @@ struct WelcomeView: View {
             Button("試用".localized, action: onTryDemo)
                 .font(AppFonts.caption(weight: .semibold))
                 .foregroundStyle(appTheme.palette.accent)
+                .accessibilityAddTraits(.isButton)
         }
         .foregroundStyle(appTheme.palette.secondaryText)
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
@@ -100,8 +102,9 @@ struct WelcomeView: View {
         )
         .overlay(
             RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
-                .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: 1)
+                .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: AppMetrics.dividerStandard)
         )
+        .accessibilityElement(children: .combine)
     }
 
     private var stepIndicator: some View {
@@ -110,11 +113,16 @@ struct WelcomeView: View {
                 Capsule()
                     .fill(index == currentPage
                           ? appTheme.palette.accent
-                          : appTheme.palette.secondaryText.opacity(0.25))
-                    .frame(width: index == currentPage ? 22 : 6, height: 6)
+                          : appTheme.palette.secondaryText.opacity(AppWelcomeMetrics.stepIndicatorInactiveOpacity))
+                    .frame(
+                        width: index == currentPage
+                            ? AppWelcomeMetrics.stepIndicatorActiveWidth
+                            : AppWelcomeMetrics.stepIndicatorInactiveWidth,
+                        height: AppWelcomeMetrics.stepIndicatorHeight
+                    )
             }
         }
-        .animateSpring(currentPage)
+        .animation(AppMotion.indicatorTransition, value: currentPage)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(Text("第 \(currentPage + 1) 步，共 \(pages.count) 步".localized))
     }
@@ -132,7 +140,7 @@ struct WelcomeView: View {
             Text("登入後可在多裝置同步詞彙與筆記".localized)
                 .font(AppFonts.caption())
                 .foregroundStyle(appTheme.palette.secondaryText)
-                .padding(.top, 2)
+                .padding(.top, AppWelcomeMetrics.captionTopPadding)
         }
     }
 
@@ -140,9 +148,9 @@ struct WelcomeView: View {
         VStack(spacing: AppMetrics.spacingMedium) {
             ZStack {
                 Circle()
-                    .fill(appTheme.palette.accent.opacity(0.10))
-                    .frame(width: AppWelcomeMetrics.featureIconFrame + 16,
-                           height: AppWelcomeMetrics.featureIconFrame + 16)
+                    .fill(appTheme.palette.accent.opacity(AppWelcomeMetrics.iconHaloOpacity))
+                    .frame(width: AppWelcomeMetrics.featureIconFrame + AppWelcomeMetrics.iconHaloPadding,
+                           height: AppWelcomeMetrics.featureIconFrame + AppWelcomeMetrics.iconHaloPadding)
                 Image(systemName: page.icon)
                     .font(AppFonts.hero(weight: .regular))
                     .foregroundStyle(appTheme.palette.accent)
@@ -150,11 +158,11 @@ struct WelcomeView: View {
                            height: AppWelcomeMetrics.featureIconFrame)
             }
 
-            VStack(spacing: 4) {
+            VStack(spacing: AppWelcomeMetrics.pageContentSpacing) {
                 Text("STEP \(step)".localized)
                     .font(AppFonts.caption(weight: .semibold))
                     .foregroundStyle(appTheme.palette.accent)
-                    .tracking(1.4)
+                    .tracking(AppWelcomeMetrics.stepLabelTracking)
 
                 Text(page.title.localized)
                     .font(AppFonts.h1(weight: .semibold))
