@@ -138,6 +138,7 @@ def build_api_admin_router(
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_stats_trends: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
     admin_audit: Callable[..., Any] | None = None,
     admin_orphans_scan: Callable[..., Any] | None = None,
@@ -175,6 +176,8 @@ def build_api_admin_router(
         router.get("/api/admin/host-metrics", include_in_schema=False)(admin_host_metrics)
     if admin_observability is not None:
         router.get("/api/admin/observability", include_in_schema=False)(admin_observability)
+    if admin_stats_trends is not None:
+        router.get("/api/admin/stats/trends", include_in_schema=False)(admin_stats_trends)
     if admin_log_retention_run is not None:
         router.post("/api/admin/log-retention/run", include_in_schema=False)(admin_log_retention_run)
     if admin_audit is not None:
@@ -211,6 +214,7 @@ def build_admin_router(
     admin_host_metrics: Callable[..., Any] | None = None,
     admin_users_search: Callable[..., Any] | None = None,
     admin_observability: Callable[..., Any] | None = None,
+    admin_stats_trends: Callable[..., Any] | None = None,
     admin_log_retention_run: Callable[..., Any] | None = None,
     admin_audit: Callable[..., Any] | None = None,
     admin_orphans_scan: Callable[..., Any] | None = None,
@@ -245,6 +249,7 @@ def build_admin_router(
         admin_host_metrics=admin_host_metrics,
         admin_users_search=admin_users_search,
         admin_observability=admin_observability,
+        admin_stats_trends=admin_stats_trends,
         admin_log_retention_run=admin_log_retention_run,
         admin_audit=admin_audit,
         admin_orphans_scan=admin_orphans_scan,

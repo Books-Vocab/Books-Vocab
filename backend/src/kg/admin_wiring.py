@@ -253,6 +253,11 @@ def create_admin_handlers(
         from .admin_observability import collect_observability
         return collect_observability()
 
+    def admin_stats_trends(days: int = 30):
+        """Return site-wide 30-day error/token/DAU trend buckets."""
+        from .admin_trends import collect_trends
+        return collect_trends(window_days=days)
+
     def admin_log_retention_run():
         """Manually trigger log-retention pruners across all 4 log DBs."""
         from .log_retention import run_all
@@ -307,6 +312,7 @@ def create_admin_handlers(
         "admin_host_metrics": admin_host_metrics,
         "admin_users_search": admin_users_search,
         "admin_observability": admin_observability,
+        "admin_stats_trends": admin_stats_trends,
         "admin_log_retention_run": admin_log_retention_run,
         "admin_audit": admin_audit,
         "admin_user_detail_ui": admin_user_detail_ui,
