@@ -223,6 +223,12 @@ final class KGService: KGServing, LocalDataClearing {
                     throw KGError.serverError("Invalid response from \(path)")
                 }
                 let responseRequestID = RequestObservation.responseRequestID(from: httpResponse, fallback: requestID)
+                Self.recordHTTPBreadcrumb(
+                    url: url,
+                    method: method,
+                    statusCode: httpResponse.statusCode,
+                    requestID: responseRequestID
+                )
 
                 if httpResponse.statusCode == 401 {
                     // 嘗試刷新 token 一次；若已刷新過仍 401 則放棄
@@ -261,6 +267,13 @@ final class KGService: KGServing, LocalDataClearing {
                 throw error // non-retryable KGError propagates immediately
             } catch let error as URLError {
                 lastError = KGError.networkError(underlying: error)
+                Self.recordHTTPBreadcrumb(
+                    url: url,
+                    method: method,
+                    statusCode: nil,
+                    requestID: requestID,
+                    urlErrorCode: error.code.rawValue
+                )
                 switch error.code {
                 case .timedOut, .networkConnectionLost:
                     if !NetworkMonitor.shared.isConnected { throw KGError.networkError(underlying: error) }
@@ -274,6 +287,49 @@ final class KGService: KGServing, LocalDataClearing {
         }
 
         throw lastError ?? KGError.serverError("Request failed after \(retryPolicy.maxAttempts) attempts")
+    }
+
+    /// Drop a Sentry breadcrumb describing one HTTP attempt.
+    ///
+    /// Privacy:
+    /// - The URL is redacted to its path only — no host (already known via env tag),
+    ///   no query string (where auth tokens / id_tokens / OAuth codes live).
+    /// - The request_id is included so Sentry crumbs cross-correlate with backend
+    ///   logs that already log + echo the same id via `X-Request-ID`.
+    ///
+    /// Levels:
+    /// - 2xx/3xx → `.info`
+    /// - 4xx/5xx → `.warning`
+    /// - URLError (no HTTP exchange completed) → `.warning`
+    private static func recordHTTPBreadcrumb(
+        url: URL,
+        method: String,
+        statusCode: Int?,
+        requestID: String?,
+        urlErrorCode: Int? = nil
+    ) {
+        let redactedPath = URLComponents(url: url, resolvingAgainstBaseURL: false)?.path ?? url.path
+        var data: [String: Any] = [
+            "url": redactedPath,
+            "method": method,
+        ]
+        if let statusCode { data["status_code"] = statusCode }
+        if let requestID, !requestID.isEmpty { data["request_id"] = requestID }
+        if let urlErrorCode { data["url_error_code"] = urlErrorCode }
+
+        let level: AppCrashReporting.BreadcrumbLevel
+        if let statusCode {
+            level = (200..<400).contains(statusCode) ? .info : .warning
+        } else {
+            level = .warning  // transport failure — no HTTP response materialized
+        }
+
+        AppCrashReporting.addBreadcrumb(
+            category: "http",
+            message: "\(method) \(redactedPath)",
+            level: level,
+            data: data
+        )
     }
 
     func authenticatedDecode<T: Decodable>(

@@ -218,6 +218,24 @@ def is_active() -> bool:
     return _initialized
 
 
+def tag_request_id(request_id: str | None) -> None:
+    """Attach ``request_id`` to the current Sentry scope as a tag.
+
+    Called from the request_id middleware so every captured event / trace
+    carries the same correlation id we already log in stdout + return via
+    the ``X-Request-ID`` header. Falsy ``request_id`` is a no-op.
+
+    No-op when Sentry isn't initialized. Swallows all errors — Sentry tagging
+    must never disturb the request flow.
+    """
+    if not _initialized or _sentry_module is None or not request_id:
+        return
+    try:
+        _sentry_module.set_tag("request_id", request_id)
+    except Exception:  # pragma: no cover — sentry must never break the request
+        _logger.exception("tag_request_id failed; suppressing to keep request flow")
+
+
 def bind_user(user_id: str | None) -> None:
     """Tag the current Sentry scope with ``user_id`` (and nothing else).
 
