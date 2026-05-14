@@ -1,7 +1,6 @@
-import SwiftUI
 #if os(iOS)
+import SwiftUI
 import UIKit
-#endif
 
 /// Chat-style transcript: sentences laid out as left/right bubbles by speaker.
 ///
@@ -351,3 +350,4 @@ struct PodcastSentenceLevelView: View {
         )
     }
 }
+#endif

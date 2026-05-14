@@ -1,3 +1,4 @@
+#if os(iOS)
 import SwiftUI
 
 struct PodcastSubtitleView: View {
@@ -18,3 +19,4 @@ struct PodcastSubtitleView: View {
         )
     }
 }
+#endif
