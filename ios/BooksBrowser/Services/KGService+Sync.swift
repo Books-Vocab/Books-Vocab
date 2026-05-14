@@ -115,6 +115,7 @@ extension KGService {
             try await actor.clearVocabularyData(reason: reason)
         } catch {
             AppLog.kg.error("clearVocabularyData failed: \(error.localizedDescription)")
+            AppCrashReporting.record(error, context: "kg.local.clear")
         }
 
         let defaults = UserDefaults.standard
@@ -174,6 +175,9 @@ extension KGService {
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
+                }
                 failures.append(label)
             }
         }
@@ -207,6 +211,9 @@ extension KGService {
                     return
                 }
                 AppLog.kg.warning("backgroundSync \(label) failed: \(error.localizedDescription)")
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "kg.sync.\(label)")
+                }
                 failures.append(label)
             }
         }

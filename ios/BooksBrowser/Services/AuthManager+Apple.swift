@@ -86,6 +86,9 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
                 AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                 authManager.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 AppAnalytics.track(.loginFailed(provider: "apple", error: error.localizedDescription))
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "auth.apple.verify")
+                }
             }
         }
     }
@@ -96,6 +99,13 @@ final class AppleSignInDelegate: NSObject, ASAuthorizationControllerDelegate, AS
     ) {
         AppLog.auth.error("Apple Sign-In error: \(error.localizedDescription)")
         AppAnalytics.track(.loginFailed(provider: "apple", error: error.localizedDescription))
+        // ASAuthorizationError.canceled is user-initiated dismissal; don't ship.
+        let nsError = error as NSError
+        let isUserCancel = nsError.domain == "com.apple.AuthenticationServices.AuthorizationError"
+            && nsError.code == ASAuthorizationError.canceled.rawValue
+        if !isUserCancel {
+            AppCrashReporting.record(error, context: "auth.apple.controller")
+        }
     }
 
     func presentationAnchor(for controller: ASAuthorizationController) -> ASPresentationAnchor {

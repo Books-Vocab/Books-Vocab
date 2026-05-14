@@ -109,6 +109,7 @@ final class ReadiumService: ReadiumServing {
             guard let cover = try await publication.cover().get() else { return nil }
             return cover.pngData() ?? cover.jpegData(compressionQuality: 0.8)
         } catch {
+            AppCrashReporting.record(error, context: "readium.cover.extract")
             return nil
         }
     }

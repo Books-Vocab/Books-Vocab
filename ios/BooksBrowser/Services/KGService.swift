@@ -349,11 +349,17 @@ final class KGService: KGServing, LocalDataClearing {
             }
         } catch KGError.unauthorized {
             AppLog.kg.error("Health check failed: 401 Unauthorized")
+            AppCrashReporting.record(KGError.unauthorized, context: "kg.health.unauthorized")
             await handleUnauthorized(modelContainer: nil, reason: "healthcheck_401")
             isConnected = false
         } catch {
             isConnected = false
             AppLog.kg.error("Health check failed: \(error.localizedDescription)")
+            // healthcheck runs on a timer — only surface unexpected (non-network/cancel) failures
+            if !(error is CancellationError),
+               !(error is URLError) {
+                AppCrashReporting.record(error, context: "kg.health.unexpected")
+            }
         }
     }
 

@@ -42,6 +42,12 @@ extension AuthManager {
         if let error = error {
             AppLog.auth.error("Google Sign-In error: \(error.localizedDescription)")
             AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
+            // GIDSignInError.canceled = user dismissal; don't ship.
+            let nsError = error as NSError
+            let isUserCancel = nsError.domain == "com.google.GIDSignIn" && nsError.code == -5
+            if !isUserCancel {
+                AppCrashReporting.record(error, context: "auth.google.sdk")
+            }
             return
         }
 
@@ -77,6 +83,9 @@ extension AuthManager {
                 AppLog.auth.error("Backend verification failed: \(error.localizedDescription)")
                 self.setAuthError(L10n.string("伺服器驗證失敗，請稍後再試。"))
                 AppAnalytics.track(.loginFailed(provider: "google", error: error.localizedDescription))
+                if !(error is CancellationError) {
+                    AppCrashReporting.record(error, context: "auth.google.verify")
+                }
             }
         }
     }

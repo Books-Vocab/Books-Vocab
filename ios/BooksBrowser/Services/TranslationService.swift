@@ -78,6 +78,7 @@ final class TranslationService: Translating {
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationFailed(word: word, type: .quick, error: error.localizedDescription))
             _ = latencyMs
+            recordTranslationFailureIfNeeded(error, context: "kg.translate.quick")
             throw error
         }
 
@@ -120,6 +121,7 @@ final class TranslationService: Translating {
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationFailed(word: phrase, type: .phrase, error: error.localizedDescription))
             _ = latencyMs
+            recordTranslationFailureIfNeeded(error, context: "kg.translate.phrase")
             throw error
         }
     }
@@ -159,8 +161,25 @@ final class TranslationService: Translating {
             let latencyMs = Int(Date().timeIntervalSince(startTime) * 1000)
             AppAnalytics.track(.translationFailed(word: word, type: .explanation, error: error.localizedDescription))
             _ = latencyMs
+            recordTranslationFailureIfNeeded(error, context: "kg.translate.explain")
             throw error
         }
+    }
+
+    /// Filter helper: skip noise (cancel, quota_exhausted, offline) so Sentry only
+    /// sees real translation failures (decode/server/unexpected).
+    private func recordTranslationFailureIfNeeded(_ error: Error, context: String) {
+        if error is CancellationError { return }
+        if let tErr = error as? TranslationError {
+            // .quotaExhausted = user policy, not a defect
+            // .apiError covering offline/login-expired is user-facing too
+            if case .quotaExhausted = tErr { return }
+        }
+        if let urlErr = error as? URLError,
+           urlErr.code == .cancelled || urlErr.code == .notConnectedToInternet {
+            return
+        }
+        AppCrashReporting.record(error, context: context)
     }
 
     // MARK: - API Error Model
