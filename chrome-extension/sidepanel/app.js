@@ -24,7 +24,8 @@ const errorSubtitle = $('#errorSubtitle');
  * Current retry action — varies by error kind.
  * - 'reload'   : re-call loadVocabList
  * - 'login'    : open options page (login entry)
- * @type {'reload'|'login'}
+ * - 'settings' : open options page (quota / account info)
+ * @type {'reload'|'login'|'settings'}
  */
 let retryAction = 'reload';
 
@@ -72,9 +73,9 @@ function openSettings() {
   }
 }
 
-/** Retry button dispatcher — login flow vs. plain reload. */
+/** Retry button dispatcher — login / settings flow vs. plain reload. */
 function onRetry() {
-  if (retryAction === 'login') {
+  if (retryAction === 'login' || retryAction === 'settings') {
     openSettings();
   } else {
     loadVocabList();
@@ -170,9 +171,9 @@ function showErrorFromResponse(response) {
   } else if (code === 'quota_exceeded' || status === 403) {
     icon = '⏳';
     title = '已達使用上限';
-    subtitle = '請稍後再試，或於設定查看額度';
-    btnLabel = '重試';
-    action = 'reload';
+    subtitle = '額度將於明日重置，可前往設定查看';
+    btnLabel = '查看額度';
+    action = 'settings';
   } else if (code === 'network_error' || status === 0) {
     icon = '📡';
     title = '無法連線';

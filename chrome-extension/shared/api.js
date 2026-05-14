@@ -46,6 +46,10 @@ async function apiFetch(path, opts = {}) {
       headers,
     });
   } catch (err) {
+    // Preserve already-typed ApiError (defensive — fetch itself won't throw these).
+    if (err instanceof ApiError) throw err;
+    // Preserve caller-driven cancellations so they don't masquerade as network failures.
+    if (err && (err.name === 'AbortError' || err instanceof DOMException)) throw err;
     // Network failure (DNS, offline, TLS, CORS abort) — fetch rejects with TypeError.
     // Normalise into ApiError so UI can distinguish from auth/api errors.
     throw new ApiError('network_error', '網路連線失敗，請檢查連線後重試', 0);
