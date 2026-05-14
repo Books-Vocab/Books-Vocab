@@ -46,6 +46,24 @@ final class ReaderTranslationHandler {
     @ObservationIgnored
     var currentTranslationTask: Task<Void, Never>?
 
+    /// 最近一次成功啟動的翻譯 / 解釋 lookup metadata，用於失敗後 retry。
+    /// `kind` 區分使用者觸發的是 quick-translate（word）/ phrase / explain，
+    /// 以便 retry 時呼叫對應流程而不弄錯模式。
+    @ObservationIgnored
+    var lastLookup: LastLookup?
+
+    enum LookupKind {
+        case word
+        case phrase
+        case explain
+    }
+
+    struct LastLookup {
+        let kind: LookupKind
+        let text: String
+        let context: String
+    }
+
     init(
         translationService: any Translating = TranslationService(),
         authManager: any AuthManaging = MainActor.assumeIsolated({ AuthManager.shared })
