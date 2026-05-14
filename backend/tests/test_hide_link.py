@@ -347,6 +347,95 @@ class TestDeleteWordClearsBlockedPairs:
 
 # --- Task 4: HTTP endpoint regression tests ---
 
+class TestBilateralSyncEdges:
+    """Bilateral hide/unhide visibility + blocked pair persistence across pipeline.
+
+    Background: links are stored as directed (from_id → to_id) tuples, but
+    query/visibility APIs (`get_links_for`, `find_link_between`, `has_link`,
+    `is_blocked`) must be symmetric so the user perceives the graph as
+    undirected.  These tests pin the bilateral contract for hide/unhide and
+    confirm blocked pairs survive a fresh candidate-rebuild (the pipeline's
+    write path)."""
+
+    def test_hide_link_propagates_bidirectionally(self, store):
+        """hide A→B → reverse-perspective query (B→A) also sees it as hidden."""
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+
+        # from B's perspective: get_links_for("b") must include the link
+        b_links = store.get_links_for("b")
+        assert len(b_links) == 1
+        assert b_links[0].id == lk.id
+        assert b_links[0].status == "hidden"
+
+        # find_link_between is symmetric
+        forward = store.find_link_between("a", "b")
+        reverse = store.find_link_between("b", "a")
+        assert forward is not None and reverse is not None
+        assert forward.id == reverse.id == lk.id
+        assert forward.status == reverse.status == "hidden"
+
+        # has_link is symmetric
+        assert store.has_link("a", "b") is True
+        assert store.has_link("b", "a") is True
+
+    def test_unhide_after_hide_restores_both_directions(self, store):
+        """hide → unhide returns the link to active when queried from either side."""
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hide_link(lk.id)
+        store.unhide_link(lk.id)
+
+        forward = store.find_link_between("a", "b")
+        reverse = store.find_link_between("b", "a")
+        assert forward is not None and reverse is not None
+        assert forward.id == reverse.id == lk.id
+        assert forward.status == "active"
+        assert reverse.status == "active"
+
+        # link_count counts active links only — must be 1
+        assert store.link_count() == 1
+
+        # And both index buckets resolve to the same single link
+        assert {l.id for l in store.get_links_for("a")} == {lk.id}
+        assert {l.id for l in store.get_links_for("b")} == {lk.id}
+
+    def test_blocked_pair_persists_across_pipeline_run(self, store):
+        """blocked (a,b) → pipeline-style candidate batch must not re-create the link.
+
+        Pipeline write path: `batch_add_candidates` is the chokepoint where
+        embedding-similar pairs enter the graph (later judged → linked). It
+        must reject any pair whose normalized form is in `_blocked_pairs`,
+        regardless of orientation."""
+        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hard_delete_link(lk.id)
+        assert store.is_blocked("a", "b") is True
+
+        # Simulate a pipeline pass: embeddings think (a,b) and (b,a) and an
+        # unrelated (a,c) are all similar enough to enqueue as candidates.
+        added = store.batch_add_candidates([
+            ("a", "b", 0.95),  # blocked → must be rejected
+            ("b", "a", 0.95),  # blocked (reverse orientation) → must be rejected
+            ("a", "c", 0.90),  # unrelated → must pass
+        ])
+
+        # Only the unrelated pair was accepted as a candidate.
+        assert added == 1
+        assert store.candidate_count() == 1
+
+        # blocked pair survives unchanged in either orientation
+        assert store.is_blocked("a", "b") is True
+        assert store.is_blocked("b", "a") is True
+
+        # No link was reconstructed for (a, b).
+        assert store.find_link_between("a", "b") is None
+        assert store.find_link_between("b", "a") is None
+
+        # A second pipeline pass keeps the invariant.
+        added2 = store.batch_add_candidates([("a", "b", 0.99)])
+        assert added2 == 0
+        assert store.is_blocked("a", "b") is True
+
+
 class TestHideUnhideEndpointHTTP:
     """Regression: _require_pro_access was deleted in #269 but re-referenced in #270."""
 
