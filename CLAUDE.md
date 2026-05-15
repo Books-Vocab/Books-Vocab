@@ -20,7 +20,7 @@
 3. **確認 scope** — 本任務是否 project-scoped。若涉及跨專案，切回 repo root 遵循根 `CLAUDE.md`。
 4. **匯總 Deep Scan 結果** — agent 完成後呈現問題清單，供使用者參考或挑選處理。
 
-## Skill 系統（7 個 skill）
+## Skill 系統（8 個 skill）
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
@@ -31,11 +31,13 @@
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
 | `cleanup` | `/cleanup` 或「收尾」 | merge PRs → update docs → git cleanup → test → deploy |
 | `podcast` | EPUB → podcast pipeline | 深度分析 → 規劃 → 腳本 → TTS → 字幕 |
+| `swarm` | 「瘋狂做」「自己決策」「不要問」「壓榨我」「≥10 agents 並行」「不然換 codex」類語境 | 切「專案維護者」模式 — 自主補上下文、自主決策、組織 ≥10 並行 agent 直到任務閉環，不問人 |
 
 ### Skill 規則
 
 - 觸發條件符合就**立即** `Skill()` 調用，不問使用者。
 - 多個同時符合則全部載入。
+- `swarm` 啟動後進入「不問人」模式：小改自主決定，僅 🛑 級大改（產品定位 / 新功能 / schema / 移除功能 / 安全）才停下確認一句。
 - **所有 agent 一律 `model: "opus"`。無例外。**
 
 ## 鐵律（全域規則，不可繞過）
