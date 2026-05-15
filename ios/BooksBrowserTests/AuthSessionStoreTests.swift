@@ -17,19 +17,26 @@ struct AuthSessionStoreTests {
     private final class FakeKeychain: KeychainHelping {
         private(set) var storage: [String: Data] = [:]
         private(set) var deleteCount = 0
+        /// When set, `save`/`delete` return this status instead of success and skip the
+        /// mutation — used to exercise the keychain-failure reporting path.
+        var forcedFailureStatus: OSStatus?
 
         private func key(_ service: String, _ account: String) -> String { "\(service)|\(account)" }
 
         func save(_ data: Data, service: String, account: String) -> OSStatus {
+            if let forced = forcedFailureStatus { return forced }
             storage[key(service, account)] = data
             return errSecSuccess
         }
         func read(service: String, account: String) -> Data? {
             storage[key(service, account)]
         }
-        func delete(service: String, account: String) {
+        @discardableResult
+        func delete(service: String, account: String) -> OSStatus {
+            if let forced = forcedFailureStatus { return forced }
             deleteCount += 1
             storage.removeValue(forKey: key(service, account))
+            return errSecSuccess
         }
     }
 
@@ -164,6 +171,53 @@ struct AuthSessionStoreTests {
         store.clearSession()
         #expect(store.loadSession().userId == nil)
         #expect(store.loadSession().token == nil)
+    }
+
+    // MARK: - Keychain failure reporting
+
+    /// The bug fix's core seam: a keychain write that fails must not throw or corrupt the
+    /// store's contract. `persistToken` still returns; the (unwritten) token simply reads
+    /// back nil — matching the real-world symptom (session lost) but now diagnosable.
+    @Test func persistToken_tolerates_keychain_save_failure() {
+        let (store, _, keychain) = makeStore()
+        keychain.forcedFailureStatus = errSecNotAvailable  // device locked, pre-first-unlock
+        store.persistToken("token-that-cannot-be-written")
+        #expect(store.loadSession().token == nil)
+        #expect(keychain.storage.isEmpty)
+    }
+
+    @Test func clearSession_tolerates_keychain_delete_failure() {
+        let (store, _, keychain) = makeStore()
+        keychain.forcedFailureStatus = errSecNotAvailable
+        store.clearSession()  // must not throw
+        #expect(store.loadSession().userId == nil)
+    }
+
+    // MARK: - KeychainStatus seam (pure function)
+
+    @Test func keychainStatus_success_is_not_a_failure() {
+        #expect(KeychainStatus.isFailure(errSecSuccess) == false)
+    }
+
+    @Test func keychainStatus_itemNotFound_is_not_a_failure() {
+        // Deleting an absent item is the expected idempotent outcome, not an error —
+        // reporting it would spam crash reporting on every logged-out clearSession.
+        #expect(KeychainStatus.isFailure(errSecItemNotFound) == false)
+    }
+
+    @Test func keychainStatus_locked_device_status_is_a_failure() {
+        // errSecNotAvailable / errSecInteractionNotAllowed are the cold-boot, pre-unlock
+        // failures the fix exists to surface.
+        #expect(KeychainStatus.isFailure(errSecNotAvailable))
+        #expect(KeychainStatus.isFailure(errSecInteractionNotAllowed))
+    }
+
+    @Test func keychainStatus_error_carries_status_and_operation() {
+        let err = KeychainStatus.error(errSecNotAvailable, operation: "save")
+        #expect(err.status == errSecNotAvailable)
+        #expect(err.operation == "save")
+        // diagnosticMessage is PII-free: status code + OS message only.
+        #expect(err.diagnosticMessage.contains("\(errSecNotAvailable)"))
     }
 
     @Test func clearSession_then_repersist_yields_clean_session() {
