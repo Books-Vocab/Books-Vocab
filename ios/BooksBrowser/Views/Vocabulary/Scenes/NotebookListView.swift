@@ -369,7 +369,8 @@ struct NotebookListView: View {
     // MARK: - Review Helpers
 
     private func startReview(with entries: [VocabularyEntry]) {
-        guard !entries.isEmpty else { return }
+        // 空 entries 不再靜默吞掉：交給 TodayReviewPhaseView 落入 .empty 分支，
+        // 提供明確回饋（active filter 下 filtered 集合可能為空，但 banner 仍顯示）。
         activeReviewSession = TodayReviewSession(entries: entries)
     }
 
@@ -506,8 +507,8 @@ private struct DetailPresentation: ViewModifier {
                         get: { detailState.activeReviewSession },
                         set: { if $0 == nil { detailState.dismiss() } }
                     )) { session in
-                        TodayReviewView(
-                            entries: session.entries,
+                        TodayReviewPhaseView(
+                            session: session,
                             allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
                             currentUserID: currentUserID,
                             onClose: { detailState.dismiss() }
@@ -527,8 +528,8 @@ private struct DetailPresentation: ViewModifier {
     @ViewBuilder
     private var inlineDetailPanel: some View {
         if let session = detailState.activeReviewSession {
-            TodayReviewView(
-                entries: session.entries,
+            TodayReviewPhaseView(
+                session: session,
                 allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
                 currentUserID: currentUserID,
                 onClose: { detailState.dismiss() }
