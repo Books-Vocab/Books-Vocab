@@ -34,12 +34,10 @@ struct TodayReviewSessionSnapshotStore {
         let lastReviewFeedbackRaw: Int
     }
 
+    // MARK: - Public API
+
     static func load(for userId: String) -> Snapshot? {
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
-              snapshot.userId == userId else {
-            return nil
-        }
+        guard let snapshot = readStore()[userId] else { return nil }
 
         guard Date().timeIntervalSince(snapshot.updatedAt) <= maxAge else {
             clear(for: userId)
@@ -50,22 +48,51 @@ struct TodayReviewSessionSnapshotStore {
     }
 
     static func save(_ snapshot: Snapshot) {
-        guard let data = try? JSONEncoder().encode(snapshot) else { return }
-        UserDefaults.standard.set(data, forKey: defaultsKey)
+        var store = readStore()
+        store[snapshot.userId] = snapshot
+        writeStore(store)
     }
 
+    /// Passing `nil` clears every user's snapshot; passing a `userId` clears only that user's.
     static func clear(for userId: String?) {
         guard let userId else {
             UserDefaults.standard.removeObject(forKey: defaultsKey)
             return
         }
 
-        guard let data = UserDefaults.standard.data(forKey: defaultsKey),
-              let snapshot = try? JSONDecoder().decode(Snapshot.self, from: data),
-              snapshot.userId == userId else {
-            return
+        var store = readStore()
+        guard store[userId] != nil else { return }
+        store.removeValue(forKey: userId)
+        writeStore(store)
+    }
+
+    // MARK: - Persistence
+
+    /// Reads the per-user snapshot map. Transparently migrates the legacy
+    /// single-`Snapshot` payload (pre per-user keying) into the new dictionary.
+    private static func readStore() -> [String: Snapshot] {
+        guard let data = UserDefaults.standard.data(forKey: defaultsKey) else { return [:] }
+
+        if let store = try? JSONDecoder().decode([String: Snapshot].self, from: data) {
+            return store
         }
 
-        UserDefaults.standard.removeObject(forKey: defaultsKey)
+        // Migration: legacy payload stored a bare Snapshot keyed by `defaultsKey`.
+        if let legacy = try? JSONDecoder().decode(Snapshot.self, from: data) {
+            let migrated = [legacy.userId: legacy]
+            writeStore(migrated)
+            return migrated
+        }
+
+        return [:]
+    }
+
+    private static func writeStore(_ store: [String: Snapshot]) {
+        if store.isEmpty {
+            UserDefaults.standard.removeObject(forKey: defaultsKey)
+            return
+        }
+        guard let data = try? JSONEncoder().encode(store) else { return }
+        UserDefaults.standard.set(data, forKey: defaultsKey)
     }
 }
