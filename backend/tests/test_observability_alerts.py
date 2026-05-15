@@ -79,6 +79,24 @@ def _insert_pipeline_run(run_id: str, status: str, started_minutes_ago: int) -> 
     conn.commit()
 
 
+def _insert_pipeline_run_explicit(
+    run_id: str, status: str, *, started_minutes_ago: int, ended_minutes_ago: int | None
+) -> None:
+    """Insert a pipeline_run with independently controlled started_at / ended_at."""
+    started = (datetime.now(UTC) - timedelta(minutes=started_minutes_ago)).isoformat()
+    ended = (
+        None if ended_minutes_ago is None
+        else (datetime.now(UTC) - timedelta(minutes=ended_minutes_ago)).isoformat()
+    )
+    conn = pipeline_log._get_conn()
+    conn.execute(
+        "INSERT INTO pipeline_runs (run_id, user_id, notebook_id, trigger, "
+        "started_at, ended_at, status, steps) VALUES (?, 'u1', 'nb1', 'manual', ?, ?, ?, '[]')",
+        (run_id, started, ended, status),
+    )
+    conn.commit()
+
+
 def _insert_judge_decision(*, accepted: bool, minutes_ago: int) -> None:
     created = (datetime.now(UTC) - timedelta(minutes=minutes_ago)).isoformat()
     conn = judge_log._get_conn()
@@ -164,6 +182,35 @@ class TestCheckPipelineFailures:
             window_min=60, threshold=5, include_interrupted=True,
         )
         assert len(sentry_stub.calls) == 1
+
+    def test_long_run_failing_inside_window_is_counted(self, sentry_stub):
+        """Long-running pipeline: started_at outside window, failure inside it.
+
+        Semantically the check counts *failure events*. A run that began 120m
+        ago but only failed 5m ago must count toward a 60m window — framing by
+        `started_at` would wrongly drop it. Consistent with judge/translate
+        checks which window by event-occurrence time (`created_at`).
+        """
+        for i in range(5):
+            _insert_pipeline_run_explicit(
+                f"r{i}", "failed", started_minutes_ago=120, ended_minutes_ago=5,
+            )
+        observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert len(sentry_stub.calls) == 1
+        assert sentry_stub.calls[0]["tags"]["pipeline_failures"] == 5
+
+    def test_failure_ended_outside_window_ignored(self, sentry_stub):
+        """Inverse: run started inside window but failed long after window edge.
+
+        Failure event is what counts — if it ended before the window opened it
+        must not contribute, even though `started_at` is recent-ish.
+        """
+        for i in range(10):
+            _insert_pipeline_run_explicit(
+                f"r{i}", "failed", started_minutes_ago=200, ended_minutes_ago=120,
+            )
+        observability_alerts.check_pipeline_failures(window_min=60, threshold=5)
+        assert sentry_stub.calls == []
 
 
 # ---------------------------------------------------------------------------
