@@ -71,6 +71,20 @@ class RateLimiter:
         while len(self._requests) > self.max_keys:
             self._requests.popitem(last=False)
 
+    def reset(self) -> None:
+        """Drop all tracked windows and reset the GC tick counter.
+
+        Intended as a test-isolation seam: the module-level limiter singletons
+        are shared process-wide, so a long-running test session accumulates
+        admissions across unrelated tests and can trip the window. Production
+        code never needs this — restarting the process is the only other reset.
+        Synchronous + lock-free on purpose: callers invoke it between tests
+        when no request is in flight, so taking the asyncio lock is unnecessary
+        (and would require an event loop).
+        """
+        self._requests.clear()
+        self._tick = 0
+
 
 # 全域 limiter 實例（可透過環境變數覆蓋）
 api_limiter = RateLimiter(

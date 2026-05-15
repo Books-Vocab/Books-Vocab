@@ -101,6 +101,41 @@ def _isolate_podcast_progress():
     pp._reset()
 
 
+@pytest.fixture(autouse=True)
+def _isolate_rate_limiters():
+    """Reset the process-wide rate-limiter singletons between tests.
+
+    `api_limiter` / `translate_limiter` are module-level instances driven by
+    `rate_limit_middleware` on every TestClient request. Their sliding-window
+    state is keyed on the last 16 chars of the Authorization header (or client
+    host for unauthenticated calls), so a full pytest session accumulates
+    admissions across unrelated tests fast enough to trip the 60-req window —
+    surfacing as spurious `429` in podcast endpoint tests. Clearing both
+    limiters per test makes the suite order-independent."""
+    from kg.rate_limit import api_limiter, translate_limiter
+    api_limiter.reset()
+    translate_limiter.reset()
+    yield
+    api_limiter.reset()
+    translate_limiter.reset()
+
+
+@pytest.fixture(autouse=True)
+def _isolate_observability_cooldown():
+    """Clear observability_alerts in-memory alert cooldown between tests.
+
+    `_cooldown_state` is a module-level dict that suppresses duplicate Sentry
+    alerts for 30 minutes. `/api/system/info` triggers `run_all_checks()`
+    piggyback-style, so any test hitting that endpoint stamps cooldowns that
+    leak into later cooldown-sensitive assertions. Resetting per test keeps
+    the suite order-independent (test_observability_alerts.py keeps its own
+    module-scoped fixture; this guards every other file)."""
+    from kg import observability_alerts
+    observability_alerts._cooldown_state.clear()
+    yield
+    observability_alerts._cooldown_state.clear()
+
+
 @pytest.fixture()
 def isolated_api(tmp_path):
     import kg.api as api_mod
