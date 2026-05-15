@@ -301,6 +301,98 @@ def test_update_notebook_cover_pattern_preserved_when_not_sent(isolated_api):
     assert r.json()["coverPattern"] == "dots"
 
 
+# ---------------------------------------------------------------------------
+# Lifecycle: duplicate name / delete-with-cards / rename id stability
+# ---------------------------------------------------------------------------
+
+
+def test_create_notebook_duplicate_name(isolated_api):
+    """Two notebooks with the same name for one user.
+
+    Contract: the API does NOT enforce name uniqueness or dedup — each POST
+    creates a distinct notebook with its own id. Both appear in the listing.
+    """
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    r1 = client.post("/api/notebooks", json={"name": "Duplicate", "color": "#111111"}, headers=h)
+    r2 = client.post("/api/notebooks", json={"name": "Duplicate", "color": "#222222"}, headers=h)
+    assert r1.status_code == 201, r1.text
+    assert r2.status_code == 201, r2.text
+
+    id1, id2 = r1.json()["id"], r2.json()["id"]
+    assert id1 != id2, "duplicate-named notebooks must still get distinct ids"
+
+    r_list = client.get("/api/notebooks", headers=h)
+    listed = r_list.json()
+    dup_named = [nb for nb in listed if nb["name"] == "Duplicate"]
+    assert len(dup_named) == 2
+    assert {id1, id2}.issubset(_nb_ids(listed))
+
+
+def test_delete_notebook_with_cards(isolated_api):
+    """Deleting a notebook holding cards cascades a soft-delete to those cards.
+
+    Contract: delete is NOT blocked by card presence; cardsDeleted reflects the
+    cascade count and the cards no longer surface under their old notebook.
+    """
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    nb_id = client.post(
+        "/api/notebooks", json={"name": "HasCards", "color": "#abcdef"}, headers=h
+    ).json()["id"]
+
+    client.post(
+        "/api/vocab", json=[{"word": "cat", "translation": "貓"}],
+        params={"notebook_id": nb_id}, headers=h,
+    )
+    client.post(
+        "/api/vocab", json=[{"word": "dog", "translation": "狗"}],
+        params={"notebook_id": nb_id}, headers=h,
+    )
+
+    r_before = client.get("/api/vocab", params={"notebook_id": nb_id}, headers=h)
+    assert len(r_before.json()) == 2, "cards should exist before delete"
+
+    r_del = client.delete(f"/api/notebooks/{nb_id}", headers=h)
+    assert r_del.status_code == 200, r_del.text
+    assert r_del.json()["cardsDeleted"] == 2, "delete must cascade to all cards"
+
+    # Cards are hard-deleted with the notebook, not reassigned to default.
+    r_default = client.get("/api/vocab", params={"notebook_id": "default"}, headers=h)
+    default_words = [c["content"] for c in r_default.json()]
+    assert "cat" not in default_words
+    assert "dog" not in default_words
+
+
+def test_rename_notebook_keeps_id_stable(isolated_api):
+    """Renaming a notebook mutates the name in place but keeps its id.
+
+    Contract: the id is the primary key — a rename must not break a client's
+    cached activeNotebookId. The renamed notebook still appears in the listing
+    under the same id.
+    """
+    client = isolated_api.client
+    h = isolated_api.headers
+
+    r_create = client.post(
+        "/api/notebooks", json={"name": "Before", "color": "#0a0a0a"}, headers=h
+    )
+    nb_id = r_create.json()["id"]
+
+    r_patch = client.patch(f"/api/notebooks/{nb_id}", json={"name": "After"}, headers=h)
+    assert r_patch.status_code == 200, r_patch.text
+    assert r_patch.json()["id"] == nb_id, "rename must not change the id"
+    assert r_patch.json()["name"] == "After"
+
+    r_list = client.get("/api/notebooks", headers=h)
+    matched = [nb for nb in r_list.json() if nb["id"] == nb_id]
+    assert len(matched) == 1
+    assert matched[0]["name"] == "After"
+    assert nb_id in _nb_ids(r_list.json())
+
+
 def test_delete_idempotent(isolated_api):
     """Second delete on an already-deleted notebook returns 200 with cardsDeleted=0.
 
