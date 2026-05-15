@@ -218,10 +218,7 @@ struct KGVocabView: View {
                 }
             )
         } else if coordinator.isLoading && syncedEntries.isEmpty {
-            return .loading(
-                title: "載入單字...".localized,
-                systemImage: "arrow.clockwise"
-            )
+            return .loadingSkeleton()
         } else {
             return .content
         }
