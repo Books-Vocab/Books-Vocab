@@ -8,6 +8,9 @@
  */
 
 import * as KGApi from './shared/api.js';
+// Side-effect import: registers `globalThis.KGPure` (classic-script module —
+// see shared/pure.js). Used for trusted-origin checks below.
+import './shared/pure.js';
 
 const TOKEN_KEY = KGApi.TOKEN_KEY;
 
@@ -33,15 +36,18 @@ chrome.runtime.onMessage.addListener((msg, _sender, sendResponse) => {
 // ---------------------------------------------------------------------------
 
 chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
-  if (!sender.url || !sender.url.startsWith('https://wordnexus.lol')) {
+  if (!globalThis.KGPure.isTrustedExternalOrigin(sender && sender.url)) {
     sendResponse({ error: true, message: 'unauthorized origin' });
     return;
   }
 
-  if (msg.type === 'auth_token' && typeof msg.token === 'string') {
-    chrome.storage.local.set({ [TOKEN_KEY]: msg.token }).then(() => {
-      sendResponse({ ok: true });
-    });
+  if (msg && msg.type === 'auth_token' && typeof msg.token === 'string') {
+    chrome.storage.local
+      .set({ [TOKEN_KEY]: msg.token })
+      .then(() => sendResponse({ ok: true }))
+      // Without this catch a storage failure would leave the web page's
+      // sendMessage promise pending forever — surface it as an error instead.
+      .catch((err) => sendResponse({ error: true, message: String(err) }));
     return true; // async
   }
 
