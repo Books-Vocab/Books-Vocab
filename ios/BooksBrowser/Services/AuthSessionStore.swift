@@ -64,10 +64,12 @@ final class AuthSessionStore: AuthSessionStoring {
 
     func persistToken(_ token: String?) {
         guard let token, let data = token.data(using: .utf8) else {
-            keychain.delete(service: Keys.tokenService, account: Keys.tokenAccount)
+            let status = keychain.delete(service: Keys.tokenService, account: Keys.tokenAccount)
+            reportKeychainFailure(status, operation: "delete(persistToken)")
             return
         }
-        _ = keychain.save(data, service: Keys.tokenService, account: Keys.tokenAccount)
+        let status = keychain.save(data, service: Keys.tokenService, account: Keys.tokenAccount)
+        reportKeychainFailure(status, operation: "save")
     }
 
     func clearSession() {
@@ -75,14 +77,57 @@ final class AuthSessionStore: AuthSessionStoring {
         defaults.removeObject(forKey: Keys.displayName)
         defaults.removeObject(forKey: Keys.userEmail)
         defaults.removeObject(forKey: Keys.avatarURL)
-        keychain.delete(service: Keys.tokenService, account: Keys.tokenAccount)
+        let status = keychain.delete(service: Keys.tokenService, account: Keys.tokenAccount)
+        reportKeychainFailure(status, operation: "delete(clearSession)")
+    }
+
+    /// Surfaces a keychain `OSStatus` that the prior implementation silently discarded.
+    /// On `AccessibleAfterFirstUnlock`-locked devices (cold boot, no unlock) or under a
+    /// keychain quota anomaly a write can fail, dropping the session on the next launch
+    /// with no trace. We log at error level and forward to crash reporting so the failure
+    /// is diagnosable. The success path is unchanged.
+    private func reportKeychainFailure(_ status: OSStatus, operation: String) {
+        guard KeychainStatus.isFailure(status) else { return }
+        let error = KeychainStatus.error(status, operation: operation)
+        AppLog.auth.error("Keychain \(operation, privacy: .public) failed: \(error.diagnosticMessage, privacy: .public)")
+        AppCrashReporting.record(error, context: "auth.keychain.\(operation)")
+    }
+}
+
+/// Pure classification + wrapping of keychain `OSStatus` results. Extracted as a seam so the
+/// "is this an OSStatus worth reporting?" decision is unit-testable without touching Security.
+enum KeychainStatus {
+    /// A keychain op is a *reportable* failure when it is neither success nor the benign
+    /// "nothing to delete" status (`errSecItemNotFound` — purging an already-absent item is
+    /// the expected idempotent outcome, not an error).
+    static func isFailure(_ status: OSStatus) -> Bool {
+        status != errSecSuccess && status != errSecItemNotFound
+    }
+
+    /// Wraps an `OSStatus` as an `Error` so it can flow into `AppCrashReporting.record`,
+    /// which only accepts `Error`. Carries the OS-provided message when available.
+    static func error(_ status: OSStatus, operation: String) -> KeychainError {
+        KeychainError(status: status, operation: operation)
+    }
+}
+
+/// `Error` wrapper around a failing keychain `OSStatus`.
+struct KeychainError: Error {
+    let status: OSStatus
+    let operation: String
+
+    /// Human-readable, PII-free description (the OS message describes the status code only).
+    var diagnosticMessage: String {
+        let osMessage = SecCopyErrorMessageString(status, nil) as String?
+        return "OSStatus \(status) — \(osMessage ?? "unknown")"
     }
 }
 
 protocol KeychainHelping: AnyObject {
     func save(_ data: Data, service: String, account: String) -> OSStatus
     func read(service: String, account: String) -> Data?
-    func delete(service: String, account: String)
+    @discardableResult
+    func delete(service: String, account: String) -> OSStatus
 }
 
 final class KeychainHelper: KeychainHelping {
@@ -132,13 +177,14 @@ final class KeychainHelper: KeychainHelping {
         return nil
     }
 
-    func delete(service: String, account: String) {
+    @discardableResult
+    func delete(service: String, account: String) -> OSStatus {
         let query = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
             kSecAttrAccount: account
         ] as CFDictionary
 
-        SecItemDelete(query)
+        return SecItemDelete(query)
     }
 }
