@@ -1,0 +1,210 @@
+"""Admin stats & observability — user stats, host metrics, usage ranges, logs."""
+
+from __future__ import annotations
+
+import logging
+from collections.abc import Callable
+from datetime import UTC, datetime
+from typing import Any
+
+from fastapi import HTTPException
+
+logger = logging.getLogger("kg.admin_handlers")
+
+
+def admin_stats_response(
+    *,
+    load_users: Callable[[], dict[str, dict[str, Any]]],
+    get_all_stats: Callable[[], dict[str, Any]],
+    build_entitlements_response: Callable[[dict[str, Any] | None], Any],
+    current_admin_grant_record: Callable[[dict[str, Any] | None], dict[str, Any]],
+    data_dir: Any,
+    card_store_factory: Callable[[Any], Any],
+    jwt_secret: str = "",
+) -> dict[str, Any]:
+    from ..quota_service import get_all_quota_usage, token_cost_usd
+
+    users_data = load_users()
+    token_stats = get_all_stats()
+    quota_usage = get_all_quota_usage()
+
+    result = []
+    for uid, info in users_data.items():
+        if uid.startswith("_"):
+            continue
+
+        user_dir = data_dir / "users" / uid
+        vocab_count = 0
+        try:
+            store = card_store_factory(user_dir)
+            vocab_count = store.count()
+        except (OSError, ValueError):
+            logger.warning("Failed to load card store for user %s", uid, exc_info=True)
+
+        utoken = token_stats.get(uid, {})
+        total_input = sum(d["input_tokens"] for d in utoken.values())
+        total_output = sum(d["output_tokens"] for d in utoken.values())
+
+        est_cost = sum(
+            token_cost_usd(call_type, data["input_tokens"], data["output_tokens"])
+            for call_type, data in utoken.items()
+        )
+
+        config = info.get("config", {}) if isinstance(info, dict) else {}
+        entitlements = build_entitlements_response(info if isinstance(info, dict) else None)
+        admin_grant = current_admin_grant_record(info if isinstance(info, dict) else None)
+        result.append(
+            {
+                "user_id": uid,
+                "email": info.get("email") if isinstance(info, dict) else None,
+                "provider": info.get("provider") if isinstance(info, dict) else None,
+                "last_login": info.get("last_login") if isinstance(info, dict) else None,
+                "vocab_count": vocab_count,
+                "tokens": utoken,
+                "total_input": total_input,
+                "total_output": total_output,
+                "est_cost_usd": round(est_cost, 6),
+                "pro": entitlements.pro.model_dump(),
+                "admin_grant": admin_grant,
+                "quota": quota_usage.get(uid, {"used_usd": 0.0, "limit_usd": 0.30, "fraction_used": 0.0, "calls": {}}),
+            }
+        )
+
+    result.sort(key=lambda item: item["vocab_count"], reverse=True)
+
+    try:
+        from ..judge_log import get_acceptance_stats
+        judge_stats = get_acceptance_stats()
+    except Exception:
+        judge_stats = {"total": 0, "accepted": 0, "rejected": 0, "rate": None}
+
+    return {"users": result, "judge": judge_stats}
+
+
+def admin_host_metrics_response() -> dict[str, Any]:
+    """Return real-time host metrics: CPU / memory / disk / load / process.
+
+    Degrades gracefully if psutil is unavailable (returns {"available": False, ...}).
+    """
+    try:
+        import os
+        import psutil
+    except ImportError:
+        return {"available": False, "reason": "psutil not installed"}
+
+    try:
+        cpu_percent = psutil.cpu_percent(interval=0.1)
+        cpu_count = psutil.cpu_count(logical=True) or 1
+        load_avg = list(os.getloadavg()) if hasattr(os, "getloadavg") else [0.0, 0.0, 0.0]
+
+        vm = psutil.virtual_memory()
+        mem = {
+            "total": vm.total,
+            "available": vm.available,
+            "used": vm.used,
+            "percent": vm.percent,
+        }
+
+        disks: list[dict[str, Any]] = []
+        seen_mounts: set[str] = set()
+        # Only report the root mount + /app/data mount if distinct.
+        candidate_paths = ["/", "/app/data"]
+        for path in candidate_paths:
+            try:
+                if not os.path.exists(path):
+                    continue
+                du = psutil.disk_usage(path)
+                key = f"{du.total}"
+                if key in seen_mounts:
+                    continue
+                seen_mounts.add(key)
+                disks.append(
+                    {
+                        "path": path,
+                        "total": du.total,
+                        "used": du.used,
+                        "free": du.free,
+                        "percent": du.percent,
+                    }
+                )
+            except (OSError, PermissionError):
+                continue
+
+        proc = psutil.Process()
+        try:
+            p_rss = proc.memory_info().rss
+            p_cpu = proc.cpu_percent(interval=0.0)
+            p_threads = proc.num_threads()
+            try:
+                p_fds = proc.num_fds()  # POSIX only
+            except (AttributeError, OSError):
+                p_fds = None
+            p_create = proc.create_time()
+        except psutil.Error:
+            p_rss = p_cpu = p_threads = p_create = 0
+            p_fds = None
+
+        import time as _time
+        now = _time.time()
+        process_info = {
+            "rss": p_rss,
+            "cpu_percent": p_cpu,
+            "threads": p_threads,
+            "fds": p_fds,
+            "uptime_seconds": int(now - p_create) if p_create else 0,
+        }
+
+        return {
+            "available": True,
+            "timestamp": now,
+            "cpu": {
+                "percent": cpu_percent,
+                "count": cpu_count,
+                "load_1": load_avg[0],
+                "load_5": load_avg[1],
+                "load_15": load_avg[2],
+            },
+            "memory": mem,
+            "disks": disks,
+            "process": process_info,
+        }
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.exception("Failed to collect host metrics")
+        return {"available": False, "reason": str(exc)}
+
+
+def admin_user_usage_response(user_id: str, range_: str = "24h") -> dict[str, Any]:
+    """Return per-type usage (calls/cost/tokens) for a user, filtered by range.
+
+    range_: "24h" | "7d" | "30d" | "all"
+    """
+    from ..quota_service import get_user_usage_range
+
+    range_seconds = {
+        "24h": 86400,
+        "7d": 604800,
+        "30d": 2592000,
+        "all": None,
+    }
+    if range_ not in range_seconds:
+        raise HTTPException(status_code=400, detail=f"invalid range: {range_}")
+
+    secs = range_seconds[range_]
+    if secs is None:
+        since_iso = None
+    else:
+        cutoff = datetime.now(UTC).timestamp() - secs
+        since_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
+
+    data = get_user_usage_range(user_id, since_iso=since_iso)
+    data["range"] = range_
+    return data
+
+
+def admin_logs_response(
+    *,
+    log_getter: Callable[..., list[dict[str, Any]]],
+    n: int,
+    level: str | None,
+) -> dict[str, Any]:
+    return {"logs": log_getter(n=n, level=level or None)}
