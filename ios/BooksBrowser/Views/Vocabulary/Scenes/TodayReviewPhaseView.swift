@@ -5,6 +5,7 @@
 //  TodayReview 四態包裝層：loading / empty / error / session。
 //  對齊 StatsPresenter / NotebookListView 採用的 VocabSceneShell pattern。
 //  TodayReviewView 本身負責 session 內容；本檔只處理外層狀態矩陣。
+//  唯一的 today-review 呈現入口 — DetailPresentation 兩種 layout 分支皆經此。
 //
 
 import SwiftUI
@@ -28,12 +29,40 @@ enum TodayReviewPhase {
 
 /// 將 TodayReview 包成統一狀態矩陣（loading / empty / error / success）。
 ///
-/// 使用情境：
-/// - 既有 caller（NotebookListView）可繼續直接建 `TodayReviewView`，行為不變。
-/// - 新 caller 或 robustness 強化路徑可改用本 view，獲得完整 phase 覆蓋。
+/// 唯一的 today-review 呈現入口：`DetailPresentation` 兩種 layout 分支皆走本 view，
+/// 4-state phase matrix 因此真正生效。session 內容委派給 `TodayReviewView`；
+/// 空待複習集合落在 `.empty` 分支提供關閉回饋。
 struct TodayReviewPhaseView: View {
     let phase: TodayReviewPhase
     let onClose: () -> Void
+
+    /// 從一個 `TodayReviewSession` 推導 phase：
+    /// entries 為空 → `.empty`（提供關閉回饋）；否則 → `.session`。
+    /// SwiftData `@Query` 同步取得 entries，故 `.loading` / `.failure`
+    /// 留給未來 robustness 路徑按需以明確 phase 傳入。
+    init(
+        session: TodayReviewSession,
+        allEntries: [VocabularyEntry],
+        currentUserID: String?,
+        onClose: @escaping () -> Void
+    ) {
+        if session.entries.isEmpty {
+            self.phase = .empty
+        } else {
+            self.phase = .session(
+                entries: session.entries,
+                allEntries: allEntries,
+                currentUserID: currentUserID
+            )
+        }
+        self.onClose = onClose
+    }
+
+    /// 直接以明確 phase 建構（preview / 未來 robustness 路徑）。
+    init(phase: TodayReviewPhase, onClose: @escaping () -> Void) {
+        self.phase = phase
+        self.onClose = onClose
+    }
 
     var body: some View {
         switch phase {
