@@ -144,6 +144,53 @@ struct BooksBrowserTests {
         TodayReviewSessionSnapshotStore.clear(for: nil)
     }
 
+    @Test func todayReviewSnapshotIsolatesPerUserOnSave() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        defer { TodayReviewSessionSnapshotStore.clear(for: nil) }
+
+        func makeSnapshot(userId: String, currentIndex: Int) -> TodayReviewSessionSnapshotStore.Snapshot {
+            let baseline = TodayReviewSessionSnapshotStore.ReviewBaseline(
+                reviewIntervalHours: 24,
+                nextReviewAt: Date(),
+                lastReviewedAt: nil,
+                reviewCount: 0,
+                lapseCount: 0,
+                reviewStreak: 0,
+                lastReviewFeedbackRaw: 0
+            )
+            return TodayReviewSessionSnapshotStore.Snapshot(
+                userId: userId,
+                sessionStartTime: Date(),
+                currentIndex: currentIndex,
+                queue: [
+                    .init(persistenceID: "card-\(userId)", baseline: baseline)
+                ],
+                submissions: [:],
+                updatedAt: Date()
+            )
+        }
+
+        // user A has in-progress review at index 3
+        TodayReviewSessionSnapshotStore.save(makeSnapshot(userId: "user-A", currentIndex: 3))
+        // user B logs in and starts their own review (index 0)
+        TodayReviewSessionSnapshotStore.save(makeSnapshot(userId: "user-B", currentIndex: 0))
+
+        // user A switches back: their snapshot must NOT have been overwritten
+        let restoredA = TodayReviewSessionSnapshotStore.load(for: "user-A")
+        #expect(restoredA != nil)
+        #expect(restoredA?.userId == "user-A")
+        #expect(restoredA?.currentIndex == 3)
+
+        // user B still intact too
+        let restoredB = TodayReviewSessionSnapshotStore.load(for: "user-B")
+        #expect(restoredB?.currentIndex == 0)
+
+        // clearing user B leaves user A untouched
+        TodayReviewSessionSnapshotStore.clear(for: "user-B")
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-B") == nil)
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-A")?.currentIndex == 3)
+    }
+
     @Test func readerBridgePlannerEmitsSingleWordHighlightCommand() async throws {
         var planner = BridgePlanner()
         let base = makeSnapshot(lookedUpWords: [])
