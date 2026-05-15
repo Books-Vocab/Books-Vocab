@@ -273,3 +273,104 @@ class TestMetaPath:
         llm = TrackedLLM(client, "u")
         store = EmbeddingStore(emb_path, ids_path, llm)
         assert store._meta_path.name == "weird_meta.json"
+
+
+# --------------------------------------------------------------------- #
+# remove / remove_batch  (Bug A: deleted cards' vectors must be evicted)
+# --------------------------------------------------------------------- #
+class TestRemove:
+    def test_remove_evicts_vector_and_id(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        assert store.remove("b") is True
+        assert store.count() == 2
+        assert not store.has("b")
+        assert store.has("a") and store.has("c")
+        # Matrix row count must stay aligned with ids.
+        assert store._embeddings.shape[0] == store.count() == len(store._ids)
+
+    def test_remove_unknown_id_is_noop(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b"])
+        assert store.remove("ghost") is False
+        assert store.count() == 2
+
+    def test_remove_on_empty_store_is_noop(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path)
+        assert store.remove("anything") is False
+        assert store.count() == 0
+
+    def test_removed_card_excluded_from_find_similar(self, tmp_path: Path):
+        """The core Bug A symptom: a deleted card must not pollute top-k."""
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        store.remove("b")
+        ids = {cid for cid, _ in store.find_similar("a", k=10)}
+        assert "b" not in ids
+        assert ids <= {"c"}
+
+    def test_remove_persists_to_disk(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        store.remove("b")
+        # Reload: the eviction must survive a restart.
+        store2, _, _ = _make_store(tmp_path)
+        assert store2.count() == 2
+        assert not store2.has("b")
+        assert store2._embeddings.shape[0] == 2
+
+    def test_remove_batch_evicts_multiple(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c", "d"])
+        removed = store.remove_batch(["b", "d", "ghost"])
+        assert removed == 2
+        assert store.count() == 2
+        assert store.has("a") and store.has("c")
+        assert store._embeddings.shape[0] == 2
+
+    def test_remove_batch_empty_input_is_noop(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b"])
+        assert store.remove_batch([]) == 0
+        assert store.count() == 2
+
+    def test_remove_last_card_leaves_consistent_empty_matrix(self, tmp_path: Path):
+        store, _, _ = _make_store(tmp_path, preload_ids=["only"])
+        store.remove("only")
+        assert store.count() == 0
+        # Whatever the empty representation, it must not desync find_similar.
+        assert store.find_similar("only") == []
+
+
+# --------------------------------------------------------------------- #
+# _load consistency  (Bug B: half-finished _save -> row/id desync)
+# --------------------------------------------------------------------- #
+class TestLoadConsistency:
+    def test_row_count_id_mismatch_raises(self, tmp_path: Path):
+        """Simulates a crash between writing .npy and ids.json: 3 rows, 2 ids.
+
+        _assert only checked dim before; a desynced store would let
+        find_similar return rows mapped to the wrong card id, silently.
+        """
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
+        ids_path.write_text(json.dumps(["a", "b"]))  # one id short
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        with pytest.raises(ValueError, match="(?i)row count|mismatch|desync"):
+            EmbeddingStore(emb_path, ids_path, llm)
+
+    def test_legacy_no_sidecar_path_also_checks_row_count(self, tmp_path: Path):
+        """The legacy (no-meta) load branch must reject desync too."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
+        ids_path.write_text(json.dumps(["a", "b"]))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        with pytest.raises(ValueError, match="(?i)row count|mismatch|desync"):
+            EmbeddingStore(emb_path, ids_path, llm)
+
+    def test_aligned_store_loads_fine(self, tmp_path: Path):
+        """Sanity: a correctly-aligned store still loads without error."""
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        assert store.count() == 3
