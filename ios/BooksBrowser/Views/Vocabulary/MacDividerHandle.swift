@@ -24,12 +24,18 @@ struct DraggableDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(isActiveDrag ? theme.palette.divider.opacity(5) : Color.clear)
+            .fill(isActiveDrag
+                ? theme.palette.divider.opacity(AppMetrics.MacDetailPanel.dividerActiveOpacity)
+                : Color.clear)
             .frame(width: AppMetrics.MacDetailPanel.hitAreaWidth)
             .contentShape(Rectangle())
             .overlay(alignment: .center) {
                 Rectangle()
-                    .fill(theme.palette.divider.opacity(isActiveDrag ? 5 : 2))
+                    .fill(theme.palette.divider.opacity(
+                        isActiveDrag
+                            ? AppMetrics.MacDetailPanel.dividerActiveOpacity
+                            : AppMetrics.MacDetailPanel.dividerIdleOpacity
+                    ))
                     .frame(width: 1)
             }
             #if os(macOS)
