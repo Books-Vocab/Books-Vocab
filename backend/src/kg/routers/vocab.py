@@ -91,6 +91,8 @@ def batch_delete(
         card_store_factory=_card_store,
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
+        embedding_store_factory=_embedding_store,
+        gemini_client_factory=_gemini_client,
         notebook_id=notebook_id,
     )
 
@@ -171,6 +173,8 @@ def delete_word(
         word, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
+        embedding_store_factory=_embedding_store,
+        gemini_client_factory=_gemini_client,
         notebook_id=notebook_id,
     )
 
