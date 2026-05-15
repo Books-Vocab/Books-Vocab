@@ -305,3 +305,137 @@ def test_signed_sync_rejects_bundle_id_mismatch(signed_app_store_env):
     )
     assert r.status_code == 400, r.text
     assert r.json()["detail"] == "Transaction verification failed"
+
+
+def test_expired_receipt_rejected(signed_app_store_env):
+    """A transaction whose expiresDate is in the past must yield an inactive (expired) entitlement."""
+    env = signed_app_store_env
+    signed_transaction = _sign_jws(
+        _transaction_payload(
+            transaction_id="tx-expired-1",
+            original_transaction_id="otx-expired-1",
+            status="expired",
+        ),
+        env.chain["leaf_key"],
+        [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
+    )
+
+    r = env.client.post(
+        "/api/billing/app-store/sync",
+        json={
+            "product_id": "com.wordnexus.pro.monthly",
+            "environment": "sandbox",
+            "signed_transaction_info": signed_transaction,
+        },
+        headers=env.headers,
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()["pro"]
+    assert body["is_active"] is False
+    assert body["status"] == "expired"
+
+
+def test_refund_event_invalidates_entitlement(signed_app_store_env):
+    """A REFUND notification carrying a revocationDate must expire the user's entitlement."""
+    env = signed_app_store_env
+    # First establish an active subscription so the transaction is mapped to the user.
+    active_signed = _sign_jws(
+        _transaction_payload(transaction_id="tx-refund-1", original_transaction_id="otx-refund-1"),
+        env.chain["leaf_key"],
+        [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
+    )
+    sync_resp = env.client.post(
+        "/api/billing/app-store/sync",
+        json={
+            "product_id": "com.wordnexus.pro.monthly",
+            "environment": "sandbox",
+            "signed_transaction_info": active_signed,
+        },
+        headers=env.headers,
+    )
+    assert sync_resp.status_code == 200, sync_resp.text
+    assert sync_resp.json()["pro"]["is_active"] is True
+
+    # REFUND notification: Apple includes a revocationDate on the signed transaction info.
+    refunded_payload = _transaction_payload(
+        transaction_id="tx-refund-2", original_transaction_id="otx-refund-1"
+    )
+    refunded_payload["revocationDate"] = int(datetime.now(tz=UTC).timestamp() * 1000)
+    refunded_payload["revocationReason"] = 1
+    signed_transaction_info = _sign_jws(
+        refunded_payload,
+        env.chain["leaf_key"],
+        [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
+    )
+    signed_payload = _sign_jws(
+        {
+            "notificationType": "REFUND",
+            "subtype": None,
+            "bundleId": app.state.kg_settings.apple_bundle_id,
+            "data": {
+                "bundleId": app.state.kg_settings.apple_bundle_id,
+                "signedTransactionInfo": signed_transaction_info,
+            },
+        },
+        env.chain["leaf_key"],
+        [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
+    )
+
+    r = env.client.post(
+        "/api/billing/app-store/notifications",
+        json={"signed_payload": signed_payload},
+    )
+    assert r.status_code == 200, r.text
+    body = r.json()
+    assert body["updated"] is True
+    assert body["user_id"] == env.user_id
+    assert body["entitlements"]["pro"]["status"] == "expired"
+    assert body["entitlements"]["pro"]["is_active"] is False
+
+
+def test_sandbox_environment_routes_reconcile_to_sandbox_endpoint(signed_app_store_env):
+    """Reconcile with environment='sandbox' must hit the sandbox StoreKit base URL.
+
+    The StoreKit Server API selects sandbox vs production by base URL rather than the
+    legacy verifyReceipt 21007 status code, so a sandbox transaction must never be
+    looked up against the production host.
+    """
+    from kg.app_store import (
+        PRODUCTION_API_BASE_URL,
+        SANDBOX_API_BASE_URL,
+        _base_url_for_environment,
+    )
+
+    assert _base_url_for_environment("sandbox") == SANDBOX_API_BASE_URL
+    assert _base_url_for_environment("Sandbox") == SANDBOX_API_BASE_URL
+    assert _base_url_for_environment("production") == PRODUCTION_API_BASE_URL
+    assert _base_url_for_environment(None) == PRODUCTION_API_BASE_URL
+
+    env = signed_app_store_env
+    signed_transaction = _sign_jws(
+        _transaction_payload(
+            transaction_id="tx-sandbox-1", original_transaction_id="otx-sandbox-1"
+        ),
+        env.chain["leaf_key"],
+        [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
+    )
+
+    captured: dict[str, str] = {}
+
+    async def _fake_fetch(transaction_id, *, bundle_id, environment=None):
+        captured["transaction_id"] = transaction_id
+        captured["environment"] = environment or ""
+        captured["base_url"] = _base_url_for_environment(environment)
+        return {"signedTransactionInfo": signed_transaction}
+
+    with patch.object(billing_router_mod, "fetch_transaction_info", new=_fake_fetch):
+        r = env.client.post(
+            "/api/billing/app-store/reconcile",
+            json={"transaction_id": "tx-sandbox-1", "environment": "sandbox"},
+            headers=env.headers,
+        )
+
+    assert r.status_code == 200, r.text
+    assert captured["environment"] == "sandbox"
+    assert captured["base_url"] == SANDBOX_API_BASE_URL
+    assert r.json()["pro"]["is_active"] is True
