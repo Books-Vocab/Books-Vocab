@@ -132,6 +132,66 @@ class TestPendingJudgeLoadValidation:
         assert store.pending_judge_count() == 2
 
 
+class TestPopPendingJudgeFlushFailure:
+    """Bug B: pop_pending_judge must keep memory and disk consistent.
+
+    `pop_pending_judge` clears `_pending_judge` inside the lock but flushes
+    the empty snapshot to disk OUTSIDE the lock. If the flush raises (disk
+    full, atomic-write failure), the in-memory set is already empty while
+    the disk file still holds the old IDs → memory/disk divergence. On the
+    next reload the stale disk data resurrects the cards (re-judged →
+    double work), and within the same process the caller may have lost
+    the cards entirely.
+    """
+
+    def _make_store(self, tmp_path, pj_path):
+        return GraphStore(
+            links_path=tmp_path / "links.json",
+            candidates_path=tmp_path / "candidates.json",
+            blocked_path=tmp_path / "blocked.json",
+            pending_judge_path=pj_path,
+        )
+
+    def test_flush_failure_keeps_memory_and_disk_consistent(self, tmp_path):
+        pj_path = tmp_path / "pending_judge.json"
+        store = self._make_store(tmp_path, pj_path)
+        store.add_pending_judge(["card_a", "card_b"])
+
+        # Disk now holds the two IDs.
+        assert set(json.loads(pj_path.read_text())) == {"card_a", "card_b"}
+
+        # Make the disk flush fail.
+        original_flush = store._flush_pending_judge
+
+        def boom(snapshot):
+            raise OSError("disk full")
+
+        store._flush_pending_judge = boom
+
+        with pytest.raises(OSError):
+            store.pop_pending_judge()
+
+        # Restore so we can inspect cleanly.
+        store._flush_pending_judge = original_flush
+
+        # Invariant: flush failed → the pop must NOT have silently dropped
+        # the in-memory IDs. Memory and disk must still AGREE: either both
+        # still hold the IDs (rollback) or both are empty (atomic). They
+        # must never diverge.
+        mem = set(store._pending_judge)
+        disk = set(json.loads(pj_path.read_text()))
+        assert mem == disk, (
+            f"memory/disk diverged after flush failure: "
+            f"mem={mem}, disk={disk}"
+        )
+        # The IDs must not be lost — disk still has the old data, so memory
+        # must too (otherwise a reload resurrects orphans).
+        assert mem == {"card_a", "card_b"}, (
+            f"flush failed but in-memory pending_judge was cleared anyway "
+            f"→ IDs lost until next reload: mem={mem}"
+        )
+
+
 class TestMigrateCandidatesToPending:
     def test_migrate_old_candidates(self, tmp_path):
         """Old candidates.json data gets migrated to pending_judge on load."""
