@@ -97,7 +97,7 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
         except Exception:
             logger.error("Graph operation failed for card %s", card.id, exc_info=True)
             try:
-                cards_store.restore(card.id)
+                cards_store.restore(card.id, notebook_id=card.notebook_id)
             except Exception:
                 logger.exception("restore failed for card %s after graph error", card.id)
             raise
@@ -133,7 +133,7 @@ def batch_delete_vocab_words(
                 graph.cleanup_for_card(card.id, remove_blocked=True)
             except Exception:
                 try:
-                    cards_store.restore(card.id)
+                    cards_store.restore(card.id, notebook_id=card.notebook_id)
                 except Exception:
                     logger.exception("restore failed for card %s after graph error", card.id)
                 not_found.append(word)
