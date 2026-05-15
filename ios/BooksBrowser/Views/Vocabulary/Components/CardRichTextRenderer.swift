@@ -19,12 +19,9 @@ enum CardRichTextMode {
 }
 
 enum CardRichTextRenderer {
-    private static func regex(_ pattern: String) -> NSRegularExpression {
-        do {
-            return try NSRegularExpression(pattern: pattern)
-        } catch {
-            preconditionFailure("Invalid regex pattern: \(pattern)")
-        }
+    /// regex 編譯失敗時回傳 nil，呼叫端優雅降級為純文字，不崩潰。
+    private static func regex(_ pattern: String) -> NSRegularExpression? {
+        try? NSRegularExpression(pattern: pattern)
     }
 
     private static let inlinePattern = regex("\\*\\*(.+?)\\*\\*|`([^`]+)`")
@@ -66,6 +63,9 @@ enum CardRichTextRenderer {
         )
 
         let nsString = prepared as NSString
+        guard let inlinePattern else {
+            return plainAttributedString(prepared, style: style)
+        }
         let matches = inlinePattern.matches(
             in: prepared,
             range: NSRange(location: 0, length: nsString.length)
@@ -190,6 +190,7 @@ enum CardRichTextRenderer {
     }
 
     static func clozeMarkedWord(in raw: String) -> String {
+        guard let markedWordPattern else { return raw }
         let nsString = raw as NSString
         return markedWordPattern.stringByReplacingMatches(
             in: raw,
@@ -204,6 +205,8 @@ enum CardRichTextRenderer {
         targetWordFallback: String? = nil
     ) -> String {
         guard radiusWords >= 0 else { return raw }
+        // regex 編譯失敗時優雅降級：直接回傳原字串，不做截斷，不崩潰。
+        guard let markedWordPattern, let stripMarkPattern else { return raw }
 
         // 當有 targetWord 時：先 strip 所有現有 ** 標記，再以 targetWord 為中心截斷。
         // 這樣可避免「例句裡有其他詞被標記但 targetWord 沒被標記」時截到錯誤的上下文。
@@ -265,6 +268,7 @@ enum CardRichTextRenderer {
             return target
         }
 
+        guard let tokenPattern else { return raw }
         let beforeTokens = tokenPattern.matches(
             in: beforeText,
             range: NSRange(location: 0, length: (beforeText as NSString).length)
@@ -308,6 +312,7 @@ enum CardRichTextRenderer {
     }
 
     private static func truncateLeadingWords(_ text: String, count: Int) -> String {
+        guard let tokenPattern else { return text }
         let nsText = text as NSString
         let tokens = tokenPattern.matches(in: text, range: NSRange(location: 0, length: nsText.length))
         let validIndices = tokens.indices.filter { tokenContainsWordCharacters(tokens[$0], in: text) }
