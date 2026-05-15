@@ -53,6 +53,10 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._blocked_write_lock = threading.Lock()
         self._pending_judge_write_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
+        # Every link id this instance has ever held (loaded or created). Used
+        # by _flush_links to tell "deleted by me" (drop) from "added by another
+        # instance" (preserve) when merging with the on-disk file.
+        self._known_link_ids: set[str] = set()
         self._candidates: list[CandidatePair] = []
         self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
         self._blocked_pairs: set[tuple[str, str]] = set()
@@ -68,6 +72,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     def _index_link(self, link: GraphLink) -> None:
         self._from_index.setdefault(link.from_id, set()).add(link.id)
         self._to_index.setdefault(link.to_id, set()).add(link.id)
+        # Register so a later _flush_links merge treats this id as managed
+        # by this instance (a subsequent delete is honoured, not resurrected).
+        self._known_link_ids.add(link.id)
 
     def _unindex_link(self, link: GraphLink) -> None:
         self._from_index.get(link.from_id, set()).discard(link.id)
@@ -112,6 +119,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                     continue
                 link = GraphLink.model_validate(lk)
                 self._links[link.id] = link
+                self._known_link_ids.add(link.id)
             if dirty:
                 self._save_links()
                 self._save_blocked()
