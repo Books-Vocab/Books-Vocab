@@ -35,24 +35,61 @@ function renderLoggedOut() {
   authStatus.appendChild(btn);
 }
 
+/**
+ * Render an inline error with a retry button under the auth section.
+ * @param {string} message
+ * @param {Function} onRetry
+ */
+function renderAuthError(message, onRetry) {
+  authStatus.innerHTML = '';
+
+  const msg = document.createElement('div');
+  msg.className = 'kg-auth-info';
+  msg.textContent = message;
+
+  const btn = document.createElement('button');
+  btn.className = 'kg-btn';
+  btn.textContent = '重試';
+  btn.addEventListener('click', onRetry);
+
+  authStatus.appendChild(msg);
+  authStatus.appendChild(btn);
+}
+
 async function refreshAuthUI() {
-  const data = await chrome.storage.local.get(AUTH_KEYS);
-  if (data.auth_token) {
-    renderLoggedIn();
-  } else {
-    renderLoggedOut();
+  try {
+    const data = await chrome.storage.local.get(AUTH_KEYS);
+    if (data.auth_token) {
+      renderLoggedIn();
+    } else {
+      renderLoggedOut();
+    }
+  } catch (err) {
+    // chrome.storage can reject when the extension context is invalidated.
+    console.error('[KG] refreshAuthUI failed:', err);
+    renderAuthError('無法讀取登入狀態', refreshAuthUI);
   }
 }
 
 // ── Auth Actions ──
 
 function handleLogin() {
-  chrome.tabs.create({ url: 'https://wordnexus.lol/login' });
+  try {
+    chrome.tabs.create({ url: 'https://wordnexus.lol/login' });
+  } catch (err) {
+    console.error('[KG] handleLogin failed:', err);
+    renderAuthError('無法開啟登入頁面', handleLogin);
+  }
 }
 
 async function handleLogout() {
-  await chrome.storage.local.remove(AUTH_KEYS);
-  renderLoggedOut();
+  try {
+    await chrome.storage.local.remove(AUTH_KEYS);
+    renderLoggedOut();
+  } catch (err) {
+    console.error('[KG] handleLogout failed:', err);
+    renderAuthError('登出失敗，請重試', handleLogout);
+  }
 }
 
 // ── Theme UI ──
@@ -79,9 +116,14 @@ function handleThemeChange(e) {
 // ── Init ──
 
 (async function init() {
-  // Theme
-  const currentTheme = await initTheme(document.documentElement);
-  activateThemeOption(currentTheme);
+  // Theme — fall back to the default if storage is unavailable.
+  try {
+    const currentTheme = await initTheme(document.documentElement);
+    activateThemeOption(currentTheme);
+  } catch (err) {
+    console.error('[KG] theme init failed:', err);
+    activateThemeOption('light');
+  }
   themeSelector.addEventListener('click', handleThemeChange);
 
   // Auth
