@@ -17,7 +17,9 @@ before writing:
 - Links the instance has ever seen (``_known_link_ids``) are authoritative,
   so deletions still take effect.
 - Links present on disk but unknown to the instance are preserved.
-- Blocked pairs are unioned with the on-disk set.
+- Blocked pairs follow the same rule via ``_known_blocked_pairs``: a pair the
+  instance unblocked is honoured (a naive union would resurrect it), while a
+  pair blocked by another instance is preserved.
 
 ``_flush_candidates`` / ``_flush_pending_judge`` hold transient pre-judge
 state (pop-style, cleared as a unit); they run under the same file lock so
@@ -51,6 +53,7 @@ class _PersistenceMixin:
     _blocked_pairs: set[tuple[str, str]]
     _pending_judge: set[str]
     _known_link_ids: set[str]
+    _known_blocked_pairs: set[tuple[str, str]]
     _links_write_lock: Any
     _candidates_write_lock: Any
     _blocked_write_lock: Any
@@ -129,14 +132,31 @@ class _PersistenceMixin:
             self._atomic_json_write(self.links_path, merged)
 
     def _flush_blocked(self, snapshot: list[list[str]]) -> None:
-        """Persist blocked pairs as the union of memory + on-disk state."""
+        """Persist blocked pairs, merging with the current on-disk file.
+
+        ``snapshot`` is this instance's full ``_blocked_pairs`` view. Under the
+        file lock the on-disk file is re-read; any pair unknown to this instance
+        (not in ``_known_blocked_pairs``) is preserved, while pairs the instance
+        manages -- including ones it unblocked -- follow the snapshot. A naive
+        union would resurrect a pair the user explicitly unblocked.
+        """
         if self.blocked_path is None:
             return
         with self._blocked_write_lock, path_write_lock(self.blocked_path):
             merged: set[tuple[str, str]] = {tuple(p) for p in snapshot}  # type: ignore[misc]
             for row in self._read_json_list(self.blocked_path):
-                if isinstance(row, list) and len(row) == 2:
-                    merged.add(tuple(row))  # type: ignore[arg-type]
+                if not (isinstance(row, list) and len(row) == 2):
+                    continue
+                pair: tuple[str, str] = tuple(row)  # type: ignore[assignment]
+                if pair in merged:
+                    continue
+                if pair in self._known_blocked_pairs:
+                    # This instance knew this pair and dropped it -> honour unblock.
+                    continue
+                # Foreign pair blocked by another instance: preserve it, but do
+                # NOT register it as managed by us -- otherwise our next flush
+                # (whose snapshot lacks it) would treat it as an unblock.
+                merged.add(pair)
             self._atomic_json_write(
                 self.blocked_path, [list(p) for p in merged], indent=None
             )

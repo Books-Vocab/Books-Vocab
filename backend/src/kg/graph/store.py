@@ -60,6 +60,10 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._candidates: list[CandidatePair] = []
         self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
         self._blocked_pairs: set[tuple[str, str]] = set()
+        # Every blocked pair this instance has ever held (loaded or blocked).
+        # Mirrors _known_link_ids: lets _flush_blocked tell "unblocked by me"
+        # (drop) from "blocked by another instance" (preserve) when merging.
+        self._known_blocked_pairs: set[tuple[str, str]] = set()
         self._pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
@@ -103,6 +107,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.blocked_path and self.blocked_path.exists():
             data = json.loads(self.blocked_path.read_text())
             self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
+            self._known_blocked_pairs |= self._blocked_pairs
         if self.links_path.exists():
             data = json.loads(self.links_path.read_text())
             dirty = False
@@ -113,9 +118,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 # Migrate rejected -> blocked
                 if lk.get("status") == "rejected":
                     dirty = True
-                    self._blocked_pairs.add(
-                        self._normalize_pair(lk["from_id"], lk["to_id"])
-                    )
+                    pair = self._normalize_pair(lk["from_id"], lk["to_id"])
+                    self._blocked_pairs.add(pair)
+                    self._known_blocked_pairs.add(pair)
                     continue
                 link = GraphLink.model_validate(lk)
                 self._links[link.id] = link
