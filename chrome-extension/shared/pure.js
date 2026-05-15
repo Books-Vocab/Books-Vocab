@@ -12,6 +12,22 @@ const VALID_THEMES = ['light', 'dark', 'sepia'];
 const DEFAULT_THEME = 'light';
 
 /**
+ * Build the request body for `/api/translate/phrase`.
+ *
+ * The backend `TranslateRequest` model keys the translatable text on `word`
+ * (NOT `text`) for both the quick and phrase endpoints — a body shaped
+ * `{ text, context }` is rejected with HTTP 422. This helper centralises the
+ * mapping so the contract stays pinned by `pure.test.js`.
+ *
+ * @param {string} text — the phrase/sentence to translate
+ * @param {string} [context] — surrounding sentence
+ * @returns {{word: string, context: string}}
+ */
+function buildPhraseTranslateBody(text, context) {
+  return { word: text, context: context || '' };
+}
+
+/**
  * Resolve a possibly-invalid stored value to a known theme name.
  * @param {*} raw
  * @returns {'light'|'dark'|'sepia'}
@@ -181,6 +197,7 @@ const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
   resolveTheme,
+  buildPhraseTranslateBody,
   buildVocabQuery,
   normalizeVocabList,
   classifyError,

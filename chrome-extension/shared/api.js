@@ -124,13 +124,16 @@ async function translate(word, context) {
 
 /**
  * Translate a multi-word phrase/sentence with optional context.
+ *
+ * The backend `/api/translate/phrase` endpoint keys the translatable text on
+ * `word` (shared `TranslateRequest` model) — see `buildPhraseTranslateBody`.
  * @param {string} text
  * @param {string} [context]
  */
 async function translatePhrase(text, context) {
   return apiFetch('/api/translate/phrase', {
     method: 'POST',
-    body: JSON.stringify({ text, context }),
+    body: JSON.stringify(globalThis.KGPure.buildPhraseTranslateBody(text, context)),
   });
 }
 
@@ -148,7 +151,12 @@ async function explain(word, context) {
 
 /**
  * Add one or more vocabulary entries.
- * @param {Array<{word: string, context?: string, source_url?: string}>} entries
+ *
+ * Each entry must match the backend `VocabEntry` model: `word` + `translation`
+ * are required, `context` optional, and `source` is a `VocabSource` object
+ * `{type: 'web'|'book', title?, url?}` — NOT a flat `source_url` string.
+ * @param {Array<{word: string, translation: string, context?: string,
+ *   source?: {type: string, title?: string, url?: string}}>} entries
  */
 async function addVocab(entries) {
   return apiFetch('/api/vocab', {
