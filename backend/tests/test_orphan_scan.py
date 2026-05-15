@@ -431,9 +431,20 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
         "created_at": "2024-01-01T00:00:00+00:00", "status": "active",
     }]))
 
-    # Patch Path.stat so the second observation of ``graph_path`` (the in-loop
-    # comparison) reports a different mtime, mimicking a concurrent writer
-    # touching the file between snapshot and rewrite.
+    # Patch Path.stat so only the in-loop guard comparison sees a drifted
+    # mtime, mimicking a concurrent writer touching the file between the
+    # snapshot and the rewrite.
+    #
+    # fix() touches ``graph_path`` via Path.stat four times before the rewrite,
+    # in order:
+    #   1. line 451  graph_path.exists()  — exists() calls stat internally
+    #   2. line 452  graph_path.stat()    — the mtime SNAPSHOT
+    #   3. line 455  graph_path.exists()  — exists() calls stat internally
+    #   4. line 458  graph_path.stat()    — the mtime GUARD comparison
+    # To exercise the guard, the snapshot (#2) must observe the original mtime
+    # and the guard (#4) the bumped one — so bump only from the 4th call onward
+    # (>= 4). A lower threshold also bumps the snapshot, leaving snapshot ==
+    # guard so the guard silently never fires.
     real_stat = Path.stat
     stat_calls = {"n": 0}
 
@@ -441,7 +452,7 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
         result = real_stat(self, *a, **kw)
         if self == graph_path:
             stat_calls["n"] += 1
-            if stat_calls["n"] >= 2:
+            if stat_calls["n"] >= 4:
                 class _FakeStat:
                     def __init__(self, base, bumped_ns):
                         self._base = base
@@ -457,3 +468,40 @@ def test_fix_aborts_when_graph_file_mutated_mid_run(env, monkeypatch):
 
     with pytest.raises(OrphanFixAborted):
         fix(data_dir=env.data_dir, confirm=True, dry_run=False)
+
+
+# ---------------------------------------------------------------------------
+# _atomic_write_json — durability
+# ---------------------------------------------------------------------------
+
+def test_atomic_write_json_fsyncs_parent_dir(tmp_path, monkeypatch):
+    """``_atomic_write_json`` must fsync the parent directory after the rename
+    so the rename's directory-entry update is itself durable across a crash —
+    fsyncing only the tmp file is insufficient."""
+    import os as _os
+    import stat as _stat
+
+    from kg import orphan_scan
+
+    target = tmp_path / "graph_x.json"
+
+    fsynced_dir_count = {"n": 0}
+    real_fsync = _os.fsync
+
+    def tracking_fsync(fd):
+        try:
+            # A directory fd reports S_ISDIR on its fstat result.
+            if _stat.S_ISDIR(_os.fstat(fd).st_mode):
+                fsynced_dir_count["n"] += 1
+        except OSError:
+            pass
+        return real_fsync(fd)
+
+    monkeypatch.setattr(_os, "fsync", tracking_fsync)
+
+    orphan_scan._atomic_write_json(target, [{"id": "a"}])
+
+    assert target.exists()
+    assert json.loads(target.read_text()) == [{"id": "a"}]
+    # The parent directory must have been fsynced after the rename.
+    assert fsynced_dir_count["n"] >= 1, "parent directory was not fsynced after rename"
