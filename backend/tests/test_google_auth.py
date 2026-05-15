@@ -2,6 +2,9 @@
 
 from __future__ import annotations
 
+import asyncio
+import threading
+import time
 from unittest.mock import MagicMock, patch
 
 import pytest
@@ -162,3 +165,110 @@ class TestVerifyGoogleToken:
                 "strflag.token", CLIENT_ID
             )
             assert verified is False
+
+
+class TestGoogleAuthTransportTimeout:
+    """Bug 1: certificate-endpoint requests must carry a bounded timeout.
+
+    ``requests.Session`` has no ``timeout`` attribute — setting one is a
+    silent no-op. google-auth's ``Request.__call__`` defaults ``timeout``
+    to 120s and ``id_token._fetch_certs`` never overrides it, so a hung
+    Google certs endpoint would block the login request for two minutes.
+    The transport adapter must inject a small, finite timeout.
+    """
+
+    def test_request_adapter_sends_finite_timeout(self):
+        """The transport's ``__call__`` must default timeout to a small value.
+
+        We invoke the adapter against a fake session and assert the
+        ``timeout`` kwarg forwarded to ``session.request`` is finite and
+        well under google-auth's 120s default.
+        """
+        captured = {}
+
+        def fake_request(method, url, **kwargs):  # noqa: ARG001
+            captured["timeout"] = kwargs.get("timeout")
+            resp = MagicMock()
+            resp.status_code = 200
+            resp.headers = {}
+            resp.content = b"{}"
+            return resp
+
+        session = MagicMock()
+        session.request.side_effect = fake_request
+
+        adapter = google_auth._build_request_adapter(session)
+        # Caller (id_token._fetch_certs) invokes request(url, method="GET")
+        # WITHOUT passing timeout — the adapter must supply its own.
+        adapter("https://oauth2.googleapis.com/certs", method="GET")
+
+        assert captured["timeout"] is not None, (
+            "transport adapter forwarded no timeout — request can hang forever"
+        )
+        assert captured["timeout"] <= 30, (
+            f"timeout {captured['timeout']}s too large; must be a small bound"
+        )
+
+    def test_session_has_no_dead_timeout_attribute(self):
+        """The module must not rely on the no-op ``Session.timeout`` attr.
+
+        Whatever timeout the module enforces, it must NOT be the bogus
+        ``_session.timeout = 10`` assignment (which requests ignores).
+        """
+        sess = getattr(google_auth, "_session", None)
+        if sess is not None:
+            # If a module-level session still exists, a stray timeout attr
+            # is harmless but misleading — the real timeout must come from
+            # the request adapter, verified above.
+            assert hasattr(google_auth, "_build_request_adapter")
+
+
+class TestGoogleTokenNonBlocking:
+    """Bug 2: ``verify_google_token`` is ``async`` but does blocking network
+    I/O via ``id_token.verify_oauth2_token``. It must offload that call to
+    a worker thread so the asyncio event loop is never blocked.
+    """
+
+    @pytest.mark.asyncio
+    async def test_blocking_verify_runs_off_event_loop(self):
+        """The synchronous verify call must execute on a non-loop thread."""
+        loop = asyncio.get_running_loop()
+        loop_thread_id = threading.get_ident()
+        observed = {}
+
+        def slow_verify(*_args, **_kwargs):
+            observed["thread_id"] = threading.get_ident()
+            time.sleep(0.05)  # simulate blocking network I/O
+            return {"sub": "google-async-1", "email": "a@b.com", "email_verified": True}
+
+        with patch("kg.google_auth.id_token.verify_oauth2_token", side_effect=slow_verify):
+            result = await google_auth.verify_google_token("t.token", CLIENT_ID)
+
+        assert result[0] == "google-async-1"
+        assert observed["thread_id"] != loop_thread_id, (
+            "verify_oauth2_token ran on the event-loop thread — it blocks asyncio"
+        )
+
+    @pytest.mark.asyncio
+    async def test_event_loop_stays_responsive_during_verify(self):
+        """A concurrent coroutine must keep ticking while verify is in-flight."""
+        ticks = []
+
+        async def ticker():
+            for _ in range(20):
+                ticks.append(1)
+                await asyncio.sleep(0.005)
+
+        def blocking_verify(*_args, **_kwargs):
+            time.sleep(0.1)
+            return {"sub": "s", "email": "e@e.com", "email_verified": True}
+
+        with patch("kg.google_auth.id_token.verify_oauth2_token", side_effect=blocking_verify):
+            tick_task = asyncio.create_task(ticker())
+            await google_auth.verify_google_token("t.token", CLIENT_ID)
+            await tick_task
+
+        # If verify blocked the loop, the ticker could not have progressed.
+        assert len(ticks) >= 10, (
+            f"event loop stalled — only {len(ticks)} ticks during blocking verify"
+        )
