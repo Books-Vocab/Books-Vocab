@@ -2,7 +2,11 @@
 name = "kg"
 version = "0.1.0"
 description = "Knowledge Graph for Vocabulary Recall"
-requires-python = ">=3.12"
+# Pinned to 3.13: the project venv (backend/.venv, uv-managed) is cpython-3.13,
+# and `backend/.python-version` locks the interpreter `uv` picks when it has to
+# (re)create the venv. A loose `>=3.12` would let uv resolve to a Homebrew
+# system Python (3.12 / 3.14) that lacks `kg` / `sentry-sdk`.
+requires-python = ">=3.13,<3.14"
 dependencies = [
     "openai>=1.0,<3.0",
     "numpy>=1.26,<3.0",
@@ -32,13 +36,25 @@ kg-server = "uvicorn:main"
 # `uv sync` (uv installs the default `dev` group automatically) but excluded
 # from the runtime wheel.
 #
-# Why this is required: when pytest is not present in the project venv,
-# `uv run pytest` silently falls back to a Homebrew system Python (e.g. 3.14)
-# that lacks `sentry-sdk`. That made `import sentry_sdk` inside
-# `kg.observability_alerts` fail, `_sentry_sdk` resolved to `None`, and every
-# `_emit` short-circuited at the `_sentry_sdk is None` guard — manifesting as
-# 8 flaky-looking test failures whose stubs never recorded a call. Pinning
-# pytest into the venv eliminates that interpreter mismatch entirely.
+# Interpreter-mismatch background — `uv run pytest` once silently fell back to
+# a Homebrew Python 3.14 (`/opt/homebrew/bin/pytest`, no `kg` / `sentry-sdk`):
+# `import sentry_sdk` inside `kg.observability_alerts` failed, `_sentry_sdk`
+# resolved to `None`, every `_emit` short-circuited at the `_sentry_sdk is None`
+# guard — surfacing as ~11 flaky-looking failures whose stubs never recorded a
+# call. Two distinct causes, both addressed:
+#   1. Interpreter selection on venv (re)creation — guarded by
+#      `backend/.python-version` (= 3.13) + `requires-python` above + pytest
+#      pinned here so it lives in the venv.
+#   2. Stale console-script shebangs — `.venv/bin/pytest` is a generated
+#      script whose `#!` line hard-codes an absolute interpreter path. If the
+#      venv was copied/moved between worktrees, that path goes dead, the kernel
+#      fails to exec it, and `pytest` resolves from PATH instead. Fix by
+#      rebuilding scripts: `cd backend && uv sync --reinstall`.
+#
+# Correct way to run the suite (always uses backend/.venv cpython-3.13):
+#   cd backend && uv run pytest -q
+# Equivalent explicit form (bypasses console-script shebangs entirely):
+#   backend/.venv/bin/python -m pytest -q
 [dependency-groups]
 dev = [
     "pytest>=8.0,<10.0",
