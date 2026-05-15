@@ -173,6 +173,88 @@ function extractSentence(text, offset) {
 }
 
 /**
+ * Build the runtime message a content-script popup sends to the background
+ * worker for a given selection. Long selections (`isPhrase`) go to the
+ * `/api/translate/phrase` route keyed on `text`; short ones to the quick
+ * `translate` route keyed on `word`.
+ *
+ * Pure mirror of the content-script `createPopup` message-shape decision,
+ * decoupled from `chrome.runtime.sendMessage`.
+ *
+ * @param {string} word — the selected text
+ * @param {string} [context] — surrounding sentence
+ * @returns {{type:'translate',word:string,context:string}
+ *          |{type:'translatePhrase',text:string,context:string}}
+ */
+function buildSelectionMessage(word, context) {
+  const ctx = context == null ? '' : String(context);
+  const text = typeof word === 'string' ? word : String(word == null ? '' : word);
+  if (isPhrase(text)) {
+    return { type: 'translatePhrase', text, context: ctx };
+  }
+  return { type: 'translate', word: text, context: ctx };
+}
+
+/**
+ * The set of internal message types the background worker routes. Centralised
+ * so `routeMessage` and the worker's `handleMessage` switch stay in sync and
+ * the contract is pinned by `pure.test.js`.
+ */
+const ROUTABLE_MESSAGE_TYPES = [
+  'translate',
+  'translatePhrase',
+  'explain',
+  'addVocab',
+  'listVocab',
+  'lookupWord',
+  'auth_token',
+  'get_auth_status',
+  'logout',
+];
+
+/**
+ * Pure descriptor of the background worker's `handleMessage` routing table.
+ * Maps an inbound message to `{ kind, args }` — the API method name (or
+ * pseudo-kind for storage ops) plus the positional arguments extracted from
+ * the message — without invoking `KGApi` or touching `chrome.*`.
+ *
+ * Throws for unknown types and for an `auth_token` message missing a string
+ * token, mirroring `handleMessage`'s `throw new Error(...)` branches so the
+ * error contract is testable.
+ *
+ * @param {{type?: string}} msg
+ * @returns {{kind: string, args: Array<*>}}
+ */
+function routeMessage(msg) {
+  const type = msg && msg.type;
+  switch (type) {
+    case 'translate':
+      return { kind: 'translate', args: [msg.word, msg.context] };
+    case 'translatePhrase':
+      return { kind: 'translatePhrase', args: [msg.text, msg.context] };
+    case 'explain':
+      return { kind: 'explain', args: [msg.word, msg.context] };
+    case 'addVocab':
+      return { kind: 'addVocab', args: [msg.entries] };
+    case 'listVocab':
+      return { kind: 'listVocab', args: [msg.since] };
+    case 'lookupWord':
+      return { kind: 'lookupWord', args: [msg.word] };
+    case 'auth_token':
+      if (typeof msg.token === 'string') {
+        return { kind: 'setToken', args: [msg.token] };
+      }
+      throw new Error('missing token');
+    case 'get_auth_status':
+      return { kind: 'getAuthStatus', args: [] };
+    case 'logout':
+      return { kind: 'logout', args: [] };
+    default:
+      throw new Error(`unknown message type: ${type}`);
+  }
+}
+
+/**
  * Whether an external sender URL is the trusted KG web origin. Used to gate
  * `onMessageExternal` auth-token injection.
  *
@@ -204,6 +286,9 @@ const KGPureExports = {
   isSelectable,
   isPhrase,
   extractSentence,
+  buildSelectionMessage,
+  ROUTABLE_MESSAGE_TYPES,
+  routeMessage,
   isTrustedExternalOrigin,
 };
 
