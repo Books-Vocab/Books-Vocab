@@ -2,7 +2,7 @@
 tier: reference
 scope:
   - backend/tests
-verified_against: 4eaa92b
+verified_against: 8f967e3
 -->
 # KG Backend Testing Strategy
 
@@ -17,7 +17,7 @@ verified_against: 4eaa92b
 
 ### 1) Unit tests (純函式/單模組)
 - `difficulty.py`: tier mapping 與 Zipf 規則
-- `graph.py`: link/candidate 去重與狀態邏輯
+- `graph/`: link/candidate 去重與狀態邏輯（package：`store` / `links` / `candidates` / `persistence` / `models`）
 - `embeddings.py`: 相似度查詢、存在檢查
 
 ### 2) Integration tests (本地 I/O + FastAPI in-process)
