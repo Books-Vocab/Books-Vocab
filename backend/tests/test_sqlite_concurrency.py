@@ -150,3 +150,173 @@ def test_token_tracker_concurrent_writes_no_locked(tmp_path, monkeypatch):
         f"sqlite OperationalError under concurrent token_tracker writes: {errors!r}"
     )
     assert not errors, f"unexpected errors: {errors!r}"
+
+
+# ---------------------------------------------------------------------------
+# CardStore same-card concurrent modification.
+#
+# CardStore opens its SQLite DB in WAL mode with busy_timeout=30000ms, so the
+# writer-exclusive transaction is serialised. These are characterization tests:
+# they pound a single card (or a single notebook) from N threads and assert the
+# final on-disk state is self-consistent — no lost row, no "tombstone that was
+# updated after delete", no corrupted review state.
+# ---------------------------------------------------------------------------
+
+
+def test_concurrent_update_same_card_consistent(tmp_path):
+    """N threads update the SAME card simultaneously. The row must survive,
+    stay non-deleted, and land on exactly one of the values each thread wrote."""
+    from kg.cards import CardStore
+
+    store = CardStore(tmp_path / "cards.db")
+    card = store.add(content="alpha", meaning="initial")
+    cid = card.id
+
+    n_threads, calls = 8, 20
+
+    def do_update(i: int) -> None:
+        store.update(cid, note=f"note_{i}", review_count=i)
+
+    errors = _drive(do_update, n_threads=n_threads, calls_per_thread=calls)
+    store.close()
+
+    assert not any(isinstance(e, sqlite3.OperationalError) for e in errors), (
+        f"sqlite OperationalError under concurrent same-card update: {errors!r}"
+    )
+    assert not errors, f"unexpected errors: {errors!r}"
+
+    store2 = CardStore(tmp_path / "cards.db")
+    try:
+        # Exactly one row, still present, not soft-deleted.
+        all_rows = list(store2.all(include_deleted=True))
+        assert len(all_rows) == 1, f"lost/duplicated row: {all_rows!r}"
+        final = store2.get(cid)
+        assert final is not None, "card vanished after concurrent updates"
+        assert final.is_deleted is False
+        # The surviving note/review_count must be a value some thread wrote.
+        total = n_threads * calls
+        valid_notes = {f"note_{i}" for i in range(total)}
+        assert final.note in valid_notes, f"final.note not from any writer: {final.note!r}"
+        assert 0 <= final.review_count < total, (
+            f"review_count out of written range: {final.review_count}"
+        )
+    finally:
+        store2.close()
+
+
+def test_concurrent_delete_and_update_same_card(tmp_path):
+    """delete + update race on the SAME card, repeated many rounds.
+
+    CHARACTERIZATION (documents a known TOCTOU): both ``delete()`` and
+    ``update()`` do read-then-write inside a Session — they read the row,
+    check ``is_deleted``, then commit. WAL+busy_timeout serialises the
+    *commits* but not the read→commit window, so when update reads a still-
+    live row, then delete commits the tombstone, update's later commit lands
+    on the now-deleted row. Result: a row with ``is_deleted=1`` AND the
+    updated fields applied (a "resurrected tombstone" field-wise).
+
+    This is benign for sync correctness (the row is still deleted, so clients
+    drop it) but the test pins the two legal end states so a regression that
+    e.g. *un*-deletes the row or loses the row entirely is caught."""
+    from kg.cards import CardStore
+
+    store = CardStore(tmp_path / "cards.db")
+    n_rounds = 30
+    cids: list[str] = []
+    for r in range(n_rounds):
+        cids.append(store.add(content=f"beta_{r}", meaning="initial").id)
+
+    errors: list[BaseException] = []
+    err_lock = threading.Lock()
+
+    def guard(fn, *a):
+        try:
+            fn(*a)
+        except BaseException as e:  # noqa: BLE001
+            with err_lock:
+                errors.append(e)
+
+    for cid in cids:
+        barrier = threading.Barrier(2)
+
+        def do_delete(c=cid, b=barrier) -> None:
+            b.wait()
+            store.delete(c)
+
+        def do_update(c=cid, b=barrier) -> None:
+            b.wait()
+            store.update(c, note="raced", review_count=99)
+
+        with ThreadPoolExecutor(max_workers=2) as ex:
+            f1 = ex.submit(guard, do_delete)
+            f2 = ex.submit(guard, do_update)
+            f1.result()
+            f2.result()
+    store.close()
+
+    assert not any(isinstance(e, sqlite3.OperationalError) for e in errors), (
+        f"sqlite OperationalError under delete/update race: {errors!r}"
+    )
+    assert not errors, f"unexpected errors: {errors!r}"
+
+    store2 = CardStore(tmp_path / "cards.db")
+    try:
+        for cid in cids:
+            final = store2.get(cid)
+            assert final is not None, f"card row {cid} disappeared"
+            # Two legal outcomes only:
+            #   A) update won the read+commit ordering, card stays live & updated
+            #   B) delete committed; card is a tombstone (fields may or may not
+            #      reflect the racing update — both acceptable since deleted).
+            if not final.is_deleted:
+                # update applied and delete must not have committed a tombstone
+                assert final.note == "raced", (
+                    f"{cid}: live card but update lost: note={final.note!r}"
+                )
+                assert final.review_count == 99
+            # If is_deleted: nothing more to assert — the card is correctly
+            # tombstoned; field state is irrelevant to a deleted card.
+    finally:
+        store2.close()
+
+
+def test_concurrent_batch_touch_no_corruption(tmp_path):
+    """N threads batch_touch the SAME notebook concurrently. Review state
+    (review_count, next_review_at, is_deleted) must be untouched — batch_touch
+    only bumps updated_at — and every card must remain readable & consistent."""
+    from kg.cards import CardStore
+
+    store = CardStore(tmp_path / "cards.db")
+    ids: list[str] = []
+    for i in range(12):
+        c = store.add(content=f"word_{i}", meaning=f"m_{i}", notebook_id="nb")
+        # Seed distinct review state we expect to remain invariant.
+        store.update(c.id, review_count=i, review_streak=i * 2)
+        ids.append(c.id)
+
+    def do_touch(_i: int) -> None:
+        store.batch_touch(ids, notebook_id="nb")
+
+    errors = _drive(do_touch, n_threads=8, calls_per_thread=15)
+    store.close()
+
+    assert not any(isinstance(e, sqlite3.OperationalError) for e in errors), (
+        f"sqlite OperationalError under concurrent batch_touch: {errors!r}"
+    )
+    assert not errors, f"unexpected errors: {errors!r}"
+
+    store2 = CardStore(tmp_path / "cards.db")
+    try:
+        rows = store2.all_as_dict(include_deleted=True, notebook_id="nb")
+        assert len(rows) == 12, f"card count changed: {len(rows)}"
+        for i, cid in enumerate(ids):
+            card = rows[cid]
+            assert card.is_deleted is False, f"{cid} flipped to deleted"
+            assert card.review_count == i, (
+                f"review_count corrupted: {cid} -> {card.review_count} (want {i})"
+            )
+            assert card.review_streak == i * 2, (
+                f"review_streak corrupted: {cid} -> {card.review_streak}"
+            )
+    finally:
+        store2.close()
