@@ -9,7 +9,7 @@
 
 import * as KGApi from './shared/api.js';
 // Side-effect import: registers `globalThis.KGPure` (classic-script module —
-// see shared/pure.js). Used for trusted-origin checks below.
+// see shared/pure.js). Used for `routeMessage` dispatch + trusted-origin checks.
 import './shared/pure.js';
 
 const TOKEN_KEY = KGApi.TOKEN_KEY;
@@ -55,47 +55,47 @@ chrome.runtime.onMessageExternal.addListener((msg, sender, sendResponse) => {
 });
 
 // ---------------------------------------------------------------------------
-// Message handler — maps type → API call
+// Message handler — dispatches via the tested pure `routeMessage` table
 // ---------------------------------------------------------------------------
 
+/**
+ * Adapters for the storage-backed pseudo-kinds `routeMessage` emits. These
+ * kinds cannot live in `pure.js` because they touch `chrome.storage` — the
+ * routing *decision* is pure (and tested in `pure.test.js`), the *effect*
+ * is supplied here. Behaviour mirrors the former hand-coded switch exactly.
+ */
+const SIDE_EFFECT_HANDLERS = {
+  // `auth_token` — allow internal pages to set the token.
+  setToken: async (token) => {
+    await chrome.storage.local.set({ [TOKEN_KEY]: token });
+    return { ok: true };
+  },
+  // `get_auth_status` — report whether a token is stored.
+  getAuthStatus: async () => {
+    const token = await KGApi.getToken();
+    return { authenticated: !!token };
+  },
+  // `logout` — clear the stored token.
+  logout: async () => {
+    await chrome.storage.local.remove(TOKEN_KEY);
+    return { ok: true };
+  },
+};
+
 async function handleMessage(msg) {
-  switch (msg.type) {
-    case 'translate':
-      return KGApi.translate(msg.word, msg.context);
+  // `routeMessage` throws for unknown types / `auth_token` missing its token,
+  // mirroring the former switch's `throw new Error(...)` branches.
+  const { kind, args } = globalThis.KGPure.routeMessage(msg);
 
-    case 'translatePhrase':
-      return KGApi.translatePhrase(msg.text, msg.context);
-
-    case 'explain':
-      return KGApi.explain(msg.word, msg.context);
-
-    case 'addVocab':
-      return KGApi.addVocab(msg.entries);
-
-    case 'listVocab':
-      return KGApi.listVocab(msg.since);
-
-    case 'lookupWord':
-      return KGApi.lookupWord(msg.word);
-
-    case 'auth_token':
-      // Allow internal pages to set token too
-      if (typeof msg.token === 'string') {
-        await chrome.storage.local.set({ [TOKEN_KEY]: msg.token });
-        return { ok: true };
-      }
-      throw new Error('missing token');
-
-    case 'get_auth_status': {
-      const token = await KGApi.getToken();
-      return { authenticated: !!token };
-    }
-
-    case 'logout':
-      await chrome.storage.local.remove(TOKEN_KEY);
-      return { ok: true };
-
-    default:
-      throw new Error(`unknown message type: ${msg.type}`);
+  const sideEffect = SIDE_EFFECT_HANDLERS[kind];
+  if (sideEffect) {
+    return sideEffect(...args);
   }
+
+  // Pure-API kinds map 1:1 onto `KGApi` method names.
+  const apiMethod = KGApi[kind];
+  if (typeof apiMethod !== 'function') {
+    throw new Error(`unroutable message kind: ${kind}`);
+  }
+  return apiMethod(...args);
 }
