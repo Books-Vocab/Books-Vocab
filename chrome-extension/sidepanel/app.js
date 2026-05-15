@@ -125,13 +125,25 @@ async function loadVocabList() {
   try {
     const response = await chrome.runtime.sendMessage({ type: 'listVocab' });
 
-    if (response && response.error) {
+    // A missing/torn-down service worker resolves sendMessage with `undefined`
+    // (no error thrown). Treat that as a connection failure rather than an
+    // empty vocab list, otherwise the user sees a false "empty" state.
+    if (response === undefined || response === null) {
+      showErrorFromResponse({
+        error: true,
+        code: 'network_error',
+        message: '擴充功能背景服務未回應，請重新整理',
+      });
+      return;
+    }
+
+    if (response.error) {
       showErrorFromResponse(response);
       return;
     }
 
-    // Response is the vocab array (or object with items)
-    const items = Array.isArray(response) ? response : (response?.items ?? response?.data ?? []);
+    // Response is the vocab array (or an { items } / { data } envelope).
+    const items = window.KGPure.normalizeVocabList(response);
 
     vocabData = items;
 
@@ -142,8 +154,14 @@ async function loadVocabList() {
       renderList(items);
     }
   } catch (err) {
+    // chrome.runtime.sendMessage rejects when there is no receiver, or the
+    // extension context was invalidated (e.g. after an update/reload).
     console.error('[KG] loadVocabList failed:', err);
-    showErrorFromResponse({ error: true, message: String(err) });
+    showErrorFromResponse({
+      error: true,
+      code: 'network_error',
+      message: '無法連線至背景服務，請重試',
+    });
   }
 }
 
@@ -153,42 +171,8 @@ async function loadVocabList() {
  * @param {{error: true, code?: string, status?: number, message?: string}} response
  */
 function showErrorFromResponse(response) {
-  const code = response.code;
-  const status = response.status;
-
-  let icon = '⚠️';
-  let title = '載入失敗';
-  let subtitle = '';
-  let btnLabel = '重試';
-  let action = 'reload';
-
-  if (code === 'auth_expired' || status === 401) {
-    icon = '🔒';
-    title = '請先登入';
-    subtitle = '登入後即可同步詞彙';
-    btnLabel = '前往登入';
-    action = 'login';
-  } else if (code === 'quota_exceeded' || status === 403) {
-    icon = '⏳';
-    title = '已達使用上限';
-    subtitle = '額度將於明日重置，可前往設定查看';
-    btnLabel = '查看額度';
-    action = 'settings';
-  } else if (code === 'network_error' || status === 0) {
-    icon = '📡';
-    title = '無法連線';
-    subtitle = '請檢查網路後重試';
-    btnLabel = '重試';
-    action = 'reload';
-  } else if (typeof status === 'number' && status >= 500) {
-    icon = '🛠️';
-    title = '伺服器忙碌中';
-    subtitle = '稍後再試';
-    btnLabel = '重試';
-    action = 'reload';
-  } else if (response.message) {
-    subtitle = response.message;
-  }
+  const { icon, title, subtitle, btnLabel, action } =
+    window.KGPure.classifyError(response || {});
 
   errorIcon.textContent = icon;
   errorTitle.textContent = title;
