@@ -458,6 +458,94 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
     assert cards.batch_touch_calls, "persisted links must trigger batch_touch"
 
 
+def test_judge_failure_during_result_consumption_does_not_orphan_card():
+    """Bug A: exception thrown WHILE consuming a card's judge results.
+
+    `_step_embed_and_judge` increments `processed` immediately after `await
+    fut` succeeds, *before* walking `results.items()`. If the exception
+    fires inside that inner loop (e.g. `link_kind_enum` rejects an illegal
+    enum value, or a dict access raises), `processed` has already counted
+    the card → `futures[processed:]` EXCLUDES it → the card is requeued
+    neither here nor anywhere, and its partially-consumed results are lost.
+
+    Here c4's `evaluate_batch` returns normally but its judgement carries an
+    illegal link kind; `link_kind_enum` raises on it. c4 must still be
+    requeued (not orphaned).
+    """
+    logger = _FakeLogger()
+    uid = "u_judge_consume_fail"
+    user = {"id": uid, "dir": Path("/tmp/u_judge_consume_fail"), "config": {}}
+
+    pending_ids = [f"c{i}" for i in range(10)]
+    cards = _CardsForJudge(count=10)
+    graph = _GraphRecording(pending=list(pending_ids))
+    embeddings = _EmbeddingsAlreadyHave(pending_ids)
+
+    class _JudgeIllegalKindForC4:
+        def __init__(self, *args, **kwargs):
+            pass
+
+        def evaluate_batch(self, target_word, target_meaning, candidates, **kwargs):
+            results = {}
+            for i, (cid, _w, _m) in enumerate(candidates):
+                if i != 0:
+                    results[cid] = None
+                    continue
+                # c4's first candidate carries an illegal link kind so the
+                # downstream `link_kind_enum(...)` call raises — INSIDE the
+                # result-consumption loop, after `await fut` succeeded.
+                kind = "__ILLEGAL_KIND__" if target_word == "c4" else "shares_usage"
+                results[cid] = _make_judgement(link=kind)
+            return results
+
+    def _strict_link_kind_enum(value):
+        if value == "__ILLEGAL_KIND__":
+            raise ValueError(f"illegal link kind: {value}")
+        return value
+
+    async def run():
+        import kg.judge as judge_mod
+        original_judge = judge_mod.Judge
+        judge_mod.Judge = _JudgeIllegalKindForC4
+        try:
+            await _step_embed_and_judge(
+                uid, user,
+                card_store_factory=lambda d: cards,
+                graph_store_factory=lambda d, notebook_id="default": graph,
+                embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
+                gemini_client_factory=lambda: None,
+                logger=logger,
+                link_kind_enum=_strict_link_kind_enum,
+            )
+        finally:
+            judge_mod.Judge = original_judge
+
+    with pytest.raises(ValueError, match="illegal link kind"):
+        asyncio.run(run())
+
+    # ── Invariants ──
+    # Cards 0..3 produced one valid link each.
+    assert len(graph.persisted_links) == 4, (
+        f"Expected 4 links from c0..c3 before c4 raised, "
+        f"got {len(graph.persisted_links)}: {graph.persisted_links}"
+    )
+
+    # c4 raised mid-consumption. It MUST be requeued, not orphaned.
+    requeued = [cid for batch in graph.added_pending for cid in batch]
+    assert "c4" in requeued, (
+        f"c4 raised while its results were being consumed — it must be "
+        f"requeued, not orphaned. requeued={requeued}"
+    )
+    # And c5..c9 (never started) requeued too → 6 total.
+    assert set(requeued) == {"c4", "c5", "c6", "c7", "c8", "c9"}, (
+        f"Expected c4..c9 requeued, got {sorted(requeued)}"
+    )
+    # No card appears twice in the requeue.
+    assert len(requeued) == len(set(requeued)), (
+        f"a card was requeued more than once: {sorted(requeued)}"
+    )
+
+
 def test_quota_exhaustion_mid_run_halts_gracefully():
     """Pipeline run hits QuotaExceededError mid judge phase.
 

@@ -104,11 +104,22 @@ class _CandidatesMixin:
         self._flush_pending_judge(snapshot)
 
     def pop_pending_judge(self) -> list[str]:
-        """Get and clear all pending judge card IDs. Returns sorted list."""
+        """Get and clear all pending judge card IDs. Returns sorted list.
+
+        Flush-before-clear: the empty snapshot is persisted to disk FIRST,
+        and the in-memory set is cleared only if that flush succeeds. A
+        flush failure (disk full, atomic-write error) propagates with
+        memory and disk both still holding the old IDs — they never
+        diverge, so a later reload cannot resurrect orphaned cards.
+        """
         with self._lock:
             result = sorted(self._pending_judge)
+            if not result:
+                return result
+            # Persist the cleared state before mutating memory. If this
+            # raises, `_pending_judge` is untouched → memory == disk.
+            self._flush_pending_judge([])
             self._pending_judge.clear()
-        self._flush_pending_judge([])
         return result
 
     def remove_pending_judge_for(self, card_id: str) -> int:
