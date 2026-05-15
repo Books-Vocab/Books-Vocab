@@ -1,5 +1,6 @@
 """Google Sign-In token validation module."""
 
+import asyncio
 import logging
 
 import requests as _requests
@@ -10,8 +11,47 @@ from google.oauth2 import id_token
 
 logger = logging.getLogger(__name__)
 
+# Bounded timeout (seconds) for Google certificate-endpoint requests.
+# NOTE: ``requests.Session`` has NO ``timeout`` attribute — assigning one is
+# a silent no-op. The only effective timeout is the per-request ``timeout``
+# kwarg, which google-auth's ``Request.__call__`` defaults to 120s and
+# ``id_token._fetch_certs`` never overrides. We inject our own small bound.
+_REQUEST_TIMEOUT_SECONDS = 10
+
+# Shared HTTP session for connection pooling across token verifications.
 _session = _requests.Session()
-_session.timeout = 10
+
+
+class _TimeoutRequest(google_requests.Request):
+    """``google-auth`` transport adapter with a bounded default timeout.
+
+    ``id_token._fetch_certs`` calls ``request(certs_url, method="GET")``
+    without a ``timeout``, so the base adapter would fall back to its 120s
+    default. We override the default so a hung Google certs endpoint cannot
+    block the login request indefinitely. An explicit caller-supplied
+    ``timeout`` still wins.
+    """
+
+    def __call__(self, url, method="GET", body=None, headers=None, timeout=None, **kwargs):
+        if timeout is None:
+            timeout = _REQUEST_TIMEOUT_SECONDS
+        return super().__call__(
+            url, method=method, body=body, headers=headers, timeout=timeout, **kwargs
+        )
+
+
+def _build_request_adapter(session: _requests.Session | None = None) -> _TimeoutRequest:
+    """Build a timeout-bounded transport adapter for google-auth."""
+    return _TimeoutRequest(session=session if session is not None else _session)
+
+
+def _verify_oauth2_token_sync(token: str, client_id: str) -> dict:
+    """Synchronous ID-token verification (blocking network I/O).
+
+    Runs in a worker thread; never call directly from the event loop.
+    """
+    request_adapter = _build_request_adapter()
+    return id_token.verify_oauth2_token(token, request_adapter, client_id)
 
 
 async def verify_google_token(token: str, client_id: str) -> tuple[str, str | None, bool]:
@@ -20,11 +60,14 @@ async def verify_google_token(token: str, client_id: str) -> tuple[str, str | No
     Returns the token-derived email and verification flag so callers can
     safely link accounts by email (only when verified). Client-supplied
     emails MUST NOT be trusted — see C1 account-takeover regression.
+
+    ``id_token.verify_oauth2_token`` performs blocking HTTP I/O to fetch
+    Google's signing certificates; it is offloaded to a worker thread so
+    the asyncio event loop is never blocked.
     """
     try:
-        # Verify the token using Google's official validation
-        request_adapter = google_requests.Request(session=_session)
-        idinfo = id_token.verify_oauth2_token(token, request_adapter, client_id)
+        # Verify the token using Google's official validation, off-loop.
+        idinfo = await asyncio.to_thread(_verify_oauth2_token_sync, token, client_id)
 
         # Token is valid, extract user ID
         sub = idinfo.get("sub")
