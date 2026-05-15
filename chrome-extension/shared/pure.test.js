@@ -18,6 +18,7 @@ const assert = require('node:assert/strict');
 
 const {
   resolveTheme,
+  buildPhraseTranslateBody,
   buildVocabQuery,
   normalizeVocabList,
   classifyError,
@@ -45,6 +46,24 @@ test('resolveTheme falls back to default for invalid input', () => {
   assert.equal(resolveTheme(null), DEFAULT_THEME);
   assert.equal(resolveTheme(''), DEFAULT_THEME);
   assert.equal(resolveTheme(42), DEFAULT_THEME);
+});
+
+// ---------------------------------------------------------------------------
+// buildPhraseTranslateBody
+// ---------------------------------------------------------------------------
+
+test('buildPhraseTranslateBody keys the text on `word` (backend contract)', () => {
+  // The backend TranslateRequest model requires `word` (min_length=1); a body
+  // shaped { text, context } is rejected with HTTP 422.
+  const body = buildPhraseTranslateBody('a long phrase to translate', 'ctx');
+  assert.deepEqual(body, { word: 'a long phrase to translate', context: 'ctx' });
+  assert.equal('text' in body, false);
+});
+
+test('buildPhraseTranslateBody defaults a missing context to empty string', () => {
+  assert.deepEqual(buildPhraseTranslateBody('phrase'), { word: 'phrase', context: '' });
+  assert.deepEqual(buildPhraseTranslateBody('phrase', undefined), { word: 'phrase', context: '' });
+  assert.deepEqual(buildPhraseTranslateBody('phrase', null), { word: 'phrase', context: '' });
 });
 
 // ---------------------------------------------------------------------------
