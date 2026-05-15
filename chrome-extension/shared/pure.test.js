@@ -25,6 +25,9 @@ const {
   isSelectable,
   isPhrase,
   extractSentence,
+  buildSelectionMessage,
+  ROUTABLE_MESSAGE_TYPES,
+  routeMessage,
   isTrustedExternalOrigin,
   VALID_THEMES,
   DEFAULT_THEME,
@@ -238,6 +241,124 @@ test('extractSentence returns empty for empty / non-string input', () => {
   assert.equal(extractSentence('', 0), '');
   assert.equal(extractSentence(null, 0), '');
   assert.equal(extractSentence(undefined, 3), '');
+});
+
+// ---------------------------------------------------------------------------
+// buildSelectionMessage
+// ---------------------------------------------------------------------------
+
+test('buildSelectionMessage routes a short selection to the quick translate', () => {
+  const msg = buildSelectionMessage('serendipity', 'a sentence');
+  assert.deepEqual(msg, {
+    type: 'translate',
+    word: 'serendipity',
+    context: 'a sentence',
+  });
+});
+
+test('buildSelectionMessage routes a long selection (>50 chars) to phrase', () => {
+  const long = 'x'.repeat(51);
+  const msg = buildSelectionMessage(long, 'ctx');
+  assert.deepEqual(msg, { type: 'translatePhrase', text: long, context: 'ctx' });
+});
+
+test('buildSelectionMessage uses the isPhrase 50-char boundary exactly', () => {
+  // 50 chars → still a word; 51 → phrase. Pins the threshold parity.
+  assert.equal(buildSelectionMessage('x'.repeat(50), '').type, 'translate');
+  assert.equal(buildSelectionMessage('x'.repeat(51), '').type, 'translatePhrase');
+});
+
+test('buildSelectionMessage defaults a missing/null context to empty string', () => {
+  assert.equal(buildSelectionMessage('word').context, '');
+  assert.equal(buildSelectionMessage('word', undefined).context, '');
+  assert.equal(buildSelectionMessage('word', null).context, '');
+});
+
+// ---------------------------------------------------------------------------
+// routeMessage
+// ---------------------------------------------------------------------------
+
+test('routeMessage maps translate to KGApi.translate(word, context)', () => {
+  assert.deepEqual(
+    routeMessage({ type: 'translate', word: 'cat', context: 'ctx' }),
+    { kind: 'translate', args: ['cat', 'ctx'] },
+  );
+});
+
+test('routeMessage maps translatePhrase keyed on `text`', () => {
+  assert.deepEqual(
+    routeMessage({ type: 'translatePhrase', text: 'a phrase', context: 'ctx' }),
+    { kind: 'translatePhrase', args: ['a phrase', 'ctx'] },
+  );
+});
+
+test('routeMessage maps explain / addVocab / listVocab / lookupWord', () => {
+  assert.deepEqual(
+    routeMessage({ type: 'explain', word: 'w', context: 'c' }),
+    { kind: 'explain', args: ['w', 'c'] },
+  );
+  assert.deepEqual(
+    routeMessage({ type: 'addVocab', entries: [{ word: 'w' }] }),
+    { kind: 'addVocab', args: [[{ word: 'w' }]] },
+  );
+  assert.deepEqual(
+    routeMessage({ type: 'listVocab', since: '2024-01-01' }),
+    { kind: 'listVocab', args: ['2024-01-01'] },
+  );
+  assert.deepEqual(
+    routeMessage({ type: 'lookupWord', word: 'w' }),
+    { kind: 'lookupWord', args: ['w'] },
+  );
+});
+
+test('routeMessage maps auth_token to a token store op', () => {
+  assert.deepEqual(
+    routeMessage({ type: 'auth_token', token: 'abc' }),
+    { kind: 'setToken', args: ['abc'] },
+  );
+});
+
+test('routeMessage rejects auth_token without a string token', () => {
+  assert.throws(() => routeMessage({ type: 'auth_token' }), /missing token/);
+  assert.throws(() => routeMessage({ type: 'auth_token', token: 42 }), /missing token/);
+  assert.throws(() => routeMessage({ type: 'auth_token', token: null }), /missing token/);
+});
+
+test('routeMessage maps get_auth_status / logout to argument-free ops', () => {
+  assert.deepEqual(routeMessage({ type: 'get_auth_status' }), {
+    kind: 'getAuthStatus',
+    args: [],
+  });
+  assert.deepEqual(routeMessage({ type: 'logout' }), { kind: 'logout', args: [] });
+});
+
+test('routeMessage throws on an unknown / missing message type', () => {
+  assert.throws(() => routeMessage({ type: 'frobnicate' }), /unknown message type: frobnicate/);
+  assert.throws(() => routeMessage({}), /unknown message type: undefined/);
+  // `null` / `undefined` messages are tolerated without a TypeError — they
+  // fall through to the default branch (mirrors `msg && msg.type`).
+  assert.throws(() => routeMessage(null), /unknown message type: null/);
+  assert.throws(() => routeMessage(undefined), /unknown message type: undefined/);
+});
+
+test('ROUTABLE_MESSAGE_TYPES — every listed type routes without throwing', () => {
+  // A representative well-formed message per type; ensures the exported type
+  // list and the routeMessage switch never drift apart.
+  const sample = {
+    translate: { type: 'translate', word: 'w', context: 'c' },
+    translatePhrase: { type: 'translatePhrase', text: 't', context: 'c' },
+    explain: { type: 'explain', word: 'w', context: 'c' },
+    addVocab: { type: 'addVocab', entries: [] },
+    listVocab: { type: 'listVocab', since: '' },
+    lookupWord: { type: 'lookupWord', word: 'w' },
+    auth_token: { type: 'auth_token', token: 't' },
+    get_auth_status: { type: 'get_auth_status' },
+    logout: { type: 'logout' },
+  };
+  for (const t of ROUTABLE_MESSAGE_TYPES) {
+    assert.ok(sample[t], `missing sample message for routable type "${t}"`);
+    assert.doesNotThrow(() => routeMessage(sample[t]), `type "${t}" should route`);
+  }
 });
 
 // ---------------------------------------------------------------------------
