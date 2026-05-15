@@ -59,6 +59,41 @@ class TestSoftDelete:
         assert c2.id in ids
 
 
+class TestRestore:
+    def test_restore_undeletes_card(self, store):
+        card = store.add(content="revive", meaning="bring back to life")
+        store.delete(card.id)
+        assert store.restore(card.id) is True
+        assert store.get(card.id).is_deleted is False
+
+    def test_restore_nonexistent_returns_false(self, store):
+        assert store.restore("nonexistent") is False
+
+    def test_restore_no_notebook_scope_restores_any(self, store):
+        """Without notebook_id the legacy behaviour is preserved."""
+        card = store.add(content="revive", meaning="x", notebook_id="nb_a")
+        store.delete(card.id)
+        assert store.restore(card.id) is True
+        assert store.get(card.id).is_deleted is False
+
+    def test_restore_notebook_scope_blocks_cross_notebook(self, store):
+        """A card_id belonging to another notebook must NOT be revived,
+        mirroring batch_touch's cross-notebook defense. Reviving it would
+        resurrect the card into the wrong notebook and let its bumped
+        updated_at clobber a later genuine delete under LWW."""
+        card = store.add(content="revive", meaning="x", notebook_id="nb_a")
+        store.delete(card.id)
+        # Caller scoped to nb_b passes an id that actually lives in nb_a.
+        assert store.restore(card.id, notebook_id="nb_b") is False
+        assert store.get(card.id).is_deleted is True
+
+    def test_restore_notebook_scope_allows_same_notebook(self, store):
+        card = store.add(content="revive", meaning="x", notebook_id="nb_a")
+        store.delete(card.id)
+        assert store.restore(card.id, notebook_id="nb_a") is True
+        assert store.get(card.id).is_deleted is False
+
+
 class TestUpdate:
     def test_normal_field_update(self, store):
         card = store.add(content="affect", meaning="to have an effect on")

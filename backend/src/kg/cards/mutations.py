@@ -167,11 +167,20 @@ class CardMutationMixin:
                 return True
         return False
 
-    def restore(self, card_id: str) -> bool:
-        """Undo a soft-delete. Returns True if restored, False if card not found."""
+    def restore(self, card_id: str, *, notebook_id: str | None = None) -> bool:
+        """Undo a soft-delete. Returns True if restored, False if card not found.
+
+        If `notebook_id` is provided, the card is only restored when it
+        actually belongs to that notebook; an id pointing at another
+        notebook is left untouched and False is returned. This mirrors
+        `batch_touch`'s cross-notebook defense — without it a client in a
+        notebook-migration/orphan scenario could resurrect a card into the
+        wrong notebook and let its bumped `updated_at` clobber a later
+        genuine delete under last-writer-wins sync.
+        """
         with Session(self.engine) as session:
             card = session.get(Card, card_id)
-            if card:
+            if card and (notebook_id is None or card.notebook_id == notebook_id):
                 card.is_deleted = False
                 card.updated_at = datetime.now(UTC)
                 session.commit()
