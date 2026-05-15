@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: d37c113
+verified_against: 8f967e3
 -->
 # 後端部署指南
 
@@ -159,7 +159,7 @@ iOS 端（`ios/BooksBrowser/Services/AppCrashReporting.swift`）：
 ### 新增 Card Schema 欄位（SQLite）
 
 ```bash
-# 1. 在 src/kg/cards.py 新增欄位
+# 1. 在 src/kg/cards/model.py 新增欄位（migration SQL 加在 cards/schema.py）
 # 2. 在 devops.sh 的 cmd_migrate() 的 MIGRATIONS 清單加 SQL：
 #    ALTER TABLE cards ADD COLUMN <col> <type> DEFAULT <val>;
 #    （必須 idempotent，SQLite 不支援 IF NOT EXISTS，用 try/except）
