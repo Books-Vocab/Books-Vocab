@@ -161,10 +161,8 @@ def test_audit_endpoint_with_cookie_returns_rows(admin_app):
         admin_uid="ops", action="grant_pro", target_uid="u-target", payload={"foo": "bar"}
     )
     signed = _sign_cookie(ADMIN_TOKEN)
-    resp = admin_app.client.get(
-        "/api/admin/audit",
-        cookies={"admin_session": signed},
-    )
+    admin_app.client.cookies.set("admin_session", signed)
+    resp = admin_app.client.get("/api/admin/audit")
     assert resp.status_code == 200
     body = resp.json()
     assert "audit" in body
@@ -221,9 +219,9 @@ def test_grant_records_audit_with_cookie_fingerprint(admin_app):
         token=ADMIN_TOKEN, authorization=None, cookie_token=None, admin_token=ADMIN_TOKEN
     )
     assert expected_fp != token_fp  # different auth source → different fingerprint
+    admin_app.client.cookies.set("admin_session", signed)
     resp = admin_app.client.post(
         "/api/admin/users/u-target/admin-grant",
-        cookies={"admin_session": signed},
         json={"granted_by": "spoofed", "reason": None},
     )
     assert resp.status_code == 200, resp.text
@@ -255,10 +253,8 @@ def test_revoke_records_audit_with_cookie_fingerprint(admin_app):
     expected_fp = admin_actor_fingerprint(
         token=None, authorization=None, cookie_token=signed, admin_token=ADMIN_TOKEN
     )
-    resp = admin_app.client.delete(
-        "/api/admin/users/u-target/admin-grant",
-        cookies={"admin_session": signed},
-    )
+    admin_app.client.cookies.set("admin_session", signed)
+    resp = admin_app.client.delete("/api/admin/users/u-target/admin-grant")
     assert resp.status_code == 200, resp.text
     rows = admin_audit.list_audit()
     assert len(rows) == 1

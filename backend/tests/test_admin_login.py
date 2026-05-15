@@ -171,9 +171,6 @@ def test_admin_ui_with_token_returns_200(admin_app):
 
 def test_admin_ui_with_cookie_returns_200(admin_app):
     signed = _sign_cookie(ADMIN_TOKEN)
-    resp = admin_app.client.get(
-        "/admin",
-        cookies={"admin_session": signed},
-        follow_redirects=False,
-    )
+    admin_app.client.cookies.set("admin_session", signed)
+    resp = admin_app.client.get("/admin", follow_redirects=False)
     assert resp.status_code == 200
