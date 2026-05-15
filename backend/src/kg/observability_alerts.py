@@ -138,6 +138,10 @@ def check_pipeline_failures(
 ) -> None:
     """Emit Sentry error if pipeline failures in last `window_min` >= threshold.
 
+    The window is framed by failure-completion time (`ended_at`), so a run that
+    started before the window but failed inside it is still counted. Falls back
+    to `started_at` only for orphaned rows with a NULL `ended_at`.
+
     `interrupted` runs are excluded from the failure count by default. Pass
     `include_interrupted=True` to fold them in (useful when operators want
     visibility into cancellations alongside hard failures).
@@ -150,9 +154,17 @@ def check_pipeline_failures(
     try:
         conn = pipeline_log._get_conn()
         with pipeline_log._lock:
+            # Window by failure-occurrence time, not run start. A long-running
+            # pipeline can start before the window yet fail inside it; framing
+            # by `started_at` would silently drop it. `ended_at` is set by
+            # `end_run` for every failed/error run; `COALESCE` falls back to
+            # `started_at` only for orphaned rows with a NULL `ended_at`. This
+            # mirrors the judge/translate checks, which window by `created_at`
+            # (event-occurrence time).
             row = conn.execute(
                 f"SELECT COUNT(*) FROM pipeline_runs "
-                f"WHERE status IN ({placeholders}) AND started_at >= ?",
+                f"WHERE status IN ({placeholders}) "
+                f"AND COALESCE(ended_at, started_at) >= ?",
                 (*statuses, cutoff),
             ).fetchone()
     except Exception:
