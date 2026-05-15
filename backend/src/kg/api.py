@@ -11,7 +11,6 @@ Usage:
 from __future__ import annotations
 
 import atexit
-import collections
 import logging
 import uuid as _uuid
 from contextlib import asynccontextmanager
@@ -29,45 +28,11 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+# Memory ring-buffer log handler for the admin dashboard.
+# Re-exported so existing tests (from kg.api import _mem_log) keep working.
+from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 
-class _MemoryLogHandler(logging.Handler):
-    """Ring-buffer log handler for the admin dashboard."""
-    def __init__(self, maxlen: int = 1000):
-        super().__init__()
-        self._buf: collections.deque = collections.deque(maxlen=maxlen)
-
-    def emit(self, record: logging.LogRecord) -> None:
-        try:
-            from datetime import datetime as _dt
-            from .request_context import request_id_var
-            self._buf.append({
-                "ts": _dt.fromtimestamp(record.created).strftime("%H:%M:%S"),
-                "level": record.levelname,
-                "name": record.name,
-                "msg": record.getMessage(),
-                "request_id": request_id_var.get("-"),
-            })
-        except Exception:
-            pass  # handler must never crash the application
-
-    def get(self, n: int = 200, level: str | None = None) -> list[dict]:
-        rows = list(self._buf)
-        if level:
-            rows = [r for r in rows if r["level"] == level]
-        return rows[-n:]
-
-_mem_log = _MemoryLogHandler(maxlen=1000)
-_mem_log.setLevel(logging.DEBUG)
-
-def _attach_memory_log_handler(logger_name: str) -> None:
-    target = logging.getLogger(logger_name)
-    if not any(h is _mem_log for h in target.handlers):
-        target.addHandler(_mem_log)
-
-_attach_memory_log_handler("")  # root logger
-_attach_memory_log_handler("uvicorn")
-_attach_memory_log_handler("uvicorn.error")
-_attach_memory_log_handler("uvicorn.access")
+_mem_log = install_memory_log_handler(maxlen=1000)
 
 from .admin_wiring import create_admin_handlers
 from .rate_limit import api_limiter, translate_limiter
