@@ -495,6 +495,94 @@ class TestBatchArchiveCaseInsensitive:
 
 
 # ---------------------------------------------------------------------------
+# Bug A: deleting a card must also evict its embedding vector
+# ---------------------------------------------------------------------------
+
+
+class _FakeEmbeddingStore:
+    """Records remove / remove_batch calls so the delete-path hook is testable
+    without a real numpy store."""
+
+    def __init__(self, ids: list[str] | None = None):
+        self._ids = list(ids or [])
+        self.removed: list[str] = []
+
+    def remove(self, card_id: str) -> bool:
+        if card_id in self._ids:
+            self._ids.remove(card_id)
+            self.removed.append(card_id)
+            return True
+        return False
+
+    def remove_batch(self, card_ids: list[str]) -> int:
+        n = 0
+        for cid in card_ids:
+            if self.remove(cid):
+                n += 1
+        return n
+
+
+class TestDeleteEvictsEmbedding:
+    def test_delete_vocab_word_removes_embedding(self):
+        cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
+        graph = _FakeArchiveGraph()
+        emb = _FakeEmbeddingStore(ids=["c1"])
+        delete_vocab_word(
+            "evoke", cards_store=cards, graph=graph, embeddings=emb,
+        )
+        assert emb.removed == ["c1"]
+
+    def test_delete_vocab_word_without_embeddings_still_works(self):
+        """embeddings stays optional — old call sites must not break."""
+        cards = _FakeCardsStore([_FakeCard(id="c1", content="evoke")])
+        result = delete_vocab_word("evoke", cards_store=cards)
+        assert result == {"deleted": "evoke", "id": "c1"}
+
+    def test_delete_rollback_does_not_evict_embedding(self, tmp_path):
+        """If graph cleanup fails and the card is restored, the vector must
+        NOT be evicted — otherwise a restored card loses its embedding."""
+        from kg.cards import CardStore
+
+        cards_store = CardStore(tmp_path / "cards.db")
+        card = cards_store.add("testword", meaning="m", notebook_id="default")
+        emb = _FakeEmbeddingStore(ids=[card.id])
+
+        class _FailingGraph:
+            def cleanup_for_card(self, cid, *, remove_blocked=False):
+                raise RuntimeError("graph write failed")
+
+        with pytest.raises(RuntimeError):
+            delete_vocab_word(
+                "testword", cards_store=cards_store,
+                graph=_FailingGraph(), embeddings=emb,
+            )
+        assert emb.removed == [], "embedding evicted despite rollback"
+        assert not cards_store.get(card.id).is_deleted
+
+    def test_batch_delete_removes_embeddings(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+            _FakeCard(id="c3", content="keep"),
+        ])
+        graph = _FakeArchiveGraph()
+        emb = _FakeEmbeddingStore(ids=["c1", "c2", "c3"])
+        batch_delete_vocab_words(
+            ["hello", "world"], cards_store=cards, graph=graph, embeddings=emb,
+        )
+        assert set(emb.removed) == {"c1", "c2"}
+        assert "c3" not in emb.removed
+
+    def test_batch_delete_without_embeddings_still_works(self):
+        cards = _FakeCardsStore([
+            _FakeCard(id="c1", content="hello"),
+            _FakeCard(id="c2", content="world"),
+        ])
+        result = batch_delete_vocab_words(["hello", "world"], cards_store=cards)
+        assert result["deleted"] == 2
+
+
+# ---------------------------------------------------------------------------
 # Task 2 (incremental query): 增量查詢優化
 # ---------------------------------------------------------------------------
 
