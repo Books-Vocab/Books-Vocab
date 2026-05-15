@@ -1,0 +1,265 @@
+"""Write/mutation operations for :class:`CardStore`.
+
+Covers create, soft-delete/restore, dedup, touch and update — including
+the batched and notebook-scoped variants used by the sync path. Exposed
+as a mixin so the storage class can be split across modules without
+changing the public API or method semantics.
+"""
+
+from __future__ import annotations
+
+from datetime import UTC, datetime, timedelta
+
+from sqlalchemy.exc import IntegrityError
+from sqlmodel import Session, select
+
+from ..text_utils import normalize_nfc, normalize_nfc_lower
+from .model import Card
+
+
+class CardMutationMixin:
+    """Write-side methods of :class:`CardStore`. Requires ``self.engine``."""
+
+    def add(
+        self,
+        content: str,
+        meaning: str,
+        pos: str | None = None,
+        examples: list[str] | None = None,
+        collocations: list[str] | None = None,
+        mode: str = "recognition",
+        root_form: str | None = None,
+        inflections: list[str] | None = None,
+        notebook_id: str = "default",
+        source: str | None = None,
+    ) -> Card:
+        """Create and store a new card.
+
+        SQLite WAL mode with busy_timeout serialises writers, so the
+        check-then-insert within a single Session is safe against most
+        races.  The UNIQUE partial index on (content, notebook_id) is the
+        true safety net — if a duplicate slips through, IntegrityError
+        catches it and we return the existing card.
+        """
+        norm = normalize_nfc(content)
+        with Session(self.engine) as session:
+            row = session.connection().exec_driver_sql(
+                "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                (norm, notebook_id),
+            ).first()
+            if row:
+                return session.get(Card, row[0])  # type: ignore[return-value]
+
+            card = Card(
+                content=content,
+                content_nfc_lower=normalize_nfc_lower(content),
+                meaning=meaning,
+                pos=pos,
+                examples=examples or [],
+                collocations=collocations or [],
+                mode=mode,
+                root_form=root_form,
+                inflections=inflections or [],
+                notebook_id=notebook_id,
+                source=source,
+            )
+            session.add(card)
+            try:
+                session.commit()
+            except IntegrityError:
+                session.rollback()
+                row = session.connection().exec_driver_sql(
+                    "SELECT id FROM card WHERE content = ? COLLATE NOCASE "
+                    "AND notebook_id = ? AND is_deleted = 0 LIMIT 1",
+                    (norm, notebook_id),
+                ).first()
+                if row:
+                    return session.get(Card, row[0])  # type: ignore[return-value]
+                raise
+            session.refresh(card)
+        return card
+
+    def deduplicate(self, notebook_id: str | None = None) -> int:
+        """Remove duplicate active cards (same content, case-insensitive).
+
+        Keeps the card with the most review activity (highest review_count),
+        breaking ties by earliest created_at.  The kept card's updated_at
+        is bumped so that incremental sync picks it up *after* the
+        soft-deleted duplicate, preventing order-dependent client-side
+        mis-deletion.  Returns the number of duplicates removed.
+        """
+        removed = 0
+        cards = list(self.all(include_deleted=False, notebook_id=notebook_id))
+        seen: dict[str, Card] = {}
+        to_delete: list[Card] = []
+        keepers_to_bump: list[str] = []
+
+        for card in cards:
+            key = normalize_nfc_lower(card.content)
+            if key in seen:
+                keeper = seen[key]
+                if (card.review_count, -card.created_at.timestamp()) > (
+                    keeper.review_count, -keeper.created_at.timestamp()
+                ):
+                    to_delete.append(keeper)
+                    seen[key] = card
+                else:
+                    to_delete.append(card)
+            else:
+                seen[key] = card
+
+        if to_delete:
+            # Collect keeper IDs that have duplicates removed
+            deleted_keys = set()
+            for card in to_delete:
+                key = normalize_nfc_lower(card.content)
+                deleted_keys.add(key)
+            for key in deleted_keys:
+                keepers_to_bump.append(seen[key].id)
+
+            now = datetime.now(UTC)
+            with Session(self.engine) as session:
+                for card in to_delete:
+                    db_card = session.get(Card, card.id)
+                    if db_card:
+                        db_card.is_deleted = True
+                        db_card.updated_at = now
+                        removed += 1
+                # Bump keepers' updated_at AFTER the deletes so that
+                # incremental sync always sees: delete first, then
+                # the valid card — ensuring correct convergence.
+                bump_time = now + timedelta(milliseconds=1)
+                for keeper_id in keepers_to_bump:
+                    keeper = session.get(Card, keeper_id)
+                    if keeper:
+                        keeper.updated_at = bump_time
+                session.commit()
+
+        return removed
+
+    def soft_delete_by_notebook(self, notebook_id: str) -> int:
+        """Soft-delete all non-deleted cards in a notebook. Returns count."""
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            cards = session.exec(
+                select(Card).where(
+                    Card.notebook_id == notebook_id,
+                    Card.is_deleted.is_(False),
+                )
+            ).all()
+            for card in cards:
+                card.is_deleted = True
+                card.updated_at = now
+                session.add(card)
+            session.commit()
+            return len(cards)
+
+    def delete(self, card_id: str) -> bool:
+        """Soft deletes the card to support incremental sync."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                card.is_deleted = True
+                card.updated_at = datetime.now(UTC)
+                session.add(card)
+                session.commit()
+                return True
+        return False
+
+    def restore(self, card_id: str) -> bool:
+        """Undo a soft-delete. Returns True if restored, False if card not found."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card:
+                card.is_deleted = False
+                card.updated_at = datetime.now(UTC)
+                session.commit()
+                return True
+            return False
+
+    def touch(self, card_id: str) -> bool:
+        """Bump updated_at without changing any fields. Returns True if card was touched."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                card.updated_at = datetime.now(UTC)
+                session.add(card)
+                session.commit()
+                return True
+            return False
+
+    def batch_touch(
+        self, card_ids: set[str] | list[str], *, notebook_id: str | None = None,
+    ) -> int:
+        """Bump updated_at for multiple cards in a single transaction.
+
+        If `notebook_id` is provided, only cards in that notebook are touched;
+        ids outside the notebook are silently skipped. This is a defense
+        against cross-notebook touch when callers derive ids from links that
+        should all belong to the same notebook.
+        """
+        if not card_ids:
+            return 0
+        now = datetime.now(UTC)
+        conditions = [Card.id.in_(set(card_ids)), Card.is_deleted.is_(False)]
+        if notebook_id is not None:
+            conditions.append(Card.notebook_id == notebook_id)
+        with Session(self.engine) as session:
+            cards = session.exec(select(Card).where(*conditions)).all()
+            for card in cards:
+                card.updated_at = now
+                session.add(card)
+            session.commit()
+            return len(cards)
+
+    def update(self, card_id: str, **kwargs) -> Card | None:
+        """Update specific fields of a card. Automatically sets updated_at."""
+        with Session(self.engine) as session:
+            card = session.get(Card, card_id)
+            if card and not card.is_deleted:
+                has_changes = False
+                for key, value in kwargs.items():
+                    if hasattr(card, key) and getattr(card, key) != value:
+                        setattr(card, key, value)
+                        has_changes = True
+                if "content" in kwargs:
+                    card.content_nfc_lower = normalize_nfc_lower(card.content)
+
+                if has_changes:
+                    card.updated_at = datetime.now(UTC)
+                    session.add(card)
+                    session.commit()
+                    session.refresh(card)
+                return card
+        return None
+
+    def batch_update(self, updates: list[tuple[str, dict]]) -> int:
+        """Update multiple cards in a single transaction. Returns count of actually changed cards."""
+        if not updates:
+            return 0
+        changed = 0
+        card_ids = {card_id for card_id, _ in updates}
+        kwargs_by_id = {card_id: kwargs for card_id, kwargs in updates}
+        now = datetime.now(UTC)
+        with Session(self.engine) as session:
+            # Single WHERE IN query instead of N individual session.get() calls
+            cards_by_id = {
+                card.id: card
+                for card in session.exec(select(Card).where(Card.id.in_(card_ids))).all()
+            }
+            for card_id, card in cards_by_id.items():
+                if card.is_deleted:
+                    continue
+                kwargs = kwargs_by_id[card_id]
+                has_changes = False
+                for key, value in kwargs.items():
+                    if hasattr(card, key) and getattr(card, key) != value:
+                        setattr(card, key, value)
+                        has_changes = True
+                if has_changes:
+                    card.updated_at = now
+                    session.add(card)
+                    changed += 1
+            session.commit()
+        return changed
