@@ -172,16 +172,4 @@ final class ReadiumService: ReadiumServing {
         try? fm.removeItem(at: Book.localBooksDirectory.appendingPathComponent(fileName))
     }
 }
-
-// MARK: - URL Extension
-
-fileprivate extension URL {
-    /// 將 Foundation URL 轉為 Readium 的 AbsoluteURL
-    var anyURL: ReadiumShared.AbsoluteURL {
-        if let fileURL = FileURL(url: self) {
-            return fileURL
-        }
-        preconditionFailure("URL cannot be converted to FileURL: \(self)")
-    }
-}
 #endif
