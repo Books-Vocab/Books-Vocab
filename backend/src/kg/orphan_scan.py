@@ -133,13 +133,37 @@ def _prune_old_backups(path: Path) -> None:
             logger.warning("Could not prune old backup %s", old)
 
 
+def _fsync_dir(directory: Path) -> None:
+    """fsync a directory so a rename into it survives a crash.
+
+    A bare ``os.replace`` only updates an in-memory directory entry; without a
+    directory fsync a power loss can lose the rename itself even though the tmp
+    payload was already durably on disk. Best-effort: directory fsync is not
+    supported on every platform (notably Windows raises), so failures are
+    swallowed rather than aborting the write.
+    """
+    try:
+        fd = os.open(str(directory), os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        # Windows / some filesystems reject fsync on a directory fd.
+        pass
+    finally:
+        os.close(fd)
+
+
 def _atomic_write_json(path: Path, data: Any) -> None:
     """Write ``data`` to ``path`` atomically with timestamped backup retention.
 
-    Sequence: write tmp → fsync(tmp) → timestamped backup of existing → rename.
-    ``os.replace`` is the POSIX-atomic rename primitive. fsync ensures the tmp
-    payload is on disk before rename so a crash can't leave a half-written file
-    under ``path``. Old backups beyond ``_BAK_RETENTION`` are pruned.
+    Sequence: write tmp → fsync(tmp) → timestamped backup of existing → rename
+    → fsync(parent dir). ``os.replace`` is the POSIX-atomic rename primitive.
+    fsync(tmp) ensures the payload is on disk before rename so a crash can't
+    leave a half-written file under ``path``; fsync(parent dir) ensures the
+    rename's directory-entry update is itself durable. Old backups beyond
+    ``_BAK_RETENTION`` are pruned.
     """
     import time
 
@@ -160,6 +184,8 @@ def _atomic_write_json(path: Path, data: Any) -> None:
         backup = path.with_suffix(f".json.bak.{ts}")
         os.replace(str(path), str(backup))
     os.replace(str(tmp), str(path))
+    # Persist the directory entry change so the rename survives a crash.
+    _fsync_dir(path.parent)
     _prune_old_backups(path)
 
 
