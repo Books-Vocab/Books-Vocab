@@ -90,6 +90,22 @@ def archive_word_response(
     return archive_vocab_word(word, archived=req.archived, cards_store=cards, graph=graph, notebook_id=notebook_id)
 
 
+def _resolve_embedding_store(
+    user: dict[str, Any],
+    notebook_id: str,
+    *,
+    embedding_store_factory: Callable[..., Any] | None,
+    gemini_client_factory: Callable[[], Any] | None,
+) -> Any | None:
+    """Build an embedding store for the delete path, or None if either
+    factory is absent (delete still works without embedding eviction)."""
+    if embedding_store_factory is None or gemini_client_factory is None:
+        return None
+    from ..tracked_llm import TrackedLLM
+    llm = TrackedLLM(gemini_client_factory(), user.get("id", "unknown"))
+    return embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
+
+
 def delete_word_response(
     word: str,
     user: dict[str, Any],
@@ -97,6 +113,8 @@ def delete_word_response(
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
+    embedding_store_factory: Callable[..., Any] | None = None,
+    gemini_client_factory: Callable[[], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, str]:
     cards, graph = _resolve_stores(
@@ -105,7 +123,15 @@ def delete_word_response(
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return delete_vocab_word(word, cards_store=cards, graph=graph, notebook_id=notebook_id)
+    embeddings = _resolve_embedding_store(
+        user, notebook_id,
+        embedding_store_factory=embedding_store_factory,
+        gemini_client_factory=gemini_client_factory,
+    )
+    return delete_vocab_word(
+        word, cards_store=cards, graph=graph,
+        embeddings=embeddings, notebook_id=notebook_id,
+    )
 
 
 def batch_delete_response(
@@ -115,6 +141,8 @@ def batch_delete_response(
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any] | None = None,
     notebook_store_factory: Callable[[Path], Any] | None = None,
+    embedding_store_factory: Callable[..., Any] | None = None,
+    gemini_client_factory: Callable[[], Any] | None = None,
     notebook_id: str = "default",
 ) -> dict[str, Any]:
     cards, graph = _resolve_stores(
@@ -123,7 +151,15 @@ def batch_delete_response(
         graph_store_factory=graph_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    return batch_delete_vocab_words(req.words, cards_store=cards, graph=graph, notebook_id=notebook_id)
+    embeddings = _resolve_embedding_store(
+        user, notebook_id,
+        embedding_store_factory=embedding_store_factory,
+        gemini_client_factory=gemini_client_factory,
+    )
+    return batch_delete_vocab_words(
+        req.words, cards_store=cards, graph=graph,
+        embeddings=embeddings, notebook_id=notebook_id,
+    )
 
 
 def batch_archive_response(

@@ -120,8 +120,10 @@ class EmbeddingStore:
             # and lock that in by writing the sidecar.
             vectors = np.load(self.embeddings_path)
             self._assert_shape_matches_dim(vectors)
+            ids = json.loads(self.ids_path.read_text())
+            self._assert_rows_match_ids(vectors, ids)
             self._embeddings = vectors
-            self._ids = json.loads(self.ids_path.read_text())
+            self._ids = ids
             self._id_set = set(self._ids)
             self._invalidate_norms()
             self._write_meta()
@@ -136,8 +138,12 @@ class EmbeddingStore:
             # error surfaces here, not later inside find_similar's cosine
             # math (silent corruption) or add_batch's vstack (cryptic).
             self._assert_shape_matches_dim(vectors)
+            ids = json.loads(self.ids_path.read_text())
+            # And reject row/id desync from an interrupted save — otherwise
+            # find_similar maps argsort indices onto the wrong card ids.
+            self._assert_rows_match_ids(vectors, ids)
             self._embeddings = vectors
-            self._ids = json.loads(self.ids_path.read_text())
+            self._ids = ids
             self._id_set = set(self._ids)
             self._invalidate_norms()
             return
@@ -174,6 +180,23 @@ class EmbeddingStore:
                 f"(check EMBEDDING_DIM env or rebuild store at {self.embeddings_path})"
             )
 
+    def _assert_rows_match_ids(self, vectors: np.ndarray, ids: list) -> None:
+        """Guard against row/id desync at load time.
+
+        ``_save`` writes the ``.npy`` matrix and ``ids.json`` as two separate
+        atomic ``replace()`` calls — a crash in between leaves the matrix and
+        the id list at different lengths. ``find_similar`` indexes rows by
+        ``np.argsort`` position and then maps each index back through
+        ``self._ids``; a desynced pair would silently return rows attributed
+        to the *wrong* card id (numbers, not a crash). Surface it here.
+        """
+        if vectors.shape[0] != len(ids):
+            raise ValueError(
+                f"embedding store row count desync: matrix has {vectors.shape[0]} "
+                f"rows but ids.json has {len(ids)} entries — likely an interrupted "
+                f"save. Rebuild store at {self.embeddings_path}."
+            )
+
     def _invalidate_norms(self) -> None:
         self._norms = None
 
@@ -183,15 +206,30 @@ class EmbeddingStore:
         return self._norms
 
     def _save(self) -> None:
+        """Persist matrix + ids to disk.
+
+        The matrix and the id list live in two files, so a save can never be
+        fully atomic. We shrink the corruption window as much as possible:
+        fully materialise *both* temp files first, then issue the two
+        ``replace()`` calls back-to-back so a crash can only land in the
+        narrow gap between them. Any residual desync from that gap is caught
+        at load time by ``_assert_rows_match_ids`` rather than silently
+        misattributing rows in ``find_similar``.
+        """
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
+
+        # Phase 1: write both temp files completely before touching live files.
+        tmp_emb: Path | None = None
         if self._embeddings is not None:
             # np.save() auto-appends .npy if missing, so tmp must already end in .npy
             tmp_emb = self.embeddings_path.with_name(self.embeddings_path.stem + "_tmp.npy")
             np.save(tmp_emb, self._embeddings)
-            tmp_emb.replace(self.embeddings_path)
-
         tmp_ids = self.ids_path.with_suffix(".json.tmp")
         tmp_ids.write_text(json.dumps(self._ids))
+
+        # Phase 2: swap into place back-to-back to minimise the desync window.
+        if tmp_emb is not None:
+            tmp_emb.replace(self.embeddings_path)
         tmp_ids.replace(self.ids_path)
 
         # Persist (or refresh) the model/dim sidecar alongside the vectors,
@@ -255,6 +293,40 @@ class EmbeddingStore:
         self._id_set.update(new_ids)
         self._invalidate_norms()
         self._save()
+
+    def remove(self, card_id: str) -> bool:
+        """Evict a single card's vector (delegates to remove_batch).
+
+        Returns True if the card was present and removed, False otherwise.
+        """
+        return self.remove_batch([card_id]) > 0
+
+    def remove_batch(self, card_ids: list[str]) -> int:
+        """Evict multiple cards' vectors in one pass.
+
+        Without this, a deleted card's row lingers in ``_embeddings`` /
+        ``_ids`` forever: ``find_similar`` keeps scoring the dead vector and
+        can crowd a still-valid candidate out of the top-k. The matrix would
+        only ever grow. Cards not present are silently skipped.
+
+        Performs at most one disk save for the whole batch.
+        """
+        if not card_ids or self._embeddings is None:
+            return 0
+
+        to_drop = {cid for cid in card_ids if cid in self._id_set}
+        if not to_drop:
+            return 0
+
+        keep_mask = np.array(
+            [cid not in to_drop for cid in self._ids], dtype=bool
+        )
+        self._embeddings = self._embeddings[keep_mask]
+        self._ids = [cid for cid in self._ids if cid not in to_drop]
+        self._id_set = set(self._ids)
+        self._invalidate_norms()
+        self._save()
+        return len(to_drop)
 
     def update(self, card_id: str, text: str) -> None:
         """Update existing embedding.

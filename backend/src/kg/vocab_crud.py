@@ -84,7 +84,26 @@ def archive_vocab_word(word: str, *, archived: bool, cards_store: Any, graph: An
     return {"word": word, "id": card.id, "archived": archived}
 
 
-def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, notebook_id: str | None = None) -> dict[str, str]:
+def _evict_embedding(embeddings: Any, card_id: str) -> None:
+    """Evict a deleted card's vector. Best-effort: the card is already gone,
+    so an embedding-store failure must not fail the request — it only leaves
+    a stale row that the next pipeline run / restart tolerates."""
+    if embeddings is None:
+        return
+    try:
+        embeddings.remove(card_id)
+    except Exception:
+        logger.warning("Failed to evict embedding for card %s", card_id, exc_info=True)
+
+
+def delete_vocab_word(
+    word: str,
+    *,
+    cards_store: Any,
+    graph: Any = None,
+    embeddings: Any = None,
+    notebook_id: str | None = None,
+) -> dict[str, str]:
     if len(word) > MAX_WORD_LENGTH:
         raise ValidationError("Word too long")
     card = cards_store.find_by_content(word, notebook_id=notebook_id)
@@ -101,6 +120,10 @@ def delete_vocab_word(word: str, *, cards_store: Any, graph: Any = None, noteboo
             except Exception:
                 logger.exception("restore failed for card %s after graph error", card.id)
             raise
+    # Card is committed-deleted past this point — drop its embedding so it
+    # stops polluting find_similar. Done after the rollback window so a
+    # restored card keeps its vector.
+    _evict_embedding(embeddings, card.id)
     return {"deleted": word, "id": card.id}
 
 
@@ -109,6 +132,7 @@ def batch_delete_vocab_words(
     *,
     cards_store: Any,
     graph: Any = None,
+    embeddings: Any = None,
     notebook_id: str | None = None,
 ) -> dict[str, Any]:
     """Delete multiple words in one call. Skips not-found words instead of raising."""
@@ -118,6 +142,7 @@ def batch_delete_vocab_words(
         raise ValidationError(f"Too many words (max {MAX_BATCH_SIZE})")
 
     deleted_words: list[str] = []
+    deleted_ids: list[str] = []
     not_found: list[str] = []
 
     lookup = _build_content_lookup(cards_store, notebook_id=notebook_id)
@@ -139,6 +164,19 @@ def batch_delete_vocab_words(
                 not_found.append(word)
                 continue
         deleted_words.append(word)
+        deleted_ids.append(card.id)
+
+    # Evict embeddings for all committed-deleted cards in one batched save.
+    # Best-effort: the cards are already gone, so a store failure must not
+    # turn a successful delete into a request error.
+    if embeddings is not None and deleted_ids:
+        try:
+            embeddings.remove_batch(deleted_ids)
+        except Exception:
+            logger.warning(
+                "Failed to evict embeddings for %d deleted cards",
+                len(deleted_ids), exc_info=True,
+            )
 
     return {"deleted": len(deleted_words), "deleted_words": deleted_words, "not_found": not_found}
 
