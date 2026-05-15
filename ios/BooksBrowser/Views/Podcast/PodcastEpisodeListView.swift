@@ -100,10 +100,7 @@ struct PodcastEpisodeListView: View {
 
     private var phase: VocabScenePhase {
         if isLoading && !hasLoadedOnce {
-            return .loading(
-                title: "載入集數...",
-                systemImage: "arrow.clockwise"
-            )
+            return .loadingSkeleton()
         }
         if loadError != nil, rawEpisodes.isEmpty {
             return .error(
