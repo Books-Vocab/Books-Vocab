@@ -63,12 +63,14 @@ STAGE_EXT="$STAGE/chrome-extension"
 mkdir -p "$STAGE_EXT"
 
 # rsync 才能精確排除；fallback 用 find+cp
+# 排除 *.test.js — node:test 測試檔不隨發行版打包。
 if command -v rsync >/dev/null 2>&1; then
   rsync -a \
     --exclude='.DS_Store' \
     --exclude='.git' \
     --exclude='.git/**' \
     --exclude='README*.md' \
+    --exclude='*.test.js' \
     "$EXT_DIR/" "$STAGE_EXT/" \
     || err "stage 複製失敗"
 else
@@ -77,6 +79,7 @@ else
   find "$STAGE_EXT" -name '.DS_Store' -delete 2>/dev/null
   find "$STAGE_EXT" -type d -name '.git' -prune -exec rm -rf {} + 2>/dev/null
   find "$STAGE_EXT" -maxdepth 2 -type f -name 'README*.md' -delete 2>/dev/null
+  find "$STAGE_EXT" -type f -name '*.test.js' -delete 2>/dev/null
 fi
 
 info "打包 chrome-extension v${VERSION}"

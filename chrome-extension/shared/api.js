@@ -67,12 +67,21 @@ async function apiFetch(path, opts = {}) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => '');
-    throw new ApiError('api_error', body || res.statusText, res.status);
+    // 5xx — surface as a distinct code so UI can offer "try later" instead of plain retry.
+    const code = res.status >= 500 ? 'server_error' : 'api_error';
+    throw new ApiError(code, body || res.statusText || `HTTP ${res.status}`, res.status);
   }
 
   // Some endpoints may return 204 with no body
   if (res.status === 204) return null;
-  return res.json();
+
+  // A 2xx with a malformed/empty JSON body must not crash the caller — fetch's
+  // res.json() rejects with a SyntaxError. Normalise into an ApiError.
+  try {
+    return await res.json();
+  } catch (_err) {
+    throw new ApiError('bad_response', '伺服器回應格式錯誤', res.status);
+  }
 }
 
 // ---------------------------------------------------------------------------

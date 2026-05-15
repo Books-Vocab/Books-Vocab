@@ -24,12 +24,27 @@
 
   async function loadStyles() {
     if (cachedStyles) return cachedStyles;
-    const [tokensText, popupText] = await Promise.all([
-      fetch(chrome.runtime.getURL('shared/tokens.css')).then((r) => r.text()),
-      fetch(chrome.runtime.getURL('content/popup.css')).then((r) => r.text()),
-    ]);
-    cachedStyles = tokensText + '\n' + popupText;
-    return cachedStyles;
+    try {
+      const [tokensRes, popupRes] = await Promise.all([
+        fetch(chrome.runtime.getURL('shared/tokens.css')),
+        fetch(chrome.runtime.getURL('content/popup.css')),
+      ]);
+      if (!tokensRes.ok || !popupRes.ok) {
+        throw new Error('stylesheet fetch returned non-OK status');
+      }
+      const [tokensText, popupText] = await Promise.all([
+        tokensRes.text(),
+        popupRes.text(),
+      ]);
+      cachedStyles = tokensText + '\n' + popupText;
+      return cachedStyles;
+    } catch (err) {
+      // Extension context invalidated, or packaged CSS missing. Return '' so
+      // the popup still renders (unstyled) instead of hanging on a rejected
+      // await — callers must tolerate an empty stylesheet.
+      console.error('[KG] loadStyles failed:', err);
+      return '';
+    }
   }
 
   // -------------------------------------------------------------------------
@@ -210,8 +225,15 @@
     chrome.runtime.sendMessage(msg, (response) => {
       if (!shadow.host || !shadow.host.isConnected) return; // popup dismissed
 
-      if (response && response.error) {
-        if (response.status === 401) {
+      // Background service worker unreachable / extension context invalidated:
+      // the callback fires with `response === undefined` and lastError set.
+      if (chrome.runtime.lastError || response == null) {
+        renderError(popup, '無法連線，請重試');
+        return;
+      }
+
+      if (response.error) {
+        if (response.status === 401 || response.code === 'auth_expired') {
           renderLoginPrompt(popup);
         } else {
           renderError(popup, response.message || '翻譯失敗');
@@ -311,7 +333,14 @@
     chrome.runtime.sendMessage({ type: 'explain', word, context }, (response) => {
       btn.disabled = false;
 
-      if (response && response.error) {
+      if (chrome.runtime.lastError || response == null) {
+        explanationEl.textContent = '無法連線，請重試';
+        explanationEl.hidden = false;
+        btn.textContent = '展開';
+        return;
+      }
+
+      if (response.error) {
         explanationEl.textContent = response.message || '解釋失敗';
         explanationEl.hidden = false;
         btn.textContent = '展開';
@@ -338,22 +367,31 @@
     ];
 
     chrome.runtime.sendMessage({ type: 'addVocab', entries }, (response) => {
-      if (response && response.error) {
-        if (response.status === 401) {
+      const showAddError = (text) => {
+        btn.disabled = false;
+        btn.textContent = '加入詞彙';
+        const errEl = popup.querySelector('.kg-popup__error');
+        if (errEl) {
+          errEl.textContent = text;
+          errEl.hidden = false;
+        } else {
+          const el = document.createElement('div');
+          el.className = 'kg-popup__error';
+          el.textContent = text;
+          popup.appendChild(el);
+        }
+      };
+
+      if (chrome.runtime.lastError || response == null) {
+        showAddError('無法連線，請重試');
+        return;
+      }
+
+      if (response.error) {
+        if (response.status === 401 || response.code === 'auth_expired') {
           renderLoginPrompt(popup);
         } else {
-          btn.disabled = false;
-          btn.textContent = '加入詞彙';
-          const errEl = popup.querySelector('.kg-popup__error');
-          if (errEl) {
-            errEl.textContent = response.message || '加入失敗';
-            errEl.hidden = false;
-          } else {
-            const el = document.createElement('div');
-            el.className = 'kg-popup__error';
-            el.textContent = response.message || '加入失敗';
-            popup.appendChild(el);
-          }
+          showAddError(response.message || '加入失敗');
         }
         return;
       }
