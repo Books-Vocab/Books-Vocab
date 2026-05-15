@@ -2,7 +2,7 @@
 tier: snapshot
 scope:
   - ios/BooksBrowser
-verified_against: b9f07d7
+verified_against: 8f967e3
 -->
 
 # iOS Frontend Baseline
