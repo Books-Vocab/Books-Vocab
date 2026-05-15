@@ -278,7 +278,7 @@ final class PodcastAudioEngine: NSObject {
 
     /// Derive a stable, PII-free token like `series_abc/ep_03` from podcast-media
     /// URLs. Falls back to `lastPathComponent` for unknown shapes. Drops query.
-    fileprivate static func sourceToken(from url: URL) -> String {
+    static func sourceToken(from url: URL) -> String {
         let comps = url.pathComponents
         if let mediaIdx = comps.firstIndex(of: "podcast-media"),
            mediaIdx + 2 < comps.count {
