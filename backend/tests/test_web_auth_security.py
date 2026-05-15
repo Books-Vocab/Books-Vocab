@@ -169,10 +169,8 @@ def test_admin_session_cookie_signature_tampered_rejected(web_auth_env):
     tampered = f"{expires_at}.{nonce}.{flipped}"
     assert tampered != signed
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": tampered},
-    )
+    client.cookies.set("admin_session", tampered)
+    resp = client.get("/api/admin/stats")
     assert resp.status_code == 403
 
 
@@ -186,10 +184,8 @@ def test_admin_session_cookie_nonce_tampered_rejected(web_auth_env):
     flipped_nonce = ("1" if nonce[0] == "0" else "0") + nonce[1:]
     tampered = f"{expires_at}.{flipped_nonce}.{sig}"
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": tampered},
-    )
+    client.cookies.set("admin_session", tampered)
+    resp = client.get("/api/admin/stats")
     assert resp.status_code == 403
 
 
@@ -201,10 +197,8 @@ def test_admin_session_cookie_payload_extended_rejected(web_auth_env):
     expires_at, nonce, sig = signed.split(".")
     forged = f"{int(expires_at) + 10**9}.{nonce}.{sig}"
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": forged},
-    )
+    client.cookies.set("admin_session", forged)
+    resp = client.get("/api/admin/stats")
     assert resp.status_code == 403
 
 
@@ -218,10 +212,8 @@ def test_admin_session_cookie_expired_rejected(web_auth_env):
     expired_at = int(time.time()) - 60  # 1 minute past
     expired = _build_cookie_value(ADMIN_TOKEN, expires_at=expired_at)
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": expired},
-    )
+    client.cookies.set("admin_session", expired)
+    resp = client.get("/api/admin/stats")
     assert resp.status_code == 403
 
 
@@ -230,10 +222,8 @@ def test_admin_session_cookie_at_boundary_just_expired_rejected(web_auth_env):
     client = web_auth_env.client
     expired = _build_cookie_value(ADMIN_TOKEN, expires_at=int(time.time()) - 1)
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": expired},
-    )
+    client.cookies.set("admin_session", expired)
+    resp = client.get("/api/admin/stats")
     assert resp.status_code == 403
 
 
@@ -243,9 +233,7 @@ def test_admin_session_cookie_valid_future_accepted(web_auth_env):
     client = web_auth_env.client
     valid = _sign_cookie(ADMIN_TOKEN)
 
-    resp = client.get(
-        "/api/admin/stats",
-        cookies={"admin_session": valid},
-    )
+    client.cookies.set("admin_session", valid)
+    resp = client.get("/api/admin/stats")
     # /api/admin/stats returns 200 on auth success (body shape covered elsewhere).
     assert resp.status_code == 200
