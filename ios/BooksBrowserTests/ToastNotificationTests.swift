@@ -133,6 +133,11 @@ struct ToastNotificationTests {
     }
 
     // MARK: - Auto-dismiss timing
+    //
+    // These timing tests assume VoiceOver is OFF (the default state of CI
+    // simulators). When VoiceOver is ON, `AppToastCoordinator.show()` returns
+    // early via `announceIfVoiceOver` and never schedules a `dismissTask`, so
+    // the auto-dismiss and timer-reset assertions below would not hold.
 
     @Test func toastPersistsBeforeDeadline() async throws {
         let coordinator = AppToastCoordinator()
