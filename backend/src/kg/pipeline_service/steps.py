@@ -315,7 +315,6 @@ async def _step_embed_and_judge(
     try:
         for card_id, fut in futures:
             results = await fut
-            processed += 1
             # NOTE: do NOT `break` on from-cap — we still need to walk
             # remaining results so over-cap accepted candidates get
             # logged as degree_cap rejects (audit trail).
@@ -339,10 +338,20 @@ async def _step_embed_and_judge(
                 ))
                 from_link_counts[card_id] += 1
                 to_link_counts[other_id] += 1
+            # Increment ONLY after a card's results are FULLY consumed.
+            # If an exception fires inside the inner loop above (e.g.
+            # `link_kind_enum` rejects an illegal enum value), `processed`
+            # still points at the failing card so `futures[processed:]`
+            # re-includes it for requeue. Phase 2a's `graph.has_link`
+            # check then skips any links this card already persisted, so
+            # the re-judge neither double-links nor double-counts.
+            processed += 1
     except Exception:
-        # Requeue unprocessed cards. `processed` is incremented AFTER a
-        # successful `await`, so on exception it still points to the card
-        # that failed — `futures[processed:]` correctly includes it.
+        # Requeue unprocessed cards. `processed` is incremented only AFTER
+        # a card's results are fully consumed, so on exception it still
+        # points to the card that failed — whether the failure was in
+        # `await fut` or mid result-consumption — and `futures[processed:]`
+        # correctly includes it.
         unprocessed_ids = [cid for cid, _ in futures[processed:]]
         if unprocessed_ids:
             graph.add_pending_judge(unprocessed_ids)
