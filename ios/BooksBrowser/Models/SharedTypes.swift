@@ -72,6 +72,7 @@ struct KGCard: Codable, Identifiable {
     let inflections: [String]?
     let linksByKind: [String: [KGCardLinkSummary]]?
     let notebookId: String?
+    let source: KGVocabSource?
     let updatedAt: String?
     // Review state (from backend)
     let reviewIntervalHours: Double?
