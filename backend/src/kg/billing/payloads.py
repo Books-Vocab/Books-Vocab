@@ -2,11 +2,42 @@
 
 from __future__ import annotations
 
+import os
 from datetime import UTC, datetime
 from typing import Any
 
 from ..api_models import EntitlementsResponse, SubscriptionStatusResponse
 from ..user_store import parse_datetime
+
+
+def _allow_sandbox_purchase() -> bool:
+    """Whether non-production App Store transactions may grant a real entitlement.
+
+    Defaults OFF. Only set ``KG_ALLOW_SANDBOX_PURCHASE`` truthy in dev/test
+    deployments where sandbox / Xcode subscriptions should be honoured.
+    """
+    return os.getenv("KG_ALLOW_SANDBOX_PURCHASE", "").strip().lower() in {"1", "true", "yes"}
+
+
+def subscription_environment_is_trusted(subscription: dict[str, Any] | None) -> bool:
+    """A subscription snapshot is entitlement-bearing only when production.
+
+    The ``environment`` field is sourced from the *verified* App Store JWS
+    transaction payload (see ``billing.notifications.verified_transaction_snapshot``),
+    not from any client-supplied request field. Sandbox / Xcode transactions are
+    free and signed by Apple's non-production CA, so honouring them would let a
+    client redeem a free transaction for real Pro access.
+
+    Legacy snapshots written before the ``environment`` column existed have no
+    field and are treated as production (App Store reconcile/notification flows
+    only ever produced production data on the live deployment).
+    """
+    if _allow_sandbox_purchase():
+        return True
+    env = (subscription or {}).get("environment")
+    if env is None:
+        return True
+    return str(env).strip().lower() == "production"
 
 
 def default_subscription_payload() -> dict[str, Any]:
@@ -105,7 +136,16 @@ def current_pro_entitlement_record(user_record: dict[str, Any] | None) -> dict[s
             "source": "admin",
             "last_synced_at": admin_grant.get("last_synced_at") or admin_grant.get("granted_at"),
         }
-    return current_subscription_record(user_record)
+    subscription = current_subscription_record(user_record)
+    if not subscription_environment_is_trusted(subscription):
+        # Sandbox / Xcode App Store transaction: keep the raw snapshot fields for
+        # diagnostics but never expose an active Pro entitlement.
+        return {
+            **subscription,
+            "is_active": False,
+            "status": "inactive",
+        }
+    return subscription
 
 
 def build_entitlements_response(user_record: dict[str, Any] | None) -> EntitlementsResponse:
