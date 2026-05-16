@@ -29,6 +29,12 @@ final class AuthSessionStore: AuthSessionStoring {
     private let defaults: UserDefaults
     private let keychain: KeychainHelping
 
+    /// Test-only observation seam. When set, every reportable keychain failure (the exact set
+    /// `reportKeychainFailure` forwards to crash reporting) is also handed to this closure.
+    /// Production leaves it nil — `AppCrashReporting.record` is a static, un-injectable sink,
+    /// so this is the only way a test can assert "the read failure was surfaced, not swallowed".
+    var keychainFailureObserver: ((KeychainError) -> Void)?
+
     init(
         defaults: UserDefaults = .standard,
         keychain: KeychainHelping = KeychainHelper.standard
@@ -42,9 +48,12 @@ final class AuthSessionStore: AuthSessionStoring {
         let displayName = defaults.string(forKey: Keys.displayName)
         let userEmail = defaults.string(forKey: Keys.userEmail)
         let avatarURL = defaults.string(forKey: Keys.avatarURL).flatMap(URL.init(string:))
-        let token = keychain
-            .read(service: Keys.tokenService, account: Keys.tokenAccount)
-            .flatMap { String(data: $0, encoding: .utf8) }
+        // Read the token *with* its OSStatus so a transient keychain failure (e.g.
+        // `errSecInteractionNotAllowed` on a cold-boot device that hasn't been unlocked)
+        // is reported rather than silently mistaken for "user is logged out".
+        let tokenRead = keychain.readWithStatus(service: Keys.tokenService, account: Keys.tokenAccount)
+        reportKeychainFailure(tokenRead.status, operation: "read")
+        let token = tokenRead.data.flatMap { String(data: $0, encoding: .utf8) }
 
         return PersistedAuthSession(
             userId: userId,
@@ -83,14 +92,17 @@ final class AuthSessionStore: AuthSessionStoring {
 
     /// Surfaces a keychain `OSStatus` that the prior implementation silently discarded.
     /// On `AccessibleAfterFirstUnlock`-locked devices (cold boot, no unlock) or under a
-    /// keychain quota anomaly a write can fail, dropping the session on the next launch
-    /// with no trace. We log at error level and forward to crash reporting so the failure
-    /// is diagnosable. The success path is unchanged.
+    /// keychain quota anomaly a `save`/`delete` write — or a `read` (`errSecInteractionNotAllowed`)
+    /// — can fail, dropping the session on the next launch with no trace. We log at error level
+    /// and forward to crash reporting so the failure is diagnosable. The success path is
+    /// unchanged. `errSecItemNotFound` is *not* a failure: for `read` it is the legitimate
+    /// "no token stored / user is logged out" outcome, for `delete` the idempotent purge.
     private func reportKeychainFailure(_ status: OSStatus, operation: String) {
         guard KeychainStatus.isFailure(status) else { return }
         let error = KeychainStatus.error(status, operation: operation)
         AppLog.auth.error("Keychain \(operation, privacy: .public) failed: \(error.diagnosticMessage, privacy: .public)")
         AppCrashReporting.record(error, context: "auth.keychain.\(operation)")
+        keychainFailureObserver?(error)
     }
 }
 
@@ -98,8 +110,10 @@ final class AuthSessionStore: AuthSessionStoring {
 /// "is this an OSStatus worth reporting?" decision is unit-testable without touching Security.
 enum KeychainStatus {
     /// A keychain op is a *reportable* failure when it is neither success nor the benign
-    /// "nothing to delete" status (`errSecItemNotFound` — purging an already-absent item is
-    /// the expected idempotent outcome, not an error).
+    /// `errSecItemNotFound`. For `delete`, `errSecItemNotFound` means "nothing to purge" —
+    /// the expected idempotent outcome. For `read`, it means "no item stored", i.e. the
+    /// user is simply logged out — a legitimate state, not a fault. Reporting it would spam
+    /// crash reporting on every cold launch of a signed-out app.
     static func isFailure(_ status: OSStatus) -> Bool {
         status != errSecSuccess && status != errSecItemNotFound
     }
@@ -125,7 +139,17 @@ struct KeychainError: Error {
 
 protocol KeychainHelping: AnyObject {
     func save(_ data: Data, service: String, account: String) -> OSStatus
-    func read(service: String, account: String) -> Data?
+    /// Reads a keychain item, returning both the value and the raw `OSStatus`.
+    ///
+    /// The status MUST be surfaced to the caller: the prior `-> Data?` signature collapsed
+    /// "no item stored" (`errSecItemNotFound`) and "read failed" (`errSecInteractionNotAllowed`
+    /// on a cold-boot, pre-first-unlock device) into the same `nil`. That ambiguity made a
+    /// transient keychain failure indistinguishable from a logged-out user — the same silent
+    /// session drop PR #529 set out to eliminate, but on the read path.
+    ///
+    /// On success `data` is the stored value; on `errSecItemNotFound` `data` is nil and the
+    /// status is benign; on any other status `data` is nil and the caller should report it.
+    func readWithStatus(service: String, account: String) -> (data: Data?, status: OSStatus)
     @discardableResult
     func delete(service: String, account: String) -> OSStatus
 }
@@ -158,7 +182,7 @@ final class KeychainHelper: KeychainHelping {
         return status
     }
 
-    func read(service: String, account: String) -> Data? {
+    func readWithStatus(service: String, account: String) -> (data: Data?, status: OSStatus) {
         let query = [
             kSecClass: kSecClassGenericPassword,
             kSecAttrService: service,
@@ -171,10 +195,12 @@ final class KeychainHelper: KeychainHelping {
         var dataTypeRef: AnyObject?
         let status = SecItemCopyMatching(query, &dataTypeRef)
 
+        // Return the status verbatim — the caller decides whether it is benign
+        // (`errSecItemNotFound`) or a reportable failure. Data is only meaningful on success.
         if status == errSecSuccess {
-            return dataTypeRef as? Data
+            return (dataTypeRef as? Data, status)
         }
-        return nil
+        return (nil, status)
     }
 
     @discardableResult
