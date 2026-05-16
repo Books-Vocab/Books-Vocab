@@ -7,12 +7,27 @@ import Foundation
 
 // MARK: - Models
 
+/// Origin of a vocabulary entry — mirrors backend `VocabSource`
+/// (`kg/api_models/common.py`). `type` is `"book"` or `"web"`;
+/// `url` is web-only. iOS captures originate from the reader, so
+/// `type` is always `"book"` and `url` is `nil`.
+struct KGVocabSource: Codable, Equatable {
+    let type: String          // "book" | "web"
+    let title: String?
+    let url: String?          // web only
+
+    static func book(title: String) -> KGVocabSource {
+        KGVocabSource(type: "book", title: title, url: nil)
+    }
+}
+
 /// Entry to send to KG server
 struct KGVocabEntry: Codable {
     let word: String
     let translation: String
     let context: String
     let root_form: String?
+    let source: KGVocabSource?
 }
 
 struct KGBatchDeleteResponse: Codable {
@@ -76,11 +91,17 @@ extension KGService {
 
     func batchAdd(entries: [VocabularyEntry], notebookId: String = "default") async throws -> KGAddResponse {
         let payload = entries.map { entry in
-            KGVocabEntry(
+            // iOS captures always originate from the reader, so the source
+            // is a book. `bookTitle` is filled at capture time by
+            // `ReaderVocabularyContext` — only omit `source` when it is
+            // genuinely empty (e.g. demo / legacy entries).
+            let title = entry.bookTitle.trimmingCharacters(in: .whitespacesAndNewlines)
+            return KGVocabEntry(
                 word: entry.word,
                 translation: entry.translation,
                 context: entry.context,
-                root_form: entry.rootForm
+                root_form: entry.rootForm,
+                source: title.isEmpty ? nil : .book(title: title)
             )
         }
         return try await authenticatedDecode(

@@ -209,6 +209,62 @@ struct KGServiceTests {
         }
     }
 
+    // MARK: - JSON coding: KGVocabSource / KGCard.source (cross-end contract)
+
+    @Test func vocab_source_book_encodes_with_null_url() throws {
+        let source = KGVocabSource.book(title: "Pride and Prejudice")
+        let data = try JSONEncoder().encode(source)
+        let decoded = try JSONDecoder().decode(KGVocabSource.self, from: data)
+        #expect(decoded.type == "book")
+        #expect(decoded.title == "Pride and Prejudice")
+        #expect(decoded.url == nil)
+    }
+
+    @Test func vocab_source_web_round_trips_with_url() throws {
+        let json = """
+        {"type":"web","title":"Wikipedia","url":"https://en.wikipedia.org/x"}
+        """.data(using: .utf8)!
+        let decoded = try JSONDecoder().decode(KGVocabSource.self, from: json)
+        #expect(decoded.type == "web")
+        #expect(decoded.title == "Wikipedia")
+        #expect(decoded.url == "https://en.wikipedia.org/x")
+    }
+
+    @Test func vocab_entry_encodes_source_field() throws {
+        let entry = KGVocabEntry(
+            word: "ephemeral", translation: "短暫的", context: "an ephemeral moment",
+            root_form: "ephemeral", source: .book(title: "Moby Dick")
+        )
+        let data = try JSONEncoder().encode(entry)
+        let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
+        let src = obj?["source"] as? [String: Any]
+        #expect(src?["type"] as? String == "book")
+        #expect(src?["title"] as? String == "Moby Dick")
+    }
+
+    @Test func card_decodes_book_source() throws {
+        let json = """
+        {"id":"c1","content":"ephemeral","meaning":"短暫的","pos":null,
+         "difficulty":null,"difficultyTier":null,"note":null,"collocations":[],
+         "examples":[],"mode":"recognition","isDeleted":false,
+         "source":{"type":"book","title":"Moby Dick","url":null}}
+        """.data(using: .utf8)!
+        let card = try JSONDecoder().decode(KGCard.self, from: json)
+        #expect(card.source?.type == "book")
+        #expect(card.source?.title == "Moby Dick")
+        #expect(card.source?.url == nil)
+    }
+
+    @Test func card_decodes_with_missing_source_as_nil() throws {
+        let json = """
+        {"id":"c1","content":"ephemeral","meaning":"短暫的","pos":null,
+         "difficulty":null,"difficultyTier":null,"note":null,"collocations":[],
+         "examples":[],"mode":"recognition","isDeleted":false}
+        """.data(using: .utf8)!
+        let card = try JSONDecoder().decode(KGCard.self, from: json)
+        #expect(card.source == nil)
+    }
+
     // MARK: - JSON decoding: KGUserConfig / KGTranslationConfig (user config path)
 
     @Test func user_config_decodes_nested_translation() throws {
