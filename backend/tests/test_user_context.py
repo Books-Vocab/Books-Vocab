@@ -8,8 +8,10 @@ import jwt as pyjwt
 import pytest
 from fastapi import HTTPException
 
+from kg.auth_service import create_jwt_token
 from kg.settings import KGSettings
 from kg.user_context import resolve_current_user
+from kg.user_store import parse_datetime as real_parse_datetime
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 TEST_ALGORITHM = "HS256"
@@ -141,3 +143,111 @@ def test_jwt_signed_with_wrong_secret_raises_401(tmp_path):
         )
 
     assert exc_info.value.status_code == 401
+
+
+# ============================================================================
+# Revocation watermark — sub-second precision (PR #539 regression / fix)
+#
+# JWT `iat` is encoded as an integer Unix timestamp (floored to whole seconds).
+# `_revoked_before[uid]` is stored with microsecond precision. When deletion +
+# re-login happen in the SAME wall-clock second, the brand-new login JWT must
+# still be admitted, while any token issued BEFORE the deletion must remain
+# rejected. `iat` alone cannot distinguish them (both floor to the same
+# second), so `create_jwt_token` carries a microsecond-precision claim.
+# ============================================================================
+
+
+def _issue_token_at(user_id: str, moment: datetime, monkeypatch) -> str:
+    """Issue a JWT through the real `create_jwt_token` path with `now` pinned
+    to `moment`, so `iat` (and any sub-second claim) is deterministic.
+    """
+
+    class _FrozenDatetime(datetime):
+        @classmethod
+        def now(cls, tz=None):
+            return moment if tz else moment.replace(tzinfo=None)
+
+    monkeypatch.setattr("kg.auth_service.datetime", _FrozenDatetime)
+    return create_jwt_token(
+        user_id,
+        "google",
+        jwt_secret=TEST_JWT_SECRET,
+        jwt_algorithm=TEST_ALGORITHM,
+        jwt_expiry_minutes=60,
+    )
+
+
+def test_same_second_delete_then_relogin_token_is_admitted(tmp_path, monkeypatch):
+    """Account deleted at t=X.230115; new login JWT issued at t=X.800000.
+
+    Both fall in the same wall-clock second, so the JWT `iat` floors to
+    X.000000. The brand-new session is legitimate and must be admitted.
+
+    The base second tracks real `now` (so `exp`/`iat` stay valid against the
+    decoder's wall clock) while the microseconds are pinned, which is all the
+    floor/precision behaviour under test depends on.
+    """
+    user_id = "user-relogin"
+    users_file = tmp_path / "users.json"
+    settings = _make_settings(tmp_path)
+
+    base = datetime.now(tz=UTC).replace(microsecond=0)
+
+    # Watermark written at deletion time t=X.230115 (microsecond precision).
+    deleted_at = base.replace(microsecond=230115)
+    users_file.write_text(
+        json.dumps(
+            {
+                user_id: {"config": {}},
+                "_revoked_before": {user_id: deleted_at.isoformat()},
+            }
+        )
+    )
+
+    # Brand-new login JWT issued at t=X.800000 — 0.57s AFTER deletion but in
+    # the SAME wall-clock second. create_jwt_token is the single issuance path.
+    new_token = _issue_token_at(user_id, base.replace(microsecond=800000), monkeypatch)
+
+    # The freshly minted, legitimate token must be admitted.
+    result = resolve_current_user(
+        new_token,
+        settings=settings,
+        load_users=_load_users_fn(users_file),
+        parse_datetime=real_parse_datetime,
+    )
+    assert result["id"] == user_id
+
+
+def test_token_issued_before_deletion_same_second_is_rejected(tmp_path, monkeypatch):
+    """Invariant guard: a token issued BEFORE the deletion, even in the same
+    wall-clock second as the deletion, must still be rejected.
+    """
+    user_id = "user-stale"
+    users_file = tmp_path / "users.json"
+    settings = _make_settings(tmp_path)
+
+    base = datetime.now(tz=UTC).replace(microsecond=0)
+
+    # Old token issued first at t=X.100000.
+    old_token = _issue_token_at(user_id, base.replace(microsecond=100000), monkeypatch)
+
+    # Deletion happens AFTER issuance at t=X.600000, still in the same second.
+    deleted_at = base.replace(microsecond=600000)
+    users_file.write_text(
+        json.dumps(
+            {
+                user_id: {"config": {}},
+                "_revoked_before": {user_id: deleted_at.isoformat()},
+            }
+        )
+    )
+
+    with pytest.raises(HTTPException) as exc_info:
+        resolve_current_user(
+            old_token,
+            settings=settings,
+            load_users=_load_users_fn(users_file),
+            parse_datetime=real_parse_datetime,
+        )
+    assert exc_info.value.status_code == 401
+    assert "deleted" in str(exc_info.value.detail).lower()
