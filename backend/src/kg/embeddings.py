@@ -92,10 +92,11 @@ class EmbeddingStore:
         self._quarantine_with_suffix(f".legacy_{stale_model}_{stale_dim}")
 
     def _quarantine_corrupt(self, reason: str) -> None:
-        """Rename .npy + ids.json to `.corrupt_{reason}` after a structural
-        consistency failure (row/id desync or dim mismatch) so the live names
-        are clear for the pipeline to rebuild, and the bad files survive for
-        post-mortem. Failure to rename is non-fatal: we still proceed empty."""
+        """Rename .npy + ids.json to `.corrupt_{reason}` after a recoverable
+        on-disk corruption (structural row/id desync, dim mismatch, or an
+        unreadable/truncated file) so the live names are clear for the
+        pipeline to rebuild, and the bad files survive for post-mortem.
+        Failure to rename is non-fatal: we still proceed empty."""
         self._quarantine_with_suffix(f".corrupt_{reason}")
 
     def _quarantine_with_suffix(self, suffix: str) -> None:
