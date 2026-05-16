@@ -252,8 +252,9 @@ class EmbeddingStore:
         fully materialise *both* temp files first, then issue the two
         ``replace()`` calls back-to-back so a crash can only land in the
         narrow gap between them. Any residual desync from that gap is caught
-        at load time by ``_assert_rows_match_ids`` rather than silently
-        misattributing rows in ``find_similar``.
+        at load time by ``_load_validated`` (via ``_row_id_violation``) and
+        degraded to an empty store rather than silently misattributing rows
+        in ``find_similar``.
         """
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
 
