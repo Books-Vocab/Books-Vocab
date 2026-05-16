@@ -252,3 +252,82 @@ def test_jwt_token_expiry_zero_is_immediately_expired():
     )
     with pytest.raises(pyjwt.ExpiredSignatureError):
         pyjwt.decode(token, TEST_JWT_SECRET, algorithms=["HS256"])
+
+
+# ---------------------------------------------------------------------------
+# 8. account-deletion watermark is irreversible — a subsequent login (same
+#    provider/sub OR same email via another provider) must NOT clear it.
+#    A non-deletion revocation (no `_terminated` marker) stays clearable.
+# ---------------------------------------------------------------------------
+
+
+def test_terminated_revocation_survives_relogin_same_sub(tmp_path):
+    """Account deletion stamps `_revoked_before` AND marks the id in
+    `_terminated`. Re-login with the SAME sub must keep the watermark so old
+    JWTs (iat <= watermark) stay dead."""
+    users_file, lock, load, save = _make_store(tmp_path)
+    seed = {
+        "_email_index": {},
+        "_revoked_before": {"apple-X": "2025-01-01T00:00:00+00:00"},
+        "_terminated": ["apple-X"],
+    }
+    users_file.write_text(json.dumps(seed))
+
+    resolve_and_link_user(
+        "apple-X", "apple",
+        users_lock_file=lock,
+        load_users_fn=load,
+        save_users_fn=save,
+        email="a@example.com",
+    )
+
+    stored = json.loads(users_file.read_text())
+    assert stored["_revoked_before"].get("apple-X") == "2025-01-01T00:00:00+00:00"
+
+
+def test_terminated_revocation_survives_relogin_other_provider_same_email(tmp_path):
+    """User deletes the Apple account, then signs in with Google using the
+    SAME email. The deletion watermark for the old canonical id must NOT be
+    popped — otherwise old Apple JWTs would be revived."""
+    users_file, lock, load, save = _make_store(tmp_path)
+    seed = {
+        # email_index was already purged by the deletion flow.
+        "_email_index": {},
+        "_revoked_before": {"apple-X": "2025-01-01T00:00:00+00:00"},
+        "_terminated": ["apple-X"],
+    }
+    users_file.write_text(json.dumps(seed))
+
+    resolve_and_link_user(
+        "google-Y", "google",
+        users_lock_file=lock,
+        load_users_fn=load,
+        save_users_fn=save,
+        email="a@example.com",
+    )
+
+    stored = json.loads(users_file.read_text())
+    # Old Apple watermark must remain intact.
+    assert stored["_revoked_before"].get("apple-X") == "2025-01-01T00:00:00+00:00"
+
+
+def test_non_terminated_revocation_still_cleared_after_login(tmp_path):
+    """A revocation NOT backed by `_terminated` (e.g. a transient session
+    invalidation) keeps the legacy clear-on-login behaviour."""
+    users_file, lock, load, save = _make_store(tmp_path)
+    seed = {
+        "_email_index": {},
+        "_revoked_before": {"user-x": "2025-01-01T00:00:00+00:00"},
+    }
+    users_file.write_text(json.dumps(seed))
+
+    resolve_and_link_user(
+        "user-x", "google",
+        users_lock_file=lock,
+        load_users_fn=load,
+        save_users_fn=save,
+        email="x@example.com",
+    )
+
+    stored = json.loads(users_file.read_text())
+    assert "_revoked_before" not in stored

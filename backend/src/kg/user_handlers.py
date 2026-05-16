@@ -107,6 +107,15 @@ def delete_user_account_response(
             revoked_before[uid] = now_iso
         users["_revoked_before"] = revoked_before
 
+        # Mark every purged id as permanently terminated. This makes the
+        # revocation watermark irreversible: a later login (even with the
+        # same sub, or the same email via another provider) must NOT be able
+        # to clear `_revoked_before` for these ids — see resolve_and_link_user.
+        terminated = users.get("_terminated")
+        terminated_ids = set(terminated) if isinstance(terminated, list) else set()
+        terminated_ids.update(ids_to_delete)
+        users["_terminated"] = sorted(terminated_ids)
+
         email_index = users.get("_email_index")
         if isinstance(email_index, dict):
             stale_emails = [email for email, mapped_uid in email_index.items() if mapped_uid in ids_to_delete]
