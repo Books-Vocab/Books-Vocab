@@ -98,6 +98,95 @@ class TestCrossInstanceLinks:
         )
 
 
+class TestUnblockNotResurrected:
+    """unblock_pair / remove_blocked_pairs_for must survive a stale flush.
+
+    A naive union merge in ``_flush_blocked`` would resurrect a pair the
+    user explicitly unblocked: memory has discarded it, disk still has it,
+    and the union adds it back. ``_known_blocked_pairs`` makes the unblock
+    authoritative while still preserving pairs blocked by other instances.
+    """
+
+    def test_unblock_not_resurrected_by_stale_instance(self, tmp_path):
+        """A unblocks; stale B flushes -- the pair must stay unblocked."""
+        a = _new_store(tmp_path)
+        lk = a.add_link("x", "y", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        a.hard_delete_link(lk.id)  # (x, y) is now blocked on disk
+
+        # B loads AFTER the block: it knows (x, y) as blocked.
+        b = _new_store(tmp_path)
+        assert b.is_blocked("x", "y")
+
+        # User unblocks on A.
+        a.unblock_pair("x", "y")
+        assert not a.is_blocked("x", "y")
+
+        # Stale B (snapshot still has the pair) flushes via an unrelated op.
+        b.add_link("p", "q", LinkKind.SHARES_USAGE, 0.8, "r2")
+
+        reloaded = _new_store(tmp_path)
+        assert not reloaded.is_blocked("x", "y"), (
+            "unblock resurrected: B's stale snapshot re-added the pair"
+        )
+
+    def test_unblock_then_self_flush_not_resurrected(self, tmp_path):
+        """unblock_pair's own flush must not union the pair back from disk."""
+        store = _new_store(tmp_path)
+        lk = store.add_link("x", "y", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.hard_delete_link(lk.id)
+        assert store.is_blocked("x", "y")
+
+        store.unblock_pair("x", "y")
+
+        reloaded = _new_store(tmp_path)
+        assert not reloaded.is_blocked("x", "y"), (
+            "unblock_pair's merge resurrected the pair from its own disk file"
+        )
+
+    def test_remove_blocked_pairs_for_not_resurrected(self, tmp_path):
+        """remove_blocked_pairs_for must survive a stale instance flush."""
+        a = _new_store(tmp_path)
+        lk1 = a.add_link("c", "d", LinkKind.CONTRASTS_WITH, 0.9, "r1")
+        lk2 = a.add_link("c", "e", LinkKind.SHARES_USAGE, 0.8, "r2")
+        a.hard_delete_link(lk1.id)  # blocks (c, d)
+        a.hard_delete_link(lk2.id)  # blocks (c, e)
+
+        b = _new_store(tmp_path)  # B sees both blocked pairs
+        assert b.is_blocked("c", "d") and b.is_blocked("c", "e")
+
+        # Remove every blocked pair touching card "c" on A.
+        a.remove_blocked_pairs_for("c")
+        assert not a.is_blocked("c", "d")
+        assert not a.is_blocked("c", "e")
+
+        # Stale B flushes.
+        b.add_link("p", "q", LinkKind.SHARES_USAGE, 0.8, "r3")
+
+        reloaded = _new_store(tmp_path)
+        assert not reloaded.is_blocked("c", "d"), "remove_blocked_pairs_for resurrected (c,d)"
+        assert not reloaded.is_blocked("c", "e"), "remove_blocked_pairs_for resurrected (c,e)"
+
+    def test_foreign_blocked_pair_preserved_through_unblock(self, tmp_path):
+        """A pair blocked by another instance must survive A's unblock flush."""
+        a = _new_store(tmp_path)
+        lk = a.add_link("x", "y", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        a.hard_delete_link(lk.id)  # A blocks (x, y)
+
+        # B blocks (m, n) -- A never sees this pair.
+        b = _new_store(tmp_path)
+        lk_b = b.add_link("m", "n", LinkKind.SHARES_USAGE, 0.8, "rb")
+        b.hard_delete_link(lk_b.id)
+
+        # A unblocks its own pair; its flush must not drop B's foreign pair.
+        a.unblock_pair("x", "y")
+
+        reloaded = _new_store(tmp_path)
+        assert not reloaded.is_blocked("x", "y"), "A's unblock did not take effect"
+        assert reloaded.is_blocked("m", "n"), (
+            "foreign blocked pair from B was dropped by A's unblock flush"
+        )
+
+
 class TestDiskMergeBehaviour:
     """A flush must merge with current on-disk state, not blindly overwrite."""
 
