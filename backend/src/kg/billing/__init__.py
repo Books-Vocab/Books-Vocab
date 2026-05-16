@@ -24,6 +24,7 @@ from .payloads import (
     current_subscription_record,
     default_admin_grant_payload,
     default_subscription_payload,
+    subscription_environment_is_trusted,
     subscription_is_active,
 )
 from .snapshots import append_app_store_event, write_subscription_snapshot
@@ -44,6 +45,7 @@ __all__ = [
     "notification_status",
     "resolve_user_id_from_subscription_index",
     "status_from_transaction_payload",
+    "subscription_environment_is_trusted",
     "subscription_is_active",
     "upsert_subscription_index",
     "verified_transaction_snapshot",
