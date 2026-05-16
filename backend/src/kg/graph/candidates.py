@@ -14,7 +14,11 @@ class _CandidatesMixin:
     _lock: threading.Lock
     _candidates: list[CandidatePair]
     _candidate_set: set[tuple[str, str]]
+    _known_candidate_pairs: set[tuple[str, str]]
+    _candidates_pop_lock: threading.Lock
     _pending_judge: set[str]
+    _known_pending_judge: set[str]
+    _pending_judge_pop_lock: threading.Lock
 
     # Helpers supplied by other mixins / GraphStore.
     def _has_link_unlocked(self, id_a: str, id_b: str) -> bool: ...  # noqa: D102
@@ -44,6 +48,7 @@ class _CandidatesMixin:
                 return
             self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
             self._candidate_set.add(norm)
+            self._known_candidate_pairs.add(norm)
             snapshot = self._candidates_to_serializable()
         self._flush_candidates(snapshot)
 
@@ -59,6 +64,7 @@ class _CandidatesMixin:
                     continue
                 self._candidates.append(CandidatePair(from_id=from_id, to_id=to_id, similarity=similarity))
                 self._candidate_set.add(norm)
+                self._known_candidate_pairs.add(norm)
                 added += 1
             snapshot = self._candidates_to_serializable() if added else None
         if snapshot is not None:
@@ -66,13 +72,36 @@ class _CandidatesMixin:
         return added
 
     def pop_candidates(self) -> list[CandidatePair]:
-        """Get and clear all pending candidates."""
-        with self._lock:
-            result = self._candidates[:]
-            self._candidates.clear()
-            self._candidate_set.clear()
-            snapshot = self._candidates_to_serializable()
-        self._flush_candidates(snapshot)
+        """Get and clear all pending candidates.
+
+        Flush-before-clear, mirroring :meth:`pop_pending_judge`:
+        ``_candidates_pop_lock`` is held for the whole pop so two concurrent
+        pops cannot return the same pairs twice. The popped pairs are captured
+        under ``_lock``; the snapshot is the remainder, so an ``add_candidate``
+        racing before the flush is preserved by the merge rather than dropped
+        as a stale removal. Memory is mutated only after a successful flush,
+        and only the popped pairs are removed.
+        """
+        with self._candidates_pop_lock:
+            with self._lock:
+                result = self._candidates[:]
+                if not result:
+                    return result
+                popped_pairs = {
+                    self._normalize_pair(c.from_id, c.to_id) for c in result
+                }
+                snapshot = [
+                    c.model_dump(mode="json")
+                    for c in self._candidates
+                    if self._normalize_pair(c.from_id, c.to_id) not in popped_pairs
+                ]
+            self._flush_candidates(snapshot)
+            with self._lock:
+                self._candidates = [
+                    c for c in self._candidates
+                    if self._normalize_pair(c.from_id, c.to_id) not in popped_pairs
+                ]
+                self._rebuild_candidate_set()
         return result
 
     def requeue_candidates(self, candidates: list[CandidatePair]) -> None:
@@ -80,7 +109,9 @@ class _CandidatesMixin:
         with self._lock:
             for c in candidates:
                 self._candidates.append(c)
-                self._candidate_set.add(self._normalize_pair(c.from_id, c.to_id))
+                norm = self._normalize_pair(c.from_id, c.to_id)
+                self._candidate_set.add(norm)
+                self._known_candidate_pairs.add(norm)
             snapshot = self._candidates_to_serializable()
         self._flush_candidates(snapshot)
 
@@ -98,6 +129,9 @@ class _CandidatesMixin:
         with self._lock:
             before = len(self._pending_judge)
             self._pending_judge.update(card_ids)
+            # Register every id as managed by this instance so a later merge
+            # honours a pop/removal instead of resurrecting it from disk.
+            self._known_pending_judge.update(card_ids)
             if len(self._pending_judge) == before:
                 return
             snapshot = sorted(self._pending_judge)
@@ -106,20 +140,34 @@ class _CandidatesMixin:
     def pop_pending_judge(self) -> list[str]:
         """Get and clear all pending judge card IDs. Returns sorted list.
 
-        Flush-before-clear: the empty snapshot is persisted to disk FIRST,
-        and the in-memory set is cleared only if that flush succeeds. A
-        flush failure (disk full, atomic-write error) propagates with
-        memory and disk both still holding the old IDs — they never
-        diverge, so a later reload cannot resurrect orphaned cards.
+        Flush-before-clear: the post-pop snapshot is persisted to disk FIRST,
+        and the in-memory set is mutated only if that flush succeeds. A flush
+        failure (disk full, atomic-write error) propagates with memory and
+        disk both still holding the old IDs — they never diverge, so a later
+        reload cannot resurrect orphaned cards.
+
+        Disk I/O runs *outside* ``_lock`` (the fcntl file lock would otherwise
+        amplify cross-instance contention into the in-memory lock and stall
+        readers). ``_pending_judge_pop_lock`` is held for the whole pop so two
+        concurrent pops on the same instance cannot both observe the
+        not-yet-removed IDs and return them twice (exactly-once). The popped
+        set is captured under ``_lock``; the snapshot is ``_pending_judge``
+        minus that set, so an ``add_pending_judge`` racing before the flush is
+        preserved, not clobbered. After a successful flush the lock is re-taken
+        and only the popped IDs are discarded — never a blanket ``clear()``.
         """
-        with self._lock:
-            result = sorted(self._pending_judge)
-            if not result:
-                return result
-            # Persist the cleared state before mutating memory. If this
-            # raises, `_pending_judge` is untouched → memory == disk.
-            self._flush_pending_judge([])
-            self._pending_judge.clear()
+        with self._pending_judge_pop_lock:
+            with self._lock:
+                result = sorted(self._pending_judge)
+                if not result:
+                    return result
+                popped = set(result)
+                # Snapshot = state after this pop; includes any concurrent add.
+                snapshot = sorted(self._pending_judge - popped)
+            # Persist outside _lock. If this raises, memory is untouched → no loss.
+            self._flush_pending_judge(snapshot)
+            with self._lock:
+                self._pending_judge.difference_update(popped)
         return result
 
     def remove_pending_judge_for(self, card_id: str) -> int:
