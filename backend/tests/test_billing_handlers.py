@@ -624,6 +624,244 @@ def test_refund_via_real_decode_revokes_entitlement(tmp_path):
     assert result["entitlements"]["pro"]["is_active"] is False
 
 
+# ── edge: SIGNED notification fail-safe asymmetry (PR #535 follow-up) ──────────
+
+
+class _Verified:
+    """Minimal stand-in for the verify_signed_jws return value (exposes .payload)."""
+
+    def __init__(self, payload):
+        self.payload = payload
+
+
+def _signed_jws_verifier(notification_payload, transaction_payload, renewal_payload=None):
+    """Return a verify_signed_jws mock that dispatches by the opaque JWS token.
+
+    decode_notification_payload calls verify_signed_jws three times:
+      1. req.signed_payload          -> the notification envelope (has 'data')
+      2. data.signedTransactionInfo  -> the transaction payload
+      3. data.signedRenewalInfo      -> optional renewal payload
+    """
+
+    def verify(token, *, bundle_id):
+        if token == "SIGNED_NOTIFICATION":
+            return _Verified(notification_payload)
+        if token == "SIGNED_TXN":
+            return _Verified(transaction_payload)
+        if token == "SIGNED_RENEWAL":
+            return _Verified(renewal_payload or {})
+        raise AssertionError(f"unexpected JWS token {token!r}")
+
+    return verify
+
+
+def test_signed_unknown_notification_type_does_not_fail_open_to_active(tmp_path):
+    """A SIGNED notification with an unknown/future type carrying a still-valid
+    (un-expired) transaction must NOT write status='active'.
+
+    PR #535 added the unknown-type fail-safe but only on the unsigned path.
+    On the signed path the status is derived purely from the transaction
+    payload (status_from_transaction_payload), which returns 'active' for any
+    un-expired transaction — so a signed unknown-type notification would
+    fail-open and grant Pro for free. The handler must treat an unknown
+    notification_type as indeterminate regardless of signature.
+    """
+    from kg.billing import decode_notification_payload as real_decode
+
+    real_write = _real_write_snapshot()
+    real_resolve = _real_resolver()
+
+    # User's subscription is already expired.
+    users_store: dict = {
+        "u1": {
+            "subscription": {
+                "is_active": False,
+                "status": "expired",
+                "product_id": "pro_monthly",
+                "transaction_id": "txn-1",
+                "original_transaction_id": "orig-1",
+            }
+        },
+        "_subscription_index": {"orig-1": "u1", "txn-1": "u1"},
+    }
+
+    # A still-valid transaction: no revocationDate, no expiresDate -> "active".
+    transaction_payload = {
+        "productId": "pro_monthly",
+        "transactionId": "txn-1",
+        "originalTransactionId": "orig-1",
+        "environment": "Production",
+    }
+    notification_payload = {
+        "notificationType": "SOME_FUTURE_TYPE",
+        "data": {"signedTransactionInfo": "SIGNED_TXN"},
+    }
+
+    req = AppStoreNotificationRequest(
+        notification_type="SOME_FUTURE_TYPE",
+        signed_payload="SIGNED_NOTIFICATION",
+    )
+
+    def decode(r):
+        return real_decode(
+            r,
+            bundle_id="com.example.app",
+            allow_unsigned_notifications=False,
+            parse_datetime_fn=lambda x: None,
+            verify_signed_jws=_signed_jws_verifier(notification_payload, transaction_payload),
+        )
+
+    result = app_store_notifications_response(
+        req,
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=lambda u: None,
+        decode_notification_payload=decode,
+        append_app_store_event=MagicMock(),
+        resolve_user_id_from_subscription_index=real_resolve,
+        write_subscription_snapshot=real_write,
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    sub = users_store["u1"]["subscription"]
+    assert sub["is_active"] is False, "signed unknown-type notification must not fail-open to active"
+    assert sub["status"] == "expired"
+    assert result["updated"] is False
+    assert result["reason"] == "indeterminate_status"
+
+
+def test_signed_did_renew_known_type_still_activates(tmp_path):
+    """Regression guard: a SIGNED known type (DID_RENEW) with a valid
+    transaction must continue to drive the subscription to active."""
+    from kg.billing import decode_notification_payload as real_decode
+
+    real_write = _real_write_snapshot()
+    real_resolve = _real_resolver()
+
+    users_store: dict = {
+        "u1": {
+            "subscription": {
+                "is_active": False,
+                "status": "expired",
+                "product_id": "pro_monthly",
+                "transaction_id": "txn-1",
+                "original_transaction_id": "orig-1",
+            }
+        },
+        "_subscription_index": {"orig-1": "u1", "txn-1": "u1"},
+    }
+
+    transaction_payload = {
+        "productId": "pro_monthly",
+        "transactionId": "txn-1",
+        "originalTransactionId": "orig-1",
+        "environment": "Production",
+    }
+    notification_payload = {
+        "notificationType": "DID_RENEW",
+        "data": {"signedTransactionInfo": "SIGNED_TXN"},
+    }
+
+    req = AppStoreNotificationRequest(
+        notification_type="DID_RENEW",
+        signed_payload="SIGNED_NOTIFICATION",
+    )
+
+    def decode(r):
+        return real_decode(
+            r,
+            bundle_id="com.example.app",
+            allow_unsigned_notifications=False,
+            parse_datetime_fn=lambda x: None,
+            verify_signed_jws=_signed_jws_verifier(notification_payload, transaction_payload),
+        )
+
+    result = app_store_notifications_response(
+        req,
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=lambda u: None,
+        decode_notification_payload=decode,
+        append_app_store_event=MagicMock(),
+        resolve_user_id_from_subscription_index=real_resolve,
+        write_subscription_snapshot=real_write,
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    sub = users_store["u1"]["subscription"]
+    assert sub["is_active"] is True, "signed DID_RENEW must still activate"
+    assert sub["status"] == "active"
+    assert result["updated"] is True
+    assert result["entitlements"]["pro"]["is_active"] is True
+
+
+def test_signed_refund_known_type_still_revokes(tmp_path):
+    """Regression guard: a SIGNED REFUND (known type) with a revoked transaction
+    must continue to drive the subscription to expired/inactive."""
+    from kg.billing import decode_notification_payload as real_decode
+
+    real_write = _real_write_snapshot()
+    real_resolve = _real_resolver()
+
+    users_store: dict = {
+        "u1": {
+            "subscription": {
+                "is_active": True,
+                "status": "active",
+                "product_id": "pro_monthly",
+                "transaction_id": "txn-1",
+                "original_transaction_id": "orig-1",
+            }
+        },
+        "_subscription_index": {"orig-1": "u1", "txn-1": "u1"},
+    }
+
+    # Apple stamps revocationDate on a refunded transaction.
+    transaction_payload = {
+        "productId": "pro_monthly",
+        "transactionId": "txn-1",
+        "originalTransactionId": "orig-1",
+        "environment": "Production",
+        "revocationDate": 1_700_000_000_000,
+    }
+    notification_payload = {
+        "notificationType": "REFUND",
+        "data": {"signedTransactionInfo": "SIGNED_TXN"},
+    }
+
+    req = AppStoreNotificationRequest(
+        notification_type="REFUND",
+        signed_payload="SIGNED_NOTIFICATION",
+    )
+
+    def decode(r):
+        return real_decode(
+            r,
+            bundle_id="com.example.app",
+            allow_unsigned_notifications=False,
+            parse_datetime_fn=lambda x: None,
+            verify_signed_jws=_signed_jws_verifier(notification_payload, transaction_payload),
+        )
+
+    result = app_store_notifications_response(
+        req,
+        users_lock_file=tmp_path / "lock",
+        load_users=lambda: users_store,
+        save_users=lambda u: None,
+        decode_notification_payload=decode,
+        append_app_store_event=MagicMock(),
+        resolve_user_id_from_subscription_index=real_resolve,
+        write_subscription_snapshot=real_write,
+        build_entitlements_response=_entitlements_from_record,
+    )
+
+    sub = users_store["u1"]["subscription"]
+    assert sub["is_active"] is False, "signed REFUND must revoke entitlement"
+    assert sub["status"] == "expired"
+    assert result["updated"] is True
+    assert result["entitlements"]["pro"]["is_active"] is False
+
+
 @pytest.mark.asyncio
 async def test_reconcile_partial_failure_does_not_corrupt(tmp_path):
     """If write_subscription_snapshot raises mid-reconcile, state must be unchanged so retry resumes cleanly."""
