@@ -92,10 +92,11 @@ class EmbeddingStore:
         self._quarantine_with_suffix(f".legacy_{stale_model}_{stale_dim}")
 
     def _quarantine_corrupt(self, reason: str) -> None:
-        """Rename .npy + ids.json to `.corrupt_{reason}` after a structural
-        consistency failure (row/id desync or dim mismatch) so the live names
-        are clear for the pipeline to rebuild, and the bad files survive for
-        post-mortem. Failure to rename is non-fatal: we still proceed empty."""
+        """Rename .npy + ids.json to `.corrupt_{reason}` after a recoverable
+        on-disk corruption (structural row/id desync, dim mismatch, or an
+        unreadable/truncated file) so the live names are clear for the
+        pipeline to rebuild, and the bad files survive for post-mortem.
+        Failure to rename is non-fatal: we still proceed empty."""
         self._quarantine_with_suffix(f".corrupt_{reason}")
 
     def _quarantine_with_suffix(self, suffix: str) -> None:
@@ -164,37 +165,76 @@ class EmbeddingStore:
 
         Returns True if the on-disk vectors were adopted, False if they were
         quarantined as corrupt and the store was left empty. Never raises for
-        a recoverable corruption: row/id desync and dim mismatch (interrupted
-        save, partial disk write) are quarantined + logged, mirroring the meta
-        mismatch path. A legal empty store (0-row matrix + ``[]`` ids — the
-        on-disk result of removing the last card) passes validation untouched.
+        a recoverable corruption — all of these degrade identically (log +
+        quarantine + empty store), mirroring the meta mismatch path:
+
+        * **Unreadable bytes** — an interrupted ``_save`` can leave the .npy
+          or ids.json physically *truncated* (or, on a reused inode, full of
+          garbage). ``np.load`` then raises ``ValueError``/``EOFError`` and
+          ``json.loads`` raises ``JSONDecodeError``; ``read_text`` can raise
+          ``UnicodeDecodeError`` on binary junk. These raise *before* the
+          structural checks below ever run, so they must be caught here —
+          otherwise the exception escapes ``__init__`` and 500s every
+          embedding request for the notebook (single-worker deploy: one
+          interrupted save wedges it).
+        * **Structural violation** — row/id desync or dim mismatch from a
+          half-finished save: caught by ``_shape_dim_violation`` /
+          ``_row_id_violation`` below.
+
+        A legal empty store (0-row matrix + ``[]`` ids — the on-disk result
+        of removing the last card) passes validation untouched.
         """
-        vectors = np.load(self.embeddings_path)
-        ids = json.loads(self.ids_path.read_text())
+        # --- Read + parse, degrading unreadable/truncated files ----------
+        # np.load: ValueError ("file seems not fully written?", bad magic,
+        # pickled-data refusal), EOFError (0-byte file), OSError (I/O).
+        try:
+            vectors = np.load(self.embeddings_path)
+        except (ValueError, EOFError, OSError) as e:
+            return self._degrade_corrupt("npy_unreadable", detail=repr(e))
+        # read_text: UnicodeDecodeError on binary garbage. json.loads:
+        # JSONDecodeError (a ValueError subclass) on truncated/invalid JSON.
+        try:
+            ids = json.loads(self.ids_path.read_text())
+        except (ValueError, UnicodeDecodeError, OSError) as e:
+            return self._degrade_corrupt("ids_json_unreadable", detail=repr(e))
+
+        # --- Structural consistency (#546) -------------------------------
         reason = (
             self._shape_dim_violation(vectors)
             or self._row_id_violation(vectors, ids)
         )
         if reason is not None:
-            logger.warning(
-                "EmbeddingStore corrupt vectors at %s (%s): likely an "
-                "interrupted save. Quarantining and starting empty; re-embed "
-                "will backfill on next pipeline run.",
-                self.embeddings_path, reason,
-            )
-            self._quarantine_corrupt(reason)
-            # Drop any half-loaded state; come up as a clean empty store.
-            self._embeddings = None
-            self._ids = []
-            self._id_set = set()
-            self._invalidate_norms()
-            return False
+            return self._degrade_corrupt(reason)
 
         self._embeddings = vectors
         self._ids = ids
         self._id_set = set(self._ids)
         self._invalidate_norms()
         return True
+
+    def _degrade_corrupt(self, reason: str, *, detail: str | None = None) -> bool:
+        """Shared degrade path for any recoverable on-disk corruption: log a
+        warning, quarantine the bad files as ``.corrupt_<reason>``, reset to a
+        clean empty store, and return False (= vectors NOT adopted).
+
+        Used for both unreadable/truncated files (``np.load`` / ``json.loads``
+        raised) and structural violations (row/id desync, dim mismatch). The
+        next pipeline run re-embeds to backfill.
+        """
+        logger.warning(
+            "EmbeddingStore corrupt vectors at %s (%s%s): likely an "
+            "interrupted save. Quarantining and starting empty; re-embed "
+            "will backfill on next pipeline run.",
+            self.embeddings_path, reason,
+            f"; {detail}" if detail else "",
+        )
+        self._quarantine_corrupt(reason)
+        # Drop any half-loaded state; come up as a clean empty store.
+        self._embeddings = None
+        self._ids = []
+        self._id_set = set()
+        self._invalidate_norms()
+        return False
 
     def _shape_dim_violation(self, vectors: np.ndarray) -> str | None:
         """Check vectors' shape/dim; return a short reason string on a
