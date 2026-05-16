@@ -75,10 +75,18 @@ def resolve_and_link_user(
             "last_login": now,
         })
 
+        # Clear stale revocation watermarks on a fresh login so the dict does
+        # not grow unbounded. But account-deletion watermarks are PERMANENT:
+        # ids recorded in `_terminated` must never be popped, otherwise a JWT
+        # issued before the deletion would be revived by simply logging in
+        # again (same sub, or same email via a different provider).
         revoked_before = users.get("_revoked_before")
         if isinstance(revoked_before, dict):
-            revoked_before.pop(canonical_id, None)
-            revoked_before.pop(provider_user_id, None)
+            terminated = users.get("_terminated")
+            terminated_ids = set(terminated) if isinstance(terminated, list) else set()
+            for uid in (canonical_id, provider_user_id):
+                if uid not in terminated_ids:
+                    revoked_before.pop(uid, None)
             if not revoked_before:
                 users.pop("_revoked_before", None)
 
