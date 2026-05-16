@@ -18,8 +18,13 @@ struct AuthSessionStoreTests {
         private(set) var storage: [String: Data] = [:]
         private(set) var deleteCount = 0
         /// When set, `save`/`delete` return this status instead of success and skip the
-        /// mutation — used to exercise the keychain-failure reporting path.
+        /// mutation — used to exercise the keychain-write-failure reporting path.
         var forcedFailureStatus: OSStatus?
+        /// When set, `readWithStatus` returns this status with nil data — used to exercise the
+        /// keychain-*read*-failure reporting path (cold-boot, pre-first-unlock device). Kept
+        /// separate from `forcedFailureStatus` so a test can fail a read without also failing
+        /// the `save` that seeds it.
+        var forcedReadStatus: OSStatus?
 
         private func key(_ service: String, _ account: String) -> String { "\(service)|\(account)" }
 
@@ -28,8 +33,14 @@ struct AuthSessionStoreTests {
             storage[key(service, account)] = data
             return errSecSuccess
         }
-        func read(service: String, account: String) -> Data? {
-            storage[key(service, account)]
+        func readWithStatus(service: String, account: String) -> (data: Data?, status: OSStatus) {
+            if let forced = forcedReadStatus { return (nil, forced) }
+            if let data = storage[key(service, account)] {
+                return (data, errSecSuccess)
+            }
+            // Mirror the real helper: an absent item yields `errSecItemNotFound`, the
+            // benign "logged out" status — *not* a generic failure.
+            return (nil, errSecItemNotFound)
         }
         @discardableResult
         func delete(service: String, account: String) -> OSStatus {
@@ -191,6 +202,69 @@ struct AuthSessionStoreTests {
         keychain.forcedFailureStatus = errSecNotAvailable
         store.clearSession()  // must not throw
         #expect(store.loadSession().userId == nil)
+    }
+
+    // MARK: - Keychain *read* failure reporting (PR #529 follow-up)
+
+    /// Root cause: `loadSession` previously read the token via a `-> Data?` keychain call that
+    /// discarded the `OSStatus`. A cold-boot device that has not been unlocked returns
+    /// `errSecInteractionNotAllowed` — indistinguishable, under the old API, from "no token".
+    /// The app would then route a still-logged-in user to the login screen with no trace.
+    /// This pins that such a read failure is now surfaced via `reportKeychainFailure`.
+    @Test func loadSession_reports_keychain_read_failure() {
+        let (store, _, keychain) = makeStore()
+        var reported: [KeychainError] = []
+        store.keychainFailureObserver = { reported.append($0) }
+
+        keychain.forcedReadStatus = errSecInteractionNotAllowed  // cold-boot, pre-unlock
+        let session = store.loadSession()
+
+        // The failure must be reported (not swallowed) and attributed to the read op...
+        #expect(reported.count == 1)
+        #expect(reported.first?.status == errSecInteractionNotAllowed)
+        #expect(reported.first?.operation == "read")
+        // ...and the token reads back nil — the load still succeeds, it does not throw.
+        #expect(session.token == nil)
+    }
+
+    /// The critical non-firing case: `errSecItemNotFound` means "no token stored", i.e. the
+    /// user is legitimately logged out. It must NOT be reported as a keychain failure —
+    /// doing so would flag a crash event on every cold launch of a signed-out app.
+    @Test func loadSession_does_not_report_when_token_absent() {
+        let (store, _, keychain) = makeStore()
+        var reported: [KeychainError] = []
+        store.keychainFailureObserver = { reported.append($0) }
+
+        keychain.forcedReadStatus = errSecItemNotFound  // legitimate logged-out state
+        let session = store.loadSession()
+
+        #expect(reported.isEmpty)
+        #expect(session.token == nil)
+    }
+
+    /// A fresh store (no token ever persisted) drives the fake's natural `errSecItemNotFound`
+    /// path — confirming the benign-not-found branch holds without a forced status, so an
+    /// ordinary signed-out launch never reports a keychain failure.
+    @Test func loadSession_on_fresh_store_reports_no_keychain_failure() {
+        let (store, _, _) = makeStore()
+        var reported: [KeychainError] = []
+        store.keychainFailureObserver = { reported.append($0) }
+
+        _ = store.loadSession()
+        #expect(reported.isEmpty)
+    }
+
+    /// A successfully persisted token reads back without any failure report — the success
+    /// path is untouched by the status-surfacing change.
+    @Test func loadSession_with_valid_token_reports_no_keychain_failure() {
+        let (store, _, _) = makeStore()
+        var reported: [KeychainError] = []
+        store.keychainFailureObserver = { reported.append($0) }
+
+        store.persistToken("jwt.alive")
+        let session = store.loadSession()
+        #expect(session.token == "jwt.alive")
+        #expect(reported.isEmpty)
     }
 
     // MARK: - KeychainStatus seam (pure function)
