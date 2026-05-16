@@ -116,9 +116,9 @@ class _PersistenceMixin:
     # Per-file serialised write helpers.
     #
     # Each acquires (a) the in-process file-level write lock and (b) the
-    # cross-process fcntl advisory lock on the path. _flush_links and
-    # _flush_blocked additionally re-read + merge under that lock so a
-    # stale instance cannot clobber another's durable changes.
+    # cross-process fcntl advisory lock on the path. Every _flush_* helper
+    # additionally re-reads + merges under that lock so a stale instance
+    # cannot clobber another's durable changes.
     # ------------------------------------------------------------------
 
     def _flush_links(self, snapshot: list[dict]) -> None:

@@ -26,6 +26,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     - Pattern for every write method:
         1. Acquire lock -> mutate memory -> take snapshot -> release lock
         2. Call _atomic_json_write(snapshot) -- no lock held
+    - pop_* methods release _lock during their flush, so a per-collection
+      pop lock (_pending_judge_pop_lock / _candidates_pop_lock) serialises
+      concurrent pops to keep exactly-once semantics. See __init__.
     - _candidate_set is a canonical set[tuple[str,str]] (normalised: smaller id
       first) kept in sync with _candidates for O(1) duplicate detection.
 
