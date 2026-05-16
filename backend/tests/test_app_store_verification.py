@@ -152,7 +152,13 @@ def signed_app_store_env(tmp_path, monkeypatch):
         app.state.save_users = original_save
 
 
-def _transaction_payload(*, transaction_id: str, original_transaction_id: str, status: str = "active") -> dict:
+def _transaction_payload(
+    *,
+    transaction_id: str,
+    original_transaction_id: str,
+    status: str = "active",
+    environment: str = "Production",
+) -> dict:
     now_ms = int(datetime.now(tz=UTC).timestamp() * 1000)
     expires_at = now_ms + (7 * 24 * 60 * 60 * 1000)
     if status == "expired":
@@ -162,7 +168,7 @@ def _transaction_payload(*, transaction_id: str, original_transaction_id: str, s
         "productId": "com.wordnexus.pro.monthly",
         "transactionId": transaction_id,
         "originalTransactionId": original_transaction_id,
-        "environment": "Sandbox",
+        "environment": environment,
         "expiresDate": expires_at,
     }
     if status == "trial":
@@ -414,7 +420,9 @@ def test_sandbox_environment_routes_reconcile_to_sandbox_endpoint(signed_app_sto
     env = signed_app_store_env
     signed_transaction = _sign_jws(
         _transaction_payload(
-            transaction_id="tx-sandbox-1", original_transaction_id="otx-sandbox-1"
+            transaction_id="tx-sandbox-1",
+            original_transaction_id="otx-sandbox-1",
+            environment="Sandbox",
         ),
         env.chain["leaf_key"],
         [env.chain["leaf_cert"], env.chain["intermediate_cert"], env.chain["root_cert"]],
@@ -438,4 +446,7 @@ def test_sandbox_environment_routes_reconcile_to_sandbox_endpoint(signed_app_sto
     assert r.status_code == 200, r.text
     assert captured["environment"] == "sandbox"
     assert captured["base_url"] == SANDBOX_API_BASE_URL
-    assert r.json()["pro"]["is_active"] is True
+    # Security gate: a verified sandbox transaction (environment="Sandbox" in the
+    # signed JWS payload) must NOT yield a real Pro entitlement on a production
+    # deployment. The snapshot is still persisted for diagnostics.
+    assert r.json()["pro"]["is_active"] is False
