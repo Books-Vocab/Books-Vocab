@@ -338,14 +338,20 @@ class TestRemove:
 
 # --------------------------------------------------------------------- #
 # _load consistency  (Bug B: half-finished _save -> row/id desync)
+#
+# A desynced store (matrix rows != ids len, or dim mismatch) must NOT
+# raise from __init__ — that escalates a recoverable corruption into a
+# hard factory failure that 500s every embedding-touching request for
+# the notebook (single-worker deploy: one interrupted save wedges it).
+# Instead it degrades like the meta-mismatch path: quarantine the stale
+# files, log a warning, and come up as an empty store that the next
+# pipeline run will re-embed. The legal empty store (0-row .npy + []
+# ids — the result of removing the last card) must still load normally.
 # --------------------------------------------------------------------- #
 class TestLoadConsistency:
-    def test_row_count_id_mismatch_raises(self, tmp_path: Path):
-        """Simulates a crash between writing .npy and ids.json: 3 rows, 2 ids.
-
-        _assert only checked dim before; a desynced store would let
-        find_similar return rows mapped to the wrong card id, silently.
-        """
+    def test_row_count_id_mismatch_degrades_to_empty(self, tmp_path: Path):
+        """Crash between writing .npy and ids.json (3 rows, 2 ids): the store
+        must come up empty, not raise, and quarantine the corrupt files."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
         meta_path = tmp_path / "embeddings_meta_default.json"
@@ -356,21 +362,81 @@ class TestLoadConsistency:
         ))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
-        with pytest.raises(ValueError, match="(?i)row count|mismatch|desync"):
-            EmbeddingStore(emb_path, ids_path, llm)
+        # Must not raise.
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        # Corrupt files quarantined so the live names are clear for a rebuild.
+        assert not emb_path.exists() and not ids_path.exists()
+        legacy = list(tmp_path.glob("*.corrupt_*"))
+        assert any(p.name.startswith("embeddings_default.npy") for p in legacy)
+        assert any(p.name.startswith("card_ids_default.json") for p in legacy)
+        # find_similar on the degraded store must be safe (no desync crash).
+        assert store.find_similar("a") == []
 
-    def test_legacy_no_sidecar_path_also_checks_row_count(self, tmp_path: Path):
-        """The legacy (no-meta) load branch must reject desync too."""
+    def test_legacy_no_sidecar_path_also_degrades_on_desync(self, tmp_path: Path):
+        """The legacy (no-meta) load branch must degrade on desync too."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
         np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
         ids_path.write_text(json.dumps(["a", "b"]))
         client = MagicMock()
         llm = TrackedLLM(client, "u")
-        with pytest.raises(ValueError, match="(?i)row count|mismatch|desync"):
-            EmbeddingStore(emb_path, ids_path, llm)
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+
+    def test_dim_mismatch_degrades_to_empty(self, tmp_path: Path):
+        """A populated matrix whose column count != self.dim must degrade,
+        not raise — same recoverable-corruption class as row desync."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        # Sidecar claims active config, but the matrix has the wrong dim.
+        np.save(emb_path, np.random.rand(2, EMBEDDING_DIM - 1).astype(np.float32))
+        ids_path.write_text(json.dumps(["a", "b"]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
 
     def test_aligned_store_loads_fine(self, tmp_path: Path):
         """Sanity: a correctly-aligned store still loads without error."""
         store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
         assert store.count() == 3
+
+    def test_legal_empty_store_loads_normally(self, tmp_path: Path):
+        """KEY invariant: a legitimate empty store — 0-row .npy + [] ids,
+        the exact on-disk result of removing the last card — must load as a
+        normal empty store, NOT be misclassified as corrupt and quarantined."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        np.save(emb_path, np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
+        ids_path.write_text(json.dumps([]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        # Files must survive — a legal empty store is not corruption.
+        assert emb_path.exists() and ids_path.exists()
+        assert not list(tmp_path.glob("*.corrupt_*"))
+
+    def test_legal_empty_store_legacy_no_sidecar_loads_normally(self, tmp_path: Path):
+        """Same legal-empty invariant on the legacy (no-meta) branch."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        np.save(emb_path, np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
+        ids_path.write_text(json.dumps([]))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert emb_path.exists() and ids_path.exists()
+        assert not list(tmp_path.glob("*.corrupt_*"))
