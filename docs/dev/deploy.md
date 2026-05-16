@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 8f967e3
+verified_against: 09f4c3e
 -->
 # 後端部署指南
 
@@ -247,6 +247,19 @@ scp -i ~/.ssh/lightsail_default.pem -r \
   ubuntu@13.193.212.134:~/knowledge_graph_api/data
 ./devops.sh restart
 ```
+
+---
+
+## 單 worker 不變式（勿改）
+
+後端**必須以單一 uvicorn worker 部署**。`Dockerfile` 的 CMD 已顯式鎖定 `--workers 1`，**不可移除或調高**。
+
+原因：部分狀態是 **process-local**，不跨 worker 共享：
+
+- `quota_service._reservations` — in-flight 額度預留（PR #538）。多 worker 時每個 worker 各有一份，同用戶請求落在不同 worker 時預留互不可見，額度 over-spend 上限變成 `N_workers × 真實限額`，直接繞過額度防線。
+- 同類 process-local state：`translate_service` 的 singleflight dedup、in-memory log capture、rate-limit 計數等。
+
+未來若要 scale-out（多 worker / 多容器），**必須先**把上述狀態改為共享儲存（Redis / DB），才能解除單 worker 限制。
 
 ---
 
