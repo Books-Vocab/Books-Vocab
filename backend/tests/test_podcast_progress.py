@@ -18,6 +18,17 @@ _ISO_NOW = "2026-05-14T12:00:00+00:00"
 _ISO_LATER = "2026-05-14T12:05:00+00:00"
 _ISO_EARLIER = "2026-05-14T11:55:00+00:00"
 
+# Same wall-clock instant in two ISO8601 widths. iOS now emits fractional
+# seconds (`.withFractionalSeconds`); older clients / older rows are
+# integer-second. A bare lexicographic compare is WRONG here because ASCII
+# '+' (0x2B) < '.' (0x2E): "...:00+00:00" always sorts before
+# "...:00.000000+00:00" even though they are the same moment.
+_ISO_INT_SEC = "2026-05-14T12:00:00+00:00"
+_ISO_FRAC_SEC = "2026-05-14T12:00:00.000000+00:00"
+# An *earlier* instant expressed with fractional seconds — must lose to a
+# *newer* integer-second stored row despite sorting later as a string.
+_ISO_FRAC_EARLIER = "2026-05-14T11:55:00.250000+00:00"
+
 
 def _post_progress(api, series, ep, *, position, duration, updated_at, headers=None):
     return api.client.post(
@@ -164,6 +175,72 @@ def test_repost_with_older_updated_at_ignored(isolated_api):
         "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
     )
     assert resp_get.json()["position_sec"] == 120.0
+
+
+# ---------------------------------------------------------------------------
+# Last-write-wins across mixed timestamp widths (integer vs fractional secs)
+# ---------------------------------------------------------------------------
+#
+# Regression guard for the iOS `.withFractionalSeconds` change (PR #532):
+# the client may now POST fractional-second timestamps while older rows in
+# the store are integer-second. The LWW comparison must be on the parsed
+# instant, not on the raw ISO string, otherwise '+' < '.' in ASCII makes
+# the comparison nonsensical across widths.
+
+
+def test_lww_fractional_older_does_not_clobber_integer_newer(isolated_api):
+    """An older fractional-second write must not overwrite a newer
+    integer-second stored row (string compare would wrongly let it win)."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=120.0, duration=300.0, updated_at=_ISO_NOW,  # integer secs
+    )
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=10.0, duration=300.0, updated_at=_ISO_FRAC_EARLIER,  # older, fractional
+    )
+    assert resp.status_code == 200
+    body = resp.json()
+    assert body["position_sec"] == 120.0
+    assert body["updated_at"] == _ISO_NOW
+
+    resp_get = isolated_api.client.get(
+        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+    )
+    assert resp_get.json()["position_sec"] == 120.0
+
+
+def test_lww_fractional_newer_overwrites_integer(isolated_api):
+    """A newer fractional-second write overwrites an older integer-second row."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=10.0, duration=300.0, updated_at=_ISO_EARLIER,  # older, integer
+    )
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=120.0, duration=300.0,
+        updated_at="2026-05-14T12:05:00.500000+00:00",  # newer, fractional
+    )
+    resp = isolated_api.client.get(
+        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+    )
+    assert resp.json()["position_sec"] == 120.0
+
+
+def test_lww_same_instant_mixed_width_is_tie(isolated_api):
+    """Integer-second and fractional-second strings for the SAME instant must
+    compare equal — the existing row wins (write is a no-op)."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=120.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    # Same moment, fractional spelling — must be treated as a tie (stale).
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=10.0, duration=300.0, updated_at=_ISO_FRAC_SEC,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["position_sec"] == 120.0
 
 
 # ---------------------------------------------------------------------------

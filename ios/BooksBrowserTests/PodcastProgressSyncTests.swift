@@ -220,4 +220,75 @@ struct PodcastProgressSyncTests {
         let all = try ctx.fetch(FetchDescriptor<PodcastProgress>())
         #expect(all.count == 0)
     }
+
+    // MARK: - Same-instant convergence (LWW tie-break)
+
+    /// Two devices push different positions for the same episode at the exact
+    /// same instant. Strict `remoteUpdatedAt > local.updatedAt` makes both
+    /// sides reject the other → positions diverge forever. The merge must apply
+    /// the same tie-break as `sanitizeProgressDuplicates`: keep the larger
+    /// `lastPlayedTime` so both devices converge on a single value.
+    @Test func merge_converges_on_same_instant_tie_break() throws {
+        let ctx = try makeContext()
+        // Local device stopped at 30s.
+        let instant = "2026-05-14T12:00:00+00:00"
+        let date = ISO8601DateFormatter().date(from: instant)!
+        let local = makeProgress("flow_ep_01", date, 30.0)
+        ctx.insert(local)
+        try ctx.save()
+
+        // Remote device pushed 90s at the *same* instant.
+        let item = remote("flow", 1, 90.0, 300.0, instant)
+        PodcastSyncService.mergeRemoteProgress(remote: [item], context: ctx)
+        try ctx.save()
+
+        let all = try ctx.fetch(FetchDescriptor<PodcastProgress>())
+        #expect(all.count == 1)
+        // Tie-break → larger lastPlayedTime wins, so both devices converge.
+        #expect(all.first?.lastPlayedTime == 90.0)
+    }
+
+    /// Symmetry: when the local row already holds the larger position, a
+    /// same-instant remote write with a smaller position must NOT clobber it.
+    @Test func merge_keeps_local_on_same_instant_when_local_larger() throws {
+        let ctx = try makeContext()
+        let instant = "2026-05-14T12:00:00+00:00"
+        let date = ISO8601DateFormatter().date(from: instant)!
+        let local = makeProgress("flow_ep_01", date, 120.0)
+        ctx.insert(local)
+        try ctx.save()
+
+        let item = remote("flow", 1, 45.0, 300.0, instant)
+        PodcastSyncService.mergeRemoteProgress(remote: [item], context: ctx)
+        try ctx.save()
+
+        let all = try ctx.fetch(FetchDescriptor<PodcastProgress>())
+        #expect(all.count == 1)
+        #expect(all.first?.lastPlayedTime == 120.0)
+    }
+
+    /// Sub-second precision: two pushes in the same wall-clock second but
+    /// different milliseconds must be ordered by the fractional component.
+    /// `.withInternetDateTime` alone truncates the fraction → both compare
+    /// equal → the later (newer) write is lost.
+    @Test func merge_respects_fractional_second_precision() throws {
+        let ctx = try makeContext()
+        // Local row stamped at .250 of the second.
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let localDate = formatter.date(from: "2026-05-14T12:00:00.250Z")!
+        let local = makeProgress("flow_ep_01", localDate, 30.0)
+        ctx.insert(local)
+        try ctx.save()
+
+        // Remote write happened later in the same second (.750).
+        let item = remote("flow", 1, 88.0, 300.0, "2026-05-14T12:00:00.750+00:00")
+        PodcastSyncService.mergeRemoteProgress(remote: [item], context: ctx)
+        try ctx.save()
+
+        let all = try ctx.fetch(FetchDescriptor<PodcastProgress>())
+        #expect(all.count == 1)
+        // Newer fractional instant wins outright (no tie-break needed).
+        #expect(all.first?.lastPlayedTime == 88.0)
+    }
 }
