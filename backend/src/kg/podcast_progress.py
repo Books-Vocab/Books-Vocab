@@ -24,6 +24,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
+from datetime import datetime, timezone
 from pathlib import Path
 
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -103,6 +104,28 @@ def _get_conn() -> sqlite3.Connection:
     return _conn
 
 
+def _parse_instant(value: str) -> datetime | None:
+    """Parse an ISO8601 ``updated_at`` to an aware UTC datetime.
+
+    Returns ``None`` if the string is unparseable so the caller can fall
+    back to a conservative decision. Accepts both integer-second
+    (``...:00+00:00``) and fractional-second (``...:00.250000+00:00``)
+    widths — iOS started emitting the latter via ``.withFractionalSeconds``,
+    so a stored integer-second row and an incoming fractional-second write
+    can legitimately denote the same instant. ``datetime.fromisoformat``
+    handles both transparently; comparing the parsed datetimes is the only
+    correct ordering (a bare lexicographic compare misranks mixed widths
+    because ASCII ``'+'`` < ``'.'``).
+    """
+    try:
+        dt = datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except (TypeError, ValueError, AttributeError):
+        return None
+    if dt.tzinfo is None:
+        dt = dt.replace(tzinfo=timezone.utc)
+    return dt.astimezone(timezone.utc)
+
+
 def _reset() -> None:
     """Close + nullify connection + clear override (for tests)."""
     global _conn, _init_data_dir, _override_data_dir
@@ -132,11 +155,16 @@ def upsert(
     one, the existing row is returned unchanged. Otherwise the row is
     overwritten and the new payload is returned.
 
-    The comparison is lexicographic on the ISO8601 string, which is correct
-    only when both values are in the same canonical form (UTC, fixed
-    width). The router normalises client input to UTC ISO8601 before
-    calling this function so the invariant holds.
+    The comparison is on the *parsed* instants, not the raw ISO8601 strings.
+    iOS emits fractional-second timestamps (``.withFractionalSeconds``) while
+    older rows are integer-second; a lexicographic compare misranks those
+    mixed widths (ASCII ``'+'`` 0x2B < ``'.'`` 0x2E, so ``"...:00+00:00"``
+    always sorts before ``"...:00.250000+00:00"`` regardless of the actual
+    instant). Parsing both sides with :func:`_parse_instant` makes the LWW
+    decision correct independently of how each side was serialised and does
+    not rely on every caller pre-canonicalising its input.
     """
+    incoming_dt = _parse_instant(updated_at)
     with _lock:
         conn = _get_conn()
         row = conn.execute(
@@ -144,7 +172,18 @@ def upsert(
             "WHERE user_id = ? AND series_id = ? AND ep_num = ?",
             (user_id, series_id, ep_num),
         ).fetchone()
-        if row is not None and row[2] >= updated_at:
+        stored_dt = _parse_instant(row[2]) if row is not None else None
+        # Stale iff a stored row exists and is newer-or-equal. Comparison is on
+        # parsed instants; if either side is unparseable, fall back to the raw
+        # string compare so a malformed value can never crash the write path.
+        if row is not None:
+            if stored_dt is not None and incoming_dt is not None:
+                stale = stored_dt >= incoming_dt
+            else:
+                stale = row[2] >= updated_at
+        else:
+            stale = False
+        if stale:
             # Existing row is newer (or same instant) — ignore stale write.
             return {
                 "series_id": series_id,
