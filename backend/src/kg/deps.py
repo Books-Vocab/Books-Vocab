@@ -194,7 +194,7 @@ def _write_subscription_snapshot(
     )
 
 
-def _notification_status(notification_type: str | None, subtype: str | None) -> str:
+def _notification_status(notification_type: str | None, subtype: str | None) -> str | None:
     return notification_status(notification_type, subtype)
 
 
