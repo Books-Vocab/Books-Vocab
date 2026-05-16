@@ -33,7 +33,16 @@ def resolve_current_user(
         user_id = decoded.get("sub")
         if not user_id:
             raise ValueError("No sub in token")
-        token_iat = parse_datetime(decoded.get("iat")) or datetime.now(tz=UTC)
+        # `iat` is encoded as an integer Unix timestamp (floored to whole
+        # seconds), which is too coarse for the revocation-watermark check:
+        # a deletion and a legitimate re-login within the same second would
+        # collide. `iat_us` (microsecond-precise ISO string) is preferred when
+        # present; older tokens without it fall back to the floored `iat`.
+        token_iat = (
+            parse_datetime(decoded.get("iat_us"))
+            or parse_datetime(decoded.get("iat"))
+            or datetime.now(tz=UTC)
+        )
     except jwt.ExpiredSignatureError as exc:
         raise HTTPException(
             status_code=401,
