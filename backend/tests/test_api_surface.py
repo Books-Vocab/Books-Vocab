@@ -413,8 +413,8 @@ def test_get_entitlements_returns_existing_subscription_snapshot(isolated_api):
         "is_trial": True,
         "trial_days": 7,
         "will_renew": True,
-        "expires_at": "2026-03-14T00:00:00+00:00",
-        "last_synced_at": "2026-03-07T00:00:00+00:00",
+        "expires_at": (datetime.now(tz=UTC) + timedelta(days=7)).isoformat(),
+        "last_synced_at": datetime.now(tz=UTC).isoformat(),
     }
     isolated_api.users_file.write_text(json.dumps(users_data))
 
