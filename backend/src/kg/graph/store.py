@@ -53,9 +53,17 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._blocked_write_lock = threading.Lock()
         self._pending_judge_write_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
+        # Every link id this instance has ever held (loaded or created). Used
+        # by _flush_links to tell "deleted by me" (drop) from "added by another
+        # instance" (preserve) when merging with the on-disk file.
+        self._known_link_ids: set[str] = set()
         self._candidates: list[CandidatePair] = []
         self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
         self._blocked_pairs: set[tuple[str, str]] = set()
+        # Every blocked pair this instance has ever held (loaded or blocked).
+        # Mirrors _known_link_ids: lets _flush_blocked tell "unblocked by me"
+        # (drop) from "blocked by another instance" (preserve) when merging.
+        self._known_blocked_pairs: set[tuple[str, str]] = set()
         self._pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
@@ -68,6 +76,9 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
     def _index_link(self, link: GraphLink) -> None:
         self._from_index.setdefault(link.from_id, set()).add(link.id)
         self._to_index.setdefault(link.to_id, set()).add(link.id)
+        # Register so a later _flush_links merge treats this id as managed
+        # by this instance (a subsequent delete is honoured, not resurrected).
+        self._known_link_ids.add(link.id)
 
     def _unindex_link(self, link: GraphLink) -> None:
         self._from_index.get(link.from_id, set()).discard(link.id)
@@ -96,6 +107,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.blocked_path and self.blocked_path.exists():
             data = json.loads(self.blocked_path.read_text())
             self._blocked_pairs = {tuple(pair) for pair in data}  # type: ignore[misc]
+            self._known_blocked_pairs |= self._blocked_pairs
         if self.links_path.exists():
             data = json.loads(self.links_path.read_text())
             dirty = False
@@ -106,12 +118,13 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
                 # Migrate rejected -> blocked
                 if lk.get("status") == "rejected":
                     dirty = True
-                    self._blocked_pairs.add(
-                        self._normalize_pair(lk["from_id"], lk["to_id"])
-                    )
+                    pair = self._normalize_pair(lk["from_id"], lk["to_id"])
+                    self._blocked_pairs.add(pair)
+                    self._known_blocked_pairs.add(pair)
                     continue
                 link = GraphLink.model_validate(lk)
                 self._links[link.id] = link
+                self._known_link_ids.add(link.id)
             if dirty:
                 self._save_links()
                 self._save_blocked()
