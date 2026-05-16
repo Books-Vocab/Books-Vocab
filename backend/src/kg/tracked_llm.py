@@ -1,6 +1,7 @@
-"""Unified LLM wrapper with automatic token usage tracking."""
+"""Unified LLM wrapper with automatic token usage tracking + quota reservation."""
 from __future__ import annotations
 
+from .quota_service import estimate_call_cost, reserve
 from .token_tracker import record
 
 
@@ -9,6 +10,14 @@ class TrackedLLM:
 
     Sync callers (judge/enrich/embed): pass OpenAI client, use .chat() / .embed()
     Async callers (translate): pass AsyncOpenAI client, use .chat_async()
+
+    Every call holds an in-flight quota reservation for its duration. This
+    closes the pre-flight gap: the route-level `check_quota` gate runs before
+    a call, but `record()` only lands after it. Concurrent same-user calls
+    (multi-tab translate, pipeline enrich fanning out 5-way) would otherwise
+    all clear the gate seeing `used=0`. The reservation makes those in-flight
+    calls visible to the gate; it is released the instant the real cost is
+    recorded.
     """
 
     __slots__ = ("_client", "user_id")
@@ -18,18 +27,21 @@ class TrackedLLM:
         self.user_id = user_id
 
     def chat(self, call_type: str, **kwargs):
-        resp = self._client.chat.completions.create(**kwargs)
-        self._record_chat(call_type, resp)
+        with reserve(self.user_id, estimate_call_cost(call_type)):
+            resp = self._client.chat.completions.create(**kwargs)
+            self._record_chat(call_type, resp)
         return resp
 
     async def chat_async(self, call_type: str, **kwargs):
-        resp = await self._client.chat.completions.create(**kwargs)
-        self._record_chat(call_type, resp)
+        with reserve(self.user_id, estimate_call_cost(call_type)):
+            resp = await self._client.chat.completions.create(**kwargs)
+            self._record_chat(call_type, resp)
         return resp
 
     def embed(self, call_type: str = "embed", **kwargs):
-        resp = self._client.embeddings.create(**kwargs)
-        self._record_embed(call_type, resp)
+        with reserve(self.user_id, estimate_call_cost(call_type)):
+            resp = self._client.embeddings.create(**kwargs)
+            self._record_embed(call_type, resp)
         return resp
 
     def _record_chat(self, call_type: str, resp) -> None:
