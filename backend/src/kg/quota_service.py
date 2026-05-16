@@ -6,6 +6,9 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 
 from __future__ import annotations
 
+import itertools
+import threading
+from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from .token_tracker import _get_conn, _lock
@@ -40,8 +43,89 @@ def token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> flo
     return (input_tokens / 1_000_000) * INPUT_PER_M + (output_tokens / 1_000_000) * OUTPUT_PER_M
 
 
+# Conservative per-call cost estimate (USD) held as an in-flight reservation
+# while an LLM request is in progress. It only needs to be large enough that
+# a burst of concurrent same-user calls can't all clear the gate before any
+# real cost is recorded — it does NOT need to be accurate, because the real
+# cost replaces it the instant `token_tracker.record()` lands. Chosen so a
+# Free user ($0.03/day) admits ~2-3 in-flight calls, not an unbounded burst.
+ESTIMATED_CALL_COST_USD: float = 0.012
+ESTIMATED_EMBED_COST_USD: float = 0.0005
+
+
+def estimate_call_cost(call_type: str) -> float:
+    """Reservation estimate for a single LLM call of the given type."""
+    return ESTIMATED_EMBED_COST_USD if call_type == "embed" else ESTIMATED_CALL_COST_USD
+
+
+# ── In-flight reservation registry ───────────────────────────────────
+#
+# Why this exists: the quota gate (`check_quota`) is consulted BEFORE an
+# LLM call, but `token_tracker.record()` only lands AFTER it completes.
+# Concurrent same-user requests — multi-tab translate, or a single
+# pipeline run fanning out 5-way enrich batches via ThreadPoolExecutor —
+# all observe `used=0` and pass the gate before the first record() lands,
+# producing unbounded over-spend (a Free user's $0.03/day budget is tiny).
+#
+# A reservation is an optimistic, in-memory estimate of an in-flight
+# call's cost. The gate counts outstanding reservations on top of
+# recorded usage; the reservation is released once the call finishes
+# (its real cost is by then in token_usage.db). Purely process-local —
+# no schema change, no new dependency. Cross-process workers still each
+# enforce their own slice; the dominant concurrency (one Uvicorn worker,
+# threadpool fan-out, asyncio tasks) is fully covered.
+
+_reservations: dict[int, tuple[str, float]] = {}
+_reservation_ids = itertools.count(1)
+_reservation_lock = threading.Lock()
+
+
+def _reserved_usd(user_id: str) -> float:
+    """Sum of outstanding in-flight reservations for a user."""
+    with _reservation_lock:
+        return sum(cost for uid, cost in _reservations.values() if uid == user_id)
+
+
+@contextmanager
+def reserve(user_id: str, estimated_usd: float):
+    """Hold an in-flight quota reservation for the duration of a call.
+
+    Usage::
+
+        with reserve(user["id"], estimate):
+            result = llm_call()
+
+    The reservation counts against the quota gate while held and is
+    released on block exit — including when the body raises — so a
+    failed handler never leaks budget.
+    """
+    if not user_id or estimated_usd <= 0:
+        # Nothing to reserve; still yield so callers can wrap freely.
+        yield
+        return
+    rid = next(_reservation_ids)
+    with _reservation_lock:
+        _reservations[rid] = (user_id, float(estimated_usd))
+    try:
+        yield
+    finally:
+        with _reservation_lock:
+            _reservations.pop(rid, None)
+
+
+def clear_reservations() -> None:
+    """Drop all outstanding reservations (test isolation / shutdown)."""
+    with _reservation_lock:
+        _reservations.clear()
+
+
 def _used_usd(user_id: str) -> float:
-    """Sum actual USD cost from token usage in the last 24 h."""
+    """Recorded USD cost (last 24 h) PLUS outstanding in-flight reservations.
+
+    Folding reservations in here means every quota reader — `check_quota`,
+    `check_and_get_quota`, `get_quota_state` — defends the pre-flight gap
+    without each having to know about reservations.
+    """
     cutoff = datetime.now(UTC).timestamp() - _ROLLING_WINDOW_SECONDS
     cutoff_iso = datetime.fromtimestamp(cutoff, tz=UTC).isoformat()
 
@@ -60,7 +144,7 @@ def _used_usd(user_id: str) -> float:
     total = 0.0
     for call_type, total_in, total_out in rows:
         total += token_cost_usd(call_type, total_in or 0, total_out or 0)
-    return total
+    return total + _reserved_usd(user_id)
 
 
 def _reset_seconds() -> int:
