@@ -440,3 +440,162 @@ class TestLoadConsistency:
         assert store.count() == 0
         assert emb_path.exists() and ids_path.exists()
         assert not list(tmp_path.glob("*.corrupt_*"))
+
+
+# --------------------------------------------------------------------- #
+# _load truncated-file  (Bug B tail: half-finished _save -> truncated /
+# unreadable .npy or ids.json)
+#
+# An interrupted _save (deploy restart / OOM / power loss) can leave the
+# .npy or the ids.json physically truncated, not just row/id-desynced.
+# `np.load` on a truncated .npy raises ValueError / EOFError; `json.loads`
+# on a truncated ids.json raises JSONDecodeError. Both raise INSIDE _load,
+# BEFORE _load_validated's structural checks ever run — so without this
+# guard the exception escapes EmbeddingStore.__init__ -> factory fails ->
+# every embedding-touching request for the notebook 500s. That is exactly
+# the failure mode #546 set out to eliminate, only a different corruption
+# shape. The fix degrades it identically: log a warning, quarantine the
+# unreadable file as `.corrupt_<reason>`, come up as an empty store that
+# the next pipeline run re-embeds. Legal files must stay untouched.
+# --------------------------------------------------------------------- #
+class TestLoadTruncatedFile:
+    def _truncated_npy_bytes(self, frac: float = 0.5) -> bytes:
+        """Return the first `frac` of a well-formed 3-row .npy's bytes."""
+        import io
+
+        buf = io.BytesIO()
+        np.save(buf, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
+        data = buf.getvalue()
+        return data[: int(len(data) * frac)]
+
+    def test_truncated_npy_degrades_to_empty(self, tmp_path: Path):
+        """A .npy truncated mid-array (np.load raises ValueError) must NOT
+        crash __init__: degrade to empty + quarantine, not 500."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        emb_path.write_bytes(self._truncated_npy_bytes(0.5))
+        ids_path.write_text(json.dumps(["a", "b", "c"]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        # Must not raise.
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        # Both files quarantined so the live names are clear for a rebuild.
+        assert not emb_path.exists() and not ids_path.exists()
+        corrupt = list(tmp_path.glob("*.corrupt_*"))
+        assert any(p.name.startswith("embeddings_default.npy") for p in corrupt)
+        assert any(p.name.startswith("card_ids_default.json") for p in corrupt)
+        # Degraded store must be safe to query.
+        assert store.find_similar("a") == []
+
+    def test_empty_npy_file_degrades_to_empty(self, tmp_path: Path):
+        """A 0-byte .npy (np.load raises EOFError) must degrade, not crash."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        emb_path.write_bytes(b"")
+        ids_path.write_text(json.dumps(["a"]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+
+    def test_garbage_npy_file_degrades_to_empty(self, tmp_path: Path):
+        """A .npy whose bytes are not a valid array (np.load raises ValueError
+        about pickled data) must degrade, not crash."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        emb_path.write_bytes(b"\x00\x01garbage not a npy file at all")
+        ids_path.write_text(json.dumps(["a"]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+
+    def test_truncated_ids_json_degrades_to_empty(self, tmp_path: Path):
+        """ids.json cut mid-write (json.loads raises JSONDecodeError) must
+        degrade, not crash __init__."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        np.save(emb_path, np.random.rand(3, EMBEDDING_DIM).astype(np.float32))
+        ids_path.write_text('["a","b","c')  # truncated mid-array
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+        corrupt = list(tmp_path.glob("*.corrupt_*"))
+        assert any(p.name.startswith("embeddings_default.npy") for p in corrupt)
+        assert any(p.name.startswith("card_ids_default.json") for p in corrupt)
+
+    def test_binary_garbage_ids_json_degrades_to_empty(self, tmp_path: Path):
+        """ids.json holding raw non-UTF-8 bytes (read_text raises
+        UnicodeDecodeError) must degrade, not crash."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        np.save(emb_path, np.random.rand(2, EMBEDDING_DIM).astype(np.float32))
+        ids_path.write_bytes(b"\xff\xfe\x00\x01\x02garbage")
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+
+    def test_truncated_npy_legacy_no_sidecar_degrades(self, tmp_path: Path):
+        """The legacy (no-meta) load branch must degrade on a truncated .npy
+        too — it calls the same _load_validated."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        emb_path.write_bytes(self._truncated_npy_bytes(0.5))
+        ids_path.write_text(json.dumps(["a", "b", "c"]))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+
+    def test_aligned_store_still_loads_after_fix(self, tmp_path: Path):
+        """Regression guard: a correctly-written store must keep loading —
+        the truncated-file try/except must not swallow legal vectors."""
+        store, _, _ = _make_store(tmp_path, preload_ids=["a", "b", "c"])
+        assert store.count() == 3
+        assert not list(tmp_path.glob("*.corrupt_*"))
+
+    def test_legal_empty_store_still_loads_after_fix(self, tmp_path: Path):
+        """Regression guard: a legal 0-row empty store must not be quarantined
+        by the truncated-file guard."""
+        emb_path = tmp_path / "embeddings_default.npy"
+        ids_path = tmp_path / "card_ids_default.json"
+        meta_path = tmp_path / "embeddings_meta_default.json"
+        np.save(emb_path, np.zeros((0, EMBEDDING_DIM), dtype=np.float32))
+        ids_path.write_text(json.dumps([]))
+        meta_path.write_text(json.dumps(
+            {"model": EMBEDDING_MODEL, "dim": EMBEDDING_DIM, "created_at": "x"}
+        ))
+        client = MagicMock()
+        llm = TrackedLLM(client, "u")
+        store = EmbeddingStore(emb_path, ids_path, llm)
+        assert store.count() == 0
+        assert emb_path.exists() and ids_path.exists()
+        assert not list(tmp_path.glob("*.corrupt_*"))
