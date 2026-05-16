@@ -126,6 +126,18 @@ def app_store_notifications_response(
     }
     append_app_store_event(event)
 
+    # An unknown / future notification type (or one like REFUND_DECLINED that
+    # leaves state unchanged) yields a snapshot with status=None. Fail-safe:
+    # acknowledge the delivery but do NOT mutate the subscription — never
+    # fail-open to "active".
+    if not snapshot.get("status"):
+        logger.warning(
+            "App Store notification type %r produced no determinate status; "
+            "skipping snapshot update (fail-safe)",
+            req.notification_type,
+        )
+        return {"status": "accepted", "updated": False, "reason": "indeterminate_status"}
+
     with FileLock(str(users_lock_file)):
         users = load_users()
         user_id = resolve_user_id_from_subscription_index(

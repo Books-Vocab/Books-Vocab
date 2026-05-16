@@ -113,7 +113,15 @@ def test_entitlement_free_when_both_absent():
     ("GRACE_PERIOD_EXPIRED", None, "expired"),
     ("EXPIRED", None, "expired"),
     ("REVOKE", None, "expired"),
-    ("UNKNOWN_TYPE", None, "active"),
+    # REFUND must revoke the entitlement — Apple already gave the money back.
+    ("REFUND", None, "expired"),
+    # REFUND_DECLINED leaves the subscription untouched (no status change).
+    ("REFUND_DECLINED", None, None),
+    # Unknown / future notification types must fail-safe (no status change),
+    # never fail-open to "active".
+    ("UNKNOWN_TYPE", None, None),
+    (None, None, None),
+    ("", None, None),
 ])
 def test_notification_status(kind, sub, expected):
     assert notification_status(kind, sub) == expected

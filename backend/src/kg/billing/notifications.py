@@ -13,7 +13,15 @@ from ..exceptions import BadRequestError, ValidationError
 _logger = logging.getLogger(__name__)
 
 
-def notification_status(notification_type: str | None, subtype: str | None) -> str:
+def notification_status(notification_type: str | None, subtype: str | None) -> str | None:
+    """Map an App Store Server Notification V2 type to a subscription status.
+
+    Returns ``None`` when the notification type does not determine an
+    entitlement status — either an unknown/future type, or one (like
+    ``REFUND_DECLINED``) that explicitly leaves the subscription untouched.
+    Callers MUST treat ``None`` as "do not update the snapshot" and never
+    fall back to ``"active"`` (fail-open).
+    """
     kind = (notification_type or "").upper()
     sub = (subtype or "").upper()
     if kind in {"SUBSCRIBED", "OFFER_REDEEMED", "DID_RENEW"}:
@@ -22,9 +30,14 @@ def notification_status(notification_type: str | None, subtype: str | None) -> s
         return "expired"
     if kind == "DID_FAIL_TO_RENEW":
         return "grace_period"
-    if kind in {"EXPIRED", "REVOKE"}:
+    if kind in {"EXPIRED", "REVOKE", "REFUND"}:
+        # REFUND: Apple has already returned the money — revoke entitlement.
         return "expired"
-    return "active"
+    if kind == "REFUND_DECLINED":
+        # Apple declined the refund — subscription state is unchanged.
+        return None
+    # Unknown / future notification type: fail-safe, do not touch the snapshot.
+    return None
 
 
 def normalize_ms_timestamp(raw: Any, parse_datetime_fn: Callable[[Any], datetime | None]) -> str | None:
