@@ -138,6 +138,21 @@ class TestDeleteUserAccountResponse:
         dt = datetime.fromisoformat(revoked["u1"].replace("Z", "+00:00"))
         assert dt.year >= 2024
 
+    def test_deletion_marks_ids_terminated(self, tmp_path):
+        """Account deletion must mark every purged id in `_terminated` so the
+        revocation watermark becomes irreversible (cannot be cleared by a
+        later login)."""
+        users_data = {
+            "canonical": {"linked_ids": ["linked1"], "config": {}},
+            "linked1": {"_linked_to": "canonical"},
+        }
+        user = {"id": "linked1"}
+        self._call_delete(tmp_path, user, users_data)
+
+        saved = json.loads((tmp_path / "users.json").read_text())
+        terminated = set(saved.get("_terminated", []))
+        assert {"canonical", "linked1"}.issubset(terminated)
+
 
 # ===========================================================================
 # health_response
