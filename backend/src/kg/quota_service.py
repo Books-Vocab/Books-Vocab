@@ -74,6 +74,12 @@ def estimate_call_cost(call_type: str) -> float:
 # no schema change, no new dependency. Cross-process workers still each
 # enforce their own slice; the dominant concurrency (one Uvicorn worker,
 # threadpool fan-out, asyncio tasks) is fully covered.
+#
+# DEPLOYMENT INVARIANT: correctness here depends on a single-worker
+# deploy. With N workers each holds its own `_reservations`, so the
+# effective over-spend ceiling becomes N × the real per-user limit.
+# This is locked by Dockerfile's `--workers 1`; see also docs/dev/deploy.md.
+# Scaling out requires moving reservations to shared storage (Redis/DB) first.
 
 _reservations: dict[int, tuple[str, float]] = {}
 _reservation_ids = itertools.count(1)

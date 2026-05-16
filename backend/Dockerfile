@@ -42,4 +42,6 @@ EXPOSE 8000
 HEALTHCHECK --interval=30s --timeout=5s --start-period=10s --retries=3 \
     CMD timeout 4 python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/docs', timeout=3)" || exit 1
 
-CMD ["uvicorn", "kg.api:app", "--host", "0.0.0.0", "--port", "8000"]
+# --workers 1 是硬性不變式，勿改：quota_service._reservations 等 process-local
+# state 不跨 worker 共享，多 worker 會導致額度 over-spend。詳見 docs/dev/deploy.md。
+CMD ["uvicorn", "kg.api:app", "--host", "0.0.0.0", "--port", "8000", "--workers", "1"]
