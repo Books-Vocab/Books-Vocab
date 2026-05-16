@@ -75,6 +75,7 @@ actor BackgroundSyncActor {
                     if let cardNotebookId = card.notebookId {
                         existingEntry.notebookId = cardNotebookId
                     }
+                    Self.applySource(from: card, into: existingEntry)
                     existingEntry.markSynced()
 
                     // Merge review state from server (server newer wins)
@@ -84,14 +85,18 @@ actor BackgroundSyncActor {
                 // If it's softly deleted but we don't have it locally, ignore it
                 if card.isDeleted == true { continue }
 
-                // Create new record
+                // Create new record. Book title/chapter come from the
+                // server `source` metadata (PR #533); fall back to a
+                // placeholder only when `source` is absent or empty.
+                let (bookTitle, chapterTitle) = Self.resolveSource(from: card)
                 let newEntry = VocabularyEntry(
                     word: card.content,
                     translation: card.meaning,
                     context: card.examples.first ?? "",
                     explanation: card.note,
                     partOfSpeech: card.pos,
-                    bookTitle: "Knowledge Graph"
+                    bookTitle: bookTitle,
+                    chapterTitle: chapterTitle
                 )
                 newEntry.difficultyTier = card.difficultyTier
                 newEntry.kgCardId = card.id
@@ -325,6 +330,44 @@ actor BackgroundSyncActor {
 
     private func mergeKey(_ word: String, notebookId: String) -> String {
         "\(word.precomposedStringWithCanonicalMapping.trimmingCharacters(in: .whitespaces).lowercased())|\(notebookId)"
+    }
+
+    // MARK: - Book Source Merge Helper
+
+    /// Placeholder shown when a synced card carries no usable book source.
+    static let fallbackBookTitle = "Knowledge Graph"
+
+    /// Resolve the book title / chapter for a card from its server `source`
+    /// metadata. iOS captures always originate from the reader so a card's
+    /// `source.type` is `"book"`; non-book / missing / empty sources fall
+    /// back to `fallbackBookTitle` with no chapter.
+    ///
+    /// This closes the sync-down gap from PR #533: the `source` field was
+    /// decoded but never consumed, so synced cards permanently lost their
+    /// book name and chapter.
+    static func resolveSource(from card: KGCard) -> (bookTitle: String, chapterTitle: String?) {
+        guard let source = card.source, source.type == "book" else {
+            return (fallbackBookTitle, nil)
+        }
+        let title = source.title?.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let title, !title.isEmpty else {
+            return (fallbackBookTitle, nil)
+        }
+        let chapter = source.chapter?.trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedChapter = (chapter?.isEmpty == false) ? chapter : nil
+        return (title, resolvedChapter)
+    }
+
+    /// Backfill an existing entry's book title / chapter from server `source`.
+    /// Only overwrites when the server actually supplies a usable book title —
+    /// a missing/empty server source must not clobber a locally-known title.
+    private static func applySource(from card: KGCard, into entry: VocabularyEntry) {
+        guard let source = card.source, source.type == "book",
+              let title = source.title?.trimmingCharacters(in: .whitespacesAndNewlines),
+              !title.isEmpty else { return }
+        entry.bookTitle = title
+        let chapter = source.chapter?.trimmingCharacters(in: .whitespacesAndNewlines)
+        entry.chapterTitle = (chapter?.isEmpty == false) ? chapter : nil
     }
 
     // MARK: - Review State Merge Helper
