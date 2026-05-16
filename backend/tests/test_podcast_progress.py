@@ -227,20 +227,109 @@ def test_lww_fractional_newer_overwrites_integer(isolated_api):
     assert resp.json()["position_sec"] == 120.0
 
 
-def test_lww_same_instant_mixed_width_is_tie(isolated_api):
+def test_lww_same_instant_mixed_width_no_clobber_by_smaller_position(isolated_api):
     """Integer-second and fractional-second strings for the SAME instant must
-    compare equal — the existing row wins (write is a no-op)."""
+    compare equal as a tie. The tie is broken by the LARGER position_sec — a
+    same-instant write carrying a *smaller* position must NOT clobber the
+    stored larger one (matches iOS `mergeRemoteProgress`:
+    `remoteWins = item.positionSec > local.lastPlayedTime`)."""
     _post_progress(
         isolated_api, "series_a", 1,
         position=120.0, duration=300.0, updated_at=_ISO_INT_SEC,
     )
-    # Same moment, fractional spelling — must be treated as a tie (stale).
+    # Same moment, fractional spelling, SMALLER position — tie lost on position.
     resp = _post_progress(
         isolated_api, "series_a", 1,
         position=10.0, duration=300.0, updated_at=_ISO_FRAC_SEC,
     )
     assert resp.status_code == 200
     assert resp.json()["position_sec"] == 120.0
+
+
+# ---------------------------------------------------------------------------
+# Same-second LWW: position tie-break must converge regardless of arrival order
+# ---------------------------------------------------------------------------
+#
+# PR #532 symmetrised the iOS↔iOS same-second merge (`mergeRemoteProgress`
+# breaks ties by larger `positionSec`), but the backend `upsert` kept a
+# first-writer-wins rule (`stored_dt >= incoming_dt`): a same-instant write
+# always lost regardless of position. Two devices pushing different positions
+# at the same wall-clock second would never converge with the server — each
+# device kept its own larger local position, every pull/push diverged again.
+# The backend must adopt the SAME position tie-break so device↔server
+# converges to the larger position independently of arrival order.
+
+
+def test_same_second_larger_position_wins_when_arrives_second(isolated_api):
+    """Smaller position stored first, larger position arrives second at the
+    SAME instant → larger position wins."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=200.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["position_sec"] == 200.0
+    resp_get = isolated_api.client.get(
+        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+    )
+    assert resp_get.json()["position_sec"] == 200.0
+
+
+def test_same_second_larger_position_wins_when_arrives_first(isolated_api):
+    """Larger position stored first, smaller position arrives second at the
+    SAME instant → larger (stored) position is retained. Symmetric to the
+    previous test: arrival order must not change the converged result."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=200.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["position_sec"] == 200.0
+    resp_get = isolated_api.client.get(
+        "/api/podcasts/series_a/1/progress", headers=isolated_api.headers,
+    )
+    assert resp_get.json()["position_sec"] == 200.0
+
+
+def test_same_second_position_tiebreak_holds_across_mixed_widths(isolated_api):
+    """The position tie-break must also work when the same instant is spelled
+    integer-second vs fractional-second — a larger-position fractional write
+    overwrites a smaller-position integer row at the same instant."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=30.0, duration=300.0, updated_at=_ISO_INT_SEC,
+    )
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=200.0, duration=300.0, updated_at=_ISO_FRAC_SEC,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["position_sec"] == 200.0
+
+
+def test_strictly_older_write_still_loses_regardless_of_position(isolated_api):
+    """A strictly-older timestamp must lose even when it carries a larger
+    position — the position tie-break only applies at the SAME instant, not
+    as a general override of the timestamp ordering."""
+    _post_progress(
+        isolated_api, "series_a", 1,
+        position=30.0, duration=300.0, updated_at=_ISO_NOW,
+    )
+    resp = _post_progress(
+        isolated_api, "series_a", 1,
+        position=999.0, duration=300.0, updated_at=_ISO_EARLIER,
+    )
+    assert resp.status_code == 200
+    assert resp.json()["position_sec"] == 30.0
+    assert resp.json()["updated_at"] == _ISO_NOW
 
 
 # ---------------------------------------------------------------------------
