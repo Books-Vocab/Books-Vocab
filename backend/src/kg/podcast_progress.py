@@ -151,9 +151,19 @@ def upsert(
 ) -> dict:
     """Insert or update the row for ``(user_id, series_id, ep_num)``.
 
-    Last-write-wins: if an existing row has an ``updated_at`` >= the incoming
-    one, the existing row is returned unchanged. Otherwise the row is
-    overwritten and the new payload is returned.
+    Last-write-wins by ``updated_at``: a strictly-older incoming write is
+    ignored and the existing row is returned unchanged; a strictly-newer one
+    overwrites. When the two instants are *equal* (same wall-clock second,
+    possibly spelled in different ISO8601 widths) the timestamp can no longer
+    order them, so the tie is broken by ``position_sec`` — the larger one
+    wins. This mirrors iOS ``PodcastProgressStore.mergeRemoteProgress``
+    (``remoteWins = item.positionSec > local.lastPlayedTime``); without it the
+    backend kept a first-writer-wins rule and two devices pushing different
+    positions at the same second would diverge from the server forever
+    (each device retains its own larger local position, every pull/push
+    re-diverges). The position tie-break applies ONLY at an equal instant —
+    a strictly-older write still loses regardless of how large its position
+    is, so the timestamp ordering is not overridden.
 
     The comparison is on the *parsed* instants, not the raw ISO8601 strings.
     iOS emits fractional-second timestamps (``.withFractionalSeconds``) while
@@ -173,18 +183,25 @@ def upsert(
             (user_id, series_id, ep_num),
         ).fetchone()
         stored_dt = _parse_instant(row[2]) if row is not None else None
-        # Stale iff a stored row exists and is newer-or-equal. Comparison is on
-        # parsed instants; if either side is unparseable, fall back to the raw
-        # string compare so a malformed value can never crash the write path.
+        # Stale decision. Comparison is on parsed instants; if either side is
+        # unparseable, fall back to the raw string compare so a malformed
+        # value can never crash the write path.
         if row is not None:
             if stored_dt is not None and incoming_dt is not None:
-                stale = stored_dt >= incoming_dt
+                if stored_dt == incoming_dt:
+                    # Same instant — timestamp cannot order the two writes.
+                    # Break the tie by position_sec (larger wins), matching the
+                    # iOS mergeRemoteProgress rule so device<->server converges.
+                    stale = float(position_sec) <= float(row[0])
+                else:
+                    stale = stored_dt > incoming_dt
             else:
                 stale = row[2] >= updated_at
         else:
             stale = False
         if stale:
-            # Existing row is newer (or same instant) — ignore stale write.
+            # Existing row wins (strictly newer, or same instant with a
+            # position >= the incoming one) — ignore the stale write.
             return {
                 "series_id": series_id,
                 "ep_num": ep_num,
