@@ -255,6 +255,23 @@ struct KGServiceTests {
         #expect(card.source?.url == nil)
     }
 
+    @Test func card_decodes_book_source_with_chapter() throws {
+        // Backend `VocabSource` carries a book-only `chapter` field; iOS
+        // must not silently drop it when decoding the card payload.
+        let json = """
+        {"id":"c1","content":"ephemeral","meaning":"短暫的","pos":null,
+         "difficulty":null,"difficultyTier":null,"note":null,"collocations":[],
+         "examples":[],"mode":"recognition","isDeleted":false,
+         "source":{"type":"book","title":"Moby Dick","url":null,
+                   "chapter":"Chapter 1: Loomings"}}
+        """.data(using: .utf8)!
+        let card = try JSONDecoder().decode(KGCard.self, from: json)
+        #expect(card.source?.type == "book")
+        #expect(card.source?.title == "Moby Dick")
+        #expect(card.source?.url == nil)
+        #expect(card.source?.chapter == "Chapter 1: Loomings")
+    }
+
     @Test func card_decodes_with_missing_source_as_nil() throws {
         let json = """
         {"id":"c1","content":"ephemeral","meaning":"短暫的","pos":null,
