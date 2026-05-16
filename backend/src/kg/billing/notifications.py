@@ -157,6 +157,10 @@ def decode_notification_payload(
 
     verified_notification = verify_signed_jws(req.signed_payload, bundle_id=bundle_id)
     notification_payload = verified_notification.payload
+    # Trust the verified envelope, not the client-supplied req fields, for the
+    # type/subtype used in the fail-safe known-type check below.
+    notification_type = notification_payload.get("notificationType")
+    subtype = notification_payload.get("subtype")
     data = notification_payload.get("data", {})
     if not isinstance(data, dict):
         raise BadRequestError("App Store notification data payload is malformed")
@@ -176,4 +180,22 @@ def decode_notification_payload(
         parse_datetime_fn=parse_datetime_fn,
         renewal_payload=renewal_payload,
     )
+
+    # Fail-safe symmetry with the unsigned path: status_from_transaction_payload
+    # returns a concrete status ("active"/"trial"/...) for any un-expired
+    # transaction, so a signed notification with an unknown/future type (or one
+    # like REFUND_DECLINED that leaves state untouched) would otherwise
+    # fail-open and grant Pro. notification_status() returns None for exactly
+    # those types — when it does, clear the transaction-derived status so the
+    # caller's indeterminate_status fail-safe (which only checks the status
+    # field) skips the snapshot write. Known types keep their transaction-
+    # derived status unchanged.
+    if notification_status(notification_type, subtype) is None:
+        _logger.warning(
+            "Signed App Store notification type %r is unknown/indeterminate; "
+            "clearing transaction-derived status to trigger fail-safe",
+            notification_type,
+        )
+        snapshot = {**snapshot, "status": None, "is_trial": False}
+
     return snapshot, notification_payload
