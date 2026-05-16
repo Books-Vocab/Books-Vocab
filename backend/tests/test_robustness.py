@@ -17,7 +17,12 @@ import os
 import threading
 import time
 import uuid
+from datetime import UTC, datetime, timedelta
 from unittest.mock import MagicMock, patch
+
+
+def _future_iso(days: int = 30) -> str:
+    return (datetime.now(tz=UTC) + timedelta(days=days)).isoformat()
 
 import pytest
 from fastapi.testclient import TestClient
@@ -215,7 +220,7 @@ class TestBatchA_UsersJsonLock:
                 "environment": "sandbox",
                 "status": "trial",
                 "is_trial": True,
-                "expires_at": "2026-03-14T00:00:00+00:00",
+                "expires_at": _future_iso(7),
                 "will_renew": True,
                 "price_display": "$1.00/month",
             },
@@ -243,7 +248,7 @@ class TestBatchA_UsersJsonLock:
                 "environment": "sandbox",
                 "status": "active",
                 "is_trial": False,
-                "expires_at": "2026-03-14T00:00:00+00:00",
+                "expires_at": _future_iso(30),
                 "will_renew": True,
                 "price_display": "$1.00/month",
             },
@@ -258,7 +263,7 @@ class TestBatchA_UsersJsonLock:
                 "transaction_id": "tx-2",
                 "original_transaction_id": "otx-1",
                 "environment": "production",
-                "expires_at": "2026-03-21T00:00:00+00:00",
+                "expires_at": _future_iso(37),
                 "will_renew": False,
             },
         )
