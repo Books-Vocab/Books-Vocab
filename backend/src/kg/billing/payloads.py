@@ -58,12 +58,34 @@ def admin_grant_is_active(user_record: dict[str, Any] | None) -> bool:
     return True
 
 
+def subscription_is_active(subscription: dict[str, Any]) -> bool:
+    """Resolve whether a stored subscription still grants Pro right now.
+
+    The stored ``is_active`` flag is a static snapshot computed at sync time
+    from ``status``. If the Apple EXPIRED notification never arrives it stays
+    ``True`` forever, so we re-check ``expires_at`` here — mirroring
+    ``admin_grant_is_active``. ``grace_period`` legitimately carries a past
+    ``expires_at`` (Apple's billing-retry window) and must remain entitled.
+    """
+    if not subscription.get("is_active"):
+        return False
+    if subscription.get("status") == "grace_period":
+        return True
+    expires_at = parse_datetime(subscription.get("expires_at"))
+    if expires_at and expires_at <= datetime.now(tz=UTC):
+        return False
+    return True
+
+
 def current_subscription_record(user_record: dict[str, Any] | None) -> dict[str, Any]:
     record = user_record if isinstance(user_record, dict) else {}
     raw_subscription = record.get("subscription")
     subscription = default_subscription_payload()
     if isinstance(raw_subscription, dict):
         subscription.update(raw_subscription)
+    if subscription.get("is_active") and not subscription_is_active(subscription):
+        subscription["is_active"] = False
+        subscription["status"] = "expired"
     return subscription
 
 

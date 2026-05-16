@@ -102,6 +102,47 @@ def test_entitlement_free_when_both_absent():
     assert rec["status"] == "inactive"
 
 
+def test_entitlement_expired_subscription_is_not_active():
+    """Stale is_active=True with a past expires_at must not grant Pro."""
+    user = {
+        "subscription": {
+            "is_active": True,
+            "status": "active",
+            "product_id": "sub_pro",
+            "expires_at": _past_iso(),
+        }
+    }
+    rec = current_pro_entitlement_record(user)
+    assert rec["is_active"] is False
+
+
+def test_entitlement_grace_period_past_expiry_stays_active():
+    """grace_period subscriptions legitimately carry a past expires_at."""
+    user = {
+        "subscription": {
+            "is_active": True,
+            "status": "grace_period",
+            "product_id": "sub_pro",
+            "expires_at": _past_iso(),
+        }
+    }
+    rec = current_pro_entitlement_record(user)
+    assert rec["is_active"] is True
+
+
+def test_entitlement_future_expiry_subscription_is_active():
+    user = {
+        "subscription": {
+            "is_active": True,
+            "status": "active",
+            "product_id": "sub_pro",
+            "expires_at": _future_iso(),
+        }
+    }
+    rec = current_pro_entitlement_record(user)
+    assert rec["is_active"] is True
+
+
 # ── notification_status ────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("kind,sub,expected", [
