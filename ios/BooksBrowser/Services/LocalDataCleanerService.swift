@@ -16,5 +16,10 @@ final class LocalDataCleanerService: LocalDataClearing {
         defaults.removeObject(forKey: "kg_review_payload_version")
         defaults.removeObject(forKey: "activeNotebookId")
         defaults.removeObject(forKey: NotebookFilter.storageKey)
+        // Today-review session snapshots are keyed per-user in a single
+        // UserDefaults blob. Logout and account-switch both route through here,
+        // so clear every user's snapshot to prevent a stale session from being
+        // restored on re-login (or surviving until the 7-day maxAge expiry).
+        TodayReviewSessionSnapshotStore.clear(for: nil)
     }
 }
