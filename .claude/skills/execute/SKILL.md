@@ -81,7 +81,10 @@ Build 失敗 → 讀錯誤 ±20 行，修復，重新 commit + push，再 build�
 
 ### Phase 5: Cleanup
 
+**先 `cd` 回 repo root 絕對路徑再拆 worktree。** Phase 4 的 `cd <worktree> && gh pr create` 會把 Bash cwd 留在 worktree 內；cwd 還在 worktree 裡就 `git worktree remove` 會把自己腳下的目錄刪掉，觸發 `fatal: Unable to read current working directory`。不要假設「cwd 應該還在 root」，顯式 `cd` 回去。
+
 ```bash
+cd <repo root 絕對路徑>
 git worktree remove <path>
 git worktree prune
 ```
