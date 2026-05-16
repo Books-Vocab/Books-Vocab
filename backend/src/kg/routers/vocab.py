@@ -194,15 +194,22 @@ def get_graph_links(
 @router.post("/api/graph/links", response_model=GraphLinkResponse)
 def create_graph_link(
     req: ManualLinkRequest,
+    response: Response,
     notebook_id: str = Query("default", pattern=NOTEBOOK_ID_PATTERN),
     user: dict = Depends(get_current_user),
 ):
-    return create_manual_link_response(
+    # Manual link creation invokes ManualLinkJudge + TrackedLLM (real LLM
+    # call). Gate it with the daily quota, like add_vocab / pipeline /
+    # translate, so an over-quota user cannot burn unbounded LLM cost.
+    quota = _check_quota(user, "manual_link", response)
+    result = create_manual_link_response(
         req, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         gemini_client_factory=_gemini_client, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
+    _apply_quota_headers(response, quota)
+    return result
 
 
 @router.patch("/api/graph/links/{link_id}/hide", status_code=204)
