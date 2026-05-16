@@ -156,6 +156,80 @@ class TestIsPro:
         user = {"id": "u1", "record": {"admin_grant": {"is_active": False}}}
         assert _is_pro(user) is False
 
+    # ── subscription expiry recheck ──────────────────────────────────
+    # Guards against the bug where a stored subscription with a stale
+    # is_active=True flag keeps granting Pro forever if the Apple
+    # EXPIRED notification never arrives. The expires_at timestamp must
+    # be honoured over the static flag — mirroring admin_grant_is_active.
+
+    def test_subscription_expired_despite_is_active_flag(self):
+        """is_active=True + active status but expires_at in the past → NOT pro."""
+        past = datetime.now(UTC) - timedelta(days=1)
+        user = {
+            "id": "u1",
+            "record": {
+                "subscription": {
+                    "is_active": True,
+                    "status": "active",
+                    "expires_at": _iso(past),
+                }
+            },
+        }
+        assert _is_pro(user) is False
+
+    def test_subscription_trial_expired_is_not_pro(self):
+        """Trial status with a past expiry must also lose Pro."""
+        past = datetime.now(UTC) - timedelta(seconds=1)
+        user = {
+            "id": "u1",
+            "record": {
+                "subscription": {
+                    "is_active": True,
+                    "status": "trial",
+                    "expires_at": _iso(past),
+                }
+            },
+        }
+        assert _is_pro(user) is False
+
+    def test_subscription_future_expiry_is_pro(self):
+        """Active subscription whose expiry is still in the future stays Pro."""
+        future = datetime.now(UTC) + timedelta(days=30)
+        user = {
+            "id": "u1",
+            "record": {
+                "subscription": {
+                    "is_active": True,
+                    "status": "active",
+                    "expires_at": _iso(future),
+                }
+            },
+        }
+        assert _is_pro(user) is True
+
+    def test_subscription_active_without_expiry_is_pro(self):
+        """An active sub with no expires_at must not be downgraded (no regression)."""
+        user = {
+            "id": "u1",
+            "record": {"subscription": {"is_active": True, "status": "active"}},
+        }
+        assert _is_pro(user) is True
+
+    def test_subscription_grace_period_past_expiry_stays_pro(self):
+        """grace_period legitimately has a past expires_at — must remain Pro."""
+        past = datetime.now(UTC) - timedelta(days=1)
+        user = {
+            "id": "u1",
+            "record": {
+                "subscription": {
+                    "is_active": True,
+                    "status": "grace_period",
+                    "expires_at": _iso(past),
+                }
+            },
+        }
+        assert _is_pro(user) is True
+
 
 # ── _with_quota_check: allow path ────────────────────────────────────
 
