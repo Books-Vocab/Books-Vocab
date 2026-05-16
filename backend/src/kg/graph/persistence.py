@@ -21,10 +21,18 @@ before writing:
   instance unblocked is honoured (a naive union would resurrect it), while a
   pair blocked by another instance is preserved.
 
-``_flush_candidates`` / ``_flush_pending_judge`` hold transient pre-judge
-state (pop-style, cleared as a unit); they run under the same file lock so
-the ``tmp -> bak -> replace`` rename is never interleaved across instances,
-but they intentionally keep last-writer-wins semantics.
+``_flush_candidates`` / ``_flush_pending_judge`` hold pre-judge state. It is
+*not* pop-only: ``add_candidate`` / ``batch_add_candidates`` /
+``requeue_candidates`` / ``add_pending_judge`` all *append* incrementally, so
+a naive whole-file overwrite is the same lost-update bug as on links -- a
+stale second instance erases a card another instance queued, and that card
+is never judged. These two flushes therefore merge under the file lock just
+like ``_flush_links``:
+
+- ``_known_pending_judge`` / ``_known_candidate_pairs`` make ids/pairs this
+  instance has ever held authoritative, so a pop/removal still takes effect.
+- An id/pair present on disk but unknown to the instance (queued by another
+  instance) is preserved instead of being clobbered.
 """
 
 from __future__ import annotations
@@ -54,10 +62,16 @@ class _PersistenceMixin:
     _pending_judge: set[str]
     _known_link_ids: set[str]
     _known_blocked_pairs: set[tuple[str, str]]
+    _known_pending_judge: set[str]
+    _known_candidate_pairs: set[tuple[str, str]]
     _links_write_lock: Any
     _candidates_write_lock: Any
     _blocked_write_lock: Any
     _pending_judge_write_lock: Any
+
+    # Helper supplied by GraphStore.
+    @staticmethod
+    def _normalize_pair(a: str, b: str) -> tuple[str, str]: ...  # noqa: D102
 
     @staticmethod
     def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None:
@@ -102,9 +116,9 @@ class _PersistenceMixin:
     # Per-file serialised write helpers.
     #
     # Each acquires (a) the in-process file-level write lock and (b) the
-    # cross-process fcntl advisory lock on the path. _flush_links and
-    # _flush_blocked additionally re-read + merge under that lock so a
-    # stale instance cannot clobber another's durable changes.
+    # cross-process fcntl advisory lock on the path. Every _flush_* helper
+    # additionally re-reads + merges under that lock so a stale instance
+    # cannot clobber another's durable changes.
     # ------------------------------------------------------------------
 
     def _flush_links(self, snapshot: list[dict]) -> None:
@@ -162,16 +176,61 @@ class _PersistenceMixin:
             )
 
     def _flush_candidates(self, snapshot: list[dict]) -> None:
-        """Persist candidate pairs (transient pre-judge state, last-writer-wins)."""
+        """Persist candidate pairs, merging with the current on-disk file.
+
+        ``snapshot`` is this instance's full ``_candidates`` view. Under the
+        file lock the on-disk file is re-read; any candidate whose normalised
+        pair is unknown to this instance (not in ``_known_candidate_pairs``)
+        is preserved, while pairs the instance manages -- including ones it
+        popped or removed -- follow the snapshot.
+        """
         with self._candidates_write_lock, path_write_lock(self.candidates_path):
-            self._atomic_json_write(self.candidates_path, snapshot)
+            snapshot_pairs = {
+                self._normalize_pair(row["from_id"], row["to_id"])
+                for row in snapshot
+            }
+            merged = list(snapshot)
+            for row in self._read_json_list(self.candidates_path):
+                from_id, to_id = row.get("from_id"), row.get("to_id")
+                if from_id is None or to_id is None:
+                    continue
+                pair = self._normalize_pair(from_id, to_id)
+                if pair in snapshot_pairs:
+                    continue
+                if pair in self._known_candidate_pairs:
+                    # This instance knew this pair and dropped it (pop /
+                    # remove / migrate) -> honour the removal.
+                    continue
+                # Foreign candidate queued by another instance: preserve it,
+                # but do NOT register it as managed by us -- otherwise our
+                # next flush (snapshot lacks it) would treat it as a removal.
+                merged.append(row)
+            self._atomic_json_write(self.candidates_path, merged)
 
     def _flush_pending_judge(self, snapshot: list[str]) -> None:
-        """Persist pending-judge ids (transient pre-judge state, last-writer-wins)."""
+        """Persist pending-judge ids, merging with the current on-disk file.
+
+        ``snapshot`` is this instance's full ``_pending_judge`` view. Under the
+        file lock the on-disk file is re-read; any id unknown to this instance
+        (not in ``_known_pending_judge``) is preserved, while ids the instance
+        manages -- including ones it popped or removed -- follow the snapshot.
+        """
         if self.pending_judge_path is None:
             return
         with self._pending_judge_write_lock, path_write_lock(self.pending_judge_path):
-            self._atomic_json_write(self.pending_judge_path, snapshot, indent=None)
+            merged = set(snapshot)
+            for rid in self._read_json_list(self.pending_judge_path):
+                if not isinstance(rid, str) or rid in merged:
+                    continue
+                if rid in self._known_pending_judge:
+                    # This instance knew this id and dropped it -> honour it.
+                    continue
+                # Foreign id queued by another instance: preserve it, but do
+                # NOT register it as managed by us.
+                merged.add(rid)
+            self._atomic_json_write(
+                self.pending_judge_path, sorted(merged), indent=None
+            )
 
     # These internal _save_* are still used from _load (dirty migration path)
     # where we are NOT inside a concurrent context yet.
