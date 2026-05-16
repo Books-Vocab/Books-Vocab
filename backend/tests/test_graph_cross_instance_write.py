@@ -29,6 +29,16 @@ def _new_store(tmp_path):
     )
 
 
+def _new_store_pj(tmp_path):
+    """Store variant with a pending_judge file so judge-queue paths are live."""
+    return GraphStore(
+        links_path=tmp_path / "links.json",
+        candidates_path=tmp_path / "candidates.json",
+        blocked_path=tmp_path / "blocked.json",
+        pending_judge_path=tmp_path / "pending_judge.json",
+    )
+
+
 class TestCrossInstanceLinks:
     """Two independent GraphStore instances must not lose each other's links."""
 
@@ -214,6 +224,216 @@ class TestDiskMergeBehaviour:
         disk_ids = {row["id"] for row in on_disk}
         assert "ext_link_0001" in disk_ids, (
             "flush overwrote an externally-added link with a stale snapshot"
+        )
+
+
+class TestCrossInstancePendingJudge:
+    """add_pending_judge across stale instances must not lose card ids.
+
+    pending_judge is *append-style* (add_pending_judge), not pop-only. Two
+    instances each holding a stale snapshot that each add a different card
+    must both survive: a whole-file last-writer-wins flush would erase the
+    other instance's card -> that card is never judged, link never created.
+    """
+
+    def test_sequential_two_instances_no_lost_pending_judge(self, tmp_path):
+        """B constructed first, A adds c1, then B adds c2: both must survive."""
+        a = _new_store_pj(tmp_path)
+        b = _new_store_pj(tmp_path)  # B's pending_judge snapshot is empty
+
+        a.add_pending_judge(["c1"])
+        b.add_pending_judge(["c2"])
+
+        reloaded = _new_store_pj(tmp_path)
+        assert reloaded._pending_judge == {"c1", "c2"}, (
+            "pending_judge card lost: stale snapshot overwrote the other instance"
+        )
+
+    def test_interleaved_two_instances_no_lost_pending_judge(self, tmp_path):
+        """Concurrent add_pending_judge across two instances: no id lost."""
+        a = _new_store_pj(tmp_path)
+        b = _new_store_pj(tmp_path)
+        n = 30
+        barrier = threading.Barrier(2)
+        errors: list[Exception] = []
+
+        def writer(store: GraphStore, prefix: str):
+            try:
+                barrier.wait(timeout=5)
+                for i in range(n):
+                    store.add_pending_judge([f"{prefix}_card_{i}"])
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        t1 = threading.Thread(target=writer, args=(a, "A"))
+        t2 = threading.Thread(target=writer, args=(b, "B"))
+        t1.start()
+        t2.start()
+        t1.join(timeout=20)
+        t2.join(timeout=20)
+
+        assert not errors, f"writer errors: {errors}"
+
+        reloaded = _new_store_pj(tmp_path)
+        assert len(reloaded._pending_judge) == 2 * n, (
+            f"expected {2 * n} pending_judge ids on disk, found "
+            f"{len(reloaded._pending_judge)} -- cross-instance lost update"
+        )
+
+    def test_pop_pending_judge_preserves_foreign_added_id(self, tmp_path):
+        """pop on A must not clear a card B added after A loaded."""
+        a = _new_store_pj(tmp_path)
+        a.add_pending_judge(["c1"])
+
+        b = _new_store_pj(tmp_path)  # B knows c1
+        b.add_pending_judge(["c2"])  # c2 is foreign to A
+
+        # A pops -- it only knows c1; c2 must NOT be wiped.
+        popped = a.pop_pending_judge()
+        assert popped == ["c1"]
+
+        reloaded = _new_store_pj(tmp_path)
+        assert reloaded._pending_judge == {"c2"}, (
+            "pop_pending_judge wiped a card added by another instance"
+        )
+
+
+class TestPopExactlyOnce:
+    """pop_* releases _lock during its flush; concurrent pops on the same
+    instance must still hand each item to exactly one caller."""
+
+    def test_concurrent_pop_pending_judge_no_duplicate(self, tmp_path):
+        store = _new_store_pj(tmp_path)
+        n = 50
+        store.add_pending_judge([f"c{i}" for i in range(n)])
+
+        barrier = threading.Barrier(2)
+        results: list[list[str]] = []
+        lock = threading.Lock()
+
+        def popper():
+            barrier.wait(timeout=5)
+            popped = store.pop_pending_judge()
+            with lock:
+                results.append(popped)
+
+        t1 = threading.Thread(target=popper)
+        t2 = threading.Thread(target=popper)
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+
+        all_popped = [x for r in results for x in r]
+        assert sorted(all_popped) == sorted(f"c{i}" for i in range(n)), (
+            "pop_pending_judge handed an id to two callers (or lost one)"
+        )
+        assert store.pending_judge_count() == 0
+
+    def test_concurrent_pop_candidates_no_duplicate(self, tmp_path):
+        store = _new_store(tmp_path)
+        n = 50
+        for i in range(n):
+            store.add_candidate(f"f{i}", f"t{i}", 0.9)
+
+        barrier = threading.Barrier(2)
+        results: list[list] = []
+        lock = threading.Lock()
+
+        def popper():
+            barrier.wait(timeout=5)
+            popped = store.pop_candidates()
+            with lock:
+                results.append(popped)
+
+        t1 = threading.Thread(target=popper)
+        t2 = threading.Thread(target=popper)
+        t1.start()
+        t2.start()
+        t1.join(timeout=10)
+        t2.join(timeout=10)
+
+        all_pairs = [
+            tuple(sorted([c.from_id, c.to_id]))
+            for r in results for c in r
+        ]
+        assert sorted(all_pairs) == sorted(
+            tuple(sorted([f"f{i}", f"t{i}"])) for i in range(n)
+        ), "pop_candidates handed a pair to two callers (or lost one)"
+        assert store.candidate_count() == 0
+
+
+class TestCrossInstanceCandidates:
+    """add_candidate / batch_add_candidates across stale instances.
+
+    add_candidate is append-style. Two stale instances each adding a
+    different candidate pair must both survive a whole-file flush.
+    """
+
+    def test_sequential_two_instances_no_lost_candidate(self, tmp_path):
+        """B constructed first, A adds one pair, B adds another: both survive."""
+        a = _new_store(tmp_path)
+        b = _new_store(tmp_path)  # B's candidate snapshot is empty
+
+        a.add_candidate("a1", "a2", 0.9)
+        b.add_candidate("b1", "b2", 0.8)
+
+        reloaded = _new_store(tmp_path)
+        pairs = {
+            tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates
+        }
+        assert ("a1", "a2") in pairs, "candidate from A lost (overwritten by B)"
+        assert ("b1", "b2") in pairs, "candidate from B lost"
+
+    def test_interleaved_two_instances_no_lost_candidate(self, tmp_path):
+        """Concurrent add_candidate across two instances: no pair lost."""
+        a = _new_store(tmp_path)
+        b = _new_store(tmp_path)
+        n = 30
+        barrier = threading.Barrier(2)
+        errors: list[Exception] = []
+
+        def writer(store: GraphStore, prefix: str):
+            try:
+                barrier.wait(timeout=5)
+                for i in range(n):
+                    store.add_candidate(f"{prefix}_f_{i}", f"{prefix}_t_{i}", 0.9)
+            except Exception as exc:  # noqa: BLE001
+                errors.append(exc)
+
+        t1 = threading.Thread(target=writer, args=(a, "A"))
+        t2 = threading.Thread(target=writer, args=(b, "B"))
+        t1.start()
+        t2.start()
+        t1.join(timeout=20)
+        t2.join(timeout=20)
+
+        assert not errors, f"writer errors: {errors}"
+
+        reloaded = _new_store(tmp_path)
+        assert len(reloaded._candidates) == 2 * n, (
+            f"expected {2 * n} candidates on disk, found "
+            f"{len(reloaded._candidates)} -- cross-instance lost update"
+        )
+
+    def test_pop_candidates_preserves_foreign_added_candidate(self, tmp_path):
+        """pop_candidates on A must not clear a pair B added after A loaded."""
+        a = _new_store(tmp_path)
+        a.add_candidate("a1", "a2", 0.9)
+
+        b = _new_store(tmp_path)  # B knows (a1, a2)
+        b.add_candidate("b1", "b2", 0.8)  # foreign to A
+
+        popped = a.pop_candidates()
+        popped_pairs = {tuple(sorted([c.from_id, c.to_id])) for c in popped}
+        assert ("a1", "a2") in popped_pairs
+
+        reloaded = _new_store(tmp_path)
+        pairs = {
+            tuple(sorted([c.from_id, c.to_id])) for c in reloaded._candidates
+        }
+        assert pairs == {("b1", "b2")}, (
+            "pop_candidates wiped a candidate added by another instance"
         )
 
 

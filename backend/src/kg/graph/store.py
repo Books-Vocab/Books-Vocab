@@ -52,6 +52,14 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._candidates_write_lock = threading.Lock()
         self._blocked_write_lock = threading.Lock()
         self._pending_judge_write_lock = threading.Lock()
+        # Pop serialisation locks: pop_* releases _lock during its (slow)
+        # flush, so without this two concurrent pop_* calls on the SAME
+        # instance could each observe the not-yet-removed items and return
+        # them twice. These locks make pop atomic per item-set (exactly-once)
+        # while keeping disk I/O off _lock. Distinct from _*_write_lock,
+        # which _flush_* takes -- reusing it would deadlock (non-reentrant).
+        self._pending_judge_pop_lock = threading.Lock()
+        self._candidates_pop_lock = threading.Lock()
         self._links: dict[str, GraphLink] = {}
         # Every link id this instance has ever held (loaded or created). Used
         # by _flush_links to tell "deleted by me" (drop) from "added by another
@@ -59,12 +67,20 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         self._known_link_ids: set[str] = set()
         self._candidates: list[CandidatePair] = []
         self._candidate_set: set[tuple[str, str]] = set()  # normalised pairs
+        # Every candidate pair this instance has ever held (loaded or added).
+        # Mirrors _known_link_ids: lets _flush_candidates tell "removed/popped
+        # by me" (drop) from "added by another instance" (preserve) on merge.
+        self._known_candidate_pairs: set[tuple[str, str]] = set()
         self._blocked_pairs: set[tuple[str, str]] = set()
         # Every blocked pair this instance has ever held (loaded or blocked).
         # Mirrors _known_link_ids: lets _flush_blocked tell "unblocked by me"
         # (drop) from "blocked by another instance" (preserve) when merging.
         self._known_blocked_pairs: set[tuple[str, str]] = set()
         self._pending_judge: set[str] = set()
+        # Every pending-judge id this instance has ever held. Mirrors
+        # _known_link_ids: _flush_pending_judge uses it to tell "popped/removed
+        # by me" (drop) from "added by another instance" (preserve) on merge.
+        self._known_pending_judge: set[str] = set()
         self._from_index: dict[str, set[str]] = {}  # card_id -> set of link_ids
         self._to_index: dict[str, set[str]] = {}    # card_id -> set of link_ids
         self._load()
@@ -131,11 +147,16 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.candidates_path.exists():
             data = json.loads(self.candidates_path.read_text())
             self._candidates = [CandidatePair.model_validate(c) for c in data]
+            for c in self._candidates:
+                self._known_candidate_pairs.add(
+                    self._normalize_pair(c.from_id, c.to_id)
+                )
         # Load pending_judge
         if self.pending_judge_path and self.pending_judge_path.exists():
             pj_data = json.loads(self.pending_judge_path.read_text())
             if isinstance(pj_data, list):
                 self._pending_judge = {x for x in pj_data if isinstance(x, str)}
+                self._known_pending_judge |= self._pending_judge
             else:
                 logger.warning("Invalid pending_judge format, resetting: %s", type(pj_data).__name__)
                 self._pending_judge = set()
@@ -143,6 +164,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         if self.pending_judge_path and self._candidates:
             migrated_ids = {c.from_id for c in self._candidates}
             self._pending_judge.update(migrated_ids)
+            self._known_pending_judge |= migrated_ids
             self._candidates.clear()
             self._candidate_set.clear()
             self._save_candidates()
