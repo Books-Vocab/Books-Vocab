@@ -217,7 +217,7 @@ class TestBatchA_UsersJsonLock:
                 "product_id": "com.wordnexus.pro.monthly",
                 "transaction_id": "tx-1",
                 "original_transaction_id": "otx-1",
-                "environment": "sandbox",
+                "environment": "production",
                 "status": "trial",
                 "is_trial": True,
                 "expires_at": _future_iso(7),
