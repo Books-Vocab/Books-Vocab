@@ -24,6 +24,14 @@ def create_jwt_token(
         "provider": provider,
         "iat": now,
         "exp": expires,
+        # Standard `iat` is encoded as an integer Unix timestamp (floored to
+        # whole seconds), so it cannot tell apart a token issued just before
+        # vs. just after an account deletion that landed in the same second.
+        # `iat_us` carries the microsecond-precise issuance instant; the
+        # revocation-watermark check (user_context.resolve_current_user)
+        # prefers it so a fresh post-deletion login JWT is not falsely
+        # rejected by a same-second deletion watermark.
+        "iat_us": now.isoformat(),
     }
     return jwt.encode(payload, jwt_secret, algorithm=jwt_algorithm)
 
