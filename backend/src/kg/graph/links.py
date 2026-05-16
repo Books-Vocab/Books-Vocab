@@ -16,6 +16,7 @@ class _LinksMixin:
     _lock: threading.Lock
     _links: dict[str, GraphLink]
     _blocked_pairs: set[tuple[str, str]]
+    _known_blocked_pairs: set[tuple[str, str]]
     _from_index: dict[str, set[str]]
     _to_index: dict[str, set[str]]
 
@@ -165,7 +166,11 @@ class _LinksMixin:
             from_id, to_id = lk.from_id, lk.to_id
             self._unindex_link(lk)
             del self._links[link_id]
-            self._blocked_pairs.add(self._normalize_pair(from_id, to_id))
+            pair = self._normalize_pair(from_id, to_id)
+            self._blocked_pairs.add(pair)
+            # Register so a later _flush_blocked merge treats this pair as
+            # managed by this instance (a subsequent unblock is honoured).
+            self._known_blocked_pairs.add(pair)
             links_snapshot = self._links_to_serializable()
             blocked_snapshot = self._blocked_to_serializable()
         self._flush_links(links_snapshot)
