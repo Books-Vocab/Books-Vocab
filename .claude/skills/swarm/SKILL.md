@@ -135,13 +135,15 @@ scan agent 的 medium-severity 發現約**半數是誤報**（查證後常發現
 
 流程：scan 回報疑似 bug → 派一個**短的唯讀 confirm agent**（或你自己）用具體 repro 確認 bug 真實 → **確認後**才預建 worktree、派 write agent。沒 repro 不投。
 
+**嚴重度由 orchestrator 落地，不照單全收。** scan / audit agent 標的 🛑/⚠️ 是**程式碼層嚴重度** — agent 不知道部署拓樸。真實嚴重度 = 程式碼層嚴重度 × 部署事實（worker 數、實例數、該路徑當前是否真的會觸發）。例：agent 把一個並發 race 標 🛑，你先查 `Dockerfile` 確認單 worker → 該 race 當前不觸發 → 降為「潛在」，不急著投昂貴的 write agent，也不引入新風險。**先確認部署事實，再定投入與優先序。** 這點也寫進 audit 類 agent 的 prompt：要求它分開報「程式碼層嚴重度」與「觸發前提」。
+
 ## 收到通知時（pipeline 模式）
 
 | 事件 | 立即動作（全部 background） |
 |---|---|
 | write agent 完工 | 1) `cd worktree` **機械驗 branch**（見下）2) 驗過才 push 3) 開 PR 4) 派 reviewer 5) 派下一條 |
 | write agent「等 build 通知」訊息 | **視為待 commit** — 立即 `cd worktree && git status`，有未 commit 就親手 commit |
-| reviewer PASS | `gh pr merge <n> --squash --admin`（避開 main worktree 衝突） |
+| reviewer PASS | 先 `cd` 回 repo root → `git worktree remove` 該 track 的 worktree → `gh pr merge <n> --squash --admin --delete-branch`（順序與理由見「worktree 生命週期衛生」；`--squash` 避開 main worktree 衝突） |
 | reviewer NEEDS-FIX | 立即派 fixer，PR 留 open |
 | reviewer BLOCKER | 立即派 fixer 或廢棄 PR；不問 |
 | merge conflict | 派 rebase agent；agent 再失敗就親手 rebase |
@@ -158,6 +160,17 @@ git diff --stat origin/main..HEAD       # 必須剛好命中預期檔案，無�
 ```
 
 不符 → **不 push、不開 PR**，先查清楚（多出的 commit 是別條 track 的污染？diff 碰到不該碰的檔案？）。這會在第一時間抓到 branch 污染，而不是等 reviewer 才發現。
+
+### worktree 生命週期衛生（拆除前 / merge 前）
+
+swarm session 末段最常見的事故不在 agent，而在 orchestrator 自己的 worktree 拆除操作。兩條硬規則：
+
+1. **`git worktree remove` 前，cwd 必須先 `cd` 回 repo root 絕對路徑。**
+   `cd <worktree> && gh pr create` 之類複合指令會把 Bash cwd 留在 worktree 內 → 下一條 `git worktree remove <該 worktree>` 觸發 `fatal: Unable to read current working directory`，merge chain 當場中斷。不要假設「cwd 應該還在 root」，每次拆除前顯式 `cd <repo root 絕對路徑>`。
+2. **`gh pr merge --delete-branch` 前，該 branch 不可被任何 worktree 佔用。**
+   順序固定且不可交錯：**先 `git worktree remove <path>`（cwd 已在 root）→ 再 merge**，branch 隨 merge 刪除。worktree 還佔著 branch 時帶 `--delete-branch` merge 會失敗。
+
+兩類事故同源於「worktree 生命週期」——修了 cwd 一面常又露出 merge 順序另一面。把上面兩條當一組，每次拆 worktree 都走完。
 
 ## Write-agent prompt 模板（每次 dispatch 必含）
 
@@ -209,6 +222,8 @@ git fetch origin main && git merge origin/main
 9. **重複 dispatching** — agent 反覆 emit stale「等 build」通知，誤導你以為還沒完工。**修**：先 `git -C worktree log/status` 確認真實狀態再動作。
 10. **主線 polling** — 每分鐘 `git worktree list` 看 agent 狀態，浪費 token。**修**：等通知；要側查就一次性查。
 11. **詢問小改** — 「要不要 merge？」「方向對嗎？」**修**：能猜就猜，使用者會糾正。
+12. **worktree 拆除踩 cwd / merge 順序** — cwd 留在 worktree 內就 `git worktree remove` → cwd 自刪、pipeline 中斷；branch 還被 worktree 佔就 `--delete-branch` merge → 失敗。**修**：見「worktree 生命週期衛生」——拆除前 cd 回 root，先移 worktree 再 merge。
+13. **wakeup 疊加 notification** — pipeline 已由 task 完工 notification 驅動，還額外排 `ScheduleWakeup`「以防萬一」→ 任務結束後 stale wakeup prompt 連環觸發成尾端噪音。**修**：notification 已是驅動器時不排 wakeup，二者擇一。
 
 ## 並行維持策略
 
@@ -225,6 +240,7 @@ git fetch origin main && git merge origin/main
 - scan confirm 後的真 bug / PR backlog / open issues
 - UI state matrix 缺口 / 測試覆蓋盲點
 - 任何 reviewer 留下的 follow-up suggestion
+- 已 merged 的 swarm PR 冷複審 — 高壓並行下的 review 會漏「修不完整 / 漏鄰近 case」，冷複審常挖出真缺陷
 
 **永遠有唯讀 agent 可加。** ≥10 靠讀 agent 撐，不靠硬塞 write agent。
 
@@ -246,6 +262,8 @@ git fetch origin main && git merge origin/main
 - ❌ 對「大改」**不問就動**（破壞 Scope 守則）
 - ❌ 讓 agent 自建 worktree / 自取 branch 名（破壞隔離基建）
 - ❌ 開 PR 前不機械驗 branch 組成
+- ❌ `git worktree remove` 前 cwd 不在 repo root，或 `--delete-branch` merge 前 branch 仍被 worktree 佔用
+- ❌ notification-driven pipeline 還疊 `ScheduleWakeup`
 - ❌ write agent >5，或在飛的 write PR 超過 review 頻寬
 - ❌ 總並行數 <10 超過 1 個 turn（唯讀 agent 撐不起來沒藉口）
 - ❌ 主線同步等 build / pytest
