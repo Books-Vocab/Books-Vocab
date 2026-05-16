@@ -89,14 +89,23 @@ class EmbeddingStore:
         """Rename .npy + ids.json to `.legacy_{model}_{dim}` so a future
         diff/recovery is possible. Failure to rename is non-fatal: we still
         proceed with an empty store."""
-        suffix = f".legacy_{stale_model}_{stale_dim}"
+        self._quarantine_with_suffix(f".legacy_{stale_model}_{stale_dim}")
+
+    def _quarantine_corrupt(self, reason: str) -> None:
+        """Rename .npy + ids.json to `.corrupt_{reason}` after a structural
+        consistency failure (row/id desync or dim mismatch) so the live names
+        are clear for the pipeline to rebuild, and the bad files survive for
+        post-mortem. Failure to rename is non-fatal: we still proceed empty."""
+        self._quarantine_with_suffix(f".corrupt_{reason}")
+
+    def _quarantine_with_suffix(self, suffix: str) -> None:
         for path in (self.embeddings_path, self.ids_path):
             if path.exists():
                 try:
                     path.rename(path.with_name(path.name + suffix))
                 except OSError as e:
                     logger.warning(
-                        "Failed to quarantine stale embedding file %s: %s",
+                        "Failed to quarantine embedding file %s: %s",
                         path, e,
                     )
 
@@ -110,6 +119,12 @@ class EmbeddingStore:
           model/dim, load, and write the sidecar in-place (one-shot migration).
         * .npy + ids + sidecar mismatch → quarantine stale files, log warning,
           start empty. Pipeline backfill will re-embed on next run.
+        * .npy + ids structurally corrupt (row/id desync or dim mismatch from
+          an interrupted save / partial disk) → quarantine the corrupt files,
+          log a warning, start empty. Same degrade-not-crash policy as a meta
+          mismatch: a hard ``__init__`` failure would 500 every embedding-
+          touching request for the notebook (single-worker deploy: one
+          interrupted save wedges it). Pipeline backfill re-embeds next run.
         """
         if not (self.embeddings_path.exists() and self.ids_path.exists()):
             return
@@ -118,34 +133,18 @@ class EmbeddingStore:
         if meta is None:
             # Legacy: trust the on-disk files match the active model/dim,
             # and lock that in by writing the sidecar.
-            vectors = np.load(self.embeddings_path)
-            self._assert_shape_matches_dim(vectors)
-            ids = json.loads(self.ids_path.read_text())
-            self._assert_rows_match_ids(vectors, ids)
-            self._embeddings = vectors
-            self._ids = ids
-            self._id_set = set(self._ids)
-            self._invalidate_norms()
-            self._write_meta()
+            if self._load_validated():
+                self._write_meta()
             return
 
         stale_model = meta.get("model")
         stale_dim = meta.get("dim")
         if stale_model == self.model and stale_dim == self.dim:
-            vectors = np.load(self.embeddings_path)
             # Defence in depth: sidecar can lie (corruption / hand-edit /
-            # half-finished migration). Reject on shape mismatch so the
-            # error surfaces here, not later inside find_similar's cosine
-            # math (silent corruption) or add_batch's vstack (cryptic).
-            self._assert_shape_matches_dim(vectors)
-            ids = json.loads(self.ids_path.read_text())
-            # And reject row/id desync from an interrupted save — otherwise
-            # find_similar maps argsort indices onto the wrong card ids.
-            self._assert_rows_match_ids(vectors, ids)
-            self._embeddings = vectors
-            self._ids = ids
-            self._id_set = set(self._ids)
-            self._invalidate_norms()
+            # half-finished migration). A structural violation degrades to an
+            # empty store rather than surfacing later inside find_similar's
+            # cosine math (silent corruption) or add_batch's vstack (cryptic).
+            self._load_validated()
             return
 
         logger.warning(
@@ -159,8 +158,47 @@ class EmbeddingStore:
         # Sidecar must reflect active config now.
         self._write_meta()
 
-    def _assert_shape_matches_dim(self, vectors: np.ndarray) -> None:
-        """Guard against silent dim corruption at load time.
+    def _load_validated(self) -> bool:
+        """Read .npy + ids.json, validate structural consistency, and either
+        adopt them into memory or degrade to an empty store.
+
+        Returns True if the on-disk vectors were adopted, False if they were
+        quarantined as corrupt and the store was left empty. Never raises for
+        a recoverable corruption: row/id desync and dim mismatch (interrupted
+        save, partial disk write) are quarantined + logged, mirroring the meta
+        mismatch path. A legal empty store (0-row matrix + ``[]`` ids — the
+        on-disk result of removing the last card) passes validation untouched.
+        """
+        vectors = np.load(self.embeddings_path)
+        ids = json.loads(self.ids_path.read_text())
+        reason = (
+            self._shape_dim_violation(vectors)
+            or self._row_id_violation(vectors, ids)
+        )
+        if reason is not None:
+            logger.warning(
+                "EmbeddingStore corrupt vectors at %s (%s): likely an "
+                "interrupted save. Quarantining and starting empty; re-embed "
+                "will backfill on next pipeline run.",
+                self.embeddings_path, reason,
+            )
+            self._quarantine_corrupt(reason)
+            # Drop any half-loaded state; come up as a clean empty store.
+            self._embeddings = None
+            self._ids = []
+            self._id_set = set()
+            self._invalidate_norms()
+            return False
+
+        self._embeddings = vectors
+        self._ids = ids
+        self._id_set = set(self._ids)
+        self._invalidate_norms()
+        return True
+
+    def _shape_dim_violation(self, vectors: np.ndarray) -> str | None:
+        """Check vectors' shape/dim; return a short reason string on a
+        violation, else None.
 
         Empty matrices (``shape[0] == 0``) are allowed: there is nothing
         to mis-interpret yet, and the next ``add_batch`` will populate
@@ -168,34 +206,35 @@ class EmbeddingStore:
         exactly — otherwise ``find_similar`` would silently compute cosine
         on stale vectors of a different dim (returns numbers, not crashes),
         which is the precise corruption window we are closing.
+
+        A violation is *recoverable* corruption: callers degrade to an empty
+        store (quarantine + re-embed) rather than raising — see ``_load``.
         """
         if vectors.ndim != 2:
-            raise ValueError(
-                f"embedding store shape invalid: ndim={vectors.ndim}, expected 2 "
-                f"(file={self.embeddings_path})"
-            )
+            return f"ndim_{vectors.ndim}"
         if vectors.shape[0] > 0 and vectors.shape[1] != self.dim:
-            raise ValueError(
-                f"embedding dim mismatch: loaded {vectors.shape[1]}, expected {self.dim} "
-                f"(check EMBEDDING_DIM env or rebuild store at {self.embeddings_path})"
-            )
+            return f"dim_{vectors.shape[1]}_vs_{self.dim}"
+        return None
 
-    def _assert_rows_match_ids(self, vectors: np.ndarray, ids: list) -> None:
-        """Guard against row/id desync at load time.
+    def _row_id_violation(self, vectors: np.ndarray, ids: list) -> str | None:
+        """Check matrix rows vs ids length; return a short reason string on a
+        desync, else None.
 
         ``_save`` writes the ``.npy`` matrix and ``ids.json`` as two separate
         atomic ``replace()`` calls — a crash in between leaves the matrix and
         the id list at different lengths. ``find_similar`` indexes rows by
         ``np.argsort`` position and then maps each index back through
         ``self._ids``; a desynced pair would silently return rows attributed
-        to the *wrong* card id (numbers, not a crash). Surface it here.
+        to the *wrong* card id (numbers, not a crash).
+
+        Note ``shape[0] == 0`` with ``ids == []`` is the *legal* empty store
+        (the on-disk result of removing the last card) and is NOT a violation.
+        Like a dim mismatch, a real desync is recoverable corruption: callers
+        degrade to an empty store rather than raising — see ``_load``.
         """
         if vectors.shape[0] != len(ids):
-            raise ValueError(
-                f"embedding store row count desync: matrix has {vectors.shape[0]} "
-                f"rows but ids.json has {len(ids)} entries — likely an interrupted "
-                f"save. Rebuild store at {self.embeddings_path}."
-            )
+            return f"rows_{vectors.shape[0]}_vs_ids_{len(ids)}"
+        return None
 
     def _invalidate_norms(self) -> None:
         self._norms = None
@@ -213,8 +252,9 @@ class EmbeddingStore:
         fully materialise *both* temp files first, then issue the two
         ``replace()`` calls back-to-back so a crash can only land in the
         narrow gap between them. Any residual desync from that gap is caught
-        at load time by ``_assert_rows_match_ids`` rather than silently
-        misattributing rows in ``find_similar``.
+        at load time by ``_load_validated`` (via ``_row_id_violation``) and
+        degraded to an empty store rather than silently misattributing rows
+        in ``find_similar``.
         """
         self.embeddings_path.parent.mkdir(parents=True, exist_ok=True)
 

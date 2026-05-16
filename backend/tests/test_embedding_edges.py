@@ -80,12 +80,13 @@ class TestEmbeddingDimMismatchClearError:
         assert "1536" in msg, f"error must mention actual dim, got: {msg!r}"
         assert "EMBEDDING_DIM" in msg, f"error must hint at env var, got: {msg!r}"
 
-    def test_sidecar_lies_about_dim_load_fails_loud(self, tmp_path: Path):
+    def test_sidecar_lies_about_dim_load_degrades_to_empty(self, tmp_path: Path):
         """A corrupted/hand-edited sidecar claims dim=768, matching the
-        active config, but the .npy on disk is actually 1536-dim. The
-        active store must reject this at load time — not silently load
-        a stale matrix that corrupts find_similar / cosine math until
-        the next vstack accidentally surfaces it."""
+        active config, but the .npy on disk is actually 1536-dim. ``_load``
+        must NOT silently load the stale matrix (corrupts find_similar /
+        cosine math) — but it must NOT raise either: a hard ``__init__``
+        failure 500s every embedding request for the notebook. It degrades:
+        quarantine the corrupt files, log, start empty."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
         meta_path = tmp_path / "embeddings_meta_default.json"
@@ -97,17 +98,17 @@ class TestEmbeddingDimMismatchClearError:
 
         client = _mock_client_with_dim(dim=768)
         llm = TrackedLLM(client, "u")
-        # Construction itself triggers _load → must raise immediately.
-        with pytest.raises(ValueError):
-            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        # Construction triggers _load → must degrade, not raise.
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+        assert list(tmp_path.glob("*.corrupt_*"))
 
-    def test_load_raises_on_shape_mismatch(self, tmp_path: Path):
-        """Front-loaded guard: when on-disk .npy shape disagrees with
-        the active ``dim``, ``_load`` must raise a clear ValueError
-        naming both dims and the env var — without waiting for the
-        next add_batch/vstack to expose corruption. Empty stores
-        (shape[0]==0) and legacy stores (no sidecar) both flow through
-        the same check."""
+    def test_load_degrades_on_shape_mismatch(self, tmp_path: Path):
+        """Front-loaded guard: when on-disk .npy shape disagrees with the
+        active ``dim``, ``_load`` must degrade to an empty store (quarantine
+        + re-embed) — without waiting for the next add_batch/vstack to expose
+        corruption, and without raising and wedging the notebook."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
         meta_path = tmp_path / "embeddings_meta_default.json"
@@ -118,15 +119,13 @@ class TestEmbeddingDimMismatchClearError:
 
         client = _mock_client_with_dim(dim=768)
         llm = TrackedLLM(client, "u")
-        with pytest.raises(ValueError) as exc_info:
-            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
-        msg = str(exc_info.value)
-        assert "dim mismatch" in msg.lower(), f"got: {msg!r}"
-        assert "1536" in msg and "768" in msg, f"got: {msg!r}"
-        assert "EMBEDDING_DIM" in msg, f"got: {msg!r}"
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
+        assert list(tmp_path.glob("*.corrupt_*"))
 
-    def test_load_raises_on_shape_mismatch_legacy_no_sidecar(self, tmp_path: Path):
-        """Legacy path (no sidecar) must also be guarded: shape check
+    def test_load_degrades_on_shape_mismatch_legacy_no_sidecar(self, tmp_path: Path):
+        """Legacy path (no sidecar) must also degrade on a shape mismatch
         before adopting the on-disk vectors as the active store."""
         emb_path = tmp_path / "embeddings_default.npy"
         ids_path = tmp_path / "card_ids_default.json"
@@ -136,8 +135,9 @@ class TestEmbeddingDimMismatchClearError:
 
         client = _mock_client_with_dim(dim=768)
         llm = TrackedLLM(client, "u")
-        with pytest.raises(ValueError):
-            EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
+        assert store.count() == 0
+        assert not emb_path.exists() and not ids_path.exists()
 
     def test_load_allows_empty_npy(self, tmp_path: Path):
         """An empty (0, dim) .npy must not trip the shape guard — the
@@ -153,9 +153,10 @@ class TestEmbeddingDimMismatchClearError:
 
         client = _mock_client_with_dim(dim=768)
         llm = TrackedLLM(client, "u")
-        # Should not raise; sidecar-mismatch path will quarantine + start empty.
+        # A 0-row matrix is the legal empty store: load as-is, no quarantine.
         store = EmbeddingStore(emb_path, ids_path, llm, model="m-active", dim=768)
         assert store.count() == 0
+        assert emb_path.exists() and ids_path.exists()
 
 
 # --------------------------------------------------------------------- #
