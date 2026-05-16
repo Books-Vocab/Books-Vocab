@@ -191,6 +191,48 @@ struct BooksBrowserTests {
         #expect(TodayReviewSessionSnapshotStore.load(for: "user-A")?.currentIndex == 3)
     }
 
+    @Test @MainActor func clearLocalDataPurgesTodayReviewSnapshotStore() async throws {
+        TodayReviewSessionSnapshotStore.clear(for: nil)
+        defer { TodayReviewSessionSnapshotStore.clear(for: nil) }
+
+        func makeSnapshot(userId: String) -> TodayReviewSessionSnapshotStore.Snapshot {
+            let baseline = TodayReviewSessionSnapshotStore.ReviewBaseline(
+                reviewIntervalHours: 24,
+                nextReviewAt: Date(),
+                lastReviewedAt: nil,
+                reviewCount: 0,
+                lapseCount: 0,
+                reviewStreak: 0,
+                lastReviewFeedbackRaw: 0
+            )
+            return TodayReviewSessionSnapshotStore.Snapshot(
+                userId: userId,
+                sessionStartTime: Date(),
+                currentIndex: 2,
+                queue: [.init(persistenceID: "card-\(userId)", baseline: baseline)],
+                submissions: [:],
+                updatedAt: Date()
+            )
+        }
+
+        // Two users have in-progress review snapshots persisted on this device.
+        TodayReviewSessionSnapshotStore.save(makeSnapshot(userId: "user-A"))
+        TodayReviewSessionSnapshotStore.save(makeSnapshot(userId: "user-B"))
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-A") != nil)
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-B") != nil)
+
+        // Logout / account-switch both route through LocalDataCleanerService.clearLocalData.
+        let container = try ModelContainer(
+            for: VocabularyEntry.self, ReviewRecord.self, Notebook.self,
+            configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+        )
+        await LocalDataCleanerService().clearLocalData(container: container, reason: "user_logout")
+
+        // No stale today-review session may survive logout.
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-A") == nil)
+        #expect(TodayReviewSessionSnapshotStore.load(for: "user-B") == nil)
+    }
+
     @Test func readerBridgePlannerEmitsSingleWordHighlightCommand() async throws {
         var planner = BridgePlanner()
         let base = makeSnapshot(lookedUpWords: [])
