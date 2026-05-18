@@ -53,7 +53,6 @@
 
 - Monorepo：`.git` 涵蓋 iOS app、backend API、ops/docs
 - Commit prefix：`ios:` / `api:` / `ops:` / `docs:`
-- **Worktree 強制**：程式碼修改一律在隔離 worktree 中進行 → commit → 開 PR。禁止直接在 main 上改，除非使用者明確指示。
 
 ## iOS 編譯（強制）
 
