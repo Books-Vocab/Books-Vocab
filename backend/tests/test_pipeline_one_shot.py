@@ -188,7 +188,7 @@ def test_embed_and_judge_creates_links():
             card_store_factory=lambda d: cards,
             graph_store_factory=lambda d, notebook_id="default": graph,
             embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda v: v,
         ))
@@ -241,7 +241,7 @@ def test_embed_and_judge_respects_max_degree():
             card_store_factory=lambda d: cards,
             graph_store_factory=lambda d, notebook_id="default": graph,
             embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda v: v,
         ))
@@ -296,7 +296,7 @@ def test_embed_and_judge_error_recovery():
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
             ))
@@ -361,7 +361,7 @@ def test_to_side_max_degree_tracked_for_inflight_links():
             card_store_factory=lambda d: cards,
             graph_store_factory=lambda d, notebook_id="default": graph,
             embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda v: v,
         ))

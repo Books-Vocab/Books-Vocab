@@ -275,7 +275,7 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
         card_store_factory=lambda d: cards,
         graph_store_factory=lambda d, notebook_id="default": graph,
         embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-        gemini_client_factory=lambda: mock_client,
+        client_factory=lambda provider: mock_client,
         logger=logger,
         link_kind_enum=lambda v: v,
     ))

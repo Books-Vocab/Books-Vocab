@@ -167,7 +167,7 @@ def test_enrich_step_retries_on_transient_failure():
                 card_store_factory=lambda d: _CardsNeedEnrich(),
                 graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
             )
@@ -197,7 +197,7 @@ def test_embed_step_runs_in_executor_thread():
             card_store_factory=lambda d: _CardsBothFields(),
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda v: v,
         )
@@ -419,7 +419,7 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
             )
@@ -513,7 +513,7 @@ def test_judge_failure_during_result_consumption_does_not_orphan_card():
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=_strict_link_kind_enum,
             )
@@ -608,7 +608,7 @@ def test_quota_exhaustion_mid_run_halts_gracefully():
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
             )
@@ -707,7 +707,7 @@ def test_embed_step_failure_after_judge_commit_does_not_revert_judge():
                 card_store_factory=lambda d: cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": embeddings,
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda v: v,
             )
