@@ -3,7 +3,7 @@ tier: structural
 scope:
   - ios/BooksBrowser
   - backend/src/kg
-verified_against: c16321f
+verified_against: 6b62854
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -59,7 +59,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 2. **點擊單字 (Word Selection)**:
    - **已存在於本地**: 從 `VocabularyEntry` 取出翻譯/詞性/解釋瞬間顯示，`O(1)` 無網路。
-   - **全新單字**: 並行觸發 Gemini API 翻譯 + Dictionary API 發音。翻譯時自動擷取 context sentence（書籍原文上下文）。儲存時寫入 `syncStatus = 0` 的 `VocabularyEntry`。
+   - **全新單字**: 並行觸發 LLM 翻譯（provider 由 backend registry 路由，預設 Gemini）+ Dictionary API 發音。翻譯時自動擷取 context sentence（書籍原文上下文）。儲存時寫入 `syncStatus = 0` 的 `VocabularyEntry`。
 
 ---
 
