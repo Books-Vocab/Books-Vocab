@@ -35,7 +35,9 @@ class TrackedLLM:
         self._provider = provider
 
     def _chat_kwargs(self, kwargs: dict) -> dict:
-        """Merge provider-level chat defaults into a call's kwargs (caller wins)."""
+        """Merge provider-level chat defaults into kwargs and return it (caller
+        wins on conflict). Mutates `kwargs` in place — safe because chat() /
+        chat_async() always hand in a fresh **kwargs dict."""
         p = self._provider
         if p is None:
             return kwargs

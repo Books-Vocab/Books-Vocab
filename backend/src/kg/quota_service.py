@@ -48,6 +48,9 @@ def token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> flo
     During a provider switch, up to ~24h of history is repriced at the new
     provider's rates — acceptable drift for a rolling quota window; exact
     historical pricing would need a per-row provider column.
+
+    Raises ValueError if call_type routes to an unknown provider — a deploy
+    misconfiguration that fails loudly here, as it does at every call site.
     """
     provider = provider_for(call_type)
     if call_type == "embed":

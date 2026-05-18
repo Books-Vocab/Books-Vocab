@@ -68,3 +68,4 @@ async def test_translate_per_call_type_env_beats_group(monkeypatch):
     await translate_quick_response(req, _USER, logger=_LOGGER)
     call = client.chat.completions.create.call_args.kwargs
     assert call["model"] == "gemini-2.5-flash-lite"
+    assert "extra_body" not in call  # deepseek's thinking flag must not leak

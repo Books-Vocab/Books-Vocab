@@ -29,7 +29,6 @@ class KGSettings:
     free_daily_limit_usd: float = 0.03
 
     # LLM
-    gemini_model: str = "gemini-2.5-flash-lite"
     embedding_model: str = "gemini-embedding-2-preview"
     embedding_dim: int = 3072
     gemini_temperature: float = 0.3
@@ -91,7 +90,6 @@ def load_settings() -> KGSettings:
     return KGSettings(
         data_dir=Path(os.getenv("KG_DATA_DIR", str(default_data_dir))),
         jwt_secret=jwt_secret,
-        gemini_model=os.getenv("GEMINI_MODEL", "gemini-2.5-flash-lite"),
         embedding_model=os.getenv("EMBEDDING_MODEL", "gemini-embedding-2-preview"),
         embedding_dim=int(os.getenv("EMBEDDING_DIM", "3072")),
         google_client_id=os.getenv("GOOGLE_CLIENT_ID", ""),

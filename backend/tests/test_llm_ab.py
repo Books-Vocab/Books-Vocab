@@ -35,4 +35,4 @@ def test_explicit_words_become_samples(monkeypatch, capsys):
     rc = ab.main(["--dry-run", "serendipity", "ephemeral"])
     assert rc == 0
     out = capsys.readouterr().out
-    assert "2" in out  # 2 explicit samples
+    assert "Samples: 2" in out

@@ -117,3 +117,19 @@ def test_gemini_extra_body_is_empty():
 def test_deepseek_has_no_embeddings_and_gemini_does():
     assert REGISTRY["deepseek"].supports_embeddings is False
     assert REGISTRY["gemini"].supports_embeddings is True
+
+
+def test_empty_env_value_falls_through(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER_JUDGE", "")
+    monkeypatch.setenv("LLM_PROVIDER_DEFAULT", "")
+    assert provider_for("judge").name == "gemini"
+
+
+def test_call_type_is_case_insensitive(monkeypatch):
+    monkeypatch.setenv("LLM_PROVIDER_JUDGE", "deepseek")
+    assert provider_for("JUDGE").name == "deepseek"
+    assert provider_for("Embed").name == "gemini"
+
+
+def test_empty_call_type_resolves_to_default():
+    assert provider_for("").name == "gemini"

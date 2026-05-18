@@ -14,7 +14,7 @@ _PREFIX = "LLM_PROVIDER_"
 @pytest.fixture(autouse=True)
 def _clean_env(monkeypatch):
     for name in list(os.environ):
-        if name.startswith(_PREFIX):
+        if name.startswith(_PREFIX) or name in ("GEMINI_MODEL", "DEEPSEEK_MODEL"):
             monkeypatch.delenv(name, raising=False)
     yield
 

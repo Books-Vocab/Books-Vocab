@@ -168,3 +168,11 @@ def test_chat_async_injects_extra_body():
     asyncio.run(tl.chat_async("translate_quick", model="m", messages=[]))
     assert _last(client)["extra_body"] == {"thinking": {"type": "disabled"}}
     assert _last(client)["max_tokens"] == 8192
+
+
+def test_caller_extra_body_none_uses_provider_default():
+    """Explicit extra_body=None must not suppress the provider default."""
+    client = _FakeClient()
+    tl = TrackedLLM(client, "u1", provider=REGISTRY["deepseek"])
+    tl.chat("judge", model="m", messages=[], extra_body=None)
+    assert _last(client)["extra_body"] == {"thinking": {"type": "disabled"}}
