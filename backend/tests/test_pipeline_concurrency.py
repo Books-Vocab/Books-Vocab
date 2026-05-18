@@ -128,7 +128,7 @@ def test_refcount_in_real_pipeline_two_queued_runs():
             card_store_factory=lambda d: _CardsEmpty(),
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=_FakeLogger(),
             link_kind_enum=lambda v: v,
         )
@@ -176,7 +176,7 @@ def test_refcount_drops_to_zero_after_single_task():
             card_store_factory=lambda d: _CardsEmpty(),
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=_FakeLogger(),
             link_kind_enum=lambda v: v,
         )
@@ -262,7 +262,7 @@ def test_pipeline_lock_queue_saturation_handles_n_concurrent_triggers():
             card_store_factory=lambda d: _CardsEmpty(),
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=counting_logger,
             link_kind_enum=lambda v: v,
         )
@@ -356,7 +356,7 @@ def test_pipeline_user_deleted_mid_queue_does_not_crash():
             card_store_factory=cards_factory_a,
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=_FakeLogger(),
             link_kind_enum=lambda v: v,
         )
@@ -368,7 +368,7 @@ def test_pipeline_user_deleted_mid_queue_does_not_crash():
             card_store_factory=lambda d: _CardsEmpty(),
             graph_store_factory=lambda d, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsOk(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=_FakeLogger(),
             link_kind_enum=lambda v: v,
         )

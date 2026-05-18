@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 09f4c3e
+verified_against: a0d70e5
 -->
 # 後端部署指南
 
@@ -144,6 +144,25 @@ Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費
 - 狀態暴露於 `/api/system/info`
 
 Smoke test: `POST /api/admin/sentry/ping` after deploy to verify DSN wired — endpoint is admin-only, dispatches a `capture_message` + caught `capture_exception` via the SDK and returns `{sent, is_active, event_id}` JSON (never raises). 也可從 `/admin` dashboard 右上「Sentry Ping」按鈕直接觸發，按鈕旁顯示 event_id 前 8 碼或 `inactive (no DSN)`。
+
+#### LLM Provider env vars
+
+LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所有 provider 皆 OpenAI-compatible，切換只改 env、不動 code。
+
+| Env | Default | 用途 |
+|-----|---------|------|
+| `GEMINI_API_KEY` | （必填）| Gemini key；embedding 一律走 Gemini，故永遠必填 |
+| `DEEPSEEK_API_KEY` | （空）| DeepSeek key；路由到 deepseek 時必填 |
+| `LLM_PROVIDER_DEFAULT` | `gemini` | 所有 chat call_type 的預設 provider |
+| `LLM_PROVIDER_TRANSLATE` | 繼承 DEFAULT | 整組 `translate_*`（quick / phrase / explain）|
+| `LLM_PROVIDER_<CALL_TYPE>` | 繼承 group/DEFAULT | 單一 call_type 覆寫，如 `LLM_PROVIDER_JUDGE`、`LLM_PROVIDER_ENRICH` |
+| `LLM_PROVIDER_EMBED` | `gemini` | embedding provider；**不繼承 DEFAULT**（DeepSeek 無 embedding 端點）|
+| `GEMINI_MODEL` / `DEEPSEEK_MODEL` | registry 預設 | 覆寫該 provider 的 chat model |
+
+- 路由優先序：`LLM_PROVIDER_<CALL_TYPE>` > `LLM_PROVIDER_<GROUP>` > `LLM_PROVIDER_DEFAULT` > `gemini`。
+- 遷移 DeepSeek：設 `DEEPSEEK_API_KEY` + `LLM_PROVIDER_DEFAULT=deepseek`（embedding 自動留 Gemini）。分階段可只設 `LLM_PROVIDER_TRANSLATE=deepseek` 先驗證。
+- 未知 provider 名、或把 `embed` 路由到無 embedding 能力的 provider → 啟動即 `ValueError`，不 silent fallback。
+- A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`（需對應 key）。
 
 #### iOS env / Info.plist
 

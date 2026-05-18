@@ -32,11 +32,10 @@ async def _step_enrich(
     user: UserRecord,
     *,
     card_store_factory: Callable[[Any], Any],
-    gemini_client_factory: Callable[[], Any],
+    client_factory: Callable[..., Any],
     logger: logging.Logger,
     force: bool = False,
     notebook_id: str = "default",
-    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> int:
     logger.info("[%s] Step 1: Enrich (force=%s, notebook=%s)", uid, force, notebook_id)
     cards = card_store_factory(user["dir"])
@@ -50,13 +49,15 @@ async def _step_enrich(
         return 0
 
     from ..enrich import enrich_cards_stream
+    from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
 
-    llm = TrackedLLM(gemini_client_factory(), uid)
+    provider = provider_for("enrich")
+    llm = TrackedLLM(client_factory(provider), uid, provider=provider)
     logger.info("[%s] Enriching %d cards...", uid, len(targets))
     updated = 0
 
-    async for msg in enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=gemini_model):
+    async for msg in enrich_cards_stream(llm, targets, batch_size=20, max_workers=5, model=provider.chat_model):
         if msg.get("status") == "error":
             logger.warning("[%s] Enrichment batch error: %s", uid, msg.get("detail"))
 
@@ -130,19 +131,22 @@ async def _step_embed_and_judge(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
     embedding_store_factory: Callable[..., Any],
-    gemini_client_factory: Callable[[], Any],
+    client_factory: Callable[..., Any],
     logger: logging.Logger,
     link_kind_enum: Any,
     notebook_id: str = "default",
-    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> int:
     """Combined embed + judge step. Replaces _step_embed + _step_link."""
     from ..judge import Judge
+    from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
 
     cards = card_store_factory(user["dir"])
-    llm = TrackedLLM(gemini_client_factory(), uid)
-    embeddings = embedding_store_factory(user["dir"], llm=llm, notebook_id=notebook_id)
+    # `embed` resolves independently of the chat default — DeepSeek has no
+    # embeddings endpoint, so flipping LLM_PROVIDER_DEFAULT must not drag it.
+    embed_provider = provider_for("embed")
+    embed_llm = TrackedLLM(client_factory(embed_provider), uid, provider=embed_provider)
+    embeddings = embedding_store_factory(user["dir"], llm=embed_llm, notebook_id=notebook_id)
     graph = graph_store_factory(user["dir"], notebook_id=notebook_id)
 
     # ── Phase 1: Embed missing cards ──
@@ -173,7 +177,9 @@ async def _step_embed_and_judge(
         return 0
 
     logger.info("[%s] Judging %d pending cards", uid, len(pending))
-    judge = Judge(llm, model=gemini_model, user_id=uid, notebook_id=notebook_id)
+    judge_provider = provider_for("judge")
+    judge_llm = TrackedLLM(client_factory(judge_provider), uid, provider=judge_provider)
+    judge = Judge(judge_llm, model=judge_provider.chat_model, user_id=uid, notebook_id=notebook_id)
 
     # Pre-fetch pending cards
     cards_cache = cards.get_batch(set(pending))

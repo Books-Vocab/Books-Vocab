@@ -35,7 +35,7 @@ def create_manual_link_response(
     *,
     card_store_factory: Callable[[Path], Any],
     graph_store_factory: Callable[..., Any],
-    gemini_client_factory: Callable[[], Any],
+    client_factory: Callable[..., Any],
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> GraphLinkResponse:
@@ -47,9 +47,12 @@ def create_manual_link_response(
     )
 
     from ..judge import ManualLinkJudge
+    from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
+    provider = provider_for("manual_link_judge")
     judge = ManualLinkJudge(
-        TrackedLLM(gemini_client_factory(), user["id"]),
+        TrackedLLM(client_factory(provider), user["id"], provider=provider),
+        model=provider.chat_model,
         user_id=user["id"], notebook_id=notebook_id,
     )
 

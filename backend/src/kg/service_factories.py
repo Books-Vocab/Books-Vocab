@@ -11,6 +11,7 @@ from .cards import CardStore
 from .daily_stats import DailyReviewStatsStore
 from .embeddings import EmbeddingStore
 from .graph import GraphStore
+from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
 
 logger = logging.getLogger(__name__)
@@ -144,68 +145,90 @@ def create_notebook_store(user_dir: Path) -> NotebookStore:
     return _get_cached(key, lambda: NotebookStore(user_dir / "notebooks.db"))
 
 
-_GEMINI_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/"
+# Per-provider OpenAI-compatible client cache. Keyed by provider name so a
+# multi-provider deploy (translate→DeepSeek, embed→Gemini) holds one client
+# per provider rather than per call.
+_clients: dict[str, object] = {}
+_async_clients: dict[str, object] = {}
+_clients_lock = threading.Lock()
 
 
-def _require_gemini_api_key() -> str:
-    api_key = os.getenv("GEMINI_API_KEY")
+def _require_api_key(provider: LLMProvider) -> str:
+    api_key = os.getenv(provider.api_key_env)
     if not api_key:
-        raise RuntimeError("GEMINI_API_KEY not configured on server")
+        raise RuntimeError(
+            f"{provider.api_key_env} not configured on server "
+            f"(required for LLM provider {provider.name!r})"
+        )
     return api_key
 
 
-_gemini_client = None
+def create_client(provider: LLMProvider):
+    """Sync OpenAI-compatible client for a provider, cached per provider name."""
+    from openai import OpenAI
+
+    with _clients_lock:
+        client = _clients.get(provider.name)
+        if client is None:
+            client = OpenAI(api_key=_require_api_key(provider), base_url=provider.base_url)
+            _clients[provider.name] = client
+        return client
+
+
+def create_async_client(provider: LLMProvider):
+    """Async OpenAI-compatible client for a provider, cached per provider name."""
+    from openai import AsyncOpenAI
+
+    with _clients_lock:
+        client = _async_clients.get(provider.name)
+        if client is None:
+            client = AsyncOpenAI(api_key=_require_api_key(provider), base_url=provider.base_url)
+            _async_clients[provider.name] = client
+        return client
 
 
 def create_gemini_client():
-    global _gemini_client
-    from openai import OpenAI
-
-    if _gemini_client is not None:
-        return _gemini_client
-    _gemini_client = OpenAI(
-        api_key=_require_gemini_api_key(),
-        base_url=_GEMINI_BASE_URL,
-    )
-    return _gemini_client
-
-
-def reset_gemini_client() -> None:
-    global _gemini_client
-    client = _gemini_client
-    _gemini_client = None
-    if client is not None:
-        try:
-            client.close()
-        except Exception:
-            logger.debug("Failed to close gemini client", exc_info=True)
-
-
-_async_gemini_client = None
+    """Backward-compatible alias — sync client for the gemini provider."""
+    return create_client(REGISTRY["gemini"])
 
 
 def create_async_gemini_client():
-    global _async_gemini_client
-    from openai import AsyncOpenAI
-
-    if _async_gemini_client is not None:
-        return _async_gemini_client
-    _async_gemini_client = AsyncOpenAI(
-        api_key=_require_gemini_api_key(),
-        base_url=_GEMINI_BASE_URL,
-    )
-    return _async_gemini_client
+    """Backward-compatible alias — async client for the gemini provider."""
+    return create_async_client(REGISTRY["gemini"])
 
 
-async def reset_async_gemini_client() -> None:
-    global _async_gemini_client
-    client = _async_gemini_client
-    _async_gemini_client = None
-    if client is not None:
+def reset_clients() -> None:
+    """Drop + close all cached sync clients (e.g. after API key rotation)."""
+    with _clients_lock:
+        clients = list(_clients.values())
+        _clients.clear()
+    for client in clients:
+        try:
+            client.close()
+        except Exception:
+            logger.debug("Failed to close sync LLM client", exc_info=True)
+
+
+async def reset_async_clients() -> None:
+    """Drop + close all cached async clients."""
+    with _clients_lock:
+        clients = list(_async_clients.values())
+        _async_clients.clear()
+    for client in clients:
         try:
             await client.close()
         except Exception:
-            logger.debug("Failed to close async gemini client", exc_info=True)
+            logger.debug("Failed to close async LLM client", exc_info=True)
+
+
+def reset_gemini_client() -> None:
+    """Backward-compatible alias — resets all cached sync clients."""
+    reset_clients()
+
+
+async def reset_async_gemini_client() -> None:
+    """Backward-compatible alias — resets all cached async clients."""
+    await reset_async_clients()
 
 
 def create_embedding_store(
