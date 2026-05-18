@@ -2,7 +2,7 @@
 tier: operational
 scope:
   - backend/src/kg
-verified_against: a0d70e5
+verified_against: 6b62854
 -->
 # KG Backend Dev Guide
 
