@@ -114,7 +114,7 @@ def test_pipeline_service_waits_when_lock_is_held():
                 card_store_factory=lambda user_dir: _CardsOk(),
                 graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
                 embedding_store_factory=lambda user_dir, llm=None, notebook_id="default": _EmbeddingsBoom(),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=logger,
                 link_kind_enum=lambda value: value,
             )
@@ -171,7 +171,7 @@ def test_pipeline_service_concurrent_triggers_different_notebooks_all_run():
             card_store_factory=lambda user_dir: _CardsOk(),
             graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda user_dir, llm=None, notebook_id="default": _EmbeddingsBoom(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda value: value,
             notebook_id=notebook_id,
@@ -225,7 +225,7 @@ def test_pipeline_service_logs_error_when_step_fails():
             card_store_factory=lambda user_dir: _CardsOk(),
             graph_store_factory=lambda user_dir, notebook_id="default": _GraphOk(),
             embedding_store_factory=lambda user_dir, llm=None, notebook_id="default": _EmbeddingsBoom(),
-            gemini_client_factory=lambda: None,
+            client_factory=lambda provider: None,
             logger=logger,
             link_kind_enum=lambda value: value,
         )
@@ -421,7 +421,7 @@ def test_step_embed_and_judge_touches_cards_after_creating_links():
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=_FakeLogger(),
                 link_kind_enum=lambda v: v,
             )
@@ -478,7 +478,7 @@ def test_step_embed_and_judge_no_touch_when_no_links_created():
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=_FakeLogger(),
                 link_kind_enum=lambda v: v,
             )
@@ -550,7 +550,7 @@ def test_step_embed_and_judge_touches_cards_on_exception_path():
                 card_store_factory=lambda d: tracking_cards,
                 graph_store_factory=lambda d, notebook_id="default": graph,
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=_FakeLogger(),
                 link_kind_enum=lambda v: v,
             )
@@ -605,7 +605,7 @@ def test_step_embed_and_judge_runs_judge_concurrently():
                 card_store_factory=lambda d: _CardsForLink(ids),
                 graph_store_factory=lambda d, notebook_id="default": _GraphWithPending(ids),
                 embedding_store_factory=lambda d, llm=None, notebook_id="default": _EmbeddingsWithSimilar(similar_map),
-                gemini_client_factory=lambda: None,
+                client_factory=lambda provider: None,
                 logger=_FakeLogger(),
                 link_kind_enum=lambda v: v,
             )

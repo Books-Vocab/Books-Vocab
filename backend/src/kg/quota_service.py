@@ -11,12 +11,16 @@ import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
+from .llm.providers import REGISTRY, provider_for
 from .token_tracker import _get_conn, _lock
 
-# Gemini pricing (USD per 1M tokens)
-INPUT_PER_M = 0.10
-OUTPUT_PER_M = 0.40
-EMBED_PER_M = 0.00025
+# Gemini reference pricing (USD per 1M tokens). Per-call cost is computed
+# provider-aware in token_cost_usd(); these constants are the gemini baseline
+# surfaced by the admin cost views.
+_GEMINI = REGISTRY["gemini"]
+INPUT_PER_M = _GEMINI.input_price_per_m
+OUTPUT_PER_M = _GEMINI.output_price_per_m
+EMBED_PER_M = _GEMINI.embed_price_per_m
 
 # Defaults; overridden at runtime via configure_limits() from app startup.
 # Canonical values live in KGSettings (settings.py); these are only fallbacks
@@ -38,9 +42,23 @@ def _daily_limit(is_pro: bool) -> float:
 
 
 def token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
+    """USD cost of a recorded call, priced by the provider currently routed
+    for its call_type.
+
+    During a provider switch, up to ~24h of history is repriced at the new
+    provider's rates — acceptable drift for a rolling quota window; exact
+    historical pricing would need a per-row provider column.
+
+    Raises ValueError if call_type routes to an unknown provider — a deploy
+    misconfiguration that fails loudly here, as it does at every call site.
+    """
+    provider = provider_for(call_type)
     if call_type == "embed":
-        return (input_tokens / 1_000_000) * EMBED_PER_M
-    return (input_tokens / 1_000_000) * INPUT_PER_M + (output_tokens / 1_000_000) * OUTPUT_PER_M
+        return (input_tokens / 1_000_000) * provider.embed_price_per_m
+    return (
+        (input_tokens / 1_000_000) * provider.input_price_per_m
+        + (output_tokens / 1_000_000) * provider.output_price_per_m
+    )
 
 
 # Conservative per-call cost estimate (USD) held as an in-flight reservation
