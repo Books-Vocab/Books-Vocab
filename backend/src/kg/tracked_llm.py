@@ -1,6 +1,7 @@
 """Unified LLM wrapper with automatic token usage tracking + quota reservation."""
 from __future__ import annotations
 
+from .llm.providers import LLMProvider
 from .quota_service import estimate_call_cost, reserve
 from .token_tracker import record
 
@@ -18,21 +19,44 @@ class TrackedLLM:
     all clear the gate seeing `used=0`. The reservation makes those in-flight
     calls visible to the gate; it is released the instant the real cost is
     recorded.
+
+    When a `provider` is bound, every chat call has the provider's
+    `extra_body` and `max_tokens_default` merged in — this is where DeepSeek's
+    `thinking: disabled` gets enforced without touching call sites. Caller-
+    supplied values always win on conflict. `provider=None` (legacy
+    construction) injects nothing and preserves exact prior behavior.
     """
 
-    __slots__ = ("_client", "user_id")
+    __slots__ = ("_client", "user_id", "_provider")
 
-    def __init__(self, client, user_id: str) -> None:
+    def __init__(self, client, user_id: str, provider: LLMProvider | None = None) -> None:
         self._client = client
         self.user_id = user_id
+        self._provider = provider
+
+    def _chat_kwargs(self, kwargs: dict) -> dict:
+        """Merge provider-level chat defaults into a call's kwargs (caller wins)."""
+        p = self._provider
+        if p is None:
+            return kwargs
+        if p.extra_body:
+            # Copy so the registry's dict is never mutated; caller keys win.
+            merged = dict(p.extra_body)
+            merged.update(kwargs.get("extra_body") or {})
+            kwargs["extra_body"] = merged
+        if p.max_tokens_default is not None and kwargs.get("max_tokens") is None:
+            kwargs["max_tokens"] = p.max_tokens_default
+        return kwargs
 
     def chat(self, call_type: str, **kwargs):
+        kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
             resp = self._client.chat.completions.create(**kwargs)
             self._record_chat(call_type, resp)
         return resp
 
     async def chat_async(self, call_type: str, **kwargs):
+        kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
             resp = await self._client.chat.completions.create(**kwargs)
             self._record_chat(call_type, resp)
