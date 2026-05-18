@@ -17,18 +17,20 @@ def add_vocab_response(
     card_store_factory: Callable[[Path], Any],
     embedding_store_factory: Callable[..., Any],
     graph_store_factory: Callable[..., Any],
-    gemini_client_factory: Callable[[], Any],
+    client_factory: Callable[..., Any],
     logger: Logger,
     notebook_store_factory: Callable[[Path], Any] | None = None,
     notebook_id: str = "default",
 ) -> VocabAddResponse:
+    from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
     cards, _ = _resolve_stores(
         user, notebook_id,
         card_store_factory=card_store_factory,
         notebook_store_factory=notebook_store_factory,
     )
-    llm = TrackedLLM(gemini_client_factory(), user["id"])
+    provider = provider_for("embed")
+    llm = TrackedLLM(client_factory(provider), user["id"], provider=provider)
     return add_vocab_entries(
         entries,
         user=user,

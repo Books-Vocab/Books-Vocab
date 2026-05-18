@@ -10,7 +10,7 @@ of the explain endpoint independently of the service-layer cache:
   3. Auth — 401 when the bearer token is expired or invalid (with
      `WWW-Authenticate: Bearer` header, which is the iOS refresh trigger).
 
-LLM is stubbed via `_gemini_async_client` so no network is touched.
+LLM client is stubbed via `create_async_client` so no network is touched.
 """
 from __future__ import annotations
 
@@ -19,8 +19,6 @@ from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import jwt as pyjwt
-
-import kg.routers.translate as translate_router_mod
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
 
@@ -45,7 +43,7 @@ def test_explain_basic_request_returns_expected_shape(isolated_api):
     headers = isolated_api.headers
 
     fake = _stub_explain_llm('{"e":"To bring a feeling or memory to mind."}')
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=fake):
+    with patch("kg.translate_handlers.create_async_client", return_value=fake):
         r = client.post(
             "/api/translate/explain",
             json={"word": "evoke", "context": "The story can evoke deep memories."},

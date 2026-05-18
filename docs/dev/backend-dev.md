@@ -2,7 +2,7 @@
 tier: operational
 scope:
   - backend/src/kg
-verified_against: 0f3ee27
+verified_against: a0d70e5
 -->
 # KG Backend Dev Guide
 
@@ -102,6 +102,12 @@ backend/.venv/bin/python -m pytest -q
 先看：
 - `docs/dev/deploy.md`（env keys + opt-in 模式）
 - `backend/src/kg/sentry_init.py`（scrubbing / integrations 實作）
+
+### 查 LLM provider / 換模型 / A/B
+
+- Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。
+- 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/dev/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
+- A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`。
 
 ## 維護規則
 

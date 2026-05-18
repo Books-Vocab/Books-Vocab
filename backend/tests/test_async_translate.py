@@ -121,12 +121,9 @@ async def test_translate_handler_does_not_leak_openai_exc_to_client():
         )
 
     logger = MagicMock()
-    with pytest.raises(ExternalServiceError) as exc_info:
-        await translate_quick_response(
-            req, user,
-            gemini_client_factory=raising_factory,
-            logger=logger,
-        )
+    with patch("kg.translate_handlers.create_async_client", return_value=raising_factory()):
+        with pytest.raises(ExternalServiceError) as exc_info:
+            await translate_quick_response(req, user, logger=logger)
     # The wire-format detail must NOT contain the inner exception string
     detail = exc_info.value.to_detail()
     serialized = str(detail)

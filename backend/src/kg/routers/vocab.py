@@ -29,12 +29,12 @@ from ..deps import (
     _check_quota,
     _daily_stats_store,
     _embedding_store,
-    _gemini_client,
     _graph_store,
     _notebook_store,
     get_current_user,
     logger,
 )
+from ..service_factories import create_client
 from ..vocab_handlers import (
     add_vocab_response,
     archive_word_response,
@@ -92,7 +92,7 @@ def batch_delete(
         graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         embedding_store_factory=_embedding_store,
-        gemini_client_factory=_gemini_client,
+        client_factory=create_client,
         notebook_id=notebook_id,
     )
 
@@ -174,7 +174,7 @@ def delete_word(
         card_store_factory=_card_store, graph_store_factory=_graph_store,
         notebook_store_factory=_notebook_store,
         embedding_store_factory=_embedding_store,
-        gemini_client_factory=_gemini_client,
+        client_factory=create_client,
         notebook_id=notebook_id,
     )
 
@@ -205,7 +205,7 @@ def create_graph_link(
     result = create_manual_link_response(
         req, user,
         card_store_factory=_card_store, graph_store_factory=_graph_store,
-        gemini_client_factory=_gemini_client, notebook_store_factory=_notebook_store,
+        client_factory=create_client, notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,
     )
     _apply_quota_headers(response, quota)
@@ -262,7 +262,7 @@ def add_vocab(
     result = add_vocab_response(
         entries, user,
         card_store_factory=_card_store, embedding_store_factory=_embedding_store,
-        graph_store_factory=_graph_store, gemini_client_factory=_gemini_client,
+        graph_store_factory=_graph_store, client_factory=create_client,
         logger=logger,
         notebook_store_factory=_notebook_store,
         notebook_id=notebook_id,

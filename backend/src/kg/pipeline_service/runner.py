@@ -92,12 +92,11 @@ async def run_pipeline_background(
     card_store_factory: Callable[[Any], Any],
     graph_store_factory: Callable[..., Any],
     embedding_store_factory: Callable[..., Any],
-    gemini_client_factory: Callable[[], Any],
+    client_factory: Callable[..., Any],
     logger: logging.Logger,
     link_kind_enum: Any,
     force_enrich: bool = False,
     notebook_id: str = "default",
-    gemini_model: str = "gemini-2.5-flash-lite",
 ) -> None:
     uid = user["id"]
     lock = await get_user_lock_fn(uid)
@@ -137,11 +136,10 @@ async def run_pipeline_background(
                 status = await _run_step(uid, "Enrich", lambda: _step_enrich(
                     uid, user,
                     card_store_factory=card_store_factory,
-                    gemini_client_factory=gemini_client_factory,
+                    client_factory=client_factory,
                     logger=logger,
                     force=force_enrich,
                     notebook_id=notebook_id,
-                    gemini_model=gemini_model,
                 ), logger=logger, retry=True, run_id=run_id)
                 if status == "quota_exhausted":
                     pipeline_status = "quota_exhausted"
@@ -152,11 +150,10 @@ async def run_pipeline_background(
                         card_store_factory=card_store_factory,
                         graph_store_factory=graph_store_factory,
                         embedding_store_factory=embedding_store_factory,
-                        gemini_client_factory=gemini_client_factory,
+                        client_factory=client_factory,
                         logger=logger,
                         link_kind_enum=link_kind_enum,
                         notebook_id=notebook_id,
-                        gemini_model=gemini_model,
                     ), logger=logger, retry=True, run_id=run_id)
                     if status == "quota_exhausted":
                         pipeline_status = "quota_exhausted"
