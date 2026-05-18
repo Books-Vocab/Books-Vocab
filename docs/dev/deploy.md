@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: a0d70e5
+verified_against: 6b62854
 -->
 # 後端部署指南
 
