@@ -14,7 +14,6 @@ from fastapi.testclient import TestClient
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.auth as auth_router_mod
-import kg.routers.translate as translate_router_mod
 import kg.routers.vocab as vocab_router_mod
 from kg.api import app
 from kg.graph import LinkKind
@@ -258,7 +257,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
     ))
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=fake_client):
+    with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -272,7 +271,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"試探性地"}'))],
         usage=None,
     ))
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=fake_client_phrase):
+    with patch("kg.translate_handlers.create_async_client", return_value=fake_client_phrase):
         r = client.post(
             "/api/translate/phrase",
             json={"word": "on trial", "context": "He was on trial for fraud."},
@@ -286,7 +285,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"e":"在此語境表示引發回憶。"}'))],
         usage=None,
     ))
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=fake_client_explain):
+    with patch("kg.translate_handlers.create_async_client", return_value=fake_client_explain):
         r = client.post(
             "/api/translate/explain",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
@@ -297,7 +296,7 @@ def test_translate_endpoints_success_and_error(isolated_api):
 
     failing_client = MagicMock()
     failing_client.chat.completions.create = AsyncMock(side_effect=RuntimeError("LLM down"))
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=failing_client):
+    with patch("kg.translate_handlers.create_async_client", return_value=failing_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "serendipity", "context": "A serendipity encounter changed everything."},
@@ -326,7 +325,7 @@ def test_translate_works_without_pro_subscription(isolated_api):
         choices=[SimpleNamespace(message=SimpleNamespace(content='{"t":"喚起","p":"v.","r":"evoke"}'))],
         usage=None,
     ))
-    with patch.object(translate_router_mod, "_gemini_async_client", return_value=fake_client):
+    with patch("kg.translate_handlers.create_async_client", return_value=fake_client):
         r = client.post(
             "/api/translate/quick",
             json={"word": "evoke", "context": "The story can evoke deep memories."},
