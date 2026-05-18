@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from logging import Logger
 from typing import Any
 
@@ -9,6 +8,8 @@ from openai import OpenAIError
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
 from .exceptions import ExternalServiceError
+from .llm.providers import provider_for
+from .service_factories import create_async_client
 from .tracked_llm import TrackedLLM
 from .translate_service import (
     run_explain_translate,
@@ -22,18 +23,16 @@ async def _safe_translate(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    gemini_client_factory: Callable[[], Any],
+    call_type: str,
     label: str,
     logger: Logger | None = None,
-    model: str | None = None,
 ):
-    llm = TrackedLLM(gemini_client_factory(), user["id"])
+    provider = provider_for(call_type)
+    llm = TrackedLLM(create_async_client(provider), user["id"], provider=provider)
     try:
-        kw: dict[str, Any] = {"llm": llm}
+        kw: dict[str, Any] = {"llm": llm, "model": provider.chat_model}
         if logger:
             kw["logger"] = logger
-        if model:
-            kw["model"] = model
         return await coro(req, user, **kw)
     except HTTPException:
         raise
@@ -52,40 +51,29 @@ async def translate_quick_response(
     req: TranslateRequest,
     user: dict[str, Any],
     *,
-    gemini_client_factory: Callable[[], Any],
     logger: Logger,
-    model: str | None = None,
 ) -> QuickTranslateResponse:
     return await _safe_translate(
         run_quick_translate, req, user,
-        gemini_client_factory=gemini_client_factory,
-        label="translate/quick", logger=logger, model=model,
+        call_type="translate_quick", label="translate/quick", logger=logger,
     )
 
 
 async def translate_phrase_response(
     req: TranslateRequest,
     user: dict[str, Any],
-    *,
-    gemini_client_factory: Callable[[], Any],
-    model: str | None = None,
 ) -> dict[str, str]:
     return await _safe_translate(
         run_phrase_translate, req, user,
-        gemini_client_factory=gemini_client_factory,
-        label="translate/phrase", model=model,
+        call_type="translate_phrase", label="translate/phrase",
     )
 
 
 async def translate_explain_response(
     req: TranslateRequest,
     user: dict[str, Any],
-    *,
-    gemini_client_factory: Callable[[], Any],
-    model: str | None = None,
 ) -> ExplainResponse:
     return await _safe_translate(
         run_explain_translate, req, user,
-        gemini_client_factory=gemini_client_factory,
-        label="translate/explain", model=model,
+        call_type="translate_explain", label="translate/explain",
     )
