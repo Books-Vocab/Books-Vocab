@@ -174,6 +174,7 @@ class ClaudeRunner:
         # Parse NDJSON lines to extract assistant text content
         text_parts: list[str] = []
         result_session_id: str | None = None
+        result_usage: dict | None = None
 
         for line in stdout.decode().split("\n"):
             line = line.strip()
@@ -192,15 +193,17 @@ class ClaudeRunner:
                     if isinstance(block, dict) and block.get("type") == "text":
                         text_parts.append(block.get("text", ""))
 
-            # Extract session_id from result event
+            # Extract session_id and usage from result event
             if data.get("type") == "result":
                 result_session_id = data.get("session_id")
+                result_usage = data.get("usage")
 
         combined_text = "\n".join(text_parts) if text_parts else ""
         return {
             "type": "result",
             "result": combined_text,
             "session_id": result_session_id,
+            "usage": result_usage,
         }
 
     @staticmethod
