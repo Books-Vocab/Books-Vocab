@@ -32,7 +32,7 @@ enum VocabSkinColors {
     static let translationLight = Color(red: 0.54, green: 0.50, blue: 0.44)
     static let translationDark  = Color(red: 0.80, green: 0.72, blue: 0.64)
 
-    // ── 難度 Tier（intermediate / advanced 目前 light/dark 同值）──
+    // ── 難度 Tier（固定色，不隨系統深淺色 — 與 themed() 既有行為一致）──
     static let tierIntermediate = Color(red: 0.72, green: 0.63, blue: 0.36)
     static let tierAdvanced     = Color(red: 0.84, green: 0.54, blue: 0.28)
 
@@ -527,9 +527,10 @@ extension VocabSkin {
     /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
     /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
     static func themed(_ theme: AppTheme) -> VocabSkin {
-        let link = theme.colorScheme == .dark
-            ? Color(red: 0.62, green: 0.71, blue: 0.84)
-            : Color(red: 0.47, green: 0.56, blue: 0.67)
+        let isDark = theme.colorScheme == .dark
+        let highlightMark = isDark
+            ? VocabSkinColors.highlightMarkDark
+            : VocabSkinColors.highlightMarkLight
 
         return VocabSkin(
             palette: .init(
@@ -544,54 +545,36 @@ extension VocabSkin {
                 secondaryText: theme.palette.secondaryText,
                 tertiaryText: theme.palette.tertiaryText,
                 quaternaryText: theme.palette.quaternaryText,
-                translationText: theme.colorScheme == .dark
-                    ? Color(red: 0.80, green: 0.72, blue: 0.64)
-                    : Color(red: 0.54, green: 0.50, blue: 0.44),
+                translationText: isDark ? VocabSkinColors.translationDark : VocabSkinColors.translationLight,
                 accent: theme.palette.accent,
                 accentHero: theme.palette.accentHero,
                 accentSubtle: theme.palette.accentSubtle,
                 success: theme.palette.success,
                 successBg: theme.palette.successBg,
-                tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
-                tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
+                tierIntermediate: VocabSkinColors.tierIntermediate,
+                tierAdvanced: VocabSkinColors.tierAdvanced,
                 warning: theme.palette.warning,
                 warningBg: theme.palette.warningBg,
-                retry: theme.colorScheme == .dark
-                    ? Color(hue: 0.08, saturation: 0.45, brightness: 0.78)
-                    : Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
+                retry: isDark ? VocabSkinColors.retryDark : VocabSkinColors.retryLight,
                 info: theme.palette.info,
                 infoBg: theme.palette.infoBg,
                 destructive: theme.palette.destructive,
                 destructiveBg: theme.palette.destructiveBg,
-                overdue: theme.colorScheme == .dark
-                    ? Color(red: 0.62, green: 0.48, blue: 0.72)
-                    : Color(red: 0.56, green: 0.40, blue: 0.66),
-                highlightMark: theme.colorScheme == .dark
-                    ? Color(red: 0.73, green: 0.66, blue: 0.33)
-                    : Color(red: 0.90, green: 0.84, blue: 0.57),
+                overdue: isDark ? VocabSkinColors.overdueDark : VocabSkinColors.overdueLight,
+                highlightMark: highlightMark,
                 mutedFill: theme.palette.mutedFill,
-                link: link,
+                link: isDark ? VocabSkinColors.linkDark : VocabSkinColors.linkLight,
                 overlayScrim: theme.palette.scrim,
-                readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
-                readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
-                readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38),
-                overlayFill: theme.colorScheme == .dark
-                    ? Color.white.opacity(0.15)
-                    : Color.white.opacity(0.12),
-                highlightMarkSubtle: theme.colorScheme == .dark
-                    ? Color(red: 0.73, green: 0.66, blue: 0.33).opacity(0.68)
-                    : Color(red: 0.90, green: 0.84, blue: 0.57).opacity(0.68),
+                readerThemeLightSwatch: VocabSkinColors.readerThemeLightSwatch,
+                readerThemeSepiaSwatch: VocabSkinColors.readerThemeSepiaSwatch,
+                readerThemeDarkSwatch: VocabSkinColors.readerThemeDarkSwatch,
+                overlayFill: theme.palette.overlayFill,
+                highlightMarkSubtle: highlightMark.opacity(0.68),
                 primaryTextMuted: theme.palette.primaryText.opacity(0.84),
                 quaternaryTextFaint: theme.palette.quaternaryText.opacity(0.14),
-                progressBarBackground: theme.colorScheme == .dark
-                    ? Color.white.opacity(0.10)
-                    : Color.black.opacity(0.07),
-                buttonIdleFill: theme.colorScheme == .dark
-                    ? Color.white.opacity(0.12)
-                    : Color.black.opacity(0.07),
-                buttonPressedFill: theme.colorScheme == .dark
-                    ? Color.white.opacity(0.18)
-                    : Color.black.opacity(0.12)
+                progressBarBackground: theme.palette.progressBarBackground,
+                buttonIdleFill: theme.palette.buttonIdleFill,
+                buttonPressedFill: theme.palette.buttonPressedFill
             ),
             typography: baseTypography,
             radii: baseRadii,
