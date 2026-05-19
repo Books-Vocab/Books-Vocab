@@ -450,3 +450,77 @@ def test_admin_trigger_prune_endpoint_returns_counts(admin_app):
     assert body["pipeline_deleted"] == 1
     assert body["judge_deleted"] == 1
     assert body["translate_deleted"] == 1
+
+
+# ─────────────────────────────────────────────────────────────────────────────
+# run_all / CLI --all must honour *_RETENTION_DAYS env (not hardcoded defaults)
+# ─────────────────────────────────────────────────────────────────────────────
+
+
+def test_run_all_respects_retention_env(isolated_logs, monkeypatch):
+    """run_all() with no args must resolve each *_RETENTION_DAYS env var,
+    not silently fall back to the hardcoded DEFAULT_DAYS_*. The admin
+    endpoint and CLI --all both route through run_all()."""
+    monkeypatch.setenv("PIPELINE_LOG_RETENTION_DAYS", "5")
+    monkeypatch.setenv("JUDGE_LOG_RETENTION_DAYS", "7")
+    monkeypatch.setenv("TRANSLATE_LOG_RETENTION_DAYS", "3")
+    monkeypatch.setenv("TOKEN_USAGE_RETENTION_DAYS", "10")
+
+    # One row just past each env window → must be pruned.
+    _insert_pipeline_row(_iso(6))
+    _insert_judge_row(_iso(8))
+    _insert_translate_row(_iso(4))
+    _insert_token_row(_iso(11))
+    # One row inside each env window → must survive. (All would also
+    # survive the larger DEFAULT windows, so a deleted-count of 1 proves
+    # the env window — not DEFAULT — drove the prune.)
+    _insert_pipeline_row(_iso(4))
+    _insert_judge_row(_iso(6))
+    _insert_translate_row(_iso(2))
+    _insert_token_row(_iso(9))
+
+    report = log_retention.run_all()
+
+    assert report["pipeline_log"]["deleted"] == 1
+    assert report["judge_log"]["deleted"] == 1
+    assert report["translate_log"]["deleted"] == 1
+    assert report["token_usage"]["deleted"] == 1
+    assert report["pipeline_log"]["days"] == 5
+    assert report["judge_log"]["days"] == 7
+    assert report["translate_log"]["days"] == 3
+    assert report["token_usage"]["days"] == 10
+
+
+def test_run_all_explicit_arg_overrides_env(isolated_logs, monkeypatch):
+    """An explicit day-count passed to run_all() still wins over env."""
+    monkeypatch.setenv("JUDGE_LOG_RETENTION_DAYS", "7")
+    _insert_judge_row(_iso(8))  # past the 7d env window, inside explicit 90d
+
+    report = log_retention.run_all(judge_days=90)
+
+    assert report["judge_log"]["deleted"] == 0
+    assert report["judge_log"]["days"] == 90
+
+
+def test_cli_all_flag_respects_retention_env(isolated_logs):
+    """CLI `--all` without `--days` must honour the env vars."""
+    _insert_judge_row(_iso(8))  # >7d env window
+    _insert_judge_row(_iso(3))  # inside 7d → survives
+
+    judge_log._reset()
+    if token_tracker._conn is not None:
+        token_tracker._conn.close()
+        token_tracker._conn = None
+
+    env = _cli_env(isolated_logs)
+    env["JUDGE_LOG_RETENTION_DAYS"] = "7"
+    result = subprocess.run(
+        [sys.executable, "-m", "kg.log_retention", "--all", "--json"],
+        capture_output=True,
+        text=True,
+        env=env,
+    )
+    assert result.returncode == 0, result.stderr
+    out = json.loads(result.stdout)
+    assert out["judge_log"]["deleted"] == 1
+    assert out["judge_log"]["days"] == 7
