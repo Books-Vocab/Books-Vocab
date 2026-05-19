@@ -2,7 +2,7 @@
 tier: structural
 scope:
   - ios/BooksBrowser
-verified_against: c16321f
+verified_against: 1d24dc1
 -->
 # BooksBrowser UI Design System
 
@@ -15,7 +15,7 @@ verified_against: c16321f
 
 ## 設計系統概覽
 
-BooksBrowser 使用莫蘭迪色調的 design token 系統：
+BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑、Notion 藍強調色）：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
