@@ -235,11 +235,7 @@ struct TodayReviewPresenter: View {
             .animation(dismissPhase == .idle ? AppMotion.reviewRevealSpring : nil,
                        value: state.revealStage.showsAnswer)
             .id(cardIdentity)
-            .transition(suppressTransition ? .identity : .asymmetric(
-                insertion: .scale(scale: TodayReviewMetrics.promoteScale)
-                    .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
-                removal: .identity
-            ))
+            .transition(suppressTransition ? .identity : .reviewCardPromote)
             .offset(x: swipeOffset)
             .rotationEffect(
                 .degrees(Double(swipeOffset) / screenWidth * appSkin.metrics.reviewSwipeMaxRotation),
