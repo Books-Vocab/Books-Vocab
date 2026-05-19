@@ -141,7 +141,7 @@ extension AppTabSelectorStyle {
     static func vocab(_ skin: AppSkin) -> AppTabSelectorStyle {
         .init(
             iconFont: skin.typography.iconSmall,
-            titleFont: skin.typography.captionStrong,
+            titleFont: skin.typography.caption,
             countFont: skin.typography.monoLabel,
             iconSelectedColor: skin.palette.primaryText,
             iconUnselectedColor: skin.palette.secondaryText,

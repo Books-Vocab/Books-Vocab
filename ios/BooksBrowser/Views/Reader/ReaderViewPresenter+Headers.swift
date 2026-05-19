@@ -35,7 +35,7 @@ extension ReaderViewPresenter {
                 Spacer()
 
                 Text(state.bookTitle)
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
                     .lineLimit(1)
                     .frame(maxWidth: LayoutMode(horizontalSizeClass: sizeClass).readerTitleMaxWidth)

@@ -179,7 +179,7 @@ struct WordDetailPresenter: View {
     private func reviewProgressSection(_ progress: VocabReviewProgress) -> some View {
         HStack {
             Text(progress.statusLabel.localized)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.secondaryText)
 
             Spacer()

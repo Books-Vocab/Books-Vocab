@@ -17,7 +17,6 @@
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
 //    [Reader]  accent, saved, destructive, warning（TranslationPanel 使用）
 //    [Global]  tint（BooksBrowserApp 注入 SwiftUI tint）
-//    [Legacy]  tier*, glassClearBackground（保留相容，新代碼請用 AppSkin）
 //  ─────────────────────────────────────────────────────────────────────
 
 import SwiftUI
