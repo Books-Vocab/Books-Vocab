@@ -116,7 +116,8 @@ enum KnowledgeGraphPresentation {
         nodes: [KnowledgeGraphNode],
         syncedEntryCount: Int = 0,
         linkCount: Int = 0,
-        showsIsolatedNodes: Bool = false
+        showsIsolatedNodes: Bool = false,
+        onRetry: (() -> Void)? = nil
     ) -> KnowledgeGraphPresenter.State.EmptyState? {
         if !isLoggedIn {
             return .init(
@@ -136,7 +137,14 @@ enum KnowledgeGraphPresentation {
             return .init(
                 title: "載入失敗".localized,
                 systemImage: "exclamationmark.triangle",
-                description: errorMessage
+                description: errorMessage,
+                action: onRetry.map { retry in
+                    AppEmptyStateAction(
+                        title: "重試".localized,
+                        systemImage: "arrow.clockwise",
+                        handler: retry
+                    )
+                }
             )
         }
         if nodes.isEmpty {
