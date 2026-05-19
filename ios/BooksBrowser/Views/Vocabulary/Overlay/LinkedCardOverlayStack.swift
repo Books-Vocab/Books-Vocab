@@ -1,5 +1,12 @@
 import SwiftUI
 
+/// 連結卡片疊層的層次位移參數 — 僅 LinkedCardOverlayStack 使用。
+private enum AppOverlayMetrics {
+    static let linkedCardLayerOffsetX: CGFloat = 8
+    static let linkedCardLayerOffsetY: CGFloat = 10
+    static let linkedCardLayerShrinkStep: CGFloat = 18
+}
+
 struct LinkedCardOverlayStack: View {
     @Environment(\.vocabSkin) private var vocabSkin
     @Binding var stack: [VocabularyEntry]

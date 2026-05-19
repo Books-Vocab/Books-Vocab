@@ -8,6 +8,12 @@
 
 import SwiftUI
 
+/// Ghost 按鈕內距 — 僅 AppSurface 使用。
+private enum AppGhostButtonMetrics {
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 10
+}
+
 // MARK: - AppCard (Pure White Paper)
 
 struct AppCard<Content: View>: View {

@@ -1,5 +1,29 @@
 import SwiftUI
 
+/// Welcome walkthrough 專用版面參數 — 僅 WelcomeView 使用。
+private enum AppWelcomeMetrics {
+    static let iconBottomPadding: CGFloat = 12
+    static let pageHeight: CGFloat = 240
+    static let featureIconFrame: CGFloat = 64
+    static let subtitleHorizontalPadding: CGFloat = 40
+    static let bottomPadding: CGFloat = 40
+
+    // Step indicator capsule（自繪 page control）
+    static let stepIndicatorActiveWidth: CGFloat = 22
+    static let stepIndicatorInactiveWidth: CGFloat = 6
+    static let stepIndicatorHeight: CGFloat = 6
+    static let stepIndicatorInactiveOpacity: Double = 0.25
+
+    // Feature icon halo（accent 圓形背景）
+    static let iconHaloPadding: CGFloat = 16
+    static let iconHaloOpacity: Double = 0.10
+
+    // Page typography / layout
+    static let stepLabelTracking: CGFloat = 1.4
+    static let captionTopPadding: CGFloat = 2
+    static let pageContentSpacing: CGFloat = 4
+}
+
 struct WelcomeView: View {
     @Environment(\.appTheme) private var appTheme
     @State private var currentPage = 0
