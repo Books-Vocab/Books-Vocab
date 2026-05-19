@@ -397,7 +397,7 @@ struct PodcastPlayerView: View {
 
     /// Fetches + decodes the SRT for an episode. Returns nil on any
     /// network/decode failure so the caller can drive the inline retry state.
-    static func fetchSubtitle(urlString: String, kgService: KGService) async -> String? {
+    static func fetchSubtitle(urlString: String, kgService: any KGServing) async -> String? {
         guard let data = try? await PodcastSyncService.authedData(
             from: urlString, kgService: kgService
         ) else { return nil }
