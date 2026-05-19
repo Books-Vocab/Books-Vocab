@@ -21,8 +21,6 @@ enum AppMetrics {
     // ── Loading Indicator ─────────────────────────────────────────────────
     static let loadingIndicatorScaleMedium: CGFloat = 0.8
     static let loadingIndicatorScaleSmall: CGFloat = 0.7
-
-    static let sectionInset: CGFloat = 20
 }
 
 enum AppMotion {

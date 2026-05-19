@@ -64,7 +64,7 @@ struct LinkedCardOverlayStack: View {
         )
         .appElevation(.z4)
         .padding(.horizontal, AppSpacing.s4 + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
-        .padding(.vertical, AppMetrics.sectionInset + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX)
+        .padding(.vertical, AppSpacing.s5 + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
         .offset(x: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX, y: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
         .transition(.linkedOverlayCard)

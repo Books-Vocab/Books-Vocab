@@ -1,10 +1,10 @@
 import SwiftUI
 
 enum AppShellMetrics {
-    static let pageHorizontalPadding = AppMetrics.sectionInset
-    static let pageTopPadding: CGFloat = 12
-    static let pageBottomPadding: CGFloat = 48
-    static let sectionSpacing: CGFloat = 24
+    static let pageHorizontalPadding = AppSpacing.s5
+    static let pageTopPadding = AppSpacing.s3
+    static let pageBottomPadding = AppSpacing.s9
+    static let sectionSpacing = AppSpacing.s6
     static let cardCornerRadius = AppRadius.md
     static let cardPadding: CGFloat = 18
     static let toolbarBadgeHorizontalPadding: CGFloat = 5
