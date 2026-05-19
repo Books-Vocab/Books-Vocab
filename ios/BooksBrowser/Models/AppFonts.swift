@@ -90,6 +90,26 @@ enum AppFonts {
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
+    /// Serif Italic: CormorantGaramond + STSongti-TC cascade — 例句強調渲染
+    static func serifItalic(size: CGFloat, bold: Bool = false) -> Font {
+        let primary = bold ? "CormorantGaramond-BoldItalic" : "CormorantGaramond-Italic"
+        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
+        let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
+        let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
+        return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
+    }
+
+    /// System Mono: SF Mono — 單字渲染專用（需系統等寬的字面對齊感）
+    static func systemMono(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .monospaced)
+    }
+
+    /// SF Symbol 字型 — symbol 一律以系統字繪製，此 builder 收斂散落的 .system(design:.default)
+    static func symbol(size: CGFloat, weight: Font.Weight = .regular) -> Font {
+        .system(size: size, weight: weight, design: .default)
+    }
+
     // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
