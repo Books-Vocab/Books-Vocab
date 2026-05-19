@@ -110,50 +110,69 @@ enum AppFonts {
         .system(size: size, weight: weight, design: .default)
     }
 
+    // MARK: - Type Scale (字級 ramp — 正式 scale)
+    //
+    // 以下 7 階構成 app 的正式文字 type scale。新元件字級一律從語意 helper
+    // （hero / h1 / h2 / body / subhead / caption / caption2）取用；需 raw
+    // size 餵給 builder 時取 `TypeScale.*`。禁止自訂 scale 外字級。
+    //
+    // 既有 AppSkin.Typography 的 bespoke 字級（14 / 16 / 18 / 21 / 24 / 27 …）
+    // 為此 ramp 形式化之前的既有 token，grandfather 保留、本次不 migrate。
+
+    enum TypeScale {
+        static let caption2: CGFloat = 11
+        static let caption: CGFloat = 12
+        static let subhead: CGFloat = 15
+        static let body: CGFloat = 17
+        static let h2: CGFloat = 22
+        static let h1: CGFloat = 28
+        static let hero: CGFloat = 40
+    }
+
     // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
     static func hero(weight: Font.Weight = .semibold) -> Font {
-        serif(size: 40, bold: weight.isBold)
+        serif(size: TypeScale.hero, bold: weight.isBold)
     }
 
     /// 頁面主標題 — 28pt serif
     static func h1(weight: Font.Weight = .medium) -> Font {
-        serif(size: 28, bold: weight.isBold)
+        serif(size: TypeScale.h1, bold: weight.isBold)
     }
 
     /// 區塊標題 — 22pt serif
     static func h2(weight: Font.Weight = .medium) -> Font {
-        serif(size: 22, bold: weight.isBold)
+        serif(size: TypeScale.h2, bold: weight.isBold)
     }
 
     // MARK: - 內文層級 (Body) — sans
 
     /// 預設內文 — 17pt sans
     static func body(weight: Font.Weight = .regular) -> Font {
-        sans(size: 17, bold: weight.isBold)
+        sans(size: TypeScale.body, bold: weight.isBold)
     }
 
     /// 次要說明 — 15pt sans
     static func subhead(weight: Font.Weight = .regular) -> Font {
-        sans(size: 15, bold: weight.isBold)
+        sans(size: TypeScale.subhead, bold: weight.isBold)
     }
 
     // MARK: - 細節層級 (Caption & Mono) — sans
 
     /// 提示小字 — 12pt sans
     static func caption(weight: Font.Weight = .regular) -> Font {
-        sans(size: 12, bold: weight.isBold)
+        sans(size: TypeScale.caption, bold: weight.isBold)
     }
 
     /// 極小提示 — 11pt sans
     static func caption2(weight: Font.Weight = .regular) -> Font {
-        sans(size: 11, bold: weight.isBold)
+        sans(size: TypeScale.caption2, bold: weight.isBold)
     }
 
     /// 等寬內文 — 17pt ElmsSans mono（body 尺寸，用於音標、程式碼輸入等）
     static func mono() -> Font {
-        mono(size: 17)
+        mono(size: TypeScale.body)
     }
 
     /// 等寬數字 — ElmsSans mono
@@ -163,7 +182,7 @@ enum AppFonts {
 
     /// Reader 進度條等寬細字 — 11pt ElmsSans mono
     static func monoProgress() -> Font {
-        mono(size: 11)
+        mono(size: TypeScale.caption2)
     }
 
     // MARK: - Tracking Tokens (letter-spacing)
