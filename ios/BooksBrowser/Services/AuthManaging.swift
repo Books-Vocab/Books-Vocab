@@ -31,6 +31,9 @@ protocol AuthManaging: AnyObject {
 
     func enterDemoMode(modelContainer: ModelContainer)
     func exitDemoMode(modelContainer: ModelContainer)
+    /// Re-reads the persisted session when a prior keychain read failed transiently
+    /// (cold-boot, pre-first-unlock). Call when the app/scene becomes active.
+    func refreshSessionIfNeeded()
     func login(userId: String, token: String)
     func login(customToken: String)
     func logout(modelContainer: ModelContainer?, reason: String)

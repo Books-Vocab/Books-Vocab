@@ -256,6 +256,10 @@ struct BooksBrowserApp: App {
                     switch newPhase {
                     case .active:
                         AppAnalytics.track(.appSessionStarted)
+                        // Device is now unlocked — retry any keychain token read that failed
+                        // transiently at launch (cold boot), resolving the unknown auth state
+                        // before the sync guards below evaluate `isLoggedIn`.
+                        authManager.refreshSessionIfNeeded()
                         Task {
                             await subscriptionManager.refresh(using: kgService, authManager: authManager)
                             guard authManager.isLoggedIn, !authManager.isDemoMode else { return }
