@@ -207,4 +207,102 @@ struct BackgroundSyncActorTests {
         #expect(entry?.bookTitle == "Locally Known Book")
         #expect(entry?.chapterTitle == "Local Chapter")
     }
+
+    // MARK: - Orphan cleanup safety-valve signalling
+    //
+    // Regression coverage for the sync-boundary leak: when a FULL sync's
+    // orphan cleanup is blocked by the mass-deletion safety valve, the local
+    // store still holds ghost entries. `pullCardsToLocal` must report this so
+    // the caller can refuse to advance the incremental boundary (forcing a
+    // full-sync retry next time) instead of permanently stranding the ghosts.
+
+    /// Seed `count` server-synced entries that will become orphans (they are
+    /// absent from any fetched-card list).
+    private func seedSyncedEntries(_ container: ModelContainer, count: Int) throws {
+        let context = ModelContext(container)
+        for i in 0..<count {
+            let entry = VocabularyEntry(
+                word: "orphan-\(i)",
+                translation: "meaning-\(i)",
+                context: "ctx",
+                bookTitle: "Book"
+            )
+            entry.notebookId = "default"
+            entry.markSynced()
+            context.insert(entry)
+        }
+        try context.save()
+    }
+
+    @Test func fullSync_safetyValve_blocked_reports_orphanCleanupBlocked() async throws {
+        let container = try makeContainer()
+        // 10 local synced entries; server returns just 1 → ratio 0.1 < 0.3.
+        try seedSyncedEntries(container, count: 10)
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let card = try makeCard(content: "survivor", sourceJSON: nil)
+
+        let result = try await actor.pullCardsToLocal(
+            fetchedCards: [card],
+            isIncremental: false,
+            progress: { _, _, _ in }
+        )
+
+        #expect(result.orphanCleanupBlocked == true)
+
+        // Ghost entries must still be present — cleanup was skipped.
+        let context = ModelContext(container)
+        let remaining = try context.fetch(FetchDescriptor<VocabularyEntry>())
+        #expect(remaining.contains { $0.word == "orphan-0" })
+    }
+
+    @Test func fullSync_normal_reports_orphanCleanupNotBlocked() async throws {
+        let container = try makeContainer()
+        // 2 local synced entries; server returns both → no orphans, no block.
+        let context = ModelContext(container)
+        for word in ["alpha", "beta"] {
+            let entry = VocabularyEntry(
+                word: word,
+                translation: "meaning-\(word)",
+                context: "ctx",
+                bookTitle: "Book"
+            )
+            entry.notebookId = "default"
+            entry.markSynced()
+            context.insert(entry)
+        }
+        try context.save()
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let cards = [
+            try makeCard(id: "a", content: "alpha", sourceJSON: nil),
+            try makeCard(id: "b", content: "beta", sourceJSON: nil),
+        ]
+
+        let result = try await actor.pullCardsToLocal(
+            fetchedCards: cards,
+            isIncremental: false,
+            progress: { _, _, _ in }
+        )
+
+        #expect(result.orphanCleanupBlocked == false)
+    }
+
+    @Test func incrementalSync_never_reports_orphanCleanupBlocked() async throws {
+        let container = try makeContainer()
+        // Many local synced entries, tiny incremental batch — orphan cleanup
+        // does not run at all on incremental syncs, so it can never be blocked.
+        try seedSyncedEntries(container, count: 10)
+
+        let actor = BackgroundSyncActor(modelContainer: container)
+        let card = try makeCard(content: "survivor", sourceJSON: nil)
+
+        let result = try await actor.pullCardsToLocal(
+            fetchedCards: [card],
+            isIncremental: true,
+            progress: { _, _, _ in }
+        )
+
+        #expect(result.orphanCleanupBlocked == false)
+    }
 }

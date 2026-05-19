@@ -16,14 +16,27 @@ actor BackgroundSyncActor {
         AppDateFormatters.parseISO8601(string)
     }
 
+    /// Outcome of a `pullCardsToLocal` merge.
+    ///
+    /// `orphanCleanupBlocked` is `true` only when a FULL sync's orphan cleanup
+    /// was skipped by the mass-deletion safety valve — meaning the local store
+    /// still holds ghost entries the server no longer has. The caller must NOT
+    /// advance the incremental boundary in that case, so the next sync runs a
+    /// full sync again and retries the cleanup. It is always `false` for
+    /// incremental syncs and for full syncs whose cleanup ran normally.
+    struct PullResult: Sendable {
+        var orphanCleanupBlocked: Bool
+    }
+
     /// Fetch all cards from KG API and merge them into local SwiftData VocabularyEntry items
     /// This makes all KG words available offline (for underlining and browsing).
+    @discardableResult
     func pullCardsToLocal(
         fetchedCards: [KGCard],
         isIncremental: Bool,
         progress: @Sendable @escaping (String, Int, Int) -> Void,
         notebookId: String = "default"
-    ) throws {
+    ) throws -> PullResult {
         // Fetch all current local entries
         let descriptor = FetchDescriptor<VocabularyEntry>()
         let localEntries = try modelContext.fetch(descriptor)
@@ -120,6 +133,7 @@ actor BackgroundSyncActor {
         // 2. Cleanup orphans (Only for FULL sync)
         // Any local entry that has `syncStatus == 1` but is MISSING from the remote fetched list
         // means it was deleted remotely before soft-deletes were implemented.
+        var orphanCleanupBlocked = false
         if !isIncremental {
             let localSyncedCount = localEntries.filter { $0.shouldAppearInKnowledgeList }.count
             let serverReturnedCount = fetchedCards.count
@@ -129,8 +143,10 @@ actor BackgroundSyncActor {
             let diff = localSyncedCount - serverReturnedCount
 
             if ratio < 0.3 {
+                orphanCleanupBlocked = true
                 AppLog.sync.warning("Orphan cleanup BLOCKED: server returned <30% (\(serverReturnedCount)/\(localSyncedCount))")
             } else if diff > 50 && ratio < 0.8 {
+                orphanCleanupBlocked = true
                 AppLog.sync.warning("Orphan cleanup BLOCKED: large diff (\(diff) entries, ratio=\(String(format: "%.1f%%", ratio * 100)))")
             } else {
                 progress(L10n.string("清理無效卡片..."), totalCards, totalCards)
@@ -152,6 +168,7 @@ actor BackgroundSyncActor {
 
         try modelContext.save()
         AppLog.sync.info("pullCardsToLocal completed. Merged \(fetchedCards.count) remote cards.")
+        return PullResult(orphanCleanupBlocked: orphanCleanupBlocked)
     }
 
     /// Deletes all vocabulary entries and review records from local SwiftData storage.
