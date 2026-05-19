@@ -173,33 +173,35 @@ enum AppElevation {
     case z3  // overlay (sheet, drawer, popover)
     case z4  // modal / fullscreen overlay
 
+    // Notion-inspired：表面靠 border 分層，shadow 僅做極輕的浮起暗示。
+    // resting card（z1）幾乎無陰影；明顯陰影保留給 overlay / modal。
     var opacity: Double {
         switch self {
         case .z0: return 0
-        case .z1: return 0.04
-        case .z2: return 0.08
-        case .z3: return 0.12
-        case .z4: return 0.18
+        case .z1: return 0.03
+        case .z2: return 0.06
+        case .z3: return 0.10
+        case .z4: return 0.16
         }
     }
 
     var radius: CGFloat {
         switch self {
         case .z0: return 0
-        case .z1: return 6
-        case .z2: return 14
-        case .z3: return 22
-        case .z4: return 32
+        case .z1: return 4
+        case .z2: return 10
+        case .z3: return 18
+        case .z4: return 28
         }
     }
 
     var y: CGFloat {
         switch self {
         case .z0: return 0
-        case .z1: return 2
-        case .z2: return 6
-        case .z3: return 12
-        case .z4: return 18
+        case .z1: return 1
+        case .z2: return 4
+        case .z3: return 8
+        case .z4: return 14
         }
     }
 }
