@@ -567,58 +567,10 @@ extension VocabSkin {
         )
     }
 
-    /// 硬編碼的靜態淺色 skin，不受系統深淺色模式影響。
+    /// 固定淺色 skin，不受系統深淺色模式影響。
     /// 僅用於 SwiftUI Preview 或特定固定呈現場景，正常業務請改用 themed()。
-    static let previewNeutral = VocabSkin(
-        palette: .init(
-            pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),
-            stageBackground: Color(red: 0.972, green: 0.970, blue: 0.964),
-            cardBackground: Color(red: 0.989, green: 0.987, blue: 0.982),
-            cardBorder: Color.black.opacity(0.048),
-            borderStrong: Color.black.opacity(0.12),
-            divider: Color.black.opacity(0.05),
-            shadow: Color.black.opacity(0.028),
-            primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
-            secondaryText: Color(red: 0.43, green: 0.43, blue: 0.42),
-            tertiaryText: Color(red: 0.44, green: 0.44, blue: 0.42),   // was 0.60 — improved to ~4.5:1 on pageBackground
-            quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast
-            translationText: Color(red: 0.54, green: 0.50, blue: 0.44),
-            accent: Color(red: 0.49, green: 0.56, blue: 0.64),
-            accentHero: AppColors.brandHeroLight,
-            accentSubtle: Color(red: 0.49, green: 0.56, blue: 0.64).opacity(0.12),
-            success: Color(red: 0.50, green: 0.64, blue: 0.50),
-            successBg: Color(red: 0.50, green: 0.64, blue: 0.50).opacity(0.10),
-            tierIntermediate: Color(red: 0.72, green: 0.63, blue: 0.36),
-            tierAdvanced: Color(red: 0.84, green: 0.54, blue: 0.28),
-            warning: Color(hue: 0.1, saturation: 0.8, brightness: 0.8),
-            warningBg: Color(hue: 0.1, saturation: 0.8, brightness: 0.8).opacity(0.10),
-            retry: Color(hue: 0.08, saturation: 0.55, brightness: 0.68),
-            info: AppColors.infoLight,
-            infoBg: AppColors.infoLight.opacity(0.10),
-            destructive: Color(red: 0.73, green: 0.49, blue: 0.46),
-            destructiveBg: Color(red: 0.73, green: 0.49, blue: 0.46).opacity(0.10),
-            overdue: Color(red: 0.56, green: 0.40, blue: 0.66),
-            highlightMark: Color(red: 0.90, green: 0.84, blue: 0.57),
-            mutedFill: Color.black.opacity(0.035),
-            link: Color(red: 0.47, green: 0.56, blue: 0.67),
-            overlayScrim: Color.black.opacity(0.20),
-            readerThemeLightSwatch: Color(red: 0.90, green: 0.90, blue: 0.88),
-            readerThemeSepiaSwatch: Color(red: 0.82, green: 0.73, blue: 0.58),
-            readerThemeDarkSwatch: Color(red: 0.34, green: 0.35, blue: 0.38),
-            overlayFill: Color.white.opacity(0.12),
-            highlightMarkSubtle: Color(red: 0.90, green: 0.84, blue: 0.57).opacity(0.68),
-            primaryTextMuted: Color(red: 0.19, green: 0.19, blue: 0.18).opacity(0.84),
-            quaternaryTextFaint: Color(red: 0.72, green: 0.72, blue: 0.70).opacity(0.14),
-            progressBarBackground: Color.black.opacity(0.07),
-            buttonIdleFill: Color.black.opacity(0.07),
-            buttonPressedFill: Color.black.opacity(0.12)
-        ),
-        typography: baseTypography,
-        radii: baseRadii,
-        spacing: baseSpacing,
-        metrics: baseMetrics,
-        highlight: .default
-    )
+    /// 由 themed(.light) 組裝 — 與正式 light skin 單一真相，消除硬編碼複本漂移。
+    static let previewNeutral = VocabSkin.themed(.light)
 }
 
 #if os(iOS)
