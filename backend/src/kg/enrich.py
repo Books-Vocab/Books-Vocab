@@ -92,8 +92,10 @@ def _get_enrich_retryable() -> tuple[type[Exception], ...]:
 
 def _retry_detail(wait_time: float) -> str:
     """Progress message for an enrich retry. Provider-neutral — enrich
-    routes via provider_for('enrich'), which is not necessarily Gemini."""
-    return f"LLM API rate limit, retrying in {wait_time}s..."
+    routes via provider_for('enrich'), which is not necessarily Gemini.
+    Says "error" not "rate limit": the retryable set also covers 5xx /
+    APIError, so a 'rate limit' wording would be inaccurate for those."""
+    return f"LLM API error, retrying in {wait_time}s..."
 
 
 def enrich_cards(llm, cards: list[Card], model: str | None = None) -> list[dict]:

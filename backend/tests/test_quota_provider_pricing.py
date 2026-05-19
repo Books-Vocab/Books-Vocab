@@ -40,6 +40,18 @@ class TestTokenCostUsdProvider:
         cost = token_cost_usd("judge", 1_000_000, 0, provider="retired_xyz")
         assert cost > 0
 
+    def test_unknown_provider_logs_warning(self, caplog):
+        """An unknown provider name is a data-anomaly signal — the
+        fallback is silent on price but must not be silent in the log."""
+        import logging
+
+        with caplog.at_level(logging.WARNING, logger="kg.quota_service"):
+            token_cost_usd("judge", 1000, 0, provider="retired_xyz")
+        assert any("retired_xyz" in r.message for r in caplog.records), (
+            f"expected a warning naming the unknown provider, "
+            f"got {[r.message for r in caplog.records]!r}"
+        )
+
     def test_embed_provider_pricing(self):
         cost = token_cost_usd("embed", 1_000_000, 0, provider="gemini")
         assert cost == pytest.approx(REGISTRY["gemini"].embed_price_per_m)

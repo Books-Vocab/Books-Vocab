@@ -90,6 +90,34 @@ def test_schema_migration_adds_columns_to_existing_db(tmp_path, monkeypatch):
     assert row == (None, None)
 
 
+def test_schema_migration_adds_only_the_missing_column(tmp_path, monkeypatch):
+    """A DB from a partial prior migration — `provider` present, `model`
+    absent — gains only the missing column, leaving `provider` intact."""
+    db_path = tmp_path / "token_usage.db"
+    old = sqlite3.connect(str(db_path))
+    old.execute(
+        """
+        CREATE TABLE token_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            call_type TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            provider TEXT
+        )
+        """
+    )
+    old.commit()
+    old.close()
+
+    tt = _reset(tmp_path, monkeypatch)
+    conn = tt._get_conn()
+    cols = {r[1] for r in conn.execute("PRAGMA table_info(token_usage)")}
+    _teardown(tt)
+    assert "provider" in cols and "model" in cols
+
+
 def test_get_all_stats_unaffected_by_new_columns(tmp_path, monkeypatch):
     """Phase 1 must not change aggregate behaviour — get_all_stats() still
     sums tokens regardless of provider/model presence."""

@@ -7,12 +7,15 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 from __future__ import annotations
 
 import itertools
+import logging
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from .llm.providers import REGISTRY, provider_for
 from .token_tracker import _get_conn, _lock
+
+logger = logging.getLogger(__name__)
 
 # Gemini reference pricing (USD per 1M tokens). Per-call cost is computed
 # provider-aware in token_cost_usd(); these constants are the gemini baseline
@@ -56,6 +59,13 @@ def _pricing_provider(call_type: str, provider: str | None):
         p = REGISTRY.get(provider)
         if p is not None:
             return p
+        # A non-NULL name absent from REGISTRY is a data anomaly (a
+        # since-removed provider, or a write bug). Pricing degrades to the
+        # routed provider, but the anomaly itself must not stay silent.
+        logger.warning(
+            "token_usage row tagged unknown provider %r; pricing %s at routed provider",
+            provider, call_type,
+        )
     return provider_for(call_type)
 
 

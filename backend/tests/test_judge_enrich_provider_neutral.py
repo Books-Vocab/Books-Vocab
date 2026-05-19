@@ -38,5 +38,5 @@ def test_enrich_retry_detail_is_provider_neutral():
     msg = _retry_detail(4)
     assert "Gemini" not in msg
     assert "gemini" not in msg
-    assert "rate limit" in msg
+    assert "retrying" in msg
     assert "4" in msg

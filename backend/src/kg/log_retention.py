@@ -201,7 +201,8 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="kg.log_retention",
         description="Prune old rows from KG log SQLite databases.",
     )
-    parser.add_argument("--all", action="store_true", help="Prune every log DB (uses default retention windows).")
+    parser.add_argument("--all", action="store_true",
+                        help="Prune every log DB (honours *_RETENTION_DAYS env, else built-in defaults).")
     parser.add_argument("--pipeline", action="store_true", help="Prune pipeline_runs.db.")
     parser.add_argument("--judge", action="store_true", help="Prune judge_log.db.")
     parser.add_argument("--translate", action="store_true", help="Prune translate_log.db.")
@@ -210,7 +211,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--days",
         type=int,
         default=None,
-        help="Override retention window (days). Applies to every selected target.",
+        help="Override retention window (days), bypassing *_RETENTION_DAYS env. "
+             "Applies to every selected target.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON to stdout.")
     return parser
