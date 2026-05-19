@@ -132,7 +132,7 @@ struct AppShellPreview: View {
     ) -> some View {
         VStack(alignment: .leading, spacing: AppShellMetrics.sectionSpacing) {
             AppSectionCard(style: cardStyle) {
-                VStack(alignment: .leading, spacing: 16) {
+                VStack(alignment: .leading, spacing: AppSpacing.s4) {
                     AppTabSelector(
                         options: [
                             .init(id: 0, title: "書庫", count: 12, systemImage: "books.vertical"),
@@ -169,7 +169,7 @@ struct AppShellPreview: View {
                 contentStyle: emptyContentStyle
             )
 
-            HStack(spacing: 12) {
+            HStack(spacing: AppSpacing.s3) {
                 AppToolbarGlyph(systemImage: "arrow.clockwise", style: toolbarStyle)
                 AppToolbarGlyph(systemImage: "tray.full", badge: "7", style: toolbarStyle)
             }

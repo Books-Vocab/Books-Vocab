@@ -42,7 +42,7 @@ struct AppTabSelector<ID: Hashable>: View {
     let style: AppTabSelectorStyle
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
                 Button {
                     withAnimation(AppMotion.chipSelect) {
@@ -73,7 +73,7 @@ struct AppTabSelector<ID: Hashable>: View {
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(minWidth: 26)
                                 .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, AppSpacing.microGap)
                                 .background(
                                     Capsule(style: .continuous)
                                         .fill(selection == option.id ? style.countSelectedFill : style.countUnselectedFill)
@@ -81,8 +81,8 @@ struct AppTabSelector<ID: Hashable>: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, AppSpacing.s2)
+                    .padding(.vertical, AppSpacing.s2)
                     .background(
                         Capsule(style: .continuous)
                             .fill(selection == option.id ? style.selectedBackground : style.unselectedBackground)
@@ -105,7 +105,7 @@ struct AppTabSelector<ID: Hashable>: View {
                 .accessibilityAddTraits(selection == option.id ? .isSelected : [])
             }
         }
-        .padding(3)
+        .padding(AppSpacing.tinyGap)
         .background(
             RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
                 .fill(style.containerBackground)
@@ -174,7 +174,7 @@ private struct AppTabSelectorPreview: View {
     @State private var selected = 0
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: AppSpacing.s5) {
             AppTabSelector(
                 options: [
                     .init(id: 0, title: "書庫", count: 12, systemImage: "books.vertical"),

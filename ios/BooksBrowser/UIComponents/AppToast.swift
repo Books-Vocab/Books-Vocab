@@ -98,7 +98,7 @@ private struct AppToastPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
 
     var body: some View {
-        VStack(spacing: 24) {
+        VStack(spacing: AppSpacing.s6) {
             AppToast(
                 item: .init(message: "已複製", style: .success),
                 onDismiss: {}

@@ -71,7 +71,7 @@ extension AppToolbarGlyphStyle {
             badgeFont: skin.typography.monoLabel,
             badgeForeground: .white,
             badgeBackground: tone ?? skin.palette.destructive,
-            spacing: 4
+            spacing: AppSpacing.s1
         )
     }
 }
@@ -117,7 +117,7 @@ struct AppStateMessageContent<Accessory: View>: View {
     var body: some View {
         let style = customStyle ?? .themed(appTheme)
         VStack(alignment: .leading, spacing: style.spacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 Image(systemName: systemImage)
                     .font(style.iconFont)
                     .foregroundStyle(style.iconColor)
@@ -199,7 +199,7 @@ extension AppStateMessageStyle {
             accentColor: theme.palette.accent,
             background: theme.palette.cardBackground,
             border: theme.palette.cardBorder.opacity(0.9),
-            spacing: 8,
+            spacing: AppSpacing.s2,
             verticalPadding: 12,
             horizontalPadding: 14,
             cornerRadius: AppRadius.md
@@ -217,7 +217,7 @@ extension AppStateMessageStyle {
             accentColor: skin.palette.accent,
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
-            spacing: 8,
+            spacing: AppSpacing.s2,
             verticalPadding: 12,
             horizontalPadding: 14,
             cornerRadius: skin.radii.control
@@ -235,8 +235,8 @@ private struct AppToolbarComponentsPreview: View {
     @Environment(\.appTheme) private var appTheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            HStack(spacing: 16) {
+        VStack(alignment: .leading, spacing: AppSpacing.s5) {
+            HStack(spacing: AppSpacing.s4) {
                 AppToolbarGlyph(systemImage: "arrow.clockwise", style: .themed(appTheme))
                 AppToolbarGlyph(systemImage: "tray.full", badge: "7", style: .themed(appTheme))
             }

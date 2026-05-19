@@ -6,7 +6,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
     let style: AppTabSelectorStyle
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppSpacing.s2) {
             ForEach(options) { option in
                 let isSelected = selection.contains(option.id)
                 Button {
@@ -42,7 +42,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
                                 .fixedSize(horizontal: true, vertical: false)
                                 .frame(minWidth: 26)
                                 .padding(.horizontal, 6)
-                                .padding(.vertical, 2)
+                                .padding(.vertical, AppSpacing.microGap)
                                 .background(
                                     Capsule(style: .continuous)
                                         .fill(isSelected ? style.countSelectedFill : style.countUnselectedFill)
@@ -50,8 +50,8 @@ struct AppFilterChipBar<ID: Hashable>: View {
                         }
                     }
                     .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 8)
-                    .padding(.vertical, 8)
+                    .padding(.horizontal, AppSpacing.s2)
+                    .padding(.vertical, AppSpacing.s2)
                     .background(
                         Capsule(style: .continuous)
                             .fill(isSelected ? style.selectedBackground : style.unselectedBackground)
@@ -74,7 +74,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
                 .accessibilityAddTraits(isSelected ? .isSelected : [])
             }
         }
-        .padding(3)
+        .padding(AppSpacing.tinyGap)
         .background(
             RoundedRectangle(cornerRadius: style.containerRadius, style: .continuous)
                 .fill(style.containerBackground)
@@ -93,7 +93,7 @@ private struct AppFilterChipBarPreview: View {
     @State private var selected: Set<Int> = []
 
     var body: some View {
-        VStack(spacing: 20) {
+        VStack(spacing: AppSpacing.s5) {
             AppFilterChipBar(
                 options: [
                     .init(id: 0, title: "未學習", count: 12),
