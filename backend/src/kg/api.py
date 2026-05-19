@@ -143,12 +143,14 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         logger.info("KG API starting up")
         # Fail loud if a second worker boots: quota reservations, translate
         # singleflight and pipeline_log are all process-local and only
-        # correct under --workers 1.
-        from .token_tracker import DATA_DIR
+        # correct under --workers 1. Lock under the injected settings'
+        # data_dir so a test app never touches the real backend/data/.
         from .worker_guard import assert_single_worker
-        assert_single_worker(DATA_DIR / ".worker.lock")
+        assert_single_worker(settings.data_dir / ".worker.lock")
         yield
         logger.info("KG API shutting down")
+        from .worker_guard import release_worker_lock
+        release_worker_lock()
         from .service_factories import reset_async_gemini_client, reset_gemini_client
         reset_gemini_client()
         await reset_async_gemini_client()

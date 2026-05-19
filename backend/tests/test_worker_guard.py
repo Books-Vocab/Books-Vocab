@@ -87,3 +87,42 @@ def test_lock_released_allows_reacquire(tmp_path):
 
     worker_guard.assert_single_worker(lock)
     assert worker_guard._lock_fd is not None
+
+
+def test_release_worker_lock_frees_for_reacquire(tmp_path):
+    """release_worker_lock() drops the held lock so a fresh acquire (e.g.
+    a re-created app in tests) succeeds — symmetric with acquire."""
+    from kg import worker_guard
+
+    lock = tmp_path / ".worker.lock"
+    worker_guard.assert_single_worker(lock)
+    worker_guard.release_worker_lock()
+    assert worker_guard._lock_fd is None
+    # release is idempotent — a second call on an unheld lock is a no-op.
+    worker_guard.release_worker_lock()
+    worker_guard.assert_single_worker(lock)
+    assert worker_guard._lock_fd is not None
+
+
+def test_lifespan_locks_under_injected_settings_data_dir(tmp_path):
+    """The lifespan must take the worker lock under the injected
+    settings.data_dir — not a global default — so a test app never
+    touches the real backend/data/ directory."""
+    from fastapi.testclient import TestClient
+
+    from kg.api import create_app
+    from kg.settings import KGSettings
+
+    (tmp_path / "users.json").write_text("{}")
+    settings = KGSettings(
+        data_dir=tmp_path,
+        jwt_secret="test-secret-key-for-ci-at-least-32-bytes",
+        admin_token="adm-secret",
+    )
+    app = create_app(settings)
+    with TestClient(app):
+        assert (tmp_path / ".worker.lock").exists()
+    # lifespan shutdown releases the lock — symmetric, no stale hold.
+    from kg import worker_guard
+
+    assert worker_guard._lock_fd is None

@@ -57,3 +57,16 @@ def assert_single_worker(lock_path: str | os.PathLike) -> None:
             f"以 --workers 1 啟動。"
         ) from e
     _lock_fd = fd
+
+
+def release_worker_lock() -> None:
+    """Release the worker lock — symmetric with :func:`assert_single_worker`.
+
+    The lifespan shutdown calls this so a process that re-creates the app
+    (the test suite does this per case) does not keep a stale lock held.
+    Idempotent: a no-op when no lock is held.
+    """
+    global _lock_fd
+    if _lock_fd is not None:
+        os.close(_lock_fd)
+        _lock_fd = None
