@@ -65,7 +65,7 @@ struct AppShellPreview: View {
                     title: "Vocabulary Shell",
                     systemImage: "character.book.closed",
                     style: .init(
-                        font: appSkin.typography.captionStrong,
+                        font: appSkin.typography.caption,
                         color: appSkin.palette.secondaryText
                     )
                 )
@@ -76,7 +76,7 @@ struct AppShellPreview: View {
                     title: "Settings Shell",
                     systemImage: "gearshape",
                     style: .init(
-                        font: appSkin.typography.captionStrong,
+                        font: appSkin.typography.caption,
                         color: appSkin.palette.secondaryText
                     )
                 )

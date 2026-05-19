@@ -99,7 +99,7 @@ extension ReaderSettingsPresenter {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("字體".localized)
-                                    .font(appSkin.typography.captionStrong)
+                                    .font(appSkin.typography.caption)
                                     .foregroundStyle(appSkin.palette.tertiaryText)
                                 Text(bindings.font.wrappedValue.rawValue)
                                     .font(appSkin.typography.translationTitle)
@@ -135,7 +135,7 @@ extension ReaderSettingsPresenter {
                     Button { onSelectUnderlineOpacity(option.value) } label: {
                         ReaderSelectionTile(isSelected: isSelected) {
                             Text(option.label.localized)
-                                .font(appSkin.typography.captionStrong)
+                                .font(appSkin.typography.caption)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                         }
@@ -179,7 +179,7 @@ extension ReaderSettingsPresenter {
     func vocabLabelChip(title: String, systemImage: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemImage).font(appSkin.typography.iconTiny)
-            Text(title).font(appSkin.typography.captionStrong)
+            Text(title).font(appSkin.typography.caption)
         }
         .foregroundStyle(appSkin.palette.secondaryText)
         .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)

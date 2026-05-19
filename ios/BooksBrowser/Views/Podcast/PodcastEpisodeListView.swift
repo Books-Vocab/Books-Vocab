@@ -354,7 +354,7 @@ struct PodcastEpisodeListView: View {
                 Text(sort.label)
                 Image(systemName: "chevron.down")
             }
-            .font(skin.typography.captionStrong)
+            .font(skin.typography.caption)
             .foregroundStyle(skin.palette.accent)
         }
     }

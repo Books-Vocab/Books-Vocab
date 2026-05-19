@@ -271,7 +271,7 @@ struct StatsPresenter: View {
                 .font(appSkin.typography.iconMedium)
                 .foregroundStyle(appSkin.palette.warning)
             Text("關聯圖載入失敗".localized)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)
             Button {
                 retryGraphLoad()
@@ -280,7 +280,7 @@ struct StatsPresenter: View {
                     Image(systemName: "arrow.clockwise")
                         .font(appSkin.typography.iconSmall)
                     Text("重試".localized)
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                 }
                 .padding(.horizontal, appSkin.spacing.inlineGap)
                 .padding(.vertical, appSkin.spacing.microGap)
@@ -299,7 +299,7 @@ struct StatsPresenter: View {
                 .font(appSkin.typography.iconMedium)
                 .foregroundStyle(appSkin.palette.accent)
             Text("關聯圖".localized)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)
             if graphLoadError && graphLinks != nil {
                 // Stale dot — we have cached links but the latest pull failed.
@@ -428,7 +428,7 @@ struct StatsPresenter: View {
                         .font(appSkin.typography.iconSmall)
                         .foregroundStyle(appSkin.palette.tertiaryText)
                     Text(title)
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.tertiaryText)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
@@ -505,7 +505,7 @@ struct StatsPresenter: View {
             Image(systemName: systemImage)
                 .font(appSkin.typography.iconSmall)
             Text(title)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
         }
         .foregroundStyle(appSkin.palette.tertiaryText)
     }

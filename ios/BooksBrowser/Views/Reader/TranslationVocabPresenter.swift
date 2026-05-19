@@ -248,7 +248,7 @@ struct TranslationVocabPresenter: View {
         HStack(spacing: 4) {
             if state.showsSavedStatus {
                 Label("已加入".localized, systemImage: "checkmark.circle.fill")
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.success)
                     .symbolEffect(.bounce, value: state.isSaved)
                     .transition(.feedbackBadge)

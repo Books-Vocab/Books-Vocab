@@ -232,7 +232,7 @@ struct SettingsProBadge: View {
     var body: some View {
         HStack(spacing: appSkin.spacing.microGap) {
             Image(systemName: "sparkles")
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
             Text("PRO".localized)
                 .font(appSkin.typography.monoLabel)
         }
@@ -270,7 +270,7 @@ private struct SettingsSocialBadge: View {
                 switch kind {
                 case .google:
                     Text("G")
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                         .foregroundStyle(AppBrandColors.googleRed)
                 case .apple:
                     Image(systemName: "apple.logo")

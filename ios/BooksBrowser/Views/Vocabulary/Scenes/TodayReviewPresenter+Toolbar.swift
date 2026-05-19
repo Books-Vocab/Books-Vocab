@@ -30,7 +30,7 @@ extension TodayReviewPresenter {
                     Image(systemName: "shuffle")
                         .font(appSkin.typography.iconTiny)
                     Text("洗牌".localized)
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                 }
                 .foregroundStyle(state.canShuffle ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
                 .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
@@ -160,7 +160,7 @@ extension TodayReviewPresenter {
     func shortcutHelpSection(title: String, hints: [ShortcutHint]) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.secondaryText)
 
             ForEach(hints) { hint in

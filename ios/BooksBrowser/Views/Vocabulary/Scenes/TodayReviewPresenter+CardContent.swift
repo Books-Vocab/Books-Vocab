@@ -182,7 +182,7 @@ extension TodayReviewPresenter {
 
                         if group.overflowCount > 0 {
                             Text("+\(group.overflowCount)")
-                                .font(appSkin.typography.captionStrong)
+                                .font(appSkin.typography.caption)
                                 .foregroundStyle(appSkin.palette.quaternaryText)
                         }
                     }

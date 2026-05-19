@@ -30,7 +30,7 @@ struct VocabSectionHeader: View {
             }
 
             Text(title.localized)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .tracking(appSkin.metrics.labelTracking)
 
             if let trailingText {

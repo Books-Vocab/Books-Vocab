@@ -129,7 +129,6 @@ struct AppSkin {
         let detailExampleSerif: Font
         let detailExampleSerifStrong: Font
         let caption: Font
-        let captionStrong: Font
         let monoLabel: Font
         let monoBody: Font
         let monoBodyStrong: Font
@@ -377,7 +376,6 @@ extension AppSkin {
             detailExampleSerif: AppFonts.serifItalic(size: 22),
             detailExampleSerifStrong: AppFonts.serifItalic(size: 22, bold: true),
             caption: AppFonts.sans(size: 12, bold: true),
-            captionStrong: AppFonts.sans(size: 12, bold: true),
             // Mono tokens (ElmsSans + system monospaced)
             monoLabel: AppFonts.mono(size: 10, bold: true),
             monoBody: AppFonts.mono(size: 14),
