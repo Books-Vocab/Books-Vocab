@@ -165,7 +165,7 @@ private struct AppEmptyStateCardPreview: View {
     @Environment(\.appTheme) private var appTheme
 
     var body: some View {
-        VStack(spacing: 16) {
+        VStack(spacing: AppSpacing.s4) {
             AppEmptyStateCard(
                 title: "尚無內容",
                 systemImage: "tray",

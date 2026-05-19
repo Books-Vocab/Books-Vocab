@@ -85,7 +85,7 @@ extension AppKeyValueRowStyle {
             verticalPadding: 13,
             minHeight: 50,
             iconWidth: 22,
-            spacing: 12
+            spacing: AppSpacing.s3
         )
     }
 
@@ -99,7 +99,7 @@ extension AppKeyValueRowStyle {
             verticalPadding: 13,
             minHeight: 50,
             iconWidth: 22,
-            spacing: 12
+            spacing: AppSpacing.s3
         )
     }
 
@@ -113,7 +113,7 @@ extension AppKeyValueRowStyle {
             verticalPadding: 13,
             minHeight: 50,
             iconWidth: 22,
-            spacing: 12
+            spacing: AppSpacing.s3
         )
     }
 }
