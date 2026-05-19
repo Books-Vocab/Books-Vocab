@@ -28,6 +28,11 @@ struct AppTheme: Equatable {
         let mutedFill: Color
         let scrim: Color
         let tint: Color
+        // 中性半透明填充（白/黑疊加）— 由 VocabSkin 等上層 skin passthrough 取用
+        let overlayFill: Color
+        let progressBarBackground: Color
+        let buttonIdleFill: Color
+        let buttonPressedFill: Color
     }
 
     let colorScheme: ColorScheme
@@ -61,7 +66,11 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoLight.opacity(0.10),
             mutedFill: Color.black.opacity(0.035),
             scrim: Color.black.opacity(0.20),
-            tint: AppColors.tint
+            tint: AppColors.tint,
+            overlayFill: Color.white.opacity(0.12),
+            progressBarBackground: Color.black.opacity(0.07),
+            buttonIdleFill: Color.black.opacity(0.07),
+            buttonPressedFill: Color.black.opacity(0.12)
         )
     )
 
@@ -96,7 +105,11 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoDark.opacity(0.14),
             mutedFill: Color.white.opacity(0.08),
             scrim: Color.black.opacity(0.42),
-            tint: Color(hue: 215/360, saturation: 0.18, brightness: 0.74)
+            tint: Color(hue: 215/360, saturation: 0.18, brightness: 0.74),
+            overlayFill: Color.white.opacity(0.15),
+            progressBarBackground: Color.white.opacity(0.10),
+            buttonIdleFill: Color.white.opacity(0.12),
+            buttonPressedFill: Color.white.opacity(0.18)
         )
     )
 
@@ -128,7 +141,12 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoLight.opacity(0.10),
             mutedFill: Color(red: 0.42, green: 0.38, blue: 0.32).opacity(0.06),
             scrim: Color(red: 0.30, green: 0.26, blue: 0.20).opacity(0.20),
-            tint: AppColors.tint
+            tint: AppColors.tint,
+            // sepia 沿用 light 的中性 fill（與 themed() 既有行為一致：sepia.colorScheme == .light）
+            overlayFill: Color.white.opacity(0.12),
+            progressBarBackground: Color.black.opacity(0.07),
+            buttonIdleFill: Color.black.opacity(0.07),
+            buttonPressedFill: Color.black.opacity(0.12)
         )
     )
 
