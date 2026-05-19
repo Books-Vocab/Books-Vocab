@@ -65,7 +65,7 @@ def _parse_enrich_response(raw_content: str) -> list[dict]:
     return []
 
 
-def _call_enrich_llm(llm, batch: list[Card], model: str = "gemini-2.5-flash-lite"):
+def _call_enrich_llm(llm, batch: list[Card], model: str | None = None):
     """Single LLM call for enrichment. Returns the raw response object."""
     return llm.chat(
         "enrich",
@@ -90,7 +90,13 @@ def _get_enrich_retryable() -> tuple[type[Exception], ...]:
     return _ENRICH_RETRYABLE
 
 
-def enrich_cards(llm, cards: list[Card], model: str = "gemini-2.5-flash-lite") -> list[dict]:
+def _retry_detail(wait_time: float) -> str:
+    """Progress message for an enrich retry. Provider-neutral — enrich
+    routes via provider_for('enrich'), which is not necessarily Gemini."""
+    return f"LLM API rate limit, retrying in {wait_time}s..."
+
+
+def enrich_cards(llm, cards: list[Card], model: str | None = None) -> list[dict]:
     """Enrich a batch of cards via a single LLM call.
 
     Returns a list of dicts with keys: word, pos, note.
@@ -115,7 +121,7 @@ async def enrich_cards_stream(
     cards: list[Card],
     batch_size: int = 20,
     max_workers: int = 5,
-    model: str = "gemini-2.5-flash-lite",
+    model: str | None = None,
 ):
     """Enrich cards concurrently and yield real-time progress updates.
 
@@ -138,7 +144,7 @@ async def enrich_cards_stream(
             wait_time = 2 ** (attempt + 1)
             loop.call_soon_threadsafe(queue.put_nowait, {
                 "type": "retry",
-                "detail": f"Gemini API rate limit, retrying in {wait_time}s..."
+                "detail": _retry_detail(wait_time),
             })
             return float(wait_time)
 

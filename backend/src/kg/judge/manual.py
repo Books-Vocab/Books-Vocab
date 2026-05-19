@@ -15,7 +15,7 @@ logger = logging.getLogger(__name__)
 class ManualLinkJudge:
     """LLM judge for user-initiated links. Never returns None."""
 
-    def __init__(self, llm: TrackedLLM, model: str = "gemini-2.5-flash-lite",
+    def __init__(self, llm: TrackedLLM, model: str | None = None,
                  *, user_id: str = "", notebook_id: str = "default") -> None:
         self.llm = llm
         self.model = model
