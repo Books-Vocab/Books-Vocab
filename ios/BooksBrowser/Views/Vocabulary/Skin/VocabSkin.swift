@@ -55,48 +55,62 @@ enum VocabSkinColors {
 }
 
 struct VocabSkin {
+    /// Vocabulary skin 色票 —— facade 結構，非平行設計系統。
+    /// - 與 `AppTheme.Palette` 同義的欄位為 computed forwarder，唯一真相在 `base`：
+    ///   AppTheme 改色自動穿透，不可能漂移。
+    /// - feature-own 色（tier / link / retry / overdue / highlightMark / translation
+    ///   / readerThemeSwatch）為 stored，由 `themed()` 注入。
+    /// - 衍生欄位（*Muted / *Faint / *Subtle）為 computed，不另存複本。
     struct Palette {
-        let pageBackground: Color
-        let stageBackground: Color
-        let cardBackground: Color
-        let cardBorder: Color
-        let borderStrong: Color
-        let divider: Color
-        let shadow: Color
-        let primaryText: Color
-        let secondaryText: Color
-        let tertiaryText: Color
-        let quaternaryText: Color
+        /// 全域 AppTheme 色票 —— 所有 passthrough 欄位的唯一真相。
+        let base: AppTheme.Palette
+
+        // ── feature-own stored 色 ──
         let translationText: Color
-        let accent: Color
-        let accentHero: Color
-        let accentSubtle: Color
-        let success: Color
-        let successBg: Color
         let tierIntermediate: Color
         let tierAdvanced: Color
-        let warning: Color
-        let warningBg: Color
         let retry: Color
-        let info: Color
-        let infoBg: Color
-        let destructive: Color
-        let destructiveBg: Color
         let overdue: Color
         let highlightMark: Color
-        let mutedFill: Color
         let link: Color
-        let overlayScrim: Color
         let readerThemeLightSwatch: Color
         let readerThemeSepiaSwatch: Color
         let readerThemeDarkSwatch: Color
-        let overlayFill: Color
-        let highlightMarkSubtle: Color
-        let primaryTextMuted: Color
-        let quaternaryTextFaint: Color
-        let progressBarBackground: Color
-        let buttonIdleFill: Color
-        let buttonPressedFill: Color
+
+        // ── passthrough forwarder（唯一真相 = base）──
+        var pageBackground: Color { base.pageBackground }
+        var stageBackground: Color { base.stageBackground }
+        var cardBackground: Color { base.cardBackground }
+        var cardBorder: Color { base.cardBorder }
+        var borderStrong: Color { base.borderStrong }
+        var divider: Color { base.divider }
+        var shadow: Color { base.shadow }
+        var primaryText: Color { base.primaryText }
+        var secondaryText: Color { base.secondaryText }
+        var tertiaryText: Color { base.tertiaryText }
+        var quaternaryText: Color { base.quaternaryText }
+        var accent: Color { base.accent }
+        var accentHero: Color { base.accentHero }
+        var accentSubtle: Color { base.accentSubtle }
+        var success: Color { base.success }
+        var successBg: Color { base.successBg }
+        var warning: Color { base.warning }
+        var warningBg: Color { base.warningBg }
+        var info: Color { base.info }
+        var infoBg: Color { base.infoBg }
+        var destructive: Color { base.destructive }
+        var destructiveBg: Color { base.destructiveBg }
+        var mutedFill: Color { base.mutedFill }
+        var overlayScrim: Color { base.scrim }
+        var overlayFill: Color { base.overlayFill }
+        var progressBarBackground: Color { base.progressBarBackground }
+        var buttonIdleFill: Color { base.buttonIdleFill }
+        var buttonPressedFill: Color { base.buttonPressedFill }
+
+        // ── 衍生欄位（由 base / feature 色計算，不另存）──
+        var primaryTextMuted: Color { base.primaryText.opacity(0.84) }
+        var quaternaryTextFaint: Color { base.quaternaryText.opacity(0.14) }
+        var highlightMarkSubtle: Color { highlightMark.opacity(0.68) }
     }
 
     struct Typography {
@@ -528,53 +542,20 @@ extension VocabSkin {
     /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
     static func themed(_ theme: AppTheme) -> VocabSkin {
         let isDark = theme.colorScheme == .dark
-        let highlightMark = isDark
-            ? VocabSkinColors.highlightMarkDark
-            : VocabSkinColors.highlightMarkLight
 
         return VocabSkin(
             palette: .init(
-                pageBackground: theme.palette.pageBackground,
-                stageBackground: theme.palette.stageBackground,
-                cardBackground: theme.palette.cardBackground,
-                cardBorder: theme.palette.cardBorder,
-                borderStrong: theme.palette.borderStrong,
-                divider: theme.palette.divider,
-                shadow: theme.palette.shadow,
-                primaryText: theme.palette.primaryText,
-                secondaryText: theme.palette.secondaryText,
-                tertiaryText: theme.palette.tertiaryText,
-                quaternaryText: theme.palette.quaternaryText,
+                base: theme.palette,
                 translationText: isDark ? VocabSkinColors.translationDark : VocabSkinColors.translationLight,
-                accent: theme.palette.accent,
-                accentHero: theme.palette.accentHero,
-                accentSubtle: theme.palette.accentSubtle,
-                success: theme.palette.success,
-                successBg: theme.palette.successBg,
                 tierIntermediate: VocabSkinColors.tierIntermediate,
                 tierAdvanced: VocabSkinColors.tierAdvanced,
-                warning: theme.palette.warning,
-                warningBg: theme.palette.warningBg,
                 retry: isDark ? VocabSkinColors.retryDark : VocabSkinColors.retryLight,
-                info: theme.palette.info,
-                infoBg: theme.palette.infoBg,
-                destructive: theme.palette.destructive,
-                destructiveBg: theme.palette.destructiveBg,
                 overdue: isDark ? VocabSkinColors.overdueDark : VocabSkinColors.overdueLight,
-                highlightMark: highlightMark,
-                mutedFill: theme.palette.mutedFill,
+                highlightMark: isDark ? VocabSkinColors.highlightMarkDark : VocabSkinColors.highlightMarkLight,
                 link: isDark ? VocabSkinColors.linkDark : VocabSkinColors.linkLight,
-                overlayScrim: theme.palette.scrim,
                 readerThemeLightSwatch: VocabSkinColors.readerThemeLightSwatch,
                 readerThemeSepiaSwatch: VocabSkinColors.readerThemeSepiaSwatch,
-                readerThemeDarkSwatch: VocabSkinColors.readerThemeDarkSwatch,
-                overlayFill: theme.palette.overlayFill,
-                highlightMarkSubtle: highlightMark.opacity(0.68),
-                primaryTextMuted: theme.palette.primaryText.opacity(0.84),
-                quaternaryTextFaint: theme.palette.quaternaryText.opacity(0.14),
-                progressBarBackground: theme.palette.progressBarBackground,
-                buttonIdleFill: theme.palette.buttonIdleFill,
-                buttonPressedFill: theme.palette.buttonPressedFill
+                readerThemeDarkSwatch: VocabSkinColors.readerThemeDarkSwatch
             ),
             typography: baseTypography,
             radii: baseRadii,
