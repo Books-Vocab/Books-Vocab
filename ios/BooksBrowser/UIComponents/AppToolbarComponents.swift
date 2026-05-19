@@ -64,7 +64,7 @@ extension AppToolbarGlyphStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin, tone: Color? = nil) -> AppToolbarGlyphStyle {
+    static func vocab(_ skin: AppSkin, tone: Color? = nil) -> AppToolbarGlyphStyle {
         .init(
             iconFont: skin.typography.iconToolbar,
             iconColor: tone ?? skin.palette.secondaryText,
@@ -206,7 +206,7 @@ extension AppStateMessageStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppStateMessageStyle {
+    static func vocab(_ skin: AppSkin) -> AppStateMessageStyle {
         .init(
             iconFont: skin.typography.iconSmall,
             iconColor: skin.palette.accent,

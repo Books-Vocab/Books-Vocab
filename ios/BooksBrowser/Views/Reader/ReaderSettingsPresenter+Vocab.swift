@@ -11,23 +11,23 @@ extension ReaderSettingsPresenter {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(vocabSkin.metrics.panelHandleOpacity))
+                    .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                     .frame(
-                        width: vocabSkin.metrics.readerSettingsHandleWidth,
-                        height: vocabSkin.metrics.readerSettingsHandleHeight
+                        width: appSkin.metrics.readerSettingsHandleWidth,
+                        height: appSkin.metrics.readerSettingsHandleHeight
                     )
-                    .padding(.top, vocabSkin.metrics.readerSettingsHandleTopInset)
-                    .padding(.bottom, vocabSkin.metrics.readerSettingsHandleBottomInset)
+                    .padding(.top, appSkin.metrics.readerSettingsHandleTopInset)
+                    .padding(.bottom, appSkin.metrics.readerSettingsHandleBottomInset)
                 vocabHeaderBlock
                 ScrollView {
-                    VStack(alignment: .leading, spacing: vocabSkin.metrics.readerSettingsSectionSpacing) {
+                    VStack(alignment: .leading, spacing: appSkin.metrics.readerSettingsSectionSpacing) {
                         vocabTypographySection
                         vocabAppearanceSection
                         vocabHighlightSection
                         vocabDebugSection
                     }
-                    .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
-                    .padding(.bottom, vocabSkin.metrics.readerSettingsBottomInset)
+                    .padding(.horizontal, appSkin.metrics.readerSettingsHorizontalInset)
+                    .padding(.bottom, appSkin.metrics.readerSettingsBottomInset)
                 }
             }
         }
@@ -37,15 +37,15 @@ extension ReaderSettingsPresenter {
     // MARK: Header
 
     var vocabHeaderBlock: some View {
-        HStack(alignment: .top, spacing: vocabSkin.metrics.readerSettingsHeaderSpacing) {
+        HStack(alignment: .top, spacing: appSkin.metrics.readerSettingsHeaderSpacing) {
             Text("閱讀設定".localized)
-                .font(vocabSkin.typography.sectionTitle)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.sectionTitle)
+                .foregroundStyle(appSkin.palette.primaryText)
             Spacer()
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
-        .padding(.horizontal, vocabSkin.metrics.readerSettingsHorizontalInset)
-        .padding(.bottom, vocabSkin.metrics.readerSettingsHeaderBottomInset)
+        .padding(.horizontal, appSkin.metrics.readerSettingsHorizontalInset)
+        .padding(.bottom, appSkin.metrics.readerSettingsHeaderBottomInset)
     }
 
     // MARK: Typography
@@ -56,29 +56,29 @@ extension ReaderSettingsPresenter {
                 HStack(alignment: .center, spacing: 0) {
                     ReaderStepControlButton(
                         label: "A",
-                        font: vocabSkin.typography.settingsAdjustSmall,
+                        font: appSkin.typography.settingsAdjustSmall,
                         enabled: state.canDecreaseFontSize,
                         action: onDecreaseFontSize
                     )
                     Text(state.fontSizeText)
-                        .font(vocabSkin.typography.settingsFontSizeDisplay)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.settingsFontSizeDisplay)
+                        .foregroundStyle(appSkin.palette.primaryText)
                         .frame(maxWidth: .infinity)
                     ReaderStepControlButton(
                         label: "A",
-                        font: vocabSkin.typography.settingsAdjustLarge,
+                        font: appSkin.typography.settingsAdjustLarge,
                         enabled: state.canIncreaseFontSize,
                         action: onIncreaseFontSize
                     )
                 }
-                Divider().overlay(vocabSkin.palette.divider)
+                Divider().overlay(appSkin.palette.divider)
                 HStack(alignment: .center, spacing: 12) {
                     vocabLabelChip(title: "行距", systemImage: "text.line.spacing")
                     Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
-                        .tint(vocabSkin.palette.primaryText)
+                        .tint(appSkin.palette.primaryText)
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
-                        .font(vocabSkin.typography.monoBodyStrong)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.monoBodyStrong)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                         .frame(width: 34, alignment: .trailing)
                 }
             }
@@ -99,20 +99,20 @@ extension ReaderSettingsPresenter {
                         HStack(spacing: 12) {
                             VStack(alignment: .leading, spacing: 3) {
                                 Text("字體".localized)
-                                    .font(vocabSkin.typography.captionStrong)
-                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                    .font(appSkin.typography.captionStrong)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
                                 Text(bindings.font.wrappedValue.rawValue)
-                                    .font(vocabSkin.typography.translationTitle)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                                    .font(appSkin.typography.translationTitle)
+                                    .foregroundStyle(appSkin.palette.primaryText)
                             }
                             Spacer()
                             HStack(spacing: 6) {
                                 Text(fontToneLabel)
-                                    .font(vocabSkin.typography.monoLabel)
-                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                    .font(appSkin.typography.monoLabel)
+                                    .foregroundStyle(appSkin.palette.quaternaryText)
                                 Image(systemName: "chevron.down")
-                                    .font(vocabSkin.typography.iconTiny.weight(.bold))
-                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                    .font(appSkin.typography.iconTiny.weight(.bold))
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
                             }
                         }
                     }
@@ -135,7 +135,7 @@ extension ReaderSettingsPresenter {
                     Button { onSelectUnderlineOpacity(option.value) } label: {
                         ReaderSelectionTile(isSelected: isSelected) {
                             Text(option.label.localized)
-                                .font(vocabSkin.typography.captionStrong)
+                                .font(appSkin.typography.captionStrong)
                                 .frame(maxWidth: .infinity)
                                 .padding(.vertical, 10)
                         }
@@ -153,16 +153,16 @@ extension ReaderSettingsPresenter {
             HStack(spacing: 12) {
                 VStack(alignment: .leading, spacing: 4) {
                     Text("顯示點擊熱區".localized)
-                        .font(vocabSkin.typography.body.weight(.medium))
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.body.weight(.medium))
+                        .foregroundStyle(appSkin.palette.primaryText)
                     Text("用於校正閱讀器點擊熱區。".localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
                 Spacer()
                 Toggle("", isOn: bindings.showHitTestingDebug)
                     .labelsHidden()
-                    .tint(vocabSkin.palette.primaryText)
+                    .tint(appSkin.palette.primaryText)
             }
         }
     }
@@ -178,23 +178,23 @@ extension ReaderSettingsPresenter {
 
     func vocabLabelChip(title: String, systemImage: String) -> some View {
         HStack(spacing: 6) {
-            Image(systemName: systemImage).font(vocabSkin.typography.iconTiny)
-            Text(title).font(vocabSkin.typography.captionStrong)
+            Image(systemName: systemImage).font(appSkin.typography.iconTiny)
+            Text(title).font(appSkin.typography.captionStrong)
         }
-        .foregroundStyle(vocabSkin.palette.secondaryText)
-        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-        .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
-        .background(Capsule(style: .continuous).fill(vocabSkin.palette.mutedFill))
+        .foregroundStyle(appSkin.palette.secondaryText)
+        .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+        .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
+        .background(Capsule(style: .continuous).fill(appSkin.palette.mutedFill))
     }
 
     func vocabControlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         VocabChromeSurface(
-            fill: vocabSkin.palette.pageBackground,
-            border: vocabSkin.palette.cardBorder
+            fill: appSkin.palette.pageBackground,
+            border: appSkin.palette.cardBorder
         ) {
             content()
-                .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
-                .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+                .padding(.horizontal, appSkin.metrics.readerSettingsControlHorizontalPadding)
+                .padding(.vertical, appSkin.metrics.readerSettingsControlVerticalPadding)
                 .contentShape(Rectangle())
         }
     }
@@ -204,17 +204,17 @@ extension ReaderSettingsPresenter {
         return Button { onSelectTheme(theme) } label: {
             ReaderSelectionTile(isSelected: isSelected) {
                 VStack(alignment: .leading, spacing: 12) {
-                    Image(systemName: theme.icon).font(vocabSkin.typography.iconToolbar)
+                    Image(systemName: theme.icon).font(appSkin.typography.iconToolbar)
                     Text(theme.rawValue)
-                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                        .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
                     Rectangle()
-                        .fill(vocabSkin.readerThemeSwatchColor(theme))
+                        .fill(appSkin.readerThemeSwatchColor(theme))
                         .frame(height: 8)
                         .clipShape(Capsule(style: .continuous))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, vocabSkin.metrics.readerSettingsControlHorizontalPadding)
-                .padding(.vertical, vocabSkin.metrics.readerSettingsControlVerticalPadding)
+                .padding(.horizontal, appSkin.metrics.readerSettingsControlHorizontalPadding)
+                .padding(.vertical, appSkin.metrics.readerSettingsControlVerticalPadding)
             }
         }
         .buttonStyle(.plain)

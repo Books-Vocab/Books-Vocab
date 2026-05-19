@@ -18,16 +18,16 @@ extension ReaderViewPresenter {
     }
 
     var vocabExpandedHeader: some View {
-        AppSectionCard(padding: 0, style: .vocab(vocabSkin)) {
+        AppSectionCard(padding: 0, style: .vocab(appSkin)) {
             HStack(spacing: 10) {
                 Button(action: onDismiss) {
                     HStack(spacing: 6) {
                         Image(systemName: "chevron.left")
-                            .font(vocabSkin.typography.iconToolbar)
+                            .font(appSkin.typography.iconToolbar)
                         Text("書庫".localized)
-                            .font(vocabSkin.typography.body.weight(.semibold))
+                            .font(appSkin.typography.body.weight(.semibold))
                     }
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .foregroundStyle(appSkin.palette.primaryText)
                     .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
@@ -35,8 +35,8 @@ extension ReaderViewPresenter {
                 Spacer()
 
                 Text(state.bookTitle)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
                     .lineLimit(1)
                     .frame(maxWidth: LayoutMode(horizontalSizeClass: sizeClass).readerTitleMaxWidth)
 
@@ -63,16 +63,16 @@ extension ReaderViewPresenter {
 
             if state.totalProgression > 0 {
                 VocabChromeSurface(
-                    fill: vocabSkin.palette.cardBackground,
-                    border: vocabSkin.palette.cardBorder
+                    fill: appSkin.palette.cardBackground,
+                    border: appSkin.palette.cardBorder
                 ) {
                     HStack(spacing: 6) {
                         Image(systemName: "book.closed")
-                            .font(vocabSkin.typography.iconSmall)
+                            .font(appSkin.typography.iconSmall)
                         Text(String(format: "%.1f%%", state.totalProgression * 100))
-                            .font(vocabSkin.typography.monoLabel)
+                            .font(appSkin.typography.monoLabel)
                     }
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .foregroundStyle(appSkin.palette.secondaryText)
                     .padding(.horizontal, ReaderPresentationMetrics.Header.compactProgressInsetHorizontal)
                     .padding(.vertical, ReaderPresentationMetrics.Header.compactProgressInsetVertical)
                 }

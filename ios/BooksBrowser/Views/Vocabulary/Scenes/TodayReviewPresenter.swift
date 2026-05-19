@@ -82,7 +82,7 @@ struct TodayReviewPresenterState {
 struct TodayReviewPresenter: View {
     // internal — extension files 需要存取
     @Environment(\.horizontalSizeClass) private var sizeClass
-    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.appSkin) var appSkin
     @Environment(\.dynamicTypeSize) var dynamicTypeSize
     @Environment(\.speechService) private var speechService
 
@@ -140,14 +140,14 @@ struct TodayReviewPresenter: View {
                     GeometryReader { geo in
                         VStack(spacing: 0) {
                             reviewCard(currentCard, availableHeight: geo.size.height)
-                                .padding(.horizontal, vocabSkin.metrics.reviewCardHorizontalInset)
-                                .padding(.top, vocabSkin.metrics.reviewCardTopInset)
-                                .padding(.bottom, vocabSkin.metrics.reviewCardBottomInset)
+                                .padding(.horizontal, appSkin.metrics.reviewCardHorizontalInset)
+                                .padding(.top, appSkin.metrics.reviewCardTopInset)
+                                .padding(.bottom, appSkin.metrics.reviewCardBottomInset)
 
                             if state.revealStage == .front {
                                 revealExpandZone(
                                     title: "點一下展開".localized,
-                                    minHeight: max(geo.size.height * vocabSkin.metrics.reviewFrontHeightRatio, 180),
+                                    minHeight: max(geo.size.height * appSkin.metrics.reviewFrontHeightRatio, 180),
                                     action: onAdvanceReveal
                                 )
                                 .allowsHitTesting(isCardInteractive)
@@ -164,7 +164,7 @@ struct TodayReviewPresenter: View {
             #if os(macOS)
             .overlay {
                 if isHelpPresented {
-                    vocabSkin.palette.shadow.opacity(0.25)
+                    appSkin.palette.shadow.opacity(0.25)
                         .ignoresSafeArea()
                         .onTapGesture { onToggleHelp() }
                         .transition(.overlayFade)
@@ -205,7 +205,7 @@ struct TodayReviewPresenter: View {
             VStack(spacing: 0) {
                 frontFoldSurface(card)
                     .overlay(alignment: .topTrailing) {
-                        HStack(spacing: vocabSkin.spacing.inlineGap) {
+                        HStack(spacing: appSkin.spacing.inlineGap) {
                             VocabChromeIconButton(
                                 systemImage: "speaker.wave.2.fill",
                                 label: "播放發音".localized,
@@ -242,7 +242,7 @@ struct TodayReviewPresenter: View {
             ))
             .offset(x: swipeOffset)
             .rotationEffect(
-                .degrees(Double(swipeOffset) / screenWidth * vocabSkin.metrics.reviewSwipeMaxRotation),
+                .degrees(Double(swipeOffset) / screenWidth * appSkin.metrics.reviewSwipeMaxRotation),
                 anchor: .bottom
             )
             .opacity(cardOpacity)
@@ -260,7 +260,7 @@ struct TodayReviewPresenter: View {
     // MARK: - Completion / Expand Zone
 
     var completionState: some View {
-        VStack(spacing: vocabSkin.metrics.cardBlockPadding) {
+        VStack(spacing: appSkin.metrics.cardBlockPadding) {
             Spacer()
             VocabEmptyStateContent(
                 title: "今天複習完成".localized,
@@ -277,10 +277,10 @@ struct TodayReviewPresenter: View {
                 }
             }
             Button("返回單字本".localized, action: onClose)
-                .buttonStyle(.ghost(vocabSkin.palette.primaryText))
+                .buttonStyle(.ghost(appSkin.palette.primaryText))
             Spacer()
         }
-        .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+        .padding(.horizontal, appSkin.metrics.cardBlockPadding)
         .sensoryFeedback(.success, trigger: celebrationTriggered)
     }
 
@@ -292,11 +292,11 @@ struct TodayReviewPresenter: View {
         Button(action: action) {
             VStack(spacing: 10) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryTextFaint)
+                    .fill(appSkin.palette.quaternaryTextFaint)
                     .frame(width: 56, height: 3)
                 Text(title)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.quaternaryText.opacity(TodayReviewMetrics.dimTextOpacity))
             }
             .frame(maxWidth: .infinity)
             .frame(minHeight: minHeight, maxHeight: .infinity, alignment: .top)

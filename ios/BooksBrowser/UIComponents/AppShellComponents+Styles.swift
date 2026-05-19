@@ -13,7 +13,7 @@ extension AppSectionCardStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppSectionCardStyle {
+    static func vocab(_ skin: AppSkin) -> AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
@@ -23,7 +23,7 @@ extension AppSectionCardStyle {
         )
     }
 
-    static func settings(_ skin: VocabSkin) -> AppSectionCardStyle {
+    static func settings(_ skin: AppSkin) -> AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
@@ -59,7 +59,7 @@ extension AppSearchFieldStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppSearchFieldStyle {
+    static func vocab(_ skin: AppSkin) -> AppSearchFieldStyle {
         .init(
             iconFont: skin.typography.iconSmall,
             iconColor: skin.palette.tertiaryText,
@@ -89,7 +89,7 @@ extension AppKeyValueRowStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppKeyValueRowStyle {
+    static func vocab(_ skin: AppSkin) -> AppKeyValueRowStyle {
         .init(
             iconFont: skin.typography.iconSmall,
             iconColor: skin.palette.secondaryText,
@@ -103,7 +103,7 @@ extension AppKeyValueRowStyle {
         )
     }
 
-    static func settings(_ skin: VocabSkin) -> AppKeyValueRowStyle {
+    static func settings(_ skin: AppSkin) -> AppKeyValueRowStyle {
         .init(
             iconFont: skin.typography.iconSmall,
             iconColor: skin.palette.secondaryText,

@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
-    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.appSkin) var appSkin
     @Environment(\.horizontalSizeClass) var sizeClass
 
     let state: ReaderViewPresenterState

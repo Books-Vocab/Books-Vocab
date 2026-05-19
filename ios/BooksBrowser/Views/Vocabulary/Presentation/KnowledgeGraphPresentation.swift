@@ -93,7 +93,7 @@ enum KnowledgeGraphPresentation {
         }
     }
 
-    static func theme(for skin: VocabSkin) -> KnowledgeGraphTheme {
+    static func theme(for skin: AppSkin) -> KnowledgeGraphTheme {
         KnowledgeGraphTheme(
             backgroundHex: cssHex(skin.palette.pageBackground),
             tierHexes: [

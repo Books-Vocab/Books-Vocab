@@ -4,7 +4,7 @@ import SwiftData
 
 struct PodcastPlayerView: View {
     let episodeId: String
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService

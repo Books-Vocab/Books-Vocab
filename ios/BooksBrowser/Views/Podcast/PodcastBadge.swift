@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct PodcastBadge: View {
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     var body: some View {
         Image(systemName: "waveform")

@@ -35,7 +35,7 @@ struct KnowledgeGraphPresenter: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let state: State
     let bindings: ForceBindings
@@ -46,7 +46,7 @@ struct KnowledgeGraphPresenter: View {
     var body: some View {
         VocabSceneShell(phase: graphScenePhase) {
             ZStack {
-                vocabSkin.palette.pageBackground.ignoresSafeArea()
+                appSkin.palette.pageBackground.ignoresSafeArea()
 
                 ZStack(alignment: .bottom) {
                     graphView
@@ -55,8 +55,8 @@ struct KnowledgeGraphPresenter: View {
                         HStack {
                             Spacer()
                             graphLegend
-                                .padding(.trailing, vocabSkin.metrics.overlayDrawerHorizontalInset)
-                                .padding(.top, vocabSkin.spacing.microGap)
+                                .padding(.trailing, appSkin.metrics.overlayDrawerHorizontalInset)
+                                .padding(.top, appSkin.spacing.microGap)
                         }
                         Spacer()
                     }
@@ -133,12 +133,12 @@ struct KnowledgeGraphPresenter: View {
                     }
                 )
 
-                Divider().padding(.horizontal, vocabSkin.metrics.overlayCompactDividerInset)
+                Divider().padding(.horizontal, appSkin.metrics.overlayCompactDividerInset)
 
                 VStack(spacing: 0) {
                     VStack(spacing: 0) {
                         VocabSectionHeader(title: "力".localized)
-                            .padding(.bottom, vocabSkin.spacing.microGap)
+                            .padding(.bottom, appSkin.spacing.microGap)
                         VocabSliderRow(label: "向心力".localized, value: bindings.centerForce, range: 0...1, format: "%.2f")
                         VocabSliderRow(label: "排斥力".localized, value: bindings.repelForce, range: 0...1, format: "%.2f")
                         VocabSliderRow(label: "連結強度".localized, value: bindings.linkForce, range: 0...1, format: "%.2f")
@@ -146,35 +146,35 @@ struct KnowledgeGraphPresenter: View {
                     }
 
                     CardSectionDivider(horizontalPadding: 0)
-                        .padding(.vertical, vocabSkin.spacing.sectionGap)
+                        .padding(.vertical, appSkin.spacing.sectionGap)
 
                     VStack(spacing: 0) {
                         VocabSectionHeader(title: "顯示".localized)
-                            .padding(.bottom, vocabSkin.spacing.microGap)
+                            .padding(.bottom, appSkin.spacing.microGap)
                         VocabSliderRow(label: "節點大小".localized, value: bindings.nodeSize, range: 1...10, format: "%.1f")
                         VocabSliderRow(label: "連結粗細".localized, value: bindings.linkThickness, range: 0.5...3, format: "%.1f")
 
                         Toggle(isOn: bindings.showsIsolatedNodes) {
                             Text("孤立節點".localized)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.primaryText)
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.primaryText)
                         }
                         .toggleStyle(.switch)
-                        .tint(vocabSkin.palette.accent)
-                        .padding(.top, vocabSkin.spacing.microGap)
+                        .tint(appSkin.palette.accent)
+                        .padding(.top, appSkin.spacing.microGap)
                     }
                 }
-                .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.graphDrawerBottomInset)
+                .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
+                .padding(.bottom, appSkin.metrics.graphDrawerBottomInset)
             }
         }
         .frame(maxWidth: 420)
-        .padding(.horizontal, vocabSkin.metrics.overlayDrawerHorizontalInset)
-        .padding(.bottom, vocabSkin.metrics.overlayDrawerBottomInset)
+        .padding(.horizontal, appSkin.metrics.overlayDrawerHorizontalInset)
+        .padding(.bottom, appSkin.metrics.overlayDrawerBottomInset)
     }
 
     private var graphLegend: some View {
-        VStack(alignment: .trailing, spacing: vocabSkin.spacing.tinyGap) {
+        VStack(alignment: .trailing, spacing: appSkin.spacing.tinyGap) {
             ReviewGradientBar()
                 .frame(width: 100, height: 5)
                 .clipShape(Capsule(style: .continuous))
@@ -189,26 +189,26 @@ struct KnowledgeGraphPresenter: View {
                 Text("逾期".localized)
                     .foregroundStyle(ReviewGradient.color(for: 2.5))
             }
-            .font(vocabSkin.typography.monoLabel)
+            .font(appSkin.typography.monoLabel)
             .frame(width: 100)
 
-            HStack(spacing: vocabSkin.spacing.tinyGap) {
+            HStack(spacing: appSkin.spacing.tinyGap) {
                 Circle()
-                    .fill(vocabSkin.palette.quaternaryText.opacity(0.5))
+                    .fill(appSkin.palette.quaternaryText.opacity(0.5))
                     .frame(width: 6, height: 6)
                 Text("未學習 / 封存".localized)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
-        .padding(.horizontal, vocabSkin.spacing.inlineGap)
-        .padding(.vertical, vocabSkin.spacing.microGap)
+        .padding(.horizontal, appSkin.spacing.inlineGap)
+        .padding(.vertical, appSkin.spacing.microGap)
         .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground.opacity(0.85))
+            RoundedRectangle(cornerRadius: appSkin.radii.chip, style: .continuous)
+                .fill(appSkin.palette.cardBackground.opacity(0.85))
                 .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.chip, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: appSkin.radii.chip, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         )
     }
@@ -264,7 +264,7 @@ private enum KnowledgeGraphPresenterPreviewData {
     ]
 
     static func state(showsSettings: Bool) -> KnowledgeGraphPresenter.State {
-        let skin = VocabSkin.previewNeutral
+        let skin = AppSkin.previewNeutral
         return .init(
             emptyState: nil,
             nodes: sampleNodes,

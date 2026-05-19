@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - WordDetailGraphLinkRow
 
 struct WordDetailGraphLinkRow: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let link: KGCardLinkSummary
     let onTap: (() -> Void)?
     let onDelete: (() -> Void)?
@@ -58,63 +58,63 @@ struct WordDetailGraphLinkRow: View {
 
     private var hiddenRowContent: some View {
         Text(link.word)
-            .font(vocabSkin.typography.rowWord)
-            .foregroundStyle(vocabSkin.palette.quaternaryText)
+            .font(appSkin.typography.rowWord)
+            .foregroundStyle(appSkin.palette.quaternaryText)
             .opacity(0.5)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
+            .padding(.vertical, appSkin.metrics.linkRowVerticalPadding)
     }
 
     private var pendingRowContent: some View {
-        HStack(alignment: .top, spacing: vocabSkin.metrics.linkRowHorizontalGap) {
-            VStack(alignment: .leading, spacing: vocabSkin.metrics.linkDetailGap) {
+        HStack(alignment: .top, spacing: appSkin.metrics.linkRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: appSkin.metrics.linkDetailGap) {
                 Text(link.word)
-                    .font(vocabSkin.typography.rowWord)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.rowWord)
+                    .foregroundStyle(appSkin.palette.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 ShimmerLine()
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
+        .padding(.vertical, appSkin.metrics.linkRowVerticalPadding)
     }
 
     private func linkRowContent(showsAccessory: Bool) -> some View {
-        HStack(alignment: .top, spacing: vocabSkin.metrics.linkRowHorizontalGap) {
-            VStack(alignment: .leading, spacing: vocabSkin.metrics.linkDetailGap) {
+        HStack(alignment: .top, spacing: appSkin.metrics.linkRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: appSkin.metrics.linkDetailGap) {
                 Text(link.word)
-                    .font(vocabSkin.typography.rowWord)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.rowWord)
+                    .foregroundStyle(appSkin.palette.primaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
 
                 Text(link.reason)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .lineSpacing(2)
             }
 
             if showsAccessory {
                 Image(systemName: "arrow.up.right")
-                    .font(vocabSkin.typography.iconTiny)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.iconTiny)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(.vertical, vocabSkin.metrics.linkRowVerticalPadding)
+        .padding(.vertical, appSkin.metrics.linkRowVerticalPadding)
     }
 }
 
 // MARK: - ShimmerLine
 
 private struct ShimmerLine: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @State private var shimmerPhase = false
 
     var body: some View {
         RoundedRectangle(cornerRadius: 3)
-            .fill(vocabSkin.palette.tertiaryText.opacity(shimmerPhase ? 0.18 : 0.08))
+            .fill(appSkin.palette.tertiaryText.opacity(shimmerPhase ? 0.18 : 0.08))
             .frame(width: 140, height: 10)
             .frame(maxWidth: .infinity, alignment: .leading)
             .animation(AppMotion.breathing, value: shimmerPhase)
@@ -125,7 +125,7 @@ private struct ShimmerLine: View {
 // MARK: - WordDetailMetadataRow (kept for backward compat, simplified)
 
 struct WordDetailMetadataRow<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     @ViewBuilder let trailing: Content
 
@@ -137,8 +137,8 @@ struct WordDetailMetadataRow<Content: View>: View {
     var body: some View {
         HStack {
             Text(title.localized)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.quaternaryText)
             Spacer()
             trailing
         }
@@ -148,7 +148,7 @@ struct WordDetailMetadataRow<Content: View>: View {
 // MARK: - VocabularySyncBadge
 
 struct VocabularySyncBadge: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let status: Int
     let successTone: Color
     let destructiveTone: Color
@@ -158,16 +158,16 @@ struct VocabularySyncBadge: View {
             switch VocabularySyncState(rawValue: status) ?? .pending {
             case .synced:
                 Label("已同步".localized, systemImage: "checkmark.circle")
-                    .font(vocabSkin.typography.caption)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(successTone)
             case .failed:
                 Label("同步失敗".localized, systemImage: "exclamationmark.circle")
-                    .font(vocabSkin.typography.caption)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(destructiveTone)
             case .pending:
                 Label("待同步".localized, systemImage: "clock")
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             }
         }
     }

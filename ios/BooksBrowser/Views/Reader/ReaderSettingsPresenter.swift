@@ -5,7 +5,7 @@ import SwiftUI
 
 struct ReaderSettingsPresenter: View {
     @Environment(\.appTheme) var appTheme
-    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.appSkin) var appSkin
 
     struct State {
         let fontSizeText: String

@@ -2,7 +2,7 @@ import SwiftUI
 
 struct SettingsPresenter: View {
     @Environment(\.appTheme) var appTheme
-    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.appSkin) var appSkin
     @Environment(\.quotaStore) var quotaStore
 
     private struct ExternalActionItem: Identifiable {
@@ -60,7 +60,7 @@ struct SettingsPresenter: View {
                 .padding(.top, AppShellMetrics.pageTopPadding)
                 .padding(.bottom, AppShellMetrics.pageBottomPadding)
             }
-            .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+            .background(appSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("設定".localized)
             .inlineNavigationBarTitle()
             .toolbar {
@@ -99,7 +99,7 @@ struct SettingsPresenter: View {
                         .padding(.top, AppShellMetrics.pageTopPadding)
                         .padding(.bottom, AppShellMetrics.pageBottomPadding)
                     }
-                    .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+                    .background(appSkin.palette.pageBackground.ignoresSafeArea())
                     .navigationTitle("訂閱".localized)
                     .inlineNavigationBarTitle()
                 }
@@ -134,7 +134,7 @@ struct SettingsPresenter: View {
     // MARK: - Section 3: 其他
 
     private var otherSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "其他".localized, icon: "ellipsis.circle")
 
             VStack(spacing: 0) {
@@ -162,10 +162,10 @@ struct SettingsPresenter: View {
 
             // Version footer
             Text("\("版本".localized) \(state.about.version)")
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
                 .frame(maxWidth: .infinity)
-                .padding(.top, vocabSkin.spacing.tinyGap)
+                .padding(.top, appSkin.spacing.tinyGap)
         }
     }
 
@@ -178,13 +178,13 @@ struct SettingsPresenter: View {
             AppKeyValueRow(
                 icon: "arrow.triangle.2.circlepath",
                 label: "同步狀態".localized,
-                style: .settings(vocabSkin)
+                style: .settings(appSkin)
             ) {
                 if summary.isSyncing {
-                    HStack(spacing: vocabSkin.spacing.inlineGap) {
+                    HStack(spacing: appSkin.spacing.inlineGap) {
                         Image(systemName: "arrow.triangle.2.circlepath")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.accent)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.accent)
                             .rotationEffect(.degrees(syncRotation))
                             .onAppear {
                                 withAnimation(AppMotion.breathing) {
@@ -193,13 +193,13 @@ struct SettingsPresenter: View {
                             }
                             .onDisappear { syncRotation = 0 }
                         Text("同步中…".localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
                 } else {
                     SettingsStatusSummaryValue(
                         text: summary.summaryText,
-                        color: summary.isConnected ? vocabSkin.palette.success : appTheme.palette.warning
+                        color: summary.isConnected ? appSkin.palette.success : appTheme.palette.warning
                     )
                 }
             }

@@ -23,11 +23,11 @@ extension TodayReviewPresenter {
         let opacity = baseOpacity + (targetOpacity - baseOpacity) * Double(progress)
 
         return ZStack(alignment: .topLeading) {
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
+            RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                .fill(appSkin.palette.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
                 )
                 .appElevation(.z1)
 
@@ -48,7 +48,7 @@ extension TodayReviewPresenter {
     var screenWidth: CGFloat { containerWidth }
 
     var cardOpacity: Double {
-        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - vocabSkin.metrics.reviewSwipeOpacityFloor)
+        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - appSkin.metrics.reviewSwipeOpacityFloor)
     }
 
     /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
@@ -71,7 +71,7 @@ extension TodayReviewPresenter {
             }
             .onEnded { value in
                 guard swipeEnabled else { return }
-                let threshold = vocabSkin.metrics.reviewSwipeThreshold
+                let threshold = appSkin.metrics.reviewSwipeThreshold
                 if value.translation.width < -threshold {
                     flingCard(direction: -1, velocity: abs(value.velocity.width), callback: onForgot)
                 } else if value.translation.width > threshold {

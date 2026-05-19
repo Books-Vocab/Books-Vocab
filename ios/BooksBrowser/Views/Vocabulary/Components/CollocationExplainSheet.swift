@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CollocationExplainSheet: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
     let collocation: String
@@ -23,8 +23,8 @@ struct CollocationExplainSheet: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             Text(collocation)
-                .font(vocabSkin.typography.detailWord)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.detailWord)
+                .foregroundStyle(appSkin.palette.primaryText)
 
             CardSectionDivider(horizontalPadding: 0)
 
@@ -34,9 +34,9 @@ struct CollocationExplainSheet: View {
 
             footerToolbar
         }
-        .padding(.horizontal, vocabSkin.metrics.readerPanelHorizontalInset)
+        .padding(.horizontal, appSkin.metrics.readerPanelHorizontalInset)
         .padding(.top, 20)
-        .padding(.bottom, vocabSkin.metrics.readerPanelBottomInset)
+        .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
         .task { await loadIfNeeded() }
     }
 
@@ -51,8 +51,8 @@ struct CollocationExplainSheet: View {
             }
         case .loaded:
             Text(explanation)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
         case .error(let message):
@@ -72,10 +72,10 @@ struct CollocationExplainSheet: View {
                     dismiss()
                 } label: {
                     Label("儲存".localized, systemImage: "checkmark.circle")
-                        .font(vocabSkin.typography.captionStrong)
+                        .font(appSkin.typography.captionStrong)
                 }
                 .buttonStyle(.plain)
-                .foregroundStyle(vocabSkin.palette.success)
+                .foregroundStyle(appSkin.palette.success)
             }
 
             Spacer()
@@ -83,7 +83,7 @@ struct CollocationExplainSheet: View {
             if existingExplanation != nil {
                 VocabChromeIconButton(
                     systemImage: "trash",
-                    tone: vocabSkin.palette.destructive,
+                    tone: appSkin.palette.destructive,
                     action: {
                         onDelete()
                         dismiss()

@@ -12,30 +12,30 @@ enum FoldSegmentPosition {
 // MARK: - Fold Surface Container
 
 struct ReviewFoldSurface<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let position: FoldSegmentPosition
     @ViewBuilder let content: () -> Content
 
     var body: some View {
         content()
-            .background(vocabSkin.palette.cardBackground.opacity(0.985))
+            .background(appSkin.palette.cardBackground.opacity(0.985))
             .clipShape(shape)
-            .overlay(shape.stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
+            .overlay(shape.stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
             .overlay(alignment: .top) {
                 if position != .top && position != .single {
                     Rectangle()
-                        .fill(vocabSkin.palette.divider.opacity(TodayReviewMetrics.dividerFillOpacity))
+                        .fill(appSkin.palette.divider.opacity(TodayReviewMetrics.dividerFillOpacity))
                         .frame(height: AppMetrics.dividerThin)
-                        .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                        .padding(.horizontal, appSkin.spacing.cardPadding)
                 }
             }
             .appElevation(.z1)
     }
 
     private var shape: UnevenRoundedRectangle {
-        let topR = (position == .single || position == .top) ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
-        let botR = (position == .single || position == .bottom) ? vocabSkin.radii.card : TodayReviewMetrics.foldJoinRadius
+        let topR = (position == .single || position == .top) ? appSkin.radii.card : TodayReviewMetrics.foldJoinRadius
+        let botR = (position == .single || position == .bottom) ? appSkin.radii.card : TodayReviewMetrics.foldJoinRadius
         return UnevenRoundedRectangle(
             topLeadingRadius: topR,
             bottomLeadingRadius: botR,
@@ -49,17 +49,17 @@ struct ReviewFoldSurface<Content: View>: View {
 // MARK: - Fold Chevron Button
 
 struct ReviewFoldChevronButton: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.up")
-                .font(vocabSkin.typography.iconTiny.weight(.bold))
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .frame(width: vocabSkin.metrics.reviewChevronButtonSize, height: vocabSkin.metrics.reviewChevronButtonSize)
-                .background(Circle().fill(vocabSkin.palette.mutedFill.opacity(0.96)))
-                .overlay(Circle().stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
+                .font(appSkin.typography.iconTiny.weight(.bold))
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .frame(width: appSkin.metrics.reviewChevronButtonSize, height: appSkin.metrics.reviewChevronButtonSize)
+                .background(Circle().fill(appSkin.palette.mutedFill.opacity(0.96)))
+                .overlay(Circle().stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
@@ -69,17 +69,17 @@ struct ReviewFoldChevronButton: View {
 // MARK: - Fold Chevron Pill (centered collapse handle)
 
 struct ReviewFoldChevronPill: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let action: () -> Void
 
     var body: some View {
         Button(action: action) {
             Image(systemName: "chevron.up")
-                .font(vocabSkin.typography.iconTiny.weight(.bold))
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .frame(width: 48, height: vocabSkin.metrics.reviewChevronButtonSize)
-                .background(Capsule(style: .continuous).fill(vocabSkin.palette.mutedFill.opacity(0.96)))
-                .overlay(Capsule(style: .continuous).stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
+                .font(appSkin.typography.iconTiny.weight(.bold))
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .frame(width: 48, height: appSkin.metrics.reviewChevronButtonSize)
+                .background(Capsule(style: .continuous).fill(appSkin.palette.mutedFill.opacity(0.96)))
+                .overlay(Capsule(style: .continuous).stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
         }
         .buttonStyle(.plain)
         .contentShape(Capsule())

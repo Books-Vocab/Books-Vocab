@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct VocabCalendarGrid: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let displayedMonth: Date
     let activityMap: [String: Int]
@@ -55,13 +55,13 @@ struct VocabCalendarGrid: View {
     }
 
     var body: some View {
-        VStack(spacing: vocabSkin.spacing.microGap) {
+        VStack(spacing: appSkin.spacing.microGap) {
             // Weekday header
             LazyVGrid(columns: columns, spacing: 4) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
                         .frame(maxWidth: .infinity)
                 }
             }
@@ -91,11 +91,11 @@ struct VocabCalendarGrid: View {
         } label: {
             VStack(spacing: 1) {
                 Text("\(cell.dayNumber)")
-                    .font(vocabSkin.typography.caption)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(
-                        cell.isToday ? vocabSkin.palette.accent :
-                        isSelected ? vocabSkin.palette.primaryText :
-                        vocabSkin.palette.secondaryText
+                        cell.isToday ? appSkin.palette.accent :
+                        isSelected ? appSkin.palette.primaryText :
+                        appSkin.palette.secondaryText
                     )
 
                 // Activity dot
@@ -106,11 +106,11 @@ struct VocabCalendarGrid: View {
             .frame(maxWidth: .infinity)
             .aspectRatio(1, contentMode: .fit)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                    .fill(isSelected ? vocabSkin.palette.mutedFill : Color.clear)
+                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                    .fill(isSelected ? appSkin.palette.mutedFill : Color.clear)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
+                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
                     .fill(count > 0 ? cellFill(count) : Color.clear)
             )
         }
@@ -119,18 +119,18 @@ struct VocabCalendarGrid: View {
 
     private func dotColor(_ count: Int) -> Color {
         switch count {
-        case 1...3: return vocabSkin.palette.accent.opacity(0.5)
-        case 4...7: return vocabSkin.palette.accent.opacity(0.75)
-        default: return vocabSkin.palette.accent
+        case 1...3: return appSkin.palette.accent.opacity(0.5)
+        case 4...7: return appSkin.palette.accent.opacity(0.75)
+        default: return appSkin.palette.accent
         }
     }
 
     private func cellFill(_ count: Int) -> Color {
         switch count {
-        case 1...3: return vocabSkin.palette.accent.opacity(0.06)
-        case 4...7: return vocabSkin.palette.accent.opacity(0.12)
-        case 8...14: return vocabSkin.palette.accent.opacity(0.18)
-        default: return vocabSkin.palette.accent.opacity(0.24)
+        case 1...3: return appSkin.palette.accent.opacity(0.06)
+        case 4...7: return appSkin.palette.accent.opacity(0.12)
+        case 8...14: return appSkin.palette.accent.opacity(0.18)
+        default: return appSkin.palette.accent.opacity(0.24)
         }
     }
 }

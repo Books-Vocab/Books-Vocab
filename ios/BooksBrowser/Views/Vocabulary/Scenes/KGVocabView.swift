@@ -13,7 +13,7 @@ import os
 struct KGVocabView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @Binding var searchText: String
 
