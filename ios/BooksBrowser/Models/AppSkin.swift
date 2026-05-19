@@ -18,8 +18,8 @@
 //    2. AppSkin.previewNeutral   — 由 themed(.light) 組裝的固定淺色 skin，
 //       僅用於 SwiftUI Preview 或特定固定場景，不受系統深淺色影響。
 //
-//  設計哲學：Morandi 紙本排版
-//    低飽和度、紙張質感，typography 以 monospaced 為主視覺重心。
+//  設計哲學：Notion-inspired 紙本排版
+//    純淨表面、border 分層，typography 以 monospaced 為主視覺重心。
 //  ─────────────────────────────────────────────────────────────────────
 
 import SwiftUI
@@ -28,9 +28,9 @@ import SwiftUI
 /// 與 `AppColors`（Reader + 全域）分離：此 enum 僅供 `AppSkin.themed()` 組裝取用。
 /// scheme-aware 色給 light/dark 一對；固定色（不隨深淺色）為單值。
 enum AppSkinColors {
-    // ── 連結文字 ──
-    static let linkLight = Color(red: 0.47, green: 0.56, blue: 0.67)
-    static let linkDark  = Color(red: 0.62, green: 0.71, blue: 0.84)
+    // ── 連結文字（Notion 連結藍，與 AppColors.accent 一致）──
+    static let linkLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let linkDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
     // ── 翻譯文字（栗棕）──
     static let translationLight = Color(red: 0.54, green: 0.50, blue: 0.44)
@@ -53,9 +53,9 @@ enum AppSkinColors {
     static let highlightMarkDark  = Color(red: 0.73, green: 0.66, blue: 0.33)
 
     // ── Reader 主題色票（固定，不隨系統深淺色）──
-    static let readerThemeLightSwatch = Color(red: 0.90, green: 0.90, blue: 0.88)
+    static let readerThemeLightSwatch = Color(red: 0.95, green: 0.945, blue: 0.935)
     static let readerThemeSepiaSwatch = Color(red: 0.82, green: 0.73, blue: 0.58)
-    static let readerThemeDarkSwatch  = Color(red: 0.34, green: 0.35, blue: 0.38)
+    static let readerThemeDarkSwatch  = Color(red: 0.18, green: 0.18, blue: 0.18)
 }
 
 struct AppSkin {
