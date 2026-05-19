@@ -72,7 +72,7 @@ extension ReaderViewPresenter {
                 .font(textFont)
                 .foregroundStyle(textColor)
                 .contentTransition(.numericText())
-                .animation(AppMotion.loadingState, value: state.loadingPhase)
+                .animation(AppMotion.contentFade, value: state.loadingPhase)
         }
         .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingHorizontalInset)
         .padding(.vertical, ReaderPresentationMetrics.Overlay.loadingVerticalInset)

@@ -5,7 +5,7 @@ import ReadiumShared
 extension ReaderView {
     func handleLocationChange(_ locator: Locator) {
         if !readerState.isWebViewReady {
-            withAnimation(AppMotion.loadingState) { readerState.isWebViewReady = true }
+            withAnimation(AppMotion.contentFade) { readerState.isWebViewReady = true }
         }
         currentLocator = locator
         totalProgression = locator.locations.totalProgression ?? 0
