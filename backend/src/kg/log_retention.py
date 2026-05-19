@@ -47,6 +47,29 @@ def _env_days(var: str, fallback: int) -> int:
     return days
 
 
+# log kind → (env var, hardcoded default)
+_RETENTION: dict[str, tuple[str, int]] = {
+    "pipeline": ("PIPELINE_LOG_RETENTION_DAYS", DEFAULT_DAYS_PIPELINE),
+    "judge": ("JUDGE_LOG_RETENTION_DAYS", DEFAULT_DAYS_JUDGE),
+    "translate": ("TRANSLATE_LOG_RETENTION_DAYS", DEFAULT_DAYS_TRANSLATE),
+    "token": ("TOKEN_USAGE_RETENTION_DAYS", DEFAULT_DAYS_TOKEN),
+}
+
+
+def _effective_days(kind: str, override: int | None) -> int:
+    """Resolve the day-count actually applied for a log kind.
+
+    An explicit ``override`` wins; otherwise the kind's ``*_RETENTION_DAYS``
+    env var, then its ``DEFAULT_DAYS_*``. Mirrors the resolution each pruner
+    does internally for ``days=None`` — used so ``run_all()`` / CLI reports
+    show the window that was really applied.
+    """
+    if override is not None:
+        return override
+    var, fallback = _RETENTION[kind]
+    return _env_days(var, fallback)
+
+
 def _cutoff(days: int) -> str:
     """Return ISO8601 UTC cutoff timestamp for ``days`` ago.
 
@@ -134,25 +157,36 @@ def prune_token_usage(days: int | None = None) -> tuple[int, int]:
 
 def run_all(
     *,
-    pipeline_days: int = DEFAULT_DAYS_PIPELINE,
-    judge_days: int = DEFAULT_DAYS_JUDGE,
-    translate_days: int = DEFAULT_DAYS_TRANSLATE,
-    token_days: int = DEFAULT_DAYS_TOKEN,
+    pipeline_days: int | None = None,
+    judge_days: int | None = None,
+    translate_days: int | None = None,
+    token_days: int | None = None,
 ) -> dict[str, dict[str, int]]:
-    """Run every pruner and return a structured report."""
+    """Run every pruner and return a structured report.
+
+    A ``None`` day-count (the default) lets each pruner resolve its own
+    ``*_RETENTION_DAYS`` env override, falling back to ``DEFAULT_DAYS_*``.
+    Pass an explicit int to force a window regardless of env. The admin
+    endpoint and CLI ``--all`` both route through here, so ``None`` is what
+    makes those paths honour the env vars.
+    """
     report: dict[str, dict[str, int]] = {}
 
     deleted, remaining = prune_pipeline_log(pipeline_days)
-    report["pipeline_log"] = {"deleted": deleted, "remaining": remaining, "days": pipeline_days}
+    report["pipeline_log"] = {"deleted": deleted, "remaining": remaining,
+                              "days": _effective_days("pipeline", pipeline_days)}
 
     deleted, remaining = prune_judge_log(judge_days)
-    report["judge_log"] = {"deleted": deleted, "remaining": remaining, "days": judge_days}
+    report["judge_log"] = {"deleted": deleted, "remaining": remaining,
+                           "days": _effective_days("judge", judge_days)}
 
     deleted, remaining = prune_translate_log(translate_days)
-    report["translate_log"] = {"deleted": deleted, "remaining": remaining, "days": translate_days}
+    report["translate_log"] = {"deleted": deleted, "remaining": remaining,
+                               "days": _effective_days("translate", translate_days)}
 
     deleted, remaining = prune_token_usage(token_days)
-    report["token_usage"] = {"deleted": deleted, "remaining": remaining, "days": token_days}
+    report["token_usage"] = {"deleted": deleted, "remaining": remaining,
+                             "days": _effective_days("token", token_days)}
 
     return report
 
@@ -167,7 +201,8 @@ def _build_parser() -> argparse.ArgumentParser:
         prog="kg.log_retention",
         description="Prune old rows from KG log SQLite databases.",
     )
-    parser.add_argument("--all", action="store_true", help="Prune every log DB (uses default retention windows).")
+    parser.add_argument("--all", action="store_true",
+                        help="Prune every log DB (honours *_RETENTION_DAYS env, else built-in defaults).")
     parser.add_argument("--pipeline", action="store_true", help="Prune pipeline_runs.db.")
     parser.add_argument("--judge", action="store_true", help="Prune judge_log.db.")
     parser.add_argument("--translate", action="store_true", help="Prune translate_log.db.")
@@ -176,7 +211,8 @@ def _build_parser() -> argparse.ArgumentParser:
         "--days",
         type=int,
         default=None,
-        help="Override retention window (days). Applies to every selected target.",
+        help="Override retention window (days), bypassing *_RETENTION_DAYS env. "
+             "Applies to every selected target.",
     )
     parser.add_argument("--json", action="store_true", help="Emit machine-readable JSON to stdout.")
     return parser
@@ -185,30 +221,33 @@ def _build_parser() -> argparse.ArgumentParser:
 def _run_from_args(args: argparse.Namespace) -> dict[str, dict[str, int]]:
     report: dict[str, dict[str, int]] = {}
 
+    # args.days is None unless --days was passed. Forwarding None lets each
+    # pruner resolve its *_RETENTION_DAYS env var; an explicit --days forces
+    # the window. Either way the report shows the window actually applied.
     if args.all:
         return run_all(
-            pipeline_days=args.days if args.days is not None else DEFAULT_DAYS_PIPELINE,
-            judge_days=args.days if args.days is not None else DEFAULT_DAYS_JUDGE,
-            translate_days=args.days if args.days is not None else DEFAULT_DAYS_TRANSLATE,
-            token_days=args.days if args.days is not None else DEFAULT_DAYS_TOKEN,
+            pipeline_days=args.days,
+            judge_days=args.days,
+            translate_days=args.days,
+            token_days=args.days,
         )
 
     if args.pipeline:
-        d, r = prune_pipeline_log(args.days if args.days is not None else DEFAULT_DAYS_PIPELINE)
+        d, r = prune_pipeline_log(args.days)
         report["pipeline_log"] = {"deleted": d, "remaining": r,
-                                  "days": args.days if args.days is not None else DEFAULT_DAYS_PIPELINE}
+                                  "days": _effective_days("pipeline", args.days)}
     if args.judge:
-        d, r = prune_judge_log(args.days if args.days is not None else DEFAULT_DAYS_JUDGE)
+        d, r = prune_judge_log(args.days)
         report["judge_log"] = {"deleted": d, "remaining": r,
-                               "days": args.days if args.days is not None else DEFAULT_DAYS_JUDGE}
+                               "days": _effective_days("judge", args.days)}
     if args.translate:
-        d, r = prune_translate_log(args.days if args.days is not None else DEFAULT_DAYS_TRANSLATE)
+        d, r = prune_translate_log(args.days)
         report["translate_log"] = {"deleted": d, "remaining": r,
-                                   "days": args.days if args.days is not None else DEFAULT_DAYS_TRANSLATE}
+                                   "days": _effective_days("translate", args.days)}
     if args.token:
-        d, r = prune_token_usage(args.days if args.days is not None else DEFAULT_DAYS_TOKEN)
+        d, r = prune_token_usage(args.days)
         report["token_usage"] = {"deleted": d, "remaining": r,
-                                 "days": args.days if args.days is not None else DEFAULT_DAYS_TOKEN}
+                                 "days": _effective_days("token", args.days)}
 
     return report
 

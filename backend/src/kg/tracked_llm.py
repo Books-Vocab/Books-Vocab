@@ -54,34 +54,43 @@ class TrackedLLM:
         kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
             resp = self._client.chat.completions.create(**kwargs)
-            self._record_chat(call_type, resp)
+            self._record_chat(call_type, resp, kwargs.get("model"))
         return resp
 
     async def chat_async(self, call_type: str, **kwargs):
         kwargs = self._chat_kwargs(kwargs)
         with reserve(self.user_id, estimate_call_cost(call_type)):
             resp = await self._client.chat.completions.create(**kwargs)
-            self._record_chat(call_type, resp)
+            self._record_chat(call_type, resp, kwargs.get("model"))
         return resp
 
     def embed(self, call_type: str = "embed", **kwargs):
         with reserve(self.user_id, estimate_call_cost(call_type)):
             resp = self._client.embeddings.create(**kwargs)
-            self._record_embed(call_type, resp)
+            self._record_embed(call_type, resp, kwargs.get("model"))
         return resp
 
-    def _record_chat(self, call_type: str, resp) -> None:
+    def _provider_name(self) -> str | None:
+        return self._provider.name if self._provider is not None else None
+
+    def _record_chat(self, call_type: str, resp, model: str | None = None) -> None:
         usage = getattr(resp, "usage", None)
         if not usage:
             return
+        # Prefer the model actually sent; fall back to the bound provider's
+        # default chat model so the row is never NULL when a provider is bound.
+        if model is None and self._provider is not None:
+            model = self._provider.chat_model
         record(
             self.user_id,
             call_type,
             getattr(usage, "prompt_tokens", 0) or 0,
             getattr(usage, "completion_tokens", 0) or 0,
+            provider=self._provider_name(),
+            model=model,
         )
 
-    def _record_embed(self, call_type: str, resp) -> None:
+    def _record_embed(self, call_type: str, resp, model: str | None = None) -> None:
         usage = getattr(resp, "usage", None)
         if not usage:
             return
@@ -91,4 +100,6 @@ class TrackedLLM:
             call_type,
             prompt or getattr(usage, "total_tokens", 0) or 0,
             0,
+            provider=self._provider_name(),
+            model=model,
         )

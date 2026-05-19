@@ -33,7 +33,7 @@ class TestTrackedLLMChat:
         client, _ = _mock_client(prompt_tokens=15, completion_tokens=25)
         llm = TrackedLLM(client, user_id="u1")
         resp = llm.chat("judge", model="m", messages=[])
-        mock_record.assert_called_once_with("u1", "judge", 15, 25)
+        mock_record.assert_called_once_with("u1", "judge", 15, 25, provider=None, model="m")
         assert resp.choices[0].message.content == '{"ok": true}'
 
     @patch("kg.tracked_llm.record")
@@ -60,7 +60,7 @@ class TestTrackedLLMEmbed:
         client, _ = _mock_embed_client(prompt_tokens=5, total_tokens=5)
         llm = TrackedLLM(client, user_id="u1")
         llm.embed("embed", input=["hello"], model="m")
-        mock_record.assert_called_once_with("u1", "embed", 5, 0)
+        mock_record.assert_called_once_with("u1", "embed", 5, 0, provider=None, model="m")
 
     @patch("kg.tracked_llm.record")
     def test_embed_falls_back_to_total_tokens(self, mock_record):
@@ -70,7 +70,7 @@ class TestTrackedLLMEmbed:
         client.embeddings.create.return_value = resp
         llm = TrackedLLM(client, user_id="u1")
         llm.embed("embed", input=["hi"], model="m")
-        mock_record.assert_called_once_with("u1", "embed", 8, 0)
+        mock_record.assert_called_once_with("u1", "embed", 8, 0, provider=None, model="m")
 
 
 class TestTrackedLLMChatAsync:
@@ -88,4 +88,29 @@ class TestTrackedLLMChatAsync:
 
         llm = TrackedLLM(client, user_id="u1")
         result = await llm.chat_async("translate_quick", model="m", messages=[])
-        mock_record.assert_called_once_with("u1", "translate_quick", 10, 20)
+        mock_record.assert_called_once_with("u1", "translate_quick", 10, 20, provider=None, model="m")
+
+
+class TestTrackedLLMProviderBinding:
+    """When a provider is bound, every recorded row carries provider name +
+    model so cost can later be priced from the row itself."""
+
+    @patch("kg.tracked_llm.record")
+    def test_chat_records_bound_provider_and_model(self, mock_record):
+        from kg.llm.providers import REGISTRY
+
+        client, _ = _mock_client(prompt_tokens=11, completion_tokens=22)
+        llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["deepseek"])
+        llm.chat("judge", model="deepseek-v4-flash", messages=[])
+        mock_record.assert_called_once_with(
+            "u1", "judge", 11, 22, provider="deepseek", model="deepseek-v4-flash")
+
+    @patch("kg.tracked_llm.record")
+    def test_chat_model_falls_back_to_provider_chat_model(self, mock_record):
+        from kg.llm.providers import REGISTRY
+
+        client, _ = _mock_client()
+        llm = TrackedLLM(client, user_id="u1", provider=REGISTRY["gemini"])
+        llm.chat("judge", messages=[])  # no model kwarg
+        mock_record.assert_called_once_with(
+            "u1", "judge", 10, 20, provider="gemini", model="gemini-2.5-flash-lite")
