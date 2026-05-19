@@ -26,15 +26,15 @@ struct MorandiButtonStyle: ButtonStyle {
         configuration.label
             .font(AppFonts.h2()) // 採用稍微粗一點的小標題字型，增加質感
             .foregroundStyle(isProminent ? baseColor : baseColor.opacity(configuration.isPressed ? Opacity.nonProminentPressed : 1.0))
-            .padding(.vertical, AppMetrics.spacingMedium)
-            .padding(.horizontal, AppMetrics.spacingLarge)
+            .padding(.vertical, AppSpacing.s4)
+            .padding(.horizontal, AppSpacing.s6)
             .background(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                     .fill(bgColor)
             )
             // 將邊框做到極細且低對比度的「紙緣」感
             .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                     .stroke(baseColor.opacity(Opacity.border), lineWidth: 0.5)
             )
             .scaleEffect(configuration.isPressed ? 0.97 : 1.0)

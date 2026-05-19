@@ -18,23 +18,23 @@ struct DraggableDivider: View {
     @Environment(\.appTheme) private var theme
 
     private var effectiveMax: CGFloat {
-        let max = containerWidth - AppMetrics.MacDetailPanel.leftMinWidth
-        return min(AppMetrics.MacDetailPanel.maxWidth, Swift.max(max, AppMetrics.MacDetailPanel.minWidth))
+        let max = containerWidth - MacDetailPanelMetrics.leftMinWidth
+        return min(MacDetailPanelMetrics.maxWidth, Swift.max(max, MacDetailPanelMetrics.minWidth))
     }
 
     var body: some View {
         Rectangle()
             .fill(isActiveDrag
-                ? theme.palette.divider.opacity(AppMetrics.MacDetailPanel.dividerActiveOpacity)
+                ? theme.palette.divider.opacity(MacDetailPanelMetrics.dividerActiveOpacity)
                 : Color.clear)
-            .frame(width: AppMetrics.MacDetailPanel.hitAreaWidth)
+            .frame(width: MacDetailPanelMetrics.hitAreaWidth)
             .contentShape(Rectangle())
             .overlay(alignment: .center) {
                 Rectangle()
                     .fill(theme.palette.divider.opacity(
                         isActiveDrag
-                            ? AppMetrics.MacDetailPanel.dividerActiveOpacity
-                            : AppMetrics.MacDetailPanel.dividerIdleOpacity
+                            ? MacDetailPanelMetrics.dividerActiveOpacity
+                            : MacDetailPanelMetrics.dividerIdleOpacity
                     ))
                     .frame(width: 1)
             }
@@ -64,7 +64,7 @@ struct DraggableDivider: View {
                 }
                 let newWidth = dragStartWidth - value.translation.width
                 dragWidth = newWidth.clamped(
-                    to: AppMetrics.MacDetailPanel.minWidth...effectiveMax
+                    to: MacDetailPanelMetrics.minWidth...effectiveMax
                 )
             }
             .onEnded { _ in

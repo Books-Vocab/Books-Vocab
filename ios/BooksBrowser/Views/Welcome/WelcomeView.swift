@@ -1,5 +1,29 @@
 import SwiftUI
 
+/// Welcome walkthrough 專用版面參數 — 僅 WelcomeView 使用。
+private enum AppWelcomeMetrics {
+    static let iconBottomPadding: CGFloat = 12
+    static let pageHeight: CGFloat = 240
+    static let featureIconFrame: CGFloat = 64
+    static let subtitleHorizontalPadding: CGFloat = 40
+    static let bottomPadding: CGFloat = 40
+
+    // Step indicator capsule（自繪 page control）
+    static let stepIndicatorActiveWidth: CGFloat = 22
+    static let stepIndicatorInactiveWidth: CGFloat = 6
+    static let stepIndicatorHeight: CGFloat = 6
+    static let stepIndicatorInactiveOpacity: Double = 0.25
+
+    // Feature icon halo（accent 圓形背景）
+    static let iconHaloPadding: CGFloat = 16
+    static let iconHaloOpacity: Double = 0.10
+
+    // Page typography / layout
+    static let stepLabelTracking: CGFloat = 1.4
+    static let captionTopPadding: CGFloat = 2
+    static let pageContentSpacing: CGFloat = 4
+}
+
 struct WelcomeView: View {
     @Environment(\.appTheme) private var appTheme
     @State private var currentPage = 0
@@ -38,10 +62,10 @@ struct WelcomeView: View {
         VStack(spacing: 0) {
             // 試用提示帶 — 鼓勵未登入者直接體驗
             tryItHint
-                .padding(.top, AppMetrics.spacingSmall)
+                .padding(.top, AppSpacing.s2)
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
-            Spacer(minLength: AppMetrics.spacingMedium)
+            Spacer(minLength: AppSpacing.s4)
 
             // App icon
             Image("AppIconImage")
@@ -67,7 +91,7 @@ struct WelcomeView: View {
 
             // 自繪 page indicator（避免 UIPageControl tint 跨平台不一致）
             stepIndicator
-                .padding(.top, AppMetrics.spacingSmall)
+                .padding(.top, AppSpacing.s2)
 
             Spacer()
 
@@ -82,7 +106,7 @@ struct WelcomeView: View {
     // MARK: - Subviews
 
     private var tryItHint: some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
+        HStack(spacing: AppSpacing.s2) {
             Image(systemName: "sparkles")
                 .font(AppFonts.caption(weight: .semibold))
             Text("不用註冊也能先體驗 Demo".localized)
@@ -97,18 +121,18 @@ struct WelcomeView: View {
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
         .padding(.vertical, AppBannerMetrics.verticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                 .fill(appTheme.palette.accent.opacity(AppBannerMetrics.backgroundOpacity))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                 .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: AppMetrics.dividerStandard)
         )
         .accessibilityElement(children: .combine)
     }
 
     private var stepIndicator: some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
+        HStack(spacing: AppSpacing.s2) {
             ForEach(0..<pages.count, id: \.self) { index in
                 Capsule()
                     .fill(index == currentPage
@@ -128,7 +152,7 @@ struct WelcomeView: View {
     }
 
     private var ctaStack: some View {
-        VStack(spacing: AppMetrics.spacingSmall) {
+        VStack(spacing: AppSpacing.s2) {
             Button(action: onLogin) {
                 Label("登入帳號".localized, systemImage: "person.crop.circle.fill")
             }
@@ -145,7 +169,7 @@ struct WelcomeView: View {
     }
 
     private func pageView(_ page: WelcomePage, step: Int) -> some View {
-        VStack(spacing: AppMetrics.spacingMedium) {
+        VStack(spacing: AppSpacing.s4) {
             ZStack {
                 Circle()
                     .fill(appTheme.palette.accent.opacity(AppWelcomeMetrics.iconHaloOpacity))

@@ -30,11 +30,7 @@ struct ReviewFoldSurface<Content: View>: View {
                         .padding(.horizontal, vocabSkin.spacing.cardPadding)
                 }
             }
-            .shadow(
-                color: vocabSkin.palette.shadow.opacity(position == .single ? 1 : AppShadows.panelOpacity),
-                radius: 6,
-                y: AppShadows.coverY
-            )
+            .appElevation(.z1)
     }
 
     private var shape: UnevenRoundedRectangle {

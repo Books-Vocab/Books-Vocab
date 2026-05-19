@@ -69,7 +69,7 @@ struct BookshelfView: View {
                 if let message = coordinator.errorMessage, !coordinator.showError {
                     importErrorBanner(message: message)
                         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                        .padding(.top, AppMetrics.spacingSmall)
+                        .padding(.top, AppSpacing.s2)
                         .transition(.statusRowReveal)
                 }
             }
@@ -251,11 +251,11 @@ struct BookshelfView: View {
             }
             .animateContentFade(books.count + podcastSeries.count)
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppMetrics.spacingSmall)
+            .padding(.top, AppSpacing.s2)
 
             epubGuideHint
-                .padding(.top, AppMetrics.spacingLarge)
-                .padding(.bottom, AppMetrics.spacingExtraLarge)
+                .padding(.top, AppSpacing.s6)
+                .padding(.bottom, AppSpacing.s7)
         }
         .refreshable {
             if authManager.isLoggedIn {
@@ -272,7 +272,7 @@ struct BookshelfView: View {
                 .font(AppFonts.caption2())
                 .foregroundStyle(appTheme.palette.quaternaryText)
                 .frame(maxWidth: .infinity)
-                .padding(.vertical, AppMetrics.spacingSmall)
+                .padding(.vertical, AppSpacing.s2)
         }
     }
 
@@ -287,7 +287,7 @@ struct BookshelfView: View {
             systemImage: "exclamationmark.triangle",
             description: message.localized
         ) {
-            HStack(spacing: AppMetrics.spacingSmall) {
+            HStack(spacing: AppSpacing.s2) {
                 Button("再試匯入".localized) {
                     coordinator.presentImporter()
                 }
@@ -308,7 +308,7 @@ struct BookshelfView: View {
             appTheme.palette.scrim
                 .ignoresSafeArea()
 
-            VStack(spacing: AppMetrics.spacingMedium) {
+            VStack(spacing: AppSpacing.s4) {
                 if let ratio = coordinator.loadingProgress {
                     ProgressView(value: ratio, total: 1.0)
                         .progressViewStyle(.linear)
@@ -322,7 +322,7 @@ struct BookshelfView: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
     }
 
@@ -338,7 +338,7 @@ struct BookCard: View {
     @State private var decodedCoverImage: PlatformImage?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: AppSpacing.s2) {
             // 封面
             coverView
                 .overlay(
@@ -354,11 +354,7 @@ struct BookCard: View {
                 .overlay(alignment: .bottomTrailing) {
                     iCloudDownloadBadge
                 }
-                .shadow(
-                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
-                    radius: AppBookshelfMetrics.coverShadowRadius,
-                    y: AppBookshelfMetrics.coverShadowY
-                )
+                .appElevation(.z1)
 
             // 進度條（封面外獨立元素）
             if let progress = book.progression, progress > 0 {
@@ -366,7 +362,7 @@ struct BookCard: View {
             }
 
             // 元資料
-            VStack(alignment: .leading, spacing: AppMetrics.spacingTiny) {
+            VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
                 Text(book.title)
                     .font(AppFonts.caption(weight: .medium))
                     .lineLimit(2)
@@ -415,7 +411,7 @@ struct BookCard: View {
             .fill(appTheme.palette.mutedFill)
             .frame(height: coverHeight)
             .overlay {
-                VStack(spacing: AppMetrics.spacingSmall) {
+                VStack(spacing: AppSpacing.s2) {
                     Image(systemName: "book")
                         .font(AppFonts.h1(weight: .regular))
                         .foregroundStyle(appTheme.palette.tertiaryText)
@@ -428,10 +424,10 @@ struct BookCard: View {
                         Text(book.format.rawValue.uppercased())
                             .font(AppFonts.caption2())
                             .foregroundStyle(appTheme.palette.secondaryText)
-                            .padding(.horizontal, AppMetrics.spacingExtraSmall)
-                            .padding(.vertical, AppMetrics.spacingMicro)
+                            .padding(.horizontal, AppSpacing.s1)
+                            .padding(.vertical, AppSpacing.microGap)
                             .background(appTheme.palette.mutedFill)
-                            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall))
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                     }
                 }
             }
@@ -543,7 +539,7 @@ struct PodcastSeriesCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: AppSpacing.s2) {
             // 封面
             coverView
                 .overlay(
@@ -554,29 +550,25 @@ struct PodcastSeriesCard: View {
                     Image(systemName: "waveform")
                         .font(AppFonts.caption2(weight: .bold))
                         .foregroundStyle(appTheme.palette.primaryText)
-                        .padding(AppMetrics.spacingExtraSmall)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
-                        .padding(AppMetrics.spacingSmall)
+                        .padding(AppSpacing.s1)
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                        .padding(AppSpacing.s2)
                 }
                 .overlay(alignment: .topLeading) {
                     if series.isFollowed {
                         Image(systemName: "star.fill")
                             .font(AppFonts.caption2(weight: .bold))
                             .foregroundStyle(appTheme.palette.accent)
-                            .padding(AppMetrics.spacingExtraSmall)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
-                            .padding(AppMetrics.spacingSmall)
+                            .padding(AppSpacing.s1)
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
+                            .padding(AppSpacing.s2)
                             .accessibilityLabel("已追蹤")
                     }
                 }
-                .shadow(
-                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
-                    radius: AppBookshelfMetrics.coverShadowRadius,
-                    y: AppBookshelfMetrics.coverShadowY
-                )
+                .appElevation(.z1)
 
             // 元資料
-            VStack(alignment: .leading, spacing: AppMetrics.spacingTiny) {
+            VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
                 Text(series.title)
                     .font(AppFonts.caption(weight: .medium))
                     .lineLimit(2)
@@ -717,14 +709,14 @@ private struct BookshelfLoadingPreview: View {
                 .ignoresSafeArea()
             appTheme.palette.scrim
                 .ignoresSafeArea()
-            VStack(spacing: AppMetrics.spacingMedium) {
+            VStack(spacing: AppSpacing.s4) {
                 ProgressView()
                 Text("正在匯入書籍...")
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
     }
 }

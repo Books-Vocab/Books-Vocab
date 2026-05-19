@@ -66,14 +66,14 @@ struct AppStartupRecoveryView: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: AppMetrics.spacingLarge) {
+                VStack(alignment: .leading, spacing: AppSpacing.s6) {
                     headerSection
                     recoveryStepsSection
                     actionLayersSection
                     statusBanner
                     technicalDetailsSection
                 }
-                .padding(AppMetrics.spacingLarge)
+                .padding(AppSpacing.s6)
                 .animation(AppMotion.contentFade, value: phase)
             }
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
@@ -85,7 +85,7 @@ struct AppStartupRecoveryView: View {
     // MARK: - Sections
 
     private var headerSection: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingCompact) {
+        VStack(alignment: .leading, spacing: AppSpacing.s3) {
             Label(failure.title, systemImage: "externaldrive.badge.exclamationmark")
                 .font(AppFonts.h2(weight: .semibold))
                 .foregroundStyle(appTheme.palette.primaryText)
@@ -97,13 +97,13 @@ struct AppStartupRecoveryView: View {
     }
 
     private var recoveryStepsSection: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingCompact) {
+        VStack(alignment: .leading, spacing: AppSpacing.s3) {
             Text(L10n.string("建議處理方式"))
                 .font(AppFonts.subhead(weight: .semibold))
                 .foregroundStyle(appTheme.palette.primaryText)
 
             ForEach(Array(failure.recoverySteps.enumerated()), id: \.offset) { index, step in
-                HStack(alignment: .top, spacing: AppMetrics.spacingCompact) {
+                HStack(alignment: .top, spacing: AppSpacing.s3) {
                     Text("\(index + 1).")
                         .font(AppFonts.monoNumbers(size: 17))
                         .foregroundStyle(appTheme.palette.accent)
@@ -116,7 +116,7 @@ struct AppStartupRecoveryView: View {
     }
 
     private var actionLayersSection: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingCompact) {
+        VStack(alignment: .leading, spacing: AppSpacing.s3) {
             Text(L10n.string("恢復操作"))
                 .font(AppFonts.subhead(weight: .semibold))
                 .foregroundStyle(appTheme.palette.primaryText)
@@ -157,7 +157,7 @@ struct AppStartupRecoveryView: View {
             EmptyView()
 
         case .working(let step):
-            HStack(spacing: AppMetrics.spacingCompact) {
+            HStack(spacing: AppSpacing.s3) {
                 ProgressView()
                     .controlSize(.small)
                 Text(step == .retrying
@@ -167,10 +167,10 @@ struct AppStartupRecoveryView: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            .padding(AppMetrics.spacingMedium)
+            .padding(AppSpacing.s4)
             .background(
                 appTheme.palette.cardBackground,
-                in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+                in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
             )
             .transition(.overlayFade)
 
@@ -205,7 +205,7 @@ struct AppStartupRecoveryView: View {
     }
 
     private var technicalDetailsSection: some View {
-        VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+        VStack(alignment: .leading, spacing: AppSpacing.s2) {
             Text(L10n.string("技術細節"))
                 .font(AppFonts.subhead(weight: .semibold))
                 .foregroundStyle(appTheme.palette.primaryText)
@@ -215,13 +215,13 @@ struct AppStartupRecoveryView: View {
                 .foregroundStyle(appTheme.palette.tertiaryText)
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
-                .padding(AppMetrics.spacingMedium)
+                .padding(AppSpacing.s4)
                 .background(
                     appTheme.palette.cardBackground,
-                    in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                         .stroke(appTheme.palette.cardBorder, lineWidth: 1)
                 }
         }
@@ -239,7 +239,7 @@ struct AppStartupRecoveryView: View {
             case .success: return appTheme.palette.success
             }
         }()
-        HStack(alignment: .top, spacing: AppMetrics.spacingCompact) {
+        HStack(alignment: .top, spacing: AppSpacing.s3) {
             Image(systemName: icon)
                 .foregroundStyle(fg)
             Text(text)
@@ -247,13 +247,13 @@ struct AppStartupRecoveryView: View {
                 .foregroundStyle(appTheme.palette.primaryText)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(AppMetrics.spacingMedium)
+        .padding(AppSpacing.s4)
         .background(
             appTheme.palette.cardBackground,
-            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+            in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                 .stroke(fg.opacity(0.32), lineWidth: 1)
         }
         .transition(.overlayFade)
