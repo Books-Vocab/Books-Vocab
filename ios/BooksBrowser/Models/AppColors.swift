@@ -71,24 +71,9 @@ enum AppColors {
     static let warningLight = Color(hue: 0.1, saturation: 0.8, brightness: 0.8)
     static let warningDark  = Color(hue: 0.1, saturation: 0.6, brightness: 0.9)
 
-    // ── 難度 Tier（Legacy — 新代碼請改用 appSkin.tierColor(for:)）──────
-    // 這些 token 已由 AppSkin.tierColor() 內建處理，
-    // 僅為舊呼叫端保留相容，請勿在新的 Vocabulary 組件中直接使用。
-    static let tierCoreLight         = savedLight
-    static let tierCoreDark          = savedDark
-    static let tierIntermediateLight = Color(hue: 40/360, saturation: 0.28, brightness: 0.55)
-    static let tierIntermediateDark  = Color(hue: 40/360, saturation: 0.25, brightness: 0.65)
-    static let tierAdvancedLight     = translationLight
-    static let tierAdvancedDark      = translationDark
-    static let tierRareLight         = destructiveLight
-    static let tierRareDark          = destructiveDark
-
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
     // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
     static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
-
-    // ── Glass-era Token（Legacy — 目前僅作佔位，可安全忽略）──────────────
-    static let glassClearBackground = Color.clear
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.30, brightness: 0.60)
@@ -135,21 +120,6 @@ extension AppColors {
 
     static func info(_ scheme: ColorScheme) -> Color {
         scheme == .dark ? infoDark : infoLight
-    }
-
-    static func tier(_ tier: String, scheme: ColorScheme) -> (color: Color, label: String) {
-        switch tier {
-        case "core":
-            return (scheme == .dark ? tierCoreDark : tierCoreLight, "core")
-        case "intermediate":
-            return (scheme == .dark ? tierIntermediateDark : tierIntermediateLight, "inter")
-        case "advanced":
-            return (scheme == .dark ? tierAdvancedDark : tierAdvancedLight, "adv")
-        case "rare":
-            return (scheme == .dark ? tierRareDark : tierRareLight, "rare")
-        default:
-            return (Color.secondary, tier)
-        }
     }
 }
 
