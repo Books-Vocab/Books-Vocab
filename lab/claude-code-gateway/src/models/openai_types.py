@@ -81,10 +81,16 @@ class ChatChoice(BaseModel):
     finish_reason: Optional[str] = None
 
 
+class PromptTokensDetails(BaseModel):
+    """Breakdown of prompt tokens (OpenAI-compatible)."""
+    cached_tokens: int = 0
+
+
 class UsageInfo(BaseModel):
     prompt_tokens: int = 0
     completion_tokens: int = 0
     total_tokens: int = 0
+    prompt_tokens_details: Optional[PromptTokensDetails] = None
 
 
 class ChatCompletionResponse(BaseModel):

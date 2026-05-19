@@ -17,6 +17,7 @@ from src.models.openai_types import (
     ChatCompletionResponse,
     ChatMessage,
     FunctionCall,
+    PromptTokensDetails,
     ToolCall,
     UsageInfo,
 )
@@ -108,6 +109,32 @@ def _merge_allowed_tools(user_tools: str | None, required: str) -> str:
     if required not in items:
         items.append(required)
     return ",".join(items)
+
+
+def _usage_from_result(result: dict) -> UsageInfo:
+    """Map the Claude CLI `usage` block to an OpenAI-style UsageInfo.
+
+    Claude splits input tokens into uncached / cache-creation / cache-read;
+    OpenAI's prompt_tokens is the total, with cached tokens reported in
+    prompt_tokens_details.  Token counts include the Claude Code CLI's own
+    system-prompt overhead, which is genuine usage, not a gateway artifact.
+    """
+    usage = result.get("usage") or {}
+    cache_read = usage.get("cache_read_input_tokens", 0) or 0
+    prompt = (
+        (usage.get("input_tokens", 0) or 0)
+        + (usage.get("cache_creation_input_tokens", 0) or 0)
+        + cache_read
+    )
+    completion = usage.get("output_tokens", 0) or 0
+    return UsageInfo(
+        prompt_tokens=prompt,
+        completion_tokens=completion,
+        total_tokens=prompt + completion,
+        prompt_tokens_details=(
+            PromptTokensDetails(cached_tokens=cache_read) if cache_read else None
+        ),
+    )
 
 
 @router.post("/v1/chat/completions")
@@ -247,7 +274,7 @@ async def _handle_blocking(
                 finish_reason=finish_reason,
             )
         ],
-        usage=UsageInfo(prompt_tokens=0, completion_tokens=0, total_tokens=0),
+        usage=_usage_from_result(result if isinstance(result, dict) else {}),
     )
 
     resp_dict = response.model_dump(exclude_none=True)
