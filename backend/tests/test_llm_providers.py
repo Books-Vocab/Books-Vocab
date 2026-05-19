@@ -32,13 +32,13 @@ def test_registry_has_gemini_and_deepseek():
 
 def test_default_routing_is_gemini():
     for ct in ("translate_quick", "translate_phrase", "translate_explain",
-               "judge", "enrich", "manual_link_judge"):
+               "judge", "enrich", "judge_manual"):
         assert provider_for(ct).name == "gemini"
 
 
 def test_llm_provider_default_routes_all_chat_call_types(monkeypatch):
     monkeypatch.setenv("LLM_PROVIDER_DEFAULT", "deepseek")
-    for ct in ("translate_quick", "judge", "enrich", "manual_link_judge"):
+    for ct in ("translate_quick", "judge", "enrich", "judge_manual"):
         assert provider_for(ct).name == "deepseek"
 
 
@@ -47,6 +47,19 @@ def test_per_call_type_override(monkeypatch):
     assert provider_for("judge").name == "deepseek"
     assert provider_for("enrich").name == "gemini"
     assert provider_for("translate_quick").name == "gemini"
+
+
+def test_judge_group_covers_manual_link_judge(monkeypatch):
+    """LLM_PROVIDER_JUDGE must cover manual link judging (judge_manual)
+    alongside the auto pipeline judge — they belong to the same group."""
+    monkeypatch.setenv("LLM_PROVIDER_JUDGE", "deepseek")
+    assert provider_for("judge_manual").name == "deepseek"
+    assert provider_for("judge").name == "deepseek"
+
+
+def test_judge_manual_default_routes_with_judge(monkeypatch):
+    """Absent overrides, judge_manual resolves like judge → gemini default."""
+    assert provider_for("judge_manual").name == "gemini"
 
 
 def test_per_call_type_beats_default(monkeypatch):

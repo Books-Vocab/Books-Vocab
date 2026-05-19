@@ -50,7 +50,10 @@ class ManualLinkJudge:
         user_msg = f"Word A: {word_a}\nMeaning A: {meaning_a}\n\nWord B: {word_b}\nMeaning B: {meaning_b}\n\nDetermine the relationship type and your confidence (0.0-1.0)."
 
         resp = self.llm.chat(
-            "manual_link_judge",
+            # call_type group "JUDGE" — shares LLM_PROVIDER_JUDGE routing with
+            # the auto pipeline judge ("judge"). Renamed from "manual_link_judge"
+            # so the group split (key.split("_",1)[0]) lands on JUDGE not MANUAL.
+            "judge_manual",
             model=self.model,
             messages=[
                 {"role": "system", "content": MANUAL_LINK_SYSTEM_PROMPT},

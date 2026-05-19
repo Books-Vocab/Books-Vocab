@@ -99,11 +99,22 @@ def test_manual_link_routes_to_gemini_by_default():
     assert "extra_body" not in call
 
 
-def test_manual_link_routes_to_deepseek_via_env(monkeypatch):
-    monkeypatch.setenv("LLM_PROVIDER_MANUAL_LINK_JUDGE", "deepseek")
+def test_manual_link_routes_to_deepseek_via_judge_group_env(monkeypatch):
+    """LLM_PROVIDER_JUDGE covers manual link judging (call_type group JUDGE),
+    so the one knob flips both auto and manual judge together."""
+    monkeypatch.setenv("LLM_PROVIDER_JUDGE", "deepseek")
     factory, seen, clients = _recorder(_JUDGE_JSON)
     _run(factory)
     assert seen == ["deepseek"]
     call = clients[0].chat.completions.create.call_args.kwargs
     assert call["model"] == "deepseek-v4-flash"
     assert call["extra_body"] == {"thinking": {"type": "disabled"}}
+
+
+def test_manual_link_exact_call_type_env_override(monkeypatch):
+    """The exact call_type env (LLM_PROVIDER_JUDGE_MANUAL) still wins for
+    operators who want manual judge on a different provider than auto."""
+    monkeypatch.setenv("LLM_PROVIDER_JUDGE_MANUAL", "deepseek")
+    factory, seen, _ = _recorder(_JUDGE_JSON)
+    _run(factory)
+    assert seen == ["deepseek"]

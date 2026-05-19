@@ -3,7 +3,7 @@ tier: operational
 scope:
   - backend/src/kg
   - ops
-verified_against: 6b62854
+verified_against: 0bc3299
 -->
 # 後端部署指南
 
@@ -160,6 +160,7 @@ LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所�
 | `GEMINI_MODEL` / `DEEPSEEK_MODEL` | registry 預設 | 覆寫該 provider 的 chat model |
 
 - 路由優先序：`LLM_PROVIDER_<CALL_TYPE>` > `LLM_PROVIDER_<GROUP>` > `LLM_PROVIDER_DEFAULT` > `gemini`。
+- `LLM_PROVIDER_JUDGE` 同時涵蓋 auto pipeline judge（call_type `judge`）與手動連結判定（call_type `judge_manual`）—— 兩者同屬 `JUDGE` group，一個旋鈕同步切換。
 - 遷移 DeepSeek：設 `DEEPSEEK_API_KEY` + `LLM_PROVIDER_DEFAULT=deepseek`（embedding 自動留 Gemini）。分階段可只設 `LLM_PROVIDER_TRANSLATE=deepseek` 先驗證。
 - 未知 provider 名、或把 `embed` 路由到無 embedding 能力的 provider → 啟動即 `ValueError`，不 silent fallback。
 - A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`（需對應 key）。
