@@ -33,9 +33,9 @@ enum AppColors {
     static let paperDark      = Color(red: 0.098, green: 0.098, blue: 0.098)
 
     // ── 主題強調色（Notion 連結藍）────────────────────────────────────
-    // light: #337EA9（~4.1:1 on 近白頁面，連結／互動文字情境可接受）
+    // light: #3078A1（~4.5:1 on 白卡、~4.49:1 on 近白頁面）
     // dark:  #5E9FD0（~5.8:1 on 深灰頁面）
-    static let accentLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let accentLight = Color(red: 0.188, green: 0.471, blue: 0.631)
     static let accentDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
     // ── Brand Hero（Notion product 藍 · 主行動色）────────────────────
@@ -49,7 +49,7 @@ enum AppColors {
 
     // ── 資訊色（Notion 藍 · 與連結同色）──────────────────────────────
     // 用於 info banner、提示訊息、tooltip 等中性提示
-    static let infoLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let infoLight = Color(red: 0.188, green: 0.471, blue: 0.631)
     static let infoDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
     // ── 翻譯文字色（暖棕墨水）─────────────────────────────────────────
@@ -74,7 +74,7 @@ enum AppColors {
 
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
     // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
-    static let tint = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let tint = Color(red: 0.188, green: 0.471, blue: 0.631)
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)

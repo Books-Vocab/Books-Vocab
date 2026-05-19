@@ -79,7 +79,7 @@ struct AppTheme: Equatable {
     static let dark = AppTheme(
         colorScheme: .dark,
         palette: .init(
-            pageBackground: Color(red: 0.100, green: 0.100, blue: 0.100),  // #191919
+            pageBackground: Color(red: 0.098, green: 0.098, blue: 0.098),  // #191919
             stageBackground: Color(red: 0.122, green: 0.122, blue: 0.122), // #1F1F1F
             cardBackground: Color(red: 0.173, green: 0.173, blue: 0.173),  // #2C2C2C
             elevatedCardBackground: Color(red: 0.216, green: 0.216, blue: 0.216), // #373737

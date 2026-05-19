@@ -29,7 +29,7 @@ import SwiftUI
 /// scheme-aware 色給 light/dark 一對；固定色（不隨深淺色）為單值。
 enum AppSkinColors {
     // ── 連結文字（Notion 連結藍，與 AppColors.accent 一致）──
-    static let linkLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let linkLight = Color(red: 0.188, green: 0.471, blue: 0.631)
     static let linkDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
     // ── 翻譯文字（栗棕）──
