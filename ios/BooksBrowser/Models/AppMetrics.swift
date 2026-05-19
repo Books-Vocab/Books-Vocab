@@ -278,36 +278,6 @@ enum PodcastPlayerMetrics {
     static let controlsBottomPadding: CGFloat = 20
 }
 
-enum AppShadows {
-    // ── iOS 26 Liquid Glass & Morandi Paper Shadows ───────────────────────────
-    // 極低對比度的大範圍陰影，模擬實體紙張微微浮起的效果
-    static let paperFloatOpacity: Double = 0.04
-    static let paperFloatRadius: CGFloat = 20
-    static let paperFloatY: CGFloat = 8
-    
-    // MARK: - 封面/卡片微陰影（書架封面、小卡片）
-    static let coverY: CGFloat = 2
-
-    // MARK: - 控制元件微陰影（Badge、小按鈕）
-    static let controlRadius: CGFloat = 2
-    static let controlY: CGFloat = 1
-
-    // MARK: - 工具列陰影（SelectionToolbar 等浮動 bar）
-    static let toolbarDropOpacity: Double = 0.10
-    static let toolbarDropRadius: CGFloat = 8
-    static let toolbarDropY: CGFloat = -2
-
-    // MARK: - 面板陰影（Reader overlay、大面板）
-    static let panelOpacity: Double = 0.18
-    static let panelRadius: CGFloat = 28
-    static let panelY: CGFloat = 14
-
-    // MARK: - Toast 微陰影（頂部浮動膠囊）
-    static let toastOpacity: Double = 0.08
-    static let toastRadius: CGFloat = 8
-    static let toastY: CGFloat = 4
-}
-
 // MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
 // 所有元件一律使用此 namespace（AppSpacing / AppRadius / AppElevation）。
 
@@ -350,7 +320,7 @@ enum AppRadius {
 }
 
 /// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。
-/// 取代分散的「用途命名」shadow（paperFloat / cover / panel ...），但既有 AppShadows 仍保留為相容值。
+/// 全 app 唯一的 shadow 系統 — 所有投影一律走 `.appElevation(.zN)`。
 enum AppElevation {
     case z0  // flush
     case z1  // resting card / list row
