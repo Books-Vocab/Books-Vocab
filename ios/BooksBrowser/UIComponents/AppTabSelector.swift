@@ -45,7 +45,7 @@ struct AppTabSelector<ID: Hashable>: View {
         HStack(spacing: 8) {
             ForEach(options) { option in
                 Button {
-                    withAnimation(AppMotion.chipSelectionEaseOut) {
+                    withAnimation(AppMotion.chipSelect) {
                         selection = option.id
                     }
                 } label: {
