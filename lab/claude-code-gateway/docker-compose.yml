@@ -1,0 +1,13 @@
+services:
+  api:
+    build: .
+    ports:
+      - "8090:8090"
+    volumes:
+      - ~/.claude:/root/.claude
+      - ~/.claude.json:/root/.claude.json:ro
+    env_file: .env
+    environment:
+      - CCG_HOST=0.0.0.0
+      - CCG_PORT=8090
+    restart: unless-stopped
