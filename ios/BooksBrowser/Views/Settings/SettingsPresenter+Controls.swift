@@ -92,7 +92,7 @@ struct SettingsLabeledInputField<Content: View>: View {
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
             Text(title)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
 
             content

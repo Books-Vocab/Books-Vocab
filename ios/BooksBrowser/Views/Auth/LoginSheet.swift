@@ -113,7 +113,7 @@ struct LoginSheet: View {
         HStack(spacing: AppSpacing.s2) {
             if isGoogle {
                 Text("G")
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
                     .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
                     .background(Circle().fill(appSkin.palette.cardBackground))

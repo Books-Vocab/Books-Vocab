@@ -57,7 +57,7 @@ struct WordEditSheet: View {
     private func editSection(title: String, text: Binding<String>) -> some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.secondaryText)
 
             TextEditor(text: text)

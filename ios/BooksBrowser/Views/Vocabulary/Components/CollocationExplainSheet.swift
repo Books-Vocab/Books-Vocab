@@ -72,7 +72,7 @@ struct CollocationExplainSheet: View {
                     dismiss()
                 } label: {
                     Label("儲存".localized, systemImage: "checkmark.circle")
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                 }
                 .buttonStyle(.plain)
                 .foregroundStyle(appSkin.palette.success)

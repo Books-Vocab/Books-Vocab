@@ -82,7 +82,7 @@ struct NotebookEditSheet: View {
                                 .overlay {
                                     if selectedColor == item.hex {
                                         Image(systemName: "checkmark")
-                                            .font(skin.typography.captionStrong)
+                                            .font(skin.typography.caption)
                                             .foregroundStyle(.white)
                                     }
                                 }

@@ -158,7 +158,7 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
             leadingAccessory
 
             Label(title.localized, systemImage: systemImage)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
 
             if let badgeText {

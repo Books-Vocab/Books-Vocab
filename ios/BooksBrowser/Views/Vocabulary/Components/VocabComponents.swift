@@ -57,7 +57,7 @@ struct VocabToneChip: View {
 
     var body: some View {
         Text(text.localized)
-            .font(appSkin.typography.captionStrong)
+            .font(appSkin.typography.caption)
             .foregroundStyle(tone)
             .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
             .padding(.vertical, appSkin.spacing.chipVerticalPadding)

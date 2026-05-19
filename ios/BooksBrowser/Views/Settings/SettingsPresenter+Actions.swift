@@ -139,7 +139,7 @@ struct SettingsCompactActionButton: View {
 
     var body: some View {
         Button(title, action: action)
-            .font(appSkin.typography.captionStrong)
+            .font(appSkin.typography.caption)
             .foregroundStyle(isEnabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
             .padding(.horizontal, 12)
             .padding(.vertical, 9)
@@ -280,17 +280,17 @@ struct SettingsPlanComparisonTable: View {
     private var headerRow: some View {
         HStack(spacing: appSkin.spacing.controlGap) {
             Text("功能".localized)
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
                 .frame(maxWidth: .infinity, alignment: .leading)
 
             Text("Free")
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.tertiaryText)
                 .frame(width: 52, alignment: .center)
 
             Text("Pro")
-                .font(appSkin.typography.captionStrong)
+                .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.accent)
                 .frame(width: 52, alignment: .center)
         }
