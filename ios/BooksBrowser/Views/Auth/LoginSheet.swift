@@ -31,11 +31,11 @@ struct LoginSheet: View {
     }
 
     private var content: some View {
-        VStack(spacing: AppMetrics.spacingLarge) {
+        VStack(spacing: AppSpacing.s6) {
             Spacer()
 
             // Hero
-            VStack(spacing: AppMetrics.spacingSmall) {
+            VStack(spacing: AppSpacing.s2) {
                 Image("AppIconImage")
                     .resizable()
                     .scaledToFit()
@@ -79,8 +79,8 @@ struct LoginSheet: View {
                 .buttonStyle(.pressable)
                 .accessibilityLabel("使用 Apple 帳號登入".localized)
             }
-            .padding(.horizontal, AppMetrics.spacingMedium)
-            .padding(.bottom, AppMetrics.spacingLarge)
+            .padding(.horizontal, AppSpacing.s4)
+            .padding(.bottom, AppSpacing.s6)
 
             // Error
             if let error = authManager.authError {
@@ -89,7 +89,7 @@ struct LoginSheet: View {
                     systemImage: "exclamationmark.triangle.fill",
                     description: error
                 )
-                .padding(.horizontal, AppMetrics.spacingMedium)
+                .padding(.horizontal, AppSpacing.s4)
             }
         }
         .overlay {
@@ -110,7 +110,7 @@ struct LoginSheet: View {
     }
 
     private func loginButtonLabel(title: String, systemImage: String?, isGoogle: Bool) -> some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
+        HStack(spacing: AppSpacing.s2) {
             if isGoogle {
                 Text("G")
                     .font(vocabSkin.typography.captionStrong)
@@ -135,8 +135,8 @@ struct LoginSheet: View {
                 .font(vocabSkin.typography.iconTiny)
                 .foregroundStyle(vocabSkin.palette.tertiaryText)
         }
-        .padding(.horizontal, AppMetrics.spacingMedium)
-        .padding(.vertical, AppMetrics.spacingSmall)
+        .padding(.horizontal, AppSpacing.s4)
+        .padding(.vertical, AppSpacing.s2)
         .background(
             RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
                 .fill(vocabSkin.palette.cardBackground)

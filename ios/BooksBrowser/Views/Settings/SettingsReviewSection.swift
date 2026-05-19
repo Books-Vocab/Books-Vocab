@@ -44,7 +44,7 @@ struct SettingsReviewSection: View {
             reviewSettingsStore.update(updated)
         } label: {
             SettingsSelectionTile(isSelected: isSelected) {
-                VStack(alignment: .leading, spacing: AppMetrics.spacingSmall) {
+                VStack(alignment: .leading, spacing: AppSpacing.s2) {
                     Image(systemName: mode.icon)
                         .font(vocabSkin.typography.iconToolbar)
                     Text(mode.displayName)

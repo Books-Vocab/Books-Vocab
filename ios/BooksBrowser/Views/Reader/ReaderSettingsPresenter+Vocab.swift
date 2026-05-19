@@ -31,11 +31,7 @@ extension ReaderSettingsPresenter {
                 }
             }
         }
-        .shadow(
-            color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.readerPanelShadowOpacity),
-            radius: vocabSkin.metrics.readerPanelShadowRadius,
-            y: vocabSkin.metrics.readerPanelShadowY
-        )
+        .appElevation(.z3, direction: .up)
     }
 
     // MARK: Header

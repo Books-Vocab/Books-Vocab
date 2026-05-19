@@ -8,6 +8,12 @@
 
 import SwiftUI
 
+/// Ghost 按鈕內距 — 僅 AppSurface 使用。
+private enum AppGhostButtonMetrics {
+    static let horizontalPadding: CGFloat = 14
+    static let verticalPadding: CGFloat = 10
+}
+
 // MARK: - AppCard (Pure White Paper)
 
 struct AppCard<Content: View>: View {
@@ -16,7 +22,7 @@ struct AppCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     init(
-        padding: CGFloat = AppMetrics.spacingLarge,
+        padding: CGFloat = AppSpacing.s6,
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding
@@ -27,22 +33,18 @@ struct AppCard<Content: View>: View {
         content
             .padding(padding)
             .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
             .overlay(cardBorder.allowsHitTesting(false))
-            .shadow(
-                color: .black.opacity(AppShadows.paperFloatOpacity),
-                radius: AppShadows.paperFloatRadius,
-                y: AppShadows.paperFloatY
-            )
+            .appElevation(.z2)
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
             .fill(appTheme.palette.elevatedCardBackground)
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
             .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
     }
 }

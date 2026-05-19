@@ -79,11 +79,7 @@ struct PodcastControlsView: View {
                         width: PodcastPlayerMetrics.seekBarThumbSize,
                         height: PodcastPlayerMetrics.seekBarThumbSize
                     )
-                    .shadow(
-                        color: skin.palette.shadow.opacity(PodcastPlayerMetrics.seekBarThumbShadowOpacity),
-                        radius: PodcastPlayerMetrics.seekBarThumbShadowRadius,
-                        y: PodcastPlayerMetrics.seekBarThumbShadowY
-                    )
+                    .appElevation(.z1)
                     .offset(x: max(0, progressWidth(in: w) - PodcastPlayerMetrics.seekBarThumbOffset))
                     .gesture(
                         DragGesture(minimumDistance: 0)

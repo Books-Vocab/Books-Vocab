@@ -24,11 +24,9 @@ struct SelectionToolbar: View {
             )
         }
         .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-        .padding(.vertical, AppMetrics.spacingSmall)
-        .background(
-            vocabSkin.palette.cardBackground
-                .shadow(.drop(color: .black.opacity(AppShadows.toolbarDropOpacity), radius: AppShadows.toolbarDropRadius, y: AppShadows.toolbarDropY))
-        )
+        .padding(.vertical, AppSpacing.s2)
+        .background(vocabSkin.palette.cardBackground)
+        .appElevation(.z2, direction: .up)
     }
 
     @ViewBuilder

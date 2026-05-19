@@ -29,7 +29,7 @@ extension TodayReviewPresenter {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
                         .stroke(vocabSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderOpacity), lineWidth: 1)
                 )
-                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 2, y: 1)
+                .appElevation(.z1)
 
             if depth == 1, let nextCard = state.nextCard {
                 reviewCardFront(nextCard.card)

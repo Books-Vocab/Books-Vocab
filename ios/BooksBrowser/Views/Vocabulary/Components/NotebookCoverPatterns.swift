@@ -153,6 +153,7 @@ struct NotebookCoverView: View {
                 Text(name)
                     .font(AppFonts.body(weight: .semibold))
                     .foregroundStyle(.white)
+                    // 文字易讀性投影（白字壓在彩色封面上），非 UI elevation — 刻意不走 AppElevation
                     .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
                     .lineLimit(2)
                     .truncationMode(.tail)
