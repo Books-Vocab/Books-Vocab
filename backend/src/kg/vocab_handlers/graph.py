@@ -49,7 +49,7 @@ def create_manual_link_response(
     from ..judge import ManualLinkJudge
     from ..llm.providers import provider_for
     from ..tracked_llm import TrackedLLM
-    provider = provider_for("manual_link_judge")
+    provider = provider_for("judge_manual")
     judge = ManualLinkJudge(
         TrackedLLM(client_factory(provider), user["id"], provider=provider),
         model=provider.chat_model,

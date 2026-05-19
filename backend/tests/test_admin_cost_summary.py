@@ -75,9 +75,13 @@ def test_aggregates_by_service_model_calltype(cost_env):
     from kg.quota_service import token_cost_usd
 
     now = datetime.now(UTC)
-    # judge family — 2 calls, accumulates to service=judge
+    # judge family — 3 calls, accumulates to service=judge.
+    # Both the legacy manual call_type ("manual_link_judge", still present in
+    # historic token_usage rows) and the new one ("judge_manual") must bucket
+    # into judge — otherwise historic cost attribution breaks.
     _record("u1", "judge", t_in=1000, t_out=200, when=now - timedelta(minutes=1))
     _record("u1", "manual_link_judge", t_in=500, t_out=100, when=now - timedelta(minutes=2))
+    _record("u1", "judge_manual", t_in=200, t_out=40, when=now - timedelta(minutes=2))
     # translate family — 1 call
     _record("u1", "translate_quick", t_in=300, t_out=80, when=now - timedelta(minutes=3))
     # pipeline family — embed (different model + different pricing)
@@ -88,19 +92,20 @@ def test_aggregates_by_service_model_calltype(cost_env):
 
     r = get_user_cost_summary("u1", range_="month")
 
-    assert r["total_calls"] == 5
-    assert r["total_input_tokens"] == 1000 + 500 + 300 + 2000 + 400
-    assert r["total_output_tokens"] == 200 + 100 + 80 + 0 + 120
+    assert r["total_calls"] == 6
+    assert r["total_input_tokens"] == 1000 + 500 + 200 + 300 + 2000 + 400
+    assert r["total_output_tokens"] == 200 + 100 + 40 + 80 + 0 + 120
 
     # Service grouping
     assert set(r["by_service"].keys()) == {"judge", "translate", "pipeline"}
     judge = r["by_service"]["judge"]
-    assert judge["calls"] == 2
-    assert judge["input_tokens"] == 1500
-    assert judge["output_tokens"] == 300
+    assert judge["calls"] == 3
+    assert judge["input_tokens"] == 1700
+    assert judge["output_tokens"] == 340
     expected_judge_cost = (
         token_cost_usd("judge", 1000, 200)
         + token_cost_usd("manual_link_judge", 500, 100)
+        + token_cost_usd("judge_manual", 200, 40)
     )
     assert judge["cost_usd"] == round(expected_judge_cost, 6)
 
@@ -120,7 +125,8 @@ def test_aggregates_by_service_model_calltype(cost_env):
 
     # by_call_type round-trip
     assert set(r["by_call_type"].keys()) == {
-        "judge", "manual_link_judge", "translate_quick", "embed", "enrich",
+        "judge", "manual_link_judge", "judge_manual",
+        "translate_quick", "embed", "enrich",
     }
 
     # Cross-check: sum of by_call_type cost == total_cost_usd (modulo rounding)
