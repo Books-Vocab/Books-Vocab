@@ -16,6 +16,14 @@ struct KnowledgeGraphPresenter: View {
             let title: String
             let systemImage: String
             let description: String
+            let action: AppEmptyStateAction?
+
+            init(title: String, systemImage: String, description: String, action: AppEmptyStateAction? = nil) {
+                self.title = title
+                self.systemImage = systemImage
+                self.description = description
+                self.action = action
+            }
         }
 
         let emptyState: EmptyState?
@@ -78,7 +86,8 @@ struct KnowledgeGraphPresenter: View {
             return .empty(
                 title: emptyState.title,
                 systemImage: emptyState.systemImage,
-                description: emptyState.description
+                description: emptyState.description,
+                action: emptyState.action
             )
         }
         return .content
