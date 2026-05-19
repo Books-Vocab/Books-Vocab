@@ -65,7 +65,8 @@ struct KnowledgeGraphView: View {
                 nodes: nodes,
                 syncedEntryCount: syncedEntryCount,
                 linkCount: coordinator.links.count,
-                showsIsolatedNodes: coordinator.showsIsolatedNodes
+                showsIsolatedNodes: coordinator.showsIsolatedNodes,
+                onRetry: reloadGraphData
             ),
             nodes: nodes,
             edges: edges,
@@ -90,5 +91,13 @@ struct KnowledgeGraphView: View {
 
     private func handleNodeTap(_ nodeID: String) {
         coordinator.handleNodeTap(nodeID, allEntries: allEntries)
+    }
+
+    /// Synchronous entry point for the error-state retry button — the only
+    /// in-place way to re-run a failed `loadGraphData` without leaving the tab.
+    /// `AppEmptyStateAction.handler` is sync, so the async load is bridged
+    /// through a `Task`.
+    private func reloadGraphData() {
+        Task { await coordinator.loadGraphData(authManager: authManager, kgService: kgService) }
     }
 }
