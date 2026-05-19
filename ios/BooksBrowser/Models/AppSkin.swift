@@ -148,6 +148,8 @@ struct AppSkin {
         let settingsAdjustLarge: Font
     }
 
+    /// 圓角語意 token —— 值一律取自 AppRadius scale，不再用 7/10/13/14 半階值。
+    /// 名稱保留語意層：stage=lg(16) / card·overlay=md(12) / control·chip·tiny=sm(8)。
     struct Radii {
         let stage: CGFloat
         let card: CGFloat
@@ -400,12 +402,12 @@ extension AppSkin {
     }
 
     static let baseRadii = Radii(
-        stage: 14,
-        card: 12,
-        overlay: 13,
-        control: 10,
-        chip: 8,
-        tiny: 7
+        stage: AppRadius.lg,     // 14 → 16
+        card: AppRadius.md,      // 12（不變）
+        overlay: AppRadius.md,   // 13 → 12
+        control: AppRadius.sm,   // 10 → 8
+        chip: AppRadius.sm,      // 8（不變）
+        tiny: AppRadius.sm       // 7 → 8
     )
 
     static let baseSpacing = Spacing(
