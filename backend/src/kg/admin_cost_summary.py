@@ -26,9 +26,14 @@ from __future__ import annotations
 from datetime import UTC, datetime
 from typing import Any
 
-# call_type → service bucket
+# call_type → service bucket.
+# ``judge_manual`` is the current manual-link-judge call_type; ``manual_link_judge``
+# is its pre-rename predecessor — historic ``token_usage`` rows still carry the
+# old string, so both must map into the judge bucket or past cost attribution
+# silently drops to ``other``.
 _SERVICE_MAP: dict[str, str] = {
     "judge": "judge",
+    "judge_manual": "judge",
     "manual_link_judge": "judge",
     "translate_quick": "translate",
     "translate_phrase": "translate",
