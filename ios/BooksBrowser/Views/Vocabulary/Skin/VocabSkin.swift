@@ -20,6 +20,40 @@
 
 import SwiftUI
 
+/// VocabSkin 專屬色票 —— `AppTheme.Palette` 未涵蓋的 feature 色。
+/// 與 `AppColors`（Reader + 全域）分離：此 enum 僅供 `VocabSkin.themed()` 組裝取用。
+/// scheme-aware 色給 light/dark 一對；固定色（不隨深淺色）為單值。
+enum VocabSkinColors {
+    // ── 連結文字 ──
+    static let linkLight = Color(red: 0.47, green: 0.56, blue: 0.67)
+    static let linkDark  = Color(red: 0.62, green: 0.71, blue: 0.84)
+
+    // ── 翻譯文字（栗棕）──
+    static let translationLight = Color(red: 0.54, green: 0.50, blue: 0.44)
+    static let translationDark  = Color(red: 0.80, green: 0.72, blue: 0.64)
+
+    // ── 難度 Tier（intermediate / advanced 目前 light/dark 同值）──
+    static let tierIntermediate = Color(red: 0.72, green: 0.63, blue: 0.36)
+    static let tierAdvanced     = Color(red: 0.84, green: 0.54, blue: 0.28)
+
+    // ── 重試提示（琥珀）──
+    static let retryLight = Color(hue: 0.08, saturation: 0.55, brightness: 0.68)
+    static let retryDark  = Color(hue: 0.08, saturation: 0.45, brightness: 0.78)
+
+    // ── 逾期（霧紫）──
+    static let overdueLight = Color(red: 0.56, green: 0.40, blue: 0.66)
+    static let overdueDark  = Color(red: 0.62, green: 0.48, blue: 0.72)
+
+    // ── 例句高光（紙感螢光筆）──
+    static let highlightMarkLight = Color(red: 0.90, green: 0.84, blue: 0.57)
+    static let highlightMarkDark  = Color(red: 0.73, green: 0.66, blue: 0.33)
+
+    // ── Reader 主題色票（固定，不隨系統深淺色）──
+    static let readerThemeLightSwatch = Color(red: 0.90, green: 0.90, blue: 0.88)
+    static let readerThemeSepiaSwatch = Color(red: 0.82, green: 0.73, blue: 0.58)
+    static let readerThemeDarkSwatch  = Color(red: 0.34, green: 0.35, blue: 0.38)
+}
+
 struct VocabSkin {
     struct Palette {
         let pageBackground: Color
