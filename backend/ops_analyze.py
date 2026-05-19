@@ -24,31 +24,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from kg.ops_shared import connect_ro, data_dir, notebook_files, resolve_uid, table_columns
 from kg.quota_service import token_cost_usd
-
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent / "data")))
-
-
-def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    """探測欄位是否存在。token_usage 的 provider 欄在 legacy DB 可能缺。"""
-    return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
-
-
-def _resolve_uid(partial: str) -> str:
-    users_dir = DATA_DIR / "users"
-    if not users_dir.exists():
-        return partial
-    if (users_dir / partial).exists():
-        return partial
-    matches = [d.name for d in users_dir.iterdir() if d.is_dir() and partial in d.name]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        print(f"多個用戶匹配 '{partial}'：", file=sys.stderr)
-        for m in matches:
-            print(f"  {m}", file=sys.stderr)
-        sys.exit(1)
-    return partial
 
 
 def _section(title: str) -> None:
@@ -67,13 +44,13 @@ def level_1(uid: str, udir: Path) -> None:
     _section("Level 1: 快速健檢")
 
     # 額度
-    token_db = DATA_DIR / "token_usage.db"
+    token_db = data_dir() / "token_usage.db"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     pro_limit = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
 
     if token_db.exists():
-        conn = sqlite3.connect(str(token_db))
-        pcol = "provider" if _has_column(conn, "token_usage", "provider") else "NULL"
+        conn = connect_ro(token_db)
+        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
         rows = conn.execute(
             f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
             f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
@@ -90,7 +67,7 @@ def level_1(uid: str, udir: Path) -> None:
     # 卡片
     cards_db = udir / "cards.db"
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         row = conn.execute(
             "SELECT COUNT(*), SUM(CASE WHEN is_deleted=0 THEN 1 ELSE 0 END), "
             "SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END) FROM card"
@@ -101,7 +78,7 @@ def level_1(uid: str, udir: Path) -> None:
         print("  (cards.db 不存在)")
 
     # 圖譜
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     if graph_path.exists():
         links = json.loads(graph_path.read_text())
         print(f"  連結: {len(links)}")
@@ -114,14 +91,14 @@ def level_1(uid: str, udir: Path) -> None:
 def level_2(uid: str, udir: Path) -> None:
     _section("Level 2: 額度消耗分析 (72h)")
 
-    token_db = DATA_DIR / "token_usage.db"
+    token_db = data_dir() / "token_usage.db"
     if not token_db.exists():
         print("  (token_usage.db 不存在)")
         return
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    conn = sqlite3.connect(str(token_db))
-    pcol = "provider" if _has_column(conn, "token_usage", "provider") else "NULL"
+    conn = connect_ro(token_db)
+    pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
     rows = conn.execute(
         f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
         f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
@@ -170,7 +147,7 @@ def level_2(uid: str, udir: Path) -> None:
             print(" ✓")
 
     # 拒絕率估算
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     if graph_path.exists() and judge_calls:
         links = json.loads(graph_path.read_text())
         recent_links = len([l for l in links if l.get("created_at", "") >= cutoff[:10]])
@@ -187,12 +164,12 @@ def level_2(uid: str, udir: Path) -> None:
 # ── Level 3: 圖譜拓撲 ───────────────────────────────────────
 
 def _load_graph_and_cards(udir: Path):
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     cards_db = udir / "cards.db"
     links = json.loads(graph_path.read_text()) if graph_path.exists() else []
     cards = {}
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         conn.row_factory = sqlite3.Row
         cards = {
             r["id"]: dict(r)
@@ -335,8 +312,8 @@ def level_4(uid: str, udir: Path) -> None:
 def level_5(uid: str, udir: Path) -> None:
     _section("Level 5: 嵌入分析 + 閾值掃描")
 
-    emb_path = udir / "embeddings_default.npy"
-    ids_path = udir / "card_ids_default.json"
+    emb_path = notebook_files(udir)["embeddings"]
+    ids_path = notebook_files(udir)["card_ids"]
     cards_db = udir / "cards.db"
 
     if not emb_path.exists() or not ids_path.exists():
@@ -356,7 +333,7 @@ def level_5(uid: str, udir: Path) -> None:
     # Active cards count
     n_active = 0
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         n_active = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0").fetchone()[0]
         conn.close()
 
@@ -399,7 +376,7 @@ def level_6(uid: str, udir: Path) -> None:
     # 1. 連結指向已刪除卡片
     cards_db_path = udir / "cards.db"
     if cards_db_path.exists() and links:
-        conn = sqlite3.connect(str(cards_db_path))
+        conn = connect_ro(cards_db_path)
         conn.row_factory = sqlite3.Row
         all_card_ids = {r["id"]: r for r in conn.execute("SELECT id, content, is_deleted FROM card")}
         conn.close()
@@ -440,7 +417,7 @@ def level_6(uid: str, udir: Path) -> None:
             issues.append(f"  ⚠ {len(self_links)} 條自連結")
 
     # 4. 缺 embedding
-    emb_ids_path = udir / "card_ids_default.json"
+    emb_ids_path = notebook_files(udir)["card_ids"]
     if emb_ids_path.exists() and cards:
         emb_ids = set(json.loads(emb_ids_path.read_text()))
         active_ids = set(cards.keys())
@@ -457,7 +434,7 @@ def level_6(uid: str, udir: Path) -> None:
             issues.append(f"  ⚠ {len(stale)} 張已刪除卡片仍佔 embedding")
 
     # 6. 待處理候選
-    cand_path = udir / "candidates_default.json"
+    cand_path = notebook_files(udir)["candidates"]
     if cand_path.exists():
         cands = json.loads(cand_path.read_text())
         if cands:
@@ -482,8 +459,8 @@ def main() -> None:
     parser.add_argument("level", nargs="?", default="all", help="分析層級 (1-6 或 all)")
     args = parser.parse_args()
 
-    uid = _resolve_uid(args.uid)
-    udir = DATA_DIR / "users" / uid
+    uid = resolve_uid(args.uid, data_dir())
+    udir = data_dir() / "users" / uid
     if not udir.exists():
         print(f"Error: user dir not found: {udir}", file=sys.stderr)
         sys.exit(1)

@@ -7,47 +7,12 @@
 
 import argparse
 import os
-import sqlite3
 import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from kg.ops_shared import connect_ro, data_dir, print_table, resolve_uid, table_columns
 from kg.quota_service import token_cost_usd
-
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent / "data")))
-
-
-def _token_usage_db() -> Path:
-    return DATA_DIR / "token_usage.db"
-
-
-def _resolve_uid(partial: str) -> str:
-    """部分 ID 模糊匹配。支援前綴或子字串。"""
-    users_dir = DATA_DIR / "users"
-    if not users_dir.exists():
-        return partial  # fallback，讓後續步驟報錯
-    # 精確匹配
-    if (users_dir / partial).exists():
-        return partial
-    # 前綴/子字串匹配
-    matches = [d.name for d in users_dir.iterdir() if d.is_dir() and partial in d.name]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        print(f"多個用戶匹配 '{partial}'：", file=sys.stderr)
-        for m in matches:
-            print(f"  {m}", file=sys.stderr)
-        sys.exit(1)
-    return partial  # 無匹配，讓後續步驟報錯
-
-
-def _cards_db(uid: str) -> Path:
-    return DATA_DIR / "users" / uid / "cards.db"
-
-
-def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
-    """探測欄位是否存在。token_usage 的 provider 欄在 legacy DB 可能缺。"""
-    return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
 
 
 def _cutoff_iso(hours: int = 24) -> str:
@@ -56,47 +21,24 @@ def _cutoff_iso(hours: int = 24) -> str:
     return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
-def _connect_ro(db_path: Path) -> sqlite3.Connection:
-    """唯讀連線。"""
-    if not db_path.exists():
-        print(f"Error: DB not found: {db_path}", file=sys.stderr)
-        sys.exit(1)
-    return sqlite3.connect(f"file:{db_path}?mode=ro", uri=True)
-
-
-def _print_table(headers: list[str], rows: list[list]) -> None:
-    """格式化輸出表格。"""
-    if not rows:
-        print("(no data)")
-        return
-    # 計算欄寬
-    str_rows = [[str(v) for v in row] for row in rows]
-    widths = [max(len(h), *(len(r[i]) for r in str_rows)) for i, h in enumerate(headers)]
-    fmt = "  ".join(f"{{:<{w}}}" for w in widths)
-    print(fmt.format(*headers))
-    print(fmt.format(*["-" * w for w in widths]))
-    for row in str_rows:
-        print(fmt.format(*row))
-
-
 # ── 子指令實作 ──────────────────────────────────────────
 
 
 def cmd_user_quota(args: argparse.Namespace) -> None:
     """24h 額度 + 逐時明細。"""
-    uid = _resolve_uid(args.uid)
+    uid = resolve_uid(args.uid, data_dir())
     cutoff = _cutoff_iso(24)
     pro_limit = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
     free_limit = float(os.getenv("FREE_DAILY_LIMIT_USD", "0.03"))
 
-    db_path = _token_usage_db()
+    db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         print(f"token_usage.db not found at {db_path}")
         print(f"User: {uid}  |  Used: $0.000000  |  Pro limit: ${pro_limit:.2f}  |  Free limit: ${free_limit:.2f}")
         return
 
-    conn = _connect_ro(db_path)
-    provider_col = "provider" if _table_has_column(conn, "token_usage", "provider") else "NULL"
+    conn = connect_ro(db_path)
+    provider_col = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
     rows = conn.execute(
         f"SELECT call_type, input_tokens, output_tokens, created_at, {provider_col} AS provider "
         "FROM token_usage WHERE user_id = ? AND created_at >= ? ORDER BY created_at",
@@ -120,7 +62,7 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
         hour = ts[:13]  # YYYY-MM-DDTHH
         hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
 
-    _print_table(
+    print_table(
         ["Hour", "Cost (USD)"],
         [[h, f"${v:.6f}"] for h, v in sorted(hourly.items())],
     )
@@ -128,13 +70,13 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
 def cmd_user_stats(args: argparse.Namespace) -> None:
     """單字庫統計。"""
-    uid = _resolve_uid(args.uid)
-    db_path = _cards_db(uid)
+    uid = resolve_uid(args.uid, data_dir())
+    db_path = data_dir() / "users" / uid / "cards.db"
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
         sys.exit(1)
 
-    conn = _connect_ro(db_path)
+    conn = connect_ro(db_path)
     total = conn.execute("SELECT count(*) FROM card").fetchone()[0]
     active = conn.execute("SELECT count(*) FROM card WHERE is_deleted = 0").fetchone()[0]
     deleted = conn.execute("SELECT count(*) FROM card WHERE is_deleted = 1").fetchone()[0]
@@ -144,7 +86,7 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     conn.close()
 
     print(f"User: {uid}")
-    _print_table(
+    print_table(
         ["Metric", "Value"],
         [
             ["Total cards", str(total)],
@@ -155,19 +97,19 @@ def cmd_user_stats(args: argparse.Namespace) -> None:
     print()
     if recent:
         print("Recent activity:")
-        _print_table(["ID", "Content", "Updated"], [[r[0], r[1] or "", r[2] or ""] for r in recent])
+        print_table(["ID", "Content", "Updated"], [[r[0], r[1] or "", r[2] or ""] for r in recent])
 
 
 def cmd_quota_overview(args: argparse.Namespace) -> None:
     """全用戶 24h 額度總覽。"""
     cutoff = _cutoff_iso(24)
-    db_path = _token_usage_db()
+    db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         print("(no token_usage.db found)")
         return
 
-    conn = _connect_ro(db_path)
-    provider_col = "provider" if _table_has_column(conn, "token_usage", "provider") else "NULL"
+    conn = connect_ro(db_path)
+    provider_col = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
     rows = conn.execute(
         f"SELECT user_id, call_type, input_tokens, output_tokens, {provider_col} AS provider "
         "FROM token_usage WHERE created_at >= ?",
@@ -190,19 +132,19 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
         key=lambda r: float(r[1].replace("$", "")),
         reverse=True,
     )
-    _print_table(["User", "Cost (USD)", "Calls"], table_rows)
+    print_table(["User", "Cost (USD)", "Calls"], table_rows)
 
 
 def cmd_active_users(args: argparse.Namespace) -> None:
     """近 N 小時活躍用戶。"""
     hours = args.hours
     cutoff = _cutoff_iso(hours)
-    db_path = _token_usage_db()
+    db_path = data_dir() / "token_usage.db"
     if not db_path.exists():
         print("(no token_usage.db found)")
         return
 
-    conn = _connect_ro(db_path)
+    conn = connect_ro(db_path)
     rows = conn.execute(
         "SELECT user_id, count(*) as calls, max(created_at) as last_active "
         "FROM token_usage WHERE created_at >= ? GROUP BY user_id ORDER BY last_active DESC",
@@ -214,7 +156,7 @@ def cmd_active_users(args: argparse.Namespace) -> None:
         print(f"(no active users in last {hours}h)")
         return
 
-    _print_table(
+    print_table(
         ["User", "Calls", "Last Active"],
         [[r[0], str(r[1]), r[2]] for r in rows],
     )
@@ -222,20 +164,20 @@ def cmd_active_users(args: argparse.Namespace) -> None:
 
 def cmd_db_query(args: argparse.Namespace) -> None:
     """對用戶 cards.db 跑任意 SQL。"""
-    uid = _resolve_uid(args.uid)
+    uid = resolve_uid(args.uid, data_dir())
     sql = " ".join(args.sql)  # REMAINDER captures split words; rejoin
-    db_path = _cards_db(uid)
+    db_path = data_dir() / "users" / uid / "cards.db"
     if not db_path.exists():
         print(f"Error: cards.db not found for user {uid}", file=sys.stderr)
         sys.exit(1)
 
-    conn = _connect_ro(db_path)
+    conn = connect_ro(db_path)
     try:
         cursor = conn.execute(sql)
         if cursor.description:
             headers = [d[0] for d in cursor.description]
             rows = cursor.fetchall()
-            _print_table(headers, [list(r) for r in rows])
+            print_table(headers, [list(r) for r in rows])
         else:
             print(f"OK (rows affected: {cursor.rowcount})")
     except Exception as e:
