@@ -10,6 +10,20 @@ enum PodcastPlayerState: Equatable {
     case error(String)
 }
 
+/// Lifecycle of the subtitle (SRT) load, tracked separately from audio.
+///
+/// A failed subtitle fetch used to be swallowed by `try?` — audio kept
+/// playing while subtitles were permanently missing with no prompt. This
+/// state lets the player surface an inline "字幕載入失敗 ⟳" retry without
+/// interrupting playback. `.idle` covers both "not started" and "episode
+/// ships no subtitle URL" — neither warrants a failure prompt.
+enum PodcastSubtitleLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed
+}
+
 @MainActor @Observable
 final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
@@ -20,6 +34,9 @@ final class PodcastPlayerViewModel {
     private(set) var renderState: SubtitleRenderState?
     private(set) var highlightedWordIndex: Int = -1
     private(set) var playbackRate: Float = 1.0
+    /// Subtitle load lifecycle — drives the inline retry UI. Independent of
+    /// `state` so a subtitle failure never blocks or interrupts audio.
+    private(set) var subtitleState: PodcastSubtitleLoadState = .idle
     let hostNames: [String]
 
     // Translation — set by the player view
@@ -102,13 +119,38 @@ final class PodcastPlayerViewModel {
         duration = 0
         audioEngine.loadAudio(url: audioURL, httpHeaders: audioHTTPHeaders)
         if let srt = subtitleContent {
-            subtitleEngine.load(srtContent: srt)
+            applySubtitle(content: srt)
         }
         audioEngine.configureNowPlaying(
             title: title,
             artist: hostNames.joined(separator: " & ")
         )
         // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
+    }
+
+    // MARK: - Subtitle load lifecycle
+
+    /// Marks the subtitle fetch as in-flight. Use before kicking off the
+    /// network load and again on retry.
+    func setSubtitleLoading() {
+        subtitleState = .loading
+    }
+
+    /// Parses fetched SRT content into sentences and marks the load loaded.
+    func applySubtitle(content: String) {
+        subtitleEngine.load(srtContent: content)
+        subtitleState = .loaded
+    }
+
+    /// Marks the subtitle fetch as failed — drives the inline retry UI.
+    func markSubtitleFailed() {
+        subtitleState = .failed
+    }
+
+    /// The episode genuinely ships no subtitle URL. Stays `.idle` so no
+    /// spurious failure prompt appears.
+    func markSubtitleUnavailable() {
+        subtitleState = .idle
     }
 
     func setLoading() {

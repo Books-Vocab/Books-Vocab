@@ -538,8 +538,12 @@ struct BooksBrowserApp: App {
         }
 
         if recovered > 0 {
-            try? context.save()
-            AppLog.app.info("Recovered \(recovered) orphan book(s) from disk")
+            do {
+                try context.save()
+                AppLog.app.info("Recovered \(recovered) orphan book(s) from disk")
+            } catch {
+                AppLog.app.error("recoverOrphanBooks: save failed, \(recovered) book(s) not persisted: \(error.localizedDescription)")
+            }
         }
     }
 }
