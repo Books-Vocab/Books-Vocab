@@ -143,7 +143,7 @@ extension AppEmptyStateStyle {
 
     static func bookshelf(_ theme: AppTheme) -> AppEmptyStateStyle {
         .init(
-            iconFont: .system(size: 48, weight: .ultraLight),
+            iconFont: AppFonts.symbol(size: 48, weight: .ultraLight),
             iconColor: theme.palette.quaternaryText,
             titleFont: AppFonts.subhead(weight: .medium),
             titleColor: theme.palette.secondaryText,

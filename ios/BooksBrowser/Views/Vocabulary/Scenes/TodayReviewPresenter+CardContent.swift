@@ -266,15 +266,15 @@ extension TodayReviewPresenter {
 
     func reviewFrontWordFont(for text: String) -> Font {
         let count = text.count
-        if count > 20 { return .system(size: TodayReviewMetrics.counterFontSizeCompact, weight: .semibold, design: .monospaced) }
-        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeMedium, weight: .semibold, design: .monospaced) }
-        return .system(size: 30, weight: .semibold, design: .monospaced)
+        if count > 20 { return AppFonts.systemMono(size: TodayReviewMetrics.counterFontSizeCompact, weight: .semibold) }
+        if count > 12 { return AppFonts.systemMono(size: TodayReviewMetrics.counterFontSizeMedium, weight: .semibold) }
+        return AppFonts.systemMono(size: TodayReviewMetrics.counterFontSizeXLarge, weight: .semibold)
     }
 
     func reviewAnswerWordFont(for text: String) -> Font {
         let count = text.count
         if count > 20 { return appSkin.typography.translationTitle }
-        if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold, design: .monospaced) }
+        if count > 12 { return AppFonts.systemMono(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold) }
         return appSkin.typography.reviewWord
     }
 

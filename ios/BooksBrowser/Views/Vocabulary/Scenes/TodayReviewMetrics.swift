@@ -37,6 +37,8 @@ enum TodayReviewMetrics {
     static let counterFontSizeMedium: CGFloat = 26
     /// 字數 ≤ 12 時的字體大小（最大）
     static let counterFontSizeLarge: CGFloat = 28
+    /// 複習卡正面單字 ≤ 12 字時的字體大小
+    static let counterFontSizeXLarge: CGFloat = 30
 
     // ── Swipe Hint ──────────────────────────────────────────────────
     /// Swipe hint 標籤字體大小（忘記/記得）
