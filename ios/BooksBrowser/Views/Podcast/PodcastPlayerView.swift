@@ -204,9 +204,13 @@ struct PodcastPlayerView: View {
 
         case .ready, .playing, .paused:
             VStack(spacing: 0) {
-                PodcastSubtitleView(viewModel: vm, subtitleSize: subtitleSize)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                PodcastSubtitleView(
+                    viewModel: vm,
+                    subtitleSize: subtitleSize,
+                    onRetrySubtitle: { retrySubtitle() }
+                )
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
                 PodcastControlsView(viewModel: vm)
                     .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
@@ -343,11 +347,21 @@ struct PodcastPlayerView: View {
             await MainActor.run { vm.setLoading() }
             if Task.isCancelled { return }
 
+            // Subtitle load is tracked on the VM separately from audio: a
+            // failed fetch surfaces an inline retry instead of being silently
+            // swallowed (the player still plays audio meanwhile).
             var subtitleContent: String?
             if let subtitleURLStr = episode.subtitleURL {
-                if let data = try? await PodcastSyncService.authedData(from: subtitleURLStr, kgService: kgService) {
-                    subtitleContent = String(data: data, encoding: .utf8)
+                await MainActor.run { vm.setSubtitleLoading() }
+                subtitleContent = await Self.fetchSubtitle(
+                    urlString: subtitleURLStr, kgService: kgService
+                )
+                if Task.isCancelled { return }
+                if subtitleContent == nil {
+                    await MainActor.run { vm.markSubtitleFailed() }
                 }
+            } else {
+                await MainActor.run { vm.markSubtitleUnavailable() }
             }
             if Task.isCancelled { return }
 
@@ -377,6 +391,38 @@ struct PodcastPlayerView: View {
                     title: episodeTitle,
                     audioHTTPHeaders: audioHeaders
                 )
+            }
+        }
+    }
+
+    /// Fetches + decodes the SRT for an episode. Returns nil on any
+    /// network/decode failure so the caller can drive the inline retry state.
+    static func fetchSubtitle(urlString: String, kgService: KGService) async -> String? {
+        guard let data = try? await PodcastSyncService.authedData(
+            from: urlString, kgService: kgService
+        ) else { return nil }
+        return String(data: data, encoding: .utf8)
+    }
+
+    /// Re-runs ONLY the subtitle load branch — used by the inline
+    /// "字幕載入失敗 ⟳" retry. Audio playback is untouched.
+    @MainActor
+    private func retrySubtitle() {
+        guard let vm = viewModel,
+              let episode = loadedEpisode,
+              let subtitleURLStr = episode.subtitleURL else { return }
+        vm.setSubtitleLoading()
+        Task { [weak vm] in
+            guard let vm else { return }
+            let content = await Self.fetchSubtitle(
+                urlString: subtitleURLStr, kgService: kgService
+            )
+            await MainActor.run {
+                if let content {
+                    vm.applySubtitle(content: content)
+                } else {
+                    vm.markSubtitleFailed()
+                }
             }
         }
     }
