@@ -52,7 +52,7 @@ extension ReaderSettingsPresenter {
 
     var vocabTypographySection: some View {
         vocabSettingsSection(title: "排版".localized) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: AppSpacing.s4) {
                 HStack(alignment: .center, spacing: 0) {
                     ReaderStepControlButton(
                         label: "A",
@@ -72,7 +72,7 @@ extension ReaderSettingsPresenter {
                     )
                 }
                 Divider().overlay(appSkin.palette.divider)
-                HStack(alignment: .center, spacing: 12) {
+                HStack(alignment: .center, spacing: AppSpacing.s3) {
                     vocabLabelChip(title: "行距", systemImage: "text.line.spacing")
                     Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
                         .tint(appSkin.palette.primaryText)
@@ -89,15 +89,15 @@ extension ReaderSettingsPresenter {
 
     var vocabAppearanceSection: some View {
         vocabSettingsSection(title: "外觀".localized) {
-            VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: AppSpacing.s4) {
                 Menu {
                     ForEach(ReaderFont.allCases) { font in
                         Button(font.rawValue) { bindings.font.wrappedValue = font }
                     }
                 } label: {
                     vocabControlSurface {
-                        HStack(spacing: 12) {
-                            VStack(alignment: .leading, spacing: 3) {
+                        HStack(spacing: AppSpacing.s3) {
+                            VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
                                 Text("字體".localized)
                                     .font(appSkin.typography.caption)
                                     .foregroundStyle(appSkin.palette.tertiaryText)
@@ -129,7 +129,7 @@ extension ReaderSettingsPresenter {
 
     var vocabHighlightSection: some View {
         vocabSettingsSection(title: "生字標記".localized) {
-            HStack(spacing: 8) {
+            HStack(spacing: AppSpacing.s2) {
                 ForEach(opacityOptions, id: \.label) { option in
                     let isSelected = bindings.underlineOpacity.wrappedValue == option.value
                     Button { onSelectUnderlineOpacity(option.value) } label: {
@@ -150,8 +150,8 @@ extension ReaderSettingsPresenter {
 
     var vocabDebugSection: some View {
         vocabSettingsSection(title: "開發者與除錯".localized) {
-            HStack(spacing: 12) {
-                VStack(alignment: .leading, spacing: 4) {
+            HStack(spacing: AppSpacing.s3) {
+                VStack(alignment: .leading, spacing: AppSpacing.s1) {
                     Text("顯示點擊熱區".localized)
                         .font(appSkin.typography.body.weight(.medium))
                         .foregroundStyle(appSkin.palette.primaryText)
@@ -203,7 +203,7 @@ extension ReaderSettingsPresenter {
         let isSelected = bindings.theme.wrappedValue == theme
         return Button { onSelectTheme(theme) } label: {
             ReaderSelectionTile(isSelected: isSelected) {
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: AppSpacing.s3) {
                     Image(systemName: theme.icon).font(appSkin.typography.iconToolbar)
                     Text(theme.rawValue)
                         .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))

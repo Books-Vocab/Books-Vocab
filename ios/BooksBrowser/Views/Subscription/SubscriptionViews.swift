@@ -11,7 +11,7 @@ struct ProAccessGateCard: View {
 
     var body: some View {
         VocabCard {
-            VStack(spacing: 16) {
+            VStack(spacing: AppSpacing.s4) {
                 Image(systemName: systemImage)
                     .font(appSkin.typography.symbolHero)
                     .foregroundStyle(appSkin.palette.accent)

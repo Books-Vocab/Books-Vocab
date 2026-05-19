@@ -115,7 +115,7 @@ struct PodcastSentenceLevelView: View {
         let isSelecting = selectionState?.sentenceId == sentence.id
         HStack(alignment: .bottom, spacing: 0) {
             if alignRight { Spacer(minLength: 48) }
-            VStack(alignment: alignRight ? .trailing : .leading, spacing: 3) {
+            VStack(alignment: alignRight ? .trailing : .leading, spacing: AppSpacing.tinyGap) {
                 if showSpeaker {
                     Text(sentence.speaker)
                         .font(subtitleSize.speakerFont)
@@ -171,7 +171,7 @@ struct PodcastSentenceLevelView: View {
                 wordFlow(for: sentence, isCurrent: isCurrent, textColor: fg, tint: bubbleTint)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 10)
         .background(bg, in: RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
         .overlay {
@@ -261,7 +261,7 @@ struct PodcastSentenceLevelView: View {
                     .foregroundStyle(skin.palette.secondaryText)
             }
             .padding(.horizontal, 14)
-            .padding(.vertical, 8)
+            .padding(.vertical, AppSpacing.s2)
             .background(
                 Capsule()
                     .fill(skin.palette.cardBackground.opacity(0.96))

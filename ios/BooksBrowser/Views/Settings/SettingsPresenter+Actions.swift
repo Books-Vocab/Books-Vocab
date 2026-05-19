@@ -141,7 +141,7 @@ struct SettingsCompactActionButton: View {
         Button(title, action: action)
             .font(appSkin.typography.caption)
             .foregroundStyle(isEnabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
-            .padding(.horizontal, 12)
+            .padding(.horizontal, AppSpacing.s3)
             .padding(.vertical, 9)
             .background(
                 RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
@@ -345,7 +345,7 @@ struct SettingsSubscriptionFeatureList: View {
                             .font(appSkin.typography.iconMedium)
                             .foregroundStyle(item.tone)
 
-                        VStack(alignment: .leading, spacing: 2) {
+                        VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                             Text(item.title)
                                 .font(item.description == nil ? appSkin.typography.body : appSkin.typography.body.weight(.medium))
                                 .foregroundStyle(appSkin.palette.primaryText)

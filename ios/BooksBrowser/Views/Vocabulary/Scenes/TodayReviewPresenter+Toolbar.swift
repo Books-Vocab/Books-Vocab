@@ -11,7 +11,7 @@ extension TodayReviewPresenter {
     // MARK: - Top Bar
 
     var topBar: some View {
-        HStack(alignment: .center, spacing: 12) {
+        HStack(alignment: .center, spacing: AppSpacing.s3) {
             Text(state.progressText)
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(appSkin.palette.tertiaryText)
@@ -283,7 +283,7 @@ extension TodayReviewPresenter {
 
         return HStack(spacing: appSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, callback: onForgot) } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "xmark")
                     Text("忘記".localized)
                     if state.forgotCount > 0 {
@@ -307,7 +307,7 @@ extension TodayReviewPresenter {
             .animation(spring, value: swipeIntensity)
 
             Button { flingCard(direction: 1, callback: onRemembered) } label: {
-                HStack(spacing: 4) {
+                HStack(spacing: AppSpacing.s1) {
                     Image(systemName: "checkmark")
                     Text("記得".localized)
                     if state.rememberedCount > 0 {
@@ -387,7 +387,7 @@ private struct ShortcutKeyCap: View {
             .font(AppFonts.monoNumbers(size: 12))
             .foregroundStyle(appSkin.palette.primaryText)
             .padding(.horizontal, 6)
-            .padding(.vertical, 4)
+            .padding(.vertical, AppSpacing.s1)
             .background(
                 RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
                     .fill(appSkin.palette.cardBackground)

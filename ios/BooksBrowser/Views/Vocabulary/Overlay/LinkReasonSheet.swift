@@ -10,7 +10,7 @@ struct LinkReasonSheet: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 Image(systemName: "paperclip")
                     .font(appSkin.typography.iconSmall)
                     .foregroundStyle(appSkin.palette.tertiaryText)
