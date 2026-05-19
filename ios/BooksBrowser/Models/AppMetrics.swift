@@ -21,8 +21,7 @@ enum AppMetrics {
     static let spacingMedium: CGFloat = 16
     static let spacingLarge: CGFloat = 24
     static let spacingExtraLarge: CGFloat = 32
-    static let spacingXXL: CGFloat = 48
-    
+
     // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
     static let glassStrokeOpacity: Double = 0.12
 
@@ -32,7 +31,6 @@ enum AppMetrics {
     static let cornerRadiusLarge: CGFloat = 16
     static let cornerRadiusXLarge: CGFloat = 18
     static let cornerRadiusExtraLarge: CGFloat = 24
-    static let cornerRadiusGlass: CGFloat = 30
 
     // ── Control Dimensions ──────────────────────────────────────────────────────
     static let iconButtonSize: CGFloat = 52
@@ -41,9 +39,6 @@ enum AppMetrics {
     static let loadingIndicatorScaleMedium: CGFloat = 0.8
     static let loadingIndicatorScaleSmall: CGFloat = 0.7
 
-    // ── Card Dimensions ─────────────────────────────────────────────────────────
-    static let cardMinHeight: CGFloat = 420
-    static let heroCardPadding: CGFloat = 34
     static let sectionInset: CGFloat = 20
 }
 
@@ -152,11 +147,8 @@ enum AppMotion {
     static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
     static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
-    static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
-    static let stackPromotionSpring = Animation.spring(response: 0.25, dampingFraction: 0.78)
 
     // Swipe gesture
-    static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
     static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
 
     // MARK: - Micro-interaction Springs
@@ -172,7 +164,6 @@ enum AppMotion {
     static let contentReveal: Animation = .spring(response: 0.35, dampingFraction: 0.82)
     static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
     static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
-    static let swipeRowSnap: Animation = .spring(response: 0.3, dampingFraction: 0.75)
 
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
@@ -182,7 +173,6 @@ enum AppMotion {
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
     static let loadingState = quickEaseOut
-    static let listReorder = standardSpring
     static let chipSelect = chipSelectionEaseOut
 
     // MARK: - Phase 5: Asymmetric Emphasized Easing
@@ -193,18 +183,11 @@ enum AppMotion {
     /// timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4) — 標準 Material decelerate
     static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
 
-    /// 退場曲線 — 快入慢出，配 sheet / panel / overlay dismiss
-    /// timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2) — 標準 Material accelerate
-    static let emphasizedAccelerate = Animation.timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2)
-
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
     static let indicatorTransition = Animation.easeOut(duration: 0.25)
 
     // MARK: - Phase 5: Continuous / Loading Motion
-
-    /// Shimmer / skeleton 連續呼吸動畫 — 配 LinearGradient mask 平移做骨架動效
-    static let shimmer = Animation.linear(duration: 1.4).repeatForever(autoreverses: false)
 
     /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
     static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
@@ -242,9 +225,8 @@ extension AnyTransition {
     /// 列表項目簡潔過渡
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
     static let listInsert: AnyTransition = .opacity.combined(with: .offset(y: 8))
-    static let listRemove: AnyTransition = .opacity
     /// 列表內容批次替換（insert + remove asymmetric 包裝）
-    static let listSwap: AnyTransition = .asymmetric(insertion: .listInsert, removal: .listRemove)
+    static let listSwap: AnyTransition = .asymmetric(insertion: .listInsert, removal: .opacity)
     /// 抽屜 / drawer 從右側滑入並淡入
     static let drawerReveal: AnyTransition = .move(edge: .trailing).combined(with: .opacity)
     /// Sync phase 切換（blur replace）
@@ -326,18 +308,10 @@ enum AppShadows {
     static let paperFloatRadius: CGFloat = 20
     static let paperFloatY: CGFloat = 8
     
-    // 輕微的按下或緊貼陰影
-    static let paperPressedOpacity: Double = 0.02
-    static let paperPressedRadius: CGFloat = 4
-    static let paperPressedY: CGFloat = 2
-
     // MARK: - 封面/卡片微陰影（書架封面、小卡片）
-    static let coverOpacity: Double = 0.06
-    static let coverRadius: CGFloat = 4
     static let coverY: CGFloat = 2
 
     // MARK: - 控制元件微陰影（Badge、小按鈕）
-    static let controlOpacity: Double = 0.18
     static let controlRadius: CGFloat = 2
     static let controlY: CGFloat = 1
 
@@ -434,20 +408,6 @@ enum AppElevation {
     }
 }
 
-/// 跨裝置 readable layout — iPad / macOS 內容寬度上限，避免長句鋪滿全寬。
-enum AppLayout {
-    /// 適合 body 閱讀的最大寬度（680pt ≈ 60-70 字元/行）
-    static let maxReadableWidth: CGFloat = 680
-    /// 適合卡片陣列的最大寬度
-    static let maxContentWidth: CGFloat = 920
-    /// compact (iPhone) horizontal padding
-    static let compactPagePadding: CGFloat = 20
-    /// regular (iPad portrait) horizontal padding
-    static let regularPagePadding: CGFloat = 32
-    /// expanded (iPad landscape / Mac) horizontal padding
-    static let expandedPagePadding: CGFloat = 48
-}
-
 /// Theme-aware elevation modifier — 在 dark mode 自動加強陰影 opacity
 /// 否則黑底加黑影完全不可見，導致 elevation 語意失效。
 private struct AppElevationModifier: ViewModifier {
@@ -471,14 +431,6 @@ extension View {
     /// 自動感知 light / dark mode 並調整 shadow 強度，dark mode 上會加強至 1.8x opacity。
     func appElevation(_ z: AppElevation) -> some View {
         modifier(AppElevationModifier(z: z))
-    }
-
-    /// 限制內容最大寬度並對齊 — iPad / macOS readable layout
-    func appReadableFrame(
-        maxWidth: CGFloat = AppLayout.maxReadableWidth,
-        alignment: Alignment = .center
-    ) -> some View {
-        frame(maxWidth: maxWidth, alignment: alignment)
     }
 }
 

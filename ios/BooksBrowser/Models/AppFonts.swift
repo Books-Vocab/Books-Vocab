@@ -90,24 +90,6 @@ enum AppFonts {
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
-    // MARK: - Display 層級 (Brand / Hero) — serif
-
-    /// 最大型品牌展示字 — 56pt serif，用於 launch / brand pages / 主要儀式感畫面
-    /// 配合 tracking .tight 與 lineSpacing .display 使用
-    ///
-    /// 注意：Athelas/ElmsSans 目前只有 Regular + Bold 兩階字檔，
-    /// `.medium / .semibold` 會 silently downgrade 為 Regular。
-    /// 預設為 `.bold` 確保預設呼叫即得到真實 Bold 字面。
-    static func display1(weight: Font.Weight = .bold) -> Font {
-        serif(size: 56, bold: weight.isBold)
-    }
-
-    /// 次大型展示字 — 48pt serif，hero state、empty state 圖標下方主訊息
-    /// （從 44pt 提到 48pt 拉開與 hero=40 的視覺差距，遵循 modular 1.2 ratio）
-    static func display2(weight: Font.Weight = .bold) -> Font {
-        serif(size: 48, bold: weight.isBold)
-    }
-
     // MARK: - 標題層級 (Headers) — serif
 
     /// 大型英雄標題 — 40pt serif
