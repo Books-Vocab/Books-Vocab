@@ -76,7 +76,7 @@ extension SettingsPresenter {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             HStack {
                 Text("最近觀測事件".localized)
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.secondaryText)
                 Spacer()
                 Text("buffer \(observation.totalCount)".localized)

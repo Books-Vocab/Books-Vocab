@@ -159,7 +159,7 @@ struct SubscriptionPaywallSheet: View {
             SettingsSubscriptionInfoBlock(
                 title: priceLine,
                 detail: L10n.format("權限來源：%@", entitlementSourceLine),
-                titleFont: appSkin.typography.captionStrong
+                titleFont: appSkin.typography.caption
             )
 
             // 管理按鈕

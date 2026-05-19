@@ -77,7 +77,7 @@ struct ReviewCalendarPresenter: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }
-                        .font(appSkin.typography.captionStrong)
+                        .font(appSkin.typography.caption)
                 }
             }
         }
@@ -98,7 +98,7 @@ struct ReviewCalendarPresenter: View {
                 Spacer()
 
                 Text(Self.monthFormatter.string(from: displayedMonth))
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
                 Spacer()
@@ -128,7 +128,7 @@ struct ReviewCalendarPresenter: View {
             // Header
             VStack(alignment: .leading, spacing: 2) {
                 Text(dayDisplayTitle)
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
                 if selectedDayRecords.isEmpty {

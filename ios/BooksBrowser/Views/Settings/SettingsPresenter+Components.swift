@@ -12,7 +12,7 @@ struct SettingsSectionHeader: View {
             title: title,
             systemImage: icon,
             style: .init(
-                font: appSkin.typography.captionStrong,
+                font: appSkin.typography.caption,
                 color: appSkin.palette.secondaryText
             )
         )

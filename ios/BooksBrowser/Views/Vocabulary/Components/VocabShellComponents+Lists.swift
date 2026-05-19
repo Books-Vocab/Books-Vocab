@@ -145,7 +145,7 @@ struct VocabActionButtonStyle: ButtonStyle {
         let palette = stylePalette
 
         configuration.label
-            .font(appSkin.typography.captionStrong)
+            .font(appSkin.typography.caption)
             .foregroundStyle(palette.foreground)
             .padding(.horizontal, appSkin.spacing.actionButtonHorizontalPadding)
             .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)

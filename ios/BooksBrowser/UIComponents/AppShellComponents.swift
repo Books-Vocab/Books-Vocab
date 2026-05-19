@@ -268,7 +268,7 @@ struct AppSectionBlock<Content: View>: View {
                         .tracking(1.0)
                 }
                 Text(title.localized)
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }
             .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)

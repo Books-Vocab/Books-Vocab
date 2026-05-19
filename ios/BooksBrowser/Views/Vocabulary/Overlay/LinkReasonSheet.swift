@@ -16,7 +16,7 @@ struct LinkReasonSheet: View {
                     .foregroundStyle(appSkin.palette.tertiaryText)
 
                 Text(link.label.localized)
-                    .font(appSkin.typography.captionStrong)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }
 
