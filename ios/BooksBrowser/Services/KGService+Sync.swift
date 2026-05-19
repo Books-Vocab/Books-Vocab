@@ -93,7 +93,7 @@ extension KGService {
         }
 
         let actor = BackgroundSyncActor(modelContainer: container)
-        try await actor.pullCardsToLocal(
+        let pullResult = try await actor.pullCardsToLocal(
             fetchedCards: fetchedCards,
             isIncremental: isIncremental,
             progress: { detail, current, total in
@@ -102,7 +102,18 @@ extension KGService {
             notebookId: notebookId ?? "default"
         )
 
-        defaults.set(pullBoundary, forKey: SyncKeys.incrementalBoundary)
+        // Orphan cleanup leak fix: when a full sync's orphan cleanup was
+        // blocked by the mass-deletion safety valve, the local store still
+        // holds ghost entries. Advancing the boundary here would lock all
+        // future syncs into incremental mode — which never runs cleanup —
+        // so the ghosts would never be reaped. Instead, clear the boundary
+        // so the next sync runs a full sync again and retries the cleanup.
+        if pullResult.orphanCleanupBlocked {
+            defaults.removeObject(forKey: SyncKeys.incrementalBoundary)
+            AppLog.kg.warning("Incremental boundary NOT advanced: orphan cleanup was blocked — next sync will retry full sync")
+        } else {
+            defaults.set(pullBoundary, forKey: SyncKeys.incrementalBoundary)
+        }
         defaults.set(SyncKeys.currentPayloadVersion, forKey: SyncKeys.payloadVersion)
 
         return httpResponse.value(forHTTPHeaderField: "X-Pipeline-Pending") == "true"
