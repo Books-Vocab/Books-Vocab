@@ -11,7 +11,15 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-from kg.ops_shared import connect_ro, data_dir, print_table, resolve_uid, table_columns
+from kg.admin_cost_summary import VALID_RANGES, since_iso
+from kg.ops_shared import (
+    connect_ro,
+    data_dir,
+    emit_json,
+    print_table,
+    resolve_uid,
+    table_columns,
+)
 from kg.quota_service import token_cost_usd
 
 
@@ -187,6 +195,139 @@ def cmd_db_query(args: argparse.Namespace) -> None:
         conn.close()
 
 
+def cmd_cost(args: argparse.Namespace) -> None:
+    """單用戶 cost-by-call_type 拆解（唯讀）。
+
+    GROUP BY call_type + provider,各 provider 切片以自身費率定價後折回
+    per-call_type bucket。`token_usage.db` 不存在則回傳全零 summary。
+    """
+    uid = resolve_uid(args.uid, data_dir())
+    range_ = args.range
+    since = since_iso(range_)
+    db_path = data_dir() / "token_usage.db"
+
+    summary: dict = {
+        "user_id": uid,
+        "range": range_,
+        "since": since,
+        "total_calls": 0,
+        "total_input_tokens": 0,
+        "total_output_tokens": 0,
+        "total_cost_usd": 0.0,
+        "by_call_type": {},
+    }
+
+    if db_path.exists():
+        conn = connect_ro(db_path)
+        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+        sql = (
+            f"SELECT call_type, {pcol} AS provider, COUNT(*), "
+            "SUM(input_tokens), SUM(output_tokens) "
+            "FROM token_usage WHERE user_id = ?"
+        )
+        params: list = [uid]
+        if since is not None:
+            sql += " AND created_at >= ?"
+            params.append(since)
+        sql += f" GROUP BY call_type, {pcol}"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+
+        for call_type, provider, cnt, t_in, t_out in rows:
+            ti = int(t_in or 0)
+            to = int(t_out or 0)
+            cost = token_cost_usd(call_type, ti, to, provider=provider)
+            bucket = summary["by_call_type"].setdefault(
+                call_type,
+                {"calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0},
+            )
+            bucket["calls"] += cnt
+            bucket["input_tokens"] += ti
+            bucket["output_tokens"] += to
+            bucket["cost_usd"] += cost
+            summary["total_calls"] += cnt
+            summary["total_input_tokens"] += ti
+            summary["total_output_tokens"] += to
+            summary["total_cost_usd"] += cost
+
+        for bucket in summary["by_call_type"].values():
+            bucket["cost_usd"] = round(bucket["cost_usd"], 6)
+        summary["total_cost_usd"] = round(summary["total_cost_usd"], 6)
+
+    if args.json:
+        emit_json(summary)
+        return
+
+    window = f"since {since}" if since else "all-time"
+    print(f"User: {uid}  |  Range: {range_} ({window})")
+    print(f"Total: ${summary['total_cost_usd']:.6f}  |  {summary['total_calls']} calls")
+    print()
+    table_rows = sorted(
+        [
+            [ct, str(b["calls"]), str(b["input_tokens"]), str(b["output_tokens"]),
+             f"${b['cost_usd']:.6f}"]
+            for ct, b in summary["by_call_type"].items()
+        ],
+        key=lambda r: float(r[4].replace("$", "")),
+        reverse=True,
+    )
+    print_table(["Call Type", "Calls", "In Tokens", "Out Tokens", "Cost (USD)"], table_rows)
+
+
+def cmd_cost_overview(args: argparse.Namespace) -> None:
+    """全用戶 cost 排名（唯讀）。"""
+    range_ = args.range
+    since = since_iso(range_)
+    db_path = data_dir() / "token_usage.db"
+
+    result: dict = {"range": range_, "since": since, "users": []}
+
+    if db_path.exists():
+        conn = connect_ro(db_path)
+        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
+        sql = (
+            f"SELECT user_id, call_type, {pcol} AS provider, COUNT(*), "
+            "SUM(input_tokens), SUM(output_tokens) FROM token_usage"
+        )
+        params: list = []
+        if since is not None:
+            sql += " WHERE created_at >= ?"
+            params.append(since)
+        sql += f" GROUP BY user_id, call_type, {pcol}"
+        rows = conn.execute(sql, params).fetchall()
+        conn.close()
+
+        per_user: dict[str, dict] = {}
+        for user_id, call_type, provider, cnt, t_in, t_out in rows:
+            cost = token_cost_usd(call_type, int(t_in or 0), int(t_out or 0), provider=provider)
+            u = per_user.setdefault(user_id, {"total_calls": 0, "total_cost_usd": 0.0})
+            u["total_calls"] += cnt
+            u["total_cost_usd"] += cost
+
+        result["users"] = sorted(
+            (
+                {"user_id": uid, "total_calls": u["total_calls"],
+                 "total_cost_usd": round(u["total_cost_usd"], 6)}
+                for uid, u in per_user.items()
+            ),
+            key=lambda u: u["total_cost_usd"],
+            reverse=True,
+        )
+
+    if args.json:
+        emit_json(result)
+        return
+
+    window = f"since {since}" if since else "all-time"
+    print(f"Range: {range_} ({window})")
+    print()
+    print_table(
+        ["User", "Calls", "Cost (USD)"],
+        [[u["user_id"], str(u["total_calls"]), f"${u['total_cost_usd']:.6f}"]
+         for u in result["users"]],
+    )
+
+
 def cmd_analyze(args: argparse.Namespace) -> None:
     """委派給 ops_analyze.py。"""
     import subprocess
@@ -235,6 +376,21 @@ def main() -> None:
     p.add_argument("uid", help="User ID")
     p.add_argument("level", nargs="?", default="all", help="1-6 或 all（預設 all）")
     p.set_defaults(func=cmd_analyze)
+
+    # cost
+    p = sub.add_parser("cost", help="單用戶 cost-by-call_type 拆解")
+    p.add_argument("uid", help="User ID")
+    p.add_argument("--range", choices=list(VALID_RANGES), default="month",
+                   help="時間範圍（預設 month）")
+    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
+    p.set_defaults(func=cmd_cost)
+
+    # cost-overview
+    p = sub.add_parser("cost-overview", help="全用戶 cost 排名")
+    p.add_argument("--range", choices=list(VALID_RANGES), default="month",
+                   help="時間範圍（預設 month）")
+    p.add_argument("--json", action="store_true", help="以 JSON 輸出")
+    p.set_defaults(func=cmd_cost_overview)
 
     args = parser.parse_args()
     args.func(args)

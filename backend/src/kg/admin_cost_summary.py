@@ -48,10 +48,10 @@ _MODEL_MAP: dict[str, str] = {
 _DEFAULT_MODEL = "gemini-2.5-flash-lite"
 
 
-_VALID_RANGES = ("24h", "7d", "30d", "month", "all")
+VALID_RANGES = ("24h", "7d", "30d", "month", "all")
 
 
-def _since_iso(range_: str) -> str | None:
+def since_iso(range_: str) -> str | None:
     """Resolve range token → ISO cutoff (UTC) or ``None`` for all-time.
 
     ``month`` = start of current UTC calendar month at 00:00:00.
@@ -71,11 +71,11 @@ def _since_iso(range_: str) -> str | None:
     raise ValueError(f"invalid range: {range_}")
 
 
-def _service_for(call_type: str) -> str:
+def service_for(call_type: str) -> str:
     return _SERVICE_MAP.get(call_type, "other")
 
 
-def _model_for(call_type: str) -> str:
+def model_for(call_type: str) -> str:
     return _MODEL_MAP.get(call_type, _DEFAULT_MODEL)
 
 
@@ -90,7 +90,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
     Empty when no rows match — never raises ``IndexError`` on an empty
     table, never inserts a default user.
     """
-    if range_ not in _VALID_RANGES:
+    if range_ not in VALID_RANGES:
         raise ValueError(f"invalid range: {range_}")
 
     # Import lazily so unit tests can monkeypatch DATA_DIR before module
@@ -98,7 +98,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
     from .quota_service import EMBED_PER_M, INPUT_PER_M, OUTPUT_PER_M, token_cost_usd
     from .token_tracker import _get_conn, _lock
 
-    since = _since_iso(range_)
+    since = since_iso(range_)
 
     with _lock:
         conn = _get_conn()
@@ -159,7 +159,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
         ctbucket["output_tokens"] += to
         ctbucket["cost_usd"] += cost
 
-        svc = _service_for(call_type)
+        svc = service_for(call_type)
         bucket = by_service.setdefault(svc, {
             "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
         })
@@ -170,7 +170,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
 
         # Prefer the row's recorded model; legacy NULL rows fall back to
         # the call_type-inferred name so historical data still renders.
-        mdl = model or _model_for(call_type)
+        mdl = model or model_for(call_type)
         mbucket = by_model.setdefault(mdl, {
             "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
         })
