@@ -7,12 +7,15 @@ Only exposes fraction (0.0–1.0) to clients — never absolute numbers.
 from __future__ import annotations
 
 import itertools
+import logging
 import threading
 from contextlib import contextmanager
 from datetime import UTC, datetime
 
 from .llm.providers import REGISTRY, provider_for
 from .token_tracker import _get_conn, _lock
+
+logger = logging.getLogger(__name__)
 
 # Gemini reference pricing (USD per 1M tokens). Per-call cost is computed
 # provider-aware in token_cost_usd(); these constants are the gemini baseline
@@ -41,23 +44,55 @@ def _daily_limit(is_pro: bool) -> float:
     return PRO_DAILY_LIMIT_USD if is_pro else FREE_DAILY_LIMIT_USD
 
 
-def token_cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
-    """USD cost of a recorded call, priced by the provider currently routed
-    for its call_type.
+def _pricing_provider(call_type: str, provider: str | None):
+    """Resolve the LLMProvider used to price a recorded row.
 
-    During a provider switch, up to ~24h of history is repriced at the new
-    provider's rates — acceptable drift for a rolling quota window; exact
-    historical pricing would need a per-row provider column.
-
-    Raises ValueError if call_type routes to an unknown provider — a deploy
-    misconfiguration that fails loudly here, as it does at every call site.
+    A non-NULL ``provider`` name pins pricing to that provider — this is
+    the per-row truth written since the token_usage schema gained the
+    column. An unknown name (e.g. a since-removed provider still tagged on
+    old rows) falls back to the call_type's current route rather than
+    raising: a historical quota read must never blow up on stale data.
+    A NULL ``provider`` (legacy rows predating the column) likewise prices
+    at the current route — the documented best-effort for un-tagged history.
     """
-    provider = provider_for(call_type)
+    if provider:
+        p = REGISTRY.get(provider)
+        if p is not None:
+            return p
+        # A non-NULL name absent from REGISTRY is a data anomaly (a
+        # since-removed provider, or a write bug). Pricing degrades to the
+        # routed provider, but the anomaly itself must not stay silent.
+        logger.warning(
+            "token_usage row tagged unknown provider %r; pricing %s at routed provider",
+            provider, call_type,
+        )
+    return provider_for(call_type)
+
+
+def token_cost_usd(
+    call_type: str,
+    input_tokens: int,
+    output_tokens: int,
+    *,
+    provider: str | None = None,
+) -> float:
+    """USD cost of a recorded call.
+
+    When ``provider`` is given (the per-row value from token_usage), cost
+    is priced at that provider's rates — so a Gemini→DeepSeek switch does
+    NOT reprice history. When ``provider`` is None/unknown, falls back to
+    the provider currently routed for ``call_type`` (legacy un-tagged rows).
+
+    Raises ValueError if a NULL-provider call_type routes to an unknown
+    provider — a deploy misconfiguration that fails loudly here, as it
+    does at every call site.
+    """
+    p = _pricing_provider(call_type, provider)
     if call_type == "embed":
-        return (input_tokens / 1_000_000) * provider.embed_price_per_m
+        return (input_tokens / 1_000_000) * p.embed_price_per_m
     return (
-        (input_tokens / 1_000_000) * provider.input_price_per_m
-        + (output_tokens / 1_000_000) * provider.output_price_per_m
+        (input_tokens / 1_000_000) * p.input_price_per_m
+        + (output_tokens / 1_000_000) * p.output_price_per_m
     )
 
 
@@ -157,17 +192,18 @@ def _used_usd(user_id: str) -> float:
         conn = _get_conn()
         rows = conn.execute(
             """
-            SELECT call_type, SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out
+            SELECT call_type, provider,
+                   SUM(input_tokens) AS total_in, SUM(output_tokens) AS total_out
             FROM token_usage
             WHERE user_id = ? AND created_at >= ?
-            GROUP BY call_type
+            GROUP BY call_type, provider
             """,
             (user_id, cutoff_iso),
         ).fetchall()
 
     total = 0.0
-    for call_type, total_in, total_out in rows:
-        total += token_cost_usd(call_type, total_in or 0, total_out or 0)
+    for call_type, provider, total_in, total_out in rows:
+        total += token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
     return total + _reserved_usd(user_id)
 
 
@@ -194,24 +230,28 @@ def get_all_quota_usage() -> dict[str, dict]:
         conn = _get_conn()
         rows = conn.execute(
             """
-            SELECT user_id, call_type,
+            SELECT user_id, call_type, provider,
                    COUNT(*) AS cnt,
                    SUM(input_tokens) AS total_in,
                    SUM(output_tokens) AS total_out
             FROM token_usage
             WHERE created_at >= ?
-            GROUP BY user_id, call_type
+            GROUP BY user_id, call_type, provider
             """,
             (cutoff_iso,),
         ).fetchall()
 
     result: dict[str, dict] = {}
-    for user_id, call_type, cnt, total_in, total_out in rows:
+    # call_type is split across providers by GROUP BY; fold each provider's
+    # slice back into one per-call_type bucket, priced at its own provider.
+    for user_id, call_type, provider, cnt, total_in, total_out in rows:
         if user_id not in result:
             result[user_id] = {"used_usd": 0.0, "limit_usd": PRO_DAILY_LIMIT_USD, "calls": {}}
-        cost = token_cost_usd(call_type, total_in or 0, total_out or 0)
+        cost = token_cost_usd(call_type, total_in or 0, total_out or 0, provider=provider)
         result[user_id]["used_usd"] += cost
-        result[user_id]["calls"][call_type] = {"count": cnt, "cost_usd": round(cost, 6)}
+        bucket = result[user_id]["calls"].setdefault(call_type, {"count": 0, "cost_usd": 0.0})
+        bucket["count"] += cnt
+        bucket["cost_usd"] = round(bucket["cost_usd"] + cost, 6)
 
     for uid in result:
         used = result[uid]["used_usd"]
@@ -231,26 +271,26 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
         if since_iso is None:
             rows = conn.execute(
                 """
-                SELECT call_type,
+                SELECT call_type, provider,
                        COUNT(*)          AS cnt,
                        SUM(input_tokens) AS total_in,
                        SUM(output_tokens) AS total_out
                 FROM token_usage
                 WHERE user_id = ?
-                GROUP BY call_type
+                GROUP BY call_type, provider
                 """,
                 (user_id,),
             ).fetchall()
         else:
             rows = conn.execute(
                 """
-                SELECT call_type,
+                SELECT call_type, provider,
                        COUNT(*)          AS cnt,
                        SUM(input_tokens) AS total_in,
                        SUM(output_tokens) AS total_out
                 FROM token_usage
                 WHERE user_id = ? AND created_at >= ?
-                GROUP BY call_type
+                GROUP BY call_type, provider
                 """,
                 (user_id, since_iso),
             ).fetchall()
@@ -259,12 +299,18 @@ def get_user_usage_range(user_id: str, *, since_iso: str | None = None) -> dict:
     tokens: dict[str, dict] = {}
     total_cost = 0.0
     total_calls = 0
-    for call_type, cnt, total_in, total_out in rows:
+    # GROUP BY splits each call_type per provider; fold the slices back into
+    # one per-call_type bucket, each priced at its own provider's rate.
+    for call_type, provider, cnt, total_in, total_out in rows:
         ti = int(total_in or 0)
         to = int(total_out or 0)
-        cost = token_cost_usd(call_type, ti, to)
-        calls[call_type] = {"count": int(cnt), "cost_usd": round(cost, 6)}
-        tokens[call_type] = {"input_tokens": ti, "output_tokens": to}
+        cost = token_cost_usd(call_type, ti, to, provider=provider)
+        cbucket = calls.setdefault(call_type, {"count": 0, "cost_usd": 0.0})
+        cbucket["count"] += int(cnt)
+        cbucket["cost_usd"] = round(cbucket["cost_usd"] + cost, 6)
+        tbucket = tokens.setdefault(call_type, {"input_tokens": 0, "output_tokens": 0})
+        tbucket["input_tokens"] += ti
+        tbucket["output_tokens"] += to
         total_cost += cost
         total_calls += int(cnt)
 

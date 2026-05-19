@@ -8,15 +8,14 @@ pricing assumptions used to compute USD cost. Time-bounded by ``range``
 Read-only. Never writes.
 
 Assumptions (documented in response under ``pricing_assumptions``):
-  * The ``token_usage`` schema does not record model name. Model is
-    inferred from ``call_type``:
+  * ``by_model`` keys on each row's recorded ``model`` column. Rows
+    predating that column (NULL model) fall back to a name inferred
+    from ``call_type``:
       - ``embed`` → ``gemini-embedding-2-preview``
       - everything else → ``gemini-2.5-flash-lite``
-    Matches the production defaults in ``settings.py`` /
-    ``embeddings.py``. Cost-per-token is sourced from
-    :mod:`kg.quota_service` (``INPUT_PER_M`` / ``OUTPUT_PER_M`` /
-    ``EMBED_PER_M``) so this module stays in lockstep with the live
-    quota math.
+  * Cost-per-token is priced per row from the recorded ``provider``
+    via :func:`kg.quota_service.token_cost_usd`; a NULL ``provider``
+    (legacy rows) prices at the call_type's currently-routed provider.
   * Service grouping (judge / translate / pipeline / other) is by
     ``call_type`` prefix — see ``_SERVICE_MAP``.
 """
@@ -106,26 +105,26 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
         if since is None:
             rows = conn.execute(
                 """
-                SELECT call_type,
+                SELECT call_type, provider, model,
                        COUNT(*)            AS cnt,
                        SUM(input_tokens)   AS total_in,
                        SUM(output_tokens)  AS total_out
                 FROM token_usage
                 WHERE user_id = ?
-                GROUP BY call_type
+                GROUP BY call_type, provider, model
                 """,
                 (user_id,),
             ).fetchall()
         else:
             rows = conn.execute(
                 """
-                SELECT call_type,
+                SELECT call_type, provider, model,
                        COUNT(*)            AS cnt,
                        SUM(input_tokens)   AS total_in,
                        SUM(output_tokens)  AS total_out
                 FROM token_usage
                 WHERE user_id = ? AND created_at >= ?
-                GROUP BY call_type
+                GROUP BY call_type, provider, model
                 """,
                 (user_id, since),
             ).fetchall()
@@ -138,23 +137,27 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
     total_cost = 0.0
     total_calls = 0
 
-    for call_type, cnt, t_in, t_out in rows:
+    # GROUP BY (call_type, provider, model) yields one row per distinct
+    # combination, so a single call_type may appear multiple times — each
+    # slice is priced by its own provider and folded into the buckets.
+    for call_type, provider, model, cnt, t_in, t_out in rows:
         ti = int(t_in or 0)
         to = int(t_out or 0)
         c = int(cnt or 0)
-        cost = token_cost_usd(call_type, ti, to)
+        cost = token_cost_usd(call_type, ti, to, provider=provider)
 
         total_in += ti
         total_out += to
         total_cost += cost
         total_calls += c
 
-        by_call_type[call_type] = {
-            "calls": c,
-            "input_tokens": ti,
-            "output_tokens": to,
-            "cost_usd": round(cost, 6),
-        }
+        ctbucket = by_call_type.setdefault(call_type, {
+            "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
+        })
+        ctbucket["calls"] += c
+        ctbucket["input_tokens"] += ti
+        ctbucket["output_tokens"] += to
+        ctbucket["cost_usd"] += cost
 
         svc = _service_for(call_type)
         bucket = by_service.setdefault(svc, {
@@ -165,7 +168,9 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
         bucket["output_tokens"] += to
         bucket["cost_usd"] += cost
 
-        mdl = _model_for(call_type)
+        # Prefer the row's recorded model; legacy NULL rows fall back to
+        # the call_type-inferred name so historical data still renders.
+        mdl = model or _model_for(call_type)
         mbucket = by_model.setdefault(mdl, {
             "calls": 0, "input_tokens": 0, "output_tokens": 0, "cost_usd": 0.0,
         })
@@ -175,7 +180,7 @@ def get_user_cost_summary(user_id: str, *, range_: str = "month") -> dict[str, A
         mbucket["cost_usd"] += cost
 
     # Round cost_usd at the leaves once aggregation is complete.
-    for bucket in (*by_service.values(), *by_model.values()):
+    for bucket in (*by_service.values(), *by_model.values(), *by_call_type.values()):
         bucket["cost_usd"] = round(bucket["cost_usd"], 6)
 
     return {
