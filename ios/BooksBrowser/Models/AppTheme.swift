@@ -15,7 +15,7 @@ struct AppTheme: Equatable {
         let tertiaryText: Color
         let quaternaryText: Color
         let accent: Color
-        let accentHero: Color
+        let brandHero: Color
         let accentSubtle: Color
         let success: Color
         let successBg: Color
@@ -54,7 +54,7 @@ struct AppTheme: Equatable {
             tertiaryText: Color(red: 0.44, green: 0.44, blue: 0.42),   // was 0.60 — improved to ~4.5:1 on pageBackground
             quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast for decorative text
             accent: AppColors.accentLight,
-            accentHero: AppColors.brandHeroLight,
+            brandHero: AppColors.brandHeroLight,
             accentSubtle: AppColors.accentLight.opacity(0.12),
             success: AppColors.savedLight,
             successBg: AppColors.savedLight.opacity(0.10),
@@ -93,7 +93,7 @@ struct AppTheme: Equatable {
             tertiaryText: Color(red: 0.58, green: 0.60, blue: 0.64),   // ~5.8:1 on dark pageBackground ✓
             quaternaryText: Color(red: 0.56, green: 0.58, blue: 0.62), // was 0.45 — improved to ~4.5:1 on dark cardBackground
             accent: AppColors.accentDark,
-            accentHero: AppColors.brandHeroDark,
+            brandHero: AppColors.brandHeroDark,
             accentSubtle: AppColors.accentDark.opacity(0.18),
             success: AppColors.savedDark,
             successBg: AppColors.savedDark.opacity(0.14),
@@ -129,7 +129,7 @@ struct AppTheme: Equatable {
             tertiaryText: Color(red: 0.50, green: 0.47, blue: 0.42),
             quaternaryText: Color(red: 0.60, green: 0.57, blue: 0.52),
             accent: AppColors.accentLight,
-            accentHero: AppColors.brandHeroLight,
+            brandHero: AppColors.brandHeroLight,
             accentSubtle: AppColors.accentLight.opacity(0.12),
             success: AppColors.savedLight,
             successBg: AppColors.savedLight.opacity(0.10),

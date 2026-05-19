@@ -42,10 +42,10 @@ struct AppCompactActionButtonStyle: ButtonStyle {
         case .primary:
             // brandHeroDark (light fg in dark mode) 配 white text 對比 ~4.02:1，WCAG AA fail。
             // 改用 brandHeroLight (深 indigo) 作 button bg —— 配 white text 對比 ~6.98:1 ✓ AA pass。
-            // light mode 仍走 palette.accentHero（= brandHeroLight）。
+            // light mode 仍走 palette.brandHero（= brandHeroLight）。
             let bg = colorScheme == .dark
                 ? AppColors.brandHeroLight
-                : appTheme.palette.accentHero
+                : appTheme.palette.brandHero
             return (AppColors.onBrandHero, bg, bg)
         case .neutral:
             return (
