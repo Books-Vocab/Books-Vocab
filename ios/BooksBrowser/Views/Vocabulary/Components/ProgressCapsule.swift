@@ -5,7 +5,7 @@ struct ProgressCapsule: View {
     let label: String?
     var fillColor: Color
     var trackColor: Color
-    var labelFont: Font = .caption2.monospacedDigit()
+    var labelFont: Font = AppFonts.monoNumbers(size: 11)
     var height: CGFloat = 6
 
     var body: some View {
