@@ -12,7 +12,7 @@ extension SettingsPresenter {
             VStack(spacing: 0) {
                 if let debug = kg.debug {
                     VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: AppSpacing.s2) {
                             debugBackendOptionButton(
                                 title: "遠端正式站".localized,
                                 systemImage: "network",
@@ -59,7 +59,7 @@ extension SettingsPresenter {
     ) -> some View {
         Button(action: action) {
             SettingsSelectionTile(isSelected: isSelected) {
-                HStack(spacing: 8) {
+                HStack(spacing: AppSpacing.s2) {
                     Image(systemName: systemImage)
                         .font(appSkin.typography.iconSmall)
                     Text(title)
@@ -89,7 +89,7 @@ extension SettingsPresenter {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             } else {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: AppSpacing.s1) {
                     ForEach(Array(observation.previewLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
                             .font(appSkin.typography.monoLabel)

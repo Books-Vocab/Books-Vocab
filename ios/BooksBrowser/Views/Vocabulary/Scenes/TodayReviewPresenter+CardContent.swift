@@ -31,7 +31,7 @@ extension TodayReviewPresenter {
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
         VStack(alignment: .leading, spacing: appSkin.metrics.reviewFoldSectionSpacing) {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
+            HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 switch card.reviewMode {
                 case .recognition:
                     Text(card.word)
@@ -160,7 +160,7 @@ extension TodayReviewPresenter {
 
             VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
-                    HStack(spacing: 4) {
+                    HStack(spacing: AppSpacing.s1) {
                         Text(group.label.localized + "：")
                             .font(appSkin.typography.caption)
                             .foregroundStyle(appSkin.palette.tertiaryText)

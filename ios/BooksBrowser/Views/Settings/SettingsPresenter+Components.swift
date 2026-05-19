@@ -106,7 +106,7 @@ struct SettingsTitleSubtitleStack: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 3) {
+        VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
             Text(title)
                 .font(titleFont)
                 .foregroundStyle(titleColor)

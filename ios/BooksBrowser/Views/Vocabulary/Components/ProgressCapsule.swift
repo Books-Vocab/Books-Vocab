@@ -25,14 +25,14 @@ struct ProgressCapsule: View {
                 Text(label)
                     .font(labelFont)
                     .foregroundStyle(fillColor)
-                    .padding(.trailing, 2)
+                    .padding(.trailing, AppSpacing.microGap)
             }
         }
     }
 }
 
 #Preview {
-    VStack(spacing: 16) {
+    VStack(spacing: AppSpacing.s4) {
         ProgressCapsule(progress: 0.67, label: "67%", fillColor: .blue, trackColor: .blue.opacity(0.15))
         ProgressCapsule(progress: 0.0, label: "0%", fillColor: .green, trackColor: .green.opacity(0.15))
         ProgressCapsule(progress: 1.0, label: "100%", fillColor: .orange, trackColor: .orange.opacity(0.15))

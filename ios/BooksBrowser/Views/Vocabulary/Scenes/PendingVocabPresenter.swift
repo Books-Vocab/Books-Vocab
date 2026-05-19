@@ -48,7 +48,7 @@ struct PendingVocabPresenter: View {
                     VocabCard(padding: 0) {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
-                                HStack(alignment: .top, spacing: 12) {
+                                HStack(alignment: .top, spacing: AppSpacing.s3) {
                                     WordRow(viewData: item.row)
                                         .frame(maxWidth: .infinity, alignment: .leading)
                                         .contentShape(Rectangle())

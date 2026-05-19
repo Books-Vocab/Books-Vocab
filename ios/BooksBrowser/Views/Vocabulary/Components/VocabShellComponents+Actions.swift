@@ -82,7 +82,7 @@ struct VocabMetricHeroCard: View {
     var body: some View {
         VocabCard {
             HStack(alignment: .firstTextBaseline) {
-                VStack(alignment: .leading, spacing: 4) {
+                VStack(alignment: .leading, spacing: AppSpacing.s1) {
                     Text(title.localized)
                         .font(appSkin.typography.sectionTitle)
                         .foregroundStyle(appSkin.palette.primaryText)
@@ -139,7 +139,7 @@ struct VocabSortPill: View {
                 }
             }
         } label: {
-            HStack(spacing: 4) {
+            HStack(spacing: AppSpacing.s1) {
                 Image(systemName: "arrow.up.arrow.down")
                 Text(sortOption.label)
             }
