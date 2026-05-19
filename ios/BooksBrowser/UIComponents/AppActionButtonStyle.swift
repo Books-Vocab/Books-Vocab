@@ -18,7 +18,7 @@ struct AppActionButtonStyle: ButtonStyle {
             .font(AppFonts.subhead(weight: .semibold))
             .foregroundStyle(palette.foreground)
             .frame(maxWidth: .infinity)
-            .padding(.horizontal, 16)
+            .padding(.horizontal, AppSpacing.s4)
             .padding(.vertical, 13)
             .background(
                 RoundedRectangle(
@@ -79,7 +79,7 @@ extension ButtonStyle where Self == AppActionButtonStyle {
 
 private struct AppActionButtonPreview: View {
     var body: some View {
-        VStack(spacing: 12) {
+        VStack(spacing: AppSpacing.s3) {
             Button("主要操作") {}
                 .buttonStyle(.appAction(.primary))
             Button("次要操作") {}

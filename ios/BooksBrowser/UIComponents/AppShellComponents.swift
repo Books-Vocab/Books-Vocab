@@ -131,7 +131,7 @@ struct AppSearchField: View {
     var isFocused: FocusState<Bool>.Binding? = nil
 
     var body: some View {
-        HStack(spacing: 8) {
+        HStack(spacing: AppSpacing.s2) {
             Image(systemName: "magnifyingglass")
                 .font(style.iconFont)
                 .foregroundStyle(style.iconColor)
@@ -152,7 +152,7 @@ struct AppSearchField: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(.horizontal, 12)
+        .padding(.horizontal, AppSpacing.s3)
         .padding(.vertical, 9)
         .background(
             RoundedRectangle(cornerRadius: style.cornerRadius, style: .continuous)
@@ -260,7 +260,7 @@ struct AppSectionBlock<Content: View>: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 if let eyebrow, !eyebrow.isEmpty {
                     Text(eyebrow)
                         .font(appSkin.typography.monoLabel)
