@@ -37,6 +37,7 @@ struct PodcastEpisodeListView: View {
     let seriesId: String
     @Environment(\.vocabSkin) private var skin
     @Environment(\.modelContext) private var modelContext
+    @Environment(\.toastCoordinator) private var toastCoordinator
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -201,14 +202,17 @@ struct PodcastEpisodeListView: View {
     @MainActor
     private func toggleFollow() {
         guard let target = currentSeries else { return }
+        // The flip is optimistic + animated. `PodcastFollowToggle.perform`
+        // couples it to the save result: on a failed save it reverts the
+        // model so the star never lies about a state that wasn't persisted.
+        var outcome: PodcastFollowToggle.Outcome = .saved
         withAnimation(AppMotion.phaseChange) {
-            target.isFollowed.toggle()
-            target.updatedAt = Date()
+            outcome = PodcastFollowToggle.perform(series: target) {
+                modelContext.safeSave()
+            }
         }
-        do {
-            try modelContext.save()
-        } catch {
-            AppLog.app.warning("[Podcast] follow toggle save failed: \(error.localizedDescription)")
+        if outcome == .rolledBack {
+            toastCoordinator.error("追蹤狀態儲存失敗")
         }
     }
 
