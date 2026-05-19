@@ -16,14 +16,8 @@ extension ButtonStyle where Self == PressableStyle {
     static var pressable: PressableStyle { PressableStyle() }
 }
 
-/// Shadow constants for LiftableModifier. Extracted per token rules.
-private enum LiftShadow {
-    static let idleOpacity: Double = 0.06
-    static let pressedOpacity: Double = 0.12
-    static let idleRadius: CGFloat = 2
-    static let pressedRadius: CGFloat = 6
-    static let idleY: CGFloat = 1
-    static let pressedY: CGFloat = 3
+/// Lift interaction constant for LiftableButtonStyle.
+private enum LiftMetrics {
     static let pressedScale: CGFloat = 1.005
 }
 
@@ -32,12 +26,8 @@ private enum LiftShadow {
 struct LiftableButtonStyle: ButtonStyle {
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .shadow(
-                color: .black.opacity(configuration.isPressed ? LiftShadow.pressedOpacity : LiftShadow.idleOpacity),
-                radius: configuration.isPressed ? LiftShadow.pressedRadius : LiftShadow.idleRadius,
-                y: configuration.isPressed ? LiftShadow.pressedY : LiftShadow.idleY
-            )
-            .scaleEffect(configuration.isPressed ? LiftShadow.pressedScale : 1)
+            .appElevation(configuration.isPressed ? .z2 : .z1)
+            .scaleEffect(configuration.isPressed ? LiftMetrics.pressedScale : 1)
             .animation(AppMotion.pressFeedback, value: configuration.isPressed)
     }
 }

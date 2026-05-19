@@ -6,8 +6,6 @@ enum AppShellMetrics {
     static let pageBottomPadding: CGFloat = 48
     static let sectionSpacing: CGFloat = 24
     static let cardCornerRadius = AppRadius.md
-    static let cardShadowRadius: CGFloat = 6
-    static let cardShadowY: CGFloat = 2
     static let cardPadding: CGFloat = 18
     static let toolbarBadgeHorizontalPadding: CGFloat = 5
     static let toolbarBadgeVerticalPadding: CGFloat = 2
@@ -16,11 +14,9 @@ enum AppShellMetrics {
 struct AppSectionCardStyle {
     let background: Color
     let border: Color
-    let shadow: Color
     let cornerRadius: CGFloat
     let borderOpacity: Double
-    let shadowRadius: CGFloat
-    let shadowY: CGFloat
+    let elevation: AppElevation
 }
 
 struct AppSectionTextStyle {
@@ -71,7 +67,7 @@ struct AppSectionCard<Content: View>: View {
                 )
                 .stroke(style.border.opacity(style.borderOpacity), lineWidth: 1)
             )
-            .shadow(color: style.shadow, radius: style.shadowRadius, y: style.shadowY)
+            .appElevation(style.elevation)
     }
 }
 

@@ -195,9 +195,6 @@ struct VocabSkin {
         let readerSettingsHandleHeight: CGFloat
         let readerSettingsHandleTopInset: CGFloat
         let readerSettingsHandleBottomInset: CGFloat
-        let readerPanelShadowOpacity: Double
-        let readerPanelShadowRadius: CGFloat
-        let readerPanelShadowY: CGFloat
         let readerSettingsSectionSpacing: CGFloat
         let readerSettingsHorizontalInset: CGFloat
         let readerSettingsBottomInset: CGFloat
@@ -217,9 +214,6 @@ struct VocabSkin {
         let overlayDrawerBottomInset: CGFloat
         let emptyStateOuterInset: CGFloat
         let listEmptyStateVerticalInset: CGFloat
-        let reviewToolbarShadowOpacity: Double
-        let reviewToolbarShadowRadius: CGFloat
-        let reviewToolbarShadowY: CGFloat
         let cardBlockPadding: CGFloat
         let cardBlockContentGap: CGFloat
         let cardBlockInnerGap: CGFloat
@@ -451,9 +445,6 @@ extension VocabSkin {
         readerSettingsHandleHeight: 5,
         readerSettingsHandleTopInset: 12,
         readerSettingsHandleBottomInset: 14,
-        readerPanelShadowOpacity: 0.72,
-        readerPanelShadowRadius: 10,
-        readerPanelShadowY: -3,
         readerSettingsSectionSpacing: 18,
         readerSettingsHorizontalInset: 18,
         readerSettingsBottomInset: 20,
@@ -473,9 +464,6 @@ extension VocabSkin {
         overlayDrawerBottomInset: 8,
         emptyStateOuterInset: 20,
         listEmptyStateVerticalInset: 24,
-        reviewToolbarShadowOpacity: 1.1,
-        reviewToolbarShadowRadius: 6,
-        reviewToolbarShadowY: -2,
         cardBlockPadding: 24,
         cardBlockContentGap: 16,
         cardBlockInnerGap: 8,

@@ -228,7 +228,7 @@ struct PodcastEpisodeListView: View {
             )
             .frame(width: 168, height: 168)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
-            .shadow(color: skin.palette.shadow, radius: 18, x: 0, y: 8)
+            .appElevation(.z3)
             .padding(.top, skin.spacing.sectionGap)
 
             Text(series?.title ?? "")

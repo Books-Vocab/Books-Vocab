@@ -7,11 +7,9 @@ extension AppSectionCardStyle {
         .init(
             background: theme.palette.cardBackground,
             border: theme.palette.cardBorder,
-            shadow: theme.palette.shadow,
             cornerRadius: AppShellMetrics.cardCornerRadius,
             borderOpacity: 0.7,
-            shadowRadius: AppShellMetrics.cardShadowRadius,
-            shadowY: AppShellMetrics.cardShadowY
+            elevation: .z1
         )
     }
 
@@ -19,11 +17,9 @@ extension AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
-            shadow: skin.palette.shadow,
             cornerRadius: skin.radii.card,
             borderOpacity: 0.7,
-            shadowRadius: 4,
-            shadowY: 2
+            elevation: .z1
         )
     }
 
@@ -31,11 +27,9 @@ extension AppSectionCardStyle {
         .init(
             background: skin.palette.cardBackground,
             border: skin.palette.cardBorder,
-            shadow: .clear,
             cornerRadius: skin.radii.card,
             borderOpacity: 1,
-            shadowRadius: 0,
-            shadowY: 0
+            elevation: .z0
         )
     }
 }

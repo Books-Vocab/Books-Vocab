@@ -43,11 +43,7 @@ struct TranslationVocabPresenter: View {
                 .padding(.bottom, vocabSkin.metrics.readerPanelBottomInset)
             }
         }
-        .shadow(
-            color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.readerPanelShadowOpacity),
-            radius: vocabSkin.metrics.readerPanelShadowRadius,
-            y: vocabSkin.metrics.readerPanelShadowY
-        )
+        .appElevation(.z3, direction: .up)
     }
 
     private var heroSection: some View {

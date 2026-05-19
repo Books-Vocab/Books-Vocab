@@ -55,7 +55,7 @@ struct LinkedCardOverlayStack: View {
             RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
-        .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
+        .appElevation(.z4)
         .padding(.horizontal, AppSpacing.s4 + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
         .padding(.vertical, AppMetrics.sectionInset + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))

@@ -140,7 +140,7 @@ struct VocabForecastChart: View {
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(vocabSkin.palette.cardBackground)
-                    .shadow(color: vocabSkin.palette.shadow, radius: 2, y: 1)
+                    .appElevation(.z1)
             )
             .offset(x: xOffset, y: -(chartHeight + labelHeight + vocabSkin.spacing.inlineGap))
             .transition(.overlayFade)

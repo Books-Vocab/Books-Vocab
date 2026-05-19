@@ -354,11 +354,7 @@ struct BookCard: View {
                 .overlay(alignment: .bottomTrailing) {
                     iCloudDownloadBadge
                 }
-                .shadow(
-                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
-                    radius: AppBookshelfMetrics.coverShadowRadius,
-                    y: AppBookshelfMetrics.coverShadowY
-                )
+                .appElevation(.z1)
 
             // 進度條（封面外獨立元素）
             if let progress = book.progression, progress > 0 {
@@ -569,11 +565,7 @@ struct PodcastSeriesCard: View {
                             .accessibilityLabel("已追蹤")
                     }
                 }
-                .shadow(
-                    color: .black.opacity(AppBookshelfMetrics.coverShadowOpacity),
-                    radius: AppBookshelfMetrics.coverShadowRadius,
-                    y: AppBookshelfMetrics.coverShadowY
-                )
+                .appElevation(.z1)
 
             // 元資料
             VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {

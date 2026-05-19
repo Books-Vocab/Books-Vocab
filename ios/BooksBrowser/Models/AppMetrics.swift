@@ -86,9 +86,6 @@ enum AppBookshelfMetrics {
     static let coverHeightCompact: CGFloat = 210
     static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 10
-    static let coverShadowOpacity: Double = 0.10
-    static let coverShadowRadius: CGFloat = 6
-    static let coverShadowY: CGFloat = 3
     static let progressBarHeight: CGFloat = 4
     static let progressBarAccentOpacity: Double = 0.55
     static let progressBarSpacing: CGFloat = 6
@@ -277,9 +274,6 @@ enum PodcastPlayerMetrics {
     static let seekBarThumbSize: CGFloat = 16
     static let seekBarThumbOffset: CGFloat = 8
     static let seekBarHitArea: CGFloat = 20
-    static let seekBarThumbShadowRadius: CGFloat = 4
-    static let seekBarThumbShadowY: CGFloat = 2
-    static let seekBarThumbShadowOpacity: Double = 0.15
     static let controlsClusterSpacing: CGFloat = 8
     static let controlsBottomPadding: CGFloat = 20
 }

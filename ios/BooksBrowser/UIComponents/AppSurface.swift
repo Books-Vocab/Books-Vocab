@@ -29,11 +29,7 @@ struct AppCard<Content: View>: View {
             .background(cardBackground)
             .clipShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
             .overlay(cardBorder.allowsHitTesting(false))
-            .shadow(
-                color: .black.opacity(AppShadows.paperFloatOpacity),
-                radius: AppShadows.paperFloatRadius,
-                y: AppShadows.paperFloatY
-            )
+            .appElevation(.z2)
     }
 
     private var cardBackground: some View {

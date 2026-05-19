@@ -33,11 +33,7 @@ struct AppToast: View {
             Capsule()
                 .fill(appTheme.palette.cardBackground)
         )
-        .shadow(
-            color: .black.opacity(AppShadows.toastOpacity),
-            radius: AppShadows.toastRadius,
-            y: AppShadows.toastY
-        )
+        .appElevation(.z2)
         .offset(y: min(dragOffset, 0))
         .gesture(
             DragGesture()

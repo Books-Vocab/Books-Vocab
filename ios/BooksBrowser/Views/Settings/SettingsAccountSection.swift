@@ -264,11 +264,7 @@ private struct SettingsSocialBadge: View {
                     width: AppSettingsMetrics.socialBadgeSize,
                     height: AppSettingsMetrics.socialBadgeSize
                 )
-                .shadow(
-                    color: shadowColor,
-                    radius: AppShadows.controlRadius,
-                    y: AppShadows.controlY
-                )
+                .appElevation(elevation)
 
             Group {
                 switch kind {
@@ -294,12 +290,12 @@ private struct SettingsSocialBadge: View {
         }
     }
 
-    private var shadowColor: Color {
+    private var elevation: AppElevation {
         switch kind {
         case .google:
-            return vocabSkin.palette.shadow.opacity(0.9)
+            return .z1
         case .apple:
-            return .clear
+            return .z0
         }
     }
 }
