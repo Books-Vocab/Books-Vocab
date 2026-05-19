@@ -12,12 +12,12 @@ import SwiftUI
 
 /// 卡片內部的水平分隔線（統一外觀，取代散落在各 View 的重複定義）
 struct CardSectionDivider: View {
-    @Environment(\.vocabSkin) private var vocabSkin
-    var horizontalPadding: CGFloat = VocabSkin.baseMetrics.cardDividerHorizontalPadding
+    @Environment(\.appSkin) private var appSkin
+    var horizontalPadding: CGFloat = AppSkin.baseMetrics.cardDividerHorizontalPadding
 
     var body: some View {
         Rectangle()
-            .fill(vocabSkin.palette.divider)
+            .fill(appSkin.palette.divider)
             .frame(height: AppMetrics.dividerThin)
             .padding(.horizontal, horizontalPadding)
     }
@@ -27,19 +27,19 @@ struct CardSectionDivider: View {
 
 /// Section 標題標籤（icon + 小字）
 struct CardSectionLabel: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
 
     var body: some View {
         Label {
             Text(title.localized)
-                .font(vocabSkin.typography.caption)
+                .font(appSkin.typography.caption)
         } icon: {
             Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconTiny)
+                .font(appSkin.typography.iconTiny)
         }
-        .foregroundStyle(vocabSkin.palette.tertiaryText)
+        .foregroundStyle(appSkin.palette.tertiaryText)
     }
 }
 
@@ -47,7 +47,7 @@ struct CardSectionLabel: View {
 
 /// 詳情頁頂部英雄區塊：單字 + 音標 + POS + Tier + 模式 + 翻譯
 struct CardHeroSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
@@ -55,19 +55,19 @@ struct CardHeroSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            HStack(alignment: .top, spacing: vocabSkin.metrics.cardBlockContentGap) {
-                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-                    HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.heroBaselineGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
+            HStack(alignment: .top, spacing: appSkin.metrics.cardBlockContentGap) {
+                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+                    HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.heroBaselineGap) {
                         Text(card.word)
-                            .font(vocabSkin.typography.detailWord)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
+                            .font(appSkin.typography.detailWord)
+                            .foregroundStyle(appSkin.palette.primaryText)
                             .minimumScaleFactor(0.85)
 
                         if let pos = card.partOfSpeech {
                             Text(pos)
-                                .font(vocabSkin.typography.body.weight(.medium))
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .font(appSkin.typography.body.weight(.medium))
+                                .foregroundStyle(appSkin.palette.secondaryText)
                         }
 
                         Button {
@@ -75,10 +75,10 @@ struct CardHeroSection: View {
                             copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")
-                                .font(vocabSkin.typography.iconSmall)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .font(appSkin.typography.iconSmall)
+                                .foregroundStyle(appSkin.palette.secondaryText)
                                 .symbolEffect(.bounce, value: copyTrigger)
-                                .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+                                .frame(width: appSkin.metrics.chromeButtonSize, height: appSkin.metrics.chromeButtonSize)
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
@@ -86,24 +86,24 @@ struct CardHeroSection: View {
 
                 }
 
-                Spacer(minLength: vocabSkin.spacing.blockGap)
+                Spacer(minLength: appSkin.spacing.blockGap)
 
                 if let tier = card.difficultyTier {
                     VocabTierLabel(tier: tier)
                 }
             }
 
-            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
                 Text(card.reviewMode.localizedTitle)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
 
             Text(card.translation)
-                .font(vocabSkin.typography.translationTitle)
-                .foregroundStyle(vocabSkin.palette.translationText)
+                .font(appSkin.typography.translationTitle)
+                .foregroundStyle(appSkin.palette.translationText)
                 .fixedSize(horizontal: false, vertical: true)
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
@@ -120,33 +120,33 @@ struct CardHeroSection: View {
 
 /// 例句渲染區塊
 struct CardExamplesSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let examples: [String]
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
             CardSectionLabel(title: "例句".localized, systemImage: "text.quote")
 
             ForEach(Array(examples.enumerated()), id: \.offset) { _, example in
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: vocabSkin.typography.detailExampleSerif,
-                        textColor: vocabSkin.palette.primaryText,
-                        highlightColor: vocabSkin.palette.highlightMark,
+                        font: appSkin.typography.detailExampleSerif,
+                        textColor: appSkin.palette.primaryText,
+                        highlightColor: appSkin.palette.highlightMark,
                         italic: true,
-                        underlineHighlights: vocabSkin.highlight.showUnderline,
-                        useBackgroundMark: vocabSkin.highlight.showBackground,
-                        highlightWeight: vocabSkin.highlight.fontWeight,
-                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
-                        underlineOpacity: vocabSkin.highlight.underlineOpacity
+                        underlineHighlights: appSkin.highlight.showUnderline,
+                        useBackgroundMark: appSkin.highlight.showBackground,
+                        highlightWeight: appSkin.highlight.fontWeight,
+                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                        underlineOpacity: appSkin.highlight.underlineOpacity
                     ),
-                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius
+                    truncateAroundMarkedWordRadius: appSkin.metrics.exampleTruncateRadius
                 )
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             }
         }
         .contextMenu {
@@ -164,7 +164,7 @@ struct CardExamplesSection: View {
 
 /// 來源上下文 + 書名 + 章節
 struct CardSourceSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let sourceContext: String
@@ -180,17 +180,17 @@ struct CardSourceSection: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
 
-            HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
+            HStack(spacing: appSkin.spacing.sourceMetadataGap) {
                 Text(bookTitle)
                 if let chapter = chapterTitle {
                     Text("· \(chapter)")
                 }
             }
-            .font(vocabSkin.typography.caption)
-            .foregroundStyle(vocabSkin.palette.secondaryText)
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.secondaryText)
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
@@ -207,31 +207,31 @@ struct CardSourceSection: View {
 
 /// 教學筆記（Rich Text）
 struct CardExplanationSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let explanation: String
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "教學筆記".localized, systemImage: "text.book.closed")
 
             CardRichTextRenderer.text(
                 explanation,
                 style: CardRichTextStyle(
-                    font: vocabSkin.typography.body,
-                    textColor: vocabSkin.palette.primaryText,
-                    highlightColor: vocabSkin.palette.accent,
+                    font: appSkin.typography.body,
+                    textColor: appSkin.palette.primaryText,
+                    highlightColor: appSkin.palette.accent,
                     italic: false,
-                    underlineHighlights: vocabSkin.highlight.showUnderline,
-                    useBackgroundMark: vocabSkin.highlight.showBackground,
-                    highlightWeight: vocabSkin.highlight.fontWeight,
-                    backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
-                    underlineOpacity: vocabSkin.highlight.underlineOpacity
+                    underlineHighlights: appSkin.highlight.showUnderline,
+                    useBackgroundMark: appSkin.highlight.showBackground,
+                    highlightWeight: appSkin.highlight.fontWeight,
+                    backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                    underlineOpacity: appSkin.highlight.underlineOpacity
                 )
             )
-            .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+            .lineSpacing(appSkin.metrics.paragraphLineSpacing)
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
@@ -248,7 +248,7 @@ struct CardExplanationSection: View {
 
 /// 單字變化形列表
 struct CardFormsSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let forms: [String]
@@ -256,16 +256,16 @@ struct CardFormsSection: View {
     let colorScheme: ColorScheme
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "變化形".localized, systemImage: "text.badge.plus")
 
             ScrollView(.horizontal, showsIndicators: false) {
-                HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
                     ForEach(Array(forms.enumerated()), id: \.offset) { _, form in
                         let isRoot = form == rootForm
                         Text(form)
-                            .font(isRoot ? vocabSkin.typography.monoBodyStrong : vocabSkin.typography.monoBody)
-                            .foregroundStyle(isRoot ? vocabSkin.palette.accent : vocabSkin.palette.secondaryText)
+                            .font(isRoot ? appSkin.typography.monoBodyStrong : appSkin.typography.monoBody)
+                            .foregroundStyle(isRoot ? appSkin.palette.accent : appSkin.palette.secondaryText)
                     }
                 }
             }

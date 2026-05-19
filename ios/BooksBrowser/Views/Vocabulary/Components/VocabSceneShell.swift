@@ -16,7 +16,7 @@ enum VocabScenePhase {
 /// loadingSkeleton → 骨架列表 + vocabCanvasBackground
 /// content → 直接呈現 content()
 struct VocabSceneShell<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let phase: VocabScenePhase
     @ViewBuilder let content: Content
@@ -49,7 +49,7 @@ struct VocabSceneShell<Content: View>: View {
                         AppSkeletonCard(lineCount: 2)
                     }
                 }
-                .padding(vocabSkin.metrics.cardBlockPadding)
+                .padding(appSkin.metrics.cardBlockPadding)
             }
             .vocabCanvasBackground()
             .allowsHitTesting(false)
@@ -87,7 +87,7 @@ struct VocabSceneShell<Content: View>: View {
             card()
             Spacer()
         }
-        .padding(vocabSkin.metrics.cardBlockPadding)
+        .padding(appSkin.metrics.cardBlockPadding)
         .vocabCanvasBackground()
     }
 }

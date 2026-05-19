@@ -6,11 +6,11 @@ extension ReaderViewPresenter {
         state.paperColor.ignoresSafeArea()
             .overlay {
                 loadingOverlayContent(
-                    progressTint: vocabSkin.palette.primaryText,
-                    textFont: vocabSkin.typography.body.weight(.semibold),
-                    textColor: vocabSkin.palette.primaryText
+                    progressTint: appSkin.palette.primaryText,
+                    textFont: appSkin.typography.body.weight(.semibold),
+                    textColor: appSkin.palette.primaryText
                 )
-                .modifier(VocabLoadingOverlayChrome(vocabSkin: vocabSkin))
+                .modifier(VocabLoadingOverlayChrome(appSkin: appSkin))
                 .frame(maxWidth: ReaderPresentationMetrics.Overlay.loadingMaxWidth)
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.loadingOuterInset)
             }
@@ -18,13 +18,13 @@ extension ReaderViewPresenter {
 
     func underlineProgressOverlay(_ progress: Double) -> some View {
         VStack {
-            AppSectionCard(style: .vocab(vocabSkin)) {
+            AppSectionCard(style: .vocab(appSkin)) {
                 progressOverlayContent(
                     progress: progress,
-                    trackColor: vocabSkin.palette.mutedFill,
-                    fillColor: vocabSkin.palette.accent,
-                    textFont: vocabSkin.typography.monoLabel,
-                    textColor: vocabSkin.palette.secondaryText
+                    trackColor: appSkin.palette.mutedFill,
+                    fillColor: appSkin.palette.accent,
+                    textFont: appSkin.typography.monoLabel,
+                    textColor: appSkin.palette.secondaryText
                 )
                 .padding(.horizontal, ReaderPresentationMetrics.Overlay.progressHorizontalInset)
                 .padding(.vertical, ReaderPresentationMetrics.Overlay.progressVerticalInset)
@@ -113,10 +113,10 @@ extension ReaderViewPresenter {
 }
 
 private struct VocabLoadingOverlayChrome: ViewModifier {
-    let vocabSkin: VocabSkin
+    let appSkin: AppSkin
 
     func body(content: Content) -> some View {
-        AppSectionCard(style: .vocab(vocabSkin)) {
+        AppSectionCard(style: .vocab(appSkin)) {
             content
         }
     }

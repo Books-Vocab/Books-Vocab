@@ -18,8 +18,8 @@ extension SyncPresenter {
 
                     if !state.isConnected {
                         Text("KG 伺服器未連線".localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.destructive)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.destructive)
                     }
                 } else {
                     Button(action: onShowSettings) {

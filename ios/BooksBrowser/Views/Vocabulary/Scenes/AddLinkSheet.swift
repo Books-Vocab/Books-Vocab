@@ -2,7 +2,7 @@ import SwiftUI
 
 struct AddLinkSheet: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let sourceEntry: VocabularyEntry
     let allEntries: [VocabularyEntry]
@@ -46,7 +46,7 @@ struct AddLinkSheet: View {
                 }
 
                 searchField
-                    .padding(vocabSkin.metrics.cardBlockPadding)
+                    .padding(appSkin.metrics.cardBlockPadding)
 
                 if searchText.isEmpty {
                     ContentUnavailableView(
@@ -69,11 +69,11 @@ struct AddLinkSheet: View {
                         } label: {
                             VStack(alignment: .leading, spacing: 2) {
                                 Text(entry.word)
-                                    .font(vocabSkin.typography.rowWord)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                                    .font(appSkin.typography.rowWord)
+                                    .foregroundStyle(appSkin.palette.primaryText)
                                 Text(entry.translation)
-                                    .font(vocabSkin.typography.caption)
-                                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.tertiaryText)
                             }
                         }
                         .listRowBackground(Color.clear)
@@ -103,13 +103,13 @@ struct AddLinkSheet: View {
     }
 
     private var searchField: some View {
-        HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
             Image(systemName: "magnifyingglass")
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .foregroundStyle(appSkin.palette.tertiaryText)
             TextField("搜尋單字…".localized, text: $searchText)
                 .platformTextInputConfig()
         }
-        .padding(vocabSkin.metrics.cardBlockInnerGap * 1.5)
-        .background(vocabSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))
+        .padding(appSkin.metrics.cardBlockInnerGap * 1.5)
+        .background(appSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))
     }
 }

@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct LoginSheet: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.authManager) private var authManager
     @Environment(\.modelContext) private var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -43,18 +43,18 @@ struct LoginSheet: View {
                     .clipShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
 
                 Text("解鎖完整功能".localized)
-                    .font(vocabSkin.typography.displayTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.displayTitle)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 Text("AI 翻譯・知識圖譜・雲端同步".localized)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             }
 
             Spacer()
 
             // Auth buttons
-            VStack(spacing: vocabSkin.spacing.controlGap) {
+            VStack(spacing: appSkin.spacing.controlGap) {
                 Button {
                     authManager.loginWithGoogle(modelContainer: modelContext.container)
                 } label: {
@@ -95,12 +95,12 @@ struct LoginSheet: View {
         .overlay {
             if authManager.isAuthenticating {
                 ZStack {
-                    vocabSkin.palette.pageBackground.opacity(0.85)
-                    VStack(spacing: vocabSkin.spacing.controlGap) {
+                    appSkin.palette.pageBackground.opacity(0.85)
+                    VStack(spacing: appSkin.spacing.controlGap) {
                         ProgressView().controlSize(.regular)
                         Text("正在驗證帳號…".localized)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
                 }
                 .transition(.contentSwap)
@@ -113,36 +113,36 @@ struct LoginSheet: View {
         HStack(spacing: AppSpacing.s2) {
             if isGoogle {
                 Text("G")
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.primaryText)
                     .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
-                    .background(Circle().fill(vocabSkin.palette.cardBackground))
-                    .overlay(Circle().stroke(vocabSkin.palette.cardBorder, lineWidth: 1))
+                    .background(Circle().fill(appSkin.palette.cardBackground))
+                    .overlay(Circle().stroke(appSkin.palette.cardBorder, lineWidth: 1))
             } else if let systemImage {
                 Image(systemName: systemImage)
-                    .font(vocabSkin.typography.iconTiny)
-                    .foregroundStyle(vocabSkin.palette.pageBackground)
+                    .font(appSkin.typography.iconTiny)
+                    .foregroundStyle(appSkin.palette.pageBackground)
                     .frame(width: AppSettingsMetrics.socialBadgeSize, height: AppSettingsMetrics.socialBadgeSize)
                     .background(Circle().fill(AppBrandColors.appleBlack))
             }
 
             Text(title.localized)
-                .font(vocabSkin.typography.body.weight(.medium))
+                .font(appSkin.typography.body.weight(.medium))
 
             Spacer()
 
             Image(systemName: "chevron.right")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.iconTiny)
+                .foregroundStyle(appSkin.palette.tertiaryText)
         }
         .padding(.horizontal, AppSpacing.s4)
         .padding(.vertical, AppSpacing.s2)
         .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                .fill(vocabSkin.palette.cardBackground)
+            RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                .fill(appSkin.palette.cardBackground)
                 .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         )
     }

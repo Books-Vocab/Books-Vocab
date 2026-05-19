@@ -28,7 +28,7 @@ enum AppShellPreviewVariant {
 
 struct AppShellPreview: View {
     @Environment(\.appTheme) private var appTheme
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let variant: AppShellPreviewVariant
     @State private var selectedTab = 0
     @State private var searchText = "mystery"
@@ -51,7 +51,7 @@ struct AppShellPreview: View {
         case .app:
             return appTheme.palette.pageBackground
         case .vocab, .settings:
-            return vocabSkin.palette.pageBackground
+            return appSkin.palette.pageBackground
         }
     }
 
@@ -65,8 +65,8 @@ struct AppShellPreview: View {
                     title: "Vocabulary Shell",
                     systemImage: "character.book.closed",
                     style: .init(
-                        font: vocabSkin.typography.captionStrong,
-                        color: vocabSkin.palette.secondaryText
+                        font: appSkin.typography.captionStrong,
+                        color: appSkin.palette.secondaryText
                     )
                 )
             )
@@ -76,8 +76,8 @@ struct AppShellPreview: View {
                     title: "Settings Shell",
                     systemImage: "gearshape",
                     style: .init(
-                        font: vocabSkin.typography.captionStrong,
-                        color: vocabSkin.palette.secondaryText
+                        font: appSkin.typography.captionStrong,
+                        color: appSkin.palette.secondaryText
                     )
                 )
             )
@@ -102,14 +102,14 @@ struct AppShellPreview: View {
             )
         case .vocab:
             previewShellCard(
-                cardStyle: .vocab(vocabSkin),
-                tabStyle: .vocab(vocabSkin),
-                searchStyle: .vocab(vocabSkin),
-                keyValueStyle: .vocab(vocabSkin),
-                toolbarStyle: .vocab(vocabSkin),
-                valueColor: vocabSkin.palette.secondaryText,
-                emptyCardStyle: .vocab(vocabSkin),
-                emptyContentStyle: .vocab(vocabSkin),
+                cardStyle: .vocab(appSkin),
+                tabStyle: .vocab(appSkin),
+                searchStyle: .vocab(appSkin),
+                keyValueStyle: .vocab(appSkin),
+                toolbarStyle: .vocab(appSkin),
+                valueColor: appSkin.palette.secondaryText,
+                emptyCardStyle: .vocab(appSkin),
+                emptyContentStyle: .vocab(appSkin),
                 actionTitle: "開始複習",
                 actionTone: .neutral
             )
@@ -181,31 +181,31 @@ struct AppShellPreview: View {
 
     private var previewSettingsCard: some View {
         VStack(alignment: .leading, spacing: AppShellMetrics.sectionSpacing) {
-            AppSectionCard(padding: 0, style: .settings(vocabSkin)) {
+            AppSectionCard(padding: 0, style: .settings(appSkin)) {
                 VStack(spacing: 0) {
                     AppKeyValueRow(
                         icon: "person.circle",
                         label: "帳號",
-                        style: .settings(vocabSkin)
+                        style: .settings(appSkin)
                     ) {
                         Text("reader@example.com")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
 
                     Rectangle()
-                        .fill(vocabSkin.palette.divider)
+                        .fill(appSkin.palette.divider)
                         .frame(height: AppMetrics.dividerStandard)
                         .padding(.leading, 50)
 
                     AppKeyValueRow(
                         icon: "server.rack",
                         label: "伺服器",
-                        style: .settings(vocabSkin)
+                        style: .settings(appSkin)
                     ) {
                         Text("wordnexus.lol")
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.monoLabel)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
                 }
             }
@@ -216,8 +216,8 @@ struct AppShellPreview: View {
             AppSectionFooter(
                 text: "Settings variant 會保護 shared row 與 card 在無陰影設定皮膚下的輸出。",
                 style: .init(
-                    font: vocabSkin.typography.caption,
-                    color: vocabSkin.palette.tertiaryText
+                    font: appSkin.typography.caption,
+                    color: appSkin.palette.tertiaryText
                 )
             )
         }

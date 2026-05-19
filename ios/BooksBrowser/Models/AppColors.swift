@@ -5,8 +5,8 @@
 //  ⚠️  使用範圍：Reader 功能 + 全域 UI（ErrorBanner、App tint）
 //  ─────────────────────────────────────────────────────────────────────
 //  此檔案 *不是* Vocabulary UI 的顏色來源。
-//  Vocabulary 功能的所有顏色請透過 @Environment(\.vocabSkin) 取得，
-//  其背後由 AppTheme → VocabSkin.themed() 組裝而成。
+//  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
+//  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
 //  設計哲學：莫蘭迪色系（Morandi Palette）
 //    · 低飽和度（25-30%）但保持足夠亮度，不顯沉悶
@@ -17,7 +17,7 @@
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
 //    [Reader]  accent, saved, destructive, warning（TranslationPanel 使用）
 //    [Global]  tint（BooksBrowserApp 注入 SwiftUI tint）
-//    [Legacy]  tier*, glassClearBackground（保留相容，新代碼請用 VocabSkin）
+//    [Legacy]  tier*, glassClearBackground（保留相容，新代碼請用 AppSkin）
 //  ─────────────────────────────────────────────────────────────────────
 
 import SwiftUI
@@ -71,8 +71,8 @@ enum AppColors {
     static let warningLight = Color(hue: 0.1, saturation: 0.8, brightness: 0.8)
     static let warningDark  = Color(hue: 0.1, saturation: 0.6, brightness: 0.9)
 
-    // ── 難度 Tier（Legacy — 新代碼請改用 vocabSkin.tierColor(for:)）──────
-    // 這些 token 已由 VocabSkin.tierColor() 內建處理，
+    // ── 難度 Tier（Legacy — 新代碼請改用 appSkin.tierColor(for:)）──────
+    // 這些 token 已由 AppSkin.tierColor() 內建處理，
     // 僅為舊呼叫端保留相容，請勿在新的 Vocabulary 組件中直接使用。
     static let tierCoreLight         = savedLight
     static let tierCoreDark          = savedDark

@@ -11,7 +11,7 @@
 import SwiftUI
 
 struct TranslationVocabPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let state: TranslationPanelPresenterState
     let onSpeak: () -> Void
@@ -27,20 +27,20 @@ struct TranslationVocabPresenter: View {
         VocabCard(padding: 0) {
             VStack(spacing: 0) {
                 Capsule(style: .continuous)
-                    .fill(vocabSkin.palette.quaternaryText.opacity(vocabSkin.metrics.panelHandleOpacity))
+                    .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                     .frame(
-                        width: vocabSkin.metrics.readerPanelHandleWidth,
-                        height: vocabSkin.metrics.readerPanelHandleHeight
+                        width: appSkin.metrics.readerPanelHandleWidth,
+                        height: appSkin.metrics.readerPanelHandleHeight
                     )
-                    .padding(.top, vocabSkin.metrics.readerPanelHandleTopInset)
-                    .padding(.bottom, vocabSkin.metrics.readerPanelHandleBottomInset)
+                    .padding(.top, appSkin.metrics.readerPanelHandleTopInset)
+                    .padding(.bottom, appSkin.metrics.readerPanelHandleBottomInset)
 
                 VStack(alignment: .leading, spacing: 12) {
                     heroSection
                     panelBody
                 }
-                .padding(.horizontal, vocabSkin.metrics.readerPanelHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.readerPanelBottomInset)
+                .padding(.horizontal, appSkin.metrics.readerPanelHorizontalInset)
+                .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
             }
         }
         .appElevation(.z3, direction: .up)
@@ -50,14 +50,14 @@ struct TranslationVocabPresenter: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(state.word)
                 .font(state.word.count > 12
-                      ? vocabSkin.typography.translationTitle
-                      : vocabSkin.typography.detailWord)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                      ? appSkin.typography.translationTitle
+                      : appSkin.typography.detailWord)
+                .foregroundStyle(appSkin.palette.primaryText)
 
             Button(action: onSpeak) {
                 Image(systemName: "speaker.wave.2")
-                    .font(vocabSkin.typography.iconTiny)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.iconTiny)
+                    .foregroundStyle(appSkin.palette.secondaryText)
                     .symbolEffect(.bounce, value: state.isSpeaking)
             }
             .buttonStyle(.plain)
@@ -65,7 +65,7 @@ struct TranslationVocabPresenter: View {
             Spacer()
 
             if let pos = state.partOfSpeech {
-                VocabToneChip(text: pos, tone: vocabSkin.palette.accent)
+                VocabToneChip(text: pos, tone: appSkin.palette.accent)
             }
         }
     }
@@ -98,8 +98,8 @@ struct TranslationVocabPresenter: View {
                 Spacer()
                 if let timerText = state.activeTimerText {
                     Text(timerText)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
                 }
             }
         }
@@ -133,8 +133,8 @@ struct TranslationVocabPresenter: View {
     private func translationBody(_ translation: String) -> some View {
         VStack(alignment: .leading, spacing: 0) {
             Text(translation)
-                .font(vocabSkin.typography.translationTitle)
-                .foregroundStyle(vocabSkin.palette.translationText)
+                .font(appSkin.typography.translationTitle)
+                .foregroundStyle(appSkin.palette.translationText)
 
             if state.isExpanded {
                 explanationSection
@@ -189,8 +189,8 @@ struct TranslationVocabPresenter: View {
                 .padding(.vertical, 2)
 
             Label("語境解釋".localized, systemImage: "text.bubble")
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.quaternaryText)
 
             explanationContent
         }
@@ -209,12 +209,12 @@ struct TranslationVocabPresenter: View {
                     Spacer()
                     if let timerText = state.activeTimerText {
                         Text(timerText)
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            .font(appSkin.typography.monoLabel)
+                            .foregroundStyle(appSkin.palette.quaternaryText)
                     }
                 }
             }
-            .padding(.vertical, vocabSkin.spacing.tinyGap)
+            .padding(.vertical, appSkin.spacing.tinyGap)
         case .error(let errorMessage):
             VStack(alignment: .leading, spacing: 10) {
                 VocabStateMessageCard(
@@ -230,16 +230,16 @@ struct TranslationVocabPresenter: View {
                     .buttonStyle(.vocabAction())
                 }
             }
-            .padding(.vertical, vocabSkin.spacing.tinyGap)
+            .padding(.vertical, appSkin.spacing.tinyGap)
         case .content(let explanation):
             Text(explanation)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.secondaryText)
                 .fixedSize(horizontal: false, vertical: true)
                 .lineSpacing(3)
         case .empty:
             emptyExplainStateCard
-                .padding(.vertical, vocabSkin.spacing.tinyGap)
+                .padding(.vertical, appSkin.spacing.tinyGap)
         }
     }
 
@@ -248,17 +248,17 @@ struct TranslationVocabPresenter: View {
         HStack(spacing: 4) {
             if state.showsSavedStatus {
                 Label("已加入".localized, systemImage: "checkmark.circle.fill")
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.success)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.success)
                     .symbolEffect(.bounce, value: state.isSaved)
                     .transition(.feedbackBadge)
             }
 
             if let timerValue {
                 Text(timerValue)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .padding(.leading, state.showsSavedStatus ? vocabSkin.spacing.inlineGap : 0)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
+                    .padding(.leading, state.showsSavedStatus ? appSkin.spacing.inlineGap : 0)
             }
 
             Spacer()
@@ -280,14 +280,14 @@ struct TranslationVocabPresenter: View {
             if state.showsDeleteAction {
                 VocabChromeIconButton(
                     systemImage: "trash",
-                    tone: vocabSkin.palette.destructive,
+                    tone: appSkin.palette.destructive,
                     action: onDelete
                 )
             }
 
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
-        .padding(.top, vocabSkin.spacing.tinyGap)
+        .padding(.top, appSkin.spacing.tinyGap)
     }
 }
 

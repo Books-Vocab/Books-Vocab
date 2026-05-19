@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Stepper Buttons, Card/Chrome/TextInput Modifiers, Input Fields
 
 struct SettingsStepperIconButton: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let systemImage: String
     let enabled: Bool
     let action: () -> Void
@@ -11,16 +11,16 @@ struct SettingsStepperIconButton: View {
     var body: some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconMedium.weight(.medium))
-                .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.iconMedium.weight(.medium))
+                .foregroundStyle(enabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
                 .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
                 .background(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.pageBackground)
+                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                        .fill(appSkin.palette.pageBackground)
                 )
                 .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                 )
         }
         .buttonStyle(.plain)
@@ -29,10 +29,10 @@ struct SettingsStepperIconButton: View {
 }
 
 struct SettingsCardModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     func body(content: Content) -> some View {
-        AppSectionCard(padding: 0, style: .settings(vocabSkin)) {
+        AppSectionCard(padding: 0, style: .settings(appSkin)) {
             content
         }
     }
@@ -53,34 +53,34 @@ extension View {
 }
 
 struct SettingsButtonChromeModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     func body(content: Content) -> some View {
         content
-            .padding(vocabSkin.spacing.cardPadding)
-            .background(vocabSkin.palette.pageBackground)
-            .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+            .padding(appSkin.spacing.cardPadding)
+            .background(appSkin.palette.pageBackground)
+            .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous))
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                    .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                    .stroke(appSkin.palette.cardBorder, lineWidth: 1)
             )
     }
 }
 
 struct SettingsTextInputModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let alignment: TextAlignment
 
     func body(content: Content) -> some View {
         content
-            .font(vocabSkin.typography.monoLabel)
+            .font(appSkin.typography.monoLabel)
             .multilineTextAlignment(alignment)
             .platformTextInputConfig()
     }
 }
 
 struct SettingsLabeledInputField<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let content: Content
 
@@ -90,19 +90,19 @@ struct SettingsLabeledInputField<Content: View>: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
             Text(title)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.tertiaryText)
 
             content
         }
-        .padding(vocabSkin.spacing.cardPadding)
-        .background(vocabSkin.palette.pageBackground)
-        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous))
+        .padding(appSkin.spacing.cardPadding)
+        .background(appSkin.palette.pageBackground)
+        .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+            RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                .stroke(appSkin.palette.cardBorder, lineWidth: 1)
         )
     }
 }

@@ -2,7 +2,7 @@
 import SwiftUI
 
 struct ReaderStepControlButton: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let label: String
     let font: Font
     let enabled: Bool
@@ -11,12 +11,12 @@ struct ReaderStepControlButton: View {
     var body: some View {
         Button(action: action) {
             VocabChromeSurface(
-                fill: vocabSkin.palette.pageBackground,
-                border: vocabSkin.palette.cardBorder
+                fill: appSkin.palette.pageBackground,
+                border: appSkin.palette.cardBorder
             ) {
                 Text(label)
                     .font(font)
-                    .foregroundStyle(enabled ? vocabSkin.palette.primaryText : vocabSkin.palette.quaternaryText)
+                    .foregroundStyle(enabled ? appSkin.palette.primaryText : appSkin.palette.quaternaryText)
                     .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
             }
         }

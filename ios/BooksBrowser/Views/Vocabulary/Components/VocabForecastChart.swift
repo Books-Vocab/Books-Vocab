@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct VocabForecastChart: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let buckets: [StatsPresentation.ForecastBucket]
 
     @State private var tappedIndex: Int?
@@ -23,13 +23,13 @@ struct VocabForecastChart: View {
             GeometryReader { geo in
                 let labelHeight: CGFloat = 16
                 let countLabelHeight: CGFloat = isCompact ? 0 : 14
-                let chartHeight = geo.size.height - labelHeight - countLabelHeight - vocabSkin.spacing.inlineGap
+                let chartHeight = geo.size.height - labelHeight - countLabelHeight - appSkin.spacing.inlineGap
                 let columnWidth = geo.size.width / CGFloat(buckets.count)
 
                 ZStack(alignment: .bottom) {
                     // Baseline
                     Rectangle()
-                        .fill(vocabSkin.palette.divider)
+                        .fill(appSkin.palette.divider)
                         .frame(height: 1)
                         .offset(y: -labelHeight)
 
@@ -64,8 +64,8 @@ struct VocabForecastChart: View {
             // Count label
             if !isCompact && bucket.count > 0 {
                 Text("\(bucket.count)")
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
                     .frame(height: 14)
             } else {
                 Spacer()
@@ -79,8 +79,8 @@ struct VocabForecastChart: View {
                 if bucket.count > 0 {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(index == 0
-                              ? vocabSkin.palette.accent
-                              : vocabSkin.palette.accent.opacity(0.35))
+                              ? appSkin.palette.accent
+                              : appSkin.palette.accent.opacity(0.35))
                         .frame(width: barWidth, height: barHeight)
                 }
             }
@@ -116,8 +116,8 @@ struct VocabForecastChart: View {
 
         if let text {
             Text(text)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.monoLabel)
+                .foregroundStyle(appSkin.palette.quaternaryText)
                 .lineLimit(1)
         } else {
             Color.clear
@@ -133,16 +133,16 @@ struct VocabForecastChart: View {
         let xOffset = columnWidth * (CGFloat(index) + 0.5) - geo.size.width / 2
 
         Text("\(bucket.label): \(bucket.count)")
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(vocabSkin.palette.primaryText)
-            .padding(.horizontal, vocabSkin.spacing.microGap)
+            .font(appSkin.typography.monoLabel)
+            .foregroundStyle(appSkin.palette.primaryText)
+            .padding(.horizontal, appSkin.spacing.microGap)
             .padding(.vertical, 2)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
-                    .fill(vocabSkin.palette.cardBackground)
+                    .fill(appSkin.palette.cardBackground)
                     .appElevation(.z1)
             )
-            .offset(x: xOffset, y: -(chartHeight + labelHeight + vocabSkin.spacing.inlineGap))
+            .offset(x: xOffset, y: -(chartHeight + labelHeight + appSkin.spacing.inlineGap))
             .transition(.overlayFade)
     }
 }

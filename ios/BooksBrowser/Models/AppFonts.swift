@@ -33,7 +33,7 @@ final class FontAvailabilityTracker {
             object: nil,
             queue: .main
         ) { [weak self] _ in
-            VocabSkin.invalidateTypographyCache()
+            AppSkin.invalidateTypographyCache()
             self?.serifCJKVersion += 1
         }
     }

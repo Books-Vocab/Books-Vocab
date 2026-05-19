@@ -4,7 +4,7 @@ import SwiftData
 struct PodcastEpisodeRow: View {
     let episode: PodcastEpisode
     let progress: PodcastProgress?
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     init(episode: PodcastEpisode, progress: PodcastProgress? = nil) {
         self.episode = episode

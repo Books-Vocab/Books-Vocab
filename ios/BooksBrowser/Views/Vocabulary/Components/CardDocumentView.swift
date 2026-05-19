@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct CardDocumentView: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let document: CardDocument
     var truncateRadius: Int? = nil
@@ -12,8 +12,8 @@ struct CardDocumentView: View {
     var onViewCollocationExplanation: ((String) -> Void)? = nil
     var onDeleteCollocationExplanation: ((String) -> Void)? = nil
 
-    private var blockPadding: CGFloat { compact ? 0 : vocabSkin.metrics.cardBlockPadding }
-    private var blockSpacing: CGFloat { compact ? vocabSkin.metrics.reviewFoldSectionSpacing : 0 }
+    private var blockPadding: CGFloat { compact ? 0 : appSkin.metrics.cardBlockPadding }
+    private var blockSpacing: CGFloat { compact ? appSkin.metrics.reviewFoldSectionSpacing : 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: blockSpacing) {
@@ -59,37 +59,37 @@ struct CardDocumentView: View {
 }
 
 private struct CardDocumentHeroBlock: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let hero: CardDocumentHero
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
-            HStack(alignment: .top, spacing: vocabSkin.metrics.cardBlockContentGap) {
-                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
-                    HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.heroBaselineGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
+            HStack(alignment: .top, spacing: appSkin.metrics.cardBlockContentGap) {
+                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
+                    HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.heroBaselineGap) {
                         Text(hero.word)
-                            .font(vocabSkin.typography.detailWord)
-                            .foregroundStyle(vocabSkin.palette.primaryText)
+                            .font(appSkin.typography.detailWord)
+                            .foregroundStyle(appSkin.palette.primaryText)
                             .minimumScaleFactor(0.85)
 
                         if let pos = hero.partOfSpeech {
                             Text(pos)
-                                .font(vocabSkin.typography.body.weight(.medium))
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .font(appSkin.typography.body.weight(.medium))
+                                .foregroundStyle(appSkin.palette.secondaryText)
                         }
                     }
 
-                    HStack(spacing: vocabSkin.spacing.heroBaselineGap) {
+                    HStack(spacing: appSkin.spacing.heroBaselineGap) {
                         Button {
                             speechService.speak(hero.word)
                             copyTrigger.toggle()
                         } label: {
                             Image(systemName: "speaker.wave.2.fill")
-                                .font(vocabSkin.typography.iconSmall)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .font(appSkin.typography.iconSmall)
+                                .foregroundStyle(appSkin.palette.secondaryText)
                                 .symbolEffect(.bounce, value: copyTrigger)
                                 .frame(width: 36, height: 36)
                                 .contentShape(Rectangle())
@@ -98,7 +98,7 @@ private struct CardDocumentHeroBlock: View {
                     }
                 }
 
-                Spacer(minLength: vocabSkin.spacing.blockGap)
+                Spacer(minLength: appSkin.spacing.blockGap)
 
                 if let tier = hero.difficultyTier {
                     VocabTierLabel(tier: tier)
@@ -117,7 +117,7 @@ private struct CardDocumentHeroBlock: View {
 }
 
 private struct CardDocumentExampleBlock: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let paragraph: CardDocumentParagraph
@@ -130,26 +130,26 @@ private struct CardDocumentExampleBlock: View {
                 CardRichTextRenderer.text(
                     paragraph.rawMarkdown,
                     style: CardRichTextStyle(
-                        font: vocabSkin.typography.detailExampleSerif,
-                        textColor: vocabSkin.palette.primaryText,
-                        highlightColor: vocabSkin.palette.highlightMark,
+                        font: appSkin.typography.detailExampleSerif,
+                        textColor: appSkin.palette.primaryText,
+                        highlightColor: appSkin.palette.highlightMark,
                         italic: false,
-                        underlineHighlights: vocabSkin.highlight.showUnderline,
-                        useBackgroundMark: vocabSkin.highlight.showBackground,
-                        highlightWeight: vocabSkin.highlight.fontWeight,
-                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
-                        underlineOpacity: vocabSkin.highlight.underlineOpacity
+                        underlineHighlights: appSkin.highlight.showUnderline,
+                        useBackgroundMark: appSkin.highlight.showBackground,
+                        highlightWeight: appSkin.highlight.fontWeight,
+                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                        underlineOpacity: appSkin.highlight.underlineOpacity
                     ),
                     truncateAroundMarkedWordRadius: radius,
                     targetWord: targetWord
                 )
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             } else {
                 CardInlineText(
                     paragraph: paragraph,
                     style: .example
                 )
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             }
         }
         .contextMenu {
@@ -164,7 +164,7 @@ private struct CardDocumentExampleBlock: View {
 }
 
 private struct CardDocumentMeaningBlock: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let meaning: CardDocumentMeaning
@@ -176,21 +176,21 @@ private struct CardDocumentMeaningBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
             if !meaning.title.isEmpty {
                 Text(meaning.title)
-                    .font(vocabSkin.typography.translationTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.translationTitle)
+                    .foregroundStyle(appSkin.palette.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }
 
-            VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+            VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
                 ForEach(meaning.paragraphs) { paragraph in
                     CardInlineText(
                         paragraph: paragraph,
                         style: .body
                     )
-                    .lineSpacing(compact ? 5 : vocabSkin.metrics.detailLineSpacing)
+                    .lineSpacing(compact ? 5 : appSkin.metrics.detailLineSpacing)
                     .lineLimit(compact ? 3 : nil)
                     .fixedSize(horizontal: false, vertical: true)
                 }
@@ -208,7 +208,7 @@ private struct CardDocumentMeaningBlock: View {
 }
 
 private struct CardDocumentSourceBlock: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
     let source: CardDocumentSource
@@ -222,17 +222,17 @@ private struct CardDocumentSourceBlock: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "來源".localized, systemImage: "book.closed")
 
-            HStack(spacing: vocabSkin.spacing.sourceMetadataGap) {
+            HStack(spacing: appSkin.spacing.sourceMetadataGap) {
                 Text(source.bookTitle)
                 if let chapterTitle = source.chapterTitle {
                     Text("· \(chapterTitle)")
                 }
             }
-            .font(vocabSkin.typography.caption)
-            .foregroundStyle(vocabSkin.palette.secondaryText)
+            .font(appSkin.typography.caption)
+            .foregroundStyle(appSkin.palette.secondaryText)
         }
         .contextMenu {
             Button("複製".localized, systemImage: "doc.on.doc") {
@@ -246,7 +246,7 @@ private struct CardDocumentSourceBlock: View {
 }
 
 private struct CardDocumentCollocationsBlock: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let items: [String]
     var compact: Bool = false
     var explanations: [String: String] = [:]
@@ -255,10 +255,10 @@ private struct CardDocumentCollocationsBlock: View {
     var onDelete: ((String) -> Void)? = nil
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
             CardSectionLabel(title: "搭配".localized, systemImage: "text.word.spacing")
 
-            CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
+            CollocationFlowLayout(spacing: appSkin.metrics.cardBlockInnerGap, maxRows: compact ? 2 : nil) {
                 ForEach(Array(items.enumerated()), id: \.offset) { _, item in
                     collocationPill(item)
                 }
@@ -269,21 +269,21 @@ private struct CardDocumentCollocationsBlock: View {
     private func collocationPill(_ item: String) -> some View {
         let hasExplanation = explanations[item] != nil
         return Text(item)
-            .font(vocabSkin.typography.monoBody)
-            .foregroundStyle(vocabSkin.palette.secondaryText)
+            .font(appSkin.typography.monoBody)
+            .foregroundStyle(appSkin.palette.secondaryText)
             .padding(.horizontal, 8)
             .padding(.vertical, 4)
             .background(
                 Capsule().fill(
                     hasExplanation
-                        ? vocabSkin.palette.accent.opacity(0.12)
-                        : vocabSkin.palette.divider.opacity(0.5)
+                        ? appSkin.palette.accent.opacity(0.12)
+                        : appSkin.palette.divider.opacity(0.5)
                 )
             )
             .overlay(alignment: .leading) {
                 if hasExplanation {
                     Circle()
-                        .fill(vocabSkin.palette.accent)
+                        .fill(appSkin.palette.accent)
                         .frame(width: 4, height: 4)
                         .offset(x: 2)
                 }
@@ -384,7 +384,7 @@ struct CardInlineText: View {
         case source
     }
 
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let paragraph: CardDocumentParagraph
     let style: Style
@@ -422,19 +422,19 @@ struct CardInlineText: View {
     }
 
     private func marked(_ value: String) -> AttributedString {
-        let hl = vocabSkin.highlight
+        let hl = appSkin.highlight
         var part = AttributedString(value)
         part.font = markedFont
-        part.foregroundColor = vocabSkin.palette.primaryText
+        part.foregroundColor = appSkin.palette.primaryText
         switch style {
         case .example, .source:
             if hl.showBackground {
-                part.backgroundColor = vocabSkin.palette.highlightMark.opacity(hl.backgroundOpacity)
+                part.backgroundColor = appSkin.palette.highlightMark.opacity(hl.backgroundOpacity)
             }
             if hl.showUnderline {
                 part.underlineStyle = Text.LineStyle(
                     pattern: .solid,
-                    color: vocabSkin.palette.highlightMark.opacity(hl.underlineOpacity)
+                    color: appSkin.palette.highlightMark.opacity(hl.underlineOpacity)
                 )
             }
         case .body:
@@ -445,8 +445,8 @@ struct CardInlineText: View {
 
     private func code(_ value: String) -> AttributedString {
         var part = AttributedString(value)
-        part.font = vocabSkin.typography.monoBody
-        part.foregroundColor = vocabSkin.palette.secondaryText
+        part.font = appSkin.typography.monoBody
+        part.foregroundColor = appSkin.palette.secondaryText
         return part
     }
 
@@ -460,33 +460,33 @@ struct CardInlineText: View {
     private var baseFont: Font {
         switch style {
         case .example:
-            return vocabSkin.typography.detailExampleSerif
+            return appSkin.typography.detailExampleSerif
         case .body:
-            return vocabSkin.typography.body
+            return appSkin.typography.body
         case .source:
-            return vocabSkin.typography.body.italic()
+            return appSkin.typography.body.italic()
         }
     }
 
     private var markedFont: Font {
         switch style {
         case .example:
-            return vocabSkin.typography.detailExampleSerifStrong
+            return appSkin.typography.detailExampleSerifStrong
         case .body:
-            return vocabSkin.typography.body.weight(.medium)
+            return appSkin.typography.body.weight(.medium)
         case .source:
-            return vocabSkin.typography.body.weight(.medium).italic()
+            return appSkin.typography.body.weight(.medium).italic()
         }
     }
 
     private var baseColor: Color {
         switch style {
         case .example:
-            return vocabSkin.palette.primaryText
+            return appSkin.palette.primaryText
         case .body:
-            return vocabSkin.palette.secondaryText
+            return appSkin.palette.secondaryText
         case .source:
-            return vocabSkin.palette.secondaryText
+            return appSkin.palette.secondaryText
         }
     }
 }

@@ -60,7 +60,7 @@ struct PodcastSettingsPopover: View {
     @Binding var subtitleSize: PodcastSubtitleSize
     @Binding var autoPauseOnLookup: Bool
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     var body: some View {
         VStack(alignment: .leading, spacing: skin.spacing.sectionGap) {

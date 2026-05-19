@@ -8,7 +8,7 @@
 import SwiftUI
 
 struct VocabActivityHeatmap: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let activity: [String: Int]  // "yyyy-MM-dd" -> count
     let thresholds: [Int]
@@ -56,7 +56,7 @@ struct VocabActivityHeatmap: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
             ScrollView(.horizontal, showsIndicators: false) {
                 ScrollViewReader { proxy in
                     HStack(alignment: .top, spacing: 0) {
@@ -65,8 +65,8 @@ struct VocabActivityHeatmap: View {
                             ForEach(0..<7, id: \.self) { row in
                                 if let index = weekdayIndices.firstIndex(of: row) {
                                     Text(weekdayLabels[index])
-                                        .font(vocabSkin.typography.monoLabel)
-                                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                        .font(appSkin.typography.monoLabel)
+                                        .foregroundStyle(appSkin.palette.quaternaryText)
                                         .frame(height: cellSize + cellSpacing)
                                 } else {
                                     Color.clear
@@ -74,7 +74,7 @@ struct VocabActivityHeatmap: View {
                                 }
                             }
                         }
-                        .padding(.trailing, vocabSkin.spacing.microGap)
+                        .padding(.trailing, appSkin.spacing.microGap)
 
                         HStack(spacing: cellSpacing) {
                             ForEach(Array(grid.enumerated()), id: \.offset) { weekIndex, column in
@@ -94,10 +94,10 @@ struct VocabActivityHeatmap: View {
             }
 
             // Legend
-            HStack(spacing: vocabSkin.spacing.microGap) {
+            HStack(spacing: appSkin.spacing.microGap) {
                 Text("少".localized)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
                 ForEach(1..<5, id: \.self) { level in
                     let size: CGFloat = level >= 3 ? cellSize * 1.15 : cellSize
                     Circle()
@@ -105,8 +105,8 @@ struct VocabActivityHeatmap: View {
                         .frame(width: size, height: size)
                 }
                 Text("多".localized)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
         .task { grid = Self.buildGrid(activity: activity, weeks: weeks) }
@@ -140,10 +140,10 @@ struct VocabActivityHeatmap: View {
     private func levelColor(_ level: Int) -> Color {
         switch level {
         case 0: return Color.clear
-        case 1: return vocabSkin.palette.mutedFill
-        case 2: return vocabSkin.palette.accent.opacity(0.35)
-        case 3: return vocabSkin.palette.accent.opacity(0.6)
-        default: return vocabSkin.palette.accent
+        case 1: return appSkin.palette.mutedFill
+        case 2: return appSkin.palette.accent.opacity(0.35)
+        case 3: return appSkin.palette.accent.opacity(0.6)
+        default: return appSkin.palette.accent
         }
     }
 }

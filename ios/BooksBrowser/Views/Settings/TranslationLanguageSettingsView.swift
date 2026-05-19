@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct TranslationLanguageSettingsView: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.appTheme) private var appTheme
 
     @Binding var sourceLang: TranslationLanguage
@@ -26,13 +26,13 @@ struct TranslationLanguageSettingsView: View {
                                 self.saveError = nil
                             }
                         }
-                        .font(vocabSkin.typography.caption.weight(.semibold))
+                        .font(appSkin.typography.caption.weight(.semibold))
                         .foregroundStyle(appTheme.palette.accent)
                     }
                 }
 
                 // Source language section
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                     SettingsSectionHeader(title: "閱讀語言", icon: "book")
 
                     VStack(spacing: 0) {
@@ -52,7 +52,7 @@ struct TranslationLanguageSettingsView: View {
                 }
 
                 // Target language section
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                     SettingsSectionHeader(title: "翻譯語言", icon: "character.bubble")
 
                     VStack(spacing: 0) {
@@ -75,7 +75,7 @@ struct TranslationLanguageSettingsView: View {
             .padding(.top, AppShellMetrics.pageTopPadding)
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
-        .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("翻譯語言")
         .inlineNavigationBarTitle()
     }
@@ -109,16 +109,16 @@ struct TranslationLanguageSettingsView: View {
         return Button(action: action) {
             SettingsSelectableRow(isSelected: isSelected) {
                 Text(lang.flagEmoji)
-                    .font(vocabSkin.typography.body)
+                    .font(appSkin.typography.body)
 
                 Text(lang.nativeName)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 if isSaving {
                     ProgressView()
                         .controlSize(.small)
-                        .tint(vocabSkin.palette.accent)
+                        .tint(appSkin.palette.accent)
                 }
             }
         }

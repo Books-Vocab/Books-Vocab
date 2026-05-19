@@ -3,7 +3,7 @@ import SwiftUI
 struct SpeakerAccentBar: View {
     let speaker: String
     let hostNames: [String]
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     private var barColor: Color {
         guard let index = hostNames.firstIndex(of: speaker) else {
@@ -22,7 +22,7 @@ struct SpeakerAccentBar: View {
 struct SpeakerChip: View {
     let speaker: String
     let hostNames: [String]
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     private var chipColor: Color {
         guard let index = hostNames.firstIndex(of: speaker) else {

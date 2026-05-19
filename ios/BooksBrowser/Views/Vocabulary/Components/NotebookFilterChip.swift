@@ -10,7 +10,7 @@ import SwiftData
 struct NotebookFilterChip: View {
     @Binding var filter: NotebookFilter
     @Query(sort: \Notebook.sortOrder) private var notebooks: [Notebook]
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     @State private var showPicker = false
 
@@ -60,7 +60,7 @@ struct NotebookFilterPickerSheet: View {
     let notebooks: [Notebook]
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     var body: some View {
         NavigationStack {

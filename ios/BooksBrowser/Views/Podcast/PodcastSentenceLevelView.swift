@@ -28,7 +28,7 @@ struct PodcastSentenceLevelView: View {
     let onWordTap: (String, String) -> Void
     let onPhraseTap: (String, String) -> Void
     let onExplainTap: (String, String) -> Void
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
 
     @State private var isFollowing = true

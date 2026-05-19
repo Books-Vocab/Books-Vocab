@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VocabCard<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let padding: CGFloat
     @ViewBuilder let content: Content
 
@@ -9,14 +9,14 @@ struct VocabCard<Content: View>: View {
         padding: CGFloat? = nil,
         @ViewBuilder content: () -> Content
     ) {
-        self.padding = padding ?? VocabSkin.baseSpacing.cardPadding
+        self.padding = padding ?? AppSkin.baseSpacing.cardPadding
         self.content = content()
     }
 
     var body: some View {
         AppSectionCard(
             padding: padding,
-            style: .vocab(vocabSkin)
+            style: .vocab(appSkin)
         ) {
             content
         }
@@ -25,20 +25,20 @@ struct VocabCard<Content: View>: View {
 
 // MARK: - Card Background Modifier
 
-/// 為已有 padding 的內容套用 VocabSkin 標準卡片背景（fill + border stroke）
+/// 為已有 padding 的內容套用 AppSkin 標準卡片背景（fill + border stroke）
 /// 用於不需要 VocabCard 容器的情境（例如 calendarSection 自行管理 padding）
 private struct VocabCardBackgroundModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     func body(content: Content) -> some View {
         content
-            .padding(vocabSkin.spacing.cardPadding)
+            .padding(appSkin.spacing.cardPadding)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                    .fill(vocabSkin.palette.cardBackground)
+                RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                    .fill(appSkin.palette.cardBackground)
                     .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                            .stroke(vocabSkin.palette.cardBorder, lineWidth: 1)
+                        RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                            .stroke(appSkin.palette.cardBorder, lineWidth: 1)
                     )
             )
     }
@@ -51,16 +51,16 @@ extension View {
 }
 
 struct VocabToneChip: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
     let tone: Color
 
     var body: some View {
         Text(text.localized)
-            .font(vocabSkin.typography.captionStrong)
+            .font(appSkin.typography.captionStrong)
             .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+            .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+            .padding(.vertical, appSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.08))
             .clipShape(
                 Capsule(style: .continuous)
@@ -70,21 +70,21 @@ struct VocabToneChip: View {
 }
 
 struct VocabTierLabel: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let tier: String
     var prominent: Bool = false
 
     var body: some View {
-        Text(vocabSkin.tierLabel(for: tier))
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(vocabSkin.tierColor(for: tier).opacity(prominent ? 1 : 0.78))
-            .padding(.horizontal, prominent ? vocabSkin.spacing.prominentChipHorizontalPadding : 0)
-            .padding(.vertical, prominent ? vocabSkin.spacing.prominentChipVerticalPadding : 0)
+        Text(appSkin.tierLabel(for: tier))
+            .font(appSkin.typography.monoLabel)
+            .foregroundStyle(appSkin.tierColor(for: tier).opacity(prominent ? 1 : 0.78))
+            .padding(.horizontal, prominent ? appSkin.spacing.prominentChipHorizontalPadding : 0)
+            .padding(.vertical, prominent ? appSkin.spacing.prominentChipVerticalPadding : 0)
             .background(
                 Group {
                     if prominent {
                         Capsule(style: .continuous)
-                            .fill(vocabSkin.tierColor(for: tier).opacity(0.08))
+                            .fill(appSkin.tierColor(for: tier).opacity(0.08))
                     }
                 }
             )
@@ -93,7 +93,7 @@ struct VocabTierLabel: View {
 }
 
 struct VocabEmptyStateContent: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
     let description: String
@@ -118,13 +118,13 @@ struct VocabEmptyStateContent: View {
             guidanceText: guidanceText,
             action: action,
             symbolBounce: symbolBounce,
-            style: .vocab(vocabSkin)
+            style: .vocab(appSkin)
         )
     }
 }
 
 struct VocabEmptyStateCard: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
     let description: String
@@ -143,14 +143,14 @@ struct VocabEmptyStateCard: View {
             systemImage: systemImage,
             description: description,
             action: action,
-            cardStyle: .vocab(vocabSkin),
-            contentStyle: .vocab(vocabSkin)
+            cardStyle: .vocab(appSkin),
+            contentStyle: .vocab(appSkin)
         )
     }
 }
 
 struct VocabStateMessageCard<Accessory: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
     let description: String?
@@ -173,7 +173,7 @@ struct VocabStateMessageCard<Accessory: View>: View {
             title: title,
             systemImage: systemImage,
             description: description,
-            style: .vocab(vocabSkin)
+            style: .vocab(appSkin)
         ) {
             accessory
         }
@@ -189,25 +189,25 @@ struct VocabReviewProgress: Hashable {
 }
 
 struct VocabReviewProgressBar: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @ScaledMetric(relativeTo: .body) private var scaledBarHeight: CGFloat = 5
 
     let progress: VocabReviewProgress
 
     var body: some View {
         if let ratio = progress.ratio {
-            VStack(alignment: .trailing, spacing: vocabSkin.spacing.reviewProgressBarGap) {
+            VStack(alignment: .trailing, spacing: appSkin.spacing.reviewProgressBarGap) {
                 if let detailLabel = progress.detailLabel {
                     Text(detailLabel)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                 }
 
                 GeometryReader { proxy in
                     let clampedFraction = min(ratio, 1.0)
                     ZStack(alignment: .leading) {
                         Capsule(style: .continuous)
-                            .fill(vocabSkin.palette.progressBarBackground)
+                            .fill(appSkin.palette.progressBarBackground)
 
                         Capsule(style: .continuous)
                             .fill(ReviewGradient.color(for: ratio))
@@ -217,12 +217,12 @@ struct VocabReviewProgressBar: View {
                     .accessibilityLabel("複習進度".localized)
                     .accessibilityValue("\(Int(min(ratio, 1.0) * 100))%")
                 }
-                .frame(width: vocabSkin.metrics.progressBarWidth, height: scaledBarHeight)
+                .frame(width: appSkin.metrics.progressBarWidth, height: scaledBarHeight)
             }
         } else if let detailLabel = progress.detailLabel {
             Text(detailLabel)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.monoLabel)
+                .foregroundStyle(appSkin.palette.secondaryText)
         }
     }
 }
@@ -243,10 +243,10 @@ struct ReviewGradientBar: View {
 }
 
 private struct VocabCanvasBackgroundModifier: ViewModifier {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     func body(content: Content) -> some View {
-        content.background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+        content.background(appSkin.palette.pageBackground.ignoresSafeArea())
     }
 }
 

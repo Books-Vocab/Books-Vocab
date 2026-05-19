@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsAccountSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.AuthSection
     let subscription: SettingsPresenterState.SubscriptionSection?
     let manualLoginUserId: Binding<String>?
@@ -10,7 +10,7 @@ struct SettingsAccountSection: View {
     var onShowSubscriptionDetail: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "帳號".localized, icon: "person.crop.circle")
 
             VStack(spacing: 0) {
@@ -26,14 +26,14 @@ struct SettingsAccountSection: View {
             .overlay {
                 if state.isAuthenticating {
                     ZStack {
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.card, style: .continuous)
-                            .fill(vocabSkin.palette.pageBackground.opacity(0.85))
-                        VStack(spacing: vocabSkin.spacing.controlGap) {
+                        RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
+                            .fill(appSkin.palette.pageBackground.opacity(0.85))
+                        VStack(spacing: appSkin.spacing.controlGap) {
                             ProgressView()
                                 .controlSize(.regular)
                             Text("正在驗證帳號…".localized)
-                                .font(vocabSkin.typography.caption)
-                                .foregroundStyle(vocabSkin.palette.secondaryText)
+                                .font(appSkin.typography.caption)
+                                .foregroundStyle(appSkin.palette.secondaryText)
                         }
                     }
                     .transition(.contentSwap)
@@ -57,11 +57,11 @@ struct SettingsAccountSection: View {
 
                 VStack(spacing: AppSpacing.s1) {
                     Text("解鎖完整功能".localized)
-                        .font(vocabSkin.typography.displayTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.displayTitle)
+                        .foregroundStyle(appSkin.palette.primaryText)
                     Text("AI 翻譯・知識圖譜・雲端同步".localized)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                 }
             }
             .padding(.vertical, AppSpacing.s6)
@@ -107,8 +107,8 @@ struct SettingsAccountSection: View {
 
                     if let manualLoginHint = debug.manualLoginHint, !manualLoginHint.isEmpty {
                         Text(manualLoginHint)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                     }
                 }
@@ -120,7 +120,7 @@ struct SettingsAccountSection: View {
                         systemImage: "exclamationmark.triangle.fill",
                         description: error
                     )
-                    .padding(.top, vocabSkin.spacing.microGap)
+                    .padding(.top, appSkin.spacing.microGap)
                 }
             }
             .padding(.horizontal, AppSpacing.s4)
@@ -145,11 +145,11 @@ struct SettingsAccountSection: View {
             // Logout button
             Button(role: .destructive, action: actions.logout) {
                 Text("登出帳號".localized)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.destructive)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.destructive)
             }
             .buttonStyle(.appAction(.destructive))
-            .padding(vocabSkin.spacing.cardPadding)
+            .padding(appSkin.spacing.cardPadding)
             .accessibilityLabel("登出帳號".localized)
         }
     }
@@ -175,21 +175,21 @@ struct SettingsAccountSection: View {
                 }
             }
         ) {
-            HStack(spacing: vocabSkin.spacing.controlGap) {
+            HStack(spacing: appSkin.spacing.controlGap) {
                 Image(systemName: subscription.isActive
                       ? "checkmark.seal.fill"
                       : "sparkles.rectangle.stack")
-                    .font(vocabSkin.typography.iconMedium)
+                    .font(appSkin.typography.iconMedium)
                     .foregroundStyle(subscription.isActive
-                                     ? vocabSkin.palette.success
-                                     : vocabSkin.palette.accent)
+                                     ? appSkin.palette.success
+                                     : appSkin.palette.accent)
 
                 SettingsTitleSubtitleStack(
                     title: subscriptionRowTitle(for: subscription),
                     subtitle: subscriptionRowSubtitle(for: subscription),
-                    titleFont: vocabSkin.typography.body.weight(.medium),
-                    titleColor: vocabSkin.palette.primaryText,
-                    subtitleColor: vocabSkin.palette.secondaryText,
+                    titleFont: appSkin.typography.body.weight(.medium),
+                    titleColor: appSkin.palette.primaryText,
+                    subtitleColor: appSkin.palette.secondaryText,
                     subtitleLineLimit: 2
                 )
             }
@@ -199,14 +199,14 @@ struct SettingsAccountSection: View {
             } else {
                 SettingsStatusBadge(
                     text: "升級".localized,
-                    tone: vocabSkin.palette.accent
+                    tone: appSkin.palette.accent
                 )
             }
         }
     }
 
     private func subscriptionBadge(_ sub: SettingsPresenterState.SubscriptionSection) -> some View {
-        SettingsStatusBadge(text: sub.badgeText, tone: sub.badgeTone.color(in: vocabSkin))
+        SettingsStatusBadge(text: sub.badgeText, tone: sub.badgeTone.color(in: appSkin))
     }
 
     private func subscriptionRowTitle(for subscription: SettingsPresenterState.SubscriptionSection) -> String {
@@ -227,19 +227,19 @@ struct SettingsAccountSection: View {
 // MARK: - Pro Badge
 
 struct SettingsProBadge: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     var body: some View {
-        HStack(spacing: vocabSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.microGap) {
             Image(systemName: "sparkles")
-                .font(vocabSkin.typography.captionStrong)
+                .font(appSkin.typography.captionStrong)
             Text("PRO".localized)
-                .font(vocabSkin.typography.monoLabel)
+                .font(appSkin.typography.monoLabel)
         }
-        .foregroundStyle(vocabSkin.palette.accent)
-        .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-        .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
-        .background(vocabSkin.palette.accent.opacity(0.12))
+        .foregroundStyle(appSkin.palette.accent)
+        .padding(.horizontal, appSkin.spacing.badgeHorizontalPadding)
+        .padding(.vertical, appSkin.spacing.chipVerticalPadding)
+        .background(appSkin.palette.accent.opacity(0.12))
         .clipShape(Capsule())
         .accessibilityElement(children: .combine)
     }
@@ -253,7 +253,7 @@ private enum SettingsSocialKind {
 }
 
 private struct SettingsSocialBadge: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let kind: SettingsSocialKind
 
     var body: some View {
@@ -270,12 +270,12 @@ private struct SettingsSocialBadge: View {
                 switch kind {
                 case .google:
                     Text("G")
-                        .font(vocabSkin.typography.captionStrong)
+                        .font(appSkin.typography.captionStrong)
                         .foregroundStyle(AppBrandColors.googleRed)
                 case .apple:
                     Image(systemName: "apple.logo")
-                        .font(vocabSkin.typography.iconTiny)
-                        .foregroundStyle(vocabSkin.palette.pageBackground)
+                        .font(appSkin.typography.iconTiny)
+                        .foregroundStyle(appSkin.palette.pageBackground)
                 }
             }
         }
@@ -284,7 +284,7 @@ private struct SettingsSocialBadge: View {
     private var backgroundColor: Color {
         switch kind {
         case .google:
-            return vocabSkin.palette.cardBackground
+            return appSkin.palette.cardBackground
         case .apple:
             return AppBrandColors.appleBlack
         }
@@ -301,7 +301,7 @@ private struct SettingsSocialBadge: View {
 }
 
 private struct SettingsAuthButton<Leading: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     @ViewBuilder let leading: Leading
 
@@ -310,7 +310,7 @@ private struct SettingsAuthButton<Leading: View>: View {
             leading
 
             Text(title.localized)
-                .font(vocabSkin.typography.body.weight(.medium))
+                .font(appSkin.typography.body.weight(.medium))
 
             Spacer()
 
@@ -320,7 +320,7 @@ private struct SettingsAuthButton<Leading: View>: View {
 }
 
 struct SettingsAuthSummary: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.AuthSection
     var isProActive: Bool = false
 
@@ -328,11 +328,11 @@ struct SettingsAuthSummary: View {
         HStack(spacing: AppSettingsMetrics.accountRowSpacing) {
             avatar
 
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                HStack(spacing: vocabSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.microGap) {
                     Text(state.displayName)
-                        .font(vocabSkin.typography.sectionTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.sectionTitle)
+                        .foregroundStyle(appSkin.palette.primaryText)
                         .lineLimit(1)
 
                     ZStack {
@@ -347,8 +347,8 @@ struct SettingsAuthSummary: View {
 
                 if let email = state.email, !email.isEmpty {
                     Text(email)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                         .lineLimit(1)
                 }
             }
@@ -356,8 +356,8 @@ struct SettingsAuthSummary: View {
             Spacer()
 
             Image(systemName: "checkmark.circle.fill")
-                .font(vocabSkin.typography.symbolLarge)
-                .foregroundStyle(vocabSkin.palette.success)
+                .font(appSkin.typography.symbolLarge)
+                .foregroundStyle(appSkin.palette.success)
                 .symbolEffect(.bounce, value: state.isLoggedIn)
         }
     }
@@ -366,7 +366,7 @@ struct SettingsAuthSummary: View {
     private var avatar: some View {
         ZStack {
             Circle()
-                .fill(vocabSkin.palette.mutedFill)
+                .fill(appSkin.palette.mutedFill)
                 .frame(
                     width: AppSettingsMetrics.accountAvatarSize,
                     height: AppSettingsMetrics.accountAvatarSize
@@ -377,8 +377,8 @@ struct SettingsAuthSummary: View {
                     image.resizable().scaledToFill()
                 } placeholder: {
                     Image(systemName: "person.fill")
-                        .font(vocabSkin.typography.symbolLarge)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.symbolLarge)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                 }
                 .frame(
                     width: AppSettingsMetrics.accountAvatarSize,
@@ -387,12 +387,12 @@ struct SettingsAuthSummary: View {
                 .clipShape(Circle())
             } else if let initials = state.userInitials {
                 Text(initials)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.sectionTitle)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             } else {
                 Image(systemName: "person.fill")
-                    .font(vocabSkin.typography.symbolLarge)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.symbolLarge)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             }
         }
     }

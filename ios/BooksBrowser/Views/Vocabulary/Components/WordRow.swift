@@ -29,7 +29,7 @@ struct WordRow: View {
         let statusTone: Tone?
     }
 
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     let viewData: ViewData
 
@@ -59,62 +59,62 @@ struct WordRow: View {
     }
 
     var body: some View {
-        HStack(alignment: .center, spacing: vocabSkin.spacing.wordRowHorizontalGap) {
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.wordRowVerticalGap) {
-                HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.wordRowBaselineGap) {
+        HStack(alignment: .center, spacing: appSkin.spacing.wordRowHorizontalGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.wordRowVerticalGap) {
+                HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.wordRowBaselineGap) {
                     if let systemImage = viewData.leadingSystemImage {
                         Image(systemName: systemImage)
-                            .font(vocabSkin.typography.iconSmall)
+                            .font(appSkin.typography.iconSmall)
                             .foregroundStyle(resolveTone(viewData.leadingTone ?? .tertiary))
                     }
 
                     Text(viewData.word)
-                        .font(vocabSkin.typography.rowWord)
+                        .font(appSkin.typography.rowWord)
                         .strikethrough(viewData.isStrikethrough, color: resolveTone(viewData.wordTone))
                         .foregroundStyle(resolveTone(viewData.wordTone))
 
                     if let pos = viewData.partOfSpeech {
                         Text(pos)
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
                     }
 
                     if let trailingLabel = viewData.trailingLabel {
                         Spacer()
                         Text(trailingLabel.localized)
-                            .font(vocabSkin.typography.monoLabel)
+                            .font(appSkin.typography.monoLabel)
                             .foregroundStyle(resolveTone(viewData.trailingTone ?? .tertiary))
                     }
                 }
 
                 if let translation = viewData.translation, !translation.isEmpty {
                     Text(translation)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                         .lineLimit(2)
                 } else if !viewData.isStrikethrough {
                     Label("待翻譯".localized, systemImage: "clock")
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
 
                 if let book = viewData.bookTitle, !book.isEmpty {
-                    HStack(spacing: vocabSkin.spacing.metadataGap) {
+                    HStack(spacing: appSkin.spacing.metadataGap) {
                         Image(systemName: "book.closed")
-                            .font(vocabSkin.typography.iconTiny)
+                            .font(appSkin.typography.iconTiny)
                         Text(book)
-                            .font(vocabSkin.typography.caption)
+                            .font(appSkin.typography.caption)
                         if let chapter = viewData.chapterTitle {
                             Text("· \(chapter)")
-                                .font(vocabSkin.typography.caption)
+                                .font(appSkin.typography.caption)
                         }
                     }
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
                 }
 
                 if let statusText = viewData.statusText, !statusText.isEmpty {
                     Text(statusText.localized)
-                        .font(vocabSkin.typography.caption)
+                        .font(appSkin.typography.caption)
                         .foregroundStyle(resolveTone(viewData.statusTone ?? .tertiary))
                         .lineLimit(1)
                 }
@@ -126,13 +126,13 @@ struct WordRow: View {
                 if let reviewProgress = viewData.reviewProgress {
                     VocabReviewProgressBar(progress: reviewProgress)
                 } else if let tier = viewData.difficultyTier {
-                    VStack(alignment: .trailing, spacing: vocabSkin.spacing.wordRowVerticalGap) {
+                    VStack(alignment: .trailing, spacing: appSkin.spacing.wordRowVerticalGap) {
                         VocabTierLabel(tier: tier)
                     }
                 }
             }
         }
-        .padding(.vertical, vocabSkin.spacing.compactRowVerticalPadding)
+        .padding(.vertical, appSkin.spacing.compactRowVerticalPadding)
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityRowLabel)
         .accessibilityValue(accessibilityProgressDescription)
@@ -142,17 +142,17 @@ struct WordRow: View {
     private func resolveTone(_ tone: ViewData.Tone) -> Color {
         switch tone {
         case .primary:
-            return vocabSkin.palette.primaryText
+            return appSkin.palette.primaryText
         case .secondary:
-            return vocabSkin.palette.secondaryText
+            return appSkin.palette.secondaryText
         case .tertiary:
-            return vocabSkin.palette.tertiaryText
+            return appSkin.palette.tertiaryText
         case .quaternary:
-            return vocabSkin.palette.quaternaryText
+            return appSkin.palette.quaternaryText
         case .destructive:
-            return vocabSkin.palette.destructive
+            return appSkin.palette.destructive
         case .reviewDue:
-            return vocabSkin.palette.warning
+            return appSkin.palette.warning
         }
     }
 

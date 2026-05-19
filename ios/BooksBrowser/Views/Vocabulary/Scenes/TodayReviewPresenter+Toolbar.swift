@@ -13,13 +13,13 @@ extension TodayReviewPresenter {
     var topBar: some View {
         HStack(alignment: .center, spacing: 12) {
             Text(state.progressText)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
-                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
+                .font(appSkin.typography.monoLabel)
+                .foregroundStyle(appSkin.palette.tertiaryText)
+                .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+                .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(vocabSkin.palette.mutedFill)
+                        .fill(appSkin.palette.mutedFill)
                 )
 
             Button {
@@ -28,16 +28,16 @@ extension TodayReviewPresenter {
             } label: {
                 HStack(spacing: 6) {
                     Image(systemName: "shuffle")
-                        .font(vocabSkin.typography.iconTiny)
+                        .font(appSkin.typography.iconTiny)
                     Text("洗牌".localized)
-                        .font(vocabSkin.typography.captionStrong)
+                        .font(appSkin.typography.captionStrong)
                 }
-                .foregroundStyle(state.canShuffle ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
-                .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-                .padding(.vertical, vocabSkin.spacing.chipVerticalPaddingLoose)
+                .foregroundStyle(state.canShuffle ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
+                .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+                .padding(.vertical, appSkin.spacing.chipVerticalPaddingLoose)
                 .background(
                     Capsule(style: .continuous)
-                        .fill(vocabSkin.palette.mutedFill)
+                        .fill(appSkin.palette.mutedFill)
                 )
             }
             .buttonStyle(.plain)
@@ -47,7 +47,7 @@ extension TodayReviewPresenter {
 
             VocabChromeIconButton(
                 systemImage: state.isAutoPlaying ? "play.circle.fill" : "play.circle",
-                tone: state.isAutoPlaying ? vocabSkin.palette.accent : nil,
+                tone: state.isAutoPlaying ? appSkin.palette.accent : nil,
                 action: onToggleAutoPlay
             )
 
@@ -57,9 +57,9 @@ extension TodayReviewPresenter {
 
             VocabChromeIconButton(systemImage: "xmark", action: onClose)
         }
-        .padding(.horizontal, vocabSkin.metrics.reviewTopBarHorizontalInset)
-        .padding(.top, vocabSkin.metrics.reviewTopBarTopInset)
-        .padding(.bottom, vocabSkin.metrics.reviewTopBarBottomInset)
+        .padding(.horizontal, appSkin.metrics.reviewTopBarHorizontalInset)
+        .padding(.top, appSkin.metrics.reviewTopBarTopInset)
+        .padding(.bottom, appSkin.metrics.reviewTopBarBottomInset)
     }
 
     // MARK: - Bottom Toolbar
@@ -71,11 +71,11 @@ extension TodayReviewPresenter {
             #endif
             toolbarControls
         }
-        .padding(.horizontal, vocabSkin.metrics.reviewToolbarHorizontalInset)
-        .padding(.vertical, vocabSkin.metrics.reviewToolbarVerticalInset)
+        .padding(.horizontal, appSkin.metrics.reviewToolbarHorizontalInset)
+        .padding(.vertical, appSkin.metrics.reviewToolbarVerticalInset)
         .background(
             Rectangle()
-                .fill(vocabSkin.palette.pageBackground)
+                .fill(appSkin.palette.pageBackground)
                 .appElevation(.z2, direction: .up)
                 .ignoresSafeArea(edges: .bottom)
         )
@@ -93,7 +93,7 @@ extension TodayReviewPresenter {
                     feedbackButtons
                 }
             } else {
-                VStack(spacing: vocabSkin.spacing.inlineGap) {
+                VStack(spacing: appSkin.spacing.inlineGap) {
                     feedbackButtons.frame(maxWidth: .infinity)
                     navButtons
                 }
@@ -106,7 +106,7 @@ extension TodayReviewPresenter {
     #if os(macOS)
     var shortcutRail: some View {
         ScrollView(.horizontal, showsIndicators: false) {
-            HStack(spacing: vocabSkin.spacing.microGap) {
+            HStack(spacing: appSkin.spacing.microGap) {
                 ForEach(activeShortcutHints) { hint in
                     ShortcutHintChip(hint: hint)
                 }
@@ -117,8 +117,8 @@ extension TodayReviewPresenter {
         .overlay(alignment: .bottomLeading) {
             if showFirstRunHint && !isHelpPresented {
                 Text("可用方向鍵評分，按 Space 展開答案".localized)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
                     .padding(.top, 28)
                     .transition(.overlayFade)
             }
@@ -127,14 +127,14 @@ extension TodayReviewPresenter {
     }
 
     var shortcutHelpOverlay: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             HStack {
                 Text("快捷鍵".localized)
-                    .font(vocabSkin.typography.sectionTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.sectionTitle)
+                    .foregroundStyle(appSkin.palette.primaryText)
                 Spacer()
                 Button("完成".localized, action: onToggleHelp)
-                    .buttonStyle(.ghost(vocabSkin.palette.secondaryText))
+                    .buttonStyle(.ghost(appSkin.palette.secondaryText))
             }
 
             shortcutHelpSection(
@@ -144,13 +144,13 @@ extension TodayReviewPresenter {
             shortcutHelpSection(title: "導覽".localized, hints: navigationShortcutHints)
             shortcutHelpSection(title: "工作階段".localized, hints: sessionShortcutHints)
         }
-        .padding(vocabSkin.spacing.cardPadding)
+        .padding(appSkin.spacing.cardPadding)
         .background(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
-                .fill(vocabSkin.palette.overlayFill)
+            RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                .fill(appSkin.palette.overlayFill)
                 .overlay(
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
-                        .stroke(vocabSkin.palette.cardBorder.opacity(0.55), lineWidth: 1)
+                    RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                        .stroke(appSkin.palette.cardBorder.opacity(0.55), lineWidth: 1)
                 )
                 .appElevation(.z3)
         )
@@ -158,17 +158,17 @@ extension TodayReviewPresenter {
     }
 
     func shortcutHelpSection(title: String, hints: [ShortcutHint]) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.secondaryText)
 
             ForEach(hints) { hint in
-                HStack(alignment: .firstTextBaseline, spacing: vocabSkin.spacing.inlineGap) {
+                HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.inlineGap) {
                     ShortcutKeyCap(key: hint.key)
                     Text(hint.label)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.primaryText)
                     Spacer(minLength: 0)
                 }
             }
@@ -227,7 +227,7 @@ extension TodayReviewPresenter {
     // MARK: - Autoplay Controls
 
     var autoplayControls: some View {
-        HStack(spacing: vocabSkin.metrics.sectionHeaderGap * 2) {
+        HStack(spacing: appSkin.metrics.sectionHeaderGap * 2) {
             Button {
                 guard isCardInteractive else { return }
                 onPrevious()
@@ -243,7 +243,7 @@ extension TodayReviewPresenter {
                     .frame(width: AppMetrics.iconButtonSize, height: AppMetrics.iconButtonSize)
                     .background(
                         Circle()
-                            .fill(vocabSkin.palette.mutedFill)
+                            .fill(appSkin.palette.mutedFill)
                     )
             }
 
@@ -256,23 +256,23 @@ extension TodayReviewPresenter {
             }
             .disabled(!state.canGoNext)
         }
-        .foregroundStyle(vocabSkin.palette.primaryText)
+        .foregroundStyle(appSkin.palette.primaryText)
         .frame(maxWidth: .infinity)
     }
 
     var navButtons: some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
+        HStack(spacing: appSkin.spacing.inlineGap) {
             Button { guard isCardInteractive else { return }; onPrevious() } label: {
-                Image(systemName: "chevron.left").font(vocabSkin.typography.iconNavigation)
+                Image(systemName: "chevron.left").font(appSkin.typography.iconNavigation)
             }
             .disabled(!state.canGoPrevious)
 
             Button { guard isCardInteractive else { return }; onNext() } label: {
-                Image(systemName: "chevron.right").font(vocabSkin.typography.iconNavigation)
+                Image(systemName: "chevron.right").font(appSkin.typography.iconNavigation)
             }
             .disabled(!state.canGoNext)
         }
-        .foregroundStyle(vocabSkin.palette.secondaryText)
+        .foregroundStyle(appSkin.palette.secondaryText)
     }
 
     // MARK: - Feedback Buttons
@@ -281,23 +281,23 @@ extension TodayReviewPresenter {
         let spring = AppMotion.feedbackButtonSpring
         let buttonsDisabled = false
 
-        return HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
+        return HStack(spacing: appSkin.metrics.sectionHeaderGap) {
             Button { flingCard(direction: -1, callback: onForgot) } label: {
                 HStack(spacing: 4) {
                     Image(systemName: "xmark")
                     Text("忘記".localized)
                     if state.forgotCount > 0 {
-                        Text("·\(state.forgotCount)").font(vocabSkin.typography.monoLabel)
+                        Text("·\(state.forgotCount)").font(appSkin.typography.monoLabel)
                     }
                 }
-                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+                .frame(minWidth: appSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if forgotButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.destructive.opacity(forgotButtonGlow * 0.10))
+                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                        .fill(appSkin.palette.destructive.opacity(forgotButtonGlow * 0.10))
                         .allowsHitTesting(false)
                 }
             }
@@ -311,17 +311,17 @@ extension TodayReviewPresenter {
                     Image(systemName: "checkmark")
                     Text("記得".localized)
                     if state.rememberedCount > 0 {
-                        Text("·\(state.rememberedCount)").font(vocabSkin.typography.monoLabel)
+                        Text("·\(state.rememberedCount)").font(appSkin.typography.monoLabel)
                     }
                 }
-                .frame(minWidth: vocabSkin.metrics.reviewActionMinWidth)
+                .frame(minWidth: appSkin.metrics.reviewActionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
             .disabled(buttonsDisabled)
             .overlay(alignment: .center) {
                 if rememberedButtonGlow > 0 {
-                    RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
-                        .fill(vocabSkin.palette.success.opacity(rememberedButtonGlow * 0.10))
+                    RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
+                        .fill(appSkin.palette.success.opacity(rememberedButtonGlow * 0.10))
                         .allowsHitTesting(false)
                 }
             }
@@ -337,7 +337,7 @@ extension TodayReviewPresenter {
     var swipeIntensity: Double {
         if dismissPhase == .animatingOut { return frozenSwipeIntensity }
         guard swipeEnabled else { return 0 }
-        return max(-1, min(1, Double(swipeOffset / vocabSkin.metrics.reviewSwipeThreshold)))
+        return max(-1, min(1, Double(swipeOffset / appSkin.metrics.reviewSwipeThreshold)))
     }
 
     var forgotButtonScale: CGFloat   { 1.0 + CGFloat(max(-swipeIntensity, 0)) * 0.12 }
@@ -353,47 +353,47 @@ extension TodayReviewPresenter {
 
 #if os(macOS)
 private struct ShortcutHintChip: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let hint: TodayReviewPresenter.ShortcutHint
 
     var body: some View {
-        HStack(spacing: vocabSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.microGap) {
             ShortcutKeyCap(key: hint.key)
             Text(hint.label)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(hint.isPrimary ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(hint.isPrimary ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
-        .padding(.horizontal, vocabSkin.spacing.chipHorizontalPadding)
-        .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
+        .padding(.horizontal, appSkin.spacing.chipHorizontalPadding)
+        .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
         .background(
             Capsule()
-                .fill(vocabSkin.palette.mutedFill.opacity(hint.isPrimary ? 0.95 : 0.72))
+                .fill(appSkin.palette.mutedFill.opacity(hint.isPrimary ? 0.95 : 0.72))
         )
         .overlay(
             Capsule()
-                .stroke(vocabSkin.palette.cardBorder.opacity(0.4), lineWidth: 1)
+                .stroke(appSkin.palette.cardBorder.opacity(0.4), lineWidth: 1)
         )
     }
 }
 
 private struct ShortcutKeyCap: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let key: String
 
     var body: some View {
         Text(key)
             .font(AppFonts.monoNumbers(size: 12))
-            .foregroundStyle(vocabSkin.palette.primaryText)
+            .foregroundStyle(appSkin.palette.primaryText)
             .padding(.horizontal, 6)
             .padding(.vertical, 4)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                    .fill(vocabSkin.palette.cardBackground)
+                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                    .fill(appSkin.palette.cardBackground)
                     .overlay(
-                        RoundedRectangle(cornerRadius: vocabSkin.radii.tiny, style: .continuous)
-                            .stroke(vocabSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
+                        RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                            .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
                     )
             )
     }
