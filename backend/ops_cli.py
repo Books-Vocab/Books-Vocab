@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """ops_cli.py — container 內部署的查詢工具。
 
-直接讀 SQLite，不依賴 app 運行狀態。純 stdlib，無外部依賴。
+直接讀 SQLite，不依賴 app 運行狀態。計價走 kg.quota_service.token_cost_usd
+（provider-aware，單一真相）；容器內 PYTHONPATH=/app/src 使 import kg.* 可用。
 """
 
 import argparse
@@ -11,10 +12,7 @@ import sys
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-# 定價常數（與 quota_service.py 完全一致）
-INPUT_PER_M = 0.10
-OUTPUT_PER_M = 0.40
-EMBED_PER_M = 0.00025
+from kg.quota_service import token_cost_usd
 
 DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent / "data")))
 
@@ -47,11 +45,9 @@ def _cards_db(uid: str) -> Path:
     return DATA_DIR / "users" / uid / "cards.db"
 
 
-def _cost_usd(call_type: str, input_tokens: int, output_tokens: int) -> float:
-    """計算單筆呼叫的 USD 費用。"""
-    if call_type == "embed":
-        return input_tokens / 1_000_000 * EMBED_PER_M
-    return input_tokens / 1_000_000 * INPUT_PER_M + output_tokens / 1_000_000 * OUTPUT_PER_M
+def _table_has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """探測欄位是否存在。token_usage 的 provider 欄在 legacy DB 可能缺。"""
+    return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
 
 
 def _cutoff_iso(hours: int = 24) -> str:
@@ -100,14 +96,15 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
         return
 
     conn = _connect_ro(db_path)
+    provider_col = "provider" if _table_has_column(conn, "token_usage", "provider") else "NULL"
     rows = conn.execute(
-        "SELECT call_type, input_tokens, output_tokens, created_at "
+        f"SELECT call_type, input_tokens, output_tokens, created_at, {provider_col} AS provider "
         "FROM token_usage WHERE user_id = ? AND created_at >= ? ORDER BY created_at",
         (uid, cutoff),
     ).fetchall()
     conn.close()
 
-    total = sum(_cost_usd(r[0], r[1], r[2]) for r in rows)
+    total = sum(token_cost_usd(r[0], r[1], r[2], provider=r[4]) for r in rows)
 
     print(f"User: {uid}")
     print(f"24h used: ${total:.6f}  |  Pro limit: ${pro_limit:.2f}  |  Free limit: ${free_limit:.2f}")
@@ -119,9 +116,9 @@ def cmd_user_quota(args: argparse.Namespace) -> None:
 
     # 逐時彙整
     hourly: dict[str, float] = {}
-    for call_type, inp, out, ts in rows:
+    for call_type, inp, out, ts, provider in rows:
         hour = ts[:13]  # YYYY-MM-DDTHH
-        hourly[hour] = hourly.get(hour, 0.0) + _cost_usd(call_type, inp, out)
+        hourly[hour] = hourly.get(hour, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
 
     _print_table(
         ["Hour", "Cost (USD)"],
@@ -170,8 +167,9 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
         return
 
     conn = _connect_ro(db_path)
+    provider_col = "provider" if _table_has_column(conn, "token_usage", "provider") else "NULL"
     rows = conn.execute(
-        "SELECT user_id, call_type, input_tokens, output_tokens "
+        f"SELECT user_id, call_type, input_tokens, output_tokens, {provider_col} AS provider "
         "FROM token_usage WHERE created_at >= ?",
         (cutoff,),
     ).fetchall()
@@ -179,8 +177,8 @@ def cmd_quota_overview(args: argparse.Namespace) -> None:
 
     user_costs: dict[str, float] = {}
     user_calls: dict[str, int] = {}
-    for uid, call_type, inp, out in rows:
-        user_costs[uid] = user_costs.get(uid, 0.0) + _cost_usd(call_type, inp, out)
+    for uid, call_type, inp, out, provider in rows:
+        user_costs[uid] = user_costs.get(uid, 0.0) + token_cost_usd(call_type, inp, out, provider=provider)
         user_calls[uid] = user_calls.get(uid, 0) + 1
 
     if not user_costs:

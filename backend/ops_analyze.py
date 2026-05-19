@@ -24,18 +24,14 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
+from kg.quota_service import token_cost_usd
+
 DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent / "data")))
 
-# ── 定價常數 ──────────────────────────────────────────────
-INPUT_PER_M = 0.10
-OUTPUT_PER_M = 0.40
-EMBED_PER_M = 0.00025
 
-
-def _cost(call_type: str, inp: int, out: int) -> float:
-    if call_type == "embed":
-        return inp / 1_000_000 * EMBED_PER_M
-    return inp / 1_000_000 * INPUT_PER_M + out / 1_000_000 * OUTPUT_PER_M
+def _has_column(conn: sqlite3.Connection, table: str, column: str) -> bool:
+    """探測欄位是否存在。token_usage 的 provider 欄在 legacy DB 可能缺。"""
+    return any(r[1] == column for r in conn.execute(f"PRAGMA table_info({table})"))
 
 
 def _resolve_uid(partial: str) -> str:
@@ -77,14 +73,15 @@ def level_1(uid: str, udir: Path) -> None:
 
     if token_db.exists():
         conn = sqlite3.connect(str(token_db))
+        pcol = "provider" if _has_column(conn, "token_usage", "provider") else "NULL"
         rows = conn.execute(
-            "SELECT call_type, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
-            "FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type",
+            f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+            f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
             (uid, cutoff),
         ).fetchall()
         conn.close()
-        total = sum(_cost(ct, inp or 0, out or 0) for ct, _, inp, out in rows)
-        total_calls = sum(c for _, c, _, _ in rows)
+        total = sum(token_cost_usd(ct, inp or 0, out or 0, provider=prov) for ct, prov, _, inp, out in rows)
+        total_calls = sum(c for _, _, c, _, _ in rows)
         print(f"  24h 額度: ${total:.4f} / ${pro_limit:.2f} ({total / pro_limit * 100:.1f}%)")
         print(f"  24h 呼叫: {total_calls} 次")
     else:
@@ -124,36 +121,48 @@ def level_2(uid: str, udir: Path) -> None:
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     conn = sqlite3.connect(str(token_db))
-
+    pcol = "provider" if _has_column(conn, "token_usage", "provider") else "NULL"
     rows = conn.execute(
-        "SELECT call_type, COUNT(*), SUM(input_tokens), SUM(output_tokens), "
-        "AVG(input_tokens), AVG(output_tokens) "
-        "FROM token_usage WHERE user_id=? AND created_at>=? "
-        "GROUP BY call_type ORDER BY SUM(input_tokens) DESC",
+        f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+        f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
         (uid, cutoff),
     ).fetchall()
+    conn.close()
 
     if not rows:
         print("  (72h 內無紀錄)")
-        conn.close()
         return
 
-    total_cost = 0
-    judge_calls = 0
-    print(f"\n  {'type':<22} {'calls':>6} {'avg_in':>8} {'avg_out':>8} {'cost':>10}")
-    print(f"  {'-'*22} {'-'*6} {'-'*8} {'-'*8} {'-'*10}")
-    for ct, calls, inp, out, avg_i, avg_o in rows:
+    # GROUP BY (call_type, provider) 把同一 call_type 拆成多列；各 provider
+    # 切片用自身費率定價後折回 per-call_type bucket，顯示維持逐 call_type。
+    buckets: dict[str, dict] = {}
+    for ct, prov, calls, inp, out in rows:
         inp = inp or 0
         out = out or 0
-        cost = _cost(ct, inp, out)
-        total_cost += cost
+        b = buckets.setdefault(ct, {"calls": 0, "inp": 0, "out": 0, "cost": 0.0})
+        b["calls"] += calls
+        b["inp"] += inp
+        b["out"] += out
+        b["cost"] += token_cost_usd(ct, inp, out, provider=prov)
+
+    ordered = sorted(buckets.items(), key=lambda kv: kv[1]["inp"], reverse=True)
+
+    total_cost = 0.0
+    judge_calls = 0
+    judge_cost = 0.0
+    print(f"\n  {'type':<22} {'calls':>6} {'avg_in':>8} {'avg_out':>8} {'cost':>10}")
+    print(f"  {'-'*22} {'-'*6} {'-'*8} {'-'*8} {'-'*10}")
+    for ct, b in ordered:
+        total_cost += b["cost"]
+        avg_i = b["inp"] / b["calls"] if b["calls"] else 0
+        avg_o = b["out"] / b["calls"] if b["calls"] else 0
         if ct == "judge":
-            judge_calls = calls
-        print(f"  {ct:<22} {calls:>6} {avg_i:>8.0f} {avg_o:>8.0f} ${cost:>9.4f}")
+            judge_calls = b["calls"]
+            judge_cost = b["cost"]
+        print(f"  {ct:<22} {b['calls']:>6} {avg_i:>8.0f} {avg_o:>8.0f} ${b['cost']:>9.4f}")
     print(f"  {'TOTAL':<22} {'':>6} {'':>8} {'':>8} ${total_cost:>9.4f}")
 
     if judge_calls and total_cost:
-        judge_cost = sum(_cost(ct, inp or 0, out or 0) for ct, _, inp, out in rows if ct == "judge")
         print(f"\n  Judge 佔比: {judge_cost / total_cost * 100:.0f}%", end="")
         if judge_cost / total_cost > 0.5:
             print(" ⚠ (>50%，門檻可能太低)")
@@ -173,8 +182,6 @@ def level_2(uid: str, udir: Path) -> None:
             print(" ⚠ (<20%，門檻可能太高)")
         else:
             print(" ✓")
-
-    conn.close()
 
 
 # ── Level 3: 圖譜拓撲 ───────────────────────────────────────
