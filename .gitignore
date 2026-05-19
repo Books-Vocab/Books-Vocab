@@ -4,7 +4,8 @@ plan/
 dist/
 
 # lab/ — track source code only; ignore binaries/credentials/sandboxes
-lab/claude-code-gateway/
+lab/claude-code-gateway/.venv/
+lab/claude-code-gateway/.env
 lab/podcast/workspaces/
 lab/podcast/voice_samples/
 lab/podcast/__pycache__/
