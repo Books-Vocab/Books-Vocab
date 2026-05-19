@@ -77,7 +77,7 @@ struct TranslationPanel: View {
                         if value.translation.height > 100 {
                             onDismiss()
                         }
-                        withAnimation(AppMotion.panelSnapBack) {
+                        withAnimation(AppMotion.panelState) {
                             dragOffset = 0
                         }
                     }

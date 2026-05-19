@@ -28,7 +28,6 @@ enum AppMetrics {
 enum AppMotion {
     static let quickEaseOut = Animation.easeOut(duration: 0.15)
     static let controlEaseOut = Animation.easeOut(duration: 0.14)
-    static let chipSelectionEaseOut = Animation.easeOut(duration: 0.18)
     static let progressLinear = Animation.linear(duration: 0.1)
     static let standardSpring = Animation.spring(response: 0.3, dampingFraction: 0.75)
     static let emphasizedSpring = Animation.spring(response: 0.35, dampingFraction: 0.8)
@@ -58,16 +57,15 @@ enum AppMotion {
     static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
 
     // Semantic motion tokens for shared interaction patterns.
+    // 每個語意 token 對應唯一一條曲線，不設同值別名。
     static let panelState = standardSpring
-    static let panelSnapBack = standardSpring
     static let headerState = relaxedSpring
     static let phaseChange = emphasizedSpring
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
-    static let loadingState = quickEaseOut
-    static let chipSelect = chipSelectionEaseOut
+    static let chipSelect = Animation.easeOut(duration: 0.18)
 
-    // MARK: - Phase 5: Asymmetric Emphasized Easing
+    // MARK: - Asymmetric Emphasized Easing
     // Material Design 3 / Apple HIG 非對稱曲線：進場慢出（觀眾還在看）、退場快進（觀眾已轉移注意）。
     // 是「絲滑感」與「Things 3 / Linear 質感」的核心曲線。
 
@@ -79,12 +77,12 @@ enum AppMotion {
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
     static let indicatorTransition = Animation.easeOut(duration: 0.25)
 
-    // MARK: - Phase 5: Continuous / Loading Motion
+    // MARK: - Continuous / Loading Motion
 
     /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
     static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
 
-    // MARK: - Phase 5: Tap Feedback Triplet (scale + opacity + haptic)
+    // MARK: - Tap Feedback Triplet (scale + opacity + haptic)
     // 「按下去」物理感的三件套常量，供 PressableInteraction / ButtonStyle 內部使用
 
     enum TapFeedback {
@@ -127,7 +125,7 @@ extension AnyTransition {
     static let selectionReveal: AnyTransition = .scale.combined(with: .opacity)
 }
 
-// MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
+// MARK: - 8pt grid spacing / radius scale / elevation language
 // 所有元件一律使用此 namespace（AppSpacing / AppRadius / AppElevation）。
 
 /// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
