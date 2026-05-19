@@ -34,7 +34,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
 
     var body: some View {
         HStack(alignment: .center, spacing: skin.spacing.inlineGap) {
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text("今日複習".localized)
                     .font(skin.typography.sectionTitle)
                     .foregroundStyle(skin.palette.primaryText)
@@ -56,7 +56,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
 
     @ViewBuilder
     private var statsText: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppSpacing.s1) {
             if dueCount > 0 {
                 Text(L10n.format("%@ 張到期", "\(dueCount)"))
             }
@@ -125,7 +125,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
 }
 
 #Preview {
-    VStack(spacing: 16) {
+    VStack(spacing: AppSpacing.s4) {
         VocabReviewBanner(
             dueCount: 42,
             unlearnedCount: 12,

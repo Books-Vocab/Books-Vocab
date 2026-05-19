@@ -93,7 +93,7 @@ struct SettingsAccountSection: View {
                     SettingsDivider(leadingInset: 0)
                         .padding(.vertical, AppSpacing.s2)
 
-                    HStack(spacing: 8) {
+                    HStack(spacing: AppSpacing.s2) {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
                             .appSettingsTextInputStyle(alignment: .leading)
 

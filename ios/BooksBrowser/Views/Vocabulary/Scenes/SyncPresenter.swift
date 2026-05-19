@@ -99,7 +99,7 @@ struct SyncPresenter: View {
         VocabCard(padding: 0) {
             LazyVStack(spacing: 0) {
                 ForEach(Array(state.pendingRows.enumerated()), id: \.element.id) { index, item in
-                    HStack(alignment: .top, spacing: 12) {
+                    HStack(alignment: .top, spacing: AppSpacing.s3) {
                         WordRow(viewData: item.row)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .contentShape(Rectangle())
@@ -169,7 +169,7 @@ struct SyncPresenter: View {
         ) {
             statusSymbol(for: step.status)
         } trailing: {
-            HStack(spacing: 8) {
+            HStack(spacing: AppSpacing.s2) {
                 if step.status == .running && step.total > 0 {
                     Text("\(step.current)/\(step.total)")
                         .font(appSkin.typography.monoLabel)

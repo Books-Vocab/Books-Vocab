@@ -69,10 +69,10 @@ struct NotebookCard: View {
                     Text("使用中".localized)
                         .font(skin.typography.monoLabel)
                         .foregroundStyle(.white)
-                        .padding(.horizontal, 8)
-                        .padding(.vertical, 3)
+                        .padding(.horizontal, AppSpacing.s2)
+                        .padding(.vertical, AppSpacing.tinyGap)
                         .background(skin.palette.accent, in: Capsule(style: .continuous))
-                        .padding(8)
+                        .padding(AppSpacing.s2)
                 }
             }
 
@@ -220,7 +220,7 @@ struct NotebookAddCard: View {
 }
 
 #Preview {
-    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160))], spacing: 12) {
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: 160))], spacing: AppSpacing.s3) {
         NotebookCard(data: .init(
             name: "Self", color: "#4A90D9", coverPattern: "dots",
             coverImagePath: nil, cardCount: 42, dueCount: 5,

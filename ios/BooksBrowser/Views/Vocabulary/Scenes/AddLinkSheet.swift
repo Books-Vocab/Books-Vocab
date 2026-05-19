@@ -67,7 +67,7 @@ struct AddLinkSheet: View {
                         Button {
                             selectEntry(entry)
                         } label: {
-                            VStack(alignment: .leading, spacing: 2) {
+                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                                 Text(entry.word)
                                     .font(appSkin.typography.rowWord)
                                     .foregroundStyle(appSkin.palette.primaryText)

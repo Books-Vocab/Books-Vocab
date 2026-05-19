@@ -148,8 +148,8 @@ struct WordDetailPresenter: View {
                         Text(link.word)
                             .font(appSkin.typography.monoBody)
                             .foregroundStyle(appSkin.palette.quaternaryText)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 4)
+                            .padding(.horizontal, AppSpacing.s2)
+                            .padding(.vertical, AppSpacing.s1)
                             .background(
                                 Capsule()
                                     .fill(appSkin.palette.divider.opacity(0.5))
@@ -191,7 +191,7 @@ struct WordDetailPresenter: View {
     private var metadataFooter: some View {
         HStack(spacing: appSkin.metrics.cardBlockPadding) {
             ForEach(Array(state.metadataItems.enumerated()), id: \.offset) { _, item in
-                HStack(spacing: 4) {
+                HStack(spacing: AppSpacing.s1) {
                     Image(systemName: item.icon)
                         .font(appSkin.typography.iconTiny)
                     Text(item.text.localized)

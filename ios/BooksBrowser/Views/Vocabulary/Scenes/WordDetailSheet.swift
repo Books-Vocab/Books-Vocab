@@ -56,7 +56,7 @@ struct WordDetailSheet: View {
                             systemImage: "exclamationmark.triangle",
                             onDismiss: { self.linkError = nil }
                         )
-                        .padding(.top, 4)
+                        .padding(.top, AppSpacing.s1)
                     }
                 }
             } else {
