@@ -34,16 +34,26 @@ def cost_env(tmp_path: Path, monkeypatch: pytest.MonkeyPatch):
             tt._conn = None
 
 
-def _record(user_id: str, call_type: str, *, t_in: int, t_out: int, when: datetime) -> None:
+def _record(
+    user_id: str,
+    call_type: str,
+    *,
+    t_in: int,
+    t_out: int,
+    when: datetime,
+    provider: str | None = None,
+    model: str | None = None,
+) -> None:
     """Insert a token_usage row at a specific timestamp (bypasses record())."""
     import kg.token_tracker as tt
 
     with tt._lock:
         conn = tt._get_conn()
         conn.execute(
-            "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at)"
-            " VALUES (?,?,?,?,?)",
-            (user_id, call_type, t_in, t_out, when.isoformat()),
+            "INSERT INTO token_usage "
+            "(user_id, call_type, input_tokens, output_tokens, created_at, provider, model)"
+            " VALUES (?,?,?,?,?,?,?)",
+            (user_id, call_type, t_in, t_out, when.isoformat(), provider, model),
         )
         conn.commit()
 
@@ -150,6 +160,41 @@ def test_month_range_excludes_prior_month(cost_env):
     assert r["total_output_tokens"] == 50
     # Prior-month row must not leak through any view.
     assert r["by_call_type"]["judge"]["input_tokens"] == 100
+
+
+def test_by_model_uses_real_model_column(cost_env):
+    """When rows carry a real model, by_model keys on it — not on the
+    call_type-inferred default. Same call_type, two providers/models →
+    two distinct buckets."""
+    from kg.admin_cost_summary import get_user_cost_summary
+    from kg.quota_service import token_cost_usd
+
+    now = datetime.now(UTC)
+    _record("u1", "judge", t_in=1_000_000, t_out=0, when=now - timedelta(minutes=1),
+            provider="deepseek", model="deepseek-v4-flash")
+    _record("u1", "judge", t_in=1_000_000, t_out=0, when=now - timedelta(minutes=2),
+            provider="gemini", model="gemini-2.5-flash-lite")
+
+    r = get_user_cost_summary("u1", range_="month")
+    assert set(r["by_model"].keys()) == {"deepseek-v4-flash", "gemini-2.5-flash-lite"}
+    assert r["by_model"]["deepseek-v4-flash"]["calls"] == 1
+    assert r["by_model"]["gemini-2.5-flash-lite"]["calls"] == 1
+    # Each model's cost priced at its own provider's rate.
+    assert r["by_model"]["deepseek-v4-flash"]["cost_usd"] == round(
+        token_cost_usd("judge", 1_000_000, 0, provider="deepseek"), 6)
+    assert r["by_model"]["gemini-2.5-flash-lite"]["cost_usd"] == round(
+        token_cost_usd("judge", 1_000_000, 0, provider="gemini"), 6)
+
+
+def test_by_model_null_model_falls_back_to_inferred(cost_env):
+    """Legacy NULL-model rows still bucket under the call_type-inferred
+    model name, so historical data keeps rendering."""
+    from kg.admin_cost_summary import get_user_cost_summary
+
+    now = datetime.now(UTC)
+    _record("u1", "judge", t_in=1000, t_out=200, when=now - timedelta(minutes=1))
+    r = get_user_cost_summary("u1", range_="month")
+    assert set(r["by_model"].keys()) == {"gemini-2.5-flash-lite"}
 
 
 def test_invalid_range_raises(cost_env):
