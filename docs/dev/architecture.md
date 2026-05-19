@@ -3,7 +3,7 @@ tier: structural
 scope:
   - ios/BooksBrowser
   - backend/src/kg
-verified_against: 6b62854
+verified_against: 1d24dc1
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -109,9 +109,9 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 
 ---
 
-## 莫蘭迪 UI 視覺系統
+## Notion-inspired UI 視覺系統
 
-系統透過 CSS 與 JS 注入到 Readium，實行極簡的莫蘭迪色調 (Morandi Aesthetic)：
+系統透過 CSS 與 JS 注入到 Readium，實行極簡的 Notion-inspired 視覺：
 
 - **字體 (Typography)**: 英文 `Athelas` + `Biotif`，中文 `STSongti-SC`。
 - **透明度控制**: `ReaderSettings` 面板調節 `--vocab-opacity` CSS Variable。
