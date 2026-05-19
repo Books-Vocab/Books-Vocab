@@ -3,20 +3,20 @@ import SwiftUI
 // MARK: - Step Duration View
 
 struct StepDurationView: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let step: PipelineStep
 
     var body: some View {
         if let start = step.startTime {
             if let end = step.endTime {
                 Text(formatDuration(end.timeIntervalSince(start)))
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             } else {
                 TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
                     Text(formatDuration(timeline.date.timeIntervalSince(start)))
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(step.status == .retry ? vocabSkin.palette.retry : vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(step.status == .retry ? appSkin.palette.retry : appSkin.palette.secondaryText)
                 }
             }
         }

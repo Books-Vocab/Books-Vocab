@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct StatsPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.colorScheme) private var colorScheme
@@ -51,12 +51,12 @@ struct StatsPresenter: View {
         VocabSceneShell(phase: currentPhase) {
             if let summary {
                 ScrollView {
-                    VStack(spacing: vocabSkin.spacing.sectionGap) {
+                    VStack(spacing: appSkin.spacing.sectionGap) {
                         #if os(macOS)
-                        HStack(alignment: .top, spacing: vocabSkin.spacing.sectionGap) {
+                        HStack(alignment: .top, spacing: appSkin.spacing.sectionGap) {
                             graphEntrySection
                                 .frame(maxWidth: .infinity)
-                            VStack(spacing: vocabSkin.spacing.sectionGap) {
+                            VStack(spacing: appSkin.spacing.sectionGap) {
                                 streakSection(summary)
                                 heatmapSection(summary)
                             }
@@ -70,9 +70,9 @@ struct StatsPresenter: View {
                         forecastSection(summary)
                         totalsFooter(summary)
                     }
-                    .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                    .padding(.top, vocabSkin.metrics.pageTopInset)
-                    .padding(.bottom, vocabSkin.metrics.pageBottomInset)
+                    .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                    .padding(.top, appSkin.metrics.pageTopInset)
+                    .padding(.bottom, appSkin.metrics.pageBottomInset)
                 }
                 .vocabCanvasBackground()
                 .opacity(contentReady ? 1 : 0)
@@ -228,7 +228,7 @@ struct StatsPresenter: View {
             VocabCard(padding: 0) {
                 VStack(spacing: 0) {
                     graphEntryHeader(nodeCount: 0, showsChevron: false)
-                        .padding(vocabSkin.metrics.cardBlockPadding)
+                        .padding(appSkin.metrics.cardBlockPadding)
                     graphErrorBody
                         #if os(macOS)
                         .frame(minHeight: 280)
@@ -244,7 +244,7 @@ struct StatsPresenter: View {
                 VocabCard(padding: 0) {
                     VStack(spacing: 0) {
                         graphEntryHeader(nodeCount: nodes.count, showsChevron: true)
-                            .padding(vocabSkin.metrics.cardBlockPadding)
+                            .padding(appSkin.metrics.cardBlockPadding)
 
                         graphEntryBody(nodes: nodes, edges: edges)
                             #if os(macOS)
@@ -255,7 +255,7 @@ struct StatsPresenter: View {
 
                         if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
                             healthBar(ratio: avgRatio)
-                                .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
+                                .padding(.horizontal, appSkin.metrics.cardBlockPadding)
                                 .padding(.bottom, 8)
                         }
                     }
@@ -266,58 +266,58 @@ struct StatsPresenter: View {
     }
 
     private var graphErrorBody: some View {
-        VStack(spacing: vocabSkin.spacing.inlineGap) {
+        VStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "exclamationmark.triangle")
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(vocabSkin.palette.warning)
+                .font(appSkin.typography.iconMedium)
+                .foregroundStyle(appSkin.palette.warning)
             Text("關聯圖載入失敗".localized)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.primaryText)
             Button {
                 retryGraphLoad()
             } label: {
-                HStack(spacing: vocabSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.microGap) {
                     Image(systemName: "arrow.clockwise")
-                        .font(vocabSkin.typography.iconSmall)
+                        .font(appSkin.typography.iconSmall)
                     Text("重試".localized)
-                        .font(vocabSkin.typography.captionStrong)
+                        .font(appSkin.typography.captionStrong)
                 }
-                .padding(.horizontal, vocabSkin.spacing.inlineGap)
-                .padding(.vertical, vocabSkin.spacing.microGap)
-                .background(vocabSkin.palette.warningBg, in: Capsule())
-                .foregroundStyle(vocabSkin.palette.warning)
+                .padding(.horizontal, appSkin.spacing.inlineGap)
+                .padding(.vertical, appSkin.spacing.microGap)
+                .background(appSkin.palette.warningBg, in: Capsule())
+                .foregroundStyle(appSkin.palette.warning)
             }
             .buttonStyle(.plain)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(vocabSkin.metrics.cardBlockPadding)
+        .padding(appSkin.metrics.cardBlockPadding)
     }
 
     private func graphEntryHeader(nodeCount: Int, showsChevron: Bool) -> some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
+        HStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
-                .font(vocabSkin.typography.iconMedium)
-                .foregroundStyle(vocabSkin.palette.accent)
+                .font(appSkin.typography.iconMedium)
+                .foregroundStyle(appSkin.palette.accent)
             Text("關聯圖".localized)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.primaryText)
             if graphLoadError && graphLinks != nil {
                 // Stale dot — we have cached links but the latest pull failed.
                 Circle()
-                    .fill(vocabSkin.palette.warning)
+                    .fill(appSkin.palette.warning)
                     .frame(width: 6, height: 6)
                     .accessibilityLabel(Text("資料可能不是最新".localized))
             }
             Spacer()
             if let graphLinks, !graphLinks.isEmpty {
                 Text("\(nodeCount) 詞 · \(graphLinks.count) 連結")
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
             if showsChevron {
                 Image(systemName: "chevron.right")
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
     }
@@ -335,7 +335,7 @@ struct StatsPresenter: View {
                     holder: graphHolder,
                     nodes: nodes,
                     edges: edges,
-                    theme: KnowledgeGraphPresentation.theme(for: vocabSkin),
+                    theme: KnowledgeGraphPresentation.theme(for: appSkin),
                     colorScheme: colorScheme
                 )
             }
@@ -384,7 +384,7 @@ struct StatsPresenter: View {
                         .frame(height: 2)
 
                     Triangle()
-                        .fill(vocabSkin.palette.primaryText)
+                        .fill(appSkin.palette.primaryText)
                         .frame(width: 6, height: 5)
                         .offset(
                             x: geo.size.width * position - 3,
@@ -399,7 +399,7 @@ struct StatsPresenter: View {
     // MARK: - Sections
 
     private func streakSection(_ summary: StatsPresentation.Summary) -> some View {
-        HStack(spacing: vocabSkin.spacing.sectionGap) {
+        HStack(spacing: appSkin.spacing.sectionGap) {
             statCard(
                 title: "連續學習".localized,
                 value: "\(summary.currentStreak)",
@@ -422,23 +422,23 @@ struct StatsPresenter: View {
         systemImage: String
     ) -> some View {
         VocabCard {
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
-                HStack(spacing: vocabSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.microGap) {
                     Image(systemName: systemImage)
-                        .font(vocabSkin.typography.iconSmall)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.iconSmall)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                     Text(title)
-                        .font(vocabSkin.typography.captionStrong)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.captionStrong)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
                 HStack(alignment: .firstTextBaseline, spacing: 2) {
                     Text(value)
-                        .font(vocabSkin.typography.numericHero)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.numericHero)
+                        .foregroundStyle(appSkin.palette.primaryText)
                         .contentTransition(.numericText())
                     Text(unit)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
             }
             .frame(maxWidth: .infinity, alignment: .leading)
@@ -446,14 +446,14 @@ struct StatsPresenter: View {
     }
 
     private func heatmapSection(_ summary: StatsPresentation.Summary) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Button { showCalendar = true } label: {
-                HStack(spacing: vocabSkin.spacing.microGap) {
+                HStack(spacing: appSkin.spacing.microGap) {
                     sectionHeader(title: "學習日曆".localized, systemImage: "calendar")
                     Spacer()
                     Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconSmall)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.iconSmall)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
                 }
             }
             .buttonStyle(.plain)
@@ -472,7 +472,7 @@ struct StatsPresenter: View {
     }
 
     private func forecastSection(_ summary: StatsPresentation.Summary) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             HStack {
                 sectionHeader(title: "複習預測".localized, systemImage: "chart.bar")
                 Spacer()
@@ -495,19 +495,19 @@ struct StatsPresenter: View {
 
     private func totalsFooter(_ summary: StatsPresentation.Summary) -> some View {
         Text("\(summary.totalCards) 張卡片 · \(summary.dueToday) 張到期 · 今天已複習 \(summary.reviewedToday) 張")
-            .font(vocabSkin.typography.monoLabel)
-            .foregroundStyle(vocabSkin.palette.quaternaryText)
+            .font(appSkin.typography.monoLabel)
+            .foregroundStyle(appSkin.palette.quaternaryText)
             .frame(maxWidth: .infinity, alignment: .center)
     }
 
     private func sectionHeader(title: String, systemImage: String) -> some View {
-        HStack(spacing: vocabSkin.spacing.microGap) {
+        HStack(spacing: appSkin.spacing.microGap) {
             Image(systemName: systemImage)
-                .font(vocabSkin.typography.iconSmall)
+                .font(appSkin.typography.iconSmall)
             Text(title)
-                .font(vocabSkin.typography.captionStrong)
+                .font(appSkin.typography.captionStrong)
         }
-        .foregroundStyle(vocabSkin.palette.tertiaryText)
+        .foregroundStyle(appSkin.palette.tertiaryText)
     }
 }
 

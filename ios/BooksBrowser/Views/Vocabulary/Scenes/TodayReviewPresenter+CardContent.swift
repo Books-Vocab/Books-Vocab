@@ -6,9 +6,9 @@ extension TodayReviewPresenter {
 
     // MARK: Dimensions
 
-    var reviewCardPadding: CGFloat { vocabSkin.metrics.reviewFoldPadding }
-    var frontCardHeight: CGFloat { vocabSkin.metrics.reviewFrontMinHeight }
-    var answerCardHeight: CGFloat { vocabSkin.metrics.reviewAnswerMinHeight }
+    var reviewCardPadding: CGFloat { appSkin.metrics.reviewFoldPadding }
+    var frontCardHeight: CGFloat { appSkin.metrics.reviewFrontMinHeight }
+    var answerCardHeight: CGFloat { appSkin.metrics.reviewAnswerMinHeight }
 
     // MARK: Front Surface
 
@@ -30,27 +30,27 @@ extension TodayReviewPresenter {
     }
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.reviewFoldSectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 switch card.reviewMode {
                 case .recognition:
                     Text(card.word)
                         .font(reviewFrontWordFont(for: card.word))
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .foregroundStyle(appSkin.palette.primaryText)
                         .lineLimit(3)
                         .minimumScaleFactor(0.7)
                         .fixedSize(horizontal: false, vertical: true)
                 case .production:
                     Text(card.translation)
-                        .font(vocabSkin.typography.body.weight(.semibold))
-                        .foregroundStyle(vocabSkin.palette.primaryTextMuted)
+                        .font(appSkin.typography.body.weight(.semibold))
+                        .foregroundStyle(appSkin.palette.primaryTextMuted)
                         .minimumScaleFactor(0.75)
                 }
 
                 if let pos = card.partOfSpeech {
                     Text(pos)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
             }
 
@@ -58,25 +58,25 @@ extension TodayReviewPresenter {
                 CardRichTextRenderer.text(
                     example,
                     style: CardRichTextStyle(
-                        font: vocabSkin.typography.example,
-                        textColor: vocabSkin.palette.secondaryText,
-                        highlightColor: vocabSkin.palette.highlightMark,
+                        font: appSkin.typography.example,
+                        textColor: appSkin.palette.secondaryText,
+                        highlightColor: appSkin.palette.highlightMark,
                         italic: true,
-                        underlineHighlights: vocabSkin.highlight.showUnderline,
-                        useBackgroundMark: vocabSkin.highlight.showBackground,
-                        highlightWeight: vocabSkin.highlight.fontWeight,
-                        backgroundOpacity: vocabSkin.highlight.backgroundOpacity,
-                        underlineOpacity: vocabSkin.highlight.underlineOpacity
+                        underlineHighlights: appSkin.highlight.showUnderline,
+                        useBackgroundMark: appSkin.highlight.showBackground,
+                        highlightWeight: appSkin.highlight.fontWeight,
+                        backgroundOpacity: appSkin.highlight.backgroundOpacity,
+                        underlineOpacity: appSkin.highlight.underlineOpacity
                     ),
                     mode: .cloze,
-                    truncateAroundMarkedWordRadius: vocabSkin.metrics.exampleTruncateRadius,
+                    truncateAroundMarkedWordRadius: appSkin.metrics.exampleTruncateRadius,
                     targetWord: card.word
                 )
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
             }
         }
         .padding(reviewCardPadding)
-        .padding(.top, vocabSkin.metrics.reviewFoldHintBottomInset)
+        .padding(.top, appSkin.metrics.reviewFoldHintBottomInset)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: frontCardHeight, alignment: .topLeading)
     }
@@ -92,7 +92,7 @@ extension TodayReviewPresenter {
         }
         .overlay(alignment: .top) {
             ReviewFoldChevronPill(action: onCollapseReveal)
-                .offset(y: -vocabSkin.metrics.reviewChevronButtonSize / 2)
+                .offset(y: -appSkin.metrics.reviewChevronButtonSize / 2)
         }
     }
 
@@ -103,7 +103,7 @@ extension TodayReviewPresenter {
             containerHeight: availableHeight,
             currentCard: currentCard
         )
-        return VStack(alignment: .leading, spacing: vocabSkin.metrics.reviewFoldSectionSpacing) {
+        return VStack(alignment: .leading, spacing: appSkin.metrics.reviewFoldSectionSpacing) {
             HStack(spacing: 6) {
                 Spacer()
                 if let tier = card.difficultyTier {
@@ -119,7 +119,7 @@ extension TodayReviewPresenter {
                 }
             }
             .font(reviewAnswerWordFont(for: card.reviewMode == .production ? card.word : card.translation))
-            .foregroundStyle(vocabSkin.palette.primaryText)
+            .foregroundStyle(appSkin.palette.primaryText)
             .lineLimit(3)
             .minimumScaleFactor(0.65)
             .fixedSize(horizontal: false, vertical: true)
@@ -152,38 +152,38 @@ extension TodayReviewPresenter {
     // MARK: Link Strip
 
     func reviewLinkStrip(_ groups: [TodayReviewPresenterState.LinkGroup]) -> some View {
-        HStack(alignment: .top, spacing: vocabSkin.spacing.inlineGap) {
+        HStack(alignment: .top, spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "paperclip")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.iconTiny)
+                .foregroundStyle(appSkin.palette.tertiaryText)
                 .padding(.top, TodayReviewMetrics.answerHintTopPadding)
 
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
                 ForEach(groups) { group in
                     HStack(spacing: 4) {
                         Text(group.label.localized + "：")
-                            .font(vocabSkin.typography.caption)
-                            .foregroundStyle(vocabSkin.palette.tertiaryText)
+                            .font(appSkin.typography.caption)
+                            .foregroundStyle(appSkin.palette.tertiaryText)
 
                         ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
                             Button { onLinkTap(item) } label: {
                                 Text(item.word)
-                                    .font(vocabSkin.typography.monoEmphasis)
-                                    .foregroundStyle(vocabSkin.palette.primaryText)
+                                    .font(appSkin.typography.monoEmphasis)
+                                    .foregroundStyle(appSkin.palette.primaryText)
                             }
                             .buttonStyle(.plain)
 
                             if index < group.items.count - 1 {
                                 Text("|")
-                                    .font(vocabSkin.typography.caption)
-                                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                    .font(appSkin.typography.caption)
+                                    .foregroundStyle(appSkin.palette.quaternaryText)
                             }
                         }
 
                         if group.overflowCount > 0 {
                             Text("+\(group.overflowCount)")
-                                .font(vocabSkin.typography.captionStrong)
-                                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                                .font(appSkin.typography.captionStrong)
+                                .foregroundStyle(appSkin.palette.quaternaryText)
                         }
                     }
                 }
@@ -193,8 +193,8 @@ extension TodayReviewPresenter {
 
             Button(action: onAddLink) {
                 Image(systemName: "plus")
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             }
             .buttonStyle(.plain)
         }
@@ -203,13 +203,13 @@ extension TodayReviewPresenter {
 
     private var addLinkPrompt: some View {
         Button(action: onAddLink) {
-            HStack(spacing: vocabSkin.spacing.inlineGap) {
+            HStack(spacing: appSkin.spacing.inlineGap) {
                 Image(systemName: "plus")
-                    .font(vocabSkin.typography.iconTiny)
+                    .font(appSkin.typography.iconTiny)
                 Text("新增連結".localized)
-                    .font(vocabSkin.typography.caption)
+                    .font(appSkin.typography.caption)
             }
-            .foregroundStyle(vocabSkin.palette.tertiaryText)
+            .foregroundStyle(appSkin.palette.tertiaryText)
         }
         .buttonStyle(.plain)
     }
@@ -230,14 +230,14 @@ extension TodayReviewPresenter {
     ) -> Int {
         // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
         let answerBudget = containerHeight
-            - vocabSkin.metrics.reviewCardTopInset
-            - vocabSkin.metrics.reviewCardBottomInset
+            - appSkin.metrics.reviewCardTopInset
+            - appSkin.metrics.reviewCardBottomInset
             - frontCardHeight
 
         // ② combinedAnswerContent 固定元素
-        let gap = vocabSkin.metrics.reviewFoldSectionSpacing
+        let gap = appSkin.metrics.reviewFoldSectionSpacing
         var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
-            + vocabSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
+            + appSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
             + AppMetrics.dividerThin + gap                                      // CardSectionDivider (always shown)
@@ -252,7 +252,7 @@ extension TodayReviewPresenter {
         // ⑤ 高度 → 行數 → 詞數 → radius
         let lineHeight: CGFloat = 22
         let textWidth = containerWidth
-            - vocabSkin.metrics.reviewCardHorizontalInset * 2
+            - appSkin.metrics.reviewCardHorizontalInset * 2
             - reviewCardPadding * 2
         let wordsPerLine = max(Int(textWidth / 62), 4)
         let lines = Int(exampleBudget / lineHeight)
@@ -273,9 +273,9 @@ extension TodayReviewPresenter {
 
     func reviewAnswerWordFont(for text: String) -> Font {
         let count = text.count
-        if count > 20 { return vocabSkin.typography.translationTitle }
+        if count > 20 { return appSkin.typography.translationTitle }
         if count > 12 { return .system(size: TodayReviewMetrics.counterFontSizeLarge, weight: .semibold, design: .monospaced) }
-        return vocabSkin.typography.reviewWord
+        return appSkin.typography.reviewWord
     }
 
 }

@@ -15,7 +15,7 @@ struct PendingVocabPresenterState {
 }
 
 struct PendingVocabPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let state: PendingVocabPresenterState
     let onRowTapped: (UUID) -> Void
@@ -38,7 +38,7 @@ struct PendingVocabPresenter: View {
             .transition(.listItemFade)
         } else {
             ScrollView {
-                VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
+                VStack(spacing: appSkin.metrics.heroSectionSpacing) {
                     VocabMetricHeroCard(
                         title: "待收錄".localized,
                         description: "同步前的本地收件匣，會保留新增與待刪除動作。".localized,
@@ -59,22 +59,22 @@ struct PendingVocabPresenter: View {
                                         tone: resolveTone(item.actionTone),
                                         action: { onActionTapped(item.id) }
                                     )
-                                    .padding(.top, vocabSkin.metrics.accessoryTopOffset)
+                                    .padding(.top, appSkin.metrics.accessoryTopOffset)
                                 }
-                                .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                                .padding(.horizontal, appSkin.spacing.cardPadding)
                                 .transition(.listItemFade)
 
                                 if index < state.rows.count - 1 {
                                     Divider()
-                                        .padding(.leading, vocabSkin.spacing.cardPadding)
+                                        .padding(.leading, appSkin.spacing.cardPadding)
                                 }
                             }
                         }
                         .animateSpring(state.rows.count)
                     }
                 }
-                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.top, vocabSkin.metrics.pageTopInset)
+                .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                .padding(.top, appSkin.metrics.pageTopInset)
                 .padding(.bottom, AppShellMetrics.pageBottomPadding / 2)
             }
         }
@@ -83,17 +83,17 @@ struct PendingVocabPresenter: View {
     private func resolveTone(_ tone: WordRow.ViewData.Tone) -> Color {
         switch tone {
         case .primary:
-            return vocabSkin.palette.primaryText
+            return appSkin.palette.primaryText
         case .secondary:
-            return vocabSkin.palette.secondaryText
+            return appSkin.palette.secondaryText
         case .tertiary:
-            return vocabSkin.palette.tertiaryText
+            return appSkin.palette.tertiaryText
         case .quaternary:
-            return vocabSkin.palette.quaternaryText
+            return appSkin.palette.quaternaryText
         case .destructive:
-            return vocabSkin.palette.destructive
+            return appSkin.palette.destructive
         case .reviewDue:
-            return vocabSkin.palette.warning
+            return appSkin.palette.warning
         }
     }
 }

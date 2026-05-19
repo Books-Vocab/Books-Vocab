@@ -11,7 +11,7 @@ struct OverviewTab: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     @State private var filter = NotebookFilter.load()
     @State private var showLoginSheet = false

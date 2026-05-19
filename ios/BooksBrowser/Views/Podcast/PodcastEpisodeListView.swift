@@ -35,7 +35,7 @@ private enum EpisodeSort: String, CaseIterable, Identifiable {
 
 struct PodcastEpisodeListView: View {
     let seriesId: String
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
 

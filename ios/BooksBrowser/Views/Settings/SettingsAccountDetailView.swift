@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsAccountDetailView: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let authState: SettingsPresenterState.AuthSection
     let dangerState: SettingsPresenterState.DangerSection?
     let actions: SettingsPresenterActions
@@ -43,13 +43,13 @@ struct SettingsAccountDetailView: View {
             .padding(.top, AppShellMetrics.pageTopPadding)
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
-        .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("帳號詳情".localized)
         .inlineNavigationBarTitle()
     }
 
     private var dataManagementCard: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "資料管理".localized, icon: "tray.and.arrow.up")
 
             VStack(spacing: 0) {
@@ -66,15 +66,15 @@ struct SettingsAccountDetailView: View {
     }
 
     private var accountInfoCard: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "帳號資訊".localized, icon: "person.crop.circle")
 
             VStack(spacing: 0) {
                 ForEach(Array(accountInfoItems.enumerated()), id: \.element.id) { index, item in
-                    AppKeyValueRow(icon: item.icon, label: item.label, style: .settings(vocabSkin)) {
+                    AppKeyValueRow(icon: item.icon, label: item.label, style: .settings(appSkin)) {
                         SettingsStatusValue(
                             text: item.value,
-                            color: vocabSkin.palette.secondaryText
+                            color: appSkin.palette.secondaryText
                         )
                     }
 
@@ -88,7 +88,7 @@ struct SettingsAccountDetailView: View {
     }
 
     private func dangerCard(_ danger: SettingsPresenterState.DangerSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "危險操作".localized, icon: "exclamationmark.triangle")
 
             VocabStateMessageCard(
@@ -103,12 +103,12 @@ struct SettingsAccountDetailView: View {
                 Button(role: .destructive, action: actions.requestDeleteAccount) {
                     HStack {
                         Text((danger.isDeletingAccount ? "刪除中..." : "刪除帳號與雲端資料").localized)
-                            .font(vocabSkin.typography.body)
-                            .foregroundStyle(vocabSkin.palette.destructive)
+                            .font(appSkin.typography.body)
+                            .foregroundStyle(appSkin.palette.destructive)
                         Spacer()
                         Image(systemName: "trash")
-                            .font(vocabSkin.typography.iconTiny)
-                            .foregroundStyle(vocabSkin.palette.destructive)
+                            .font(appSkin.typography.iconTiny)
+                            .foregroundStyle(appSkin.palette.destructive)
                     }
                 }
                 .buttonStyle(.appAction(.destructive))

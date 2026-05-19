@@ -6,12 +6,12 @@ extension SettingsPresenter {
 
     #if DEBUG
     func debugBackendSection(kg: SettingsPresenterState.KGSection, debugLocalServerURL: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "DEBUG 後端".localized, icon: "hammer")
 
             VStack(spacing: 0) {
                 if let debug = kg.debug {
-                    VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                    VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                         HStack(spacing: 8) {
                             debugBackendOptionButton(
                                 title: "遠端正式站".localized,
@@ -44,7 +44,7 @@ extension SettingsPresenter {
 
                         observationPreview(debug.observation)
                     }
-                    .padding(vocabSkin.spacing.cardPadding)
+                    .padding(appSkin.spacing.cardPadding)
                 }
             }
             .settingsCard()
@@ -61,50 +61,50 @@ extension SettingsPresenter {
             SettingsSelectionTile(isSelected: isSelected) {
                 HStack(spacing: 8) {
                     Image(systemName: systemImage)
-                        .font(vocabSkin.typography.iconSmall)
+                        .font(appSkin.typography.iconSmall)
                     Text(title)
-                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                        .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
                 }
             }
-            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+            .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
         .accessibilityLabel(title)
     }
 
     private func observationPreview(_ observation: SettingsPresenterState.KGSection.ObservationSection) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             HStack {
                 Text("最近觀測事件".localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.secondaryText)
                 Spacer()
                 Text("buffer \(observation.totalCount)".localized)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
 
             if observation.previewLines.isEmpty {
                 Text("尚未捕捉到 app 端 analytics 事件。".localized)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             } else {
                 VStack(alignment: .leading, spacing: 4) {
                     ForEach(Array(observation.previewLines.enumerated()), id: \.offset) { _, line in
                         Text(line)
-                            .font(vocabSkin.typography.monoLabel)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.monoLabel)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                             .frame(maxWidth: .infinity, alignment: .leading)
                             .lineLimit(2)
                     }
                 }
-                .padding(vocabSkin.spacing.cardPadding)
-                .background(vocabSkin.palette.stageBackground)
+                .padding(appSkin.spacing.cardPadding)
+                .background(appSkin.palette.stageBackground)
                 .clipShape(RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous))
 
                 Text("預覽內容已脫敏；完整內容仍以本機 os.Logger 為主。".localized)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
         }
     }

@@ -6,7 +6,7 @@ extension SettingsPresenter {
 
     var quotaRow: some View {
         VStack(spacing: 0) {
-            AppKeyValueRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized, style: .settings(vocabSkin)) {
+            AppKeyValueRow(icon: "gauge.with.dots.needle.bottom.50percent", label: "今日額度".localized, style: .settings(appSkin)) {
                 SettingsStatusValue(
                     text: quotaStore.isExhausted
                         ? quotaStore.resetText
@@ -27,26 +27,26 @@ extension SettingsPresenter {
                 }
             }
             .frame(height: 3)
-            .padding(.horizontal, vocabSkin.spacing.cardPadding)
-            .padding(.bottom, vocabSkin.spacing.tinyGap)
+            .padding(.horizontal, appSkin.spacing.cardPadding)
+            .padding(.bottom, appSkin.spacing.tinyGap)
         }
     }
 
     var quotaBarColor: Color {
         switch quotaStore.level {
-        case .normal:    return vocabSkin.palette.success
+        case .normal:    return appSkin.palette.success
         case .warning:   return appTheme.palette.warning
-        case .critical:  return vocabSkin.palette.destructive
-        case .exhausted: return vocabSkin.palette.destructive
+        case .critical:  return appSkin.palette.destructive
+        case .exhausted: return appSkin.palette.destructive
         }
     }
 
     var quotaTextColor: Color {
         switch quotaStore.level {
-        case .normal:    return vocabSkin.palette.secondaryText
+        case .normal:    return appSkin.palette.secondaryText
         case .warning:   return appTheme.palette.warning
-        case .critical:  return vocabSkin.palette.destructive
-        case .exhausted: return vocabSkin.palette.destructive
+        case .critical:  return appSkin.palette.destructive
+        case .exhausted: return appSkin.palette.destructive
         }
     }
 }

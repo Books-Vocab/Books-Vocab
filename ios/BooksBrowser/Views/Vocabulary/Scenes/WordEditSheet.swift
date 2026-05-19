@@ -3,7 +3,7 @@ import SwiftUI
 struct WordEditSheet: View {
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Bindable var entry: VocabularyEntry
 
     @State private var draftTranslation = ""
@@ -14,7 +14,7 @@ struct WordEditSheet: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+                VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                     if let saveError {
                         AppBanner(
                             message: saveError,
@@ -27,7 +27,7 @@ struct WordEditSheet: View {
                     editSection(title: "翻譯結果".localized, text: $draftTranslation)
                     editSection(title: "教學筆記".localized, text: $draftExplanation)
                 }
-                .padding(vocabSkin.spacing.cardPadding)
+                .padding(appSkin.spacing.cardPadding)
             }
             .vocabCanvasBackground()
             .navigationTitle(entry.word)
@@ -55,23 +55,23 @@ struct WordEditSheet: View {
     }
 
     private func editSection(title: String, text: Binding<String>) -> some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             Text(title)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.secondaryText)
 
             TextEditor(text: text)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.primaryText)
                 .scrollContentBackground(.hidden)
-                .padding(vocabSkin.spacing.inlineGap)
+                .padding(appSkin.spacing.inlineGap)
                 .frame(minHeight: 80)
                 .background(
                     RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
-                        .fill(vocabSkin.palette.cardBackground)
+                        .fill(appSkin.palette.cardBackground)
                         .overlay(
                             RoundedRectangle(cornerRadius: AppShellMetrics.cardCornerRadius, style: .continuous)
-                                .stroke(vocabSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
+                                .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 1)
                         )
                 )
         }

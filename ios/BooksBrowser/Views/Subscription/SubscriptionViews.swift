@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct ProAccessGateCard: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let title: String
     let description: String
@@ -13,31 +13,31 @@ struct ProAccessGateCard: View {
         VocabCard {
             VStack(spacing: 16) {
                 Image(systemName: systemImage)
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(vocabSkin.palette.accent)
+                    .font(appSkin.typography.symbolHero)
+                    .foregroundStyle(appSkin.palette.accent)
                     .transition(.contentSwap)
 
                 VStack(spacing: 6) {
                     Text(title)
-                        .font(vocabSkin.typography.sectionTitle)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.sectionTitle)
+                        .foregroundStyle(appSkin.palette.primaryText)
 
                     Text(description)
-                        .font(vocabSkin.typography.body)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.body)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                         .multilineTextAlignment(.center)
                         .lineSpacing(4)
                 }
 
                 Button(action: onAction) {
                     Text(actionTitle)
-                        .font(vocabSkin.typography.body.weight(.medium))
+                        .font(appSkin.typography.body.weight(.medium))
                         .frame(maxWidth: .infinity)
-                        .padding(.vertical, vocabSkin.spacing.rowContentSpacing)
+                        .padding(.vertical, appSkin.spacing.rowContentSpacing)
                 }
                 .buttonStyle(.vocabAction(.primary))
             }
-            .padding(.vertical, vocabSkin.spacing.inlineGap)
+            .padding(.vertical, appSkin.spacing.inlineGap)
             .transition(.contentSwap)
         }
     }

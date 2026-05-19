@@ -128,7 +128,7 @@ extension AppEmptyStateStyle {
         )
     }
 
-    static func vocab(_ skin: VocabSkin) -> AppEmptyStateStyle {
+    static func vocab(_ skin: AppSkin) -> AppEmptyStateStyle {
         .init(
             iconFont: skin.typography.symbolLarge,
             iconColor: skin.palette.tertiaryText,

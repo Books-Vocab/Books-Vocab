@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct LinkReasonSheet: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
     let link: KGCardLinkSummary
@@ -9,32 +9,32 @@ struct LinkReasonSheet: View {
     var onHide: (() -> Void)?
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "paperclip")
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
 
                 Text(link.label.localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
 
             Text(link.word)
-                .font(vocabSkin.typography.detailWord)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.detailWord)
+                .foregroundStyle(appSkin.palette.primaryText)
 
             CardSectionDivider(horizontalPadding: 0)
 
             Text(link.reason)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
-                .lineSpacing(vocabSkin.metrics.paragraphLineSpacing)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.secondaryText)
+                .lineSpacing(appSkin.metrics.paragraphLineSpacing)
                 .fixedSize(horizontal: false, vertical: true)
 
             Spacer()
 
-            VStack(spacing: vocabSkin.spacing.inlineGap) {
+            VStack(spacing: appSkin.spacing.inlineGap) {
                 Button {
                     dismiss()
                     onNavigate()
@@ -42,11 +42,11 @@ struct LinkReasonSheet: View {
                     HStack(spacing: 6) {
                         Text("查看詳情".localized)
                         Image(systemName: "arrow.up.right")
-                            .font(vocabSkin.typography.iconTiny)
+                            .font(appSkin.typography.iconTiny)
                     }
                     .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.ghost(vocabSkin.palette.primaryText))
+                .buttonStyle(.ghost(appSkin.palette.primaryText))
 
                 if let onHide {
                     Button {
@@ -55,16 +55,16 @@ struct LinkReasonSheet: View {
                     } label: {
                         HStack(spacing: 6) {
                             Image(systemName: "eye.slash")
-                                .font(vocabSkin.typography.iconTiny)
+                                .font(appSkin.typography.iconTiny)
                             Text("隱藏此連結".localized)
                         }
                         .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.ghost(vocabSkin.palette.destructive))
+                    .buttonStyle(.ghost(appSkin.palette.destructive))
                 }
             }
         }
-        .padding(vocabSkin.metrics.cardBlockPadding)
+        .padding(appSkin.metrics.cardBlockPadding)
         .vocabCanvasBackground()
     }
 }

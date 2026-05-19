@@ -2,7 +2,7 @@ import SwiftUI
 import SwiftData
 
 struct KnowledgeGraphView: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
     @Environment(\.detailRouter) private var detailRouter
@@ -70,7 +70,7 @@ struct KnowledgeGraphView: View {
             ),
             nodes: nodes,
             edges: edges,
-            graphTheme: KnowledgeGraphPresentation.theme(for: vocabSkin),
+            graphTheme: KnowledgeGraphPresentation.theme(for: appSkin),
             forces: .init(
                 repel: repelStrength,
                 linkDistance: coordinator.linkDistance,

@@ -24,7 +24,7 @@ struct NotebookEditSheet: View {
     let onSave: (NotebookAppearance) -> Void
 
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     @State private var name: String = ""
     @State private var selectedColor: String?

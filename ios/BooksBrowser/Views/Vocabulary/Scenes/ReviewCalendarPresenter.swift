@@ -9,7 +9,7 @@ import SwiftUI
 import SwiftData
 
 struct ReviewCalendarPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
     @Query var allRecords: [ReviewRecord]
@@ -61,15 +61,15 @@ struct ReviewCalendarPresenter: View {
     var body: some View {
         NavigationStack {
             ScrollView {
-                VStack(spacing: vocabSkin.spacing.sectionGap) {
+                VStack(spacing: appSkin.spacing.sectionGap) {
                     calendarSection
                     if let _ = selectedDay {
                         dayDetailSection
                     }
                 }
-                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.top, vocabSkin.metrics.pageTopInset)
-                .padding(.bottom, vocabSkin.metrics.pageBottomInset)
+                .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                .padding(.top, appSkin.metrics.pageTopInset)
+                .padding(.bottom, appSkin.metrics.pageBottomInset)
             }
             .vocabCanvasBackground()
             .navigationTitle("學習日曆".localized)
@@ -77,7 +77,7 @@ struct ReviewCalendarPresenter: View {
             .toolbar {
                 ToolbarItem(placement: .confirmationAction) {
                     Button("完成".localized) { dismiss() }
-                        .font(vocabSkin.typography.captionStrong)
+                        .font(appSkin.typography.captionStrong)
                 }
             }
         }
@@ -86,31 +86,31 @@ struct ReviewCalendarPresenter: View {
     // MARK: - Calendar
 
     private var calendarSection: some View {
-        VStack(spacing: vocabSkin.spacing.inlineGap) {
+        VStack(spacing: appSkin.spacing.inlineGap) {
             // Month navigation
             HStack {
                 Button { changeMonth(by: -1) } label: {
                     Image(systemName: "chevron.left")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                 }
 
                 Spacer()
 
                 Text(Self.monthFormatter.string(from: displayedMonth))
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 Spacer()
 
                 Button { changeMonth(by: 1) } label: {
                     Image(systemName: "chevron.right")
-                        .font(vocabSkin.typography.iconMedium)
-                        .foregroundStyle(canGoForward ? vocabSkin.palette.secondaryText : vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.iconMedium)
+                        .foregroundStyle(canGoForward ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
                 }
                 .disabled(!canGoForward)
             }
-            .padding(.horizontal, vocabSkin.spacing.microGap)
+            .padding(.horizontal, appSkin.spacing.microGap)
 
             VocabCalendarGrid(
                 displayedMonth: displayedMonth,
@@ -124,22 +124,22 @@ struct ReviewCalendarPresenter: View {
     // MARK: - Day Detail
 
     private var dayDetailSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.inlineGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             // Header
             VStack(alignment: .leading, spacing: 2) {
                 Text(dayDisplayTitle)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 if selectedDayRecords.isEmpty {
                     Text("這天沒有複習紀錄".localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
                 } else {
                     let s = selectedDaySummary
                     Text(L10n.format("已複習 %@ 張 ・ 記得 %@ ・ 忘記 %@", "\(s.total)", "\(s.remembered)", "\(s.forgot)"))
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
                 }
             }
 
@@ -149,7 +149,7 @@ struct ReviewCalendarPresenter: View {
                     ForEach(Array(local.enumerated()), id: \.element.id) { index, record in
                         if index > 0 {
                             Divider()
-                                .foregroundStyle(vocabSkin.palette.divider)
+                                .foregroundStyle(appSkin.palette.divider)
                                 .padding(.leading, 28)
                         }
                         recordRow(record)
@@ -158,7 +158,7 @@ struct ReviewCalendarPresenter: View {
                     if syncCount > 0 {
                         if !local.isEmpty {
                             Divider()
-                                .foregroundStyle(vocabSkin.palette.divider)
+                                .foregroundStyle(appSkin.palette.divider)
                                 .padding(.leading, 28)
                         }
                         syncPlaceholderRow(count: syncCount)
@@ -184,44 +184,44 @@ struct ReviewCalendarPresenter: View {
     }
 
     private func syncPlaceholderRow(count: Int) -> some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
+        HStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "arrow.triangle.2.circlepath")
-                .font(vocabSkin.typography.iconSmall)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.iconSmall)
+                .foregroundStyle(appSkin.palette.quaternaryText)
                 .frame(width: 20)
 
             Text(L10n.format("另有 %@ 筆來自其他裝置", "\(count)"))
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.quaternaryText)
 
             Spacer()
         }
-        .padding(.vertical, vocabSkin.spacing.microGap)
+        .padding(.vertical, appSkin.spacing.microGap)
     }
 
     private func recordRow(_ record: ReviewRecord) -> some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
+        HStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: record.feedback == 1 ? "checkmark" : "xmark")
-                .font(vocabSkin.typography.iconSmall)
-                .foregroundStyle(record.feedback == 1 ? vocabSkin.palette.success : vocabSkin.palette.destructive)
+                .font(appSkin.typography.iconSmall)
+                .foregroundStyle(record.feedback == 1 ? appSkin.palette.success : appSkin.palette.destructive)
                 .frame(width: 20)
 
             Text(record.word)
-                .font(vocabSkin.typography.monoBody)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.monoBody)
+                .foregroundStyle(appSkin.palette.primaryText)
                 .lineLimit(1)
 
             Spacer()
 
             Text(record.feedback == 1 ? "記得".localized : "忘記".localized)
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(record.feedback == 1 ? vocabSkin.palette.success : vocabSkin.palette.destructive)
+                .font(appSkin.typography.monoLabel)
+                .foregroundStyle(record.feedback == 1 ? appSkin.palette.success : appSkin.palette.destructive)
 
             Text(Self.timeFormatter.string(from: record.reviewedAt))
-                .font(vocabSkin.typography.monoLabel)
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .font(appSkin.typography.monoLabel)
+                .foregroundStyle(appSkin.palette.quaternaryText)
         }
-        .padding(.vertical, vocabSkin.spacing.microGap)
+        .padding(.vertical, appSkin.spacing.microGap)
     }
 
     // MARK: - Helpers

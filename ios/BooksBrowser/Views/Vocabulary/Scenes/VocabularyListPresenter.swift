@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VocabularyListPresenter<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @FocusState private var searchFocused: Bool
 
     let showsSearchField: Bool
@@ -26,8 +26,8 @@ struct VocabularyListPresenter<Content: View>: View {
                     prompt: "搜尋單字".localized,
                     isFocused: $searchFocused
                 )
-                .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-                .padding(.vertical, vocabSkin.metrics.pageSectionVerticalInset)
+                .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+                .padding(.vertical, appSkin.metrics.pageSectionVerticalInset)
                 .transition(.listInsert)
             }
 

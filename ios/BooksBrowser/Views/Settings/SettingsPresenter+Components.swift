@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - Shared Section Helpers (internal，供各 Section 檔案使用)
 
 struct SettingsSectionHeader: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let icon: String
 
@@ -12,15 +12,15 @@ struct SettingsSectionHeader: View {
             title: title,
             systemImage: icon,
             style: .init(
-                font: vocabSkin.typography.captionStrong,
-                color: vocabSkin.palette.secondaryText
+                font: appSkin.typography.captionStrong,
+                color: appSkin.palette.secondaryText
             )
         )
     }
 }
 
 struct SettingsSectionFooter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
 
     init(_ text: String) {
@@ -31,8 +31,8 @@ struct SettingsSectionFooter: View {
         AppSectionFooter(
             text: text,
             style: .init(
-                font: vocabSkin.typography.caption,
-                color: vocabSkin.palette.tertiaryText
+                font: appSkin.typography.caption,
+                color: appSkin.palette.tertiaryText
             )
         )
     }
@@ -41,47 +41,47 @@ struct SettingsSectionFooter: View {
 typealias SettingsDivider = AppSettingsDivider
 
 struct SettingsTrailingChevronIcon: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     var body: some View {
         Image(systemName: "chevron.right")
-            .font(vocabSkin.typography.iconTiny)
-            .foregroundStyle(vocabSkin.palette.tertiaryText)
+            .font(appSkin.typography.iconTiny)
+            .foregroundStyle(appSkin.palette.tertiaryText)
     }
 }
 
 struct SettingsDisclosureValue: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
 
     var body: some View {
         HStack(spacing: 6) {
             Text(text)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
             SettingsTrailingChevronIcon()
         }
     }
 }
 
 struct SettingsMenuValue: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
 
     var body: some View {
         HStack(spacing: 6) {
             Text(text)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
             Image(systemName: "chevron.up.chevron.down")
-                .font(vocabSkin.typography.iconTiny)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.iconTiny)
+                .foregroundStyle(appSkin.palette.tertiaryText)
         }
     }
 }
 
 struct SettingsTitleSubtitleStack: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let subtitle: String?
     let titleFont: Font
@@ -114,7 +114,7 @@ struct SettingsTitleSubtitleStack: View {
 
             if let subtitle, !subtitle.isEmpty {
                 Text(subtitle)
-                    .font(vocabSkin.typography.caption)
+                    .font(appSkin.typography.caption)
                     .foregroundStyle(subtitleColor)
                     .lineLimit(subtitleLineLimit)
             }
@@ -123,23 +123,23 @@ struct SettingsTitleSubtitleStack: View {
 }
 
 struct SettingsStatusBadge: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
     let tone: Color
 
     var body: some View {
         Text(text)
-            .font(vocabSkin.typography.monoLabel)
+            .font(appSkin.typography.monoLabel)
             .foregroundStyle(tone)
-            .padding(.horizontal, vocabSkin.spacing.badgeHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.chipVerticalPadding)
+            .padding(.horizontal, appSkin.spacing.badgeHorizontalPadding)
+            .padding(.vertical, appSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
     }
 }
 
 struct SettingsStatusValue: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
     let color: Color
     let lineLimit: Int?
@@ -154,7 +154,7 @@ struct SettingsStatusValue: View {
 
     var body: some View {
         Text(text)
-            .font(vocabSkin.typography.caption)
+            .font(appSkin.typography.caption)
             .foregroundStyle(color)
             .lineLimit(lineLimit)
             .multilineTextAlignment(alignment)
@@ -162,7 +162,7 @@ struct SettingsStatusValue: View {
 }
 
 struct SettingsStatusSummaryValue: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let text: String
     let color: Color
     let showsIndicator: Bool
@@ -182,8 +182,8 @@ struct SettingsStatusSummaryValue: View {
             }
 
             Text(text)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.secondaryText)
                 .lineLimit(1)
         }
     }

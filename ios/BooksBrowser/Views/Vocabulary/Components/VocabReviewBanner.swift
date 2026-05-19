@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct VocabReviewBanner<FilterContent: View>: View {
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     let dueCount: Int
     let unlearnedCount: Int
