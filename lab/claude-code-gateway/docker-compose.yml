@@ -5,7 +5,9 @@ services:
       - "8090:8090"
     volumes:
       - ~/.claude:/root/.claude
-      - ~/.claude.json:/root/.claude.json:ro
+      # Must be read-write: the Claude CLI rewrites .claude.json to refresh
+      # OAuth tokens. A :ro mount makes the CLI fail silently (empty output).
+      - ~/.claude.json:/root/.claude.json
     env_file: .env
     environment:
       - CCG_HOST=0.0.0.0
