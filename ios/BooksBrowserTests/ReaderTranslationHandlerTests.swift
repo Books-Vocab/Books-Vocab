@@ -52,6 +52,7 @@ struct ReaderTranslationHandlerTests {
 
         func enterDemoMode(modelContainer: ModelContainer) {}
         func exitDemoMode(modelContainer: ModelContainer) {}
+        func refreshSessionIfNeeded() {}
         func login(userId: String, token: String) {}
         func login(customToken: String) {}
         func logout(modelContainer: ModelContainer?, reason: String) {}
