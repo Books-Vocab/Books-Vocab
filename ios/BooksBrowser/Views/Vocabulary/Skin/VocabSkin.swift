@@ -11,7 +11,7 @@
 //  組裝來源有兩種：
 //    1. VocabSkin.themed(appTheme)  — 由 AppTheme（Light/Dark）組裝，
 //       99% 情況下使用這個，可隨系統深淺色模式自動切換。
-//    2. VocabSkin.previewNeutral   — 硬編碼的靜態淺色 skin，
+//    2. VocabSkin.previewNeutral   — 由 themed(.light) 組裝的固定淺色 skin，
 //       僅用於 SwiftUI Preview 或特定固定場景，不受系統深淺色影響。
 //
 //  設計哲學：Morandi 紙本排版
