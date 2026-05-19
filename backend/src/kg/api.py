@@ -141,6 +141,12 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
     @asynccontextmanager
     async def lifespan(app: FastAPI):
         logger.info("KG API starting up")
+        # Fail loud if a second worker boots: quota reservations, translate
+        # singleflight and pipeline_log are all process-local and only
+        # correct under --workers 1.
+        from .token_tracker import DATA_DIR
+        from .worker_guard import assert_single_worker
+        assert_single_worker(DATA_DIR / ".worker.lock")
         yield
         logger.info("KG API shutting down")
         from .service_factories import reset_async_gemini_client, reset_gemini_client
