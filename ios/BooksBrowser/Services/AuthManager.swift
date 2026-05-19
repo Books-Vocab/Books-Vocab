@@ -56,6 +56,12 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     // Demo mode — unlocks UI without real auth
     var isDemoMode: Bool = false
 
+    // True while the persisted token could not be read from the keychain (transient failure,
+    // e.g. cold boot before first unlock). The session state is *unknown*, not logged-out —
+    // `refreshSessionIfNeeded()` re-reads once the device is unlocked. Production observers
+    // (e.g. scenePhase → .active) drive that re-read.
+    var keychainReadPending: Bool = false
+
     init(
         verifier: any AuthVerifying = AuthBackendVerifier(),
         localDataCleaner: any LocalDataClearing = LocalDataCleanerService(),
@@ -64,13 +70,43 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
         self.verifier = verifier
         self.localDataCleaner = localDataCleaner
         self.sessionStore = sessionStore
-        let persisted = sessionStore.loadSession()
+        applyPersistedSession(sessionStore.loadSession())
+    }
+
+    /// Maps a `PersistedAuthSession` onto the published auth state.
+    ///
+    /// The login decision is NOT simply `token != nil`. A transient keychain read failure
+    /// (`keychainReadFailed`) yields a nil token for an *already-authenticated* user —
+    /// treating that as logged-out silently signs the user out on a cold-boot launch.
+    /// So when the read failed we keep the user logged in *if* there is profile evidence of
+    /// a prior session (a persisted `userId`), mark the read as pending, and re-read later.
+    /// Only a clean read with no token is a genuine logout. The result is deterministic —
+    /// it never depends on the prior value of `isLoggedIn`.
+    private func applyPersistedSession(_ persisted: PersistedAuthSession) {
         self.userId = persisted.userId
         self.displayName = persisted.displayName
         self.userEmail = persisted.userEmail
         self.avatarURL = persisted.avatarURL
         self.token = persisted.token
-        self.isLoggedIn = persisted.token != nil
+
+        if persisted.keychainReadFailed {
+            // Unknown state: don't flip a logged-in user to logged-out. Keep them in only if
+            // a prior session left a profile behind; never *fabricate* a login otherwise.
+            self.keychainReadPending = true
+            self.isLoggedIn = persisted.userId != nil
+        } else {
+            self.keychainReadPending = false
+            self.isLoggedIn = persisted.token != nil
+        }
+    }
+
+    /// Re-reads the persisted session if a prior read failed transiently. Intended to run
+    /// when the app/scene becomes active (device now unlocked), resolving the unknown state:
+    /// a recovered token confirms login, a clean "no token" performs the deferred logout.
+    /// A no-op when no read was pending.
+    func refreshSessionIfNeeded() {
+        guard keychainReadPending else { return }
+        applyPersistedSession(sessionStore.loadSession())
     }
 
     func login(userId: String, token: String) {
@@ -168,14 +204,9 @@ final class AuthManager: AuthManaging, AuthSessionProviding, SessionInvalidating
     func exitDemoMode(modelContainer: ModelContainer) {
         DemoDataProvider.removeDemoEntries(from: modelContainer)
         isDemoMode = false
-        // Restore real auth state
-        let persisted = sessionStore.loadSession()
-        isLoggedIn = persisted.token != nil
-        userId = persisted.userId
-        token = persisted.token
-        displayName = persisted.displayName
-        userEmail = persisted.userEmail
-        avatarURL = persisted.avatarURL
+        // Restore real auth state — `applyPersistedSession` handles a transient keychain
+        // read failure (keeps a prior session logged in, marks the read pending).
+        applyPersistedSession(sessionStore.loadSession())
     }
 
     func setAuthError(_ message: String) {

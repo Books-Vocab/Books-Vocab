@@ -7,6 +7,31 @@ struct PersistedAuthSession {
     let userEmail: String?
     let avatarURL: URL?
     let token: String?
+    /// True when the token *could not be read* (transient keychain failure, e.g.
+    /// `errSecInteractionNotAllowed` on a cold-boot, pre-first-unlock device) — as opposed
+    /// to `errSecItemNotFound`, the legitimate "no token stored / logged out" outcome.
+    ///
+    /// A nil `token` is therefore ambiguous on its own: it can mean either "logged out" or
+    /// "read failed". This flag disambiguates them. When true the caller MUST treat the
+    /// session as *unknown* (not logged-out) and re-read once the device is unlocked —
+    /// otherwise an already-authenticated user is silently signed out (PR #529 follow-up).
+    let keychainReadFailed: Bool
+
+    init(
+        userId: String?,
+        displayName: String?,
+        userEmail: String?,
+        avatarURL: URL?,
+        token: String?,
+        keychainReadFailed: Bool = false
+    ) {
+        self.userId = userId
+        self.displayName = displayName
+        self.userEmail = userEmail
+        self.avatarURL = avatarURL
+        self.token = token
+        self.keychainReadFailed = keychainReadFailed
+    }
 }
 
 protocol AuthSessionStoring: AnyObject {
@@ -54,13 +79,18 @@ final class AuthSessionStore: AuthSessionStoring {
         let tokenRead = keychain.readWithStatus(service: Keys.tokenService, account: Keys.tokenAccount)
         reportKeychainFailure(tokenRead.status, operation: "read")
         let token = tokenRead.data.flatMap { String(data: $0, encoding: .utf8) }
+        // A reportable status (not success, not the benign `errSecItemNotFound`) means the
+        // read *failed* rather than "no token" — surface it so a nil token is not mistaken
+        // for a logged-out user. `KeychainStatus.isFailure` is the single source of truth.
+        let keychainReadFailed = KeychainStatus.isFailure(tokenRead.status)
 
         return PersistedAuthSession(
             userId: userId,
             displayName: displayName,
             userEmail: userEmail,
             avatarURL: avatarURL,
-            token: token
+            token: token,
+            keychainReadFailed: keychainReadFailed
         )
     }
 

@@ -267,6 +267,43 @@ struct AuthSessionStoreTests {
         #expect(reported.isEmpty)
     }
 
+    // MARK: - keychainReadFailed flag (transient-failure vs logged-out distinction)
+
+    /// A transient read failure (cold-boot, pre-first-unlock) must set `keychainReadFailed`
+    /// so `AuthManager` can tell "could not read the token" apart from "no token stored".
+    @Test func loadSession_sets_keychainReadFailed_on_transient_read_failure() {
+        let (store, _, keychain) = makeStore()
+        keychain.forcedReadStatus = errSecInteractionNotAllowed
+        let session = store.loadSession()
+        #expect(session.keychainReadFailed == true)
+        #expect(session.token == nil)
+    }
+
+    /// `errSecItemNotFound` is the legitimate logged-out state, NOT a transient failure —
+    /// `keychainReadFailed` must stay false so the normal logout path is preserved.
+    @Test func loadSession_keychainReadFailed_false_when_token_absent() {
+        let (store, _, keychain) = makeStore()
+        keychain.forcedReadStatus = errSecItemNotFound
+        let session = store.loadSession()
+        #expect(session.keychainReadFailed == false)
+        #expect(session.token == nil)
+    }
+
+    /// A successful read leaves `keychainReadFailed` false.
+    @Test func loadSession_keychainReadFailed_false_on_successful_read() {
+        let (store, _, _) = makeStore()
+        store.persistToken("jwt.alive")
+        let session = store.loadSession()
+        #expect(session.keychainReadFailed == false)
+        #expect(session.token == "jwt.alive")
+    }
+
+    /// A fresh store reads back as logged-out, not transiently failed.
+    @Test func loadSession_keychainReadFailed_false_on_fresh_store() {
+        let (store, _, _) = makeStore()
+        #expect(store.loadSession().keychainReadFailed == false)
+    }
+
     // MARK: - KeychainStatus seam (pure function)
 
     @Test func keychainStatus_success_is_not_a_failure() {
