@@ -126,7 +126,7 @@ struct ReviewCalendarPresenter: View {
     private var dayDetailSection: some View {
         VStack(alignment: .leading, spacing: appSkin.spacing.inlineGap) {
             // Header
-            VStack(alignment: .leading, spacing: 2) {
+            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                 Text(dayDisplayTitle)
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)

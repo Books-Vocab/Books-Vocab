@@ -159,7 +159,7 @@ struct NotebookCoverView: View {
                     .truncationMode(.tail)
                     .minimumScaleFactor(0.85)
                     .multilineTextAlignment(.center)
-                    .padding(.horizontal, 8)
+                    .padding(.horizontal, AppSpacing.s2)
             }
         }
     }
@@ -182,7 +182,7 @@ struct NotebookCoverView: View {
 }
 
 #Preview {
-    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: 12) {
+    LazyVGrid(columns: [GridItem(.adaptive(minimum: 120))], spacing: AppSpacing.s3) {
         ForEach(NotebookCoverPattern.allCases) { pattern in
             NotebookCoverView(
                 color: Color(hex: "#4A90D9") ?? .blue,

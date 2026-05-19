@@ -90,18 +90,18 @@ struct NotebookEditSheet: View {
                                 .accessibilityLabel(item.name)
                         }
                     }
-                    .padding(.vertical, 4)
+                    .padding(.vertical, AppSpacing.s1)
                 }
 
                 Section("圖案".localized) {
                     ScrollView(.horizontal, showsIndicators: false) {
-                        HStack(spacing: 8) {
+                        HStack(spacing: AppSpacing.s2) {
                             patternOption(nil, label: "無")
                             ForEach(NotebookCoverPattern.allCases) { pattern in
                                 patternOption(pattern.rawValue, label: pattern.label)
                             }
                         }
-                        .padding(.vertical, 4)
+                        .padding(.vertical, AppSpacing.s1)
                     }
                 }
 
@@ -174,7 +174,7 @@ struct NotebookEditSheet: View {
     private func patternOption(_ patternId: String?, label: String) -> some View {
         let isSelected = selectedPattern == patternId
         let color = NotebookPalette.color(for: selectedColor)
-        VStack(spacing: 4) {
+        VStack(spacing: AppSpacing.s1) {
             ZStack {
                 RoundedRectangle(cornerRadius: 6, style: .continuous)
                     .fill(patternId == nil ? skin.palette.mutedFill : color)

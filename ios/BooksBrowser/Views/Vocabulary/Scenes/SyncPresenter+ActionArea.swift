@@ -5,7 +5,7 @@ extension SyncPresenter {
     // MARK: - Action Area
 
     var actionArea: some View {
-        VStack(spacing: 8) {
+        VStack(spacing: AppSpacing.s2) {
             switch state.phase {
             case .ready:
                 if state.isLoggedIn {

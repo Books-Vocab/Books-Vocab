@@ -35,7 +35,7 @@ struct TranslationVocabPresenter: View {
                     .padding(.top, appSkin.metrics.readerPanelHandleTopInset)
                     .padding(.bottom, appSkin.metrics.readerPanelHandleBottomInset)
 
-                VStack(alignment: .leading, spacing: 12) {
+                VStack(alignment: .leading, spacing: AppSpacing.s3) {
                     heroSection
                     panelBody
                 }
@@ -47,7 +47,7 @@ struct TranslationVocabPresenter: View {
     }
 
     private var heroSection: some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
+        HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
             Text(state.word)
                 .font(state.word.count > 12
                       ? appSkin.typography.translationTitle
@@ -186,7 +186,7 @@ struct TranslationVocabPresenter: View {
     private var explanationSection: some View {
         VStack(alignment: .leading, spacing: 0) {
             CardSectionDivider(horizontalPadding: 0)
-                .padding(.vertical, 2)
+                .padding(.vertical, AppSpacing.microGap)
 
             Label("語境解釋".localized, systemImage: "text.bubble")
                 .font(appSkin.typography.caption)
@@ -245,7 +245,7 @@ struct TranslationVocabPresenter: View {
 
     @ViewBuilder
     private func footerToolbar(showChevron: Bool, timerValue: String?) -> some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppSpacing.s1) {
             if state.showsSavedStatus {
                 Label("已加入".localized, systemImage: "checkmark.circle.fill")
                     .font(appSkin.typography.caption)

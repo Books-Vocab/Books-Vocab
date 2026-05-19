@@ -21,7 +21,7 @@ struct CollocationExplainSheet: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: AppSpacing.s3) {
             Text(collocation)
                 .font(appSkin.typography.detailWord)
                 .foregroundStyle(appSkin.palette.primaryText)
@@ -35,7 +35,7 @@ struct CollocationExplainSheet: View {
             footerToolbar
         }
         .padding(.horizontal, appSkin.metrics.readerPanelHorizontalInset)
-        .padding(.top, 20)
+        .padding(.top, AppSpacing.s5)
         .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
         .task { await loadIfNeeded() }
     }
@@ -65,7 +65,7 @@ struct CollocationExplainSheet: View {
     }
 
     private var footerToolbar: some View {
-        HStack(spacing: 4) {
+        HStack(spacing: AppSpacing.s1) {
             if case .loaded = phase, existingExplanation == nil {
                 Button {
                     onSave(explanation)

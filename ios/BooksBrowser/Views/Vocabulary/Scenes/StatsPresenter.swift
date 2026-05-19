@@ -256,7 +256,7 @@ struct StatsPresenter: View {
                         if let avgRatio = averageRatio(of: nodes), !nodes.isEmpty {
                             healthBar(ratio: avgRatio)
                                 .padding(.horizontal, appSkin.metrics.cardBlockPadding)
-                                .padding(.bottom, 8)
+                                .padding(.bottom, AppSpacing.s2)
                         }
                     }
                 }
@@ -431,7 +431,7 @@ struct StatsPresenter: View {
                         .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.tertiaryText)
                 }
-                HStack(alignment: .firstTextBaseline, spacing: 2) {
+                HStack(alignment: .firstTextBaseline, spacing: AppSpacing.microGap) {
                     Text(value)
                         .font(appSkin.typography.numericHero)
                         .foregroundStyle(appSkin.palette.primaryText)

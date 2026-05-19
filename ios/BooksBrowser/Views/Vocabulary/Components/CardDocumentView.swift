@@ -271,8 +271,8 @@ private struct CardDocumentCollocationsBlock: View {
         return Text(item)
             .font(appSkin.typography.monoBody)
             .foregroundStyle(appSkin.palette.secondaryText)
-            .padding(.horizontal, 8)
-            .padding(.vertical, 4)
+            .padding(.horizontal, AppSpacing.s2)
+            .padding(.vertical, AppSpacing.s1)
             .background(
                 Capsule().fill(
                     hasExplanation

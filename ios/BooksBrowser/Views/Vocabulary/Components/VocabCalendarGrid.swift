@@ -18,7 +18,7 @@ struct VocabCalendarGrid: View {
     private static let dayFormatter = AppDateFormatters.dayKey
 
     private let weekdaySymbols = ["一", "二", "三", "四", "五", "六", "日"]
-    private let columns = Array(repeating: GridItem(.flexible(), spacing: 4), count: 7)
+    private let columns = Array(repeating: GridItem(.flexible(), spacing: AppSpacing.s1), count: 7)
     private let todayKey = VocabCalendarGrid.dayFormatter.string(from: Date())
 
     private var monthDays: [DayCell] {
@@ -57,7 +57,7 @@ struct VocabCalendarGrid: View {
     var body: some View {
         VStack(spacing: appSkin.spacing.microGap) {
             // Weekday header
-            LazyVGrid(columns: columns, spacing: 4) {
+            LazyVGrid(columns: columns, spacing: AppSpacing.s1) {
                 ForEach(weekdaySymbols, id: \.self) { symbol in
                     Text(symbol)
                         .font(appSkin.typography.monoLabel)
@@ -67,7 +67,7 @@ struct VocabCalendarGrid: View {
             }
 
             // Day grid
-            LazyVGrid(columns: columns, spacing: 4) {
+            LazyVGrid(columns: columns, spacing: AppSpacing.s1) {
                 ForEach(monthDays) { cell in
                     if cell.dayNumber == 0 {
                         Color.clear

@@ -136,7 +136,7 @@ struct VocabForecastChart: View {
             .font(appSkin.typography.monoLabel)
             .foregroundStyle(appSkin.palette.primaryText)
             .padding(.horizontal, appSkin.spacing.microGap)
-            .padding(.vertical, 2)
+            .padding(.vertical, AppSpacing.microGap)
             .background(
                 RoundedRectangle(cornerRadius: 4, style: .continuous)
                     .fill(appSkin.palette.cardBackground)
