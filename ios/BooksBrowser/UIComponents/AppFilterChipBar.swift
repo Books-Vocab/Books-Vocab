@@ -10,7 +10,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
             ForEach(options) { option in
                 let isSelected = selection.contains(option.id)
                 Button {
-                    withAnimation(AppMotion.chipSelectionEaseOut) {
+                    withAnimation(AppMotion.chipSelect) {
                         if isSelected {
                             selection.remove(option.id)
                         } else {
