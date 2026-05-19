@@ -152,7 +152,7 @@ enum AppFonts {
 
     enum Tracking {
         /// Display / hero 緊縮 — 配大字級降低視覺鬆散
-        /// 在 56pt display1 上約 -0.021em，符合慣例
+        /// 在 56pt 級距上約 -0.021em，符合慣例
         static let tight: CGFloat = -1.2
         /// 標準字距
         static let normal: CGFloat = 0

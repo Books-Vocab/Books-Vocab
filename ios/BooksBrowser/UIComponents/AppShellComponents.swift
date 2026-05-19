@@ -92,7 +92,7 @@ struct AppSectionHeader: View {
         Label(title.localized, systemImage: systemImage)
             .font(style.font)
             .foregroundStyle(style.color)
-            .padding(.leading, AppMetrics.spacingExtraSmall)
+            .padding(.leading, AppSpacing.s1)
     }
 }
 
@@ -112,7 +112,7 @@ struct AppSectionFooter: View {
             .font(style.font)
             .foregroundStyle(style.color)
             .lineSpacing(3)
-            .padding(.horizontal, AppMetrics.spacingExtraSmall)
+            .padding(.horizontal, AppSpacing.s1)
     }
 }
 

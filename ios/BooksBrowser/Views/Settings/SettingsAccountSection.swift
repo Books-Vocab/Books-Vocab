@@ -55,7 +55,7 @@ struct SettingsAccountSection: View {
                     .opacity(state.iconBreathing ? 0.85 : 1.0)
                     .animation(AppMotion.breathing, value: state.iconBreathing)
 
-                VStack(spacing: AppMetrics.spacingExtraSmall) {
+                VStack(spacing: AppSpacing.s1) {
                     Text("解鎖完整功能".localized)
                         .font(vocabSkin.typography.displayTitle)
                         .foregroundStyle(vocabSkin.palette.primaryText)
@@ -64,7 +64,7 @@ struct SettingsAccountSection: View {
                         .foregroundStyle(vocabSkin.palette.secondaryText)
                 }
             }
-            .padding(.vertical, AppMetrics.spacingLarge)
+            .padding(.vertical, AppSpacing.s6)
             .frame(maxWidth: .infinity)
 
             SettingsDivider(leadingInset: 0)
@@ -91,7 +91,7 @@ struct SettingsAccountSection: View {
 #if DEBUG
                 if let manualLoginUserId, let debug = state.debug {
                     SettingsDivider(leadingInset: 0)
-                        .padding(.vertical, AppMetrics.spacingSmall)
+                        .padding(.vertical, AppSpacing.s2)
 
                     HStack(spacing: 8) {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
@@ -123,8 +123,8 @@ struct SettingsAccountSection: View {
                     .padding(.top, vocabSkin.spacing.microGap)
                 }
             }
-            .padding(.horizontal, AppMetrics.spacingMedium)
-            .padding(.vertical, AppMetrics.spacingMedium)
+            .padding(.horizontal, AppSpacing.s4)
+            .padding(.vertical, AppSpacing.s4)
         }
     }
 

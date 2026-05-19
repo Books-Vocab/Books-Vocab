@@ -29,13 +29,13 @@ struct ReaderNotebookPicker: View {
                         book.preferredNotebookId = nil
                         dismiss()
                     } label: {
-                        HStack(spacing: AppMetrics.spacingSmall) {
+                        HStack(spacing: AppSpacing.s2) {
                             Image(systemName: "globe")
                                 .font(AppFonts.subhead())
                                 .foregroundStyle(theme.palette.secondaryText)
-                                .frame(width: AppMetrics.spacingLarge)
+                                .frame(width: AppSpacing.s6)
 
-                            VStack(alignment: .leading, spacing: AppMetrics.spacingMicro) {
+                            VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                                 Text("跟隨全域設定".localized)
                                     .font(AppFonts.body())
                                     .foregroundStyle(theme.palette.primaryText)
@@ -64,12 +64,12 @@ struct ReaderNotebookPicker: View {
                             book.preferredNotebookId = notebook.remoteId
                             dismiss()
                         } label: {
-                            HStack(spacing: AppMetrics.spacingSmall) {
-                                RoundedRectangle(cornerRadius: AppMetrics.spacingMicro)
+                            HStack(spacing: AppSpacing.s2) {
+                                RoundedRectangle(cornerRadius: AppRadius.xs)
                                     .fill(notebook.color.flatMap { Color(hex: $0) } ?? theme.palette.accent)
-                                    .frame(width: 4, height: AppMetrics.spacingExtraLarge)
+                                    .frame(width: 4, height: AppSpacing.s7)
 
-                                VStack(alignment: .leading, spacing: AppMetrics.spacingMicro) {
+                                VStack(alignment: .leading, spacing: AppSpacing.microGap) {
                                     Text(notebook.name)
                                         .font(AppFonts.body())
                                         .foregroundStyle(theme.palette.primaryText)

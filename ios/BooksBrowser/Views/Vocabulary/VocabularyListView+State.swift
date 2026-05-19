@@ -76,7 +76,7 @@ extension VocabularyListView {
                 .buttonStyle(.plain)
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppMetrics.spacingMedium)
+            .padding(.top, AppSpacing.s4)
         }
     }
 }

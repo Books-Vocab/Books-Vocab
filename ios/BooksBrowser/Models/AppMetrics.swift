@@ -8,19 +8,9 @@
 import SwiftUI
 
 enum AppMetrics {
-    // ── Spacing (留白與呼吸感) ────────────────────────────────────────────────────
-    static let spacingMicro: CGFloat = 2
-    static let spacingTiny: CGFloat = 3
-    static let spacingExtraSmall: CGFloat = 4
-    static let spacingSmall: CGFloat = 8
-    static let spacingCompact: CGFloat = 12
-
     // ── Divider / Separator ───────────────────────────────────────────────────
     static let dividerThin: CGFloat = 0.5
     static let dividerStandard: CGFloat = 1
-    static let spacingMedium: CGFloat = 16
-    static let spacingLarge: CGFloat = 24
-    static let spacingExtraLarge: CGFloat = 32
 
     // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
     static let glassStrokeOpacity: Double = 0.12
@@ -332,13 +322,17 @@ enum AppShadows {
 }
 
 // MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
-// 新元件優先使用此 namespace；舊 token (AppMetrics.spacing*/cornerRadius*) 保留為相容別名。
+// 所有元件一律使用此 namespace（AppSpacing / AppRadius / AppElevation）。
 
 /// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
 enum AppSpacing {
     static let zero: CGFloat = 0
     /// hairline — 僅用於 divider / progress / 微縫隙
     static let hairline: CGFloat = 1
+    /// 2pt 微縫隙 — 8pt grid 例外，僅限極小貼合間距
+    static let microGap: CGFloat = 2
+    /// 3pt 微縫隙 — 8pt grid 例外
+    static let tinyGap: CGFloat = 3
     static let s1: CGFloat = 4
     static let s2: CGFloat = 8
     static let s3: CGFloat = 12

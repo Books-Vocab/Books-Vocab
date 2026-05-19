@@ -60,7 +60,7 @@ extension AppToolbarGlyphStyle {
             badgeFont: AppFonts.monoNumbers(size: 10),
             badgeForeground: .white,
             badgeBackground: tone ?? theme.palette.destructive,
-            spacing: AppMetrics.spacingExtraSmall
+            spacing: AppSpacing.s1
         )
     }
 

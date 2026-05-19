@@ -16,7 +16,7 @@ struct AppCard<Content: View>: View {
     @ViewBuilder var content: Content
 
     init(
-        padding: CGFloat = AppMetrics.spacingLarge,
+        padding: CGFloat = AppSpacing.s6,
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding

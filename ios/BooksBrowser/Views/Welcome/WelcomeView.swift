@@ -38,10 +38,10 @@ struct WelcomeView: View {
         VStack(spacing: 0) {
             // 試用提示帶 — 鼓勵未登入者直接體驗
             tryItHint
-                .padding(.top, AppMetrics.spacingSmall)
+                .padding(.top, AppSpacing.s2)
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
-            Spacer(minLength: AppMetrics.spacingMedium)
+            Spacer(minLength: AppSpacing.s4)
 
             // App icon
             Image("AppIconImage")
@@ -67,7 +67,7 @@ struct WelcomeView: View {
 
             // 自繪 page indicator（避免 UIPageControl tint 跨平台不一致）
             stepIndicator
-                .padding(.top, AppMetrics.spacingSmall)
+                .padding(.top, AppSpacing.s2)
 
             Spacer()
 
@@ -82,7 +82,7 @@ struct WelcomeView: View {
     // MARK: - Subviews
 
     private var tryItHint: some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
+        HStack(spacing: AppSpacing.s2) {
             Image(systemName: "sparkles")
                 .font(AppFonts.caption(weight: .semibold))
             Text("不用註冊也能先體驗 Demo".localized)
@@ -108,7 +108,7 @@ struct WelcomeView: View {
     }
 
     private var stepIndicator: some View {
-        HStack(spacing: AppMetrics.spacingSmall) {
+        HStack(spacing: AppSpacing.s2) {
             ForEach(0..<pages.count, id: \.self) { index in
                 Capsule()
                     .fill(index == currentPage
@@ -128,7 +128,7 @@ struct WelcomeView: View {
     }
 
     private var ctaStack: some View {
-        VStack(spacing: AppMetrics.spacingSmall) {
+        VStack(spacing: AppSpacing.s2) {
             Button(action: onLogin) {
                 Label("登入帳號".localized, systemImage: "person.crop.circle.fill")
             }
@@ -145,7 +145,7 @@ struct WelcomeView: View {
     }
 
     private func pageView(_ page: WelcomePage, step: Int) -> some View {
-        VStack(spacing: AppMetrics.spacingMedium) {
+        VStack(spacing: AppSpacing.s4) {
             ZStack {
                 Circle()
                     .fill(appTheme.palette.accent.opacity(AppWelcomeMetrics.iconHaloOpacity))

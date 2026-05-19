@@ -56,7 +56,7 @@ struct LinkedCardOverlayStack: View {
                 .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .shadow(color: vocabSkin.palette.shadow.opacity(1.4), radius: AppShadows.panelRadius, y: AppShadows.panelY)
-        .padding(.horizontal, AppMetrics.spacingMedium + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
+        .padding(.horizontal, AppSpacing.s4 + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)
         .padding(.vertical, AppMetrics.sectionInset + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX)
         .scaleEffect(max(0.94, 1 - CGFloat(index) * 0.02))
         .offset(x: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetX, y: CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)

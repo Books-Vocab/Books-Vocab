@@ -57,7 +57,7 @@ struct AppToast: View {
                 }
         )
         .accessibilityElement(children: .combine)
-        .padding(.top, AppMetrics.spacingSmall)
+        .padding(.top, AppSpacing.s2)
     }
 
     private var tintColor: Color {
