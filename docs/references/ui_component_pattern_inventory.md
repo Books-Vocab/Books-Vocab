@@ -3,7 +3,7 @@ tier: reference
 scope:
   - ios/BooksBrowser/UIComponents
   - ios/BooksBrowser/Views
-verified_against: c16321f
+verified_against: 1d24dc1
 -->
 # UI Component & Pattern Inventory
 
@@ -38,7 +38,6 @@ Scope: `ios/BooksBrowser`
 主要檔案：
 - `ios/BooksBrowser/UIComponents/AppShellComponents.swift`
 - `ios/BooksBrowser/UIComponents/AppSurface.swift`
-- `ios/BooksBrowser/UIComponents/MorandiButtonStyle.swift`
 
 核心元件：
 - `AppSectionCard`
