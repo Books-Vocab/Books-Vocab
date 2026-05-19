@@ -33,11 +33,7 @@ struct AppToast: View {
             Capsule()
                 .fill(appTheme.palette.cardBackground)
         )
-        .shadow(
-            color: .black.opacity(AppShadows.toastOpacity),
-            radius: AppShadows.toastRadius,
-            y: AppShadows.toastY
-        )
+        .appElevation(.z2)
         .offset(y: min(dragOffset, 0))
         .gesture(
             DragGesture()
@@ -57,7 +53,7 @@ struct AppToast: View {
                 }
         )
         .accessibilityElement(children: .combine)
-        .padding(.top, AppMetrics.spacingSmall)
+        .padding(.top, AppSpacing.s2)
     }
 
     private var tintColor: Color {

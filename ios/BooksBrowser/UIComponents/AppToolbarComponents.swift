@@ -60,7 +60,7 @@ extension AppToolbarGlyphStyle {
             badgeFont: AppFonts.monoNumbers(size: 10),
             badgeForeground: .white,
             badgeBackground: tone ?? theme.palette.destructive,
-            spacing: AppMetrics.spacingExtraSmall
+            spacing: AppSpacing.s1
         )
     }
 
@@ -202,7 +202,7 @@ extension AppStateMessageStyle {
             spacing: 8,
             verticalPadding: 12,
             horizontalPadding: 14,
-            cornerRadius: AppMetrics.cornerRadiusMedium
+            cornerRadius: AppRadius.md
         )
     }
 

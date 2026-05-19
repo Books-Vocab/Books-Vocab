@@ -437,14 +437,14 @@ private struct DetailPresentation: ViewModifier {
     @Binding var isEditingDetailEntry: Bool
     @Binding var navigationPath: NavigationPath
 
-    @AppStorage("kg_detail_panel_width") private var panelWidth: Double = Double(AppMetrics.MacDetailPanel.defaultWidth)
+    @AppStorage("kg_detail_panel_width") private var panelWidth: Double = Double(MacDetailPanelMetrics.defaultWidth)
     @State private var dragWidth: CGFloat?
     @State private var containerWidth: CGFloat = 800
 
     private var effectivePanelWidth: CGFloat {
         let desired = CGFloat(panelWidth)
-        let maxAllowed = containerWidth - AppMetrics.MacDetailPanel.leftMinWidth
-        return min(desired, max(maxAllowed, AppMetrics.MacDetailPanel.minWidth))
+        let maxAllowed = containerWidth - MacDetailPanelMetrics.leftMinWidth
+        return min(desired, max(maxAllowed, MacDetailPanelMetrics.minWidth))
     }
 
     func body(content: Content) -> some View {
@@ -463,7 +463,7 @@ private struct DetailPresentation: ViewModifier {
                                     containerWidth: containerWidth,
                                     onDoubleClick: {
                                         withAnimation(AppMotion.standardSpring) {
-                                            panelWidth = Double(AppMetrics.MacDetailPanel.defaultWidth)
+                                            panelWidth = Double(MacDetailPanelMetrics.defaultWidth)
                                         }
                                     }
                                 )

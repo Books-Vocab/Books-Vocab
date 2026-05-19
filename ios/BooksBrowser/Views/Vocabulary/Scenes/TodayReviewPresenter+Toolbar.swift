@@ -76,11 +76,7 @@ extension TodayReviewPresenter {
         .background(
             Rectangle()
                 .fill(vocabSkin.palette.pageBackground)
-                .shadow(
-                    color: vocabSkin.palette.shadow.opacity(vocabSkin.metrics.reviewToolbarShadowOpacity),
-                    radius: vocabSkin.metrics.reviewToolbarShadowRadius,
-                    y: vocabSkin.metrics.reviewToolbarShadowY
-                )
+                .appElevation(.z2, direction: .up)
                 .ignoresSafeArea(edges: .bottom)
         )
     }
@@ -156,7 +152,7 @@ extension TodayReviewPresenter {
                     RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
                         .stroke(vocabSkin.palette.cardBorder.opacity(0.55), lineWidth: 1)
                 )
-                .shadow(color: vocabSkin.palette.shadow.opacity(0.18), radius: 18, y: 8)
+                .appElevation(.z3)
         )
         .frame(maxWidth: 420, alignment: .topLeading)
     }

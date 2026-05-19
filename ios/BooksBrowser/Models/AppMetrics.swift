@@ -8,31 +8,12 @@
 import SwiftUI
 
 enum AppMetrics {
-    // ── Spacing (留白與呼吸感) ────────────────────────────────────────────────────
-    static let spacingMicro: CGFloat = 2
-    static let spacingTiny: CGFloat = 3
-    static let spacingExtraSmall: CGFloat = 4
-    static let spacingSmall: CGFloat = 8
-    static let spacingCompact: CGFloat = 12
-
     // ── Divider / Separator ───────────────────────────────────────────────────
     static let dividerThin: CGFloat = 0.5
     static let dividerStandard: CGFloat = 1
-    static let spacingMedium: CGFloat = 16
-    static let spacingLarge: CGFloat = 24
-    static let spacingExtraLarge: CGFloat = 32
-    static let spacingXXL: CGFloat = 48
-    
+
     // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
     static let glassStrokeOpacity: Double = 0.12
-
-    // ── Corner Radius (圓角) ───────────────────────────────────────────────────
-    static let cornerRadiusSmall: CGFloat = 8
-    static let cornerRadiusMedium: CGFloat = 12
-    static let cornerRadiusLarge: CGFloat = 16
-    static let cornerRadiusXLarge: CGFloat = 18
-    static let cornerRadiusExtraLarge: CGFloat = 24
-    static let cornerRadiusGlass: CGFloat = 30
 
     // ── Control Dimensions ──────────────────────────────────────────────────────
     static let iconButtonSize: CGFloat = 52
@@ -41,101 +22,7 @@ enum AppMetrics {
     static let loadingIndicatorScaleMedium: CGFloat = 0.8
     static let loadingIndicatorScaleSmall: CGFloat = 0.7
 
-    // ── Card Dimensions ─────────────────────────────────────────────────────────
-    static let cardMinHeight: CGFloat = 420
-    static let heroCardPadding: CGFloat = 34
     static let sectionInset: CGFloat = 20
-}
-
-extension AppMetrics {
-    enum MacDetailPanel {
-        static let defaultWidth: CGFloat = 420
-        static let minWidth: CGFloat = 280
-        static let maxWidth: CGFloat = 600
-        static let leftMinWidth: CGFloat = 300
-        static let hitAreaWidth: CGFloat = 8
-        /// 分隔線靜止時的視覺透明度
-        static let dividerIdleOpacity: Double = 0.2
-        /// 分隔線拖曳中的視覺透明度（加亮回饋）
-        static let dividerActiveOpacity: Double = 0.5
-    }
-}
-
-enum AppTagMetrics {
-    static let horizontalPadding: CGFloat = 10
-    static let verticalPadding: CGFloat = 5
-    static let cornerRadius: CGFloat = 6
-}
-
-enum AppGhostButtonMetrics {
-    static let horizontalPadding: CGFloat = 14
-    static let verticalPadding: CGFloat = 10
-}
-
-enum AppBannerMetrics {
-    static let spacing: CGFloat = 10
-    static let horizontalPadding: CGFloat = 14
-    static let verticalPadding: CGFloat = 8
-    static let borderOpacity: Double = 0.2
-    static let backgroundOpacity: Double = 0.08
-}
-
-enum AppWelcomeMetrics {
-    static let iconBottomPadding: CGFloat = 12
-    static let pageHeight: CGFloat = 240
-    static let featureIconFrame: CGFloat = 64
-    static let subtitleHorizontalPadding: CGFloat = 40
-    static let bottomPadding: CGFloat = 40
-
-    // Step indicator capsule（自繪 page control）
-    static let stepIndicatorActiveWidth: CGFloat = 22
-    static let stepIndicatorInactiveWidth: CGFloat = 6
-    static let stepIndicatorHeight: CGFloat = 6
-    static let stepIndicatorInactiveOpacity: Double = 0.25
-
-    // Feature icon halo（accent 圓形背景）
-    static let iconHaloPadding: CGFloat = 16
-    static let iconHaloOpacity: Double = 0.10
-
-    // Page typography / layout
-    static let stepLabelTracking: CGFloat = 1.4
-    static let captionTopPadding: CGFloat = 2
-    static let pageContentSpacing: CGFloat = 4
-}
-
-enum AppBookshelfMetrics {
-    static let placeholderTitleHorizontalPadding: CGFloat = 12
-    static let coverHeightCompact: CGFloat = 210
-    static let coverHeightRegular: CGFloat = 260
-    static let coverCornerRadius: CGFloat = 10
-    static let coverShadowOpacity: Double = 0.10
-    static let coverShadowRadius: CGFloat = 6
-    static let coverShadowY: CGFloat = 3
-    static let progressBarHeight: CGFloat = 4
-    static let progressBarAccentOpacity: Double = 0.55
-    static let progressBarSpacing: CGFloat = 6
-    static let loadingOverlayPadding: CGFloat = 28
-    static let loadingProgressWidth: CGFloat = 180
-    static let badgePadding: CGFloat = 6
-    static let badgeForeground: Color = .white
-}
-
-enum AppSettingsMetrics {
-    static let accountHeroSpacing: CGFloat = 10
-    static let accountActionSpacing: CGFloat = 10
-    static let accountButtonSpacing: CGFloat = 12
-    static let accountRowSpacing: CGFloat = 14
-    static let accountAvatarSize: CGFloat = 46
-    static let socialBadgeSize: CGFloat = 22
-    static let reviewModeTileGap: CGFloat = 10
-    static let reviewStepperGap: CGFloat = 12
-    static let reviewValueMinWidth: CGFloat = 52
-}
-
-enum AppOverlayMetrics {
-    static let linkedCardLayerOffsetX: CGFloat = 8
-    static let linkedCardLayerOffsetY: CGFloat = 10
-    static let linkedCardLayerShrinkStep: CGFloat = 18
 }
 
 enum AppMotion {
@@ -152,11 +39,8 @@ enum AppMotion {
     static let breathing = Animation.easeInOut(duration: 2.8).repeatForever(autoreverses: true)
     static let reviewRevealSpring = Animation.spring(response: 0.42, dampingFraction: 0.88)
     static let reviewNavigationSpring = Animation.spring(response: 0.32, dampingFraction: 0.86)
-    static let reviewCardSwapSpring = Animation.spring(response: 0.34, dampingFraction: 0.84)
-    static let stackPromotionSpring = Animation.spring(response: 0.25, dampingFraction: 0.78)
 
     // Swipe gesture
-    static let swipeDismissSpring = Animation.spring(response: 0.35, dampingFraction: 0.78)
     static let swipeSnapBackSpring = Animation.spring(response: 0.4, dampingFraction: 0.82)
 
     // MARK: - Micro-interaction Springs
@@ -172,7 +56,6 @@ enum AppMotion {
     static let contentReveal: Animation = .spring(response: 0.35, dampingFraction: 0.82)
     static let celebrationBounce: Animation = .spring(response: 0.4, dampingFraction: 0.55)
     static let sheetContentAppear: Animation = .spring(response: 0.3, dampingFraction: 0.78)
-    static let swipeRowSnap: Animation = .spring(response: 0.3, dampingFraction: 0.75)
 
     // Semantic motion tokens for shared interaction patterns.
     static let panelState = standardSpring
@@ -182,7 +65,6 @@ enum AppMotion {
     static let feedbackPulse = systemSpring
     static let contentFade = quickEaseOut
     static let loadingState = quickEaseOut
-    static let listReorder = standardSpring
     static let chipSelect = chipSelectionEaseOut
 
     // MARK: - Phase 5: Asymmetric Emphasized Easing
@@ -193,18 +75,11 @@ enum AppMotion {
     /// timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4) — 標準 Material decelerate
     static let emphasizedDecelerate = Animation.timingCurve(0.05, 0.7, 0.1, 1.0, duration: 0.4)
 
-    /// 退場曲線 — 快入慢出，配 sheet / panel / overlay dismiss
-    /// timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2) — 標準 Material accelerate
-    static let emphasizedAccelerate = Animation.timingCurve(0.3, 0.0, 0.8, 0.15, duration: 0.2)
-
     /// Step indicator / pagination indicator 寬度切換
     /// 配 onboarding capsule 寬度由 inactive → active 過渡，須線性短促不彈跳
     static let indicatorTransition = Animation.easeOut(duration: 0.25)
 
     // MARK: - Phase 5: Continuous / Loading Motion
-
-    /// Shimmer / skeleton 連續呼吸動畫 — 配 LinearGradient mask 平移做骨架動效
-    static let shimmer = Animation.linear(duration: 1.4).repeatForever(autoreverses: false)
 
     /// 微脈動 — 用於 empty state、loading 等需要「呼吸感」但不搶焦的元素
     static let subtleBreath = Animation.easeInOut(duration: 2.4).repeatForever(autoreverses: true)
@@ -242,9 +117,8 @@ extension AnyTransition {
     /// 列表項目簡潔過渡
     static let listItemFade: AnyTransition = .opacity.animation(AppMotion.contentFade)
     static let listInsert: AnyTransition = .opacity.combined(with: .offset(y: 8))
-    static let listRemove: AnyTransition = .opacity
     /// 列表內容批次替換（insert + remove asymmetric 包裝）
-    static let listSwap: AnyTransition = .asymmetric(insertion: .listInsert, removal: .listRemove)
+    static let listSwap: AnyTransition = .asymmetric(insertion: .listInsert, removal: .opacity)
     /// 抽屜 / drawer 從右側滑入並淡入
     static let drawerReveal: AnyTransition = .move(edge: .trailing).combined(with: .opacity)
     /// Sync phase 切換（blur replace）
@@ -253,118 +127,18 @@ extension AnyTransition {
     static let selectionReveal: AnyTransition = .scale.combined(with: .opacity)
 }
 
-enum TodayReviewMetrics {
-    // ── Stack 動畫 ──────────────────────────────────────────────────
-    /// 卡片升起時的 Y 偏移（promote 動畫）
-    static let promoteYOffset: CGFloat = 22
-    /// 卡片升起時的縮放比例
-    static let promoteScale: CGFloat = 0.96
-
-    // ── 展開提示 ───────────────────────────────────────────────────
-    /// 展開提示出現時，卡片右側的內縮量（為提示圖示騰出空間）
-    static let expandHintTrailingPadding: CGFloat = 40
-
-    // ── Tag / Chip ──────────────────────────────────────────────────
-    /// 字數徽章水平 padding（對齊 AppTagMetrics）
-    static let tagHorizontalPadding: CGFloat = AppTagMetrics.horizontalPadding
-    /// 字數徽章垂直 padding（對齊 AppTagMetrics）
-    static let tagVerticalPadding: CGFloat = AppTagMetrics.verticalPadding
-    /// 字數徽章圓角
-    static let tagCornerRadius: CGFloat = 6
-
-    // ── Opacity ─────────────────────────────────────────────────────
-    /// 卡片邊框線條透明度（idle 狀態）
-    static let cardBorderOpacity: Double = 0.45
-    /// 卡片邊框線條透明度（fold 狀態 / active）
-    static let cardBorderActiveOpacity: Double = 0.72
-    /// 淡化文字透明度（quaternaryText 用）
-    static let dimTextOpacity: Double = 0.72
-    /// 填充色透明度（divider 用）
-    static let dividerFillOpacity: Double = 0.85
-
-    // ── Font Size ───────────────────────────────────────────────────
-    /// 字數 > 20 時的字體大小
-    static let counterFontSizeCompact: CGFloat = 22
-    /// 字數 > 12 時的字體大小
-    static let counterFontSizeMedium: CGFloat = 26
-    /// 字數 ≤ 12 時的字體大小（最大）
-    static let counterFontSizeLarge: CGFloat = 28
-
-    // ── Swipe Hint ──────────────────────────────────────────────────
-    /// Swipe hint 標籤字體大小（忘記/記得）
-    static let swipeHintFontSize: CGFloat = 34
-
-    // ── Fold Geometry ──────────────────────────────────────────────
-    /// 摺頁接合處的圓角（非首尾段的內側圓角）
-    static let foldJoinRadius: CGFloat = 4
-    /// 摺頁動畫的 Y 軸偏移量
-    static let paperFoldOffsetY: CGFloat = 12
-
-    // ── Micro Adjustment ────────────────────────────────────────────
-    /// 卡片疊層微調（消除 1pt 視覺縫隙）
-    static let stackLayerMicroOffset: CGFloat = -1
-    /// 答案展開提示區塊的頂部微調
-    static let answerHintTopPadding: CGFloat = 2
-}
-
-enum PodcastPlayerMetrics {
-    static let seekBarTrackHeight: CGFloat = 5
-    static let seekBarThumbSize: CGFloat = 16
-    static let seekBarThumbOffset: CGFloat = 8
-    static let seekBarHitArea: CGFloat = 20
-    static let seekBarThumbShadowRadius: CGFloat = 4
-    static let seekBarThumbShadowY: CGFloat = 2
-    static let seekBarThumbShadowOpacity: Double = 0.15
-    static let controlsClusterSpacing: CGFloat = 8
-    static let controlsBottomPadding: CGFloat = 20
-}
-
-enum AppShadows {
-    // ── iOS 26 Liquid Glass & Morandi Paper Shadows ───────────────────────────
-    // 極低對比度的大範圍陰影，模擬實體紙張微微浮起的效果
-    static let paperFloatOpacity: Double = 0.04
-    static let paperFloatRadius: CGFloat = 20
-    static let paperFloatY: CGFloat = 8
-    
-    // 輕微的按下或緊貼陰影
-    static let paperPressedOpacity: Double = 0.02
-    static let paperPressedRadius: CGFloat = 4
-    static let paperPressedY: CGFloat = 2
-
-    // MARK: - 封面/卡片微陰影（書架封面、小卡片）
-    static let coverOpacity: Double = 0.06
-    static let coverRadius: CGFloat = 4
-    static let coverY: CGFloat = 2
-
-    // MARK: - 控制元件微陰影（Badge、小按鈕）
-    static let controlOpacity: Double = 0.18
-    static let controlRadius: CGFloat = 2
-    static let controlY: CGFloat = 1
-
-    // MARK: - 工具列陰影（SelectionToolbar 等浮動 bar）
-    static let toolbarDropOpacity: Double = 0.10
-    static let toolbarDropRadius: CGFloat = 8
-    static let toolbarDropY: CGFloat = -2
-
-    // MARK: - 面板陰影（Reader overlay、大面板）
-    static let panelOpacity: Double = 0.18
-    static let panelRadius: CGFloat = 28
-    static let panelY: CGFloat = 14
-
-    // MARK: - Toast 微陰影（頂部浮動膠囊）
-    static let toastOpacity: Double = 0.08
-    static let toastRadius: CGFloat = 8
-    static let toastY: CGFloat = 4
-}
-
 // MARK: - Phase 4 additive tokens — 8pt grid spacing / radius scale / elevation language
-// 新元件優先使用此 namespace；舊 token (AppMetrics.spacing*/cornerRadius*) 保留為相容別名。
+// 所有元件一律使用此 namespace（AppSpacing / AppRadius / AppElevation）。
 
 /// 8pt grid spacing scale。一律以 4 的倍數為節奏，2/3pt 為例外 hairline 用途。
 enum AppSpacing {
     static let zero: CGFloat = 0
     /// hairline — 僅用於 divider / progress / 微縫隙
     static let hairline: CGFloat = 1
+    /// 2pt 微縫隙 — 8pt grid 例外，僅限極小貼合間距
+    static let microGap: CGFloat = 2
+    /// 3pt 微縫隙 — 8pt grid 例外
+    static let tinyGap: CGFloat = 3
     static let s1: CGFloat = 4
     static let s2: CGFloat = 8
     static let s3: CGFloat = 12
@@ -395,7 +169,7 @@ enum AppRadius {
 }
 
 /// Elevation language — z0 flush ← → z4 modal，跨元件統一深度層級。
-/// 取代分散的「用途命名」shadow（paperFloat / cover / panel ...），但既有 AppShadows 仍保留為相容值。
+/// 全 app 唯一的 shadow 系統 — 所有投影一律走 `.appElevation(.zN)`。
 enum AppElevation {
     case z0  // flush
     case z1  // resting card / list row
@@ -434,34 +208,29 @@ enum AppElevation {
     }
 }
 
-/// 跨裝置 readable layout — iPad / macOS 內容寬度上限，避免長句鋪滿全寬。
-enum AppLayout {
-    /// 適合 body 閱讀的最大寬度（680pt ≈ 60-70 字元/行）
-    static let maxReadableWidth: CGFloat = 680
-    /// 適合卡片陣列的最大寬度
-    static let maxContentWidth: CGFloat = 920
-    /// compact (iPhone) horizontal padding
-    static let compactPagePadding: CGFloat = 20
-    /// regular (iPad portrait) horizontal padding
-    static let regularPagePadding: CGFloat = 32
-    /// expanded (iPad landscape / Mac) horizontal padding
-    static let expandedPagePadding: CGFloat = 48
+/// Elevation 投影方向 — `.down` 標準下投（卡片浮起），`.up` 向上投影（底部 toolbar / panel）。
+enum ElevationDirection {
+    case down
+    case up
 }
 
 /// Theme-aware elevation modifier — 在 dark mode 自動加強陰影 opacity
 /// 否則黑底加黑影完全不可見，導致 elevation 語意失效。
 private struct AppElevationModifier: ViewModifier {
     let z: AppElevation
+    var direction: ElevationDirection = .down
     @Environment(\.colorScheme) private var colorScheme
 
     func body(content: Content) -> some View {
         // dark mode 上 black shadow 與 dark background 對比不足，
         // 提高 opacity 至 1.8x 補回視覺層次（Material Dark Elevation pattern）
         let darkBoost: Double = colorScheme == .dark ? 1.8 : 1.0
+        // `.up` 將投影方向翻轉為向上（底部浮動 bar / panel）
+        let offsetY = direction == .up ? -z.y : z.y
         return content.shadow(
             color: .black.opacity(z.opacity * darkBoost),
             radius: z.radius,
-            y: z.y
+            y: offsetY
         )
     }
 }
@@ -469,16 +238,9 @@ private struct AppElevationModifier: ViewModifier {
 extension View {
     /// Apply elevation shadow token。使用 `.appElevation(.z2)` 取代 raw `.shadow(...)`。
     /// 自動感知 light / dark mode 並調整 shadow 強度，dark mode 上會加強至 1.8x opacity。
-    func appElevation(_ z: AppElevation) -> some View {
-        modifier(AppElevationModifier(z: z))
-    }
-
-    /// 限制內容最大寬度並對齊 — iPad / macOS readable layout
-    func appReadableFrame(
-        maxWidth: CGFloat = AppLayout.maxReadableWidth,
-        alignment: Alignment = .center
-    ) -> some View {
-        frame(maxWidth: maxWidth, alignment: alignment)
+    /// `direction: .up` 用於底部 toolbar / panel 的向上投影。
+    func appElevation(_ z: AppElevation, direction: ElevationDirection = .down) -> some View {
+        modifier(AppElevationModifier(z: z, direction: direction))
     }
 }
 

@@ -43,6 +43,10 @@ enum AppColors {
     static let brandHeroLight = Color(hue: 232/360, saturation: 0.55, brightness: 0.62)
     static let brandHeroDark  = Color(hue: 232/360, saturation: 0.45, brightness: 0.78)
 
+    // ── On-Brand-Hero 前景 ────────────────────────────────────────────
+    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~6.98:1（WCAG AA ✓）。
+    static let onBrandHero = Color.white
+
     // ── 資訊色（霧青）─────────────────────────────────────────────────
     // 用於 info banner、提示訊息、tooltip 等中性提示
     static let infoLight = Color(hue: 195/360, saturation: 0.30, brightness: 0.58)

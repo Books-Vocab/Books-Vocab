@@ -22,14 +22,14 @@ struct AppActionButtonStyle: ButtonStyle {
             .padding(.vertical, 13)
             .background(
                 RoundedRectangle(
-                    cornerRadius: AppMetrics.cornerRadiusMedium,
+                    cornerRadius: AppRadius.md,
                     style: .continuous
                 )
                 .fill(palette.background)
             )
             .overlay(
                 RoundedRectangle(
-                    cornerRadius: AppMetrics.cornerRadiusMedium,
+                    cornerRadius: AppRadius.md,
                     style: .continuous
                 )
                 .stroke(palette.border, lineWidth: 1)

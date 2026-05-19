@@ -46,7 +46,7 @@ struct AppCompactActionButtonStyle: ButtonStyle {
             let bg = colorScheme == .dark
                 ? AppColors.brandHeroLight
                 : appTheme.palette.accentHero
-            return (.white, bg, bg)
+            return (AppColors.onBrandHero, bg, bg)
         case .neutral:
             return (
                 appTheme.palette.primaryText,
