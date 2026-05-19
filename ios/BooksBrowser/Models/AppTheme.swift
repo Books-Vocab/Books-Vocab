@@ -38,21 +38,22 @@ struct AppTheme: Equatable {
     let colorScheme: ColorScheme
     let palette: Palette
 
+    // Notion-inspired light：純白卡片 + 暖近白頁面，靠 border 分層而非重陰影。
     static let light = AppTheme(
         colorScheme: .light,
         palette: .init(
-            pageBackground: Color(red: 0.954, green: 0.952, blue: 0.947),
-            stageBackground: Color(red: 0.972, green: 0.970, blue: 0.964),
-            cardBackground: Color(red: 0.989, green: 0.987, blue: 0.982),
-            elevatedCardBackground: Color.white.opacity(0.96),
-            cardBorder: Color.black.opacity(0.048),
-            borderStrong: Color.black.opacity(0.12),
-            divider: Color.black.opacity(0.05),
-            shadow: Color.black.opacity(0.028),
-            primaryText: Color(red: 0.19, green: 0.19, blue: 0.18),
-            secondaryText: Color(red: 0.43, green: 0.43, blue: 0.42),
-            tertiaryText: Color(red: 0.44, green: 0.44, blue: 0.42),   // was 0.60 — improved to ~4.5:1 on pageBackground
-            quaternaryText: Color(red: 0.56, green: 0.56, blue: 0.54), // was 0.72 — improved contrast for decorative text
+            pageBackground: Color(red: 0.969, green: 0.965, blue: 0.953), // #F7F6F3
+            stageBackground: Color(red: 0.984, green: 0.980, blue: 0.973), // #FBFAF8
+            cardBackground: Color.white,
+            elevatedCardBackground: Color.white,
+            cardBorder: Color.black.opacity(0.09),
+            borderStrong: Color.black.opacity(0.16),
+            divider: Color.black.opacity(0.06),
+            shadow: Color.black.opacity(0.04),
+            primaryText: Color(red: 0.216, green: 0.208, blue: 0.184),     // #37352F ~11:1
+            secondaryText: Color(red: 0.420, green: 0.416, blue: 0.396),   // #6B6A65 ~5:1
+            tertiaryText: Color(red: 0.541, green: 0.537, blue: 0.514),    // #8A8983 ~3.2:1 metadata
+            quaternaryText: Color(red: 0.608, green: 0.604, blue: 0.576),  // #9B9A93 ~2.6:1 decorative
             accent: AppColors.accentLight,
             brandHero: AppColors.brandHeroLight,
             accentSubtle: AppColors.accentLight.opacity(0.12),
@@ -64,34 +65,32 @@ struct AppTheme: Equatable {
             destructiveBg: AppColors.destructiveLight.opacity(0.10),
             info: AppColors.infoLight,
             infoBg: AppColors.infoLight.opacity(0.10),
-            mutedFill: Color.black.opacity(0.035),
+            mutedFill: Color.black.opacity(0.04),
             scrim: Color.black.opacity(0.20),
             tint: AppColors.tint,
             overlayFill: Color.white.opacity(0.12),
             progressBarBackground: Color.black.opacity(0.07),
-            buttonIdleFill: Color.black.opacity(0.07),
-            buttonPressedFill: Color.black.opacity(0.12)
+            buttonIdleFill: Color.black.opacity(0.06),
+            buttonPressedFill: Color.black.opacity(0.10)
         )
     )
 
+    // Notion-inspired dark：中性深灰階（無 indigo tint），#191919 頁面 / #2C2C2C 卡片。
     static let dark = AppTheme(
         colorScheme: .dark,
         palette: .init(
-            // 微 indigo tint：原本 (0.155, 0.160, 0.174) 純中性灰，
-            // 微抬 B 值產生 brand-hue elevation tint，靠近 Linear/Stripe 質感
-            pageBackground: Color(red: 0.102, green: 0.104, blue: 0.118),
-            stageBackground: Color(red: 0.126, green: 0.129, blue: 0.146),
-            cardBackground: Color(red: 0.155, green: 0.160, blue: 0.182),
-            // 帶 brand-blue tint 的 raised surface（取代純白透明）
-            elevatedCardBackground: Color(red: 0.96, green: 0.97, blue: 1.0).opacity(0.085),
-            cardBorder: Color.white.opacity(0.10),
-            borderStrong: Color.white.opacity(0.20),
-            divider: Color.white.opacity(0.09),
+            pageBackground: Color(red: 0.100, green: 0.100, blue: 0.100),  // #191919
+            stageBackground: Color(red: 0.122, green: 0.122, blue: 0.122), // #1F1F1F
+            cardBackground: Color(red: 0.173, green: 0.173, blue: 0.173),  // #2C2C2C
+            elevatedCardBackground: Color(red: 0.216, green: 0.216, blue: 0.216), // #373737
+            cardBorder: Color.white.opacity(0.094),
+            borderStrong: Color.white.opacity(0.18),
+            divider: Color.white.opacity(0.08),
             shadow: Color.black.opacity(0.34),
-            primaryText: Color(red: 0.94, green: 0.94, blue: 0.92),
-            secondaryText: Color(red: 0.74, green: 0.75, blue: 0.77),
-            tertiaryText: Color(red: 0.58, green: 0.60, blue: 0.64),   // ~5.8:1 on dark pageBackground ✓
-            quaternaryText: Color(red: 0.56, green: 0.58, blue: 0.62), // was 0.45 — improved to ~4.5:1 on dark cardBackground
+            primaryText: Color(red: 0.902, green: 0.902, blue: 0.890),     // #E6E6E3 ~13:1
+            secondaryText: Color(red: 0.702, green: 0.702, blue: 0.682),   // #B3B3AE ~7.8:1
+            tertiaryText: Color(red: 0.549, green: 0.549, blue: 0.529),    // #8C8C87 ~4.9:1
+            quaternaryText: Color(red: 0.431, green: 0.431, blue: 0.412),  // #6E6E69 ~3.2:1 decorative
             accent: AppColors.accentDark,
             brandHero: AppColors.brandHeroDark,
             accentSubtle: AppColors.accentDark.opacity(0.18),
@@ -103,13 +102,13 @@ struct AppTheme: Equatable {
             destructiveBg: AppColors.destructive(.dark).opacity(0.14),
             info: AppColors.infoDark,
             infoBg: AppColors.infoDark.opacity(0.14),
-            mutedFill: Color.white.opacity(0.08),
+            mutedFill: Color.white.opacity(0.07),
             scrim: Color.black.opacity(0.42),
-            tint: Color(hue: 215/360, saturation: 0.18, brightness: 0.74),
+            tint: AppColors.accentDark,
             overlayFill: Color.white.opacity(0.15),
             progressBarBackground: Color.white.opacity(0.10),
-            buttonIdleFill: Color.white.opacity(0.12),
-            buttonPressedFill: Color.white.opacity(0.18)
+            buttonIdleFill: Color.white.opacity(0.10),
+            buttonPressedFill: Color.white.opacity(0.16)
         )
     )
 

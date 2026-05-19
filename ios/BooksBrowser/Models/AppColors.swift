@@ -8,10 +8,11 @@
 //  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
 //  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
-//  設計哲學：莫蘭迪色系（Morandi Palette）
-//    · 低飽和度（25-30%）但保持足夠亮度，不顯沉悶
-//    · 色彩如同早晨窗邊透光的紗幔 — 柔和卻明確
-//    · 紙張模擬 — 米白取代純白，深暖灰取代純黑
+//  設計哲學：Notion-inspired Palette
+//    · 表面近白／中性深灰 — 純淨、扁平，不靠重陰影靠 border 分層
+//    · 暖近黑文字（#37352F）取代純黑，承襲 Notion 的溫潤閱讀感
+//    · 強調色採 Notion 藍（link #337EA9 / product #2383E2 系）
+//    · 對比採分級制：正文 ≥4.5:1、metadata ≥3:1、裝飾 ~2.5:1
 //  ─────────────────────────────────────────────────────────────────────
 //  顏色分組（依使用方）
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
@@ -21,61 +22,62 @@
 
 import SwiftUI
 
-// MARK: - 莫蘭迪色彩 Token（Reader ＆ 全域）
+// MARK: - Notion-inspired 色彩 Token（Reader ＆ 全域）
 
 enum AppColors {
 
     // ── 紙張背景色 ────────────────────────────────────────────────────
-    static let paperLight     = Color(red: 0.975, green: 0.978, blue: 0.982)
+    static let paperLight     = Color(red: 0.984, green: 0.980, blue: 0.973)
     static let paperSepia     = Color(red: 0.98, green: 0.965, blue: 0.94)
     static let paperSepiaDeep = Color(red: 0.96, green: 0.93, blue: 0.87)
-    static let paperDark      = Color(red: 0.11, green: 0.106, blue: 0.098)
+    static let paperDark      = Color(red: 0.098, green: 0.098, blue: 0.098)
 
-    // ── 主題強調色（莫蘭迪灰藍 · 明亮）────────────────────────────────
-    // 如同淡水彩暈染的藍灰
-    static let accentLight = Color(hue: 215/360, saturation: 0.28, brightness: 0.66)
-    static let accentDark  = Color(hue: 215/360, saturation: 0.28, brightness: 0.70)
+    // ── 主題強調色（Notion 連結藍）────────────────────────────────────
+    // light: #337EA9（~4.1:1 on 近白頁面，連結／互動文字情境可接受）
+    // dark:  #5E9FD0（~5.8:1 on 深灰頁面）
+    static let accentLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let accentDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
-    // ── Brand Hero（深靛藍 · 主行動色）────────────────────────────────
-    // 比 accent 更具份量，用於主要 CTA、登入、Today Review 啟動鍵
-    // 與灰藍 accent 區隔，作為產品品牌印象的核心色相
-    static let brandHeroLight = Color(hue: 232/360, saturation: 0.55, brightness: 0.62)
-    static let brandHeroDark  = Color(hue: 232/360, saturation: 0.45, brightness: 0.78)
+    // ── Brand Hero（Notion product 藍 · 主行動色）────────────────────
+    // 用於主要 CTA、登入、Today Review 啟動鍵 — 飽和度高於連結藍
+    static let brandHeroLight = Color(red: 0.122, green: 0.435, blue: 0.816) // #1F6FD0
+    static let brandHeroDark  = Color(red: 0.137, green: 0.514, blue: 0.886) // #2383E2
 
     // ── On-Brand-Hero 前景 ────────────────────────────────────────────
-    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~6.98:1（WCAG AA ✓）。
+    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~4.95:1（WCAG AA ✓）。
     static let onBrandHero = Color.white
 
-    // ── 資訊色（霧青）─────────────────────────────────────────────────
+    // ── 資訊色（Notion 藍 · 與連結同色）──────────────────────────────
     // 用於 info banner、提示訊息、tooltip 等中性提示
-    static let infoLight = Color(hue: 195/360, saturation: 0.30, brightness: 0.58)
-    static let infoDark  = Color(hue: 195/360, saturation: 0.28, brightness: 0.72)
+    static let infoLight = Color(red: 0.200, green: 0.494, blue: 0.663)
+    static let infoDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
 
-    // ── 翻譯文字色（栗棕 · 明亮）──────────────────────────────────────
-    // 如同上好信箋上的棕色墨水
+    // ── 翻譯文字色（暖棕墨水）─────────────────────────────────────────
+    // Reader 翻譯面板專用，與正文區隔
     static let translationLight = Color(hue: 22/360, saturation: 0.26, brightness: 0.62)
     static let translationDark  = Color(hue: 25/360, saturation: 0.25, brightness: 0.70)
 
-    // ── 成功色（灰橄欖 · 明亮）────────────────────────────────────────
-    // 如同風乾的鼠尾草葉
-    static let savedLight = Color(hue: 152/360, saturation: 0.20, brightness: 0.60)
-    static let savedDark  = Color(hue: 152/360, saturation: 0.20, brightness: 0.62)
+    // ── 成功色（Notion 綠）────────────────────────────────────────────
+    // light: #3B7A3B（~4.8:1）  dark: #6FB36F（~6.6:1）
+    static let savedLight = Color(red: 0.231, green: 0.478, blue: 0.231)
+    static let savedDark  = Color(red: 0.435, green: 0.702, blue: 0.435)
 
-    // ── 危險色（煙玫瑰 · 明亮）────────────────────────────────────────
-    // 如同褪色的玫瑰花瓣
-    static let destructiveLight = Color(hue: 355/360, saturation: 0.26, brightness: 0.66)
-    static let destructiveDark  = Color(hue: 355/360, saturation: 0.25, brightness: 0.68)
+    // ── 危險色（Notion 紅）────────────────────────────────────────────
+    // light: #B5403A（~5.2:1）  dark: #E0726B（~5.3:1）
+    static let destructiveLight = Color(red: 0.710, green: 0.251, blue: 0.227)
+    static let destructiveDark  = Color(red: 0.878, green: 0.447, blue: 0.420)
 
-    // ── 警告色（淡琥珀）────────────────────────────────────────────────
-    static let warningLight = Color(hue: 0.1, saturation: 0.8, brightness: 0.8)
-    static let warningDark  = Color(hue: 0.1, saturation: 0.6, brightness: 0.9)
+    // ── 警告色（Notion 琥珀）──────────────────────────────────────────
+    // light: #8C6014（~5.1:1）  dark: #D9A441（~7.3:1）
+    static let warningLight = Color(red: 0.549, green: 0.376, blue: 0.078)
+    static let warningDark  = Color(red: 0.851, green: 0.643, blue: 0.255)
 
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
     // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
-    static let tint = Color(hue: 215/360, saturation: 0.16, brightness: 0.52)
+    static let tint = Color(red: 0.200, green: 0.494, blue: 0.663)
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
-    static let warmNeutral = Color(hue: 30/360, saturation: 0.30, brightness: 0.60)
+    static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
 
     // ── Highlight Mark (paper-style 螢光筆) ──────────────────────────────
     static let highlightMark = Color(hue: 45/360, saturation: 0.50, brightness: 0.95)
@@ -125,7 +127,7 @@ extension AppColors {
 // MARK: - Web CSS Token
 
 extension AppColors {
-    static let vocabHighlightLightCSS = "linear-gradient(to top, hsla(215, 30%, 58%, 0.22) 35%, transparent 35%)"
-    static let vocabHighlightDarkCSS  = "linear-gradient(to top, hsla(215, 28%, 70%, 0.20) 35%, transparent 35%)"
+    static let vocabHighlightLightCSS = "linear-gradient(to top, hsla(201, 53%, 50%, 0.20) 35%, transparent 35%)"
+    static let vocabHighlightDarkCSS  = "linear-gradient(to top, hsla(205, 50%, 65%, 0.20) 35%, transparent 35%)"
     static let vocabHighlightSepiaCSS = "linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%)"
 }
