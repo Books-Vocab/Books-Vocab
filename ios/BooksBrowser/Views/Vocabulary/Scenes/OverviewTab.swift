@@ -45,7 +45,7 @@ struct OverviewTab: View {
                 )
             }
             .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppMetrics.spacingMedium)
+            .padding(.top, AppSpacing.s4)
         }
         .navigationTitle("總覽".localized)
         .largeNavigationBarTitle()

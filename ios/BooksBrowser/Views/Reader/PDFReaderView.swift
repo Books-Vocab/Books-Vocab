@@ -167,7 +167,7 @@ struct PDFReaderView: View {
     private func errorView(_ message: String) -> some View {
         ScrollView {
             VStack {
-                Spacer(minLength: AppMetrics.spacingExtraLarge)
+                Spacer(minLength: AppSpacing.s7)
 
                 AppEmptyStateCard(
                     title: "無法開啟 PDF".localized,
@@ -181,7 +181,7 @@ struct PDFReaderView: View {
                 )
                 .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
 
-                Spacer(minLength: AppMetrics.spacingExtraLarge)
+                Spacer(minLength: AppSpacing.s7)
             }
             .frame(maxWidth: .infinity)
         }

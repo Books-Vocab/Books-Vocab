@@ -11,7 +11,8 @@
 //
 //  視覺設計：
 //    - 細高度（24pt）避免侵佔主內容
-//    - destructive bg + destructive 文字
+//    - destructive bg 提供錯誤色調；前景用 primaryText 確保 WCAG AA 對比
+//      （destructive 文字在 10% destructiveBg 上僅 ~2.7:1，不合規）
 //    - 進場走 `AnyTransition.bannerReveal`、進出走 `AppMotion.emphasizedDecelerate`
 //
 
@@ -27,7 +28,7 @@ struct AppOfflineBanner: View {
             Text("目前無網路連線".localized)
                 .font(AppFonts.caption(weight: .semibold))
         }
-        .foregroundStyle(appTheme.palette.destructive)
+        .foregroundStyle(appTheme.palette.primaryText)
         .padding(.horizontal, AppSpacing.s4)
         .padding(.vertical, AppSpacing.s2)
         .frame(maxWidth: .infinity)
