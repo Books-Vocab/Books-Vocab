@@ -11,7 +11,7 @@ enum VocabActionTone {
 typealias VocabTabOption<ID: Hashable> = AppTabOption<ID>
 
 struct VocabTabSelector<ID: Hashable>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let options: [VocabTabOption<ID>]
     @Binding var selection: ID
 
@@ -19,13 +19,13 @@ struct VocabTabSelector<ID: Hashable>: View {
         AppTabSelector(
             options: options,
             selection: $selection,
-            style: .vocab(vocabSkin)
+            style: .vocab(appSkin)
         )
     }
 }
 
 struct VocabFilterChipBar<ID: Hashable>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let options: [VocabTabOption<ID>]
     @Binding var selection: Set<ID>
 
@@ -33,13 +33,13 @@ struct VocabFilterChipBar<ID: Hashable>: View {
         AppFilterChipBar(
             options: options,
             selection: $selection,
-            style: .vocab(vocabSkin)
+            style: .vocab(appSkin)
         )
     }
 }
 
 struct VocabSearchField: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Binding var text: String
     let prompt: String
     var isFocused: FocusState<Bool>.Binding? = nil
@@ -48,14 +48,14 @@ struct VocabSearchField: View {
         AppSearchField(
             text: $text,
             prompt: prompt,
-            style: .vocab(vocabSkin),
+            style: .vocab(appSkin),
             isFocused: isFocused
         )
     }
 }
 
 struct VocabToolbarGlyph: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let systemImage: String
     let badge: String?
     let tone: Color?
@@ -70,13 +70,13 @@ struct VocabToolbarGlyph: View {
         AppToolbarGlyph(
             systemImage: systemImage,
             badge: badge,
-            style: .vocab(vocabSkin, tone: tone)
+            style: .vocab(appSkin, tone: tone)
         )
     }
 }
 
 struct VocabChromeIconButton: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let systemImage: String
     var tone: Color? = nil
     var label: String? = nil
@@ -85,13 +85,13 @@ struct VocabChromeIconButton: View {
     var body: some View {
         Button(action: action) {
             VocabChromeSurface(
-                fill: vocabSkin.palette.cardBackground,
-                border: vocabSkin.palette.cardBorder
+                fill: appSkin.palette.cardBackground,
+                border: appSkin.palette.cardBorder
             ) {
                 Image(systemName: systemImage)
-                    .font(vocabSkin.typography.iconMedium)
-                    .foregroundStyle(tone ?? vocabSkin.palette.secondaryText)
-                    .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+                    .font(appSkin.typography.iconMedium)
+                    .foregroundStyle(tone ?? appSkin.palette.secondaryText)
+                    .frame(width: appSkin.metrics.chromeButtonSize, height: appSkin.metrics.chromeButtonSize)
             }
         }
         .buttonStyle(.plain)
@@ -100,7 +100,7 @@ struct VocabChromeIconButton: View {
 }
 
 struct VocabChromeSurface<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let fill: Color
     let border: Color
     let content: Content
@@ -118,18 +118,18 @@ struct VocabChromeSurface<Content: View>: View {
     var body: some View {
         content
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .fill(fill)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .stroke(border, lineWidth: 1)
             )
     }
 }
 
 struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
     var badgeText: String? = nil
@@ -154,22 +154,22 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
     }
 
     var body: some View {
-        HStack(spacing: vocabSkin.metrics.sectionHeaderGap) {
+        HStack(spacing: appSkin.metrics.sectionHeaderGap) {
             leadingAccessory
 
             Label(title.localized, systemImage: systemImage)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.tertiaryText)
 
             if let badgeText {
                 Text(badgeText)
-                    .font(vocabSkin.typography.monoLabel)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
-                    .padding(.horizontal, vocabSkin.spacing.compactChipHorizontalPadding)
-                    .padding(.vertical, vocabSkin.spacing.compactChipVerticalPadding)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
+                    .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
+                    .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
                     .background(
                         Capsule(style: .continuous)
-                            .fill(vocabSkin.palette.mutedFill)
+                            .fill(appSkin.palette.mutedFill)
                     )
             }
 
@@ -179,8 +179,8 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
 
             VocabChromeIconButton(systemImage: "xmark", label: "關閉", action: onClose)
         }
-        .padding(.horizontal, vocabSkin.metrics.overlayHeaderHorizontalInset)
-        .padding(.vertical, vocabSkin.metrics.overlayHeaderVerticalInset)
+        .padding(.horizontal, appSkin.metrics.overlayHeaderHorizontalInset)
+        .padding(.vertical, appSkin.metrics.overlayHeaderVerticalInset)
     }
 }
 

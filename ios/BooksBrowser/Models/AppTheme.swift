@@ -28,7 +28,7 @@ struct AppTheme: Equatable {
         let mutedFill: Color
         let scrim: Color
         let tint: Color
-        // 中性半透明填充（白/黑疊加）— 由 VocabSkin 等上層 skin passthrough 取用
+        // 中性半透明填充（白/黑疊加）— 由 AppSkin 等上層 skin passthrough 取用
         let overlayFill: Color
         let progressBarBackground: Color
         let buttonIdleFill: Color
@@ -192,7 +192,7 @@ struct AppThemeContainer<Content: View>: View {
         let theme = AppTheme.resolve(for: appearanceStore.selection, systemColorScheme: colorScheme)
         content()
             .appTheme(theme)
-            .vocabSkin(.themed(theme))
+            .appSkin(.themed(theme))
             .tint(theme.palette.tint)
     }
 }

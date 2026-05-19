@@ -3,7 +3,7 @@ import SwiftUI
 
 struct QuotaBar: View {
     @Environment(\.appTheme) private var appTheme
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.quotaStore) private var store
 
     let isLoggedIn: Bool
@@ -27,10 +27,10 @@ struct QuotaBar: View {
 
     private var barColor: Color {
         switch store.level {
-        case .normal:    return vocabSkin.palette.success
+        case .normal:    return appSkin.palette.success
         case .warning:   return appTheme.palette.warning
-        case .critical:  return vocabSkin.palette.destructive
-        case .exhausted: return vocabSkin.palette.destructive
+        case .critical:  return appSkin.palette.destructive
+        case .exhausted: return appSkin.palette.destructive
         }
     }
 

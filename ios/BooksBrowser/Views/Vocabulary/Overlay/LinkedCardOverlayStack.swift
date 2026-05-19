@@ -8,14 +8,14 @@ private enum AppOverlayMetrics {
 }
 
 struct LinkedCardOverlayStack: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Binding var stack: [VocabularyEntry]
     var allEntries: [VocabularyEntry] = []
 
     var body: some View {
         if !stack.isEmpty {
             ZStack {
-                vocabSkin.palette.overlayScrim
+                appSkin.palette.overlayScrim
                     .ignoresSafeArea()
                     .onTapGesture {
                         _ = stack.popLast()
@@ -42,7 +42,7 @@ struct LinkedCardOverlayStack: View {
             )
 
             Rectangle()
-                .fill(vocabSkin.palette.divider)
+                .fill(appSkin.palette.divider)
                 .frame(height: AppMetrics.dividerThin)
 
             WordDetailSheet(
@@ -56,11 +56,11 @@ struct LinkedCardOverlayStack: View {
             maxWidth: max(420, 680 - CGFloat(index) * AppOverlayMetrics.linkedCardLayerShrinkStep),
             maxHeight: max(420, 620 - CGFloat(index) * AppOverlayMetrics.linkedCardLayerShrinkStep)
         )
-        .background(vocabSkin.palette.cardBackground)
-        .clipShape(RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous))
+        .background(appSkin.palette.cardBackground)
+        .clipShape(RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous))
         .overlay(
-            RoundedRectangle(cornerRadius: vocabSkin.radii.overlay, style: .continuous)
-                .stroke(vocabSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
+            RoundedRectangle(cornerRadius: appSkin.radii.overlay, style: .continuous)
+                .stroke(appSkin.palette.cardBorder.opacity(0.8), lineWidth: 1)
         )
         .appElevation(.z4)
         .padding(.horizontal, AppSpacing.s4 + CGFloat(index) * AppOverlayMetrics.linkedCardLayerOffsetY)

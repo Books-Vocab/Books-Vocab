@@ -9,7 +9,7 @@ import SwiftUI
 
 struct PodcastControlsView: View {
     let viewModel: PodcastPlayerViewModel
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     @State private var isDragging = false
     @State private var dragTime: TimeInterval = 0

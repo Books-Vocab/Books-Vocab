@@ -7,7 +7,7 @@ struct ArchivedVocabSheet: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.toastCoordinator) private var toastCoordinator
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     @Query(
         filter: #Predicate<VocabularyEntry> { $0.isArchived == true },
@@ -32,7 +32,7 @@ struct ArchivedVocabSheet: View {
                         )
                         Spacer()
                     }
-                    .padding(vocabSkin.metrics.cardBlockPadding)
+                    .padding(appSkin.metrics.cardBlockPadding)
                 } else {
                     List {
                         ForEach(archivedEntries) { entry in
@@ -50,11 +50,11 @@ struct ArchivedVocabSheet: View {
                                 } label: {
                                     Label("解除封存".localized, systemImage: "arrow.uturn.backward")
                                 }
-                                .tint(vocabSkin.palette.accent)
+                                .tint(appSkin.palette.accent)
                             }
                             .listRowInsets(EdgeInsets(
-                                top: 0, leading: vocabSkin.metrics.listRowHorizontalInset,
-                                bottom: 0, trailing: vocabSkin.metrics.listRowHorizontalInset
+                                top: 0, leading: appSkin.metrics.listRowHorizontalInset,
+                                bottom: 0, trailing: appSkin.metrics.listRowHorizontalInset
                             ))
                         }
                     }

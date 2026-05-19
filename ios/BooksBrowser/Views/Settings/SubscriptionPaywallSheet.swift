@@ -2,7 +2,7 @@ import SwiftUI
 import StoreKit
 
 struct SubscriptionPaywallSheet: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
     @Environment(\.subscriptionManager) private var subscriptionManager
     @Environment(\.authManager) private var authManager
@@ -15,19 +15,19 @@ struct SubscriptionPaywallSheet: View {
                 title: "AI 翻譯與語境解釋".localized,
                 description: nil,
                 icon: "checkmark.circle.fill",
-                tone: vocabSkin.palette.success
+                tone: appSkin.palette.success
             ),
             .init(
                 title: "雲端同步與跨裝置狀態".localized,
                 description: nil,
                 icon: "checkmark.circle.fill",
-                tone: vocabSkin.palette.success
+                tone: appSkin.palette.success
             ),
             .init(
                 title: "關聯圖與內建複習".localized,
                 description: nil,
                 icon: "checkmark.circle.fill",
-                tone: vocabSkin.palette.success
+                tone: appSkin.palette.success
             )
         ]
     }
@@ -38,19 +38,19 @@ struct SubscriptionPaywallSheet: View {
                 title: "AI 翻譯與語境解釋".localized,
                 description: "閱讀時即時查詢翻譯與語境".localized,
                 icon: "sparkles",
-                tone: vocabSkin.palette.accent
+                tone: appSkin.palette.accent
             ),
             .init(
                 title: "雲端同步與跨裝置狀態".localized,
                 description: "生詞與閱讀進度跨裝置同步".localized,
                 icon: "sparkles",
-                tone: vocabSkin.palette.accent
+                tone: appSkin.palette.accent
             ),
             .init(
                 title: "關聯圖與內建複習".localized,
                 description: "視覺化詞彙關聯與間隔複習".localized,
                 icon: "sparkles",
-                tone: vocabSkin.palette.accent
+                tone: appSkin.palette.accent
             )
         ]
     }
@@ -110,7 +110,7 @@ struct SubscriptionPaywallSheet: View {
                     inactiveLayout
                 }
             }
-            .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+            .background(appSkin.palette.pageBackground.ignoresSafeArea())
             .navigationTitle("訂閱".localized)
             .inlineNavigationBarTitle()
             .task {
@@ -129,29 +129,29 @@ struct SubscriptionPaywallSheet: View {
     // MARK: - 已啟用 Layout（確認式）
 
     private var activeLayout: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sheetSectionSpacing) {
             // Hero 確認
-            VStack(spacing: vocabSkin.spacing.controlGap) {
+            VStack(spacing: appSkin.spacing.controlGap) {
                 Image(systemName: isCancelledButActive ? "exclamationmark.triangle.fill" : "checkmark.seal.fill")
-                    .font(vocabSkin.typography.symbolHero)
-                    .foregroundStyle(isCancelledButActive ? vocabSkin.palette.accent : vocabSkin.palette.success)
+                    .font(appSkin.typography.symbolHero)
+                    .foregroundStyle(isCancelledButActive ? appSkin.palette.accent : appSkin.palette.success)
 
                 Text(isCancelledButActive ? "Pro 即將到期".localized : "Pro 已啟用".localized)
-                    .font(vocabSkin.typography.displayTitle)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.displayTitle)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 Text(activeSummaryText)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.secondaryText)
                     .multilineTextAlignment(.center)
                     .lineSpacing(4)
             }
             .frame(maxWidth: .infinity)
-            .padding(.top, vocabSkin.spacing.inlineGap)
+            .padding(.top, appSkin.spacing.inlineGap)
 
             // 功能已解鎖列表
             SettingsSubscriptionFeatureList(
-                borderTone: vocabSkin.palette.success.opacity(0.2),
+                borderTone: appSkin.palette.success.opacity(0.2),
                 items: activeFeatures
             )
 
@@ -159,11 +159,11 @@ struct SubscriptionPaywallSheet: View {
             SettingsSubscriptionInfoBlock(
                 title: priceLine,
                 detail: L10n.format("權限來源：%@", entitlementSourceLine),
-                titleFont: vocabSkin.typography.captionStrong
+                titleFont: appSkin.typography.captionStrong
             )
 
             // 管理按鈕
-            VStack(spacing: vocabSkin.spacing.controlGap) {
+            VStack(spacing: appSkin.spacing.controlGap) {
                 if !isAdminGranted {
                     Button {
                         Task {
@@ -196,29 +196,29 @@ struct SubscriptionPaywallSheet: View {
             purchaseStatusCard
 
             Text(footerNote)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
 
             legalLinksFooter
         }
-        .padding(vocabSkin.spacing.sheetPaddingCompact)
+        .padding(appSkin.spacing.sheetPaddingCompact)
     }
 
     // MARK: - 未啟用 Layout（行銷式）
 
     private var inactiveLayout: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sheetSectionSpacing) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sheetSectionSpacing) {
             Image(systemName: "sparkles.rectangle.stack.fill")
-                .font(vocabSkin.typography.symbolHero)
-                .foregroundStyle(vocabSkin.palette.accent)
+                .font(appSkin.typography.symbolHero)
+                .foregroundStyle(appSkin.palette.accent)
 
             Text("Books & Vocab Pro")
-                .font(vocabSkin.typography.displayTitle)
-                .foregroundStyle(vocabSkin.palette.primaryText)
+                .font(appSkin.typography.displayTitle)
+                .foregroundStyle(appSkin.palette.primaryText)
 
             Text(paywallSummaryText)
-                .font(vocabSkin.typography.body)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.body)
+                .foregroundStyle(appSkin.palette.secondaryText)
                 .lineSpacing(6)
 
             // 價格區塊（金額最突出，試用為次要 — 3.1.2(c) 合規）
@@ -226,12 +226,12 @@ struct SubscriptionPaywallSheet: View {
                 title: billedAmountLine,
                 subtitle: trialInfoLine,
                 detail: L10n.format("權限來源：%@", entitlementSourceLine),
-                titleFont: vocabSkin.typography.sectionTitle
+                titleFont: appSkin.typography.sectionTitle
             )
 
             // 功能列（行銷式 — 強調你「缺少」什麼）
             SettingsSubscriptionFeatureList(
-                borderTone: vocabSkin.palette.cardBorder,
+                borderTone: appSkin.palette.cardBorder,
                 items: paywallFeatures
             )
 
@@ -239,7 +239,7 @@ struct SubscriptionPaywallSheet: View {
             SettingsPlanComparisonTable(rows: comparisonRows)
 
             // CTA 按鈕（強烈）
-            VStack(spacing: vocabSkin.spacing.controlGap) {
+            VStack(spacing: appSkin.spacing.controlGap) {
                 Button {
                     Task {
                         await subscriptionManager.purchasePro(using: kgService, authManager: authManager)
@@ -271,17 +271,17 @@ struct SubscriptionPaywallSheet: View {
             }
 
             Text(footerNote)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
 
             Text(L10n.string("訂閱將透過 Apple ID 自動續訂。可隨時在 App Store 設定中取消，取消後當期仍可使用至到期日。"))
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
                 .multilineTextAlignment(.leading)
 
             legalLinksFooter
         }
-        .padding(vocabSkin.spacing.sheetPaddingCompact)
+        .padding(appSkin.spacing.sheetPaddingCompact)
     }
 
     @ViewBuilder
@@ -303,7 +303,7 @@ struct SubscriptionPaywallSheet: View {
             Button {
                 Task { await subscriptionManager.loadProducts() }
             } label: {
-                paywallActionLabel(title: "重新載入".localized, font: vocabSkin.typography.caption)
+                paywallActionLabel(title: "重新載入".localized, font: appSkin.typography.caption)
             }
             .buttonStyle(.vocabAction(.neutral))
             .disabled(subscriptionManager.isLoading)
@@ -328,8 +328,8 @@ struct SubscriptionPaywallSheet: View {
 
             if let trailingSystemImage {
                 Image(systemName: trailingSystemImage)
-                    .font(vocabSkin.typography.iconSmall)
-                    .foregroundStyle(vocabSkin.palette.quaternaryText)
+                    .font(appSkin.typography.iconSmall)
+                    .foregroundStyle(appSkin.palette.quaternaryText)
             }
         }
         .frame(maxWidth: .infinity)
@@ -338,16 +338,16 @@ struct SubscriptionPaywallSheet: View {
     // MARK: - Legal Links Footer
 
     private var legalLinksFooter: some View {
-        HStack(spacing: vocabSkin.spacing.controlGap) {
+        HStack(spacing: appSkin.spacing.controlGap) {
             Link(L10n.string("隱私政策"), destination: AppURLs.privacy)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
             Text("·")
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
             Link(L10n.string("服務條款"), destination: AppURLs.terms)
-                .font(vocabSkin.typography.caption)
-                .foregroundStyle(vocabSkin.palette.tertiaryText)
+                .font(appSkin.typography.caption)
+                .foregroundStyle(appSkin.palette.tertiaryText)
             Spacer()
         }
     }

@@ -2,19 +2,19 @@
 import SwiftUI
 
 struct ReaderSelectionTile<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let isSelected: Bool
     @ViewBuilder let content: Content
 
     var body: some View {
         VocabChromeSurface(
-            fill: isSelected ? vocabSkin.palette.mutedFill : vocabSkin.palette.pageBackground,
+            fill: isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground,
             border: isSelected
-                ? vocabSkin.palette.cardBorder
-                : vocabSkin.palette.divider.opacity(vocabSkin.metrics.readerSettingsDividerOpacity)
+                ? appSkin.palette.cardBorder
+                : appSkin.palette.divider.opacity(appSkin.metrics.readerSettingsDividerOpacity)
         ) {
             content
-                .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+                .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
     }
 }

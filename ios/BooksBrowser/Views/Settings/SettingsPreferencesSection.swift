@@ -1,19 +1,19 @@
 import SwiftUI
 
 struct SettingsPreferencesSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
     let onShowTranslationLanguage: () -> Void
     let onShowReviewSettings: () -> Void
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "偏好".localized, icon: "slider.horizontal.3")
 
             VStack(spacing: 0) {
                 // 外觀
-                AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(vocabSkin)) {
+                AppKeyValueRow(icon: "circle.lefthalf.filled", label: "外觀".localized, style: .settings(appSkin)) {
                     Menu {
                         ForEach(AppAppearanceMode.allCases) { mode in
                             Button {
@@ -43,14 +43,14 @@ struct SettingsPreferencesSection: View {
                 ) {
                     SettingsStatusValue(
                         text: "\(state.translationSource) → \(state.translationTarget)",
-                        color: vocabSkin.palette.secondaryText
+                        color: appSkin.palette.secondaryText
                     )
                 }
 
                 SettingsDivider()
 
                 // 語言
-                AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(vocabSkin)) {
+                AppKeyValueRow(icon: "character.bubble", label: "語言".localized, style: .settings(appSkin)) {
                     Menu {
                         ForEach(AppLanguage.allCases) { language in
                             Button {
@@ -80,7 +80,7 @@ struct SettingsPreferencesSection: View {
                 ) {
                     SettingsStatusValue(
                         text: state.selectedReviewMode,
-                        color: vocabSkin.palette.secondaryText
+                        color: appSkin.palette.secondaryText
                     )
                 }
 
@@ -90,14 +90,14 @@ struct SettingsPreferencesSection: View {
                     AppKeyValueRow(
                         icon: "arrow.triangle.2.circlepath",
                         label: "自動同步".localized,
-                        style: .settings(vocabSkin)
+                        style: .settings(appSkin)
                     ) {
                         Toggle("", isOn: Binding(
                             get: { state.autoSyncEnabled },
                             set: { actions.toggleAutoSync($0) }
                         ))
                         .labelsHidden()
-                        .tint(vocabSkin.palette.accent)
+                        .tint(appSkin.palette.accent)
                     }
                 }
             }

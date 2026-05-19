@@ -227,7 +227,7 @@ struct AppKeyValueRow<Content: View>: View {
 }
 
 struct AppSettingsDivider: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let leadingInset: CGFloat
 
     init(leadingInset: CGFloat = 50) {
@@ -236,14 +236,14 @@ struct AppSettingsDivider: View {
 
     var body: some View {
         Rectangle()
-            .fill(vocabSkin.palette.divider)
+            .fill(appSkin.palette.divider)
             .frame(height: AppMetrics.dividerStandard)
             .padding(.leading, leadingInset)
     }
 }
 
 struct AppSectionBlock<Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let title: String
     let eyebrow: String?
     @ViewBuilder let content: Content
@@ -263,17 +263,17 @@ struct AppSectionBlock<Content: View>: View {
             VStack(alignment: .leading, spacing: 2) {
                 if let eyebrow, !eyebrow.isEmpty {
                     Text(eyebrow)
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.quaternaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.quaternaryText)
                         .tracking(1.0)
                 }
                 Text(title.localized)
-                    .font(vocabSkin.typography.captionStrong)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.captionStrong)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
-            .padding(.horizontal, vocabSkin.metrics.readerSettingsHeaderMicroInset)
+            .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)
 
-            AppSectionCard(padding: vocabSkin.metrics.readerSettingsCardPadding, style: .settings(vocabSkin)) {
+            AppSectionCard(padding: appSkin.metrics.readerSettingsCardPadding, style: .settings(appSkin)) {
                 content
             }
         }

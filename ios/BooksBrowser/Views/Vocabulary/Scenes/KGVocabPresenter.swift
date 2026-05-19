@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct KGVocabPresenter: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     struct State {
         struct Banner {
@@ -48,20 +48,20 @@ struct KGVocabPresenter: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             // Pinned filter bar — stays visible while scrolling
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.microGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
                 VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
                 HStack {
                     Spacer()
                     VocabSortPill(sortOption: $sortOption)
                 }
             }
-            .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-            .padding(.top, vocabSkin.spacing.microGap)
-            .padding(.bottom, vocabSkin.spacing.inlineGap)
-            .background(vocabSkin.palette.pageBackground)
+            .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+            .padding(.top, appSkin.spacing.microGap)
+            .padding(.bottom, appSkin.spacing.inlineGap)
+            .background(appSkin.palette.pageBackground)
 
             ScrollView {
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                 if let banner = state.banner {
                     AppBanner(
                         message: banner.message,
@@ -84,8 +84,8 @@ struct KGVocabPresenter: View {
                             guidanceText: state.emptyState.action == nil ? "嘗試切換篩選條件或新增單字" : nil,
                             action: state.emptyState.action
                         )
-                        .padding(vocabSkin.metrics.listRowHorizontalInset)
-                        .padding(.vertical, vocabSkin.metrics.listEmptyStateVerticalInset)
+                        .padding(appSkin.metrics.listRowHorizontalInset)
+                        .padding(.vertical, appSkin.metrics.listEmptyStateVerticalInset)
                     } else {
                         LazyVStack(spacing: 0) {
                             ForEach(Array(state.rows.enumerated()), id: \.element.id) { index, item in
@@ -110,9 +110,9 @@ struct KGVocabPresenter: View {
 
                                 if index < state.rows.count - 1 {
                                     Rectangle()
-                                        .fill(vocabSkin.palette.divider)
+                                        .fill(appSkin.palette.divider)
                                         .frame(height: AppMetrics.dividerThin)
-                                        .padding(.leading, vocabSkin.metrics.listDividerInset)
+                                        .padding(.leading, appSkin.metrics.listDividerInset)
                                 }
                             }
                         }
@@ -121,9 +121,9 @@ struct KGVocabPresenter: View {
                     }
                 }
             }
-            .padding(.horizontal, vocabSkin.metrics.pageHorizontalInset)
-            .padding(.top, vocabSkin.spacing.microGap)
-            .padding(.bottom, vocabSkin.metrics.pageBottomInset)
+            .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
+            .padding(.top, appSkin.spacing.microGap)
+            .padding(.bottom, appSkin.metrics.pageBottomInset)
         }
         .vocabCanvasBackground()
         .platformRefreshable { [onRefresh] in
@@ -142,7 +142,7 @@ struct KGVocabPresenter: View {
 /// 2. 不在 row 內部掛 `.animateSpring(selectionState.isSelecting)`，500+ rows 時可省下 500+ 個 animation observer。
 ///    動畫由父層容器（`LazyVStack`）統一驅動。
 private struct KGVocabRow: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let entry: VocabularyEntry
     let isSelecting: Bool
@@ -152,14 +152,14 @@ private struct KGVocabRow: View {
     let onLongPress: () -> Void
 
     var body: some View {
-        HStack(spacing: vocabSkin.spacing.inlineGap) {
+        HStack(spacing: appSkin.spacing.inlineGap) {
             if isSelecting {
                 Image(systemName: isSelected ? "checkmark.circle.fill" : "circle")
-                    .font(vocabSkin.typography.iconMedium)
+                    .font(appSkin.typography.iconMedium)
                     .foregroundStyle(
                         isSelected
-                            ? vocabSkin.palette.accent
-                            : vocabSkin.palette.quaternaryText
+                            ? appSkin.palette.accent
+                            : appSkin.palette.quaternaryText
                     )
                     .onTapGesture(perform: onToggleSelection)
                     .transition(.selectionReveal)
@@ -175,7 +175,7 @@ private struct KGVocabRow: View {
                 .onTapGesture(perform: onTap)
                 .onLongPressGesture(perform: onLongPress)
         }
-        .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
+        .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
         .transition(.listSwap)
     }
 }

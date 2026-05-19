@@ -29,7 +29,7 @@ struct NotebookCardData {
 }
 
 struct NotebookCard: View {
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     let data: NotebookCardData
     var actions: NotebookCardActions = NotebookCardActions()
@@ -196,7 +196,7 @@ struct NotebookCard: View {
 }
 
 struct NotebookAddCard: View {
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     var body: some View {
         VStack(spacing: skin.spacing.inlineGap) {

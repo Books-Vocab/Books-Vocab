@@ -3,7 +3,7 @@ import SwiftUI
 // MARK: - List Cards, Status Hero, Timeline, Button Styles
 
 struct VocabListCard<Header: View, Content: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let headerPadding: EdgeInsets
     @ViewBuilder let header: Header
     @ViewBuilder let content: Content
@@ -14,10 +14,10 @@ struct VocabListCard<Header: View, Content: View>: View {
         @ViewBuilder content: () -> Content
     ) {
         self.headerPadding = headerPadding ?? EdgeInsets(
-            top: VocabSkin.baseMetrics.listCardHeaderTopInset,
-            leading: VocabSkin.baseMetrics.listRowHorizontalInset,
-            bottom: VocabSkin.baseMetrics.listCardHeaderBottomInset,
-            trailing: VocabSkin.baseMetrics.listRowHorizontalInset
+            top: AppSkin.baseMetrics.listCardHeaderTopInset,
+            leading: AppSkin.baseMetrics.listRowHorizontalInset,
+            bottom: AppSkin.baseMetrics.listCardHeaderBottomInset,
+            trailing: AppSkin.baseMetrics.listRowHorizontalInset
         )
         self.header = header()
         self.content = content()
@@ -30,9 +30,9 @@ struct VocabListCard<Header: View, Content: View>: View {
                     .padding(headerPadding)
 
                 Rectangle()
-                    .fill(vocabSkin.palette.divider)
+                    .fill(appSkin.palette.divider)
                     .frame(height: AppMetrics.dividerThin)
-                    .padding(.horizontal, vocabSkin.metrics.listDividerInset)
+                    .padding(.horizontal, appSkin.metrics.listDividerInset)
 
                 content
             }
@@ -41,7 +41,7 @@ struct VocabListCard<Header: View, Content: View>: View {
 }
 
 struct VocabStatusHero<Badges: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let systemImage: String
     var tone: Color
     let title: String
@@ -63,20 +63,20 @@ struct VocabStatusHero<Badges: View>: View {
     }
 
     var body: some View {
-        VStack(spacing: vocabSkin.spacing.statusHeroGap) {
+        VStack(spacing: appSkin.spacing.statusHeroGap) {
             Image(systemName: systemImage)
-                .font(vocabSkin.typography.symbolHero)
+                .font(appSkin.typography.symbolHero)
                 .foregroundStyle(tone)
 
             Text(title.localized)
-                .font(vocabSkin.typography.sectionTitle)
+                .font(appSkin.typography.sectionTitle)
 
             if let description {
                 Text(description.localized)
-                    .font(vocabSkin.typography.body)
+                    .font(appSkin.typography.body)
                     .multilineTextAlignment(.center)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .padding(.horizontal, vocabSkin.spacing.heroDescriptionHorizontalInset)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .padding(.horizontal, appSkin.spacing.heroDescriptionHorizontalInset)
             }
 
             badges
@@ -85,7 +85,7 @@ struct VocabStatusHero<Badges: View>: View {
 }
 
 struct VocabTimelineRow<Trailing: View>: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let statusSymbol: AnyView
     let title: String
     let titleTone: Color
@@ -110,14 +110,14 @@ struct VocabTimelineRow<Trailing: View>: View {
     }
 
     var body: some View {
-        HStack(spacing: vocabSkin.spacing.timelineRowGap) {
+        HStack(spacing: appSkin.spacing.timelineRowGap) {
             statusSymbol
                 .frame(width: 20)
 
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.timelineDetailGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.timelineDetailGap) {
                 HStack {
                     Text(title.localized)
-                        .font(vocabSkin.typography.body.weight(.medium))
+                        .font(appSkin.typography.body.weight(.medium))
                         .foregroundStyle(titleTone)
 
                     Spacer()
@@ -127,34 +127,34 @@ struct VocabTimelineRow<Trailing: View>: View {
 
                 if let detail, !detail.isEmpty {
                     Text(detail.localized)
-                        .font(vocabSkin.typography.caption)
+                        .font(appSkin.typography.caption)
                         .foregroundStyle(detailTone)
                         .lineLimit(2)
                 }
             }
         }
-        .padding(.vertical, vocabSkin.spacing.sectionGap)
+        .padding(.vertical, appSkin.spacing.sectionGap)
     }
 }
 
 struct VocabActionButtonStyle: ButtonStyle {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let tone: VocabActionTone
 
     func makeBody(configuration: Configuration) -> some View {
         let palette = stylePalette
 
         configuration.label
-            .font(vocabSkin.typography.captionStrong)
+            .font(appSkin.typography.captionStrong)
             .foregroundStyle(palette.foreground)
-            .padding(.horizontal, vocabSkin.spacing.actionButtonHorizontalPadding)
-            .padding(.vertical, vocabSkin.spacing.actionButtonVerticalPadding)
+            .padding(.horizontal, appSkin.spacing.actionButtonHorizontalPadding)
+            .padding(.vertical, appSkin.spacing.actionButtonVerticalPadding)
             .background(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .fill(palette.background)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: vocabSkin.radii.control, style: .continuous)
+                RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .stroke(palette.border, lineWidth: 1)
             )
             .scaleEffect(configuration.isPressed ? 0.96 : 1)
@@ -171,12 +171,12 @@ struct VocabActionButtonStyle: ButtonStyle {
             return styleFromShared(.neutral)
         case .success:
             return (
-                vocabSkin.palette.success,
-                vocabSkin.palette.success.opacity(VocabActionButtonPalette.idleFillOpacity),
-                vocabSkin.palette.success.opacity(VocabActionButtonPalette.borderOpacity)
+                appSkin.palette.success,
+                appSkin.palette.success.opacity(VocabActionButtonPalette.idleFillOpacity),
+                appSkin.palette.success.opacity(VocabActionButtonPalette.borderOpacity)
             )
         case .warning:
-            let warning = vocabSkin.palette.warning
+            let warning = appSkin.palette.warning
             return (
                 warning,
                 warning.opacity(VocabActionButtonPalette.warningIdleFillOpacity),
@@ -190,24 +190,24 @@ struct VocabActionButtonStyle: ButtonStyle {
     private func styleFromShared(_ tone: AppActionTone) -> (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            return (vocabSkin.palette.pageBackground, vocabSkin.palette.primaryText, vocabSkin.palette.primaryText)
+            return (appSkin.palette.pageBackground, appSkin.palette.primaryText, appSkin.palette.primaryText)
         case .neutral:
             return (
-                vocabSkin.palette.primaryText,
-                vocabSkin.palette.cardBackground,
-                vocabSkin.palette.cardBorder
+                appSkin.palette.primaryText,
+                appSkin.palette.cardBackground,
+                appSkin.palette.cardBorder
             )
         case .outline:
             return (
-                vocabSkin.palette.primaryText,
+                appSkin.palette.primaryText,
                 .clear,
-                vocabSkin.palette.secondaryText.opacity(VocabActionButtonPalette.outlineBorderOpacity)
+                appSkin.palette.secondaryText.opacity(VocabActionButtonPalette.outlineBorderOpacity)
             )
         case .destructive:
             return (
-                vocabSkin.palette.destructive,
-                vocabSkin.palette.destructive.opacity(VocabActionButtonPalette.idleFillOpacity),
-                vocabSkin.palette.destructive.opacity(VocabActionButtonPalette.borderOpacity)
+                appSkin.palette.destructive,
+                appSkin.palette.destructive.opacity(VocabActionButtonPalette.idleFillOpacity),
+                appSkin.palette.destructive.opacity(VocabActionButtonPalette.borderOpacity)
             )
         }
     }

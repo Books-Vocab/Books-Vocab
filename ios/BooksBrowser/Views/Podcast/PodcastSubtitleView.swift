@@ -7,7 +7,7 @@ struct PodcastSubtitleView: View {
     /// Re-runs only the subtitle fetch — wired to the inline failure retry.
     var onRetrySubtitle: () -> Void = {}
 
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
 
     var body: some View {
         ZStack {

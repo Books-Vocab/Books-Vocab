@@ -1,46 +1,46 @@
 import SwiftUI
 
 struct SettingsSubscriptionSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.SubscriptionSection
     let actions: SettingsPresenterActions
 
     var body: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "訂閱".localized, icon: "sparkles.rectangle.stack")
 
             VStack(spacing: 0) {
                 // ── 方案標題 + Badge ──
-                HStack(alignment: .top, spacing: vocabSkin.spacing.rowContentSpacing) {
+                HStack(alignment: .top, spacing: appSkin.spacing.rowContentSpacing) {
                     SettingsSubscriptionInfoBlock(
                         title: state.planName,
                         subtitle: state.summary,
                         detail: state.detail,
-                        titleFont: vocabSkin.typography.sectionTitle
+                        titleFont: appSkin.typography.sectionTitle
                     )
 
                     Spacer()
 
                     subscriptionBadge
                 }
-                .padding(vocabSkin.spacing.cardPadding)
+                .padding(appSkin.spacing.cardPadding)
 
                 SettingsDivider()
 
                 // ── 結構化 meta rows ──
-                AppKeyValueRow(icon: "key", label: "權限來源".localized, style: .settings(vocabSkin)) {
+                AppKeyValueRow(icon: "key", label: "權限來源".localized, style: .settings(appSkin)) {
                     SettingsStatusValue(
                         text: state.sourceLabel,
-                        color: vocabSkin.palette.secondaryText
+                        color: appSkin.palette.secondaryText
                     )
                 }
 
                 SettingsDivider()
 
-                AppKeyValueRow(icon: "wrench.and.screwdriver", label: "管理方式".localized, style: .settings(vocabSkin)) {
+                AppKeyValueRow(icon: "wrench.and.screwdriver", label: "管理方式".localized, style: .settings(appSkin)) {
                     SettingsStatusValue(
                         text: state.managementNote,
-                        color: vocabSkin.palette.secondaryText,
+                        color: appSkin.palette.secondaryText,
                         lineLimit: 2
                     )
                 }
@@ -48,10 +48,10 @@ struct SettingsSubscriptionSection: View {
                 if state.isRestoreAvailable {
                     SettingsDivider()
 
-                    AppKeyValueRow(icon: "arrow.clockwise", label: state.restoreLabel, style: .settings(vocabSkin)) {
+                    AppKeyValueRow(icon: "arrow.clockwise", label: state.restoreLabel, style: .settings(appSkin)) {
                         SettingsStatusValue(
                             text: state.restoreDescription,
-                            color: vocabSkin.palette.accent,
+                            color: appSkin.palette.accent,
                             lineLimit: 2
                         )
                     }
@@ -62,7 +62,7 @@ struct SettingsSubscriptionSection: View {
                     SettingsDivider()
 
                     pricingUnavailableCard(pricingUnavailableMessage)
-                        .padding(vocabSkin.spacing.cardPadding)
+                        .padding(appSkin.spacing.cardPadding)
                         .transition(.statusRowReveal)
                 }
 
@@ -89,7 +89,7 @@ struct SettingsSubscriptionSection: View {
     }
 
     private var subscriptionBadge: some View {
-        SettingsStatusBadge(text: state.badgeText, tone: state.badgeTone.color(in: vocabSkin))
+        SettingsStatusBadge(text: state.badgeText, tone: state.badgeTone.color(in: appSkin))
     }
 
     private func pricingUnavailableCard(_ message: String) -> some View {

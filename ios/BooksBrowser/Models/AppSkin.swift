@@ -1,17 +1,21 @@
 //
-//  VocabSkin.swift
+//  AppSkin.swift
 //  BooksBrowser
 //
-//  Vocabulary 功能的唯一 UI Token 來源（顏色、字型、圓角、間距）
+//  全 app 共用的 feature-level UI Token 層（顏色、字型、圓角、間距、metrics）。
 //  ─────────────────────────────────────────────────────────────────────
+//  定位：AppSkin 是 AppTheme 的 feature 擴充層 —— Palette facade（passthrough
+//  AppTheme.Palette + feature 色）＋ Typography / Radii / Spacing / Metrics。
+//  涵蓋範圍不限 Vocabulary：Reader / Settings / Podcast 等 feature 皆透過
+//  @Environment(\.appSkin) 取用（前身為 VocabSkin，已正名以符實際 scope）。
+//
 //  使用方式：
-//    所有 Vocabulary 組件透過 @Environment(\.vocabSkin) 讀取此值，
-//    不應直接使用 AppColors、AppTheme 或硬編碼色彩。
+//    組件透過 @Environment(\.appSkin) 讀取，不應直接用 AppColors 或硬編碼色彩。
 //
 //  組裝來源有兩種：
-//    1. VocabSkin.themed(appTheme)  — 由 AppTheme（Light/Dark）組裝，
+//    1. AppSkin.themed(appTheme)  — 由 AppTheme（Light/Dark）組裝，
 //       99% 情況下使用這個，可隨系統深淺色模式自動切換。
-//    2. VocabSkin.previewNeutral   — 由 themed(.light) 組裝的固定淺色 skin，
+//    2. AppSkin.previewNeutral   — 由 themed(.light) 組裝的固定淺色 skin，
 //       僅用於 SwiftUI Preview 或特定固定場景，不受系統深淺色影響。
 //
 //  設計哲學：Morandi 紙本排版
@@ -20,10 +24,10 @@
 
 import SwiftUI
 
-/// VocabSkin 專屬色票 —— `AppTheme.Palette` 未涵蓋的 feature 色。
-/// 與 `AppColors`（Reader + 全域）分離：此 enum 僅供 `VocabSkin.themed()` 組裝取用。
+/// AppSkin 專屬色票 —— `AppTheme.Palette` 未涵蓋的 feature 色。
+/// 與 `AppColors`（Reader + 全域）分離：此 enum 僅供 `AppSkin.themed()` 組裝取用。
 /// scheme-aware 色給 light/dark 一對；固定色（不隨深淺色）為單值。
-enum VocabSkinColors {
+enum AppSkinColors {
     // ── 連結文字 ──
     static let linkLight = Color(red: 0.47, green: 0.56, blue: 0.67)
     static let linkDark  = Color(red: 0.62, green: 0.71, blue: 0.84)
@@ -54,7 +58,7 @@ enum VocabSkinColors {
     static let readerThemeDarkSwatch  = Color(red: 0.34, green: 0.35, blue: 0.38)
 }
 
-struct VocabSkin {
+struct AppSkin {
     /// Vocabulary skin 色票 —— facade 結構，非平行設計系統。
     /// - 與 `AppTheme.Palette` 同義的欄位為 computed forwarder，唯一真相在 `base`：
     ///   AppTheme 改色自動穿透，不可能漂移。
@@ -343,7 +347,7 @@ struct VocabSkin {
     }
 }
 
-extension VocabSkin {
+extension AppSkin {
     private static var _cachedTypography: Typography?
 
     static var baseTypography: Typography {
@@ -538,24 +542,24 @@ extension VocabSkin {
         graphDrawerBottomInset: 11
     )
 
-    /// 由 AppTheme 組裝的 VocabSkin，隨系統深淺色模式自動切換。
-    /// 這是正常使用的工廠方法，請在注入 @Environment(\.vocabSkin) 時呼叫此方法。
-    static func themed(_ theme: AppTheme) -> VocabSkin {
+    /// 由 AppTheme 組裝的 AppSkin，隨系統深淺色模式自動切換。
+    /// 這是正常使用的工廠方法，請在注入 @Environment(\.appSkin) 時呼叫此方法。
+    static func themed(_ theme: AppTheme) -> AppSkin {
         let isDark = theme.colorScheme == .dark
 
-        return VocabSkin(
+        return AppSkin(
             palette: .init(
                 base: theme.palette,
-                translationText: isDark ? VocabSkinColors.translationDark : VocabSkinColors.translationLight,
-                tierIntermediate: VocabSkinColors.tierIntermediate,
-                tierAdvanced: VocabSkinColors.tierAdvanced,
-                retry: isDark ? VocabSkinColors.retryDark : VocabSkinColors.retryLight,
-                overdue: isDark ? VocabSkinColors.overdueDark : VocabSkinColors.overdueLight,
-                highlightMark: isDark ? VocabSkinColors.highlightMarkDark : VocabSkinColors.highlightMarkLight,
-                link: isDark ? VocabSkinColors.linkDark : VocabSkinColors.linkLight,
-                readerThemeLightSwatch: VocabSkinColors.readerThemeLightSwatch,
-                readerThemeSepiaSwatch: VocabSkinColors.readerThemeSepiaSwatch,
-                readerThemeDarkSwatch: VocabSkinColors.readerThemeDarkSwatch
+                translationText: isDark ? AppSkinColors.translationDark : AppSkinColors.translationLight,
+                tierIntermediate: AppSkinColors.tierIntermediate,
+                tierAdvanced: AppSkinColors.tierAdvanced,
+                retry: isDark ? AppSkinColors.retryDark : AppSkinColors.retryLight,
+                overdue: isDark ? AppSkinColors.overdueDark : AppSkinColors.overdueLight,
+                highlightMark: isDark ? AppSkinColors.highlightMarkDark : AppSkinColors.highlightMarkLight,
+                link: isDark ? AppSkinColors.linkDark : AppSkinColors.linkLight,
+                readerThemeLightSwatch: AppSkinColors.readerThemeLightSwatch,
+                readerThemeSepiaSwatch: AppSkinColors.readerThemeSepiaSwatch,
+                readerThemeDarkSwatch: AppSkinColors.readerThemeDarkSwatch
             ),
             typography: baseTypography,
             radii: baseRadii,
@@ -568,11 +572,11 @@ extension VocabSkin {
     /// 固定淺色 skin，不受系統深淺色模式影響。
     /// 僅用於 SwiftUI Preview 或特定固定呈現場景，正常業務請改用 themed()。
     /// 由 themed(.light) 組裝 — 與正式 light skin 單一真相，消除硬編碼複本漂移。
-    static let previewNeutral = VocabSkin.themed(.light)
+    static let previewNeutral = AppSkin.themed(.light)
 }
 
 #if os(iOS)
-extension VocabSkin {
+extension AppSkin {
     func readerThemeSwatchColor(_ theme: ReaderTheme) -> Color {
         switch theme {
         case .light:
@@ -586,19 +590,19 @@ extension VocabSkin {
 }
 #endif
 
-private struct VocabSkinEnvironmentKey: EnvironmentKey {
-    static let defaultValue = VocabSkin.themed(.light)
+private struct AppSkinEnvironmentKey: EnvironmentKey {
+    static let defaultValue = AppSkin.themed(.light)
 }
 
 extension EnvironmentValues {
-    var vocabSkin: VocabSkin {
-        get { self[VocabSkinEnvironmentKey.self] }
-        set { self[VocabSkinEnvironmentKey.self] = newValue }
+    var appSkin: AppSkin {
+        get { self[AppSkinEnvironmentKey.self] }
+        set { self[AppSkinEnvironmentKey.self] = newValue }
     }
 }
 
 extension View {
-    func vocabSkin(_ skin: VocabSkin) -> some View {
-        environment(\.vocabSkin, skin)
+    func appSkin(_ skin: AppSkin) -> some View {
+        environment(\.appSkin, skin)
     }
 }

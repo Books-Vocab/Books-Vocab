@@ -18,7 +18,7 @@ struct WordDetailPresenter: View {
     }
 
     @Environment(\.colorScheme) private var colorScheme
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
 
     let state: State
     let showsChrome: Bool
@@ -70,36 +70,36 @@ struct WordDetailPresenter: View {
                                 rootForm: state.rootForm,
                                 colorScheme: colorScheme
                             )
-                            .padding(vocabSkin.metrics.cardBlockPadding)
+                            .padding(appSkin.metrics.cardBlockPadding)
                         }
 
                         if !state.card.activeLinkGroups.isEmpty || !state.card.hiddenLinks.isEmpty || onAddLink != nil {
                             CardSectionDivider()
                             linksSection
-                                .padding(vocabSkin.metrics.cardBlockPadding)
+                                .padding(appSkin.metrics.cardBlockPadding)
                         }
 
                         if let reviewProgress = state.reviewProgress {
                             CardSectionDivider()
                             reviewProgressSection(reviewProgress)
-                                .padding(vocabSkin.metrics.cardBlockPadding)
+                                .padding(appSkin.metrics.cardBlockPadding)
                         }
 
                         CardSectionDivider()
                         metadataFooter
-                            .padding(vocabSkin.metrics.cardBlockPadding)
+                            .padding(appSkin.metrics.cardBlockPadding)
                     }
                 }
-                .padding(vocabSkin.metrics.cardBlockPadding)
+                .padding(appSkin.metrics.cardBlockPadding)
 
                 if let onToggleExcludeFromReader {
                     excludeFromReaderToggle(onToggle: onToggleExcludeFromReader)
-                        .padding(.horizontal, vocabSkin.metrics.cardBlockPadding)
-                        .padding(.top, vocabSkin.metrics.cardBlockInnerGap)
+                        .padding(.horizontal, appSkin.metrics.cardBlockPadding)
+                        .padding(.top, appSkin.metrics.cardBlockInnerGap)
                 }
 
                 Spacer()
-                    .frame(height: vocabSkin.metrics.cardBlockPadding * 2)
+                    .frame(height: appSkin.metrics.cardBlockPadding * 2)
             }
         }
         .scrollContentBackground(.hidden)
@@ -108,25 +108,25 @@ struct WordDetailPresenter: View {
     }
 
     private var linksSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockContentGap) {
+        VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockContentGap) {
             HStack {
                 CardSectionLabel(title: "知識連結".localized, systemImage: "link")
                 Spacer()
                 if let onAddLink {
                     Button(action: onAddLink) {
                         Image(systemName: "plus")
-                            .font(vocabSkin.typography.iconSmall)
-                            .foregroundStyle(vocabSkin.palette.secondaryText)
+                            .font(appSkin.typography.iconSmall)
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
                     .buttonStyle(.plain)
                 }
             }
 
             ForEach(state.card.activeLinkGroups) { group in
-                VStack(alignment: .leading, spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                VStack(alignment: .leading, spacing: appSkin.metrics.cardBlockInnerGap) {
                     Text(group.label.localized)
-                        .font(vocabSkin.typography.caption)
-                        .foregroundStyle(vocabSkin.palette.tertiaryText)
+                        .font(appSkin.typography.caption)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
 
                     ForEach(group.items) { link in
                         WordDetailGraphLinkRow(
@@ -143,16 +143,16 @@ struct WordDetailPresenter: View {
             }
 
             if !state.card.hiddenLinks.isEmpty {
-                CollocationFlowLayout(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+                CollocationFlowLayout(spacing: appSkin.metrics.cardBlockInnerGap) {
                     ForEach(state.card.hiddenLinks) { link in
                         Text(link.word)
-                            .font(vocabSkin.typography.monoBody)
-                            .foregroundStyle(vocabSkin.palette.quaternaryText)
+                            .font(appSkin.typography.monoBody)
+                            .foregroundStyle(appSkin.palette.quaternaryText)
                             .padding(.horizontal, 8)
                             .padding(.vertical, 4)
                             .background(
                                 Capsule()
-                                    .fill(vocabSkin.palette.divider.opacity(0.5))
+                                    .fill(appSkin.palette.divider.opacity(0.5))
                             )
                             .contextMenu {
                                 if let onUnhide = onUnhideLink {
@@ -179,8 +179,8 @@ struct WordDetailPresenter: View {
     private func reviewProgressSection(_ progress: VocabReviewProgress) -> some View {
         HStack {
             Text(progress.statusLabel.localized)
-                .font(vocabSkin.typography.captionStrong)
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .font(appSkin.typography.captionStrong)
+                .foregroundStyle(appSkin.palette.secondaryText)
 
             Spacer()
 
@@ -189,30 +189,30 @@ struct WordDetailPresenter: View {
     }
 
     private var metadataFooter: some View {
-        HStack(spacing: vocabSkin.metrics.cardBlockPadding) {
+        HStack(spacing: appSkin.metrics.cardBlockPadding) {
             ForEach(Array(state.metadataItems.enumerated()), id: \.offset) { _, item in
                 HStack(spacing: 4) {
                     Image(systemName: item.icon)
-                        .font(vocabSkin.typography.iconTiny)
+                        .font(appSkin.typography.iconTiny)
                     Text(item.text.localized)
                 }
             }
         }
-        .font(vocabSkin.typography.caption)
-        .foregroundStyle(vocabSkin.palette.quaternaryText)
+        .font(appSkin.typography.caption)
+        .foregroundStyle(appSkin.palette.quaternaryText)
     }
 
     @ViewBuilder
     private var shareButton: some View {
         ShareLink(item: state.card.document.plainTextExport(), subject: Text(state.title)) {
             VocabChromeSurface(
-                fill: vocabSkin.palette.cardBackground,
-                border: vocabSkin.palette.cardBorder
+                fill: appSkin.palette.cardBackground,
+                border: appSkin.palette.cardBorder
             ) {
                 Image(systemName: "square.and.arrow.up")
-                    .font(vocabSkin.typography.iconMedium)
-                    .foregroundStyle(vocabSkin.palette.secondaryText)
-                    .frame(width: vocabSkin.metrics.chromeButtonSize, height: vocabSkin.metrics.chromeButtonSize)
+                    .font(appSkin.typography.iconMedium)
+                    .foregroundStyle(appSkin.palette.secondaryText)
+                    .frame(width: appSkin.metrics.chromeButtonSize, height: appSkin.metrics.chromeButtonSize)
             }
         }
         .buttonStyle(.plain)
@@ -221,18 +221,18 @@ struct WordDetailPresenter: View {
 
     private func excludeFromReaderToggle(onToggle: @escaping () -> Void) -> some View {
         Button(action: onToggle) {
-            HStack(spacing: vocabSkin.metrics.cardBlockInnerGap) {
+            HStack(spacing: appSkin.metrics.cardBlockInnerGap) {
                 Image(systemName: state.isExcludedFromReader ? "checkmark.square.fill" : "square")
-                    .font(vocabSkin.typography.body)
+                    .font(appSkin.typography.body)
                     .foregroundStyle(
                         state.isExcludedFromReader
-                            ? vocabSkin.palette.secondaryText
-                            : vocabSkin.palette.tertiaryText
+                            ? appSkin.palette.secondaryText
+                            : appSkin.palette.tertiaryText
                     )
 
                 Text("閱讀時不標記此單字".localized)
-                    .font(vocabSkin.typography.caption)
-                    .foregroundStyle(vocabSkin.palette.tertiaryText)
+                    .font(appSkin.typography.caption)
+                    .foregroundStyle(appSkin.palette.tertiaryText)
             }
         }
         .buttonStyle(.plain)

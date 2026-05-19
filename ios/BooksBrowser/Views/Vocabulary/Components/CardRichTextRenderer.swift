@@ -9,8 +9,8 @@ struct CardRichTextStyle {
     var underlineHighlights: Bool = false
     var useBackgroundMark: Bool = true
     var highlightWeight: Font.Weight = .semibold
-    var backgroundOpacity: Double = VocabSkin.HighlightConfig.default.backgroundOpacity
-    var underlineOpacity: Double = VocabSkin.HighlightConfig.default.underlineOpacity
+    var backgroundOpacity: Double = AppSkin.HighlightConfig.default.backgroundOpacity
+    var underlineOpacity: Double = AppSkin.HighlightConfig.default.underlineOpacity
 }
 
 enum CardRichTextMode {

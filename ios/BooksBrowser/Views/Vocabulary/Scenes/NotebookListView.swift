@@ -16,7 +16,7 @@ struct NotebookListView: View {
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
-    @Environment(\.vocabSkin) private var skin
+    @Environment(\.appSkin) private var skin
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var coordinator = NotebookListCoordinator()

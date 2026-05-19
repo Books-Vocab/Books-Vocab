@@ -39,7 +39,7 @@ struct SyncPresenterState {
 
 struct SyncPresenter: View {
     @Environment(\.dismiss) var dismiss
-    @Environment(\.vocabSkin) var vocabSkin
+    @Environment(\.appSkin) var appSkin
 
     let state: SyncPresenterState
     let onPrimaryAction: () -> Void
@@ -51,9 +51,9 @@ struct SyncPresenter: View {
     var body: some View {
         VStack(spacing: 0) {
             ScrollView {
-                VStack(spacing: vocabSkin.metrics.heroSectionSpacing) {
+                VStack(spacing: appSkin.metrics.heroSectionSpacing) {
                     headerView
-                        .padding(.top, vocabSkin.metrics.syncOverlayInset)
+                        .padding(.top, appSkin.metrics.syncOverlayInset)
                         .animatePhaseChange(state.phase)
 
                     if state.isLoggedIn && state.phase == .ready && !state.pendingRows.isEmpty {
@@ -69,14 +69,14 @@ struct SyncPresenter: View {
                             .transition(.feedbackBadge)
                     }
                 }
-                .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
+                .padding(.horizontal, appSkin.metrics.overlayHorizontalInset)
+                .padding(.bottom, appSkin.metrics.overlayVerticalInset)
             }
 
             actionArea
-                .padding(.horizontal, vocabSkin.metrics.overlayHorizontalInset)
-                .padding(.bottom, vocabSkin.metrics.overlayVerticalInset)
-                .background(vocabSkin.palette.pageBackground)
+                .padding(.horizontal, appSkin.metrics.overlayHorizontalInset)
+                .padding(.bottom, appSkin.metrics.overlayVerticalInset)
+                .background(appSkin.palette.pageBackground)
         }
         .vocabCanvasBackground()
         .animatePhaseChange(state.summaryText.isEmpty)
@@ -110,14 +110,14 @@ struct SyncPresenter: View {
                             tone: resolveTone(item.actionTone),
                             action: { onPendingActionTapped?(item.id) }
                         )
-                        .padding(.top, vocabSkin.metrics.accessoryTopOffset)
+                        .padding(.top, appSkin.metrics.accessoryTopOffset)
                     }
-                    .padding(.horizontal, vocabSkin.spacing.cardPadding)
+                    .padding(.horizontal, appSkin.spacing.cardPadding)
                     .transition(.listItemFade)
 
                     if index < state.pendingRows.count - 1 {
                         Divider()
-                            .padding(.leading, vocabSkin.spacing.cardPadding)
+                            .padding(.leading, appSkin.spacing.cardPadding)
                     }
                 }
             }
@@ -127,12 +127,12 @@ struct SyncPresenter: View {
 
     private func resolveTone(_ tone: WordRow.ViewData.Tone) -> Color {
         switch tone {
-        case .primary: return vocabSkin.palette.primaryText
-        case .secondary: return vocabSkin.palette.secondaryText
-        case .tertiary: return vocabSkin.palette.tertiaryText
-        case .quaternary: return vocabSkin.palette.quaternaryText
-        case .destructive: return vocabSkin.palette.destructive
-        case .reviewDue: return vocabSkin.palette.warning
+        case .primary: return appSkin.palette.primaryText
+        case .secondary: return appSkin.palette.secondaryText
+        case .tertiary: return appSkin.palette.tertiaryText
+        case .quaternary: return appSkin.palette.quaternaryText
+        case .destructive: return appSkin.palette.destructive
+        case .reviewDue: return appSkin.palette.warning
         }
     }
 
@@ -148,12 +148,12 @@ struct SyncPresenter: View {
 
                     if index < state.steps.count - 1 {
                         Divider()
-                            .padding(.leading, vocabSkin.metrics.syncOverlayInset)
+                            .padding(.leading, appSkin.metrics.syncOverlayInset)
                     }
                 }
             }
-            .padding(.horizontal, vocabSkin.metrics.listRowHorizontalInset)
-            .padding(.vertical, vocabSkin.metrics.reviewTopBarBottomInset)
+            .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
+            .padding(.vertical, appSkin.metrics.reviewTopBarBottomInset)
             .animation(AppMotion.standardSpring, value: state.steps.map(\.id))
         }
     }
@@ -163,7 +163,7 @@ struct SyncPresenter: View {
     func stepRow(_ step: PipelineStep) -> some View {
         VocabTimelineRow(
             title: step.label,
-            titleTone: step.status == .waiting ? vocabSkin.palette.tertiaryText : vocabSkin.palette.primaryText,
+            titleTone: step.status == .waiting ? appSkin.palette.tertiaryText : appSkin.palette.primaryText,
             detail: step.status == .waiting ? nil : step.detail,
             detailTone: detailColor(for: step.status)
         ) {
@@ -172,8 +172,8 @@ struct SyncPresenter: View {
             HStack(spacing: 8) {
                 if step.status == .running && step.total > 0 {
                     Text("\(step.current)/\(step.total)")
-                        .font(vocabSkin.typography.monoLabel)
-                        .foregroundStyle(vocabSkin.palette.secondaryText)
+                        .font(appSkin.typography.monoLabel)
+                        .foregroundStyle(appSkin.palette.secondaryText)
                         .contentTransition(.numericText())
                         .animation(AppMotion.feedbackPulse, value: step.current)
                 }
@@ -188,11 +188,11 @@ struct SyncPresenter: View {
     func detailColor(for status: PipelineStep.StepStatus) -> Color {
         switch status {
         case .error:
-            return vocabSkin.palette.destructive
+            return appSkin.palette.destructive
         case .retry:
-            return vocabSkin.palette.retry
+            return appSkin.palette.retry
         default:
-            return vocabSkin.palette.secondaryText
+            return appSkin.palette.secondaryText
         }
     }
 
@@ -201,24 +201,24 @@ struct SyncPresenter: View {
         switch status {
         case .waiting:
             Image(systemName: "circle")
-                .foregroundStyle(vocabSkin.palette.quaternaryText)
+                .foregroundStyle(appSkin.palette.quaternaryText)
         case .running:
             ProgressView()
                 .controlSize(.small)
         case .retry:
             Image(systemName: "arrow.triangle.2.circlepath")
                 .symbolEffect(.scale.up, options: .repeating)
-                .foregroundStyle(vocabSkin.palette.retry)
+                .foregroundStyle(appSkin.palette.retry)
         case .done:
             Image(systemName: "checkmark.circle.fill")
-                .foregroundStyle(vocabSkin.palette.success)
+                .foregroundStyle(appSkin.palette.success)
                 .symbolEffect(.bounce, value: true)
         case .skipped:
             Image(systemName: "minus.circle.fill")
-                .foregroundStyle(vocabSkin.palette.secondaryText)
+                .foregroundStyle(appSkin.palette.secondaryText)
         case .error:
             Image(systemName: "xmark.circle.fill")
-                .foregroundStyle(vocabSkin.palette.destructive)
+                .foregroundStyle(appSkin.palette.destructive)
         }
     }
 }

@@ -1,7 +1,7 @@
 import SwiftUI
 
 struct SettingsReviewSection: View {
-    @Environment(\.vocabSkin) private var vocabSkin
+    @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
     var body: some View {
@@ -15,7 +15,7 @@ struct SettingsReviewSection: View {
             .padding(.top, AppShellMetrics.pageTopPadding)
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
-        .background(vocabSkin.palette.pageBackground.ignoresSafeArea())
+        .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("複習節奏".localized)
         .inlineNavigationBarTitle()
     }
@@ -23,7 +23,7 @@ struct SettingsReviewSection: View {
     // MARK: - Mode Section
 
     private var modeSection: some View {
-        VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+        VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
             SettingsSectionHeader(title: "複習模式", icon: "timer")
 
             HStack(spacing: AppSettingsMetrics.reviewModeTileGap) {
@@ -46,12 +46,12 @@ struct SettingsReviewSection: View {
             SettingsSelectionTile(isSelected: isSelected) {
                 VStack(alignment: .leading, spacing: AppSpacing.s2) {
                     Image(systemName: mode.icon)
-                        .font(vocabSkin.typography.iconToolbar)
+                        .font(appSkin.typography.iconToolbar)
                     Text(mode.displayName)
-                        .font(vocabSkin.typography.body.weight(isSelected ? .semibold : .regular))
+                        .font(appSkin.typography.body.weight(isSelected ? .semibold : .regular))
                 }
             }
-            .foregroundStyle(isSelected ? vocabSkin.palette.primaryText : vocabSkin.palette.secondaryText)
+            .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
     }
@@ -61,7 +61,7 @@ struct SettingsReviewSection: View {
     @ViewBuilder
     private var customParamsSection: some View {
         if reviewSettingsStore.settings.mode == .custom {
-            VStack(alignment: .leading, spacing: vocabSkin.spacing.sectionGap) {
+            VStack(alignment: .leading, spacing: appSkin.spacing.sectionGap) {
                 SettingsSectionHeader(title: "自訂參數", icon: "slider.horizontal.3")
 
                 VStack(spacing: 0) {
@@ -124,7 +124,7 @@ struct SettingsReviewSection: View {
     }
 
     private struct ParamRow: View {
-        @Environment(\.vocabSkin) private var vocabSkin
+        @Environment(\.appSkin) private var appSkin
         let label: String
         let value: String
         let onDecrement: () -> Void
@@ -135,8 +135,8 @@ struct SettingsReviewSection: View {
         var body: some View {
             HStack(spacing: 0) {
                 Text(label.localized)
-                    .font(vocabSkin.typography.body)
-                    .foregroundStyle(vocabSkin.palette.primaryText)
+                    .font(appSkin.typography.body)
+                    .foregroundStyle(appSkin.palette.primaryText)
 
                 Spacer()
 
@@ -144,15 +144,15 @@ struct SettingsReviewSection: View {
                     SettingsStepperIconButton(systemImage: "minus", enabled: canDecrement, action: onDecrement)
 
                     Text(value)
-                        .font(vocabSkin.typography.monoBodyStrong)
-                        .foregroundStyle(vocabSkin.palette.primaryText)
+                        .font(appSkin.typography.monoBodyStrong)
+                        .foregroundStyle(appSkin.palette.primaryText)
                         .frame(minWidth: AppSettingsMetrics.reviewValueMinWidth, alignment: .center)
 
                     SettingsStepperIconButton(systemImage: "plus", enabled: canIncrement, action: onIncrement)
                 }
             }
-            .padding(.horizontal, vocabSkin.spacing.cardPadding)
-            .padding(.vertical, vocabSkin.spacing.controlVerticalPadding)
+            .padding(.horizontal, appSkin.spacing.cardPadding)
+            .padding(.vertical, appSkin.spacing.controlVerticalPadding)
         }
     }
 
