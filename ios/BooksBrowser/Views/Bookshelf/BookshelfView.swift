@@ -158,7 +158,7 @@ struct BookshelfView: View {
 
     private var emptyState: some View {
         ScrollView {
-            VStack(spacing: AppMetrics.sectionInset) {
+            VStack(spacing: AppSpacing.s5) {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(

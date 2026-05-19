@@ -56,3 +56,12 @@ enum TodayReviewMetrics {
     /// 答案展開提示區塊的頂部微調
     static let answerHintTopPadding: CGFloat = 2
 }
+
+extension AnyTransition {
+    /// 複習卡疊層升起 —— insertion 微縮放 + 下移；removal 無轉場（卡片直接抽離）。
+    static let reviewCardPromote: AnyTransition = .asymmetric(
+        insertion: .scale(scale: TodayReviewMetrics.promoteScale)
+            .combined(with: .offset(x: 0, y: TodayReviewMetrics.promoteYOffset)),
+        removal: .identity
+    )
+}
