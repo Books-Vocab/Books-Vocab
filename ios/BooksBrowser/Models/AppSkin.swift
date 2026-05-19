@@ -94,7 +94,7 @@ struct AppSkin {
         var tertiaryText: Color { base.tertiaryText }
         var quaternaryText: Color { base.quaternaryText }
         var accent: Color { base.accent }
-        var accentHero: Color { base.accentHero }
+        var brandHero: Color { base.brandHero }
         var accentSubtle: Color { base.accentSubtle }
         var success: Color { base.success }
         var successBg: Color { base.successBg }
