@@ -5,7 +5,7 @@ enum AppShellMetrics {
     static let pageTopPadding: CGFloat = 12
     static let pageBottomPadding: CGFloat = 48
     static let sectionSpacing: CGFloat = 24
-    static let cardCornerRadius = AppMetrics.cornerRadiusMedium
+    static let cardCornerRadius = AppRadius.md
     static let cardShadowRadius: CGFloat = 6
     static let cardShadowY: CGFloat = 2
     static let cardPadding: CGFloat = 18

@@ -202,7 +202,7 @@ extension AppStateMessageStyle {
             spacing: 8,
             verticalPadding: 12,
             horizontalPadding: 14,
-            cornerRadius: AppMetrics.cornerRadiusMedium
+            cornerRadius: AppRadius.md
         )
     }
 

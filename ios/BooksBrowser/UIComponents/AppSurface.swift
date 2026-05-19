@@ -27,7 +27,7 @@ struct AppCard<Content: View>: View {
         content
             .padding(padding)
             .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
             .overlay(cardBorder.allowsHitTesting(false))
             .shadow(
                 color: .black.opacity(AppShadows.paperFloatOpacity),
@@ -37,12 +37,12 @@ struct AppCard<Content: View>: View {
     }
 
     private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
             .fill(appTheme.palette.elevatedCardBackground)
     }
 
     private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusExtraLarge, style: .continuous)
+        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
             .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
     }
 }

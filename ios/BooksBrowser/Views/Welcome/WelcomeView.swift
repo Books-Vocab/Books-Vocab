@@ -97,11 +97,11 @@ struct WelcomeView: View {
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
         .padding(.vertical, AppBannerMetrics.verticalPadding)
         .background(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                 .fill(appTheme.palette.accent.opacity(AppBannerMetrics.backgroundOpacity))
         )
         .overlay(
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                 .stroke(appTheme.palette.accent.opacity(AppBannerMetrics.borderOpacity), lineWidth: AppMetrics.dividerStandard)
         )
         .accessibilityElement(children: .combine)

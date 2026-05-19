@@ -170,7 +170,7 @@ struct AppStartupRecoveryView: View {
             .padding(AppSpacing.s4)
             .background(
                 appTheme.palette.cardBackground,
-                in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+                in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
             )
             .transition(.overlayFade)
 
@@ -218,10 +218,10 @@ struct AppStartupRecoveryView: View {
                 .padding(AppSpacing.s4)
                 .background(
                     appTheme.palette.cardBackground,
-                    in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous)
+                    in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                 )
                 .overlay {
-                    RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusXLarge, style: .continuous)
+                    RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                         .stroke(appTheme.palette.cardBorder, lineWidth: 1)
                 }
         }
@@ -250,10 +250,10 @@ struct AppStartupRecoveryView: View {
         .padding(AppSpacing.s4)
         .background(
             appTheme.palette.cardBackground,
-            in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+            in: RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
         )
         .overlay {
-            RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous)
+            RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
                 .stroke(fg.opacity(0.32), lineWidth: 1)
         }
         .transition(.overlayFade)

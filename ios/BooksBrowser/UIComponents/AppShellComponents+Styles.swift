@@ -61,7 +61,7 @@ extension AppSearchFieldStyle {
             clearButtonColor: theme.palette.quaternaryText,
             background: theme.palette.cardBackground,
             border: theme.palette.cardBorder,
-            cornerRadius: AppMetrics.cornerRadiusMedium - 2
+            cornerRadius: AppRadius.md - 2
         )
     }
 

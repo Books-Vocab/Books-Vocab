@@ -322,7 +322,7 @@ struct BookshelfView: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
     }
 
@@ -431,7 +431,7 @@ struct BookCard: View {
                             .padding(.horizontal, AppSpacing.s1)
                             .padding(.vertical, AppSpacing.microGap)
                             .background(appTheme.palette.mutedFill)
-                            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall))
+                            .clipShape(RoundedRectangle(cornerRadius: AppRadius.sm))
                     }
                 }
             }
@@ -555,7 +555,7 @@ struct PodcastSeriesCard: View {
                         .font(AppFonts.caption2(weight: .bold))
                         .foregroundStyle(appTheme.palette.primaryText)
                         .padding(AppSpacing.s1)
-                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
+                        .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                         .padding(AppSpacing.s2)
                 }
                 .overlay(alignment: .topLeading) {
@@ -564,7 +564,7 @@ struct PodcastSeriesCard: View {
                             .font(AppFonts.caption2(weight: .bold))
                             .foregroundStyle(appTheme.palette.accent)
                             .padding(AppSpacing.s1)
-                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusSmall, style: .continuous))
+                            .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                             .padding(AppSpacing.s2)
                             .accessibilityLabel("已追蹤")
                     }
@@ -724,7 +724,7 @@ private struct BookshelfLoadingPreview: View {
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
-            .compatibleGlass(in: .rect(cornerRadius: AppMetrics.cornerRadiusMedium))
+            .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
     }
 }

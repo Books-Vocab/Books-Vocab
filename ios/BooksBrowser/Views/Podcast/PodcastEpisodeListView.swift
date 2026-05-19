@@ -227,7 +227,7 @@ struct PodcastEpisodeListView: View {
                 name: series?.title ?? ""
             )
             .frame(width: 168, height: 168)
-            .clipShape(RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusLarge, style: .continuous))
+            .clipShape(RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous))
             .shadow(color: skin.palette.shadow, radius: 18, x: 0, y: 8)
             .padding(.top, skin.spacing.sectionGap)
 
@@ -330,11 +330,11 @@ struct PodcastEpisodeListView: View {
             }
             .padding(.vertical, skin.spacing.microGap)
             .background(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                     .fill(skin.palette.cardBackground)
             )
             .overlay(
-                RoundedRectangle(cornerRadius: AppMetrics.cornerRadiusMedium, style: .continuous)
+                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
                     .stroke(skin.palette.cardBorder, lineWidth: 0.5)
             )
         }

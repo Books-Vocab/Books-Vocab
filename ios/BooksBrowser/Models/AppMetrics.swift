@@ -15,13 +15,6 @@ enum AppMetrics {
     // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
     static let glassStrokeOpacity: Double = 0.12
 
-    // ── Corner Radius (圓角) ───────────────────────────────────────────────────
-    static let cornerRadiusSmall: CGFloat = 8
-    static let cornerRadiusMedium: CGFloat = 12
-    static let cornerRadiusLarge: CGFloat = 16
-    static let cornerRadiusXLarge: CGFloat = 18
-    static let cornerRadiusExtraLarge: CGFloat = 24
-
     // ── Control Dimensions ──────────────────────────────────────────────────────
     static let iconButtonSize: CGFloat = 52
 
