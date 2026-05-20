@@ -22,16 +22,23 @@ import sys
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parent.parent
-DATA = ROOT / "backend" / "data" / "users"
+# 引入共用 ops infra(uid resolve / 唯讀連線 / notebook 檔名)。kg 未安裝時
+# 仍可從 source 樹載入。
+sys.path.insert(0, str(ROOT / "backend" / "src"))
+
+from kg.ops_shared import connect_ro, data_dir, notebook_files  # noqa: E402
+
+DATA = data_dir() / "users"
 
 
 # ── helpers ──────────────────────────────────────────────────────────────
 
 def _conn(user: str) -> sqlite3.Connection:
     db = DATA / user / "cards.db"
-    if not db.exists():
+    try:
+        c = connect_ro(db)
+    except FileNotFoundError:
         sys.exit(f"✗ DB not found: {db}")
-    c = sqlite3.connect(str(db))
     c.row_factory = sqlite3.Row
     return c
 
@@ -59,11 +66,11 @@ def _json_col(row, col: str) -> list:
 
 
 def _graph_path(user: str) -> Path:
-    return DATA / user / "graph.json"
+    return notebook_files(DATA / user)["graph"]
 
 
 def _candidates_path(user: str) -> Path:
-    return DATA / user / "candidates.json"
+    return notebook_files(DATA / user)["candidates"]
 
 
 def _print_card(row, verbose: bool = False):
@@ -238,7 +245,7 @@ def cmd_graph(user: str, **_):
 
     gp = _graph_path(user)
     if not gp.exists():
-        print("  No graph.json found.")
+        print("  No graph_default.json found.")
         return
 
     data = json.loads(gp.read_text())
