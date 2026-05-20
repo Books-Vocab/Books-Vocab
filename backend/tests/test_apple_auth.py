@@ -402,3 +402,100 @@ class TestFetchApplePublicKeys:
             # Should not raise — silently keeps old cache
             apple_auth._fetch_apple_public_keys()
             assert FAKE_KID in apple_auth._apple_public_keys
+
+
+# ----------------------------------------------------------------------
+# Real-crypto tests — do NOT mock kg.apple_auth.jwt. These are the only
+# tests that actually exercise the audience= / issuer= kwargs passed to
+# jwt.decode(). Mutation-removing those kwargs from apple_auth.py must
+# turn the corresponding test red.
+# ----------------------------------------------------------------------
+
+
+@pytest.fixture(scope="module")
+def rsa_keypair():
+    from cryptography.hazmat.primitives import serialization
+    from cryptography.hazmat.primitives.asymmetric import rsa
+
+    private_key = rsa.generate_private_key(public_exponent=65537, key_size=2048)
+    private_pem = private_key.private_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PrivateFormat.PKCS8,
+        encryption_algorithm=serialization.NoEncryption(),
+    )
+    public_pem = private_key.public_key().public_bytes(
+        encoding=serialization.Encoding.PEM,
+        format=serialization.PublicFormat.SubjectPublicKeyInfo,
+    )
+    return private_pem, public_pem
+
+
+def _sign_apple_token(private_pem: bytes, *, aud: str, iss: str, sub: str = "apple-user-real") -> str:
+    now = int(time.time())
+    payload = {
+        "iss": iss,
+        "aud": aud,
+        "sub": sub,
+        "iat": now,
+        "exp": now + 600,
+        "email": "real@example.com",
+        "email_verified": "true",
+    }
+    return real_jwt.encode(payload, private_pem, algorithm="RS256", headers={"kid": FAKE_KID})
+
+
+class TestVerifyAppleTokenRealCrypto:
+    """Exercise the real jwt.decode() so audience/issuer kwargs are load-bearing."""
+
+    def test_real_token_happy_path(self, rsa_keypair):
+        priv, pub = rsa_keypair
+        token = _sign_apple_token(priv, aud=AUDIENCE, iss="https://appleid.apple.com")
+        with patch("kg.apple_auth._get_rsa_public_key", return_value=pub):
+            sub, email, verified = apple_auth.verify_apple_token(token, AUDIENCE)
+        assert sub == "apple-user-real"
+        assert email == "real@example.com"
+        assert verified is True
+
+    def test_real_token_wrong_audience_raises_401(self, rsa_keypair):
+        """Audience mismatch must fail — guards against removal of audience= kwarg."""
+        priv, pub = rsa_keypair
+        token = _sign_apple_token(priv, aud="com.attacker.app", iss="https://appleid.apple.com")
+        with patch("kg.apple_auth._get_rsa_public_key", return_value=pub):
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token(token, AUDIENCE)
+        assert exc_info.value.status_code == 401
+        assert "audience" in exc_info.value.detail.lower()
+
+    def test_real_token_wrong_issuer_raises_401(self, rsa_keypair):
+        """Issuer mismatch must fail — guards against removal of issuer= kwarg.
+
+        Note: the 'audience'/'issuer' substring checks below intentionally
+        pin the error-message contract. The 401 status alone is too coarse
+        (any jwt failure 401s) — clients distinguish on detail text.
+        """
+        priv, pub = rsa_keypair
+        token = _sign_apple_token(priv, aud=AUDIENCE, iss="https://evil.example.com")
+        with patch("kg.apple_auth._get_rsa_public_key", return_value=pub):
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token(token, AUDIENCE)
+        assert exc_info.value.status_code == 401
+        assert "issuer" in exc_info.value.detail.lower()
+
+    def test_real_token_missing_aud_claim_raises_401(self, rsa_keypair):
+        """Token without aud claim must fail — closes the attack surface
+        where attackers strip aud entirely (PyJWT 9.x require_aud=True is
+        the runtime guard; this test pins it as a contract)."""
+        import time as _t
+        priv, pub = rsa_keypair
+        now = int(_t.time())
+        payload_no_aud = {
+            "iss": "https://appleid.apple.com",
+            "sub": "apple-user-no-aud",
+            "iat": now,
+            "exp": now + 600,
+        }
+        token = real_jwt.encode(payload_no_aud, priv, algorithm="RS256", headers={"kid": FAKE_KID})
+        with patch("kg.apple_auth._get_rsa_public_key", return_value=pub):
+            with pytest.raises(HTTPException) as exc_info:
+                apple_auth.verify_apple_token(token, AUDIENCE)
+        assert exc_info.value.status_code == 401
