@@ -48,12 +48,16 @@ allowed-tools: Bash, Read, Grep
 ### ops-cli 子指令
 
 ```bash
-ops-cli user-quota <uid>        # 24h 額度 + 逐時明細
-ops-cli user-stats <uid>        # 單字庫統計
-ops-cli quota-overview           # 全用戶額度總覽
-ops-cli active-users [hours]    # 近 N 小時活躍用戶
-ops-cli db-query <uid> SQL...   # 對用戶 DB 跑 SQL（不需要引號）
-ops-cli analyze <uid> [level]  # 深度分析（1-6 或 all）
+ops-cli user-quota <uid>                  # 24h 額度 + 逐時明細
+ops-cli user-stats <uid>                  # 單字庫統計
+ops-cli quota-overview                     # 全用戶 24h 額度總覽
+ops-cli active-users [hours]              # 近 N 小時活躍用戶
+ops-cli db-query <uid> SQL...             # 對用戶 DB 跑 SQL（不需要引號）
+ops-cli analyze <uid> [level]            # 深度分析（1-6 或 all）
+ops-cli cost <uid> [--range R] [--json]   # 單用戶 cost-by-call_type 拆解（provider-aware）
+ops-cli cost-overview [--range R] [--json] # 全用戶 cost 排名
+
+# --range: 24h | 7d | 30d | month | all（預設 month）
 ```
 
 ### data_inspect（本地用）
@@ -92,6 +96,12 @@ python3 ops/data_inspect.py [command]
 
 # 對用戶 DB 跑 SQL（不需要引號包覆）
 ./ops/devops_kg_safe.sh ops-cli db-query <uid> SELECT content, notebook_id FROM card LIMIT 5
+
+# 單用戶當月 cost by call_type（judge/enrich/translate 拆解，provider-aware）
+./ops/devops_kg_safe.sh ops-cli cost <uid> --range month --json
+
+# 全用戶 24h cost 排名
+./ops/devops_kg_safe.sh ops-cli cost-overview --range 24h
 
 # 臨時分析腳本
 ./ops/devops_kg_safe.sh container-script /tmp/my_script.py
