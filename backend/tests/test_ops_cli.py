@@ -33,6 +33,29 @@ def _create_token_usage_db(path: Path, rows: list[tuple]) -> None:
     conn.close()
 
 
+def _create_token_usage_db_with_provider(path: Path, rows: list[tuple]) -> None:
+    """建立含 provider 欄的 token_usage.db。rows: (uid, call_type, in, out, created_at, provider)。"""
+    conn = sqlite3.connect(str(path / "token_usage.db"))
+    conn.execute("""
+        CREATE TABLE token_usage (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            user_id TEXT NOT NULL,
+            call_type TEXT NOT NULL,
+            input_tokens INTEGER NOT NULL DEFAULT 0,
+            output_tokens INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            provider TEXT
+        )
+    """)
+    conn.executemany(
+        "INSERT INTO token_usage (user_id, call_type, input_tokens, output_tokens, created_at, provider) "
+        "VALUES (?, ?, ?, ?, ?, ?)",
+        rows,
+    )
+    conn.commit()
+    conn.close()
+
+
 def _create_cards_db(path: Path, rows: list[tuple]) -> None:
     """建立 users/<uid>/cards.db 並灌入測試資料。"""
     conn = sqlite3.connect(str(path))
@@ -189,6 +212,43 @@ class TestDbQuery:
         result = _run_cli(str(tmp_path), "db-query", uid, "SELECT count(*) FROM card")
         assert result.returncode == 0
         assert "2" in result.stdout
+
+
+class TestProviderAwarePricing:
+    """計價走 kg.quota_service.token_cost_usd — provider-aware。"""
+
+    def test_deepseek_priced_provider_aware(self, tmp_path):
+        """provider='deepseek' 的 row 用 deepseek 費率 (0.14/0.28),非 gemini 0.10/0.40。"""
+        now = _now_iso()
+        _create_token_usage_db_with_provider(tmp_path, [
+            ("user1", "translate", 1_000_000, 1_000_000, now, "deepseek"),
+        ])
+        result = _run_cli(str(tmp_path), "user-quota", "user1")
+        assert result.returncode == 0
+        # deepseek: 0.14 + 0.28 = 0.42（非 gemini 的 0.50）
+        assert "0.42" in result.stdout
+        assert "0.500000" not in result.stdout
+
+    def test_legacy_no_provider_column_still_works(self, tmp_path):
+        """無 provider 欄的 legacy DB → 不報錯,gemini fallback (0.10/0.40)。"""
+        now = _now_iso()
+        _create_token_usage_db(tmp_path, [
+            ("user1", "translate", 1_000_000, 1_000_000, now),
+        ])
+        result = _run_cli(str(tmp_path), "user-quota", "user1")
+        assert result.returncode == 0
+        # 無 provider → routed gemini: 0.10 + 0.40 = 0.50
+        assert "0.50" in result.stdout
+
+    def test_quota_overview_provider_aware(self, tmp_path):
+        """quota-overview 同樣 provider-aware。"""
+        now = _now_iso()
+        _create_token_usage_db_with_provider(tmp_path, [
+            ("user1", "translate", 1_000_000, 1_000_000, now, "deepseek"),
+        ])
+        result = _run_cli(str(tmp_path), "quota-overview")
+        assert result.returncode == 0
+        assert "0.42" in result.stdout
 
 
 class TestHelp:

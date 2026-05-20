@@ -24,35 +24,8 @@ from collections import Counter, defaultdict
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
 
-DATA_DIR = Path(os.getenv("KG_DATA_DIR", str(Path(__file__).resolve().parent / "data")))
-
-# ── 定價常數 ──────────────────────────────────────────────
-INPUT_PER_M = 0.10
-OUTPUT_PER_M = 0.40
-EMBED_PER_M = 0.00025
-
-
-def _cost(call_type: str, inp: int, out: int) -> float:
-    if call_type == "embed":
-        return inp / 1_000_000 * EMBED_PER_M
-    return inp / 1_000_000 * INPUT_PER_M + out / 1_000_000 * OUTPUT_PER_M
-
-
-def _resolve_uid(partial: str) -> str:
-    users_dir = DATA_DIR / "users"
-    if not users_dir.exists():
-        return partial
-    if (users_dir / partial).exists():
-        return partial
-    matches = [d.name for d in users_dir.iterdir() if d.is_dir() and partial in d.name]
-    if len(matches) == 1:
-        return matches[0]
-    if len(matches) > 1:
-        print(f"多個用戶匹配 '{partial}'：", file=sys.stderr)
-        for m in matches:
-            print(f"  {m}", file=sys.stderr)
-        sys.exit(1)
-    return partial
+from kg.ops_shared import connect_ro, data_dir, notebook_files, resolve_uid, table_columns
+from kg.quota_service import token_cost_usd
 
 
 def _section(title: str) -> None:
@@ -71,20 +44,21 @@ def level_1(uid: str, udir: Path) -> None:
     _section("Level 1: 快速健檢")
 
     # 額度
-    token_db = DATA_DIR / "token_usage.db"
+    token_db = data_dir() / "token_usage.db"
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     pro_limit = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
 
     if token_db.exists():
-        conn = sqlite3.connect(str(token_db))
+        conn = connect_ro(token_db)
+        pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
         rows = conn.execute(
-            "SELECT call_type, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
-            "FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type",
+            f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+            f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
             (uid, cutoff),
         ).fetchall()
         conn.close()
-        total = sum(_cost(ct, inp or 0, out or 0) for ct, _, inp, out in rows)
-        total_calls = sum(c for _, c, _, _ in rows)
+        total = sum(token_cost_usd(ct, inp or 0, out or 0, provider=prov) for ct, prov, _, inp, out in rows)
+        total_calls = sum(c for _, _, c, _, _ in rows)
         print(f"  24h 額度: ${total:.4f} / ${pro_limit:.2f} ({total / pro_limit * 100:.1f}%)")
         print(f"  24h 呼叫: {total_calls} 次")
     else:
@@ -93,7 +67,7 @@ def level_1(uid: str, udir: Path) -> None:
     # 卡片
     cards_db = udir / "cards.db"
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         row = conn.execute(
             "SELECT COUNT(*), SUM(CASE WHEN is_deleted=0 THEN 1 ELSE 0 END), "
             "SUM(CASE WHEN is_deleted=1 THEN 1 ELSE 0 END) FROM card"
@@ -104,7 +78,7 @@ def level_1(uid: str, udir: Path) -> None:
         print("  (cards.db 不存在)")
 
     # 圖譜
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     if graph_path.exists():
         links = json.loads(graph_path.read_text())
         print(f"  連結: {len(links)}")
@@ -117,43 +91,55 @@ def level_1(uid: str, udir: Path) -> None:
 def level_2(uid: str, udir: Path) -> None:
     _section("Level 2: 額度消耗分析 (72h)")
 
-    token_db = DATA_DIR / "token_usage.db"
+    token_db = data_dir() / "token_usage.db"
     if not token_db.exists():
         print("  (token_usage.db 不存在)")
         return
 
     cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
-    conn = sqlite3.connect(str(token_db))
-
+    conn = connect_ro(token_db)
+    pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
     rows = conn.execute(
-        "SELECT call_type, COUNT(*), SUM(input_tokens), SUM(output_tokens), "
-        "AVG(input_tokens), AVG(output_tokens) "
-        "FROM token_usage WHERE user_id=? AND created_at>=? "
-        "GROUP BY call_type ORDER BY SUM(input_tokens) DESC",
+        f"SELECT call_type, {pcol} AS provider, COUNT(*), SUM(input_tokens), SUM(output_tokens) "
+        f"FROM token_usage WHERE user_id=? AND created_at>=? GROUP BY call_type, {pcol}",
         (uid, cutoff),
     ).fetchall()
+    conn.close()
 
     if not rows:
         print("  (72h 內無紀錄)")
-        conn.close()
         return
 
-    total_cost = 0
-    judge_calls = 0
-    print(f"\n  {'type':<22} {'calls':>6} {'avg_in':>8} {'avg_out':>8} {'cost':>10}")
-    print(f"  {'-'*22} {'-'*6} {'-'*8} {'-'*8} {'-'*10}")
-    for ct, calls, inp, out, avg_i, avg_o in rows:
+    # GROUP BY (call_type, provider) 把同一 call_type 拆成多列；各 provider
+    # 切片用自身費率定價後折回 per-call_type bucket，顯示維持逐 call_type。
+    buckets: dict[str, dict] = {}
+    for ct, prov, calls, inp, out in rows:
         inp = inp or 0
         out = out or 0
-        cost = _cost(ct, inp, out)
-        total_cost += cost
+        b = buckets.setdefault(ct, {"calls": 0, "inp": 0, "out": 0, "cost": 0.0})
+        b["calls"] += calls
+        b["inp"] += inp
+        b["out"] += out
+        b["cost"] += token_cost_usd(ct, inp, out, provider=prov)
+
+    ordered = sorted(buckets.items(), key=lambda kv: kv[1]["inp"], reverse=True)
+
+    total_cost = 0.0
+    judge_calls = 0
+    judge_cost = 0.0
+    print(f"\n  {'type':<22} {'calls':>6} {'avg_in':>8} {'avg_out':>8} {'cost':>10}")
+    print(f"  {'-'*22} {'-'*6} {'-'*8} {'-'*8} {'-'*10}")
+    for ct, b in ordered:
+        total_cost += b["cost"]
+        avg_i = b["inp"] / b["calls"] if b["calls"] else 0
+        avg_o = b["out"] / b["calls"] if b["calls"] else 0
         if ct == "judge":
-            judge_calls = calls
-        print(f"  {ct:<22} {calls:>6} {avg_i:>8.0f} {avg_o:>8.0f} ${cost:>9.4f}")
+            judge_calls = b["calls"]
+            judge_cost = b["cost"]
+        print(f"  {ct:<22} {b['calls']:>6} {avg_i:>8.0f} {avg_o:>8.0f} ${b['cost']:>9.4f}")
     print(f"  {'TOTAL':<22} {'':>6} {'':>8} {'':>8} ${total_cost:>9.4f}")
 
     if judge_calls and total_cost:
-        judge_cost = sum(_cost(ct, inp or 0, out or 0) for ct, _, inp, out in rows if ct == "judge")
         print(f"\n  Judge 佔比: {judge_cost / total_cost * 100:.0f}%", end="")
         if judge_cost / total_cost > 0.5:
             print(" ⚠ (>50%，門檻可能太低)")
@@ -161,7 +147,7 @@ def level_2(uid: str, udir: Path) -> None:
             print(" ✓")
 
     # 拒絕率估算
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     if graph_path.exists() and judge_calls:
         links = json.loads(graph_path.read_text())
         recent_links = len([l for l in links if l.get("created_at", "") >= cutoff[:10]])
@@ -174,18 +160,16 @@ def level_2(uid: str, udir: Path) -> None:
         else:
             print(" ✓")
 
-    conn.close()
-
 
 # ── Level 3: 圖譜拓撲 ───────────────────────────────────────
 
 def _load_graph_and_cards(udir: Path):
-    graph_path = udir / "graph_default.json"
+    graph_path = notebook_files(udir)["graph"]
     cards_db = udir / "cards.db"
     links = json.loads(graph_path.read_text()) if graph_path.exists() else []
     cards = {}
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         conn.row_factory = sqlite3.Row
         cards = {
             r["id"]: dict(r)
@@ -328,8 +312,8 @@ def level_4(uid: str, udir: Path) -> None:
 def level_5(uid: str, udir: Path) -> None:
     _section("Level 5: 嵌入分析 + 閾值掃描")
 
-    emb_path = udir / "embeddings_default.npy"
-    ids_path = udir / "card_ids_default.json"
+    emb_path = notebook_files(udir)["embeddings"]
+    ids_path = notebook_files(udir)["card_ids"]
     cards_db = udir / "cards.db"
 
     if not emb_path.exists() or not ids_path.exists():
@@ -349,7 +333,7 @@ def level_5(uid: str, udir: Path) -> None:
     # Active cards count
     n_active = 0
     if cards_db.exists():
-        conn = sqlite3.connect(str(cards_db))
+        conn = connect_ro(cards_db)
         n_active = conn.execute("SELECT COUNT(*) FROM card WHERE is_deleted=0").fetchone()[0]
         conn.close()
 
@@ -392,7 +376,7 @@ def level_6(uid: str, udir: Path) -> None:
     # 1. 連結指向已刪除卡片
     cards_db_path = udir / "cards.db"
     if cards_db_path.exists() and links:
-        conn = sqlite3.connect(str(cards_db_path))
+        conn = connect_ro(cards_db_path)
         conn.row_factory = sqlite3.Row
         all_card_ids = {r["id"]: r for r in conn.execute("SELECT id, content, is_deleted FROM card")}
         conn.close()
@@ -433,7 +417,7 @@ def level_6(uid: str, udir: Path) -> None:
             issues.append(f"  ⚠ {len(self_links)} 條自連結")
 
     # 4. 缺 embedding
-    emb_ids_path = udir / "card_ids_default.json"
+    emb_ids_path = notebook_files(udir)["card_ids"]
     if emb_ids_path.exists() and cards:
         emb_ids = set(json.loads(emb_ids_path.read_text()))
         active_ids = set(cards.keys())
@@ -450,7 +434,7 @@ def level_6(uid: str, udir: Path) -> None:
             issues.append(f"  ⚠ {len(stale)} 張已刪除卡片仍佔 embedding")
 
     # 6. 待處理候選
-    cand_path = udir / "candidates_default.json"
+    cand_path = notebook_files(udir)["candidates"]
     if cand_path.exists():
         cands = json.loads(cand_path.read_text())
         if cands:
@@ -475,8 +459,8 @@ def main() -> None:
     parser.add_argument("level", nargs="?", default="all", help="分析層級 (1-6 或 all)")
     args = parser.parse_args()
 
-    uid = _resolve_uid(args.uid)
-    udir = DATA_DIR / "users" / uid
+    uid = resolve_uid(args.uid, data_dir())
+    udir = data_dir() / "users" / uid
     if not udir.exists():
         print(f"Error: user dir not found: {udir}", file=sys.stderr)
         sys.exit(1)
