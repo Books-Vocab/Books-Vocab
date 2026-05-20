@@ -23,6 +23,14 @@ if str(SRC_DIR) not in sys.path:
 os.environ["KG_DATA_DIR"] = "/tmp/kg_test_default"
 os.environ["JWT_SECRET"] = "test-secret-key-for-ci-at-least-32-bytes"
 os.environ["GEMINI_API_KEY"] = "fake-key"
+# Pin LLM routing before api.py's load_dotenv() can inject a dev .env value:
+# load_dotenv defaults to override=False, so pre-setting wins. Token-cost and
+# quota assertions are written against gemini pricing. Tests that need to
+# exercise provider switching MUST use monkeypatch.setenv/delenv (function
+# scope, auto-reverts) — do not mutate os.environ at module scope.
+for _k in [k for k in os.environ if k.startswith("LLM_PROVIDER_")]:
+    del os.environ[_k]
+os.environ["LLM_PROVIDER_DEFAULT"] = "gemini"
 
 
 TEST_JWT_SECRET = "test-secret-key-for-ci-at-least-32-bytes"
