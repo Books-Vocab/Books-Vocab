@@ -471,18 +471,22 @@ class TestBatchC_EmbeddingBackfill:
         store = CardStore(tmp_path / "cards.db")
         card = store.add("orphan", "孤立")
 
+        # _embed() calls self.llm.embed(...), not .embeddings.create. dim must
+        # match the store's configured dim or the guard will raise.
         mock_client = MagicMock()
-        mock_client.embeddings.create.return_value = MagicMock(
-            data=[MagicMock(embedding=[0.1] * 768)]
+        mock_client.embed.return_value = MagicMock(
+            data=[MagicMock(index=0, embedding=[0.1] * 768)]
         )
         emb = EmbeddingStore(
             tmp_path / "embeddings.npy",
             tmp_path / "card_ids.json",
             mock_client,
+            dim=768,
         )
 
         missing = [c for c in store.all() if not emb.has(c.id)]
         assert len(missing) == 1 and missing[0].id == card.id
+        assert not mock_client.embed.called, "Detect-only path must not invoke the embedding API"
 
     def test_backfill_adds_embedding(self, tmp_path):
         """After running backfill logic, card should have embedding."""
@@ -493,13 +497,14 @@ class TestBatchC_EmbeddingBackfill:
         card = store.add("orphan", "孤立")
 
         mock_client = MagicMock()
-        mock_client.embeddings.create.return_value = MagicMock(
-            data=[MagicMock(embedding=[0.1] * 768)]
+        mock_client.embed.return_value = MagicMock(
+            data=[MagicMock(index=0, embedding=[0.1] * 768)]
         )
         emb = EmbeddingStore(
             tmp_path / "embeddings.npy",
             tmp_path / "card_ids.json",
             mock_client,
+            dim=768,
         )
 
         for c in store.all():
@@ -507,6 +512,7 @@ class TestBatchC_EmbeddingBackfill:
                 emb.add(c.id, c.embed_text())
 
         assert emb.has(card.id), "Embedding must exist after backfill"
+        assert mock_client.embed.called, "Backfill must actually invoke the embedding API"
 
     def test_backfill_skips_cards_with_existing_embedding(self, tmp_path):
         """Cards that already have embeddings must not be re-embedded."""
@@ -519,21 +525,26 @@ class TestBatchC_EmbeddingBackfill:
         call_count = {"n": 0}
         mock_client = MagicMock()
 
-        def counting_create(**kwargs):
+        def counting_embed(*args, **kwargs):
             call_count["n"] += 1
-            return MagicMock(data=[MagicMock(embedding=[0.2] * 768)])
+            texts = kwargs.get("input", [])
+            return MagicMock(
+                data=[MagicMock(index=i, embedding=[0.2] * 768) for i in range(len(texts))]
+            )
 
-        mock_client.embeddings.create.side_effect = counting_create
+        mock_client.embed.side_effect = counting_embed
 
         emb = EmbeddingStore(
             tmp_path / "embeddings.npy",
             tmp_path / "card_ids.json",
             mock_client,
+            dim=768,
         )
 
         # First add
         emb.add(card.id, card.embed_text())
         first_count = call_count["n"]
+        assert first_count == 1, "First add must call embedding API exactly once"
 
         # Backfill — should skip this card
         for c in store.all():
