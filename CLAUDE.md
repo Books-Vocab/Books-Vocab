@@ -48,6 +48,7 @@
 5. **不主動跑 iOS test** — 除非使用者明確說「跑測試」，否則禁止主動執行 `ios_test.sh`。**無例外，包含 worktree 中的 subagent。** `ios_build.sh` 和 backend `pytest` 不受此限。
 6. **不寫 memory** — 禁止寫入 `.claude/projects/*/memory/`。所有持久化規則寫在 `CLAUDE.md` 或 `docs/`。
 7. **長時操作一律背景執行** — 任何 Agent 調用必須帶 `run_in_background: true`；任何耗時 Bash 也必須帶 `run_in_background: true`（含 `ios_build.sh`、`ios_test.sh`、backend `pytest`、deploy/rsync、長下載、長 install）。**主線不阻塞**，完成由 notification 觸發。**無例外**。
+8. **Surface-sync 檢查** — 改 user/agent-facing 介面(`backend/ops_*.py`、`backend/*_cli.py`、admin endpoint、CLI subcommand、env var、設定 schema)時,必須 grep `.claude/skills/`、本 `CLAUDE.md` 的 *Implemented Product Surface*、`docs/dev/` `docs/ops/` `docs/references/`,凡引用到舊命令/欄位/旗標清單就在**同一 PR 內同步**。下個 agent 不知道新功能 = 任務沒閉環,**不算完成**。檢查時機:每個 phase commit 前、PR 開出前各掃一次。Review agent prompt 必須含此項檢查。
 
 ## Git
 
