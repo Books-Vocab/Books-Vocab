@@ -13,6 +13,7 @@ from .embeddings import EmbeddingStore
 from .graph import GraphStore
 from .llm.providers import REGISTRY, LLMProvider
 from .notebook import NotebookStore
+from .ops_shared import NOTEBOOK_FILE_SPECS
 
 logger = logging.getLogger(__name__)
 
@@ -114,11 +115,13 @@ def _migrate_legacy_file(legacy: Path, target: Path) -> None:
 def _resolve_notebook_paths(
     user_dir: Path,
     notebook_id: str,
-    file_specs: list[tuple[str, str]],
+    file_specs: list[tuple[str, str | None]],
 ) -> list[Path]:
     """Resolve per-notebook file paths with lazy migration from legacy names.
 
     file_specs: list of (template, legacy_name) — template uses {nb} placeholder.
+    Specs come from ops_shared.NOTEBOOK_FILE_SPECS; only specs with a non-None
+    legacy_name are passed here, so the migration loop never sees None.
     """
     if not re.match(r'^[a-zA-Z0-9_-]+$', notebook_id):
         raise ValueError(f"Invalid notebook_id: {notebook_id!r}")
@@ -132,9 +135,9 @@ def _resolve_notebook_paths(
 def create_graph_store(user_dir: Path, notebook_id: str = "default") -> GraphStore:
     key = f"graph:{user_dir}:{notebook_id}"
     links_path, candidates_path, blocked_path = _resolve_notebook_paths(user_dir, notebook_id, [
-        ("graph_{nb}.json", "graph.json"),
-        ("candidates_{nb}.json", "candidates.json"),
-        ("blocked_{nb}.json", "blocked.json"),
+        NOTEBOOK_FILE_SPECS["graph"],
+        NOTEBOOK_FILE_SPECS["candidates"],
+        NOTEBOOK_FILE_SPECS["blocked"],
     ])
     pj_path = user_dir / f"pending_judge_{notebook_id}.json"
     return _get_cached(key, lambda: GraphStore(links_path, candidates_path, blocked_path, pending_judge_path=pj_path))
@@ -246,7 +249,7 @@ def create_embedding_store(
         dim = dim or s.embedding_dim
     key = f"embedding:{user_dir}:{notebook_id}:{model}:{dim}"
     emb_path, ids_path = _resolve_notebook_paths(user_dir, notebook_id, [
-        ("embeddings_{nb}.npy", "embeddings.npy"),
-        ("card_ids_{nb}.json", "card_ids.json"),
+        NOTEBOOK_FILE_SPECS["embeddings"],
+        NOTEBOOK_FILE_SPECS["card_ids"],
     ])
     return _get_cached(key, lambda: EmbeddingStore(emb_path, ids_path, llm, model=model, dim=dim))
