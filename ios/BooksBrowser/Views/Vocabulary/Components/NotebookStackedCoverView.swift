@@ -57,6 +57,8 @@ struct NotebookStackedCoverView: View {
     var body: some View {
         // ghost 數 = layerCount - 1（頂層另外處理）
         let ghostDepths = Array((1..<max(layerCount, 1)).reversed())  // e.g. [3,2,1]
+        // 預留底部空間給最深 ghost 的 peek，避免 peek 蓋到 metadata 區
+        let maxGhostDy = NotebookStackMetrics.layerOffsetY * CGFloat(max(layerCount - 1, 0))
 
         ZStack(alignment: .top) {
             // ── 下層 ghost：由深到淺由下而上 render ──
@@ -65,22 +67,35 @@ struct NotebookStackedCoverView: View {
             }
 
             // ── 頂層 L0：實體封面 ──
+            // 只圓上半 — 與下方 metadata 黏合，避免「兩塊獨立物件」感
             NotebookCoverView(
                 color: color,
                 pattern: pattern,
                 coverImagePath: coverImagePath,
                 name: name
             )
-            .aspectRatio(aspectRatio, contentMode: .fill)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous))
-            .appElevation(isPressed ? .z2 : .z2)  // 頂層恆 z2
+            .clipShape(UnevenRoundedRectangle(
+                topLeadingRadius: AppRadius.md,
+                topTrailingRadius: AppRadius.md,
+                bottomLeadingRadius: 0,
+                bottomTrailingRadius: 0,
+                style: .continuous
+            ))
+            .appElevation(.z2)
             .offset(y: isPressed && !reduceMotion ? NotebookStackMetrics.pressedTopOffsetY : 0)
             .scaleEffect(isPressed && !reduceMotion ? AppMotion.TapFeedback.scaleDown : 1.0,
                          anchor: .center)
         }
+        // ⚠️ aspectRatio 必須套在 ZStack 而非個別 layer —
+        // 套在 layer 上會被 .padding(.horizontal, dx) 反向壓縮高度，
+        // 使 ghost 底邊比 top 底邊還高，peek 永遠不會出現。
+        .aspectRatio(aspectRatio, contentMode: .fit)
+        // 為 ghost peek 預留底部空間，避免 peek 渲染到 metadata
+        .padding(.bottom, maxGhostDy)
     }
 
     /// 純色 ghost 一層 — 不 render pattern / image / text，避免下層雜訊。
+    /// 不套自己的 aspectRatio：交由父 ZStack 的 aspectRatio 統一決定 frame。
     @ViewBuilder
     private func ghostLayer(depth: Int) -> some View {
         let dx = NotebookStackMetrics.layerInsetX * CGFloat(depth)
@@ -91,7 +106,6 @@ struct NotebookStackedCoverView: View {
 
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
             .fill(NotebookStackMetrics.deckColor(color, depth: depth, scheme: colorScheme))
-            .aspectRatio(aspectRatio, contentMode: .fill)
             .padding(.horizontal, dx)
             .offset(y: dy + pressBoost)
             .appElevation(isPressed ? .z2 : .z1)
