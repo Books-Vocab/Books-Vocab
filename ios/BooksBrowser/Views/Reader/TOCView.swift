@@ -165,7 +165,7 @@ private struct TOCViewPreviewScene: View {
                 }
             }
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
-            .navigationTitle("目錄")
+            .navigationTitle(L10n.string("目錄"))
             .navigationBarTitleDisplayMode(.inline)
         }
     }
