@@ -37,7 +37,7 @@ import PlaybookSnapshot
 
         try snapshot.run(with: CatalogScene.buildPlaybook())
 
-        print("📸 KG catalog snapshots written to: \(outputDirectory.path)")
+        print("KG catalog snapshots written to: \(outputDirectory.path)")
     }
 }
 #endif

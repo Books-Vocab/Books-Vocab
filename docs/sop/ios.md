@@ -202,7 +202,7 @@ xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
 xcodebuild test \
   -project ios/BooksBrowser.xcodeproj \
   -scheme BooksBrowser \
-  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro Max' \
   -only-testing:BooksBrowserTests/CatalogSnapshotTests
 ```
 
