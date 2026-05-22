@@ -29,6 +29,12 @@ struct KGVocabEntry: Codable {
     let context: String
     let root_form: String?
     let source: KGVocabSource?
+    /// BCP-47 source language (e.g. "en"). Optional — only encoded when
+    /// `KGFeatureFlags.vocabularyLangPayloadEnabled` is on. Backend currently
+    /// has `extra='ignore'` so any value would be silently dropped.
+    let source_lang: String?
+    /// BCP-47 target language (e.g. "zh-Hant"). See source_lang note.
+    let target_lang: String?
 }
 
 struct KGBatchDeleteResponse: Codable {
@@ -100,12 +106,27 @@ extension KGService {
             let trimmedChapter = entry.chapterTitle?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
             let chapter = (trimmedChapter?.isEmpty == false) ? trimmedChapter : nil
+            // Feature flag: backend doesn't persist source_lang/target_lang yet,
+            // so suppress the fields entirely until KGFeatureFlags flips on.
+            // Once enabled, fall back to currentSource/Target when the local
+            // row predates Phase 5 (sourceLang == nil).
+            let sourceLangPayload: String?
+            let targetLangPayload: String?
+            if KGFeatureFlags.vocabularyLangPayloadEnabled {
+                sourceLangPayload = entry.sourceLang ?? TranslationLanguage.currentSource.rawValue
+                targetLangPayload = entry.targetLang ?? TranslationLanguage.currentTarget.rawValue
+            } else {
+                sourceLangPayload = nil
+                targetLangPayload = nil
+            }
             return KGVocabEntry(
                 word: entry.word,
                 translation: entry.translation,
                 context: entry.context,
                 root_form: entry.rootForm,
-                source: title.isEmpty ? nil : .book(title: title, chapter: chapter)
+                source: title.isEmpty ? nil : .book(title: title, chapter: chapter),
+                source_lang: sourceLangPayload,
+                target_lang: targetLangPayload
             )
         }
         return try await authenticatedDecode(
