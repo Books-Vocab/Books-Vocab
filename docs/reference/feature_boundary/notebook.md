@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: e06ceb7
+verified_against: 1d2a399
 -->
 # Notebook Feature Boundary
 
@@ -29,8 +29,10 @@ verified_against: e06ceb7
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Components/NotebookCard.swift` | 267 | `struct NotebookCard: View` + `enum NotebookCardStyle { .grid, .hero }`(Phase 4a)：grid 用 3:2 cover、hero 用 21:10 寬扁 cover + 隱藏 `使用中` pill。cover + ProgressCapsule + due/unlearned 標籤 + `NotebookCardActions` 右鍵選單。 |
-| `Components/NotebookCoverPatterns.swift` | 198 | 6 種 SwiftUI Canvas pattern 渲染（dots / lines / waves / 等）|
+| `Components/NotebookCard.swift` | 326 | `struct NotebookCard: View` + `enum NotebookCardStyle { .grid, .hero }`。Grid 套 `NotebookStackedCoverView` 立體堆卡 + 整卡 `LayoutMode.notebookCardAspectRatio` (3:4) + stable-height metadata（ProgressCapsule / chips row 永遠 render）。Hero 維持 21:10 平面 cover、隱藏使用中 pill。`NotebookAddCard` 同 aspect 對齊。Press-in 由 `NotebookDeckButtonStyle` 承載（NotebookListView 套）。 |
+| `Components/NotebookStackedCoverView.swift` | 126 | Apple Wallet 風一疊單字卡封面：`ZStack` 由下而上 render `layerCount` 層（純色 ghost + 頂層復用 `NotebookCoverView`）。內含 `IsDeckPressedKey` / `DeckReduceMotionKey` env + `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` / release `AppMotion.cardDeckRelease` / haptic `.selection`）。下層 ghost `.appElevation(.z1)`、頂層 `.z2`。 |
+| `Components/NotebookStackMetrics.swift` | 88 | 立體堆卡 magic number 集中地：`layerCount(forCardCount:)` (0→1 / 1-50→2 / 51-200→3 / 200+→4)、`layerOffsetY` (3pt) / `layerInsetX` (4pt) / `pressedTopOffsetY` (-14) / `brightnessStepLight/Dark` (0.04/0.06)、`deckColor(_:depth:scheme:)` HSB brightness shift。 |
+| `Components/NotebookCoverPatterns.swift` | 198 | 6 種 SwiftUI Canvas pattern 渲染（dots / lines / waves / 等）+ `NotebookCoverView`（頂層封面實體 view）|
 | `Components/NotebookPalette.swift` | 34 | 12 色色票 enum + 對應 `Color`（cover 配色系統） |
 | `Components/NotebookFilterChip.swift` | 123 | filter chip：全部 / 有待複習 / 已學完 / 自訂排序 |
 
