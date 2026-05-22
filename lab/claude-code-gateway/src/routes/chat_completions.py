@@ -111,6 +111,31 @@ def _merge_allowed_tools(user_tools: str | None, required: str) -> str:
     return ",".join(items)
 
 
+# Minimal system prompts the gateway substitutes for the default Claude Code
+# agent prompt (~32K tokens of tool definitions + harness instructions).
+# Function-calling requests still get the default — they need the harness.
+GATEWAY_BASE_SYSTEM = "You are a helpful assistant."
+GATEWAY_IMAGE_SYSTEM = (
+    "You are a helpful assistant. When a user references a file by name, "
+    "use the Read tool to view that file from the current directory. "
+    "Never ask the user for file paths."
+)
+
+
+def _assemble_system_prompt(user_system: str | None, has_images: bool) -> str:
+    """Build the system prompt sent via ``--system-prompt`` for non-tool calls.
+
+    The gateway preamble replaces Claude Code's default agent prompt so the
+    gateway behaves like a generic OpenAI-compatible API.  Any user-supplied
+    system content is appended so the user's instructions take precedence by
+    recency.
+    """
+    preamble = GATEWAY_IMAGE_SYSTEM if has_images else GATEWAY_BASE_SYSTEM
+    if user_system:
+        return f"{preamble}\n\n{user_system}"
+    return preamble
+
+
 def _usage_from_result(result: dict) -> UsageInfo:
     """Map the Claude CLI `usage` block to an OpenAI-style UsageInfo.
 
@@ -180,12 +205,27 @@ async def chat_completions(request: ChatCompletionRequest):
         working_dir = request.working_dir or settings.working_dir or None
         allowed_tools = request.allowed_tools
 
+    # Pick the CLI system-prompt strategy and built-in tool filter.  For
+    # function-calling requests we keep the default agent harness (needed for
+    # tool emulation).  For generic chat we replace the ~32K default prompt
+    # with a minimal preamble and disable unused built-in tools.
+    if request.tools:
+        cli_system_prompt: str | None = None
+        cli_append_system_prompt = effective_system
+        cli_tools_filter: str | None = None
+    else:
+        cli_system_prompt = _assemble_system_prompt(effective_system, image_count > 0)
+        cli_append_system_prompt = None
+        cli_tools_filter = "Read" if image_count > 0 else ""
+
     if request.stream:
         # On success the temp dir is owned by the stream wrapper's cleanup;
         # if construction fails before that, drop it here.
         try:
             return await _handle_streaming(
-                request, model, prompt, effective_system, working_dir, allowed_tools, image_dir
+                request, model, prompt,
+                cli_system_prompt, cli_append_system_prompt,
+                working_dir, allowed_tools, cli_tools_filter, image_dir,
             )
         except Exception:
             if image_dir:
@@ -193,7 +233,9 @@ async def chat_completions(request: ChatCompletionRequest):
             raise
     try:
         return await _handle_blocking(
-            request, model, prompt, effective_system, working_dir, allowed_tools,
+            request, model, prompt,
+            cli_system_prompt, cli_append_system_prompt,
+            working_dir, allowed_tools, cli_tools_filter,
             has_tools=bool(request.tools), has_images=image_count > 0,
         )
     finally:
@@ -205,9 +247,11 @@ async def _handle_blocking(
     request: ChatCompletionRequest,
     model: str,
     prompt: str,
-    system_prompt: str | None,
+    cli_system_prompt: str | None,
+    cli_append_system_prompt: str | None,
     working_dir: str | None,
     allowed_tools: str | None,
+    tools_filter: str | None,
     has_tools: bool = False,
     has_images: bool = False,
 ) -> dict:
@@ -225,8 +269,10 @@ async def _handle_blocking(
                 working_dir=working_dir,
                 session_id=request.session_id,
                 permission_mode=request.permission_mode,
-                append_system_prompt=system_prompt,
+                system_prompt=cli_system_prompt,
+                append_system_prompt=cli_append_system_prompt,
                 allowed_tools=allowed_tools,
+                tools_filter=tools_filter,
             )
         else:
             result = await ClaudeRunner.run_blocking(
@@ -237,8 +283,10 @@ async def _handle_blocking(
                 working_dir=working_dir,
                 session_id=request.session_id,
                 permission_mode=request.permission_mode,
-                append_system_prompt=system_prompt,
+                system_prompt=cli_system_prompt,
+                append_system_prompt=cli_append_system_prompt,
                 allowed_tools=allowed_tools,
+                tools_filter=tools_filter,
             )
     except (RuntimeError, TimeoutError) as exc:
         return JSONResponse(
@@ -288,9 +336,11 @@ async def _handle_streaming(
     request: ChatCompletionRequest,
     model: str,
     prompt: str,
-    system_prompt: str | None,
+    cli_system_prompt: str | None,
+    cli_append_system_prompt: str | None,
     working_dir: str | None,
     allowed_tools: str | None,
+    tools_filter: str | None,
     image_dir: str | None,
 ) -> StreamingResponse:
     """Run streaming claude invocation and return SSE StreamingResponse."""
@@ -301,8 +351,10 @@ async def _handle_streaming(
         working_dir=working_dir,
         session_id=request.session_id,
         permission_mode=request.permission_mode,
-        append_system_prompt=system_prompt,
+        system_prompt=cli_system_prompt,
+        append_system_prompt=cli_append_system_prompt,
         allowed_tools=allowed_tools,
+        tools_filter=tools_filter,
     )
 
     sse_stream = adapt_stream(ndjson_stream, model)
