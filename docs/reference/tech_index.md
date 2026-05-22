@@ -6,7 +6,7 @@ scope:
   - backend/src/kg/
   - ios/BooksBrowser/
   - ops/
-verified_against: 7c7a23b
+verified_against: 85f5253
 -->
 # Technical Reference Index
 
@@ -58,7 +58,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 - **Quota & Rate Limit**: `FREE_DAILY_LIMIT_USD` / `PRO_DAILY_LIMIT_USD` / `API_RATE_LIMIT` / `TRANSLATE_RATE_LIMIT` / `KG_ALLOW_SANDBOX_PURCHASE`
 - **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS`
 - **Cache**: `TRANSLATE_CACHE_TTL_DAYS`
-- **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ` / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
+- **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ`(ops-side only — 僅 root `devops.sh` 顯示 log 時間用,不影響 backend runtime) / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
 - **Claude Code Gateway**: `CCG_API_TOKEN`(詳見 `docs/sop/claude-gateway.md`)
 
 ## iOS 模組地圖 (`ios/BooksBrowser/`)
