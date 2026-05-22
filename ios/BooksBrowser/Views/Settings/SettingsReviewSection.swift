@@ -215,6 +215,7 @@ private extension Double {
         customMinimumIntervalHours: 6,
         customMaximumIntervalHours: 1440
     )))
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("自訂模式 / 緊湊參數") {
@@ -231,6 +232,7 @@ private extension Double {
         customMinimumIntervalHours: 4,
         customMaximumIntervalHours: 2160
     )))
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("密集模式") {
@@ -247,6 +249,7 @@ private extension Double {
         customMinimumIntervalHours: 6,
         customMaximumIntervalHours: 1440
     )))
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("自訂模式") {
@@ -263,4 +266,5 @@ private extension Double {
         customMinimumIntervalHours: 6,
         customMaximumIntervalHours: 1440
     )))
+    .environmentObject(AppAppearanceStore.preview)
 }

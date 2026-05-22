@@ -136,6 +136,7 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             canIncreaseFontSize: true
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Reader Settings / Bounds") {
@@ -146,5 +147,6 @@ private struct ReaderSettingsPanelPreviewHarness: View {
             canIncreaseFontSize: true
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

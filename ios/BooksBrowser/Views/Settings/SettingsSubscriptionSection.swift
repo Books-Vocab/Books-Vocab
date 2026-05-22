@@ -111,6 +111,7 @@ struct SettingsSubscriptionSection: View {
             .padding()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Subscription / Pricing Unavailable") {
@@ -123,4 +124,5 @@ struct SettingsSubscriptionSection: View {
             .padding()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

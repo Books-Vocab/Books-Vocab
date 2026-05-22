@@ -100,4 +100,5 @@ extension ButtonStyle where Self == AppCompactActionButtonStyle {
         }
         .padding(AppSpacing.s5)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

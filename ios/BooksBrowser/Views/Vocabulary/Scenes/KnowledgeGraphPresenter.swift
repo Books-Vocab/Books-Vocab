@@ -332,6 +332,7 @@ private enum KnowledgeGraphPresenterPreviewData {
             state: KnowledgeGraphPresenterPreviewData.state(showsSettings: true)
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Knowledge Graph / Empty") {
@@ -340,6 +341,7 @@ private enum KnowledgeGraphPresenterPreviewData {
             state: KnowledgeGraphPresenterPreviewData.emptyState
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Knowledge Graph / No Links") {
@@ -348,4 +350,5 @@ private enum KnowledgeGraphPresenterPreviewData {
             state: KnowledgeGraphPresenterPreviewData.noLinksState
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
