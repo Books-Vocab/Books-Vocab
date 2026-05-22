@@ -46,9 +46,11 @@ enum TokenSheetScenarios {
                 ("tertiaryText", palette.tertiaryText),
                 ("quaternaryText", palette.quaternaryText)
             ]),
-            ("Accent (Morandi)", [
+            ("Brand Hero (primary · cream gold)", [
+                ("brandHero", palette.brandHero)
+            ]),
+            ("Accent (passive · Morandi blue)", [
                 ("accent", palette.accent),
-                ("brandHero", palette.brandHero),
                 ("link", palette.link),
                 ("info", palette.info)
             ]),

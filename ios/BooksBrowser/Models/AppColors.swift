@@ -8,14 +8,14 @@
 //  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
 //  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
-//  設計哲學：Notion-inspired Palette + 奶黃 primary / Morandi 藍 secondary
+//  設計哲學：Notion-inspired Palette + 淡奶黃 primary / Morandi 藍 secondary
 //    · 表面近白／中性深灰 — 純淨、扁平，不靠重陰影靠 border 分層
 //    · 暖近黑文字（#37352F）取代純黑，承襲 Notion 的溫潤閱讀感
-//    · 主色採古銅蜂蜜金（brandHero #B5894B / #C9A968 light/dark）—
-//      像 Hobonichi 手帳燙金、Penguin Classics 書脊金，editorial 書卷氣
+//    · 主色採淡奶黃 / butter cream（brandHero #E8C77F / #D4B36A light/dark）—
+//      像剛打發的奶油色、淡 Hobonichi 紙紋金，書卷氣不古銅
 //    · 次色保留 Morandi grey-blue（accent #4D7396）— 連結、info、被動點綴
 //    · 對比採分級制：正文 ≥4.5:1、metadata ≥3:1、裝飾 ~2.5:1
-//    · 奶黃 + 白字對比 ~3.4:1 fail AA → onBrandHero 採深炭灰 #1C1A17 (~5-7:1)
+//    · 淡奶黃 + 白字對比 ~1.6:1 fail AA → onBrandHero 採深炭灰 #1C1A17 (~9-10:1)
 //  ─────────────────────────────────────────────────────────────────────
 //  顏色分組（依使用方）
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
@@ -42,14 +42,14 @@ enum AppColors {
     static let accentLight = Color(red: 0.302, green: 0.451, blue: 0.588)
     static let accentDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
-    // ── Brand Hero（古銅蜂蜜金 · 主行動色 CTA）────────────────────────
-    // 用於主要 CTA、登入、Today Review 啟動鍵。色相靈感：Hobonichi 手帳燙金、
-    // Penguin Classics 書脊金、老懷錶錶面 — editorial 書卷氣的「奶黃」。
-    // light: #B5894B — onBrandHero (#1C1A17) 對比 ~5.11:1 ✓ AA pass
-    // dark:  #C9A968 — onBrandHero (#1C1A17) 對比 ~7.05:1 ✓ AAA pass
-    // 為何不用白字：白字 + #B5894B = 3.37:1 fail AA → 強制走 dark fg。
-    static let brandHeroLight = Color(red: 0.710, green: 0.537, blue: 0.294) // #B5894B
-    static let brandHeroDark  = Color(red: 0.788, green: 0.663, blue: 0.408) // #C9A968
+    // ── Brand Hero（淡奶黃 / butter cream · 主行動色 CTA）────────────
+    // 用於主要 CTA、登入、Today Review 啟動鍵。色相靈感：剛打發的奶油色、
+    // 淡 Hobonichi 紙紋金、雞蛋糕烤色 — editorial 書卷氣不古銅。
+    // light: #E8C77F — onBrandHero (#1C1A17) 對比 ~10.8:1 ✓ AAA pass
+    // dark:  #D4B36A — onBrandHero (#1C1A17) 對比 ~8.7:1 ✓ AAA pass
+    // 為何不用白字：白字 + #E8C77F = 1.6:1 fail AA → 強制走 dark fg。
+    static let brandHeroLight = Color(red: 0.910, green: 0.780, blue: 0.498) // #E8C77F
+    static let brandHeroDark  = Color(red: 0.831, green: 0.702, blue: 0.416) // #D4B36A
 
     // ── On-Brand-Hero 前景（深炭灰，取代 .white）─────────────────────
     // 為何不再用 .white：奶黃 brandHero 上的白字對比 ~3.4:1 fail AA。
@@ -83,11 +83,11 @@ enum AppColors {
     static let warningLight = Color(red: 0.549, green: 0.376, blue: 0.078)
     static let warningDark  = Color(red: 0.851, green: 0.643, blue: 0.255)
 
-    // ── App 全域 Tint（奶黃，與 brandHeroLight 同色）─────────────────
+    // ── App 全域 Tint（淡奶黃，與 brandHeroLight 同色）───────────────
     // tint = SwiftUI `.tint` 的注入色，影響選中 tab、nav button、accent 控制項。
-    // 既然奶黃是 primary，tint 跟著 brandHeroLight (#B5894B)；藍色 accent 留給
+    // 既然奶黃是 primary，tint 跟著 brandHeroLight (#E8C77F)；藍色 accent 留給
     // 「被動」場景（link / info）—— 不再是 tint 預設。
-    static let tint = Color(red: 0.710, green: 0.537, blue: 0.294)
+    static let tint = Color(red: 0.910, green: 0.780, blue: 0.498)
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
@@ -140,7 +140,9 @@ extension AppColors {
 // MARK: - Web CSS Token
 
 extension AppColors {
-    // Morandi grey-blue (hue 212, 與 accentLight/Dark 同色相)
+    // Morandi grey-blue (hue 212, 與 accentLight/Dark 同色相) — Reader 內 web-rendered
+    // 詞彙底線高光。雖然 Phase 1b 將主色換奶黃，此處保留藍色 — vocab highlight 屬於
+    // 「被動裝飾」(accent family)，不是 CTA / interactive，與 link / info 同分類。
     static let vocabHighlightLightCSS = "linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%)"
     static let vocabHighlightDarkCSS  = "linear-gradient(to top, hsla(210, 32%, 64%, 0.20) 35%, transparent 35%)"
     static let vocabHighlightSepiaCSS = "linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%)"
