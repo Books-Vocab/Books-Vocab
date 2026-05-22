@@ -1,3 +1,12 @@
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: code-change
+scope:
+  - ops/
+  - docs/policy/
+verified_against: 7c7a23b
+-->
 # Host Background (Single Source of Truth)
 
 ## Host

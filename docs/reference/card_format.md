@@ -1,8 +1,10 @@
 <!-- doc-meta
 tier: reference
+authority: SoT
+update_trigger: code-change
 scope:
-  - backend/src/kg
-verified_against: 4eaa92b
+  - backend/src/kg/
+verified_against: 7c7a23b
 -->
 # Card 欄位格式規範
 

@@ -1,3 +1,11 @@
+<!-- doc-meta
+tier: sop
+authority: derived
+update_trigger: sop-change
+scope:
+  - lab/claude-code-gateway/
+verified_against: 7c7a23b
+-->
 # Claude Code Gateway
 
 KG workspace 的 **Claude subscription → OpenAI-compatible API** 閘道。將本機登入的 Claude Code CLI 包成 `/v1/chat/completions`，供 lab 端 PoC（podcast architect 等）直接用 `openai` SDK 呼叫 Claude 模型，不走 Anthropic API（無 per-token 費用，走訂閱額度）。

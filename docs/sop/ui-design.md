@@ -1,8 +1,10 @@
 <!-- doc-meta
-tier: structural
+tier: sop
+authority: derived
+update_trigger: sop-change
 scope:
-  - ios/BooksBrowser
-verified_against: 1d24dc1
+  - ios/BooksBrowser/
+verified_against: 7c7a23b
 -->
 # BooksBrowser UI Design System
 

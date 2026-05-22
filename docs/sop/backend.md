@@ -1,8 +1,10 @@
 <!-- doc-meta
-tier: operational
+tier: sop
+authority: derived
+update_trigger: sop-change
 scope:
-  - backend/src/kg
-verified_against: 6b62854
+  - backend/
+verified_against: 7c7a23b
 -->
 # KG Backend Dev Guide
 

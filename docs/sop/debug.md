@@ -1,9 +1,11 @@
 <!-- doc-meta
-tier: operational
+tier: sop
+authority: derived
+update_trigger: sop-change
 scope:
-  - backend/src/kg
-  - ops
-verified_against: 4061750
+  - backend/
+  - ops/
+verified_against: 7c7a23b
 -->
 # 伺服器排障指南
 

@@ -1,9 +1,11 @@
 <!-- doc-meta
-tier: reference
+tier: snapshot
+authority: derived
+update_trigger: manual
 scope:
-  - ios/BooksBrowser
-  - ops
-verified_against: 4eaa92b
+  - ios/BooksBrowser/
+  - ops/
+verified_against: 7c7a23b
 -->
 # Build 可觀測性
 
