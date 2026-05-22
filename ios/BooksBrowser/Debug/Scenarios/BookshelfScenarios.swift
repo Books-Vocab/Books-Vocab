@@ -30,15 +30,7 @@ enum BookshelfScenarios {
                 .environmentObject(AppAppearanceStore.preview)
             }
             Scenario("With Books", layout: .fill) {
-                AppThemeContainer {
-                    if let container = BookshelfPreviewData.containerWithBooks {
-                        BookshelfView()
-                            .modelContainer(container)
-                    } else {
-                        EmptyView()
-                    }
-                }
-                .environmentObject(AppAppearanceStore.preview)
+                BookshelfWithBooksScene()
             }
             Scenario("Loading", layout: .fill) {
                 AppThemeContainer {
@@ -48,6 +40,24 @@ enum BookshelfScenarios {
                 .environmentObject(AppAppearanceStore.preview)
             }
         }
+    }
+}
+
+// Why: `BookshelfPreviewData.containerWithBooks` is `@MainActor` (touches ModelContainer
+// init paths that require main-thread); the Scenario content closure itself is
+// non-isolated, so accessing it directly trips Swift 6 strict concurrency.
+// SwiftUI `body` is implicitly `@MainActor`-isolated → wrap the access in a View.
+private struct BookshelfWithBooksScene: View {
+    var body: some View {
+        AppThemeContainer {
+            if let container = BookshelfPreviewData.containerWithBooks {
+                BookshelfView()
+                    .modelContainer(container)
+            } else {
+                EmptyView()
+            }
+        }
+        .environmentObject(AppAppearanceStore.preview)
     }
 }
 #endif
