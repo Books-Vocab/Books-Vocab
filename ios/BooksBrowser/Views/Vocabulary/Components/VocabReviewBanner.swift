@@ -70,7 +70,10 @@ struct VocabReviewBanner<FilterContent: View>: View {
 
             reviewButton
         }
-        .padding(.horizontal, style == .hero ? skin.spacing.cardPadding : skin.metrics.listRowHorizontalInset)
+        // Why: compact 變體與 KGVocabPresenter chip bar 上下相鄰，必須對齊 chip
+        // bar 用的 `pageHorizontalInset`(20pt)，不可用 `listRowHorizontalInset`(16pt)
+        // ─ 否則 banner 內容會比 chip bar 寬 4pt，邊緣不齊。
+        .padding(.horizontal, style == .hero ? skin.spacing.cardPadding : skin.metrics.pageHorizontalInset)
         .padding(.vertical, style == .hero ? skin.spacing.cardPadding : skin.spacing.inlineGap)
         .background(
             Group {
