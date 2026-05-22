@@ -32,43 +32,59 @@ enum NotebookDetailScenarios {
             }
         }
 
-        playbook.addScenarios(of: "Notebook Detail · Review Banner") {
-            Scenario("Hero · due only", layout: .fill) {
-                bannerSheet(style: .hero, due: 538, unlearned: 0)
+        playbook.addScenarios(of: "Notebook Detail · CTA Pill") {
+            Scenario("Due only (538)", layout: .fill) {
+                ctaSheet(due: 538, unlearned: 0)
             }
-            Scenario("Hero · both types", layout: .fill) {
-                bannerSheet(style: .hero, due: 42, unlearned: 12)
+            Scenario("Unlearned only (12)", layout: .fill) {
+                ctaSheet(due: 0, unlearned: 12)
             }
-            Scenario("Compact · due only (detail page)", layout: .fill) {
-                bannerSheet(style: .compact, due: 538, unlearned: 0)
+            Scenario("Both types", layout: .fill) {
+                ctaSheet(due: 42, unlearned: 12)
             }
-            Scenario("Compact · both types", layout: .fill) {
-                bannerSheet(style: .compact, due: 42, unlearned: 12)
+            Scenario("Large numbers", layout: .fill) {
+                ctaSheet(due: 9999, unlearned: 1234)
             }
-            Scenario("Compact · large numbers", layout: .fill) {
-                bannerSheet(style: .compact, due: 9999, unlearned: 1234)
+            Scenario("No CTA (both zero)", layout: .fill) {
+                ctaSheet(due: 0, unlearned: 0)
             }
         }
     }
 
-    // MARK: - Banner sheet helper
+    // MARK: - CTA pill sheet helper
 
-    private static func bannerSheet(style: VocabReviewBannerStyle, due: Int, unlearned: Int) -> some View {
+    private static func ctaSheet(due: Int, unlearned: Int) -> some View {
         let skin = AppSkin.previewNeutral
         return VStack(alignment: .leading, spacing: 16) {
-            Text(style == .hero ? "Hero (NotebookListView)" : "Compact (VocabularyListView)")
+            Text("Chip + Sort + CTA row (KGVocabPresenter)")
                 .font(skin.typography.caption)
                 .foregroundStyle(skin.palette.tertiaryText)
                 .padding(.horizontal, skin.metrics.pageHorizontalInset)
-            VocabReviewBanner(
-                dueCount: due,
-                unlearnedCount: unlearned,
-                style: style,
-                onStartDue: {},
-                onStartUnlearned: {},
-                onStartMixed: {}
-            )
-            .padding(.horizontal, style == .hero ? skin.metrics.pageHorizontalInset : 0)
+            HStack(spacing: skin.spacing.inlineGap) {
+                Spacer()
+                // Sort pill placeholder — visual reference only
+                HStack(spacing: AppSpacing.s1) {
+                    Image(systemName: "arrow.up.arrow.down")
+                    Text("Review Priority")
+                }
+                .font(skin.typography.caption)
+                .foregroundStyle(skin.palette.secondaryText)
+                .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
+                .padding(.vertical, skin.spacing.compactChipVerticalPadding)
+                .background(Capsule().fill(skin.palette.mutedFill))
+
+                if due > 0 || unlearned > 0 {
+                    VocabReviewCTAPill(
+                        dueCount: due,
+                        unlearnedCount: unlearned,
+                        onStartDue: {},
+                        onStartUnlearned: {},
+                        onStartMixed: {}
+                    )
+                }
+            }
+            .padding(.horizontal, skin.metrics.pageHorizontalInset)
+
             Spacer(minLength: 0)
         }
         .padding(.top, 24)

@@ -26,27 +26,20 @@ extension VocabularyListView {
         if !authManager.isLoggedIn {
             loggedOutState
         } else {
-            VStack(spacing: 0) {
-                // Why: detail page 已有 filter chip bar 顯示 due/unlearned/reviewed
-                // 數字，hero card 與下方 NotebookListView 的 hero CTA 視覺重複。
-                // 此處改用 `.compact` 變體 — 無 card background、單行 inline、padding
-                // 砍半，省約 60pt 縱向空間，又保留 CTA 入口。NotebookListView 那
-                // 邊維持 .hero 變體作為 primary entry point。
-                if classified.dueCount > 0 || classified.unlearnedCount > 0 {
-                    VocabReviewBanner(
-                        dueCount: classified.dueCount,
-                        unlearnedCount: classified.unlearnedCount,
-                        style: .compact,
-                        onStartDue: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
-                        onStartUnlearned: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
-                        onStartMixed: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) }
-                    )
-                }
-
-                KGVocabView(searchText: $debouncedSearchText, notebookId: notebookId) { entry in
+            // Why: 詳情頁不再渲染獨立的 VocabReviewBanner — `538 張到期` text +
+            // 下方 chip bar `Due 538` 重複；CTA 收進 KGVocabPresenter chip+sort
+            // 列尾端的 VocabReviewCTAPill (注入 `onStartReview` callback 觸發)。
+            // NotebookListView 仍保留 hero VocabReviewBanner 作為 primary entry point。
+            KGVocabView(
+                searchText: $debouncedSearchText,
+                notebookId: notebookId,
+                onEntrySelected: { entry in
                     detailRouter?.showWordDetail(entry, allEntries: allEntries)
+                },
+                onStartReview: { entries in
+                    coordinator.startKnowledgeReview(entries: entries)
                 }
-            }
+            )
         }
     }
 
