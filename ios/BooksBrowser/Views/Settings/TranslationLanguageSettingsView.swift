@@ -76,7 +76,7 @@ struct TranslationLanguageSettingsView: View {
             .padding(.bottom, AppShellMetrics.pageBottomPadding)
         }
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
-        .navigationTitle("翻譯語言")
+        .navigationTitle(L10n.string("翻譯語言"))
         .inlineNavigationBarTitle()
     }
 

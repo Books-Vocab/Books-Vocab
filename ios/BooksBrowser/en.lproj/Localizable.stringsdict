@@ -18,5 +18,85 @@
 			<string>%lld cards</string>
 		</dict>
 	</dict>
+	<key>vocab_graph_node_count_plural</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld word</string>
+			<key>other</key>
+			<string>%lld words</string>
+		</dict>
+	</dict>
+	<key>vocab_graph_link_count_plural</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld link</string>
+			<key>other</key>
+			<string>%lld links</string>
+		</dict>
+	</dict>
+	<key>vocab_total_cards_plural</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld card</string>
+			<key>other</key>
+			<string>%lld cards</string>
+		</dict>
+	</dict>
+	<key>vocab_due_cards_plural</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld due</string>
+			<key>other</key>
+			<string>%lld due</string>
+		</dict>
+	</dict>
+	<key>vocab_reviewed_cards_plural</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@n@</string>
+		<key>n</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>lld</string>
+			<key>one</key>
+			<string>%lld reviewed today</string>
+			<key>other</key>
+			<string>%lld reviewed today</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

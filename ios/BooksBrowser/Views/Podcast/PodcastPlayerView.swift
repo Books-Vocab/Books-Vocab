@@ -181,7 +181,7 @@ struct PodcastPlayerView: View {
         case .idle, .loading:
             VStack(spacing: skin.spacing.sectionGap) {
                 ProgressView()
-                Text("載入音訊…")
+                Text(L10n.string("載入音訊…"))
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
             }
@@ -192,12 +192,12 @@ struct PodcastPlayerView: View {
                 Image(systemName: "xmark.octagon")
                     .font(skin.typography.symbolHero)
                     .foregroundStyle(skin.palette.destructive)
-                Text("音訊載入失敗")
+                Text(L10n.string("音訊載入失敗"))
                     .font(skin.typography.sectionTitle)
                 Text(msg)
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.secondaryText)
-                Button("重試") { reloadEpisode() }
+                Button(L10n.string("重試")) { reloadEpisode() }
                     .buttonStyle(.appCompactAction(.primary))
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
