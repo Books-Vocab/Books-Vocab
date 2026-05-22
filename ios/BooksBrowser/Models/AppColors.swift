@@ -95,13 +95,15 @@ enum AppColors {
     static let tintLight = Color(red: 0.216, green: 0.208, blue: 0.184)
     static let tintDark  = Color(red: 0.902, green: 0.902, blue: 0.890)
 
-    // ── Chart Highlight（深奶黃，stats 頁填色用）────────────────────────
-    // brandHero `#FCDE9A` 對白底僅 1.3:1，做 heatmap/forecast/calendar 填色
-    // 會「肉眼看不到」。Chart 維持奶黃家族(色相 36°)但加深至 `#B5894B`，
-    // 對白底 ~3.17:1 ✓ AA graphical、對深 card ~4.4:1 ✓ AA — 兩 mode 同色。
+    // ── Chart Highlight（中淡奶黃，stats 頁填色用）──────────────────────
+    // brandHero `#FCDE9A` 對白底僅 ~1.3:1，做 heatmap/forecast/calendar 填色
+    // 會「肉眼看不到」。Chart 維持奶黃家族但稍深至 `#F0CA89` —
+    // 對白底 ~1.6:1 (低調但比 brandHero 醒一階)、對深 card ~9:1 ✓ AAA。
+    // 注意：未達 WCAG 3:1 graphical（白底場景），由 user picked，承受 light
+    // mode 圖表偏淡的視覺取捨；dark mode 對比強。
     // 用於 VocabActivityHeatmap、VocabForecastChart、VocabCalendarGrid、
     // StatsPresenter 內的 metric icon。
-    static let chartHighlight = Color(red: 0.710, green: 0.537, blue: 0.294) // #B5894B
+    static let chartHighlight = Color(red: 0.941, green: 0.792, blue: 0.537) // #F0CA89
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
