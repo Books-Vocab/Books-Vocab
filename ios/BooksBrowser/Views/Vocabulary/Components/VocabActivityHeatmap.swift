@@ -141,9 +141,9 @@ struct VocabActivityHeatmap: View {
         switch level {
         case 0: return Color.clear
         case 1: return appSkin.palette.mutedFill
-        case 2: return appSkin.palette.accent.opacity(0.35)
-        case 3: return appSkin.palette.accent.opacity(0.6)
-        default: return appSkin.palette.accent
+        case 2: return AppColors.chartHighlight.opacity(0.35)
+        case 3: return AppColors.chartHighlight.opacity(0.6)
+        default: return AppColors.chartHighlight
         }
     }
 }
