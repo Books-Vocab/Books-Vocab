@@ -66,7 +66,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | 查功能是否已實作(避免重造) | `docs/reference/product_surface.md` **(SoT)** |
 | 查 endpoint / DB table / env var / iOS 模組叫什麼 | `docs/reference/tech_index.md` **(SoT)** |
 | 改 iOS Reader 任何檔案 | `docs/reference/feature_boundary/reader.md` |
-| 改 iOS Vocab / Sync / TodayReview / KG | `docs/reference/feature_boundary/vocabulary.md` + `docs/reference/sync_lifecycle.md` **(SoT)** |
+| 改 iOS Vocab / Sync / TodayReview / KG | `docs/reference/feature_boundary/vocabulary.md`(scope map) + `docs/reference/sync_lifecycle.md` **(SoT)**(狀態流轉) |
 | 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
 | 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |
 | 改 sync 狀態流轉(`syncStatus` × `actionType`) | `docs/reference/sync_lifecycle.md` **(SoT)** |
