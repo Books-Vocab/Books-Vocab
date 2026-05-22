@@ -13,6 +13,18 @@ struct NotebookCardActions {
     var canDelete: Bool = true
 }
 
+/// `NotebookCard` 視覺變體。
+///
+/// - `.grid` (default)：3:2 封面，緊湊 metadata，給 ≥2 本 notebook 並排場景。
+/// - `.hero`：寬幅 2:1 封面 + 大號名稱 + 兩列 metadata，跨整列寬度。
+///   用於 NotebookListView 在 `notebooks.count == 1` 時 — grid 視覺心理暗示
+///   「應該有很多」，但 99% 用戶只會建 1 本；hero 變體承認此事實，視覺心理
+///   表達「這是你的單字本」而非「目錄」。
+enum NotebookCardStyle {
+    case grid
+    case hero
+}
+
 struct NotebookCardData {
     let name: String
     let color: String?
@@ -32,6 +44,7 @@ struct NotebookCard: View {
     @Environment(\.appSkin) private var skin
 
     let data: NotebookCardData
+    var style: NotebookCardStyle = .grid
     var actions: NotebookCardActions = NotebookCardActions()
 
     private var coverColor: Color {
@@ -51,6 +64,28 @@ struct NotebookCard: View {
         return Double(data.reviewedCount) / Double(totalSynced)
     }
 
+    private var coverAspectRatio: CGFloat {
+        switch style {
+        case .grid: return 3.0 / 2.0
+        case .hero: return 21.0 / 10.0   // 寬扁、視覺強調「這是首要的」
+        }
+    }
+
+    /// hero 場景隱藏 `使用中` pill — 唯一存在不需此標籤。
+    private var showsActivePill: Bool {
+        switch style {
+        case .grid: return data.isActive
+        case .hero: return false
+        }
+    }
+
+    private var nameFont: Font {
+        switch style {
+        case .grid: return skin.typography.sectionTitle
+        case .hero: return skin.typography.displayTitle
+        }
+    }
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NotebookCoverView(
@@ -59,13 +94,13 @@ struct NotebookCard: View {
                 coverImagePath: data.coverImagePath,
                 name: data.name
             )
-            .aspectRatio(3 / 2, contentMode: .fill)
+            .aspectRatio(coverAspectRatio, contentMode: .fill)
             .clipShape(UnevenRoundedRectangle(
                 topLeadingRadius: skin.radii.card,
                 topTrailingRadius: skin.radii.card
             ))
             .overlay(alignment: .topTrailing) {
-                if data.isActive {
+                if showsActivePill {
                     Text("使用中".localized)
                         .font(skin.typography.monoLabel)
                         .foregroundStyle(.white)
