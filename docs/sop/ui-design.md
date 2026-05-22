@@ -74,6 +74,7 @@ BooksBrowser 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.ea
 | `subtleBreath` | 2.4s easeInOut autoreverse | `AppSkeleton` pulse、empty state 呼吸 |
 | `shimmer` | 1.4s linear repeatForever | skeleton mask（dormant，待 callsite） |
 | `TapFeedback` triplet | `scaleDown 0.97` / `opacityDip 0.92` / `animation` | PressableInteraction / ButtonStyle 統一按壓物理感 |
+| `cardDeckRelease` | `spring response=0.28, dampingFraction=0.85` | `NotebookDeckButtonStyle` release/cancel 回彈（press-in 走 `TapFeedback.animation`） |
 
 ### Transition 語意層
 
@@ -132,7 +133,7 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 |-----------|------|--------|
 | `AppSpacing` | 8pt grid：`s0=0/s1=4/s2=8/.../s7=64`、`hairline=1`；語意 alias `cardOuterPadding/innerGap/sectionGap` | 部分 — 新元件已切，舊 view 仍多 raw 數字 |
 | `AppRadius` | `xs=4/sm=8/md=12/lg=16/xl=24/pill=999`；禁用鄰近半階值（7/9/13/14/18） | 部分 |
-| `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.z2)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **dormant — zero callsites** |
+| `AppElevation` | `z0...z4` 替代 `paperFloat`/`cover`/`panel` 命名；`.appElevation(.z2)` modifier；dark mode 透過 `AppElevationModifier` 自動加強 opacity | **首批 callsite — `NotebookStackedCoverView`**（頂層 z2、ghost z1）。其餘 surface 仍待遷移。 |
 | `AppLayout` | `maxReadableWidth=680`、`maxContentWidth=920`、compact/regular/expanded page padding (20/32/48)；`.appReadableFrame()` modifier | **dormant — zero callsites** |
 | `AppFonts.display1/display2` | 56/48pt serif hero typography；hero / onboarding 用 | **dormant — zero callsites** |
 | `AppFonts.Tracking` / `LineSpacing` | letter-spacing / 行高 token | dormant |

@@ -112,6 +112,7 @@ Scope: `ios/BooksBrowser`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
 - `GraphThumbnailWebView` — 雙平台（iOS `UIViewRepresentable` / macOS `NSViewRepresentable`）小型圖譜預覽，用於 StatsPresenter
+- `NotebookStackedCoverView` — Apple Wallet 風一疊單字卡封面：`ZStack` 由下而上 render `layerCount` 層（純色 ghost + 頂層復用 `NotebookCoverView`）；幾何走 `NotebookStackMetrics`（dy=3pt / dx=4pt / brightness step 0.04 light·0.06 dark）；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 自動關 offset/scale
 
 責任：
 - vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層、graph thumbnail
