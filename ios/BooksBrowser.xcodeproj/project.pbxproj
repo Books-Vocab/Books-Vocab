@@ -12,6 +12,7 @@
 		AA000003READIUM03 /* ReadiumNavigator in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000006READIUM06 /* ReadiumNavigator */; };
 		AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */ = {isa = PBXBuildFile; platformFilter = ios; productRef = AA000009READIUM09 /* ReadiumAdapterGCDWebServer */; };
 		E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = E9677BD92F6056C80095D2E1 /* StoreKit.framework */; };
+		E97244ED2FC095AB0038B2FA /* Inject in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EC2FC095AB0038B2FA /* Inject */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -66,6 +67,7 @@
 				AA000001READIUM01 /* ReadiumShared in Frameworks */,
 				E9677BDA2F6056C80095D2E1 /* StoreKit.framework in Frameworks */,
 				AA000002READIUM02 /* ReadiumStreamer in Frameworks */,
+				E97244ED2FC095AB0038B2FA /* Inject in Frameworks */,
 				E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */,
 				AA000003READIUM03 /* ReadiumNavigator in Frameworks */,
 				AA000008READIUM08 /* ReadiumAdapterGCDWebServer in Frameworks */,
@@ -145,6 +147,7 @@
 				AA000009READIUM09 /* ReadiumAdapterGCDWebServer */,
 				E9D331AE2F521D2D00D4355C /* GoogleSignIn */,
 				E9D331B02F521D2D00D4355C /* GoogleSignInSwift */,
+				E97244EC2FC095AB0038B2FA /* Inject */,
 			);
 			productName = BooksBrowser;
 			productReference = E9EC4E142F4DD27100C3FFB6 /* BooksBrowser.app */;
@@ -235,6 +238,7 @@
 			packageReferences = (
 				AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */,
 				E92078102F5219710059F231 /* XCRemoteSwiftPackageReference "GoogleSignIn-iOS" */,
+				E97244EB2FC095AB0038B2FA /* XCRemoteSwiftPackageReference "Inject" */,
 			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = E9EC4E152F4DD27100C3FFB6 /* Products */;
@@ -463,6 +467,10 @@
 				);
 				MACOSX_DEPLOYMENT_TARGET = 15.0;
 				MARKETING_VERSION = 1.6;
+				OTHER_LDFLAGS = (
+					"-Xlinker",
+					"-interposable",
+				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.Max0228.BooksBrowser;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SUPPORTED_PLATFORMS = "iphoneos iphonesimulator macosx";
@@ -639,6 +647,14 @@
 				minimumVersion = 9.1.0;
 			};
 		};
+		E97244EB2FC095AB0038B2FA /* XCRemoteSwiftPackageReference "Inject" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/krzysztofzablocki/Inject";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 1.6.0;
+			};
+		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
@@ -661,6 +677,11 @@
 			isa = XCSwiftPackageProductDependency;
 			package = AA000007READIUM07 /* XCRemoteSwiftPackageReference "swift-toolkit" */;
 			productName = ReadiumAdapterGCDWebServer;
+		};
+		E97244EC2FC095AB0038B2FA /* Inject */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E97244EB2FC095AB0038B2FA /* XCRemoteSwiftPackageReference "Inject" */;
+			productName = Inject;
 		};
 		E9D331AE2F521D2D00D4355C /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;
