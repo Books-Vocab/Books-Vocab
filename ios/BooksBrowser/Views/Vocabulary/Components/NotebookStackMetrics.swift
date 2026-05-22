@@ -36,8 +36,8 @@ enum NotebookStackMetrics {
         }
     }
 
-    /// 每層垂直位移（resting 狀態）
-    static let layerOffsetY: CGFloat = AppSpacing.tinyGap     // 3pt
+    /// 每層垂直位移（resting 狀態）— peek 需 ≥ 4pt 才在實機 @3x 清楚可辨
+    static let layerOffsetY: CGFloat = AppSpacing.s1          // 4pt
     /// 每層水平單側 inset（下層比上層各縮 dx）
     static let layerInsetX: CGFloat = AppSpacing.s1           // 4pt
     /// Press-in 時頂層向上抽出的位移
@@ -45,9 +45,9 @@ enum NotebookStackMetrics {
     /// Press-in 時每深一層額外下沉 1pt（強化視差，總幅 ≤ 2pt）
     static let pressedGhostOffsetY: CGFloat = 1
     /// Light mode 每深一層 brightness 遞減步階
-    static let brightnessStepLight: CGFloat = 0.04
+    static let brightnessStepLight: CGFloat = 0.05
     /// Dark mode 每深一層 brightness 遞增步階（向亮走，避免黑底失辨識）
-    static let brightnessStepDark: CGFloat = 0.06
+    static let brightnessStepDark: CGFloat = 0.08
 
     /// 依 colorScheme 對 base color 套深度 brightness shift。
     /// - depth 0 = 頂層（不動）
