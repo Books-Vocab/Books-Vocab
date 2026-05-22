@@ -143,7 +143,7 @@ verified_against: 7c7a23b
 - `QuotaStore` + `KGError`/`RetryPolicy` + TodayReview `PostExampleMetrics`
 - State matrix error states: notebook / podcast / bookshelf / translation settings / today review
 
-## Claude Code Gateway (`lab/claude-code-gateway/`,.gitignore,third-party)
+## Claude Code Gateway (`lab/claude-code-gateway/`,vendored,third-party)
 
 - Claude Code CLI → OpenAI-compatible `/v1/chat/completions`
 - 公網 `https://wordnexus.lol/claude/v1` (Caddy `/claude/*` → port 8090)
