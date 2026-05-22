@@ -402,8 +402,8 @@ Scope: `ios/BooksBrowser`
 
 現況：
 - `AppOfflineBanner` light mode 對比 ≈ 3.21:1（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**
-- ~~`accentHero` dark mode 4.02:1~~ — 已解除：Morandi `brandHeroDark` `#4A6E91` + white text = ~5.34:1 ✓ AA pass，`AppCompactActionButtonStyle` dark-mode 特殊 guard 已移除（BooksBrowserTests/WCAGContrastTests.swift 鎖住此 invariant）
-- ~~`AppCompactActionButtonStyle` primary foreground raw `.white`~~ — 已解除：改走 `AppColors.onBrandHero` token
+- ~~`accentHero` dark mode 4.02:1~~ — 已解除：Phase 1b 起 brandHero 從 Morandi 藍改奶黃 `#B5894B/#C9A968`，前景採 `onBrandHero` deep charcoal `#1C1A17`，light/dark 對比 5.11/7.05:1 ✓ AA/AAA（BooksBrowserTests/WCAGContrastTests.swift 鎖住）
+- ~~`AppCompactActionButtonStyle` primary foreground raw `.white`~~ — 已解除：改走 `AppColors.onBrandHero`；奶黃 + 白字 fail AA → onBrandHero 強制 deep charcoal 是 token-level 保證
 
 影響：
 - 視覺品牌一致性 + a11y 合規邊界；polish pass PR 處理

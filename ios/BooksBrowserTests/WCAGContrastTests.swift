@@ -55,8 +55,9 @@ import SwiftUI
         #expect(contrast(AppColors.accentLight, AppTheme.light.palette.cardBackground) >= 4.5)
     }
 
-    @Test func brandHeroLight_meetsAA_forWhiteText() {
-        // brandHeroLight 是主 CTA 背景，白字疊上需 ≥4.5:1。
+    @Test func brandHeroLight_meetsAA_forOnBrandHero() {
+        // 奶黃 brandHeroLight + onBrandHero (deep charcoal) ≥ 4.5:1。
+        // 不再支援 .white 作為前景（奶黃 + 白字 fail AA）。
         #expect(contrast(AppColors.onBrandHero, AppColors.brandHeroLight) >= 4.5)
     }
 
@@ -80,8 +81,8 @@ import SwiftUI
         #expect(contrast(AppColors.accentDark, AppTheme.dark.palette.pageBackground) >= 4.5)
     }
 
-    @Test func brandHeroDark_meetsAA_forWhiteText() {
-        // brandHeroDark 是 dark mode CTA bg，白字 ≥4.5:1。
+    @Test func brandHeroDark_meetsAA_forOnBrandHero() {
+        // 奶黃 brandHeroDark + onBrandHero (deep charcoal) ≥ 4.5:1（實測 ~7.05:1）。
         #expect(contrast(AppColors.onBrandHero, AppColors.brandHeroDark) >= 4.5)
     }
 

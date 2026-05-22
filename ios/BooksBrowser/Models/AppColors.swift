@@ -8,12 +8,14 @@
 //  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
 //  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
-//  設計哲學：Notion-inspired Palette + Morandi 強調色
+//  設計哲學：Notion-inspired Palette + 奶黃 primary / Morandi 藍 secondary
 //    · 表面近白／中性深灰 — 純淨、扁平，不靠重陰影靠 border 分層
 //    · 暖近黑文字（#37352F）取代純黑，承襲 Notion 的溫潤閱讀感
-//    · 強調色採 Morandi grey-blue（accent #4D7396 / hero #3D5F82）
-//      — 取代原本 Notion product 藍 #2383E2，降飽和度貼合書卷氣調性
+//    · 主色採古銅蜂蜜金（brandHero #B5894B / #C9A968 light/dark）—
+//      像 Hobonichi 手帳燙金、Penguin Classics 書脊金，editorial 書卷氣
+//    · 次色保留 Morandi grey-blue（accent #4D7396）— 連結、info、被動點綴
 //    · 對比採分級制：正文 ≥4.5:1、metadata ≥3:1、裝飾 ~2.5:1
+//    · 奶黃 + 白字對比 ~3.4:1 fail AA → onBrandHero 採深炭灰 #1C1A17 (~5-7:1)
 //  ─────────────────────────────────────────────────────────────────────
 //  顏色分組（依使用方）
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
@@ -40,16 +42,21 @@ enum AppColors {
     static let accentLight = Color(red: 0.302, green: 0.451, blue: 0.588)
     static let accentDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
-    // ── Brand Hero（Morandi indigo · 主行動色 CTA）────────────────────
-    // 用於主要 CTA、登入、Today Review 啟動鍵 — 比 accent 更深以維持 prominence
-    // light: #3D5F82 — 白字對比 ~6.65:1 ✓ AA pass
-    // dark:  #4A6E91 — 白字對比 ~5.34:1 ✓ AA pass（取代舊 #2383E2 的 4.02:1 fail）
-    static let brandHeroLight = Color(red: 0.239, green: 0.373, blue: 0.510) // #3D5F82
-    static let brandHeroDark  = Color(red: 0.290, green: 0.431, blue: 0.569) // #4A6E91
+    // ── Brand Hero（古銅蜂蜜金 · 主行動色 CTA）────────────────────────
+    // 用於主要 CTA、登入、Today Review 啟動鍵。色相靈感：Hobonichi 手帳燙金、
+    // Penguin Classics 書脊金、老懷錶錶面 — editorial 書卷氣的「奶黃」。
+    // light: #B5894B — onBrandHero (#1C1A17) 對比 ~5.11:1 ✓ AA pass
+    // dark:  #C9A968 — onBrandHero (#1C1A17) 對比 ~7.05:1 ✓ AAA pass
+    // 為何不用白字：白字 + #B5894B = 3.37:1 fail AA → 強制走 dark fg。
+    static let brandHeroLight = Color(red: 0.710, green: 0.537, blue: 0.294) // #B5894B
+    static let brandHeroDark  = Color(red: 0.788, green: 0.663, blue: 0.408) // #C9A968
 
-    // ── On-Brand-Hero 前景 ────────────────────────────────────────────
-    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~6.5:1（WCAG AA ✓）。
-    static let onBrandHero = Color.white
+    // ── On-Brand-Hero 前景（深炭灰，取代 .white）─────────────────────
+    // 為何不再用 .white：奶黃 brandHero 上的白字對比 ~3.4:1 fail AA。
+    // 改採深炭灰 (#1C1A17)，光暗模式皆對比 ≥5.1:1 ✓ AA。
+    // 此 token 與 theme 無關 — 兩種 mode 都用同一色（onBrandHero 是 brandHero 的
+    // 配對前景，與 page palette 解耦）。
+    static let onBrandHero = Color(red: 0.110, green: 0.102, blue: 0.090) // #1C1A17
 
     // ── 資訊色（Morandi blue · 與 accent 同色系）──────────────────────
     // 用於 info banner、提示訊息、tooltip 等中性提示
@@ -76,9 +83,11 @@ enum AppColors {
     static let warningLight = Color(red: 0.549, green: 0.376, blue: 0.078)
     static let warningDark  = Color(red: 0.851, green: 0.643, blue: 0.255)
 
-    // ── App 全域 Tint（取代系統藍）────────────────────────────────────
-    // 作為主題層的基礎 tint，與 accentLight 同色（Morandi grey-blue #4D7396）
-    static let tint = Color(red: 0.302, green: 0.451, blue: 0.588)
+    // ── App 全域 Tint（奶黃，與 brandHeroLight 同色）─────────────────
+    // tint = SwiftUI `.tint` 的注入色，影響選中 tab、nav button、accent 控制項。
+    // 既然奶黃是 primary，tint 跟著 brandHeroLight (#B5894B)；藍色 accent 留給
+    // 「被動」場景（link / info）—— 不再是 tint 預設。
+    static let tint = Color(red: 0.710, green: 0.537, blue: 0.294)
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
