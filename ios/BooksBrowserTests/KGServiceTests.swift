@@ -233,7 +233,8 @@ struct KGServiceTests {
     @Test func vocab_entry_encodes_source_field() throws {
         let entry = KGVocabEntry(
             word: "ephemeral", translation: "短暫的", context: "an ephemeral moment",
-            root_form: "ephemeral", source: .book(title: "Moby Dick")
+            root_form: "ephemeral", source: .book(title: "Moby Dick"),
+            source_lang: nil, target_lang: nil
         )
         let data = try JSONEncoder().encode(entry)
         let obj = try JSONSerialization.jsonObject(with: data) as? [String: Any]
