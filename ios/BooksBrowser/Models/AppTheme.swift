@@ -67,7 +67,7 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoLight.opacity(0.10),
             mutedFill: Color.black.opacity(0.04),
             scrim: Color.black.opacity(0.20),
-            tint: AppColors.tint,
+            tint: AppColors.tintLight,
             overlayFill: Color.white.opacity(0.12),
             progressBarBackground: Color.black.opacity(0.07),
             buttonIdleFill: Color.black.opacity(0.06),
@@ -104,9 +104,9 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoDark.opacity(0.14),
             mutedFill: Color.white.opacity(0.07),
             scrim: Color.black.opacity(0.42),
-            // tint follows brandHero (gold), not accent (blue passive). Dark mode
-            // uses brandHeroDark for proper night-mode warmth — Phase 1b refinement.
-            tint: AppColors.brandHeroDark,
+            // tint 走灰階 chrome (tintDark = primaryText.dark)，奶黃 brandHero
+            // 保留給 CTA — Phase 1c 拍板：chrome ≠ CTA。
+            tint: AppColors.tintDark,
             overlayFill: Color.white.opacity(0.15),
             progressBarBackground: Color.white.opacity(0.10),
             buttonIdleFill: Color.white.opacity(0.10),
@@ -142,7 +142,7 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoLight.opacity(0.10),
             mutedFill: Color(red: 0.42, green: 0.38, blue: 0.32).opacity(0.06),
             scrim: Color(red: 0.30, green: 0.26, blue: 0.20).opacity(0.20),
-            tint: AppColors.tint,
+            tint: AppColors.tintLight,
             // sepia 沿用 light 的中性 fill（與 themed() 既有行為一致：sepia.colorScheme == .light）
             overlayFill: Color.white.opacity(0.12),
             progressBarBackground: Color.black.opacity(0.07),
