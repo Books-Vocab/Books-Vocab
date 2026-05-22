@@ -1,3 +1,13 @@
+<!-- doc-meta
+tier: policy
+authority: SoT
+update_trigger: manual
+scope:
+  - ops/
+  - backend/
+  - docs/runbook/
+verified_against: 7c7a23b
+-->
 # Safety Policy
 
 ## Non-Negotiable Rules

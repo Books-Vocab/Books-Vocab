@@ -1,8 +1,10 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: sop-change
 scope:
-  - backend/tests
-verified_against: 8f967e3
+  - backend/tests/
+verified_against: 7c7a23b
 -->
 # KG Backend Testing Strategy
 

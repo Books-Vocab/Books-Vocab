@@ -1,10 +1,11 @@
 <!-- doc-meta
 tier: snapshot
+authority: derived
+update_trigger: auto-script
 scope:
-  - ios/BooksBrowser
-verified_against: 8f967e3
+  - ios/BooksBrowser/
+verified_against: 7c7a23b
 -->
-
 # iOS Frontend Baseline
 
 基線日期: 2026-05-15
