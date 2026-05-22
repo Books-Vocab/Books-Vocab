@@ -210,7 +210,7 @@ private struct WelcomePage {
     let subtitle: String
 }
 
-private struct WelcomePreviewScene: View {
+struct WelcomePreviewScene: View {
     let initialPage: Int
     let preferredColorScheme: ColorScheme?
 

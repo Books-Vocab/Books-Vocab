@@ -71,6 +71,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS/macOS 特定(Widget、shortcuts、app intent) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
+| `Debug/` | DEBUG-only — `CatalogScene` + `Scenarios/*Scenarios.swift`(Playbook iOS catalog,啟用方式見 `docs/sop/ios.md §Playbook Catalog`) |
 
 iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios_baseline.md`。
 PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整、verified_against 未過期(預設閾值 30 commits)。

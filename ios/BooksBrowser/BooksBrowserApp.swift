@@ -167,37 +167,49 @@ struct BooksBrowserApp: App {
 
     var body: some Scene {
         WindowGroup {
-            AppThemeContainer {
-                rootView
-                    .environmentObject(appLanguage)
-                    .environment(\.reviewSettingsStore, ReviewSettingsStore.shared)
-                    .preferredColorScheme(appearanceStore.resolvedColorScheme)
-                    .environment(\.authManager, authManager)
-                    .environment(\.kgService, kgService)
-                    .environment(\.subscriptionManager, subscriptionManager)
-                    .environment(\.locale, appLanguage.locale)
-                    // Why: L10n.string(_:) 是 non-reactive function;絕大多數 view 不訂閱
-                    // AppLanguageStore,切 selection 後 UI 中英混雜直到 navigation/redraw。
-                    // .id(selection) 強制 SwiftUI 在 selection 變更時重建整棵 view tree,
-                    // 讓所有 L10n.string 重新計算。代價是切語言瞬間全 tree 重建(可接受)。
-                    .id(appLanguage.selection)
-                    .tint(AppColors.tint)
-                    #if os(iOS)
-                    .environment(\.readiumService, readiumService)
-                    .environment(\.bookshelfImportService, bookshelfImportService)
-                    .environment(\.readerSettings, .shared)
-                    #endif
-                    .environment(\.bookFileManager, bookFileManager)
-                    .environment(\.iCloudDownloadManager, iCloudDownloadManager)
-                    .environment(\.syncCoordinator, syncCoordinator)
-                    .environment(\.quotaStore, QuotaStore.shared)
-                    .environment(\.speechService, SpeechService.shared)
-                    .environment(\.toastCoordinator, toastCoordinator)
-                    .toastOverlay()
+            #if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("-catalog") {
+                CatalogScene()
+            } else {
+                mainAppContent
             }
-            .environmentObject(appearanceStore)
+            #else
+            mainAppContent
+            #endif
         }
         .modelContainer(modelContainer)
+    }
+
+    private var mainAppContent: some View {
+        AppThemeContainer {
+            rootView
+                .environmentObject(appLanguage)
+                .environment(\.reviewSettingsStore, ReviewSettingsStore.shared)
+                .preferredColorScheme(appearanceStore.resolvedColorScheme)
+                .environment(\.authManager, authManager)
+                .environment(\.kgService, kgService)
+                .environment(\.subscriptionManager, subscriptionManager)
+                .environment(\.locale, appLanguage.locale)
+                // Why: L10n.string(_:) 是 non-reactive function;絕大多數 view 不訂閱
+                // AppLanguageStore,切 selection 後 UI 中英混雜直到 navigation/redraw。
+                // .id(selection) 強制 SwiftUI 在 selection 變更時重建整棵 view tree,
+                // 讓所有 L10n.string 重新計算。代價是切語言瞬間全 tree 重建(可接受)。
+                .id(appLanguage.selection)
+                .tint(AppColors.tint)
+                #if os(iOS)
+                .environment(\.readiumService, readiumService)
+                .environment(\.bookshelfImportService, bookshelfImportService)
+                .environment(\.readerSettings, .shared)
+                #endif
+                .environment(\.bookFileManager, bookFileManager)
+                .environment(\.iCloudDownloadManager, iCloudDownloadManager)
+                .environment(\.syncCoordinator, syncCoordinator)
+                .environment(\.quotaStore, QuotaStore.shared)
+                .environment(\.speechService, SpeechService.shared)
+                .environment(\.toastCoordinator, toastCoordinator)
+                .toastOverlay()
+        }
+        .environmentObject(appearanceStore)
     }
 
     @ViewBuilder
