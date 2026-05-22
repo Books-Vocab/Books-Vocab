@@ -25,7 +25,13 @@ cd "$(git rev-parse --show-toplevel)"
 
 STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
 STRICT=0
-[ "${1:-}" = "--strict" ] && STRICT=1
+# Positional argv parsing(支援任意順序的 flag,未來加 --verbose 等不會 break)
+for arg in "$@"; do
+  case "$arg" in
+    --strict) STRICT=1 ;;
+    *) echo "Unknown arg: $arg" >&2; exit 2 ;;
+  esac
+done
 
 REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
 VALID_TIERS="policy sop reference snapshot runbook archive"
@@ -42,8 +48,8 @@ DOCS=$(find docs -type f -name "*.md" \
 while IFS= read -r f; do
   [ -z "$f" ] && continue
 
-  # Extract frontmatter block
-  meta=$(awk '/<!-- doc-meta/,/-->/' "$f")
+  # Extract frontmatter block(只抓第一個 <!-- doc-meta ... -->,避免被 doc 內其他 HTML 註解誤抓)
+  meta=$(awk '/<!-- doc-meta/{flag=1} flag{print} /-->/{if(flag){exit}}' "$f")
   if [ -z "$meta" ]; then
     echo "ERROR $f — 沒有 <!-- doc-meta --> frontmatter"
     errors=$((errors+1))
@@ -63,8 +69,9 @@ while IFS= read -r f; do
     continue
   fi
 
-  tier=$(echo "$meta" | grep -E "^tier:" | head -1 | awk '{print $2}')
-  verified=$(echo "$meta" | grep -E "^verified_against:" | head -1 | awk '{print $2}')
+  # value 解析:抓 ": " 後面的內容,strip 前後空白與引號(YAML scalar 容錯)
+  tier=$(echo "$meta" | grep -E "^tier:" | head -1 | sed -E 's/^tier:[[:space:]]*//; s/^"//; s/"$//')
+  verified=$(echo "$meta" | grep -E "^verified_against:" | head -1 | sed -E 's/^verified_against:[[:space:]]*//; s/^"//; s/"$//')
 
   # Validate tier
   if ! echo " $VALID_TIERS " | grep -q " $tier "; then
@@ -105,9 +112,7 @@ while IFS= read -r f; do
   fi
 
   # Count commits in scope between verified..HEAD
-  # Build path args (newline-separated → arg list)
-  commits_in_scope=$(echo "$scope_paths" | xargs -I {} echo {} | \
-    xargs git log --oneline "$verified..HEAD" -- 2>/dev/null | wc -l | tr -d ' ')
+  commits_in_scope=$(echo "$scope_paths" | xargs git log --oneline "$verified..HEAD" -- 2>/dev/null | wc -l | tr -d ' ')
 
   if [ "$commits_in_scope" -gt "$STALE_THRESHOLD" ]; then
     echo "STALE $f — $verified..HEAD 期間 $commits_in_scope 個 commit 動到 scope(閾值 $STALE_THRESHOLD)"
