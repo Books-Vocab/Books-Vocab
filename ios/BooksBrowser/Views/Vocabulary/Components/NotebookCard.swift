@@ -79,13 +79,6 @@ struct NotebookCard: View {
         }
     }
 
-    private var nameFont: Font {
-        switch style {
-        case .grid: return skin.typography.sectionTitle
-        case .hero: return skin.typography.displayTitle
-        }
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             NotebookCoverView(
