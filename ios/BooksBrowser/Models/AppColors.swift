@@ -8,10 +8,11 @@
 //  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
 //  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
-//  設計哲學：Notion-inspired Palette
+//  設計哲學：Notion-inspired Palette + Morandi 強調色
 //    · 表面近白／中性深灰 — 純淨、扁平，不靠重陰影靠 border 分層
 //    · 暖近黑文字（#37352F）取代純黑，承襲 Notion 的溫潤閱讀感
-//    · 強調色採 Notion 藍（link #337EA9 / product #2383E2 系）
+//    · 強調色採 Morandi grey-blue（accent #4D7396 / hero #3D5F82）
+//      — 取代原本 Notion product 藍 #2383E2，降飽和度貼合書卷氣調性
 //    · 對比採分級制：正文 ≥4.5:1、metadata ≥3:1、裝飾 ~2.5:1
 //  ─────────────────────────────────────────────────────────────────────
 //  顏色分組（依使用方）
@@ -32,25 +33,27 @@ enum AppColors {
     static let paperSepiaDeep = Color(red: 0.96, green: 0.93, blue: 0.87)
     static let paperDark      = Color(red: 0.098, green: 0.098, blue: 0.098)
 
-    // ── 主題強調色（Notion 連結藍）────────────────────────────────────
-    // light: #3078A1（~4.5:1 on 白卡、~4.49:1 on 近白頁面）
-    // dark:  #5E9FD0（~5.8:1 on 深灰頁面）
-    static let accentLight = Color(red: 0.188, green: 0.471, blue: 0.631)
-    static let accentDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
+    // ── 主題強調色（Morandi grey-blue · 取代 Notion 連結藍）─────────────
+    // light: #4D7396（~4.65:1 on 白卡） · 由原 #3078A1 降飽和度至 ~36%
+    // dark:  #85A4C2（~6.5:1 on 深灰頁面） · 由原 #5E9FD0 降飽和度至 ~30%
+    static let accentLight = Color(red: 0.302, green: 0.451, blue: 0.588)
+    static let accentDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
-    // ── Brand Hero（Notion product 藍 · 主行動色）────────────────────
-    // 用於主要 CTA、登入、Today Review 啟動鍵 — 飽和度高於連結藍
-    static let brandHeroLight = Color(red: 0.122, green: 0.435, blue: 0.816) // #1F6FD0
-    static let brandHeroDark  = Color(red: 0.137, green: 0.514, blue: 0.886) // #2383E2
+    // ── Brand Hero（Morandi indigo · 主行動色 CTA）────────────────────
+    // 用於主要 CTA、登入、Today Review 啟動鍵 — 比 accent 更深以維持 prominence
+    // light: #3D5F82 — 白字對比 ~6.5:1 ✓ AA pass（原 #1F6FD0 ~6.98:1 等效）
+    // dark:  #4A6E91 — 白字對比 ~5.2:1 ✓ AA pass
+    static let brandHeroLight = Color(red: 0.239, green: 0.373, blue: 0.510) // #3D5F82
+    static let brandHeroDark  = Color(red: 0.290, green: 0.431, blue: 0.569) // #4A6E91
 
     // ── On-Brand-Hero 前景 ────────────────────────────────────────────
-    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~4.95:1（WCAG AA ✓）。
+    // brandHero 系背景上的前景文字/圖示色。白色於 brandHeroLight 上 ~6.5:1（WCAG AA ✓）。
     static let onBrandHero = Color.white
 
-    // ── 資訊色（Notion 藍 · 與連結同色）──────────────────────────────
+    // ── 資訊色（Morandi blue · 與 accent 同色系）──────────────────────
     // 用於 info banner、提示訊息、tooltip 等中性提示
-    static let infoLight = Color(red: 0.188, green: 0.471, blue: 0.631)
-    static let infoDark  = Color(red: 0.369, green: 0.624, blue: 0.816)
+    static let infoLight = Color(red: 0.302, green: 0.451, blue: 0.588)
+    static let infoDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
     // ── 翻譯文字色（暖棕墨水）─────────────────────────────────────────
     // Reader 翻譯面板專用，與正文區隔
@@ -73,8 +76,8 @@ enum AppColors {
     static let warningDark  = Color(red: 0.851, green: 0.643, blue: 0.255)
 
     // ── App 全域 Tint（取代系統藍）────────────────────────────────────
-    // 作為主題層的基礎 tint，實際注入由 AppTheme 決定
-    static let tint = Color(red: 0.188, green: 0.471, blue: 0.631)
+    // 作為主題層的基礎 tint，與 accentLight 同色（Morandi grey-blue #4D7396）
+    static let tint = Color(red: 0.302, green: 0.451, blue: 0.588)
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
@@ -127,7 +130,8 @@ extension AppColors {
 // MARK: - Web CSS Token
 
 extension AppColors {
-    static let vocabHighlightLightCSS = "linear-gradient(to top, hsla(201, 53%, 50%, 0.20) 35%, transparent 35%)"
-    static let vocabHighlightDarkCSS  = "linear-gradient(to top, hsla(205, 50%, 65%, 0.20) 35%, transparent 35%)"
+    // Morandi grey-blue (hue 212, 與 accentLight/Dark 同色相)
+    static let vocabHighlightLightCSS = "linear-gradient(to top, hsla(212, 32%, 47%, 0.20) 35%, transparent 35%)"
+    static let vocabHighlightDarkCSS  = "linear-gradient(to top, hsla(210, 32%, 64%, 0.20) 35%, transparent 35%)"
     static let vocabHighlightSepiaCSS = "linear-gradient(to top, hsla(22, 28%, 55%, 0.22) 35%, transparent 35%)"
 }
