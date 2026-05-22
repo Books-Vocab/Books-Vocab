@@ -1,24 +1,10 @@
 import SwiftUI
 
-/// Variants for `VocabReviewBanner`.
-///
-/// - `.hero` (default): 完整 card UI with title + stats + CTA, cardBackground +
-///   cornerRadius. 用於 NotebookListView (Notebooks list page) 作為 primary
-///   entry point — 該頁此 banner 就是用戶看到的主 CTA。
-/// - `.compact`: stats + CTA 單行 inline, 無 card background / 無 title。
-///   用於 VocabularyListView (notebook detail page) — detail 頁已有 filter chip
-///   bar 顯示 due/unlearned/reviewed 數字, 不需要再用大 card 重複。
-enum VocabReviewBannerStyle {
-    case hero
-    case compact
-}
-
 struct VocabReviewBanner<FilterContent: View>: View {
     @Environment(\.appSkin) private var skin
 
     let dueCount: Int
     let unlearnedCount: Int
-    let style: VocabReviewBannerStyle
     let onStartDue: () -> Void
     let onStartUnlearned: () -> Void
     let onStartMixed: () -> Void
@@ -27,7 +13,6 @@ struct VocabReviewBanner<FilterContent: View>: View {
     init(
         dueCount: Int,
         unlearnedCount: Int,
-        style: VocabReviewBannerStyle = .hero,
         onStartDue: @escaping () -> Void,
         onStartUnlearned: @escaping () -> Void,
         onStartMixed: @escaping () -> Void,
@@ -35,7 +20,6 @@ struct VocabReviewBanner<FilterContent: View>: View {
     ) {
         self.dueCount = dueCount
         self.unlearnedCount = unlearnedCount
-        self.style = style
         self.onStartDue = onStartDue
         self.onStartUnlearned = onStartUnlearned
         self.onStartMixed = onStartMixed
@@ -51,12 +35,10 @@ struct VocabReviewBanner<FilterContent: View>: View {
     var body: some View {
         HStack(alignment: .center, spacing: skin.spacing.inlineGap) {
             VStack(alignment: .leading, spacing: AppSpacing.microGap) {
-                if style == .hero {
-                    Text("今日複習".localized)
-                        .font(skin.typography.sectionTitle)
-                        .foregroundStyle(skin.palette.primaryText)
-                        .lineLimit(1)
-                }
+                Text("今日複習".localized)
+                    .font(skin.typography.sectionTitle)
+                    .foregroundStyle(skin.palette.primaryText)
+                    .lineLimit(1)
 
                 statsText
                     .font(skin.typography.caption)
@@ -70,19 +52,8 @@ struct VocabReviewBanner<FilterContent: View>: View {
 
             reviewButton
         }
-        // Why: compact 變體與 KGVocabPresenter chip bar 上下相鄰，必須對齊 chip
-        // bar 用的 `pageHorizontalInset`(20pt)，不可用 `listRowHorizontalInset`(16pt)
-        // ─ 否則 banner 內容會比 chip bar 寬 4pt，邊緣不齊。
-        .padding(.horizontal, style == .hero ? skin.spacing.cardPadding : skin.metrics.pageHorizontalInset)
-        .padding(.vertical, style == .hero ? skin.spacing.cardPadding : skin.spacing.inlineGap)
-        .background(
-            Group {
-                if style == .hero {
-                    RoundedRectangle(cornerRadius: skin.radii.card)
-                        .fill(skin.palette.cardBackground)
-                }
-            }
-        )
+        .padding(skin.spacing.cardPadding)
+        .background(skin.palette.cardBackground, in: RoundedRectangle(cornerRadius: skin.radii.card))
     }
 
     @ViewBuilder
@@ -155,7 +126,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
     }
 }
 
-#Preview("Hero variant") {
+#Preview {
     VStack(spacing: AppSpacing.s4) {
         VocabReviewBanner(
             dueCount: 42,
@@ -182,26 +153,4 @@ struct VocabReviewBanner<FilterContent: View>: View {
         )
     }
     .padding()
-}
-
-#Preview("Compact variant") {
-    VStack(spacing: AppSpacing.s2) {
-        VocabReviewBanner(
-            dueCount: 538,
-            unlearnedCount: 0,
-            style: .compact,
-            onStartDue: {},
-            onStartUnlearned: {},
-            onStartMixed: {}
-        )
-        Divider()
-        VocabReviewBanner(
-            dueCount: 12,
-            unlearnedCount: 4,
-            style: .compact,
-            onStartDue: {},
-            onStartUnlearned: {},
-            onStartMixed: {}
-        )
-    }
 }

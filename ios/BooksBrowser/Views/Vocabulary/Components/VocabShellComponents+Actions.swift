@@ -125,6 +125,77 @@ struct VocabAccessoryIconButton: View {
     }
 }
 
+/// 內嵌於 chip+sort 列尾端的小型「開始複習」CTA pill。
+///
+/// 視覺上比 VocabSortPill 重(brandHero 填色 + onBrandHero 前景)以保留 primary action
+/// 的層級，但尺寸跟 sort pill 同階 — 用 capsule + caption 字級 + compact 間距。
+/// 只在 detail 頁出現；NotebookListView 的 hero 入口仍走 `VocabReviewBanner`。
+struct VocabReviewCTAPill: View {
+    @Environment(\.appSkin) private var appSkin
+    @Environment(\.appTheme) private var appTheme
+
+    let dueCount: Int
+    let unlearnedCount: Int
+    let onStartDue: () -> Void
+    let onStartUnlearned: () -> Void
+    let onStartMixed: () -> Void
+
+    private var totalCount: Int { dueCount + unlearnedCount }
+    private var hasBothTypes: Bool { dueCount > 0 && unlearnedCount > 0 }
+
+    var body: some View {
+        if hasBothTypes {
+            Menu {
+                Button {
+                    onStartMixed()
+                } label: {
+                    Label(L10n.format("全部複習（%@）", "\(totalCount)"), systemImage: "rectangle.stack")
+                }
+                Divider()
+                Button {
+                    onStartDue()
+                } label: {
+                    Label(L10n.format("到期複習（%@）", "\(dueCount)"), systemImage: "clock.badge")
+                }
+                Button {
+                    onStartUnlearned()
+                } label: {
+                    Label(L10n.format("未學複習（%@）", "\(unlearnedCount)"), systemImage: "sparkles")
+                }
+            } label: { pillLabel(count: totalCount, systemImage: "play.fill") }
+            .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalCount)"))
+        } else if dueCount > 0 {
+            Button(action: onStartDue) {
+                pillLabel(count: dueCount, systemImage: "clock.badge")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(dueCount)"))
+        } else if unlearnedCount > 0 {
+            Button(action: onStartUnlearned) {
+                pillLabel(count: unlearnedCount, systemImage: "sparkles")
+            }
+            .buttonStyle(.plain)
+            .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(unlearnedCount)"))
+        }
+    }
+
+    private func pillLabel(count: Int, systemImage: String) -> some View {
+        HStack(spacing: AppSpacing.microGap) {
+            Image(systemName: systemImage)
+            Text("\(count)")
+                .monospacedDigit()
+        }
+        .font(appSkin.typography.caption)
+        .foregroundStyle(AppColors.onBrandHero)
+        .padding(.horizontal, appSkin.spacing.compactChipHorizontalPadding)
+        .padding(.vertical, appSkin.spacing.compactChipVerticalPadding)
+        .background(
+            Capsule(style: .continuous)
+                .fill(appTheme.palette.brandHero)
+        )
+    }
+}
+
 struct VocabSortPill: View {
     @Environment(\.appSkin) private var appSkin
     @Binding var sortOption: KGVocabSortOption

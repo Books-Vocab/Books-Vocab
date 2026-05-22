@@ -29,10 +29,35 @@ struct KGVocabPresenter: View {
             let entry: VocabularyEntry
         }
 
+        /// 內嵌於 chip+sort 列尾端的「開始複習」CTA payload。
+        /// `nil` ⇒ 不顯示 CTA(沒有 due 也沒有 unlearned；或 NotebookListView 內非詳情頁用法)。
+        struct ReviewCTA {
+            let dueCount: Int
+            let unlearnedCount: Int
+            let onStartDue: () -> Void
+            let onStartUnlearned: () -> Void
+            let onStartMixed: () -> Void
+        }
+
         let banner: Banner?
         let reviewStateOptions: [VocabTabOption<VocabularyReviewState>]
         let rows: [RowItem]
         let emptyState: EmptyState
+        let reviewCTA: ReviewCTA?
+
+        init(
+            banner: Banner?,
+            reviewStateOptions: [VocabTabOption<VocabularyReviewState>],
+            rows: [RowItem],
+            emptyState: EmptyState,
+            reviewCTA: ReviewCTA? = nil
+        ) {
+            self.banner = banner
+            self.reviewStateOptions = reviewStateOptions
+            self.rows = rows
+            self.emptyState = emptyState
+            self.reviewCTA = reviewCTA
+        }
     }
 
     let state: State
@@ -50,9 +75,18 @@ struct KGVocabPresenter: View {
             // Pinned filter bar — stays visible while scrolling
             VStack(alignment: .leading, spacing: appSkin.spacing.microGap) {
                 VocabFilterChipBar(options: state.reviewStateOptions, selection: $selectedReviewStates)
-                HStack {
+                HStack(spacing: appSkin.spacing.inlineGap) {
                     Spacer()
                     VocabSortPill(sortOption: $sortOption)
+                    if let cta = state.reviewCTA {
+                        VocabReviewCTAPill(
+                            dueCount: cta.dueCount,
+                            unlearnedCount: cta.unlearnedCount,
+                            onStartDue: cta.onStartDue,
+                            onStartUnlearned: cta.onStartUnlearned,
+                            onStartMixed: cta.onStartMixed
+                        )
+                    }
                 }
             }
             .padding(.horizontal, appSkin.metrics.pageHorizontalInset)
