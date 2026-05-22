@@ -1,3 +1,15 @@
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: code-change
+scope:
+  - ios/
+  - backend/
+  - chrome-extension/
+  - ops/
+  - lab/
+verified_against: 7c7a23b
+-->
 # Implemented Product Surface
 
 動手前對照,確認不重複建造。功能上線後在此追加 bullet,而非寫在 `CLAUDE.md`。

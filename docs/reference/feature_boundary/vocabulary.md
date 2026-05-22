@@ -1,8 +1,10 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: code-change
 scope:
-  - ios/BooksBrowser/Views/Vocabulary
-verified_against: 4eaa92b
+  - ios/BooksBrowser/Views/Vocabulary/
+verified_against: 7c7a23b
 -->
 # Vocabulary Feature Boundary
 

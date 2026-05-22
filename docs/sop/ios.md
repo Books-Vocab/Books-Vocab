@@ -1,9 +1,11 @@
 <!-- doc-meta
-tier: operational
+tier: sop
+authority: derived
+update_trigger: sop-change
 scope:
-  - ios/BooksBrowser
-  - ops
-verified_against: c16321f
+  - ios/
+  - ops/
+verified_against: 7c7a23b
 -->
 # BooksBrowser iOS 開發技能
 

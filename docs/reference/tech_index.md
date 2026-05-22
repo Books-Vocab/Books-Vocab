@@ -1,3 +1,13 @@
+<!-- doc-meta
+tier: reference
+authority: SoT
+update_trigger: code-change
+scope:
+  - backend/src/kg/
+  - ios/BooksBrowser/
+  - ops/
+verified_against: 7c7a23b
+-->
 # Technical Reference Index
 
 快速 look up:endpoint / DB / env var / iOS 模組 / ops 腳本叫什麼、定義在哪。

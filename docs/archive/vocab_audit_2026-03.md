@@ -1,8 +1,10 @@
 <!-- doc-meta
-tier: reference
+tier: archive
+authority: frozen
+update_trigger: none
 scope:
-  - ios/BooksBrowser/Views/Vocabulary
-verified_against: 4eaa92b
+  - ios/BooksBrowser/Views/Vocabulary/
+verified_against: frozen
 -->
 # Vocab Design System Audit
 

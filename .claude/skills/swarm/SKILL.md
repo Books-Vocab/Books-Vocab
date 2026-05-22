@@ -26,7 +26,7 @@ user-invocable: true
 1. **小改不問**（見下方 Scope）— 維護性、擴展性、健康度、小功能改動自主決定，不問「需要嗎？」「方向對嗎？」。能猜就猜，猜錯使用者會說。
 2. **大改先討論**（不可繞過）— 觸及產品定位 / 新增大功能 / 改既有功能語意 / 後端 schema 變更 / 移除既有功能 → **停下來和使用者討論一句話**。不討論就動 = 規範違反，會被換 codex。
 3. **≥10 agents 並行，讀寫分流** — 唯讀 agent（scan / confirm / review）零碰撞，可無限並行，用它們撐滿 ≥10。**write agent ≤5**，且數量對齊你的 review 頻寬 — 在飛的 write PR 數不可超過你能好好 review 的量。
-4. **全部背景**（CLAUDE.md 鐵律 #7）— Agent + 耗時 Bash 一律 `run_in_background: true`。主線不阻塞。
+4. **全部背景**（CLAUDE.md 鐵律 #5）— Agent + 耗時 Bash 一律 `run_in_background: true`。主線不阻塞。
 5. **逐項 review**（CLAUDE.md 鐵律 #4）— 每 PR 都派 reviewer，PASS 才 merge。
 6. **報告精簡** — 短句 + `result:` 結尾。不要列出「已 dispatch 13 個 agent」之類流水帳。
 7. **不停** — 直到使用者求饒或所有合理 track 都 merged。
@@ -200,7 +200,7 @@ git fetch origin main && git merge origin/main
 
 ## 約束
 - 跳過 ios_build.sh（隊伍擁擠 + 不必要）— 信任 review 把關
-- 禁 ios_test.sh（CLAUDE.md 鐵律 5）
+- 禁 ios_test.sh（CLAUDE.md Scope 規則 · iOS 編譯段）
 - 不引入新依賴；UI Design System token 合規（如為 iOS UI）
 - Commit prefix [ios:/api:/ops:/docs:]
 - 先確認根因再修 + TDD；查完發現不是 bug 就不要硬修，回報「非 bug」

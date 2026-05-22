@@ -1,9 +1,11 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: code-change
 scope:
-  - ios/BooksBrowser/UIComponents
-  - ios/BooksBrowser/Views
-verified_against: 1d24dc1
+  - ios/BooksBrowser/UIComponents/
+  - ios/BooksBrowser/Views/
+verified_against: 7c7a23b
 -->
 # UI Component & Pattern Inventory
 

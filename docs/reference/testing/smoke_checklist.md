@@ -1,9 +1,11 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: manual
 scope:
-  - ios/BooksBrowser
-  - backend/src/kg
-verified_against: 4eaa92b
+  - ios/BooksBrowser/
+  - backend/src/kg/
+verified_against: 7c7a23b
 -->
 # iOS Smoke Test Checklist
 

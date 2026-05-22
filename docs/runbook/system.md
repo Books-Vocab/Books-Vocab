@@ -1,3 +1,11 @@
+<!-- doc-meta
+tier: runbook
+authority: derived
+update_trigger: sop-change
+scope:
+  - ops/
+verified_against: 7c7a23b
+-->
 # System Runbook
 
 ## Purpose
