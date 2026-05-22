@@ -195,7 +195,7 @@ struct BooksBrowserApp: App {
                 // .id(selection) 強制 SwiftUI 在 selection 變更時重建整棵 view tree,
                 // 讓所有 L10n.string 重新計算。代價是切語言瞬間全 tree 重建(可接受)。
                 .id(appLanguage.selection)
-                .tint(AppColors.tint)
+                .tint(AppColors.tintLight)
                 #if os(iOS)
                 .environment(\.readiumService, readiumService)
                 .environment(\.bookshelfImportService, bookshelfImportService)

@@ -93,7 +93,7 @@ struct VocabCalendarGrid: View {
                 Text("\(cell.dayNumber)")
                     .font(appSkin.typography.caption)
                     .foregroundStyle(
-                        cell.isToday ? appSkin.palette.accent :
+                        cell.isToday ? AppColors.chartHighlight :
                         isSelected ? appSkin.palette.primaryText :
                         appSkin.palette.secondaryText
                     )
@@ -119,18 +119,18 @@ struct VocabCalendarGrid: View {
 
     private func dotColor(_ count: Int) -> Color {
         switch count {
-        case 1...3: return appSkin.palette.accent.opacity(0.5)
-        case 4...7: return appSkin.palette.accent.opacity(0.75)
-        default: return appSkin.palette.accent
+        case 1...3: return AppColors.chartHighlight.opacity(0.5)
+        case 4...7: return AppColors.chartHighlight.opacity(0.75)
+        default: return AppColors.chartHighlight
         }
     }
 
     private func cellFill(_ count: Int) -> Color {
         switch count {
-        case 1...3: return appSkin.palette.accent.opacity(0.06)
-        case 4...7: return appSkin.palette.accent.opacity(0.12)
-        case 8...14: return appSkin.palette.accent.opacity(0.18)
-        default: return appSkin.palette.accent.opacity(0.24)
+        case 1...3: return AppColors.chartHighlight.opacity(0.06)
+        case 4...7: return AppColors.chartHighlight.opacity(0.12)
+        case 8...14: return AppColors.chartHighlight.opacity(0.18)
+        default: return AppColors.chartHighlight.opacity(0.24)
         }
     }
 }
