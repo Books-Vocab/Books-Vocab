@@ -31,6 +31,50 @@ enum NotebookDetailScenarios {
                     .dynamicTypeSize(.accessibility3)
             }
         }
+
+        playbook.addScenarios(of: "Notebook Detail · Review Banner") {
+            Scenario("Hero · due only", layout: .fill) {
+                bannerSheet(style: .hero, due: 538, unlearned: 0)
+            }
+            Scenario("Hero · both types", layout: .fill) {
+                bannerSheet(style: .hero, due: 42, unlearned: 12)
+            }
+            Scenario("Compact · due only (detail page)", layout: .fill) {
+                bannerSheet(style: .compact, due: 538, unlearned: 0)
+            }
+            Scenario("Compact · both types", layout: .fill) {
+                bannerSheet(style: .compact, due: 42, unlearned: 12)
+            }
+            Scenario("Compact · large numbers", layout: .fill) {
+                bannerSheet(style: .compact, due: 9999, unlearned: 1234)
+            }
+        }
+    }
+
+    // MARK: - Banner sheet helper
+
+    private static func bannerSheet(style: VocabReviewBannerStyle, due: Int, unlearned: Int) -> some View {
+        let skin = AppSkin.previewNeutral
+        return VStack(alignment: .leading, spacing: 16) {
+            Text(style == .hero ? "Hero (NotebookListView)" : "Compact (VocabularyListView)")
+                .font(skin.typography.caption)
+                .foregroundStyle(skin.palette.tertiaryText)
+                .padding(.horizontal, skin.metrics.pageHorizontalInset)
+            VocabReviewBanner(
+                dueCount: due,
+                unlearnedCount: unlearned,
+                style: style,
+                onStartDue: {},
+                onStartUnlearned: {},
+                onStartMixed: {}
+            )
+            .padding(.horizontal, style == .hero ? skin.metrics.pageHorizontalInset : 0)
+            Spacer(minLength: 0)
+        }
+        .padding(.top, 24)
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .background(skin.palette.pageBackground.ignoresSafeArea())
+        .appSkin(skin)
     }
 
     // MARK: - Stress fixtures
