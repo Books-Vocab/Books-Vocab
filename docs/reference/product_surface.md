@@ -67,7 +67,7 @@
   - `embed` 永遠獨立留 Gemini,不繼承 DEFAULT
   - `TrackedLLM` 自動注入 provider `extra_body`(DeepSeek thinking-disabled)/`max_tokens`
   - `quota_service` provider-aware 計價
-  - A/B 工具 `kg/llm/ab.py`;env 清單見 `docs/dev/deploy.md`
+  - A/B 工具 `kg/llm/ab.py`;env 清單見 `docs/sop/deploy.md`
 
 ## Chrome Extension (`chrome-extension/`)
 
@@ -137,7 +137,7 @@
 - 公網 `https://wordnexus.lol/claude/v1` (Caddy `/claude/*` → port 8090)
 - Bearer `CCG_API_TOKEN`,模型別名 `sonnet`/`opus`/`haiku`
 - 現行呼叫點 `lab/podcast/pipeline.py`(PoC `lab/archive/podcast_architect_poc.py`)
-- 詳見 `docs/ops/claude-code-gateway.md`
+- 詳見 `docs/sop/claude-gateway.md`
 
 ## Ops
 

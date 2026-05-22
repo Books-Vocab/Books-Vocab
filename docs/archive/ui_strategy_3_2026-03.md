@@ -10,10 +10,10 @@ Date: 2026-03-10
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 主設計規範：`docs/dev/ui-design.md`
-- 開發入口：`docs/dev/ios-dev.md`
-- 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
-- 狀態矩陣：`docs/references/ui_state_matrix.md`
+- 主設計規範：`docs/sop/ui-design.md`
+- 開發入口：`docs/sop/ios.md`
+- 元件 / pattern inventory：`docs/reference/ui/components.md`
+- 狀態矩陣：`docs/reference/ui/state_matrix.md`
 
 ## 這條策略要解決什麼
 
@@ -78,9 +78,9 @@ Scope: `ios/BooksBrowser`
 讓文件真的可用，而不是持續長大。
 
 主文檔負責：
-- `docs/dev/ui-design.md`
-- `docs/dev/ios-dev.md`
-- `docs/dev/architecture.md`
+- `docs/sop/ui-design.md`
+- `docs/sop/ios.md`
+- `docs/sop/architecture.md`
 
 附錄負責：
 - inventory
@@ -95,7 +95,7 @@ Scope: `ios/BooksBrowser`
 ## 執行順序
 
 1. ✅ 補最有價值的 preview — 已完成，覆蓋 6 個核心畫面
-2. ✅ 寫最短 checklist — `docs/references/ui_review_checklist.md`
+2. ✅ 寫最短 checklist — `docs/reference/ui/review_checklist.md`
 3. ✅ 把主文檔與附錄的責任切乾淨 — 主文檔已更新文檔網絡連結
 
 ## 可並行原因

@@ -11,10 +11,10 @@ Date: 2026-05-13
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 設計規範主文檔：`docs/dev/ui-design.md`
-- 開發與編譯入口：`docs/dev/ios-dev.md`
-- App 架構脈絡：`docs/dev/architecture.md`
-- Vocabulary 稽核：`docs/references/vocab_design_system_audit.md`
+- 設計規範主文檔：`docs/sop/ui-design.md`
+- 開發與編譯入口：`docs/sop/ios.md`
+- App 架構脈絡：`docs/sop/architecture.md`
+- Vocabulary 稽核：`docs/archive/vocab_audit_2026-03.md`
 
 ## 這份文件是幹嘛的
 
