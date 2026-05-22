@@ -81,71 +81,11 @@ struct NotebookCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            NotebookCoverView(
-                color: coverColor,
-                pattern: pattern,
-                coverImagePath: data.coverImagePath,
-                name: data.name
-            )
-            .aspectRatio(coverAspectRatio, contentMode: .fill)
-            .clipShape(UnevenRoundedRectangle(
-                topLeadingRadius: skin.radii.card,
-                topTrailingRadius: skin.radii.card
-            ))
-            .overlay(alignment: .topTrailing) {
-                if showsActivePill {
-                    Text("使用中".localized)
-                        .font(skin.typography.monoLabel)
-                        .foregroundStyle(.white)
-                        .padding(.horizontal, AppSpacing.s2)
-                        .padding(.vertical, AppSpacing.tinyGap)
-                        .background(skin.palette.accent, in: Capsule(style: .continuous))
-                        .padding(AppSpacing.s2)
-                }
-            }
+            coverArea
 
-            VStack(alignment: .leading, spacing: skin.spacing.microGap) {
-                HStack {
-                    Label("\(data.cardCount) \(data.cardCountLabel)", systemImage: "character.book.closed")
-                        .font(skin.typography.caption)
-                        .foregroundStyle(skin.palette.secondaryText)
-
-                    Spacer()
-
-                    if data.pendingCount > 0 {
-                        Label("\(data.pendingCount)", systemImage: "arrow.triangle.2.circlepath")
-                            .font(skin.typography.monoLabel)
-                            .foregroundStyle(skin.palette.tertiaryText)
-                    }
-                }
-
-                if totalSynced > 0 {
-                    ProgressCapsule(
-                        progress: reviewProgress,
-                        label: nil,
-                        fillColor: skin.palette.accent,
-                        trackColor: skin.palette.progressBarBackground,
-                        height: 5
-                    )
-                }
-
-                if data.dueCount > 0 || data.unlearnedCount > 0 {
-                    HStack(spacing: skin.spacing.inlineGap) {
-                        if data.dueCount > 0 {
-                            Label("\(data.dueCount) 到期", systemImage: "clock.badge")
-                                .font(skin.typography.monoLabel)
-                                .foregroundStyle(skin.palette.warning)
-                        }
-                        if data.unlearnedCount > 0 {
-                            Label("\(data.unlearnedCount) 未學", systemImage: "sparkles")
-                                .font(skin.typography.monoLabel)
-                                .foregroundStyle(skin.palette.secondaryText)
-                        }
-                    }
-                }
-            }
-            .padding(.horizontal, skin.spacing.cardPadding)
-            .padding(.vertical, skin.spacing.cardPadding * 0.8)
+            metadataArea
+                .padding(.horizontal, skin.spacing.cardPadding)
+                .padding(.vertical, skin.spacing.cardPadding * 0.8)
         }
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
@@ -153,8 +93,12 @@ struct NotebookCard: View {
             RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
                 .stroke(skin.palette.cardBorder, lineWidth: 1)
         )
-        .accessibilityElement(children: .combine)
+        // grid 鎖 3:4 整卡 aspect — 修左右兩本 metadata 高度不齊 / add 卡破節奏。
+        // hero 不鎖（21:10 cover 已決定 hero 高度，整卡 fit content）。
+        .modifier(GridAspectRatioModifier(style: style))
+        .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
+        .accessibilityAddTraits(.isButton)
         .contextMenu {
             if let setActive = actions.setActive, !data.isActive {
                 Button {
@@ -214,12 +158,126 @@ struct NotebookCard: View {
         }
     }
 
+    // MARK: - Subviews
+
+    @ViewBuilder
+    private var coverArea: some View {
+        Group {
+            switch style {
+            case .grid:
+                // 立體堆卡 — 層數由字數決定（0→1 / 1-50→2 / 51-200→3 / 200+→4）
+                NotebookStackedCoverView(
+                    color: coverColor,
+                    pattern: pattern,
+                    coverImagePath: data.coverImagePath,
+                    name: data.name,
+                    layerCount: NotebookStackMetrics.layerCount(forCardCount: data.cardCount),
+                    aspectRatio: coverAspectRatio
+                )
+            case .hero:
+                // hero 維持平面（單本不擬物，避免「目錄」錯位心理）
+                NotebookCoverView(
+                    color: coverColor,
+                    pattern: pattern,
+                    coverImagePath: data.coverImagePath,
+                    name: data.name
+                )
+                .aspectRatio(coverAspectRatio, contentMode: .fill)
+                .clipShape(UnevenRoundedRectangle(
+                    topLeadingRadius: skin.radii.card,
+                    topTrailingRadius: skin.radii.card
+                ))
+            }
+        }
+        .overlay(alignment: .topTrailing) {
+            if showsActivePill {
+                Text("使用中".localized)
+                    .font(skin.typography.monoLabel)
+                    .foregroundStyle(.white)
+                    .padding(.horizontal, AppSpacing.s2)
+                    .padding(.vertical, AppSpacing.tinyGap)
+                    .background(skin.palette.accent, in: Capsule(style: .continuous))
+                    .padding(AppSpacing.s2)
+            }
+        }
+    }
+
+    /// Stable-height metadata：ProgressCapsule 與 chips row 永遠在版面上，
+    /// 無資料時以 placeholder / opacity=0 撐位，避免 grid 兩本高度不齊。
+    @ViewBuilder
+    private var metadataArea: some View {
+        VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+            HStack {
+                Label("\(data.cardCount) \(data.cardCountLabel)", systemImage: "character.book.closed")
+                    .font(skin.typography.caption)
+                    .monospacedDigit()
+                    .foregroundStyle(skin.palette.secondaryText)
+
+                Spacer()
+
+                if data.pendingCount > 0 {
+                    Label("\(data.pendingCount)", systemImage: "arrow.triangle.2.circlepath")
+                        .font(skin.typography.monoLabel)
+                        .monospacedDigit()
+                        .foregroundStyle(skin.palette.tertiaryText)
+                }
+            }
+
+            // 永遠 render — 無資料時 progress=0 + track only（同高度）
+            ProgressCapsule(
+                progress: totalSynced > 0 ? reviewProgress : 0,
+                label: nil,
+                fillColor: skin.palette.accent,
+                trackColor: skin.palette.progressBarBackground,
+                height: 5
+            )
+
+            // 永遠 render — 無資料時整 row opacity=0 撐同高
+            HStack(spacing: skin.spacing.inlineGap) {
+                if data.dueCount > 0 {
+                    Label("\(data.dueCount) 到期", systemImage: "clock.badge")
+                        .font(skin.typography.monoLabel)
+                        .monospacedDigit()
+                        .foregroundStyle(skin.palette.warning)
+                }
+                if data.unlearnedCount > 0 {
+                    Label("\(data.unlearnedCount) 未學", systemImage: "sparkles")
+                        .font(skin.typography.monoLabel)
+                        .monospacedDigit()
+                        .foregroundStyle(skin.palette.secondaryText)
+                }
+                if data.dueCount == 0 && data.unlearnedCount == 0 {
+                    // Spacer placeholder — 同 font 確保 row height 一致
+                    Label("0", systemImage: "clock.badge")
+                        .font(skin.typography.monoLabel)
+                        .monospacedDigit()
+                        .opacity(0)
+                        .accessibilityHidden(true)
+                }
+            }
+        }
+    }
+
     private var accessibilityDescription: String {
         var parts = [data.name, "\(data.cardCount) \(data.cardCountLabel)"]
         if data.dueCount > 0 { parts.append("\(data.dueCount) 到期") }
         if data.unlearnedCount > 0 { parts.append("\(data.unlearnedCount) 未學") }
         if data.isActive { parts.append("使用中") }
         return parts.joined(separator: "，")
+    }
+}
+
+/// 僅 `.grid` 樣式套整卡 aspect ratio，hero 不鎖（避免寬扁 cover 被壓縮）。
+private struct GridAspectRatioModifier: ViewModifier {
+    let style: NotebookCardStyle
+
+    func body(content: Content) -> some View {
+        switch style {
+        case .grid:
+            content.aspectRatio(LayoutMode.notebookCardAspectRatio, contentMode: .fit)
+        case .hero:
+            content
+        }
     }
 }
 
@@ -236,7 +294,8 @@ struct NotebookAddCard: View {
                 .foregroundStyle(skin.palette.tertiaryText)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .aspectRatio(4 / 3, contentMode: .fit)
+        // 與 NotebookCard(.grid) 同 aspect — 修奇數本 / 偶數本 add 卡破節奏
+        .aspectRatio(LayoutMode.notebookCardAspectRatio, contentMode: .fit)
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
         .overlay(
