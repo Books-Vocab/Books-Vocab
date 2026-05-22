@@ -200,6 +200,7 @@ struct VocabReviewProgressBar: View {
                 if let detailLabel = progress.detailLabel {
                     Text(detailLabel)
                         .font(appSkin.typography.monoLabel)
+                        .monospacedDigit()
                         .foregroundStyle(appSkin.palette.secondaryText)
                 }
 
