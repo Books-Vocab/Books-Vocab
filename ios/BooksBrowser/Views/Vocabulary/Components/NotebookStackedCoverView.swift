@@ -76,9 +76,9 @@ struct NotebookStackedCoverView: View {
             )
             .clipShape(UnevenRoundedRectangle(
                 topLeadingRadius: AppRadius.md,
-                topTrailingRadius: AppRadius.md,
                 bottomLeadingRadius: 0,
                 bottomTrailingRadius: 0,
+                topTrailingRadius: AppRadius.md,
                 style: .continuous
             ))
             .appElevation(.z2)
