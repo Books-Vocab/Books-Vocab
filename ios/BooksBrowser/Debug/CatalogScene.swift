@@ -16,14 +16,19 @@ struct CatalogScene: View {
     // Why: static let 確保 scenarios 只註冊一次 (Swift static init 是 thread-safe + lazy)。
     // 若改成 instance-level 每次 View init 都會重複註冊,Playbook 內部 storage
     // 會出現重複 entries。
-    private static let playbook: Playbook = {
+    private static let playbook: Playbook = buildPlaybook()
+
+    /// Build a fresh `Playbook` with all KG surface scenarios registered.
+    /// Exposed (internal-access) so `BooksBrowserTests` can drive PlaybookSnapshot
+    /// against the same surface set as the in-app catalog.
+    static func buildPlaybook() -> Playbook {
         let pb = Playbook()
         SettingsScenarios.register(in: pb)
         TodayReviewScenarios.register(in: pb)
         BookshelfScenarios.register(in: pb)
         WelcomeScenarios.register(in: pb)
         return pb
-    }()
+    }
 
     var body: some View {
         PlaybookCatalog(title: "KG Catalog", playbook: Self.playbook)
