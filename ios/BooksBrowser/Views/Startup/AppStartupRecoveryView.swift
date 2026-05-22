@@ -303,6 +303,7 @@ struct AppStartupRecoveryView: View {
             actions: .preview
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("AppStartupRecoveryView — exhausted") {
@@ -316,4 +317,5 @@ struct AppStartupRecoveryView: View {
             )
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

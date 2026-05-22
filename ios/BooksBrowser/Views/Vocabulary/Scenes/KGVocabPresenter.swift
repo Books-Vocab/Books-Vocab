@@ -256,6 +256,7 @@ private enum KGVocabPresenterPreviewData {
             onRefresh: {}
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("KG List / Empty Search") {
@@ -272,4 +273,5 @@ private enum KGVocabPresenterPreviewData {
             onRefresh: {}
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

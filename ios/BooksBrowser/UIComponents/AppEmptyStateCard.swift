@@ -159,6 +159,7 @@ extension AppEmptyStateStyle {
     AppThemeContainer {
         AppEmptyStateCardPreview()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppEmptyStateCardPreview: View {

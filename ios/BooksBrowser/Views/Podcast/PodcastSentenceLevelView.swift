@@ -349,5 +349,6 @@ struct PodcastSentenceLevelView: View {
             onExplainTap: { _, _ in }
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

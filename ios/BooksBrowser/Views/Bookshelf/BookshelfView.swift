@@ -646,12 +646,14 @@ private enum BookshelfPreviewData {
     AppThemeContainer {
         BookCardPreviewScene(book: BookshelfPreviewData.activeBook)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Bookshelf Card / Placeholder") {
     AppThemeContainer {
         BookCardPreviewScene(book: BookshelfPreviewData.placeholderBook)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct BookCardPreviewScene: View {
@@ -673,6 +675,7 @@ private struct BookCardPreviewScene: View {
         BookshelfView()
             .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Bookshelf / With Books") {
@@ -684,6 +687,7 @@ private struct BookCardPreviewScene: View {
             EmptyView()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Bookshelf / Loading") {
@@ -691,6 +695,7 @@ private struct BookCardPreviewScene: View {
         BookshelfLoadingPreview()
             .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 /// 獨立展示 loadingOverlay 的輔助 view，用於 Loading State preview

@@ -56,4 +56,5 @@ struct SelectionToolbar: View {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

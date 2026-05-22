@@ -86,4 +86,5 @@ struct AppSkeletonCard: View {
         }
         .padding(AppSpacing.s5)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

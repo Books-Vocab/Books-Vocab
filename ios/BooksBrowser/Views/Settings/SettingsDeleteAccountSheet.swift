@@ -300,6 +300,7 @@ struct SettingsDeleteAccountSheet: View {
             isDeleting: false
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("DeleteAccount / Deleting") {
@@ -309,4 +310,5 @@ struct SettingsDeleteAccountSheet: View {
             isDeleting: true
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

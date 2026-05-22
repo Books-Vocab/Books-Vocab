@@ -336,4 +336,5 @@ struct KGVocabView: View {
         }
         .modelContainer(for: [VocabularyEntry.self, Notebook.self, ReviewRecord.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
