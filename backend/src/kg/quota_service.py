@@ -131,7 +131,7 @@ def estimate_call_cost(call_type: str) -> float:
 # DEPLOYMENT INVARIANT: correctness here depends on a single-worker
 # deploy. With N workers each holds its own `_reservations`, so the
 # effective over-spend ceiling becomes N × the real per-user limit.
-# This is locked by Dockerfile's `--workers 1`; see also docs/dev/deploy.md.
+# This is locked by Dockerfile's `--workers 1`; see also docs/sop/deploy.md.
 # Scaling out requires moving reservations to shared storage (Redis/DB) first.
 
 _reservations: dict[int, tuple[str, float]] = {}

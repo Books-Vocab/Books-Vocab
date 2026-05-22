@@ -41,7 +41,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 
 ## Environment Variables
 
-完整清單見 `docs/dev/deploy.md`。此處列分組與代表項:
+完整清單見 `docs/sop/deploy.md`。此處列分組與代表項:
 
 - **LLM & Embedding**: `GEMINI_API_KEY` / `GEMINI_MODEL` / `EMBEDDING_MODEL` / `EMBEDDING_DIM` / `LLM_PROVIDER_*`(per-call-type 路由) / `LLM_PROVIDER_DEFAULT`
 - **Auth & SSO**: `JWT_SECRET` / `ADMIN_TOKEN` / `ADMIN_PASSWORD` / `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `GOOGLE_REDIRECT_URI` / `APPLE_BUNDLE_ID` / `CHROME_EXTENSION_ID` / `APP_STORE_CONNECT_*`
@@ -49,7 +49,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 - **Log retention**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS`
 - **Cache**: `TRANSLATE_CACHE_TTL_DAYS`
 - **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ` / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
-- **Claude Code Gateway**: `CCG_API_TOKEN`(詳見 `docs/ops/claude-code-gateway.md`)
+- **Claude Code Gateway**: `CCG_API_TOKEN`(詳見 `docs/sop/claude-gateway.md`)
 
 ## iOS 模組地圖 (`ios/BooksBrowser/`)
 
@@ -62,7 +62,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `Platform/` | iOS/macOS 特定(Widget、shortcuts、app intent) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
 
-iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/references/ios_frontend_baseline.md`。
+iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios_baseline.md`。
 
 ## Ops 腳本 (`ops/`)
 

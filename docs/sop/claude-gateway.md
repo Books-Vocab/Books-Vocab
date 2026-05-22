@@ -18,7 +18,7 @@ KG workspace 的 **Claude subscription → OpenAI-compatible API** 閘道。將�
 | Docker volumes | `~/.claude` + `~/.claude.json`（主機 CLI 登入態） |
 | 模型別名 | `sonnet` / `opus` / `haiku`（CLI 自動解析最新版） |
 
-## Caddy 片段（事實來源：`docs/ops/BACKGROUND.md`）
+## Caddy 片段（事實來源：`docs/reference/host_topology.md`）
 
 ```caddy
 wordnexus.lol {
@@ -59,5 +59,5 @@ stream = client.chat.completions.create(
 
 ## 相關文檔
 
-- Host / service map：`docs/ops/BACKGROUND.md`
-- Caddy 故障排查（含 `/claude/*` 遺失症狀）：`docs/dev/debug.md`
+- Host / service map：`docs/reference/host_topology.md`
+- Caddy 故障排查（含 `/claude/*` 遺失症狀）：`docs/sop/debug.md`
