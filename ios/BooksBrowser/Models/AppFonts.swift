@@ -59,20 +59,59 @@ enum AppFonts {
         rawValue: "NSCTFontCascadeListAttribute"
     )
 
-    /// Serif: Athelas + STSongti-TC cascade
+    // MARK: - Per-Locale CJK Cascade
+    //
+    // The CJK fallback font for the Latin primary varies by effective language:
+    // - en / zh-Hant → PingFang TC / STSongti-TC (TC glyph variants)
+    // - zh-Hans → PingFang SC / STSongti-SC (simplified variants)
+    // - ja → Hiragino Sans / Hiragino Mincho (proper kanji glyphs)
+    // - ko → Apple SD Gothic Neo (sans + serif both — iOS lacks a built-in
+    //         Korean serif distinct enough to warrant a separate cascade)
+    //
+    // Tests can call these via `cjkSansFallbackName` / `cjkSerifFallbackName`
+    // directly without touching font construction.
+
+    static func cjkSansFallbackName(bold: Bool) -> String {
+        switch AppLanguageStore.shared.effectiveLanguage {
+        case .simplifiedChinese:
+            return bold ? "PingFangSC-Semibold" : "PingFangSC-Regular"
+        case .japanese:
+            return bold ? "HiraginoSans-W6" : "HiraginoSans-W3"
+        case .korean:
+            return bold ? "AppleSDGothicNeo-Bold" : "AppleSDGothicNeo-Regular"
+        case .english, .traditionalChinese, .system:
+            return bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
+        }
+    }
+
+    static func cjkSerifFallbackName(bold: Bool) -> String {
+        switch AppLanguageStore.shared.effectiveLanguage {
+        case .simplifiedChinese:
+            return bold ? "STSongti-SC-Bold" : "STSongti-SC-Regular"
+        case .japanese:
+            return bold ? "HiraMinProN-W6" : "HiraMinProN-W3"
+        case .korean:
+            // iOS lacks a widely-available Korean serif — reuse sans for legibility.
+            return bold ? "AppleSDGothicNeo-Bold" : "AppleSDGothicNeo-Regular"
+        case .english, .traditionalChinese, .system:
+            return bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        }
+    }
+
+    /// Serif: Athelas + per-locale CJK serif cascade
     static func serif(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "Athelas-Bold" : "Athelas-Regular"
-        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let fallback = cjkSerifFallbackName(bold: bold)
         let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
         let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
         let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
-    /// Sans: ElmsSans + PingFang TC cascade
+    /// Sans: ElmsSans + per-locale CJK sans cascade
     static func sans(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "ElmsSans-Bold" : "ElmsSans-Regular"
-        let fallback = bold ? "PingFangTC-Semibold" : "PingFangTC-Regular"
+        let fallback = cjkSansFallbackName(bold: bold)
         let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
         let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
         let descriptor = base.addingAttributes([cascadeListKey: [cjk]])
@@ -90,10 +129,10 @@ enum AppFonts {
         return Font(platformFont(descriptor: descriptor, size: size) as CTFont)
     }
 
-    /// Serif Italic: CormorantGaramond + STSongti-TC cascade — 例句強調渲染
+    /// Serif Italic: CormorantGaramond + per-locale CJK serif cascade — 例句強調渲染
     static func serifItalic(size: CGFloat, bold: Bool = false) -> Font {
         let primary = bold ? "CormorantGaramond-BoldItalic" : "CormorantGaramond-Italic"
-        let fallback = bold ? "STSongti-TC-Bold" : "STSongti-TC-Regular"
+        let fallback = cjkSerifFallbackName(bold: bold)
         let base = PlatformFontDescriptor(fontAttributes: [.name: primary])
         let cjk = PlatformFontDescriptor(fontAttributes: [.name: fallback])
         let descriptor = base.addingAttributes([cascadeListKey: [cjk]])

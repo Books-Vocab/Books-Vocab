@@ -107,7 +107,7 @@ struct AddLinkSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(appSkin.palette.tertiaryText)
             TextField("搜尋單字…".localized, text: $searchText)
-                .platformTextInputConfig()
+                .platformSourceLangTextInput()
         }
         .padding(appSkin.metrics.cardBlockInnerGap * 1.5)
         .background(appSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))

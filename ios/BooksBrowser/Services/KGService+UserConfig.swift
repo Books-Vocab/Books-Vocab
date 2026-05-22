@@ -43,20 +43,13 @@ extension KGSubscriptionStatus {
     private static let expiryISO8601Formatter = AppDateFormatters.iso8601
     private static let expiryISO8601FallbackFormatter = AppDateFormatters.iso8601Simple
 
-    private static let expiryDisplayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy/MM/dd HH:mm"
-        f.locale = Locale(identifier: "zh_TW")
-        return f
-    }()
-
     static func formattedExpiry(_ isoString: String?) -> String {
         guard let isoString, !isoString.isEmpty else {
             return L10n.string("未知時間")
         }
         if let date = expiryISO8601Formatter.date(from: isoString)
             ?? expiryISO8601FallbackFormatter.date(from: isoString) {
-            return expiryDisplayFormatter.string(from: date)
+            return LocaleAwareFormatter.shared.string(from: date, format: "yyyy/MM/dd HH:mm")
         }
         return isoString
     }

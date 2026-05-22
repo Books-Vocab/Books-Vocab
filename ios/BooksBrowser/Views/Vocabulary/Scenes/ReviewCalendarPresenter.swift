@@ -30,18 +30,14 @@ struct ReviewCalendarPresenter: View {
 
     private static let calendar = Calendar.current
 
-    private static let monthFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "yyyy 年 M 月"
-        f.locale = Locale(identifier: "zh_TW")
-        return f
-    }()
+    private static func formattedMonth(_ date: Date) -> String {
+        // template "yMMMM" → en "May 2026" / ja "2026年5月" / ko "2026년 5월"
+        LocaleAwareFormatter.shared.string(from: date, template: "yMMMM")
+    }
 
-    private static let timeFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "HH:mm"
-        return f
-    }()
+    private static func formattedTime(_ date: Date) -> String {
+        LocaleAwareFormatter.shared.string(from: date, format: "HH:mm")
+    }
 
     private var activityMap: [String: Int] {
         ReviewActivityLog.activity(for: 365, records: allRecords)
@@ -97,7 +93,7 @@ struct ReviewCalendarPresenter: View {
 
                 Spacer()
 
-                Text(Self.monthFormatter.string(from: displayedMonth))
+                Text(Self.formattedMonth(displayedMonth))
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.primaryText)
 
@@ -217,7 +213,7 @@ struct ReviewCalendarPresenter: View {
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(record.feedback == 1 ? appSkin.palette.success : appSkin.palette.destructive)
 
-            Text(Self.timeFormatter.string(from: record.reviewedAt))
+            Text(Self.formattedTime(record.reviewedAt))
                 .font(appSkin.typography.monoLabel)
                 .foregroundStyle(appSkin.palette.quaternaryText)
         }
