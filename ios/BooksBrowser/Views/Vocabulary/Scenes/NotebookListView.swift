@@ -71,48 +71,58 @@ struct NotebookListView: View {
                             .padding(.horizontal, skin.metrics.listRowHorizontalInset)
                     }
 
+                    // Why: 單一 notebook 時 NotebookFilterChip 的「scope filter」
+                    // 沒有意義 (沒得篩)，移除以收斂 hero banner 視覺。
                     if totalDueCount > 0 || totalUnlearnedCount > 0 {
-                        VocabReviewBanner(
-                            dueCount: filteredDueEntries.count,
-                            unlearnedCount: filteredUnlearnedEntries.count,
-                            onStartDue: { startReview(with: filteredDueEntries) },
-                            onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
-                            onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
-                        ) {
-                            NotebookFilterChip(filter: $reviewFilter)
+                        Group {
+                            if notebooks.count > 1 {
+                                VocabReviewBanner(
+                                    dueCount: filteredDueEntries.count,
+                                    unlearnedCount: filteredUnlearnedEntries.count,
+                                    onStartDue: { startReview(with: filteredDueEntries) },
+                                    onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                                    onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
+                                ) {
+                                    NotebookFilterChip(filter: $reviewFilter)
+                                }
+                            } else {
+                                VocabReviewBanner(
+                                    dueCount: filteredDueEntries.count,
+                                    unlearnedCount: filteredUnlearnedEntries.count,
+                                    onStartDue: { startReview(with: filteredDueEntries) },
+                                    onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                                    onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
+                                )
+                            }
                         }
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
 
                     if notebooks.isEmpty {
                         emptyState
+                    } else if notebooks.count == 1, let only = sortedNotebooks.first {
+                        // Hero variant — 寬扁封面、無 grid 配對、無使用中 pill、+ 移 toolbar。
+                        // 視覺心理：承認 99% 用戶只有 1 本，不假裝目錄。
+                        let s = stats[only.remoteId] ?? NotebookStats()
+                        NavigationLink(value: only.remoteId) {
+                            NotebookCard(
+                                data: notebookCardData(for: only, stats: s),
+                                style: .hero,
+                                actions: notebookCardActions(for: only)
+                            )
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                        .transition(.listSwap)
                     } else {
                         LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
                             ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
                                 NavigationLink(value: notebook.remoteId) {
                                     NotebookCard(
-                                        data: NotebookCardData(
-                                            name: notebook.name,
-                                            color: notebook.color,
-                                            coverPattern: notebook.coverPattern,
-                                            coverImagePath: notebook.coverImagePath,
-                                            cardCount: s.cardCount,
-                                            dueCount: s.dueCount,
-                                            unlearnedCount: s.unlearnedCount,
-                                            reviewedCount: s.reviewedCount,
-                                            pendingCount: s.pendingCount,
-                                            lastActivity: s.lastActivity,
-                                            isActive: notebook.remoteId == activeNotebookId
-                                        ),
-                                        actions: NotebookCardActions(
-                                            setActive: { setActiveNotebook(notebook.remoteId) },
-                                            rename: { editingNotebook = notebook },
-                                            editCover: { editingNotebook = notebook },
-                                            export: { format in exportNotebook(notebook, format: format) },
-                                            delete: { notebookToDelete = notebook },
-                                            canDelete: !notebook.isDefault
-                                        )
+                                        data: notebookCardData(for: notebook, stats: s),
+                                        style: .grid,
+                                        actions: notebookCardActions(for: notebook)
                                     )
                                 }
                                 .buttonStyle(.plain)
@@ -262,6 +272,37 @@ struct NotebookListView: View {
             isEditingDetailEntry: $isEditingDetailEntry,
             navigationPath: $navigationPath
         ))
+    }
+
+    // MARK: - Notebook card builders
+
+    /// 把 `Notebook` model 收斂成 view-only `NotebookCardData`。
+    /// 抽出後 grid / hero 兩條分支共用，避免重複的 init 區塊漂移。
+    private func notebookCardData(for notebook: Notebook, stats s: NotebookStats) -> NotebookCardData {
+        NotebookCardData(
+            name: notebook.name,
+            color: notebook.color,
+            coverPattern: notebook.coverPattern,
+            coverImagePath: notebook.coverImagePath,
+            cardCount: s.cardCount,
+            dueCount: s.dueCount,
+            unlearnedCount: s.unlearnedCount,
+            reviewedCount: s.reviewedCount,
+            pendingCount: s.pendingCount,
+            lastActivity: s.lastActivity,
+            isActive: notebook.remoteId == activeNotebookId
+        )
+    }
+
+    private func notebookCardActions(for notebook: Notebook) -> NotebookCardActions {
+        NotebookCardActions(
+            setActive: { setActiveNotebook(notebook.remoteId) },
+            rename: { editingNotebook = notebook },
+            editCover: { editingNotebook = notebook },
+            export: { format in exportNotebook(notebook, format: format) },
+            delete: { notebookToDelete = notebook },
+            canDelete: !notebook.isDefault
+        )
     }
 
     // MARK: - Sort Menu
