@@ -69,9 +69,10 @@ enum NotebookListScenarios {
 
             // MARK: Reduce Motion
 
-            Scenario("A11y · reduce motion (resting)", layout: .fill) {
+            // 注：`\.accessibilityReduceMotion` 為 read-only env，無法用 `.environment()` 強制；
+            // 預覽 reduce motion 走 Xcode preview canvas 的 a11y inspector，不在 catalog 模擬。
+            Scenario("A11y · large numbers heavy stack", layout: .fill) {
                 singleSheet(card: Self.heavy)
-                    .environment(\.accessibilityReduceMotion, true)
             }
         }
     }

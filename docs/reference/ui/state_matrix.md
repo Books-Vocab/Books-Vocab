@@ -245,3 +245,46 @@ Preview matrix 已補齊：
 - Today Review: front / back / details / completed
 
 新增或修改 UI 時，參考 `docs/reference/ui/review_checklist.md`。
+
+---
+
+## Notebook Stacked Cover (`NotebookStackedCoverView` / `NotebookCard.grid`)
+
+主要檔案：
+- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`
+
+### Stack Depth
+
+| State | 觸發條件 | 視覺 |
+|------|---------|------|
+| 空本 | `cardCount == 0` | 單張平面卡（`layerCount=1`），無下層 ghost |
+| 薄堆 | `1...50` | 2 層（1 ghost + 1 頂層） |
+| 中堆 | `51...200` | 3 層 |
+| 厚堆 | `200+` | 4 層（上限） |
+
+### Variants
+
+| State | 觸發條件 | 視覺 |
+|------|---------|------|
+| 使用中 | `isActive == true` && `.grid` | 頂層右上 `使用中` capsule pill（`skin.palette.accent`） |
+| 有待複習 | `dueCount > 0` | metadata row 顯示「N 到期」（`palette.warning`） |
+| 有未學 | `unlearnedCount > 0` | metadata row 顯示「N 未學」 |
+| Pending sync | `pendingCount > 0` | 字數 row 右側 sync icon |
+| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill，下層 ghost 仍走純色 |
+
+### Theme / Press / a11y
+
+| State | 觸發條件 | 行為 |
+|------|---------|------|
+| Light mode | `colorScheme == .light` | ghost brightness 每深一層 −0.04（壓暗） |
+| Dark mode | `colorScheme == .dark` | ghost brightness 每深一層 +0.06（提亮）；`AppElevationModifier` shadow ×1.8 |
+| Resting | `isPressed == false` | 頂層 z2 / ghost z1，無 offset |
+| Pressed | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97；ghost 每深一層額外下沉 1pt；haptic `.selection` 觸發一次 |
+| Release | `isPressed` true→false | 走 `AppMotion.cardDeckRelease` spring 回彈 |
+| Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale；保留 opacity dip + haptic + push transition |
+| Dynamic Type `.accessibility3` | a11y size | metadata truncate，stack 幾何不縮放 |
+
+整 stack 為單一 a11y element（`children: .ignore` + label = `name + cardCount + 狀態`），ghost 各自 `.accessibilityHidden(true)`。
+
