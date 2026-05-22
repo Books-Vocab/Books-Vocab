@@ -7,11 +7,11 @@ verified_against: 1d24dc1
 # BooksBrowser UI Design System
 
 > 文檔網絡：
-> - 開發入口與編譯流程：`docs/dev/ios-dev.md`
-> - App 架構與 UI 脈絡：`docs/dev/architecture.md`
-> - 元件 / pattern 現況清單：`docs/references/ui_component_pattern_inventory.md`
-> - 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
-> - UI Review Checklist：`docs/references/ui_review_checklist.md`
+> - 開發入口與編譯流程：`docs/sop/ios.md`
+> - App 架構與 UI 脈絡：`docs/sop/architecture.md`
+> - 元件 / pattern 現況清單：`docs/reference/ui/components.md`
+> - 狀態覆蓋矩陣：`docs/reference/ui/state_matrix.md`
+> - UI Review Checklist：`docs/reference/ui/review_checklist.md`
 
 ## 設計系統概覽
 
@@ -114,9 +114,9 @@ BooksBrowser 的 motion system 不接受各頁自由書寫 `.spring(...)` / `.ea
 - 若是要改互動規則：
   先更新本頁，再改程式
 - 若是要排查編譯或 SwiftUI 實作錯誤：
-  回到 `docs/dev/ios-dev.md`
+  回到 `docs/sop/ios.md`
 - 若是要理解 UI 為何出現在某個資料流程中：
-  回到 `docs/dev/architecture.md`
+  回到 `docs/sop/architecture.md`
 - 若是要新增 spacing/radius/elevation 數值：
   先在 `AppSpacing` / `AppRadius` / `AppElevation` 加 token，不可在 view 寫 magic number
 
