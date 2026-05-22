@@ -17,7 +17,7 @@ verified_against: 7c7a23b
 
 ## 設計系統概覽
 
-BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑）。**主色採古銅蜂蜜金（奶黃）** `brandHero #B5894B / #C9A968`，靈感來自 Hobonichi 手帳燙金 / Penguin Classics 書脊金 — editorial 書卷氣的暖金。藍色 Morandi grey-blue `accent #4D7396` 降為**次色**，留給 link / info / 被動點綴：
+BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑）。**CTA 採極淡奶黃** `brandHero #FCDE9A`(pastel cream，兩 mode 同色) — Phase 1c 拍板由古銅蜂蜜金 `#E8C77F` 改淡至 `#FCDE9A`。**Chrome（tab bar / nav button / toolbar）走灰階 tint** (`tintLight #37352F` / `tintDark #E6E6E3`)，刻意不採奶黃以避免稀釋 CTA 訊號。藍色 Morandi grey-blue `accent #4D7396` 維持為**被動色**，留給 link / info / 裝飾：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
@@ -143,7 +143,7 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 
 ## Color token：Brand Hero + 狀態 bg
 
-`AppColors.brandHeroLight` `#B5894B` (HSB ~38°/0.59/0.71) / `brandHeroDark` `#C9A968` (HSB ~38°/0.48/0.79) + `AppColors.brandHero(_:)` scheme-aware accessor。色相為古銅蜂蜜金（奶黃），自 Morandi blue 改色，與 `accent`（Morandi blue）**分家** — `brandHero` 是主 CTA，`accent` 退為被動點綴。`onBrandHero` 從 `.white` 改為 `#1C1A17` 深炭灰，因奶黃 + 白字對比 fail AA。
+`AppColors.brandHeroLight` `#FCDE9A` (HSB ~41°/0.39/0.99) / `brandHeroDark` `#FCDE9A` (兩 mode 同色) + `AppColors.brandHero(_:)` scheme-aware accessor。色相為極淡奶黃 pastel cream(Phase 1c)，與 `accent`(Morandi blue) 分家 — `brandHero` 主 CTA，`accent` 退為被動點綴。`onBrandHero` 採 `#1C1A17` 深炭灰(白字 fail AA)，配新奶黃對比 ~13.5:1 ✓ AAA。**`tint` 走灰階 chrome** (`tintLight #37352F` / `tintDark #E6E6E3`)，不再跟 brandHero — chrome ≠ CTA。
 
 `AppTheme.Palette` 新欄位：
 - `accentHero` — 品牌 hero 主色（scheme-aware）

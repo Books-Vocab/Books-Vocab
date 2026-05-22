@@ -79,8 +79,8 @@ struct VocabForecastChart: View {
                 if bucket.count > 0 {
                     RoundedRectangle(cornerRadius: 3, style: .continuous)
                         .fill(index == 0
-                              ? appSkin.palette.accent
-                              : appSkin.palette.accent.opacity(0.35))
+                              ? AppColors.chartHighlight
+                              : AppColors.chartHighlight.opacity(0.35))
                         .frame(width: barWidth, height: barHeight)
                 }
             }
