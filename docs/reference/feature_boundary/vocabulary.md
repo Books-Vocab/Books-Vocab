@@ -8,6 +8,8 @@ verified_against: 7c7a23b
 -->
 # Vocabulary Feature Boundary
 
+> Notebook 是本 feature 的子場景,獨立 boundary 見 `docs/reference/feature_boundary/notebook.md`(`Scenes/Notebook*` + `Components/Notebook*`)。
+
 ## 檔案清冊
 
 ### Container Layer（組裝 + 路由）
