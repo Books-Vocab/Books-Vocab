@@ -20,8 +20,10 @@ class ClaudeRunner:
         max_turns: int | None = None,
         session_id: str | None = None,
         permission_mode: str | None = None,
+        system_prompt: str | None = None,
         append_system_prompt: str | None = None,
         allowed_tools: str | None = None,
+        tools_filter: str | None = None,
         verbose: bool = False,
     ) -> list[str]:
         cmd = ["claude", "-p", "--output-format", output_format, "--model", model]
@@ -33,10 +35,15 @@ class ClaudeRunner:
             cmd.extend(["--resume", session_id])
         if permission_mode:
             cmd.extend(["--permission-mode", permission_mode])
+        if system_prompt is not None:
+            cmd.extend(["--system-prompt", system_prompt])
         if append_system_prompt:
             cmd.extend(["--append-system-prompt", append_system_prompt])
         if allowed_tools:
             cmd.extend(["--allowedTools", allowed_tools])
+        if tools_filter is not None:
+            # "" is a valid value meaning "disable all built-in tools" — keep it.
+            cmd.extend(["--tools", tools_filter])
         if verbose and output_format != "stream-json":
             cmd.extend(["--verbose"])
         return cmd
@@ -50,8 +57,10 @@ class ClaudeRunner:
         working_dir: str | None = None,
         session_id: str | None = None,
         permission_mode: str | None = None,
+        system_prompt: str | None = None,
         append_system_prompt: str | None = None,
         allowed_tools: str | None = None,
+        tools_filter: str | None = None,
     ) -> dict:
         """Run claude CLI and return parsed result dict."""
         cmd = ClaudeRunner._build_cmd(
@@ -60,8 +69,10 @@ class ClaudeRunner:
             max_turns=max_turns,
             session_id=session_id,
             permission_mode=permission_mode,
+            system_prompt=system_prompt,
             append_system_prompt=append_system_prompt,
             allowed_tools=allowed_tools,
+            tools_filter=tools_filter,
         )
         cwd = working_dir or tempfile.mkdtemp(prefix="claude-api-")
         env = ClaudeRunner._build_env()
@@ -128,8 +139,10 @@ class ClaudeRunner:
         working_dir: str | None = None,
         session_id: str | None = None,
         permission_mode: str | None = None,
+        system_prompt: str | None = None,
         append_system_prompt: str | None = None,
         allowed_tools: str | None = None,
+        tools_filter: str | None = None,
     ) -> dict:
         """Run claude CLI with stream-json format to capture full text output.
 
@@ -143,8 +156,10 @@ class ClaudeRunner:
             max_turns=max_turns or 1,  # Prevent Claude from executing its own tools
             session_id=session_id,
             permission_mode=permission_mode,
+            system_prompt=system_prompt,
             append_system_prompt=append_system_prompt,
             allowed_tools=allowed_tools,
+            tools_filter=tools_filter,
         )
         cwd = working_dir or tempfile.mkdtemp(prefix="claude-api-")
         env = ClaudeRunner._build_env()
@@ -214,8 +229,10 @@ class ClaudeRunner:
         working_dir: str | None = None,
         session_id: str | None = None,
         permission_mode: str | None = None,
+        system_prompt: str | None = None,
         append_system_prompt: str | None = None,
         allowed_tools: str | None = None,
+        tools_filter: str | None = None,
     ) -> AsyncIterator[str]:
         """Run claude CLI in streaming mode, yielding NDJSON lines."""
         cmd = ClaudeRunner._build_cmd(
@@ -224,8 +241,10 @@ class ClaudeRunner:
             max_turns=max_turns,
             session_id=session_id,
             permission_mode=permission_mode,
+            system_prompt=system_prompt,
             append_system_prompt=append_system_prompt,
             allowed_tools=allowed_tools,
+            tools_filter=tools_filter,
         )
         cwd = working_dir or tempfile.mkdtemp(prefix="claude-api-")
         env = ClaudeRunner._build_env()
