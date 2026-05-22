@@ -180,3 +180,22 @@ PR #402 引入：
 2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Morandi `brandHeroDark` `#4A6E91` + white text = ~5.34:1 ✓ AA pass。`AppCompactActionButtonStyle.primary` 的 dark-mode 特殊 fallback 已移除（兩種 mode 都走 `palette.brandHero`）。
 3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token。
 4. **Dormant tokens（~60% 新 surface）**：`AppSkeleton`、`display1/2`、`appReadableFrame`、`AppElevation` 已定義但 0 callsite，使用前注意可能無實際 reference 樣本。
+
+---
+
+## Component Hard Rules（防破圖）
+
+以下規則適用所有 list row / inline metric / 中英混排場景。新元件 PR 違反 → review block。
+
+1. **List row 內所有 user-content text 必須有 `.lineLimit(n)` + `.truncationMode(.tail)`**  
+   不限定 row 高度時，至少要 truncate 而非 wrap 撐高（破壞 list 節奏）。Word/title 一般 `lineLimit(1)`；中譯/說明可 `lineLimit(2)` 但仍要 truncate。
+2. **數字 metric 一律 `.monospacedDigit()`**  
+   `42d / 2d`、百分比、進度、剩餘秒數等任何會動態變動的數字。避免比例字寬抖動。例：`VocabReviewProgressBar.detailLabel`、`WordRow.trailingLabel`。
+3. **同 row 含 text + spacer + button 時 spacer 必須有 `minLength: 8`**  
+   防止內容擠壓到 trailing element 黏 leading text。
+4. **partOfSpeech / unit / 短 label 用 `.fixedSize(horizontal: true, vertical: false)`**  
+   保留視覺重量，防止被中間 text 撐到換行。
+5. **新增高密度 list 元件時，必加對應 `Debug/Scenarios/*Scenarios.swift`**  
+   涵蓋 happy / long-content / large-numbers / narrow-width / dynamicTypeSize(.accessibility3) 五種 stress case，作為 visual baseline。範例：`NotebookDetailScenarios.swift`。
+
+> Phase 2(2026-05) 起 `WordRow` / `VocabReviewProgressBar` 已套用上述規則。新元件 PR Reviewer 看到缺漏直接退件。
