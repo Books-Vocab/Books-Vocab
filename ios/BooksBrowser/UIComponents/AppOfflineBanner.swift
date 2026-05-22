@@ -65,4 +65,5 @@ extension View {
             Spacer()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

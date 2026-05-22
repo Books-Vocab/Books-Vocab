@@ -141,4 +141,5 @@ struct SyncView: View {
         SyncView()
             .modelContainer(for: [VocabularyEntry.self, Notebook.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
