@@ -132,6 +132,65 @@ Apple/Google SSO
 - 改 file 後 simulator 沒反應 → 看 console 是否報 `cannot inject ...`（多半是改到 stored property），需 ⌘R 重 build
 - Release archive 報錯 → 確認 `-interposable` flag **只在 Debug 配置**，Release 維持原狀
 
+### Playbook Catalog（SwiftUI 元件目錄）
+
+DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣牆」而非正常 app UI，給 CLI 截圖協作（Claude / simctl）用。Phase 1 hot reload + Phase 3 catalog 組合 = 視覺迭代閉環：你改 `AppTheme.swift` 色票 → InjectionNext 秒級重渲染 catalog → simctl 截圖讓 Claude 看到結果。
+
+**啟用方式**：
+1. Xcode → Product → Scheme → Edit Scheme → Run → Arguments → **Launch Arguments** → 加 `-catalog`
+2. ⌘R 跑 Debug build，app 啟動時 `BooksBrowserApp` 偵測到 `-catalog` 改用 `CatalogScene()` 為 root view（取代正常 `ContentView`）
+3. simulator 開啟即見 Playbook catalog 列表，左側分類 / 右側渲染
+
+要回正常 app：scheme 移除 `-catalog` 即可（建議**保留兩個 scheme**：`BooksBrowser` 正常、`BooksBrowser-Catalog` 含 launch arg）。
+
+**目錄結構**：
+- `ios/BooksBrowser/Debug/CatalogScene.swift` — 入口 view，註冊所有 surfaces 進 `Playbook.default`
+- `ios/BooksBrowser/Debug/Scenarios/*Scenarios.swift` — 每個 surface 一檔，通過 `register(in:)` 加 scenarios
+
+**目前涵蓋**（Phase 3 / 19 scenarios）：
+- Settings × 6（Logged Out / Subscribed Active / Subscription Loading / Deleting Account / Pricing Unavailable / Debug Backend Local）
+- Today Review × 4（Front / Back / Completed / Autoplay）
+- Bookshelf × 5（Card Progress / Card Placeholder / Empty / With Books / Loading）
+- Welcome × 4（Step 1 Capture / Step 2 Link / Step 3 Review / Step 3 Dark）
+
+**未涵蓋**（留待 future phase）：
+- Reader 本體（Readium SDK runtime 太重，需先抽 `ReaderViewPresenter` chrome layer）
+- Podcast Player（需先拆 `PodcastPlayerPresenter`）
+- Auth 多狀態（authenticating / error，需先把 `AuthManager` 抽 protocol）
+- Vocab WordDetail（無現成 preview factory，待補 stub）
+
+**新增 surface scenarios 範本**：
+
+```swift
+// ios/BooksBrowser/Debug/Scenarios/FooScenarios.swift
+#if DEBUG
+import Playbook
+import SwiftUI
+
+enum FooScenarios {
+    static func register(in playbook: Playbook) {
+        playbook.addScenarios(of: "Foo") {
+            Scenario("Loading", layout: .fill) {
+                AppThemeContainer { FooView(state: .loading) }
+                    .environmentObject(AppAppearanceStore.preview)
+            }
+            // ...
+        }
+    }
+}
+#endif
+```
+
+寫完別忘了在 `CatalogScene.playbook` 的 static initializer 加一行 `FooScenarios.register(in: pb)`。
+
+**simctl 截圖協作**：
+
+```bash
+xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
+```
+
+把 PNG 路徑貼給 Claude 即可協作視覺迭代。所有 catalog 程式碼都包在 `#if DEBUG` 內，**production binary 不包含**。
+
 
 
 ## 參考文件

@@ -601,7 +601,7 @@ private extension Date {
     }
 }
 
-private enum BookshelfPreviewData {
+enum BookshelfPreviewData {
     static let activeBook: Book = {
         let book = Book(
             title: "The Architecture of Words",
@@ -656,7 +656,7 @@ private enum BookshelfPreviewData {
     .environmentObject(AppAppearanceStore.preview)
 }
 
-private struct BookCardPreviewScene: View {
+struct BookCardPreviewScene: View {
     @Environment(\.appTheme) private var appTheme
     let book: Book
 
@@ -699,7 +699,7 @@ private struct BookCardPreviewScene: View {
 }
 
 /// 獨立展示 loadingOverlay 的輔助 view，用於 Loading State preview
-private struct BookshelfLoadingPreview: View {
+struct BookshelfLoadingPreview: View {
     @Environment(\.appTheme) private var appTheme
 
     var body: some View {
