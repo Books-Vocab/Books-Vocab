@@ -27,16 +27,20 @@ extension VocabularyListView {
             loggedOutState
         } else {
             VStack(spacing: 0) {
+                // Why: detail page 已有 filter chip bar 顯示 due/unlearned/reviewed
+                // 數字，hero card 與下方 NotebookListView 的 hero CTA 視覺重複。
+                // 此處改用 `.compact` 變體 — 無 card background、單行 inline、padding
+                // 砍半，省約 60pt 縱向空間，又保留 CTA 入口。NotebookListView 那
+                // 邊維持 .hero 變體作為 primary entry point。
                 if classified.dueCount > 0 || classified.unlearnedCount > 0 {
                     VocabReviewBanner(
                         dueCount: classified.dueCount,
                         unlearnedCount: classified.unlearnedCount,
+                        style: .compact,
                         onStartDue: { coordinator.startKnowledgeReview(entries: classified.dueBucket) },
                         onStartUnlearned: { coordinator.startKnowledgeReview(entries: classified.unlearnedBucket) },
                         onStartMixed: { coordinator.startKnowledgeReview(entries: classified.dueBucket + classified.unlearnedBucket) }
                     )
-                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-                    .padding(.bottom, AppShellMetrics.sectionSpacing)
                 }
 
                 KGVocabView(searchText: $debouncedSearchText, notebookId: notebookId) { entry in
