@@ -23,6 +23,7 @@ struct CatalogScene: View {
     /// against the same surface set as the in-app catalog.
     static func buildPlaybook() -> Playbook {
         let pb = Playbook()
+        TokenSheetScenarios.register(in: pb)
         SettingsScenarios.register(in: pb)
         TodayReviewScenarios.register(in: pb)
         BookshelfScenarios.register(in: pb)
