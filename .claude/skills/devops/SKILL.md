@@ -22,7 +22,9 @@ allowed-tools: Bash, Read, Grep
 2. **deploy / migration 前**再加 backup：`./ops/devops_kg_safe.sh backup`
 3. 禁止封鎖指令：`setup` `push-env` `delete-user` `ssh`、破壞性 `run` 字串
 
-## 指令參考
+## 指令參考 **(SoT)**
+
+本段為 `./ops/devops_kg_safe.sh`（與 repo-local shortcut `./devops.sh`）的權威指令清單；`docs/sop/deploy.md` / `docs/sop/debug.md` 內任何 `./devops.sh *` 用法以本表為準。
 
 ### Safe Wrapper（`./ops/devops_kg_safe.sh`）
 
