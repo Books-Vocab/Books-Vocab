@@ -67,6 +67,14 @@ final class VocabularyEntry {
     var bookId: UUID?
     var isDemoEntry: Bool = false
 
+    // i18n: source/target language captured when this entry was created.
+    // Optional for SwiftData lightweight migration — existing rows keep nil
+    // until they're touched. Upload to server is gated by
+    // `KGFeatureFlags.vocabularyLangPayloadEnabled` (backend currently has
+    // `extra='ignore'` so the fields would be silently dropped today).
+    var sourceLang: String?
+    var targetLang: String?
+
     @Transient private var _graphLinksCache: [String: [KGCardLinkSummary]]?
     @Transient private var _graphLinksCacheKey: String?
 
@@ -100,7 +108,9 @@ final class VocabularyEntry {
         explanation: String? = nil,
         partOfSpeech: String? = nil,
         bookTitle: String,
-        chapterTitle: String? = nil
+        chapterTitle: String? = nil,
+        sourceLang: String? = nil,
+        targetLang: String? = nil
     ) {
         self.id = UUID()
         self.word = word
@@ -111,6 +121,11 @@ final class VocabularyEntry {
         self.bookTitle = bookTitle
         self.chapterTitle = chapterTitle
         self.dateAdded = Date()
+        // Default to the user's current translation language pair if caller
+        // didn't override. Captured at creation time so future schema changes
+        // can analyse per-locale usage without backfilling.
+        self.sourceLang = sourceLang ?? TranslationLanguage.currentSource.rawValue
+        self.targetLang = targetLang ?? TranslationLanguage.currentTarget.rawValue
     }
 }
 

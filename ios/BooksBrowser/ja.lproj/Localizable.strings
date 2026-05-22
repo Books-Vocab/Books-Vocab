@@ -500,3 +500,12 @@
 "字幕大小" = "字幕サイズ";
 "查詞時自動暫停" = "検索時に自動一時停止";
 "點字幕查單字時暫停播放，關閉後恢復" = "単語を調べる際に再生を一時停止し、閉じると再開します";
+
+/* TipKit — Phase 2 */
+"tip_long_press_title" = "長押しで辞書を引く";
+"tip_long_press_message" = "単語を長押しすると AI 翻訳と品詞解析が見られます";
+"tip_sync_vocab_title" = "単語を同期";
+"tip_sync_vocab_message" = "未同期の単語があります。同期ボタンでクラウドに送信できます";
+"tip_epub_guide_title" = "電子書籍はどこで？";
+"tip_epub_guide_message" = "EPUB 入手ガイドで無料・有料の電子書籍の取得方法を確認できます";
+"昨天" = "昨日";

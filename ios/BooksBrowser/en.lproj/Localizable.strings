@@ -537,3 +537,12 @@
 "字幕大小" = "Subtitle Size";
 "查詞時自動暫停" = "Auto-pause on lookup";
 "點字幕查單字時暫停播放，關閉後恢復" = "Pauses playback when looking up a word; resumes on dismiss";
+
+/* TipKit — Phase 2 */
+"tip_long_press_title" = "Long Press to Lookup";
+"tip_long_press_message" = "Long press any word for AI translation and analysis";
+"tip_sync_vocab_title" = "Sync Your Words";
+"tip_sync_vocab_message" = "You have unsynced words. Tap the sync button to push them to the cloud.";
+"tip_epub_guide_title" = "Where to find ebooks?";
+"tip_epub_guide_message" = "Check the EPUB Guide to learn where to get free or paid ebooks";
+"昨天" = "Yesterday";

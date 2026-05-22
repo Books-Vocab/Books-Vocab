@@ -108,23 +108,13 @@ struct PodcastEpisodeRow: View {
 
     private func formatDate(_ date: Date) -> String {
         let cal = Calendar.current
-        if cal.isDateInToday(date) { return "今天" }
-        if cal.isDateInYesterday(date) { return "昨天" }
+        if cal.isDateInToday(date) { return L10n.string("今天") }
+        if cal.isDateInYesterday(date) { return L10n.string("昨天") }
         let sameYear = cal.isDate(date, equalTo: Date(), toGranularity: .year)
-        return (sameYear ? Self.sameYearFormatter : Self.crossYearFormatter).string(from: date)
+        // template → ICU 給各 locale 最佳化:
+        // sameYear: en="May 22" / ja="5月22日" / zh-Hant="5月22日" / ko="5월 22일"
+        // crossYear: en="May 22, 2025" / ja="2025年5月22日" / zh-Hant="2025/5/22"
+        let template = sameYear ? "Md" : "yMd"
+        return LocaleAwareFormatter.shared.string(from: date, template: template)
     }
-
-    private static let sameYearFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "M月d日"
-        return f
-    }()
-
-    private static let crossYearFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.locale = Locale(identifier: "zh_TW")
-        f.dateFormat = "yyyy/M/d"
-        return f
-    }()
 }

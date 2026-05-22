@@ -56,18 +56,46 @@ final class SettingsCoordinator: SettingsCoordinating {
 
         if authManager.isLoggedIn {
             if let config = try? await kgService.fetchUserConfig() {
-                // Sync translation language from server config
-                if let translation = config.translation {
-                    if let src = translation.source_lang, let lang = TranslationLanguage(rawValue: src) {
-                        translationSourceLang = lang
-                        TranslationLanguage.currentSource = lang
-                    }
-                    if let tgt = translation.target_lang, let lang = TranslationLanguage(rawValue: tgt) {
-                        translationTargetLang = lang
-                        TranslationLanguage.currentTarget = lang
-                    }
-                }
+                applyServerTranslationConfig(config.translation)
             }
+        }
+    }
+
+    /// Reconcile server-provided translation config with local + iCloud KV state.
+    ///
+    /// Until the backend persists `updated_at` on `TranslationLanguageConfig`
+    /// (`KGFeatureFlags.serverTranslationLwwEnabled` gate), we cannot LWW
+    /// against the server timestamp. Two policies:
+    ///
+    /// - **Flag off (current)**: server-wins ONLY on first load (when this
+    ///   device has never written locally — `sourceUpdatedAt == nil`). After
+    ///   first local write, iCloud KV is the cross-device authority and we
+    ///   no longer let server config overwrite. This preserves the LWW
+    ///   semantics that Phase 4 added.
+    /// - **Flag on (future)**: compare server `updated_at` to local; server
+    ///   wins only when newer.
+    private func applyServerTranslationConfig(_ translation: KGTranslationConfig?) {
+        guard let translation else { return }
+
+        // TODO(backend): once `TranslationLanguageConfig.updated_at` is wired,
+        // implement actual LWW comparison and flip the conditional below.
+        // For now, even with the flag on, fall back to the safer "local-untouched
+        // only" policy so a flip doesn't silently regress the design.
+        let shouldApplySource = (TranslationLanguage.sourceUpdatedAt == nil)
+        let shouldApplyTarget = (TranslationLanguage.targetUpdatedAt == nil)
+        _ = KGFeatureFlags.serverTranslationLwwEnabled  // referenced to keep flag wired
+
+        if shouldApplySource,
+           let src = translation.source_lang,
+           let lang = TranslationLanguage(rawValue: src) {
+            translationSourceLang = lang
+            TranslationLanguage.currentSource = lang
+        }
+        if shouldApplyTarget,
+           let tgt = translation.target_lang,
+           let lang = TranslationLanguage(rawValue: tgt) {
+            translationTargetLang = lang
+            TranslationLanguage.currentTarget = lang
         }
     }
 
@@ -112,6 +140,8 @@ final class SettingsCoordinator: SettingsCoordinating {
 
     /// 回傳 true 代表已儲存（或免儲存的 guest 路徑），false 代表遠端 update 失敗。
     /// 失敗時除了回傳 false 也會顯示 toast，呼叫端可選擇額外 inline 反饋。
+    /// 遠端失敗會 rollback UserDefaults / iCloud KV / in-memory state,避免
+    /// 「本地已寫但 server / 其他裝置不知道」的分裂狀態。
     @discardableResult
     func updateTranslationLanguage(
         source: TranslationLanguage,
@@ -120,6 +150,12 @@ final class SettingsCoordinator: SettingsCoordinating {
         kgService: any KGServing,
         toastCoordinator: AppToastCoordinator
     ) async -> Bool {
+        // Snapshot previous values + their timestamps for rollback on remote failure.
+        let prevSource = TranslationLanguage.currentSource
+        let prevTarget = TranslationLanguage.currentTarget
+        let prevSourceUpdatedAt = TranslationLanguage.sourceUpdatedAt
+        let prevTargetUpdatedAt = TranslationLanguage.targetUpdatedAt
+
         translationSourceLang = source
         translationTargetLang = target
         TranslationLanguage.currentSource = source
@@ -135,6 +171,17 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             return true
         } catch {
+            // Rollback: restore values WITH their original timestamps so that
+            // iCloud KV's LWW doesn't treat the rollback as "newer" than a
+            // concurrent write from another device.
+            TranslationLanguage.restore(
+                source: prevSource,
+                sourceUpdatedAt: prevSourceUpdatedAt,
+                target: prevTarget,
+                targetUpdatedAt: prevTargetUpdatedAt
+            )
+            translationSourceLang = prevSource
+            translationTargetLang = prevTarget
             toastCoordinator.error("設定儲存失敗")
             AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
             return false
