@@ -16,6 +16,8 @@
 		E97244F02FC09DCA0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97244EF2FC09DCA0038B2FA /* Playbook */; };
 		E97244F22FC09DCA0038B2FA /* PlaybookSnapshot in Frameworks */ = {isa = PBXBuildFile; productRef = E97244F12FC09DCA0038B2FA /* PlaybookSnapshot */; };
 		E97244F42FC09DCA0038B2FA /* PlaybookUI in Frameworks */ = {isa = PBXBuildFile; productRef = E97244F32FC09DCA0038B2FA /* PlaybookUI */; };
+		E97245042FC0A23E0038B2FA /* Playbook in Frameworks */ = {isa = PBXBuildFile; productRef = E97245032FC0A23E0038B2FA /* Playbook */; };
+		E97245062FC0A23E0038B2FA /* PlaybookSnapshot in Frameworks */ = {isa = PBXBuildFile; productRef = E97245052FC0A23E0038B2FA /* PlaybookSnapshot */; };
 		E9D331AF2F521D2D00D4355C /* GoogleSignIn in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331AE2F521D2D00D4355C /* GoogleSignIn */; };
 		E9D331B12F521D2D00D4355C /* GoogleSignInSwift in Frameworks */ = {isa = PBXBuildFile; productRef = E9D331B02F521D2D00D4355C /* GoogleSignInSwift */; };
 /* End PBXBuildFile section */
@@ -85,6 +87,8 @@
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				E97245042FC0A23E0038B2FA /* Playbook in Frameworks */,
+				E97245062FC0A23E0038B2FA /* PlaybookSnapshot in Frameworks */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -180,6 +184,8 @@
 			);
 			name = BooksBrowserTests;
 			packageProductDependencies = (
+				E97245032FC0A23E0038B2FA /* Playbook */,
+				E97245052FC0A23E0038B2FA /* PlaybookSnapshot */,
 			);
 			productName = BooksBrowserTests;
 			productReference = E9EC4E212F4DD27200C3FFB6 /* BooksBrowserTests.xctest */;
@@ -715,6 +721,16 @@
 			isa = XCSwiftPackageProductDependency;
 			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
 			productName = PlaybookUI;
+		};
+		E97245032FC0A23E0038B2FA /* Playbook */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
+			productName = Playbook;
+		};
+		E97245052FC0A23E0038B2FA /* PlaybookSnapshot */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = E97244EE2FC09DCA0038B2FA /* XCRemoteSwiftPackageReference "playbook-ios" */;
+			productName = PlaybookSnapshot;
 		};
 		E9D331AE2F521D2D00D4355C /* GoogleSignIn */ = {
 			isa = XCSwiftPackageProductDependency;

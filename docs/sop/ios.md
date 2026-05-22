@@ -144,7 +144,7 @@ DEBUG-only 元件 catalog，讓 simulator 啟動時直接進入「狀態矩陣�
 要回正常 app：scheme 移除 `-catalog` 即可（建議**保留兩個 scheme**：`BooksBrowser` 正常、`BooksBrowser-Catalog` 含 launch arg）。
 
 **目錄結構**：
-- `ios/BooksBrowser/Debug/CatalogScene.swift` — 入口 view，註冊所有 surfaces 進 `Playbook.default`
+- `ios/BooksBrowser/Debug/CatalogScene.swift` — 入口 view + `static func buildPlaybook()`(BooksBrowserTests 也 reuse 同一份 surface registration)
 - `ios/BooksBrowser/Debug/Scenarios/*Scenarios.swift` — 每個 surface 一檔，通過 `register(in:)` 加 scenarios
 
 **目前涵蓋**（Phase 3 / 19 scenarios）：
@@ -190,6 +190,40 @@ xcrun simctl io booted screenshot /tmp/kg-catalog-page.png
 ```
 
 把 PNG 路徑貼給 Claude 即可協作視覺迭代。所有 catalog 程式碼都包在 `#if DEBUG` 內，**production binary 不包含**。
+
+### Catalog Snapshot Export（PlaybookSnapshot → PNG batch）
+
+`BooksBrowserTests/CatalogSnapshotTests.swift` 提供 `generateAllScenarioPNGs` test，跑一次把 19 scenarios × 2 devices（iPhone15Pro portrait light/dark）渲染成 PNG，**不用人工逐頁截**。
+
+**執行方式**（manual，**不要主動跑** — 遵守 CLAUDE.md 鐵律 7 `ios_test.sh` 規則）：
+
+```bash
+# 由使用者明確要求才跑：
+xcodebuild test \
+  -project ios/BooksBrowser.xcodeproj \
+  -scheme BooksBrowser \
+  -destination 'platform=iOS Simulator,name=iPhone 17 Pro' \
+  -only-testing:BooksBrowserTests/CatalogSnapshotTests
+```
+
+**從 simulator sandbox 撈 PNG**：
+
+```bash
+# 找 BooksBrowserTests host app 的 data container
+container=$(xcrun simctl get_app_container booted com.Max0228.BooksBrowser data 2>/dev/null)
+# PNG 在 NSTemporaryDirectory → tmp/kg-catalog-snapshots/<device>/<category>/<scenario>.png
+find "$container/tmp/kg-catalog-snapshots" -name "*.png" 2>/dev/null
+# 或直接複製到專案下供 Claude 讀
+mkdir -p build/snapshots && cp -R "$container/tmp/kg-catalog-snapshots/." build/snapshots/
+```
+
+**為什麼 PlaybookSnapshot 而非 EmergeTools/SnapshotPreviews**：原本計畫用 EmergeTools 套件直接 snapshot 既有 `#Preview`，但 `playbook-ios` 內建 `PlaybookSnapshot` product 已能對 catalog scenarios 做同樣工作，且 catalog scenarios 明確、命名整齊、能注入 stub envObject — 比 raw `#Preview` 更可靠（後者常因缺 EnvironmentObject crash）。`#Preview` snapshot 留待 Phase 5 評估。
+
+**閉環 demo**：
+1. 你改 `AppTheme.swift` 一個 hue 值 + InjectionNext 秒級重渲染
+2. 確認 catalog 樣式可接受後跑上述 `xcodebuild test`
+3. 撈 PNG → 貼給 Claude → Claude 跨 scenario 比對找出視覺 regression
+4. 不滿意回 step 1
 
 
 
