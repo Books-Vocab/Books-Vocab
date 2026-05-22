@@ -28,7 +28,7 @@ import PlaybookSnapshot
         let snapshot = Snapshot(
             directory: outputDirectory,
             clean: true,
-            format: .png(.basic),
+            format: .png,
             devices: [
                 SnapshotDevice.iPhone15Pro(.portrait),
                 SnapshotDevice.iPhone15Pro(.portrait).style(.dark)

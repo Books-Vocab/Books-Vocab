@@ -77,7 +77,7 @@
       <CommandLineArguments>
          <CommandLineArgument
             argument = "-catalog"
-            isEnabled = "YES">
+            isEnabled = "NO">
          </CommandLineArgument>
       </CommandLineArguments>
    </LaunchAction>
