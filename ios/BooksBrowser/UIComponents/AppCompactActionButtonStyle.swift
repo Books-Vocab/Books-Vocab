@@ -39,10 +39,11 @@ struct AppCompactActionButtonStyle: ButtonStyle {
     private var stylePalette: (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            // Morandi indigo CTA：light/dark 各自走 palette.brandHero，
-            // brandHeroLight #3D5F82 + white text = ~6.5:1 ✓ AA pass
-            // brandHeroDark  #4A6E91 + white text = ~5.2:1 ✓ AA pass
-            // 兩者皆達標，不再需要 dark mode 特殊回退到 light token。
+            // 奶黃 CTA：light/dark 各自走 palette.brandHero，前景為 deep charcoal
+            // onBrandHero (#1C1A17)：
+            //   brandHeroLight #B5894B + onBrandHero = ~5.11:1 ✓ AA pass
+            //   brandHeroDark  #C9A968 + onBrandHero = ~7.05:1 ✓ AAA pass
+            // 白字反而 fail（~3.4:1）— 此 ButtonStyle 走 AppColors.onBrandHero 故合規。
             let bg = appTheme.palette.brandHero
             return (AppColors.onBrandHero, bg, bg)
         case .neutral:

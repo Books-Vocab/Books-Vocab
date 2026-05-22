@@ -17,7 +17,7 @@ verified_against: 7c7a23b
 
 ## 設計系統概覽
 
-BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑、Morandi grey-blue 強調色 — 由 Notion 藍降飽和至 #4D7396 / #3D5F82 系，貼合 editorial 調性）：
+BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑）。**主色採古銅蜂蜜金（奶黃）** `brandHero #B5894B / #C9A968`，靈感來自 Hobonichi 手帳燙金 / Penguin Classics 書脊金 — editorial 書卷氣的暖金。藍色 Morandi grey-blue `accent #4D7396` 降為**次色**，留給 link / info / 被動點綴：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
@@ -143,7 +143,7 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 
 ## Color token：Brand Hero + 狀態 bg
 
-`AppColors.brandHeroLight` `#3D5F82` (HSB ~213°/0.54/0.51) / `brandHeroDark` `#4A6E91` (HSB ~211°/0.49/0.57) + `AppColors.brandHero(_:)` scheme-aware accessor。色相已從 Notion product 藍（232°/0.85）平移到 Morandi grey-blue，與全域 accent 同色系。
+`AppColors.brandHeroLight` `#B5894B` (HSB ~38°/0.59/0.71) / `brandHeroDark` `#C9A968` (HSB ~38°/0.48/0.79) + `AppColors.brandHero(_:)` scheme-aware accessor。色相為古銅蜂蜜金（奶黃），自 Morandi blue 改色，與 `accent`（Morandi blue）**分家** — `brandHero` 是主 CTA，`accent` 退為被動點綴。`onBrandHero` 從 `.white` 改為 `#1C1A17` 深炭灰，因奶黃 + 白字對比 fail AA。
 
 `AppTheme.Palette` 新欄位：
 - `accentHero` — 品牌 hero 主色（scheme-aware）
@@ -177,8 +177,8 @@ PR #402 引入：
 下列 issue 已知，列入後續 polish pass PR：
 
 1. **`AppOfflineBanner` light mode 對比 ≈ 3.21:1**（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**。修法：darken text 或 fall back 到 `primaryText` 配 destructive icon。
-2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Morandi `brandHeroDark` `#4A6E91` + white text = ~5.34:1 ✓ AA pass。`AppCompactActionButtonStyle.primary` 的 dark-mode 特殊 fallback 已移除（兩種 mode 都走 `palette.brandHero`）。
-3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token。
+2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Phase 1b 起 brandHero 改奶黃，前景採 `AppColors.onBrandHero` deep charcoal `#1C1A17`，light/dark 變體配 onBrandHero 對比 5.11/7.05:1 ✓ AA/AAA。
+3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token；奶黃 + 白字 fail AA → onBrandHero 強制 deep charcoal 是 token-level 保證。
 4. **Dormant tokens（~60% 新 surface）**：`AppSkeleton`、`display1/2`、`appReadableFrame`、`AppElevation` 已定義但 0 callsite，使用前注意可能無實際 reference 樣本。
 
 ---
