@@ -92,6 +92,7 @@ extension View {
     AppThemeContainer {
         AppToastPreviewScene()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppToastPreviewScene: View {

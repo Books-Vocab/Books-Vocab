@@ -75,6 +75,7 @@ extension ButtonStyle where Self == AppActionButtonStyle {
     AppThemeContainer {
         AppActionButtonPreview()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppActionButtonPreview: View {

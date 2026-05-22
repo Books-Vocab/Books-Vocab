@@ -400,6 +400,7 @@ struct TodayReviewView: View {
         )
         .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private enum TodayReviewViewPreviewData {

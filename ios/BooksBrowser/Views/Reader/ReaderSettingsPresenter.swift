@@ -76,6 +76,7 @@ struct ReaderSettingsPresenter: View {
         )
         .padding()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("ReaderSettings / Bounds") {
@@ -101,5 +102,6 @@ struct ReaderSettingsPresenter: View {
         )
     }
     .preferredColorScheme(.dark)
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

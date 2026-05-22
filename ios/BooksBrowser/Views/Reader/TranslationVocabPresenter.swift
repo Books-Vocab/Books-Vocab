@@ -302,6 +302,7 @@ struct TranslationVocabPresenter: View {
             .padding()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Translation Vocab / Explanation Error") {
@@ -315,5 +316,6 @@ struct TranslationVocabPresenter: View {
             .padding()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

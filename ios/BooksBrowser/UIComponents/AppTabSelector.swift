@@ -167,6 +167,7 @@ extension AppTabSelectorStyle {
     AppThemeContainer {
         AppTabSelectorPreview()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppTabSelectorPreview: View {

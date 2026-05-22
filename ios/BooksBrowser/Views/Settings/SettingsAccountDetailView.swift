@@ -132,6 +132,7 @@ struct SettingsAccountDetailView: View {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Account Detail / Deleting") {
@@ -144,4 +145,5 @@ struct SettingsAccountDetailView: View {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
