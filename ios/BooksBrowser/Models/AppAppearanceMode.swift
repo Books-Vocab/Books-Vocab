@@ -119,4 +119,11 @@ final class AppAppearanceStore: ObservableObject {
         defaults.set(mode.rawValue, forKey: Keys.selectedAppearance)
         cloud.set(mode.rawValue, forKey: Keys.selectedAppearance)
     }
+
+    private init(previewSelection: AppAppearanceMode) {
+        self.defaults = UserDefaults(suiteName: "preview.appearance") ?? .standard
+        self.selection = previewSelection
+    }
+
+    static let preview = AppAppearanceStore(previewSelection: .system)
 }
