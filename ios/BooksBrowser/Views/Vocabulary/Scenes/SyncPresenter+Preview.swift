@@ -206,6 +206,7 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Sync / Running") {
@@ -220,6 +221,7 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Sync / Failed") {
@@ -234,6 +236,7 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Sync / Partial Failure") {
@@ -248,6 +251,7 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Sync / Signed Out") {
@@ -262,6 +266,7 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Sync / Completed") {
@@ -276,4 +281,5 @@ private enum SyncPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

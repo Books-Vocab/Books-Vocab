@@ -267,6 +267,7 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Settings / Subscribed Active") {
@@ -283,6 +284,7 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Settings / Subscription Loading") {
@@ -299,6 +301,7 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Settings / Deleting Account") {
@@ -315,6 +318,7 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Settings / Pricing Unavailable") {
@@ -331,6 +335,7 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Settings / Debug Backend Local") {
@@ -347,4 +352,5 @@ enum SettingsPresenterPreviewData {
             )
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
