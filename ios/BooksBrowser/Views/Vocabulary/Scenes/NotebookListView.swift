@@ -111,7 +111,7 @@ struct NotebookListView: View {
                                 actions: notebookCardActions(for: only)
                             )
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(NotebookDeckButtonStyle())
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                         .transition(.listSwap)
                     } else {
@@ -125,7 +125,7 @@ struct NotebookListView: View {
                                         actions: notebookCardActions(for: notebook)
                                     )
                                 }
-                                .buttonStyle(.plain)
+                                .buttonStyle(NotebookDeckButtonStyle())
                                 .transition(.listSwap)
                             }
 
