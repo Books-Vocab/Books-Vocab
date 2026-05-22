@@ -49,5 +49,6 @@ struct QuotaBar: View {
         QuotaBar(isLoggedIn: true)
             .padding()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

@@ -118,12 +118,14 @@ struct TodayReviewPhaseView: View {
     AppThemeContainer {
         TodayReviewPhaseView(phase: .loading, onClose: {})
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TodayReviewPhase / Empty") {
     AppThemeContainer {
         TodayReviewPhaseView(phase: .empty, onClose: {})
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TodayReviewPhase / Error") {
@@ -133,6 +135,7 @@ struct TodayReviewPhaseView: View {
             onClose: {}
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("TodayReviewPhase / Session") {
@@ -147,6 +150,7 @@ struct TodayReviewPhaseView: View {
         )
         .modelContainer(for: [VocabularyEntry.self, ReviewRecord.self, Notebook.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private enum TodayReviewPhasePreviewData {

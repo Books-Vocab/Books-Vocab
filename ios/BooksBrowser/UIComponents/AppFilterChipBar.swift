@@ -86,6 +86,7 @@ struct AppFilterChipBar<ID: Hashable>: View {
     AppThemeContainer {
         AppFilterChipBarPreview()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppFilterChipBarPreview: View {

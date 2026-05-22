@@ -103,6 +103,7 @@ struct VocabSceneShell<Content: View>: View {
             EmptyView()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Loading Skeleton") {
@@ -111,6 +112,7 @@ struct VocabSceneShell<Content: View>: View {
             EmptyView()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Empty") {
@@ -123,6 +125,7 @@ struct VocabSceneShell<Content: View>: View {
             EmptyView()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Error") {
@@ -135,6 +138,7 @@ struct VocabSceneShell<Content: View>: View {
             EmptyView()
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Content") {
@@ -143,4 +147,5 @@ struct VocabSceneShell<Content: View>: View {
             Text("Content goes here")
         }
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

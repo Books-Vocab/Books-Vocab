@@ -169,6 +169,7 @@ enum TodayReviewPresenterPreviewData {
             onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Today Review / Back") {
@@ -189,6 +190,7 @@ enum TodayReviewPresenterPreviewData {
             onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Today Review / Completed") {
@@ -209,6 +211,7 @@ enum TodayReviewPresenterPreviewData {
             onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Today Review / Autoplay") {
@@ -229,4 +232,5 @@ enum TodayReviewPresenterPreviewData {
             onDeleteCollocationExplanation: cb.onDeleteCollocationExplanation
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
