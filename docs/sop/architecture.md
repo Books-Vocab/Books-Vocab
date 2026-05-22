@@ -150,8 +150,9 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 
 ## Crash Reporting Layer（Sentry）
 
-Backend + iOS 同時整合 Sentry，opt-in 啟動且預設關閉。
+Backend + iOS 同時整合 Sentry，opt-in 啟動且預設關閉（`SENTRY_DSN` / `Info.plist SentryDSN` 為空時整層 no-op）。本段只談架構分層 — 細節不在此重複。
 
-- **Backend**（`backend/src/kg/sentry_init.py`）：`SENTRY_DSN` env 為主開關（空 = SDK 完全 no-op）；FastAPI / Starlette / Logging integrations；`send_default_pii=False` + `include_local_variables=False`；`_scrub_event` 移除 `Authorization` / `Cookie` / `X-Admin-Token` header 與 `token` / `admin_session` / `code` / `id_token` / `access_token` query 鍵；`max_request_body_size="never"`；logging WARNING 以上轉 breadcrumb（不直接送 event）。狀態暴露於 `/api/system/info`。
-- **iOS**（`ios/BooksBrowser/Services/AppCrashReporting.swift`）：SPM dep `sentry-cocoa` 透過 `canImport(Sentry)` 守門，缺套件即 pure no-op；`Info.plist` `SentryDSN` 鍵為主開關；release 命名 `<bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`、`dist=CFBundleVersion`；`sendDefaultPii=false`、`enableUserInteractionTracing=false`、HTTP breadcrumb URL 去 query string；`beforeSend` 丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；`BooksBrowserApp.init()` 第一步呼叫 `AppCrashReporting.bootstrap()`（早於 `ModelContainer` init，捕捉儲存初始化失敗）；`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` 變化（登出時清除，避免多帳戶污染）。
-- **Env keys**（backend）：`SENTRY_DSN` / `SENTRY_ENVIRONMENT`（default `production`）/ `SENTRY_RELEASE`（fallback to `KG_VERSION`）/ `SENTRY_TRACES_SAMPLE_RATE`（default 0.0）/ `SENTRY_PROFILES_SAMPLE_RATE`（default 0.0）— 詳見 `docs/sop/deploy.md`。
+- **Backend 實作**：`backend/src/kg/sentry_init.py`；FastAPI / Starlette / Logging integrations + auth header / OAuth query scrub；狀態暴露於 `/api/system/info`。
+- **iOS 實作**：`ios/BooksBrowser/Services/AppCrashReporting.swift`；SPM 守門 + `BooksBrowserApp.init()` 第一步 bootstrap + `setUser` 連動 `authManager.isLoggedIn`。
+- **Env / 取樣 / 隱私規範（SoT）**：`docs/sop/deploy.md §Sentry 錯誤追蹤`。
+- **iOS bootstrap 順序 / `beforeSend` 過濾規則**：`docs/sop/ios.md §Crash Reporting`。

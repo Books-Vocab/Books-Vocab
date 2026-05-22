@@ -124,9 +124,9 @@ APP_STORE_CONNECT_PRIVATE_KEY_PATH=/home/ubuntu/knowledge_graph_api/certs/appsto
 - host-specific path key（例如 App Store cert path）允許本地/遠端主機路徑不同，但要求檔名一致且位於各自主機的預期 `certs/` 目錄
 - 若 drift 存在，deploy 會直接失敗，避免 runtime 配置悄悄偏離
 
-### Sentry 錯誤追蹤
+### Sentry 錯誤追蹤 **(SoT)**
 
-Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費。
+Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費。本段為 Sentry 環境變數 / 取樣 / 隱私規範的權威來源；iOS bootstrap 程式碼層 wiring 見 `docs/sop/ios.md §Crash Reporting`，架構層概覽見 `docs/sop/architecture.md §Crash Reporting Layer`。
 
 #### Backend env vars
 
@@ -147,7 +147,7 @@ Sentry 為 **opt-in** — `SENTRY_DSN` 留空時 SDK 完全 no-op，整層免費
 
 Smoke test: `POST /api/admin/sentry/ping` after deploy to verify DSN wired — endpoint is admin-only, dispatches a `capture_message` + caught `capture_exception` via the SDK and returns `{sent, is_active, event_id}` JSON (never raises). 也可從 `/admin` dashboard 右上「Sentry Ping」按鈕直接觸發，按鈕旁顯示 event_id 前 8 碼或 `inactive (no DSN)`。
 
-#### LLM Provider env vars
+#### LLM Provider env vars **(SoT)**
 
 LLM 走可插拔 provider registry（`backend/src/kg/llm/providers.py`）。所有 provider 皆 OpenAI-compatible，切換只改 env、不動 code。
 
@@ -242,18 +242,7 @@ deploy 失敗
 
 ## 常用指令速查
 
-```bash
-./devops.sh status          # 健康狀態 + 部署版本 + 最近部署記錄
-./devops.sh logs [n]        # 查日誌（預設 50 行）
-./devops.sh users           # 列出用戶 + 可選第三方整合設定
-./devops.sh user-info <id>  # 用戶單字統計
-./devops.sh backup          # 備份 data/ 到本地
-./devops.sh env-check       # 確認遠端 .env 必要 key 齊全
-./devops.sh env-drift       # 檢查本地/遠端 .env 一致性（含 path 正規化）
-./devops.sh run "<cmd>"     # 在遠端 host 執行任意指令
-./devops.sh push-env        # 推送本地 .env 到遠端
-./devops.sh migrate         # 只跑 DB migration
-```
+`./devops.sh` 子指令完整清單(含 ops-cli / container-script / migrate-run / data_inspect 等進階指令)在 `devops` skill,由其作 SoT。日常常用：`status` / `logs [n]` / `users` / `user-info <id>` / `backup` / `env-check` / `env-drift` / `run "<cmd>"` / `push-env` / `migrate`;觸發 `devops` skill 取完整參考。
 
 ---
 

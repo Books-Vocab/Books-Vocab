@@ -9,6 +9,8 @@ verified_against: 7c7a23b
 -->
 # 伺服器排障指南
 
+> `./devops.sh *` 子指令的完整參考由 `devops` skill 作 SoT;本文件內的 `./devops.sh run "..."` 用法為診斷情境範例,非指令清單。
+
 ## 核心資訊
 
 - **伺服器 IP**: `13.193.212.134`（AWS Lightsail，ap-northeast-1a）
