@@ -73,6 +73,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
 
 iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios_baseline.md`。
+PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整、verified_against 未過期(預設閾值 30 commits)。
 
 ## Ops 腳本 (`ops/`)
 
@@ -87,6 +88,7 @@ iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios
 | `chrome_ext_bundle.sh` | Chrome extension 打包發行 |
 | `podcast_upload.sh` | 播客資源上傳(idempotent + 遠端 `index.json` flock) |
 | `test_devops.sh` | devops 工具測試 |
+| `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
 

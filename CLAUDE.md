@@ -105,3 +105,4 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 - iOS feature 重構(改檔名/分層/移檔) → 同 PR 更新對應 `docs/reference/feature_boundary/*.md`
 - sync 邏輯 / CSV schema / host topology / safety 規則變動 → 同 PR 更新對應 (SoT) doc
 - iOS 大規模重構 PR 合併後執行 `ops/gen_ios_baseline.sh` 再生 `docs/snapshot/ios_baseline.md`(script 產出,不手改)
+- PR 開出前跑 `ops/docs_lint.sh` 確認 frontmatter 完整 + verified_against 沒落後 HEAD 超過 30 commit;PR template(`.github/PULL_REQUEST_TEMPLATE.md`)Doc-Sync 段必須逐項勾選或明示不適用

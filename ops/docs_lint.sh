@@ -1,0 +1,131 @@
+#!/usr/bin/env bash
+# docs_lint.sh — 掃描 docs/ frontmatter 並回報 staleness
+#
+# 邏輯:
+#   1. 對每份 docs/**/*.md(超過 superpowers/, assets/),解析 doc-meta frontmatter
+#   2. 確認 5 個必填欄位齊全:tier / authority / update_trigger / scope / verified_against
+#   3. 對非 archive doc,計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
+#      - 超過 STALE_THRESHOLD(預設 30)→ WARN
+#      - verified_against 不是有效 sha(且不是 frozen)→ ERROR
+#
+# 用法:
+#   ops/docs_lint.sh                 # 全掃描
+#   ops/docs_lint.sh --strict        # 任何 WARN 都 exit 1
+#   STALE_THRESHOLD=10 ops/docs_lint.sh
+#
+# Exit code:
+#   0 — 全部 OK 或僅 WARN
+#   1 — 有 ERROR(欄位缺失 / verified_against 無效)或 --strict 模式下有 WARN
+#
+# 相容 bash 3.2(macOS 預設),不使用 mapfile / readarray。
+
+set -eu
+
+cd "$(git rev-parse --show-toplevel)"
+
+STALE_THRESHOLD="${STALE_THRESHOLD:-30}"
+STRICT=0
+[ "${1:-}" = "--strict" ] && STRICT=1
+
+REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
+VALID_TIERS="policy sop reference snapshot runbook archive"
+
+errors=0
+warnings=0
+ok=0
+
+# Find docs (exclude superpowers historical archive + assets)
+DOCS=$(find docs -type f -name "*.md" \
+  ! -path "docs/superpowers/*" \
+  ! -path "docs/assets/*" | sort)
+
+while IFS= read -r f; do
+  [ -z "$f" ] && continue
+
+  # Extract frontmatter block
+  meta=$(awk '/<!-- doc-meta/,/-->/' "$f")
+  if [ -z "$meta" ]; then
+    echo "ERROR $f — 沒有 <!-- doc-meta --> frontmatter"
+    errors=$((errors+1))
+    continue
+  fi
+
+  # Validate required fields
+  missing=""
+  for field in $REQUIRED_FIELDS; do
+    if ! echo "$meta" | grep -qE "^${field}:"; then
+      missing="$missing $field"
+    fi
+  done
+  if [ -n "$missing" ]; then
+    echo "ERROR $f — 缺欄位:$missing"
+    errors=$((errors+1))
+    continue
+  fi
+
+  tier=$(echo "$meta" | grep -E "^tier:" | head -1 | awk '{print $2}')
+  verified=$(echo "$meta" | grep -E "^verified_against:" | head -1 | awk '{print $2}')
+
+  # Validate tier
+  if ! echo " $VALID_TIERS " | grep -q " $tier "; then
+    echo "ERROR $f — 非法 tier: $tier(允許: $VALID_TIERS)"
+    errors=$((errors+1))
+    continue
+  fi
+
+  # Archive: skip staleness
+  if [ "$tier" = "archive" ]; then
+    if [ "$verified" != "frozen" ]; then
+      echo "WARN  $f — archive doc verified_against 應為 'frozen',實際: $verified"
+      warnings=$((warnings+1))
+    else
+      ok=$((ok+1))
+    fi
+    continue
+  fi
+
+  # Validate verified_against is real commit
+  if ! git rev-parse --verify "$verified^{commit}" >/dev/null 2>&1; then
+    echo "ERROR $f — verified_against 不是有效 commit: $verified"
+    errors=$((errors+1))
+    continue
+  fi
+
+  # Extract scope paths
+  scope_paths=$(echo "$meta" | awk '
+    /^scope:/ { in_scope=1; next }
+    in_scope && /^  - / { sub(/^  - /,""); print; next }
+    in_scope && !/^  / { in_scope=0 }
+  ')
+
+  if [ -z "$scope_paths" ]; then
+    echo "WARN  $f — scope 為空,無法計算 staleness"
+    warnings=$((warnings+1))
+    continue
+  fi
+
+  # Count commits in scope between verified..HEAD
+  # Build path args (newline-separated → arg list)
+  commits_in_scope=$(echo "$scope_paths" | xargs -I {} echo {} | \
+    xargs git log --oneline "$verified..HEAD" -- 2>/dev/null | wc -l | tr -d ' ')
+
+  if [ "$commits_in_scope" -gt "$STALE_THRESHOLD" ]; then
+    echo "STALE $f — $verified..HEAD 期間 $commits_in_scope 個 commit 動到 scope(閾值 $STALE_THRESHOLD)"
+    warnings=$((warnings+1))
+  else
+    ok=$((ok+1))
+  fi
+done <<EOF
+$DOCS
+EOF
+
+echo ""
+echo "─────────────────────────────────────"
+echo "OK:    $ok"
+echo "WARN:  $warnings"
+echo "ERROR: $errors"
+echo "─────────────────────────────────────"
+
+[ "$errors" -gt 0 ] && exit 1
+[ "$STRICT" -eq 1 ] && [ "$warnings" -gt 0 ] && exit 1
+exit 0
