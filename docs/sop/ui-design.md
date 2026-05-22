@@ -17,7 +17,7 @@ verified_against: 7c7a23b
 
 ## 設計系統概覽
 
-BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑、Notion 藍強調色）：
+BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、border 分層、俐落小角半徑、Morandi grey-blue 強調色 — 由 Notion 藍降飽和至 #4D7396 / #3D5F82 系，貼合 editorial 調性）：
 
 | 層級 | Token 來源 | 適用範圍 |
 |------|-----------|---------|
@@ -143,7 +143,7 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 
 ## Color token：Brand Hero + 狀態 bg
 
-`AppColors.brandHeroLight` (HSB 232°/0.55/0.62) / `brandHeroDark` (232°/0.45/0.78) + `AppColors.brandHero(_:)` scheme-aware accessor。
+`AppColors.brandHeroLight` `#3D5F82` (HSB ~213°/0.54/0.51) / `brandHeroDark` `#4A6E91` (HSB ~211°/0.49/0.57) + `AppColors.brandHero(_:)` scheme-aware accessor。色相已從 Notion product 藍（232°/0.85）平移到 Morandi grey-blue，與全域 accent 同色系。
 
 `AppTheme.Palette` 新欄位：
 - `accentHero` — 品牌 hero 主色（scheme-aware）
@@ -177,6 +177,6 @@ PR #402 引入：
 下列 issue 已知，列入後續 polish pass PR：
 
 1. **`AppOfflineBanner` light mode 對比 ≈ 3.21:1**（destructiveLight 12pt semibold on 10% destructiveLight bg），**fail WCAG AA 4.5:1**。修法：darken text 或 fall back 到 `primaryText` 配 destructive icon。
-2. **`accentHero` dark mode footgun**：`brandHeroDark` + white text = 4.02:1（逼近 WCAG AA 邊界）。目前僅 `AppCompactActionButtonStyle.primary` 內部 guard（dark mode 改走 `brandHeroLight`）；**其他 callsite 不要直接配 `.white`**，需待 `onBrandHero` token 抽出。
-3. **`AppCompactActionButtonStyle` primary foreground raw `.white`** — 待替換為 `onBrandHero` token。
+2. ~~**`accentHero` dark mode footgun**~~ — 已解除。Morandi `brandHeroDark` `#4A6E91` + white text = ~5.34:1 ✓ AA pass。`AppCompactActionButtonStyle.primary` 的 dark-mode 特殊 fallback 已移除（兩種 mode 都走 `palette.brandHero`）。
+3. ~~**`AppCompactActionButtonStyle` primary foreground raw `.white`**~~ — 已解除。改走 `AppColors.onBrandHero` token。
 4. **Dormant tokens（~60% 新 surface）**：`AppSkeleton`、`display1/2`、`appReadableFrame`、`AppElevation` 已定義但 0 callsite，使用前注意可能無實際 reference 樣本。

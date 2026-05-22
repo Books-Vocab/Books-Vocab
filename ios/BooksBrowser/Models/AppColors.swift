@@ -34,15 +34,16 @@ enum AppColors {
     static let paperDark      = Color(red: 0.098, green: 0.098, blue: 0.098)
 
     // ── 主題強調色（Morandi grey-blue · 取代 Notion 連結藍）─────────────
-    // light: #4D7396（~4.65:1 on 白卡） · 由原 #3078A1 降飽和度至 ~36%
-    // dark:  #85A4C2（~6.5:1 on 深灰頁面） · 由原 #5E9FD0 降飽和度至 ~30%
+    // light: #4D7396（~4.99:1 on 白卡） · 由原 #3078A1 降飽和度至 ~36%
+    // dark:  #85A4C2（~6.77:1 on 深灰頁面 #191919） · 由原 #5E9FD0 降飽和度至 ~30%
+    // 實測對比由 BooksBrowserTests/WCAGContrastTests.swift 鎖住。
     static let accentLight = Color(red: 0.302, green: 0.451, blue: 0.588)
     static let accentDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
     // ── Brand Hero（Morandi indigo · 主行動色 CTA）────────────────────
     // 用於主要 CTA、登入、Today Review 啟動鍵 — 比 accent 更深以維持 prominence
-    // light: #3D5F82 — 白字對比 ~6.5:1 ✓ AA pass（原 #1F6FD0 ~6.98:1 等效）
-    // dark:  #4A6E91 — 白字對比 ~5.2:1 ✓ AA pass
+    // light: #3D5F82 — 白字對比 ~6.65:1 ✓ AA pass
+    // dark:  #4A6E91 — 白字對比 ~5.34:1 ✓ AA pass（取代舊 #2383E2 的 4.02:1 fail）
     static let brandHeroLight = Color(red: 0.239, green: 0.373, blue: 0.510) // #3D5F82
     static let brandHeroDark  = Color(red: 0.290, green: 0.431, blue: 0.569) // #4A6E91
 
