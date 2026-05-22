@@ -107,6 +107,31 @@ Apple/Google SSO
 - User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
 - `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 自動 strip query string
 
+### Hot Reload（InjectionNext + Inject）
+
+開發時免 build 即時更新 SwiftUI，把「改一行等 30 秒 build」縮到秒級。Debug-only，Release builds LLVM-strip 為 no-op，**production 零影響**。
+
+**前置一次性設定**：
+1. SPM dep：`https://github.com/krzysztofzablocki/Inject`（已加進 `BooksBrowser.xcodeproj`）
+2. Build Settings → Debug → Other Linker Flags 含 `-Xlinker -interposable`（**只 Debug**）
+3. 下載 [InjectionNext.app](https://github.com/johnno1962/InjectionNext) 放 `/Applications/`
+
+**使用方式**：
+1. 啟動 InjectionNext.app（menu bar 出現 icon）→ menu bar 點 **Launch Xcode** 開啟 BooksBrowser.xcworkspace
+2. ⌘R 跑 Debug build 到 simulator，console 應出現 `💉 InjectionNext connected`
+3. 改任何已加 `.enableInjection()` 的 SwiftUI view → 存檔 → simulator 1-2 秒內重渲染
+
+**hot reload 範圍**：
+- `ContentView` 已掛 `@ObserveInjection` + `.enableInjection()` → 整棵 tree 預設可注入
+- 要對個別 view 啟用更精確的注入，於該 view 加同樣兩行
+- **可注入**：view body / modifier / layout / 文案 / `AppTheme` 色票
+- **不可注入（仍需 full build）**：stored property 增減、function signature 改動、`enum` case 新增、Readium C++/ObjC++ bridging 改動
+
+**故障排除**：
+- console 無 `💉` 訊息 → InjectionNext.app 未啟、或 Xcode 不是從 menu bar 「Launch Xcode」開的
+- 改 file 後 simulator 沒反應 → 看 console 是否報 `cannot inject ...`（多半是改到 stored property），需 ⌘R 重 build
+- Release archive 報錯 → 確認 `-interposable` flag **只在 Debug 配置**，Release 維持原狀
+
 
 
 ## 參考文件
