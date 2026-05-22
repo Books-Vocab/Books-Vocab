@@ -6,18 +6,21 @@ import SwiftUI
     AppThemeContainer {
         AppShellPreview(variant: .app)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Shared Shell / Vocab") {
     AppThemeContainer {
         AppShellPreview(variant: .vocab)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Shared Shell / Settings") {
     AppThemeContainer {
         AppShellPreview(variant: .settings)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 enum AppShellPreviewVariant {
