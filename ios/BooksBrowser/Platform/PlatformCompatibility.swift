@@ -98,6 +98,30 @@ extension View {
         #endif
     }
 
+    /// Source-language-aware text input: same as `platformTextInputConfig()`
+    /// but additionally forces ASCII keyboard when the user's translation
+    /// source language is English. Prevents Japanese / Korean IME from
+    /// hijacking English word-lookup fields when the system locale is ja/ko.
+    @ViewBuilder
+    func platformSourceLangTextInput(
+        source: TranslationLanguage = TranslationLanguage.currentSource
+    ) -> some View {
+        #if os(iOS)
+        if source == .en {
+            self
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+                .keyboardType(.asciiCapable)
+        } else {
+            self
+                .textInputAutocapitalization(.never)
+                .autocorrectionDisabled()
+        }
+        #else
+        self.autocorrectionDisabled()
+        #endif
+    }
+
     @ViewBuilder
     func platformListButtonStyle() -> some View {
         #if os(iOS)

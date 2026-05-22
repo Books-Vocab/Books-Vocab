@@ -29,11 +29,9 @@ enum StatsPresentation {
 
     private static let dayFormatter = AppDateFormatters.dayKey
 
-    private static let compactDayFormatter: DateFormatter = {
-        let f = DateFormatter()
-        f.dateFormat = "M/d"
-        return f
-    }()
+    private static func compactDayLabel(for date: Date) -> String {
+        LocaleAwareFormatter.shared.string(from: date, template: "Md")
+    }
 
     static func buildSummary(
         from entries: [VocabularyEntry],
@@ -64,7 +62,7 @@ enum StatsPresentation {
             case 0: label = "今天".localized
             case 1: label = "明天".localized
             default:
-                label = compactDayFormatter.string(from: date)
+                label = Self.compactDayLabel(for: date)
             }
             forecast.append(ForecastBucket(id: key, label: label, count: forecastMap[key] ?? 0))
         }

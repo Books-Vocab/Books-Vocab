@@ -1,5 +1,6 @@
 import Foundation
 import SwiftUI
+import TipKit
 
 enum AppLanguage: String, CaseIterable, Identifiable {
     case system
@@ -127,6 +128,29 @@ final class AppLanguageStore: ObservableObject {
         if let cloudObserver { NotificationCenter.default.removeObserver(cloudObserver) }
     }
 
+    // MARK: - Locale Resolution
+    //
+    // 本 store 暴露三條 locale-related path,分流意圖刻意保留:
+    //
+    // 1. `locale` (-> SwiftUI `.environment(\.locale, ...)`):
+    //    當 selection == .system 回 `.autoupdatingCurrent`。
+    //    Why: SwiftUI environment 透過 KVO observe locale 變更,使用者改系統 region
+    //    時(無需重啟 App)需即時 propagate 到所有 view。`Locale(identifier:)` 是
+    //    immutable snapshot,會錯失系統設定變更。
+    //
+    // 2. `formatLocale` (-> `String.format` / `NSString(format:locale:)` / Date.FormatStyle.locale):
+    //    當 selection == .system 走 `effectiveLanguage.locale`,亦即先 resolve 出具體
+    //    語言再回 immutable locale。
+    //    Why: 字串格式化需要對應到一個 *具體* 語言的 plural rule / 數字 / 日期格式。
+    //    `.autoupdatingCurrent` 在 format 上下文不穩(每次讀都是「最新系統值」),
+    //    且 plural rule 引擎不接受 auto-updating locale。
+    //
+    // 3. `stringBundle` (-> `Bundle.localizedString(forKey:)`):
+    //    走 `effectiveLanguage` resolve 到對應 .lproj。系統語言不在我們支援清單
+    //    時(例如 fr / de),`resolvedSystemLanguage` fallback 回 .english。
+    //
+    // 規則: 任何 user-visible 字串/格式 → 走 `stringBundle` + `formatLocale`;
+    // 任何 SwiftUI 注入(`.environment(\.locale, ...)`) → 走 `locale`。
     var locale: Locale {
         selection.locale
     }
@@ -144,9 +168,30 @@ final class AppLanguageStore: ObservableObject {
         selection = language
         defaults.set(language.rawValue, forKey: Keys.selectedLanguage)
         cloud.set(language.rawValue, forKey: Keys.selectedLanguage)
+        // TipKit datastore caches rendered Text — without reset, already-shown tips
+        // would still display the previous-language strings on next presentation.
+        // UX trade-off: resetDatastore() wipes **both** `MaxDisplayCount` progress
+        // AND `Event` donation history. So:
+        //  - Previously dismissed tips may re-appear once.
+        //  - Rules of form `{ donations.count == 0 }` (e.g. LongPressTip) re-pass,
+        //    so power users who've already used the feature could see the tip
+        //    again. Acceptable cost for getting in-language text on next show.
+        Task {
+            do {
+                try Tips.resetDatastore()
+            } catch {
+                #if DEBUG
+                assertionFailure("Tips.resetDatastore failed: \(error)")
+                #endif
+            }
+        }
     }
 
-    private var effectiveLanguage: AppLanguage {
+    /// The concrete language to apply for bundle/font/format decisions.
+    /// `.system` resolves to whichever supported language matches the OS preference.
+    /// Internal scope: AppFonts cascade selection reads this to pick per-script
+    /// CJK fallback fonts.
+    var effectiveLanguage: AppLanguage {
         switch selection {
         case .system:
             return AppLanguage.resolvedSystemLanguage()
