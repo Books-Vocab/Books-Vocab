@@ -7,14 +7,14 @@ verified_against: 6b62854
 # KG Backend Dev Guide
 
 主入口：
-- 部署 / env / migration：`docs/dev/deploy.md`
-- incident / debug / 502 / users：`docs/dev/debug.md`
-- app 與 backend 共用架構：`docs/dev/architecture.md`
+- 部署 / env / migration：`docs/sop/deploy.md`
+- incident / debug / 502 / users：`docs/sop/debug.md`
+- app 與 backend 共用架構：`docs/sop/architecture.md`
 
 參考附錄：
-- backend 測試策略：`docs/references/backend_testing_strategy.md`
-- card 格式規範：`docs/references/backend_card_format.md`
-- sync lifecycle：`docs/references/sync_lifecycle.md`
+- backend 測試策略：`docs/reference/testing/backend_strategy.md`
+- card 格式規範：`docs/reference/card_format.md`
+- sync lifecycle：`docs/reference/sync_lifecycle.md`
 
 保留在 backend 目錄的分析資料：
 - `backend/docs/analysis/`
@@ -33,16 +33,16 @@ verified_against: 6b62854
 
 後端相關任務，優先閱讀順序：
 
-1. `docs/dev/backend-dev.md`
-2. `docs/dev/deploy.md` 或 `docs/dev/debug.md`
-3. 視需要再讀 `docs/references/*`
+1. `docs/sop/backend.md`
+2. `docs/sop/deploy.md` 或 `docs/sop/debug.md`
+3. 視需要再讀 `docs/reference/*`
 
 ## 常見任務對應
 
 ### 跑測試
 
 先看：
-- `docs/references/backend_testing_strategy.md`
+- `docs/reference/testing/backend_strategy.md`
 
 標準命令（一律經由 uv，使用 `backend/.venv` 的 cpython-3.13）：
 
@@ -79,56 +79,56 @@ backend/.venv/bin/python -m pytest -q
 ### 查部署 / migration / env
 
 先看：
-- `docs/dev/deploy.md`
+- `docs/sop/deploy.md`
 
 ### 查 502 / caddy / API 不通 / user 狀態
 
 先看：
-- `docs/dev/debug.md`
+- `docs/sop/debug.md`
 
 ### 查 card 匯入 / 匯出格式
 
 先看：
-- `docs/references/backend_card_format.md`
+- `docs/reference/card_format.md`
 
 ### 查 sync 與前後端資料流
 
 先看：
-- `docs/dev/architecture.md`
-- `docs/references/sync_lifecycle.md`
+- `docs/sop/architecture.md`
+- `docs/reference/sync_lifecycle.md`
 
 ### 查 Sentry 錯誤追蹤
 
 先看：
-- `docs/dev/deploy.md`（env keys + opt-in 模式）
+- `docs/sop/deploy.md`（env keys + opt-in 模式）
 - `backend/src/kg/sentry_init.py`（scrubbing / integrations 實作）
 
 ### 查 LLM provider / 換模型 / A/B
 
 - Provider registry：`backend/src/kg/llm/providers.py` —— Gemini / DeepSeek（未來 Qwen·GLM）皆 OpenAI-compatible，加 provider = 加一列 `REGISTRY`。
-- 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/dev/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
+- 路由 `provider_for(call_type)` 依 env 解析（清單見 `docs/sop/deploy.md` 的「LLM Provider env vars」）。預設全 `gemini`，`embed` 永遠獨立留 Gemini。
 - A/B 比對 provider 品質與延遲：`cd backend && PYTHONPATH=src python -m kg.llm.ab`。
 
 ## 維護規則
 
 - backend 主規則變更：
-  優先更新這份文件或 `docs/dev/deploy.md` / `docs/dev/debug.md`
+  優先更新這份文件或 `docs/sop/deploy.md` / `docs/sop/debug.md`
 - backend 細節規範變更：
-  更新 `docs/references/*`
+  更新 `docs/reference/*`
 - backend 分析腳本或研究輸出：
   留在 `backend/docs/analysis/`
 
 ## 文檔邊界
 
-- `docs/dev/backend-dev.md`
+- `docs/sop/backend.md`
   backend 開發主入口
-- `docs/dev/deploy.md`
+- `docs/sop/deploy.md`
   安全部署、env、migration
-- `docs/dev/debug.md`
+- `docs/sop/debug.md`
   事故、健康檢查、debug
-- `docs/references/backend_testing_strategy.md`
+- `docs/reference/testing/backend_strategy.md`
   backend 測試體系
-- `docs/references/backend_card_format.md`
+- `docs/reference/card_format.md`
   card data format
-- `docs/dev/architecture.md`
+- `docs/sop/architecture.md`
   iOS + backend 共用資料流與產品脈絡

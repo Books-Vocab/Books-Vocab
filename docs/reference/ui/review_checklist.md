@@ -10,9 +10,9 @@ Date: 2026-03-10
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 設計規範主文檔：`docs/dev/ui-design.md`
-- 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
-- 狀態覆蓋矩陣：`docs/references/ui_state_matrix.md`
+- 設計規範主文檔：`docs/sop/ui-design.md`
+- 元件 / pattern inventory：`docs/reference/ui/components.md`
+- 狀態覆蓋矩陣：`docs/reference/ui/state_matrix.md`
 
 ## 用途
 
@@ -33,7 +33,7 @@ Scope: `ios/BooksBrowser`
 ### 2. Component 復用
 
 - [ ] 這個 UI 場景有沒有現成 pattern？
-  → 查 `docs/references/ui_component_pattern_inventory.md`
+  → 查 `docs/reference/ui/components.md`
 - [ ] 是否已有對應的 shared component？
   → Empty State → `AppEmptyState*` / `VocabEmptyState*`
   → State Message → `AppStateMessage*` / `VocabStateMessageCard`

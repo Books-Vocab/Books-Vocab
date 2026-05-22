@@ -3,7 +3,7 @@ set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_DIR="$REPO_ROOT/ios/BooksBrowser"
-OUTPUT="$REPO_ROOT/docs/references/ios_frontend_baseline.md"
+OUTPUT="$REPO_ROOT/docs/snapshot/ios_baseline.md"
 COMMIT_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD)"
 DATE="$(date +%Y-%m-%d)"
 

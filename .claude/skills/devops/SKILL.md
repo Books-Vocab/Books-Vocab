@@ -174,5 +174,5 @@ scp -i ~/.ssh/lightsail_default.pem -r \
 
 ## Deep Reference
 
-- 完整部署指南：`docs/dev/deploy.md`
-- 除錯指南：`docs/dev/debug.md`
+- 完整部署指南：`docs/sop/deploy.md`
+- 除錯指南：`docs/sop/debug.md`

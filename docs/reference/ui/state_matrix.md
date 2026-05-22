@@ -10,10 +10,10 @@ Date: 2026-03-09
 Scope: `ios/BooksBrowser`
 
 文檔網絡：
-- 設計規範主文檔：`docs/dev/ui-design.md`
-- 元件 / pattern inventory：`docs/references/ui_component_pattern_inventory.md`
-- 開發入口：`docs/dev/ios-dev.md`
-- App 架構脈絡：`docs/dev/architecture.md`
+- 設計規範主文檔：`docs/sop/ui-design.md`
+- 元件 / pattern inventory：`docs/reference/ui/components.md`
+- 開發入口：`docs/sop/ios.md`
+- App 架構脈絡：`docs/sop/architecture.md`
 
 ## 這份文件是幹嘛的
 
@@ -242,4 +242,4 @@ Preview matrix 已補齊：
 - Settings: logged out / logged in active / sub loading / delete in progress
 - Today Review: front / back / details / completed
 
-新增或修改 UI 時，參考 `docs/references/ui_review_checklist.md`。
+新增或修改 UI 時，參考 `docs/reference/ui/review_checklist.md`。

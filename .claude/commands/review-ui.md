@@ -82,7 +82,7 @@ git diff --cached --name-only -- 'ios/**/*.swift'
 
 ## 注意事項
 
-- 讀取 `docs/references/ui_component_pattern_inventory.md` 了解可用的 token 和元件名稱
+- 讀取 `docs/reference/ui/components.md` 了解可用的 token 和元件名稱
 - en.lproj 的英文翻譯要語意準確，不可機翻味太重
 - .strings 檔格式：`"key" = "value";`，每行一條，按字母序排列
 - 如果某個違規你無法確定最佳修復方式，在報告中標記 `⚠️ 需人工判斷` 而非亂改

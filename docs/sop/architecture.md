@@ -138,11 +138,11 @@ Chrome Extension 走 REST API 直連，不經 iOS sync pipeline：
 - Review reveal / navigation / swap → `reviewRevealSpring`、`reviewNavigationSpring`、`reviewCardSwapSpring`
 - Sync phase / step update → `phaseChange`、`feedbackPulse`
 
-這層規範的主文檔在 `docs/dev/ui-design.md` 的 `Motion Contract`。
-若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/dev/ios-dev.md`。
-若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/references/ui_component_pattern_inventory.md`。
-若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/references/ui_state_matrix.md`。
-若要查 backend 部署、debug、測試與格式規範入口，查 `docs/dev/backend-dev.md`。
+這層規範的主文檔在 `docs/sop/ui-design.md` 的 `Motion Contract`。
+若要改動畫規則，先更新該文檔，再修改程式；若是查編譯或 SwiftUI 實作錯誤，回 `docs/sop/ios.md`。
+若要確認現有有哪些可重用 UI 零件與互動模式，查 `docs/reference/ui/components.md`。
+若要確認各主畫面有哪些狀態已覆蓋、哪些還沒補齊，查 `docs/reference/ui/state_matrix.md`。
+若要查 backend 部署、debug、測試與格式規範入口，查 `docs/sop/backend.md`。
 
 ---
 
@@ -152,4 +152,4 @@ Backend + iOS 同時整合 Sentry，opt-in 啟動且預設關閉。
 
 - **Backend**（`backend/src/kg/sentry_init.py`）：`SENTRY_DSN` env 為主開關（空 = SDK 完全 no-op）；FastAPI / Starlette / Logging integrations；`send_default_pii=False` + `include_local_variables=False`；`_scrub_event` 移除 `Authorization` / `Cookie` / `X-Admin-Token` header 與 `token` / `admin_session` / `code` / `id_token` / `access_token` query 鍵；`max_request_body_size="never"`；logging WARNING 以上轉 breadcrumb（不直接送 event）。狀態暴露於 `/api/system/info`。
 - **iOS**（`ios/BooksBrowser/Services/AppCrashReporting.swift`）：SPM dep `sentry-cocoa` 透過 `canImport(Sentry)` 守門，缺套件即 pure no-op；`Info.plist` `SentryDSN` 鍵為主開關；release 命名 `<bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`、`dist=CFBundleVersion`；`sendDefaultPii=false`、`enableUserInteractionTracing=false`、HTTP breadcrumb URL 去 query string；`beforeSend` 丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；`BooksBrowserApp.init()` 第一步呼叫 `AppCrashReporting.bootstrap()`（早於 `ModelContainer` init，捕捉儲存初始化失敗）；`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` 變化（登出時清除，避免多帳戶污染）。
-- **Env keys**（backend）：`SENTRY_DSN` / `SENTRY_ENVIRONMENT`（default `production`）/ `SENTRY_RELEASE`（fallback to `KG_VERSION`）/ `SENTRY_TRACES_SAMPLE_RATE`（default 0.0）/ `SENTRY_PROFILES_SAMPLE_RATE`（default 0.0）— 詳見 `docs/dev/deploy.md`。
+- **Env keys**（backend）：`SENTRY_DSN` / `SENTRY_ENVIRONMENT`（default `production`）/ `SENTRY_RELEASE`（fallback to `KG_VERSION`）/ `SENTRY_TRACES_SAMPLE_RATE`（default 0.0）/ `SENTRY_PROFILES_SAMPLE_RATE`（default 0.0）— 詳見 `docs/sop/deploy.md`。

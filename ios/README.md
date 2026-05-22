@@ -46,7 +46,7 @@
 ## 🏗️ 系統架構
 
 為了實現「離線即時查詞」卻又具備「與遠端多用戶大腦同步」的特性，我們有一套詳盡的架構。
-深入了解前後端整合細節，請參見：[👉 `../docs/dev/architecture.md`](../docs/dev/architecture.md)
+深入了解前後端整合細節，請參見：[👉 `../docs/sop/architecture.md`](../docs/sop/architecture.md)
 
 ```
 BooksBrowser/
