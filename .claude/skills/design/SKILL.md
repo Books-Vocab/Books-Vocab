@@ -14,16 +14,15 @@ description: "Use before any creative work — creating features, building compo
 ## Checklist
 
 1. **探索專案脈絡** — 讀相關檔案、docs、recent commits
-2. **提供視覺夥伴**（若涉及視覺問題）— 獨立訊息，見 `visual-companion.md`
-3. **釐清問題** — 一次一題，理解目的/限制/成功標準
-4. **提出 2-3 方案** — 含取捨與推薦
-5. **呈現設計** — 依複雜度分段，每段使用者確認
-6. **寫 spec** — 存至 `docs/superpowers/specs/YYYY-MM-DD-<topic>-design.md`，commit
-7. **Spec review loop** — dispatch opus spec-document-reviewer（見 `spec-document-reviewer-prompt.md`），最多 3 輪
-8. **使用者確認 spec**
-9. **寫 plan** — 存至 `docs/superpowers/plans/YYYY-MM-DD-<feature-name>.md`
-10. **Plan review loop** — dispatch opus plan-document-reviewer（見 `plan-document-reviewer-prompt.md`），最多 3 輪
-11. **使用者確認 plan** → 交給 `execute` skill
+2. **釐清問題** — 一次一題，理解目的/限制/成功標準
+3. **提出 2-3 方案** — 含取捨與推薦
+4. **呈現設計** — 依複雜度分段，每段使用者確認
+5. **寫 spec** — 存至 `docs/specs/YYYY-MM-DD-<topic>-design.md`，commit
+6. **Spec review loop** — dispatch opus spec-document-reviewer（見 `spec-document-reviewer-prompt.md`），最多 3 輪
+7. **使用者確認 spec**
+8. **寫 plan** — 存至 `docs/plans/YYYY-MM-DD-<feature-name>.md`
+9. **Plan review loop** — dispatch opus plan-document-reviewer（見 `plan-document-reviewer-prompt.md`），最多 3 輪
+10. **使用者確認 plan** → 交給 `phased-workflow` skill
 
 ## 設計原則
 
@@ -31,7 +30,7 @@ description: "Use before any creative work — creating features, building compo
 - YAGNI 無情砍
 - 在既有 codebase 中遵循既有 pattern
 - 每個單元職責單一、介面明確、可獨立理解與測試
-- 大範圍需求先拆子專案，每個走獨立 design → execute 週期
+- 大範圍需求先拆子專案，每個走獨立 design → phased-workflow 週期
 
 ## Plan 撰寫規範
 
@@ -40,7 +39,7 @@ description: "Use before any creative work — creating features, building compo
 ```markdown
 # [Feature Name] Implementation Plan
 
-> **執行方式:** 使用 execute skill，所有 agent 皆 opus。
+> **執行方式:** 使用 phased-workflow skill，所有 agent 皆 opus。
 
 **Goal:** [一句話]
 **Architecture:** [2-3 句]
@@ -87,4 +86,4 @@ Expected: FAIL
 
 Plan 確認後，告知使用者：
 
-> "Plan 已存至 `<path>`。準備好就說「執行」，我會用 execute skill 全力平行實作。"
+> "Plan 已存至 `<path>`。準備好就說「執行」，我會用 phased-workflow skill 分階段推進並背景 review。"
