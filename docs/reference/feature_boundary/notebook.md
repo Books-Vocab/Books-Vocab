@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: c86a6b1
+verified_against: e06ceb7
 -->
 # Notebook Feature Boundary
 
@@ -21,7 +21,7 @@ verified_against: c86a6b1
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/NotebookListView.swift` | 560 | 主場景 `struct NotebookListView: View`，LazyVGrid card grid + ProgressCapsule + ReviewBanner + 整合 SyncView pending tab |
+| `Scenes/NotebookListView.swift` | 601 | 主場景 `struct NotebookListView: View`。**Adaptive layout (Phase 4a)**：`notebooks.count == 1` → 單一 `NotebookCard(style: .hero)` 跨整列寬；`≥2` → `LazyVGrid` + `NotebookAddCard`。`VocabReviewBanner` 在單 notebook 時不掛 `NotebookFilterChip`(scope filter 無意義)。`+` 永遠在 toolbar。 |
 | `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 
@@ -29,7 +29,7 @@ verified_against: c86a6b1
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Components/NotebookCard.swift` | 239 | `struct NotebookCard: View`，cover + ProgressCapsule + VocabReviewBanner（區分 due / unlearned）+ `NotebookCardActions` 右鍵選單 |
+| `Components/NotebookCard.swift` | 267 | `struct NotebookCard: View` + `enum NotebookCardStyle { .grid, .hero }`(Phase 4a)：grid 用 3:2 cover、hero 用 21:10 寬扁 cover + 隱藏 `使用中` pill。cover + ProgressCapsule + due/unlearned 標籤 + `NotebookCardActions` 右鍵選單。 |
 | `Components/NotebookCoverPatterns.swift` | 198 | 6 種 SwiftUI Canvas pattern 渲染（dots / lines / waves / 等）|
 | `Components/NotebookPalette.swift` | 34 | 12 色色票 enum + 對應 `Color`（cover 配色系統） |
 | `Components/NotebookFilterChip.swift` | 123 | filter chip：全部 / 有待複習 / 已學完 / 自訂排序 |

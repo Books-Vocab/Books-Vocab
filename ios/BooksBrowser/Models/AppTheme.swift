@@ -104,7 +104,9 @@ struct AppTheme: Equatable {
             infoBg: AppColors.infoDark.opacity(0.14),
             mutedFill: Color.white.opacity(0.07),
             scrim: Color.black.opacity(0.42),
-            tint: AppColors.accentDark,
+            // tint follows brandHero (gold), not accent (blue passive). Dark mode
+            // uses brandHeroDark for proper night-mode warmth — Phase 1b refinement.
+            tint: AppColors.brandHeroDark,
             overlayFill: Color.white.opacity(0.15),
             progressBarBackground: Color.white.opacity(0.10),
             buttonIdleFill: Color.white.opacity(0.10),
