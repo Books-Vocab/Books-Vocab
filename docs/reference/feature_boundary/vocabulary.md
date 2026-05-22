@@ -90,8 +90,8 @@ verified_against: 7c7a23b
 |------|------|------|
 | `Components/VocabShellComponents.swift` | 587 | shell 級元件庫：`VocabTabSelector` / `VocabChromePill` / `VocabSearchField` / `VocabListCard` 等 |
 | `Components/VocabSkinComponents.swift` | 211 | skin 級元件：`VocabCard` / `VocabToneChip` / `VocabEmptyStateCard` / `VocabReviewProgressBar` 等 |
-| `Components/WordRow.swift` | 175 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status，邊界 case 由 `Debug/Scenarios/NotebookDetailScenarios.swift` 鎖住） |
-| `Components/VocabReviewBanner.swift` | 175 | `struct VocabReviewBanner<FilterContent>: View` + `enum VocabReviewBannerStyle`。`.hero` = NotebookListView 主 CTA（cardBackground + title）；`.compact` = VocabularyListView 詳情頁 inline 變體（無 card bg、無 title、padding 砍半）— 詳情頁 filter chip bar 已顯示計數，hero card 視覺重複故收斂為單行 |
+| `Components/WordRow.swift` | 176 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status，邊界 case 由 `Debug/Scenarios/NotebookDetailScenarios.swift` 鎖住） |
+| `Components/VocabReviewBanner.swift` | 205 | `struct VocabReviewBanner<FilterContent>: View` + `enum VocabReviewBannerStyle`。`.hero` = NotebookListView 主 CTA（cardBackground + title）；`.compact` = VocabularyListView 詳情頁 inline 變體（無 card bg、無 title、horizontal padding 對齊 `pageHorizontalInset`）— 詳情頁 filter chip bar 已顯示計數，hero card 視覺重複故收斂為單行 |
 | `Components/VocabSwipeRow.swift` | 105 | `struct VocabSwipeRow<Content>: View` |
 | `Components/CardDocumentView.swift` | 327 | card document 主 View |
 | `Components/CardRichTextRenderer.swift` | 277 | rich text renderer |
