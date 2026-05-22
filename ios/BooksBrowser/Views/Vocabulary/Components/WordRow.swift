@@ -136,7 +136,7 @@ struct WordRow: View {
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityRowLabel)
         .accessibilityValue(accessibilityProgressDescription)
-        .accessibilityHint("點兩下查看詳細資訊")
+        .accessibilityHint(L10n.string("點兩下查看詳細資訊"))
     }
 
     private func resolveTone(_ tone: ViewData.Tone) -> Color {

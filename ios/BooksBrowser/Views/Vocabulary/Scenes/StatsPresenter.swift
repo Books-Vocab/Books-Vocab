@@ -310,7 +310,11 @@ struct StatsPresenter: View {
             }
             Spacer()
             if let graphLinks, !graphLinks.isEmpty {
-                Text("\(nodeCount) 詞 · \(graphLinks.count) 連結")
+                Text(L10n.format(
+                    "%@ · %@",
+                    L10n.format("vocab_graph_node_count_plural", Int64(nodeCount)),
+                    L10n.format("vocab_graph_link_count_plural", Int64(graphLinks.count))
+                ))
                     .font(appSkin.typography.monoLabel)
                     .foregroundStyle(appSkin.palette.quaternaryText)
             }
@@ -494,7 +498,12 @@ struct StatsPresenter: View {
     }
 
     private func totalsFooter(_ summary: StatsPresentation.Summary) -> some View {
-        Text("\(summary.totalCards) 張卡片 · \(summary.dueToday) 張到期 · 今天已複習 \(summary.reviewedToday) 張")
+        Text(L10n.format(
+            "%@ · %@ · %@",
+            L10n.format("vocab_total_cards_plural", Int64(summary.totalCards)),
+            L10n.format("vocab_due_cards_plural", Int64(summary.dueToday)),
+            L10n.format("vocab_reviewed_cards_plural", Int64(summary.reviewedToday))
+        ))
             .font(appSkin.typography.monoLabel)
             .foregroundStyle(appSkin.palette.quaternaryText)
             .frame(maxWidth: .infinity, alignment: .center)
