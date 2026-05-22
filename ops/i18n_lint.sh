@@ -9,7 +9,16 @@
 #   --strict   Any finding fails. Use in CI / Xcode Run Script Phase after sweep done.
 #
 # Allowlist:
-#   Add `// i18n-allow: <reason>` on the same line to exempt (e.g. brand names, proper nouns).
+#   - Per-line:  `// i18n-allow: <reason>`  on the same line to exempt
+#                (e.g. brand names, proper nouns, ASCII-only technical IDs).
+#   - Per-file:  `// i18n-allow: locale-neutral` anywhere in the file exempts the
+#                file from the static-formatter check (use for wire-format /
+#                internal-key formatters that pin Locale to en_US_POSIX with
+#                ASCII format tokens like "yyyy-MM-dd" or "HH:mm:ss").
+#   - Auto:      ISO8601DateFormatter declarations are always exempt (wire format).
+#   - Auto:      `#Preview { ... }` blocks and `private struct *Preview` view
+#                containers are stripped before scanning (demo-only, not user-
+#                facing). See ops/_i18n_strip_previews.py.
 #
 # Patterns scanned (Swift):
 #   - Text("中") / Button("中") / Label("中") / .navigationTitle("中") / Section("中")
@@ -25,6 +34,7 @@ ROOT_DIR="$(cd "$(dirname "$0")/.." && pwd)"
 IOS_SRC="$ROOT_DIR/ios/BooksBrowser"
 XCSTRINGS="$IOS_SRC/Localization/Localizable.xcstrings"
 BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
+STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"
 
 MODE="${1:---report}"
 
@@ -57,14 +67,64 @@ filter_results() {
 }
 
 scan_raw_chinese() {
-  rg --no-heading -n --pcre2 --type swift "${EXCLUDE_GLOBS[@]}" \
-    "$RAW_CHINESE_PATTERN" "$IOS_SRC" 2>/dev/null | filter_results || true
+  # 1. Enumerate candidate .swift files (excluding *Preview*.swift / tests).
+  # 2. For each, pipe through ops/_i18n_strip_previews.py to blank out
+  #    #Preview {} blocks and `private struct *Preview` containers
+  #    (line numbers preserved).
+  # 3. Run rg with --with-filename / --line-number on the stripped stream.
+  local files file stripped hits
+  files=$(rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null || true)
+  if [ -z "$files" ]; then
+    return 0
+  fi
+  hits=""
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    stripped=$(python3 "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
+    local file_hits
+    file_hits=$(printf '%s\n' "$stripped" \
+      | rg --no-heading -n --pcre2 "$RAW_CHINESE_PATTERN" 2>/dev/null \
+      | sed "s|^|$file:|" || true)
+    if [ -n "$file_hits" ]; then
+      if [ -z "$hits" ]; then
+        hits="$file_hits"
+      else
+        hits="$hits
+$file_hits"
+      fi
+    fi
+  done <<< "$files"
+  printf '%s' "$hits" | filter_results || true
+}
+
+# Drop any hit whose source file contains a file-wide
+# `// i18n-allow: locale-neutral` opt-out marker. Used by AppDateFormatters
+# (POSIX locale + ASCII wire-format tokens) and its centralized aliases.
+filter_locale_neutral_files() {
+  awk -F: '
+    {
+      file = $1
+      if (!(file in seen)) {
+        seen[file] = 0
+        # Inline scan for marker.
+        while ((getline line < file) > 0) {
+          if (line ~ /\/\/[[:space:]]*i18n-allow:[[:space:]]*locale-neutral/) {
+            seen[file] = 1
+            break
+          }
+        }
+        close(file)
+      }
+      if (seen[file] == 0) print $0
+    }
+  '
 }
 
 scan_static_formatter() {
   rg --no-heading -n --pcre2 --type swift "${EXCLUDE_GLOBS[@]}" \
     "$STATIC_FORMATTER_PATTERN" "$IOS_SRC" 2>/dev/null \
-    | rg --invert-match --line-buffered 'i18n-allow|LocaleAwareFormatter' || true
+    | rg --invert-match --line-buffered 'i18n-allow|LocaleAwareFormatter|ISO8601DateFormatter|=\s*AppDateFormatters\.' \
+    | filter_locale_neutral_files || true
 }
 
 # Parse .xcstrings JSON for entries with state=needs_review and empty value.
