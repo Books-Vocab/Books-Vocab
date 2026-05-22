@@ -26,6 +26,7 @@ struct CatalogScene: View {
         TokenSheetScenarios.register(in: pb)
         NotebookDetailScenarios.register(in: pb)
         NotebooksScenarios.register(in: pb)
+        NotebookListScenarios.register(in: pb)
         SettingsScenarios.register(in: pb)
         TodayReviewScenarios.register(in: pb)
         BookshelfScenarios.register(in: pb)
