@@ -150,13 +150,7 @@ extension VocabularyEntry {
 }
 
 extension Date {
-    private static let reviewFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .full
-        return f
-    }()
-
     func reviewRelativeDescription(now: Date = Date()) -> String {
-        Self.reviewFormatter.localizedString(for: self, relativeTo: now)
+        LocaleAwareFormatter.shared.relativeString(for: self, relativeTo: now, style: .full)
     }
 }

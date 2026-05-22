@@ -75,6 +75,19 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 iOS 大規模重構後執行 `ops/gen_ios_baseline.sh` 更新 `docs/snapshot/ios_baseline.md`。
 PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整、verified_against 未過期(預設閾值 30 commits)。
 
+## iOS — i18n / Locale 模組 (`ios/BooksBrowser/`)
+
+| 元件 | 路徑 | 用途 |
+|------|------|------|
+| `L10n` | `Localization/L10n.swift` | string / format 三層 fallback(current → en → key);format 走 NSString 觸發 plural rule |
+| `AppLanguage` / `AppLanguageStore` | `Models/AppLanguage.swift` | 5 語言選單 + UserDefaults + iCloud KV;`effectiveLanguage` 解析 `.system`;`locale` vs `formatLocale` 分流 |
+| `LocaleAwareFormatter` | `Models/LocaleAwareFormatter.swift` | 跟 AppLanguage 的 thread-safe DateFormatter/Number/Relative cache,format-in-lock,語言變更時 invalidate |
+| `Localizable.stringsdict` | `<lang>.lproj/` | NSStringPluralRuleType plural variations;新增 key 流程見 `docs/sop/i18n_plural_keys.md` |
+| `TranslationLanguage` | `Models/TranslationLanguage.swift` | 翻譯來源/目標語言;UserDefaults + iCloud KV + updatedAt LWW;預設值讀 `Locale.preferredLanguages`(script-aware) |
+| `KGFeatureFlags` | `Models/KGFeatureFlags.swift` | iOS-side feature gates(目前控 `serverTranslationLwwEnabled` / `vocabularyLangPayloadEnabled`) |
+| `AppFonts.cjk{Sans,Serif}FallbackName` | `Models/AppFonts.swift` | 依 effectiveLanguage 切 CJK fallback(PingFangTC/SC、Hiragino、AppleSDGothic) |
+| `SpeechService.voiceCode(for:)` | `Services/SpeechService.swift` | TranslationLanguage → BCP-47 region 對 AVSpeechSynthesisVoice 的 mapping(zh-Hant → zh-TW) |
+
 ## Ops 腳本 (`ops/`)
 
 | 腳本 | 用途 |
@@ -91,5 +104,6 @@ PR 開出前(或 CI)跑 `ops/docs_lint.sh` 確認所有 doc frontmatter 完整�
 | `docs_lint.sh` | docs/ frontmatter + staleness 檢查;`--strict` 嚴格模式;`STALE_THRESHOLD` env 調閾值 |
 | `data_inspect.py` | 本地 DB 卡片 / 圖譜 / 管道質量分析 |
 | `graph_analysis.py` | 圖譜連結閾值審計 |
+| `i18n_lint.sh` | iOS 字串在地化掃描(`--report` / `--baseline` / `--baseline-check` / `--strict`),擋 raw 中文、static formatter、`.xcstrings needs_review`。詳見 `docs/sop/i18n_lint.md` |
 
 Container 內 ops-cli(`db-query`、`ops_analyze.py` levels 1-6 等)由 `devops` skill 包裝呼叫。

@@ -6,13 +6,20 @@
 import SwiftUI
 import TipKit
 
+// Why Text(verbatim:): bypass SwiftUI's automatic LocalizedStringKey lookup —
+// the string from L10n.string(_:) is already resolved through our 3-tier
+// fallback. Without `verbatim`, SwiftUI would attempt a second Bundle.main
+// lookup on the resolved value, which can corrupt UI when the value happens
+// to contain format specifiers or match an unrelated catalog key.
+// DO NOT remove `verbatim`.
+
 // MARK: - Long Press Word Lookup
 
 struct LongPressTip: Tip {
     static let wordLookedUp = Event(id: "wordLookedUp")
 
-    var title: Text { Text("長按查詞") }
-    var message: Text? { Text("長按任何單字即可查詢 AI 翻譯與詞性解析") }
+    var title: Text { Text(verbatim: L10n.string("tip_long_press_title")) }
+    var message: Text? { Text(verbatim: L10n.string("tip_long_press_message")) }
     var options: [TipOption] { [Tips.MaxDisplayCount(1)] }
 
     var rules: [Rule] {
@@ -25,8 +32,8 @@ struct LongPressTip: Tip {
 struct SyncPendingTip: Tip {
     static let syncCompleted = Event(id: "syncCompleted")
 
-    var title: Text { Text("同步你的單字") }
-    var message: Text? { Text("你有未同步的生詞，點擊同步按鈕推送到雲端") }
+    var title: Text { Text(verbatim: L10n.string("tip_sync_vocab_title")) }
+    var message: Text? { Text(verbatim: L10n.string("tip_sync_vocab_message")) }
     var options: [TipOption] { [Tips.MaxDisplayCount(1)] }
 
     var rules: [Rule] {
@@ -37,8 +44,8 @@ struct SyncPendingTip: Tip {
 // MARK: - EPUB Guide
 
 struct EPUBGuideTip: Tip {
-    var title: Text { Text("哪裡找電子書？") }
-    var message: Text? { Text("查看 EPUB 取得指南，了解如何取得免費或付費電子書") }
+    var title: Text { Text(verbatim: L10n.string("tip_epub_guide_title")) }
+    var message: Text? { Text(verbatim: L10n.string("tip_epub_guide_message")) }
     var options: [TipOption] { [Tips.MaxDisplayCount(1)] }
 
     var actions: [Action] {

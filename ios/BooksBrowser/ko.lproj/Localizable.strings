@@ -501,3 +501,12 @@
 "字幕大小" = "자막 크기";
 "查詞時自動暫停" = "검색 시 자동 일시정지";
 "點字幕查單字時暫停播放，關閉後恢復" = "단어를 찾을 때 재생을 일시정지하고 닫으면 재개합니다";
+
+/* TipKit — Phase 2 */
+"tip_long_press_title" = "길게 눌러 검색";
+"tip_long_press_message" = "단어를 길게 누르면 AI 번역과 품사 분석을 볼 수 있습니다";
+"tip_sync_vocab_title" = "단어 동기화";
+"tip_sync_vocab_message" = "동기화되지 않은 단어가 있습니다. 동기화 버튼을 눌러 클라우드에 전송하세요";
+"tip_epub_guide_title" = "전자책 어디서 찾나요?";
+"tip_epub_guide_message" = "EPUB 가이드에서 무료 또는 유료 전자책 입수 방법을 확인하세요";
+"昨天" = "어제";

@@ -96,6 +96,8 @@ struct SettingsAccountSection: View {
                     HStack(spacing: AppSpacing.s2) {
                         TextField("帳號 ID（手動）".localized, text: manualLoginUserId)
                             .appSettingsTextInputStyle(alignment: .leading)
+                            // Account ID is ASCII-only — force English IME regardless of source lang.
+                            .platformSourceLangTextInput(source: .en)
 
                         SettingsCompactActionButton(
                             title: "登入".localized,

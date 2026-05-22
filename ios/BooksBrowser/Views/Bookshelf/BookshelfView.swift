@@ -596,14 +596,8 @@ struct PodcastSeriesCard: View {
 }
 
 private extension Date {
-    private static let shortFormatter: RelativeDateTimeFormatter = {
-        let f = RelativeDateTimeFormatter()
-        f.unitsStyle = .short
-        return f
-    }()
-
     var relativeShort: String {
-        Self.shortFormatter.localizedString(for: self, relativeTo: Date())
+        LocaleAwareFormatter.shared.relativeString(for: self, relativeTo: Date(), style: .short)
     }
 }
 
