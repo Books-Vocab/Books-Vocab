@@ -229,6 +229,7 @@ extension AppStateMessageStyle {
     AppThemeContainer {
         AppToolbarComponentsPreview()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 private struct AppToolbarComponentsPreview: View {

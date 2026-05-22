@@ -398,5 +398,6 @@ private struct PDFKitRepresentable: UIViewRepresentable {
         PDFReaderView(book: .init(title: "Sample PDF", author: "Author", fileName: "sample.pdf", format: .pdf))
             .modelContainer(for: [Book.self, VocabularyEntry.self], inMemory: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif

@@ -152,4 +152,5 @@ struct LoginSheet: View {
     AppThemeContainer {
         LoginSheet()
     }
+    .environmentObject(AppAppearanceStore.preview)
 }

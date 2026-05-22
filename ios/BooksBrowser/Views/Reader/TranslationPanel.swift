@@ -183,18 +183,21 @@ private struct TranslationPanelPreviewScene: View {
     AppThemeContainer {
         TranslationPanelPreviewScene(isExpanded: true, isExplanationOnly: false)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Translation / Explain Only") {
     AppThemeContainer {
         TranslationPanelPreviewScene(isExpanded: true, isExplanationOnly: true)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Translation / Collapsed") {
     AppThemeContainer {
         TranslationPanelPreviewScene(isExpanded: false, isExplanationOnly: false)
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Translation / Error") {
@@ -206,6 +209,7 @@ private struct TranslationPanelPreviewScene: View {
             translationErrorMessage: "翻譯服務逾時，請稍後再試。"
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 
 #Preview("Explanation / Error") {
@@ -217,5 +221,6 @@ private struct TranslationPanelPreviewScene: View {
             explanationErrorMessage: "語境分析暫時不可用。"
         )
     }
+    .environmentObject(AppAppearanceStore.preview)
 }
 #endif
