@@ -210,4 +210,13 @@ final class AppLanguageStore: ObservableObject {
         }
         return bundle
     }
+
+    private init(previewSelection: AppLanguage) {
+        self.defaults = UserDefaults(suiteName: "preview.language") ?? .standard
+        self.selection = previewSelection
+        // No cloudObserver — Preview / Catalog scenarios don't sync with iCloud
+        // and skipping the observer avoids polluting NotificationCenter in tests.
+    }
+
+    static let preview = AppLanguageStore(previewSelection: .system)
 }
