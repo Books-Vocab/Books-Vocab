@@ -4,6 +4,12 @@
 //
 //  統一的 DateFormatter / ISO8601DateFormatter 定義，避免重複建立。
 //
+//  i18n-allow: locale-neutral
+//  All formatters here pin Locale to en_US_POSIX with ASCII-only format
+//  tokens (yyyy-MM-dd, HH:mm:ss) or use ISO8601DateFormatter (wire format).
+//  Output is intentionally locale-invariant — used for day keys, internal
+//  storage keys, and wire serialization, never for user-facing display.
+//
 
 import Foundation
 
