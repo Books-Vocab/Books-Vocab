@@ -99,13 +99,13 @@ Apple/Google SSO
 
 ### Crash Reporting（Sentry）
 
+**iOS env / Info.plist key / 取樣率（SoT）**：`docs/sop/deploy.md §Sentry 錯誤追蹤 → iOS env / Info.plist`。本段僅寫 iOS-side 程式碼層 wiring。
+
+實作要點（`Services/AppCrashReporting.swift`）：
 - SPM dep `sentry-cocoa` 透過 `canImport(Sentry)` 守門 — 缺套件即 pure no-op，dev / PR build 不卡編譯
-- 啟用條件：`Info.plist` 設 `SentryDSN`（optional：`SentryEnvironment` 覆寫，否則 DEBUG = `debug` / Release = `production`）
-- DEBUG build 預設關閉；`SENTRY_ENABLED_IN_DEBUG=1` env 或 `-sentryTest` launch arg 強制開啟驗證
-- Release 命名：`<bundleId>@<CFBundleShortVersionString>+<CFBundleVersion>`；`dist=CFBundleVersion`（區分 TestFlight 多次 build）
-- 隱私：`sendDefaultPii=false`、`enableUserInteractionTracing=false`、HTTP breadcrumb URL 去 query string、`beforeSend` 丟棄 `CancellationError` / `NSURLErrorCancelled`
 - Bootstrap 順序：`AppCrashReporting.bootstrap()` 在 `BooksBrowserApp.init()` 第一步執行（早於 `ModelContainer` init，捕捉儲存初始化失敗）
-- User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange（登出時清除，避免多帳戶污染）
+- User 追蹤：`AppCrashReporting.setUser(id:)` 連動 `authManager.isLoggedIn` onChange — 登出時清除，避免多帳戶污染
+- `beforeSend` 過濾：丟棄 `CancellationError` / `NSURLErrorCancelled` 噪音；HTTP breadcrumb 自動 strip query string
 
 
 
