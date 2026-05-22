@@ -297,7 +297,7 @@ struct StatsPresenter: View {
         HStack(spacing: appSkin.spacing.inlineGap) {
             Image(systemName: "point.3.connected.trianglepath.dotted")
                 .font(appSkin.typography.iconMedium)
-                .foregroundStyle(appSkin.palette.accent)
+                .foregroundStyle(AppColors.chartHighlight)
             Text("關聯圖".localized)
                 .font(appSkin.typography.caption)
                 .foregroundStyle(appSkin.palette.primaryText)

@@ -8,14 +8,15 @@
 //  Vocabulary 功能的所有顏色請透過 @Environment(\.appSkin) 取得，
 //  其背後由 AppTheme → AppSkin.themed() 組裝而成。
 //
-//  設計哲學：Notion-inspired Palette + 淡奶黃 primary / Morandi 藍 secondary
+//  設計哲學：Notion-inspired Palette + 極淡奶黃 CTA / 灰階 chrome / Morandi 藍被動
 //    · 表面近白／中性深灰 — 純淨、扁平，不靠重陰影靠 border 分層
 //    · 暖近黑文字（#37352F）取代純黑，承襲 Notion 的溫潤閱讀感
-//    · 主色採淡奶黃 / butter cream（brandHero #E8C77F / #D4B36A light/dark）—
-//      像剛打發的奶油色、淡 Hobonichi 紙紋金，書卷氣不古銅
+//    · CTA 採極淡奶黃（brandHero #FCDE9A pastel cream，兩種 mode 同色）
+//    · Chrome（tint：tab bar / nav button / toolbar）採灰階（tintLight #37352F /
+//      tintDark #E6E6E3）— 奶黃不用在「永遠在那」的 chrome 上，避免稀釋 CTA 訊號
 //    · 次色保留 Morandi grey-blue（accent #4D7396）— 連結、info、被動點綴
 //    · 對比採分級制：正文 ≥4.5:1、metadata ≥3:1、裝飾 ~2.5:1
-//    · 淡奶黃 + 白字對比 ~1.6:1 fail AA → onBrandHero 採深炭灰 #1C1A17 (~9-10:1)
+//    · 極淡奶黃 + 白字對比 ~1.3:1 fail AA → onBrandHero 採深炭灰 #1C1A17 (~13:1)
 //  ─────────────────────────────────────────────────────────────────────
 //  顏色分組（依使用方）
 //    [Reader]  paper*, highlightMarkCSS（ReaderSettings 使用）
@@ -42,14 +43,15 @@ enum AppColors {
     static let accentLight = Color(red: 0.302, green: 0.451, blue: 0.588)
     static let accentDark  = Color(red: 0.522, green: 0.643, blue: 0.761)
 
-    // ── Brand Hero（淡奶黃 / butter cream · 主行動色 CTA）────────────
-    // 用於主要 CTA、登入、Today Review 啟動鍵。色相靈感：剛打發的奶油色、
-    // 淡 Hobonichi 紙紋金、雞蛋糕烤色 — editorial 書卷氣不古銅。
-    // light: #E8C77F — onBrandHero (#1C1A17) 對比 ~10.8:1 ✓ AAA pass
-    // dark:  #D4B36A — onBrandHero (#1C1A17) 對比 ~8.7:1 ✓ AAA pass
-    // 為何不用白字：白字 + #E8C77F = 1.6:1 fail AA → 強制走 dark fg。
-    static let brandHeroLight = Color(red: 0.910, green: 0.780, blue: 0.498) // #E8C77F
-    static let brandHeroDark  = Color(red: 0.831, green: 0.702, blue: 0.416) // #D4B36A
+    // ── Brand Hero（極淡奶黃 / pastel cream · 主行動色 CTA）──────────
+    // 用於主要 CTA、登入、Today Review 啟動鍵。色相：剛打發奶油 / 紙紋淺金。
+    // 兩種 mode 用同一色 `#FCDE9A` — 單一品牌色 invariant，跨 theme 一致。
+    // onBrandHero (#1C1A17) 對比 ~13.5:1 ✓ AAA pass（兩模式相同）。
+    // 為何不用白字：白字 + #FCDE9A = ~1.3:1 fail AA → 強制走 dark fg。
+    // 取捨：在白卡片(#FFFFFF) 上對比僅 ~1.3:1，按鈕略低調 — 設計用意是
+    // 「淡淡的黃」、不搶眼。CTA 重量改靠形狀/字重撐起，不靠飽和度。
+    static let brandHeroLight = Color(red: 0.988, green: 0.871, blue: 0.604) // #FCDE9A
+    static let brandHeroDark  = Color(red: 0.988, green: 0.871, blue: 0.604) // #FCDE9A (同 light)
 
     // ── On-Brand-Hero 前景（深炭灰，取代 .white）─────────────────────
     // 為何不再用 .white：奶黃 brandHero 上的白字對比 ~3.4:1 fail AA。
@@ -83,11 +85,23 @@ enum AppColors {
     static let warningLight = Color(red: 0.549, green: 0.376, blue: 0.078)
     static let warningDark  = Color(red: 0.851, green: 0.643, blue: 0.255)
 
-    // ── App 全域 Tint（淡奶黃，與 brandHeroLight 同色）───────────────
-    // tint = SwiftUI `.tint` 的注入色，影響選中 tab、nav button、accent 控制項。
-    // 既然奶黃是 primary，tint 跟著 brandHeroLight (#E8C77F)；藍色 accent 留給
-    // 「被動」場景（link / info）—— 不再是 tint 預設。
-    static let tint = Color(red: 0.910, green: 0.780, blue: 0.498)
+    // ── App 全域 Tint（灰階 chrome）─────────────────────────────────
+    // tint = SwiftUI `.tint` 的注入色，影響選中 tab、nav button、toolbar
+    // item 等「導覽 chrome」。**刻意不採奶黃** — 奶黃 brandHero 保留給真正
+    // 的 CTA(到期複習、開始 review 等)，chrome 走 primaryText 灰階以提升
+    // 可讀性、避免「滿屏都是黃」稀釋 CTA 訊號。
+    // light: #37352F (= primaryText.light)
+    // dark:  #E6E6E3 (= primaryText.dark)
+    static let tintLight = Color(red: 0.216, green: 0.208, blue: 0.184)
+    static let tintDark  = Color(red: 0.902, green: 0.902, blue: 0.890)
+
+    // ── Chart Highlight（深奶黃，stats 頁填色用）────────────────────────
+    // brandHero `#FCDE9A` 對白底僅 1.3:1，做 heatmap/forecast/calendar 填色
+    // 會「肉眼看不到」。Chart 維持奶黃家族(色相 36°)但加深至 `#B5894B`，
+    // 對白底 ~3.17:1 ✓ AA graphical、對深 card ~4.4:1 ✓ AA — 兩 mode 同色。
+    // 用於 VocabActivityHeatmap、VocabForecastChart、VocabCalendarGrid、
+    // StatsPresenter 內的 metric icon。
+    static let chartHighlight = Color(red: 0.710, green: 0.537, blue: 0.294) // #B5894B
 
     // ── 暖中性棕（Preview 場景頁底漸層用）────────────────────────────────
     static let warmNeutral = Color(hue: 30/360, saturation: 0.18, brightness: 0.62)
