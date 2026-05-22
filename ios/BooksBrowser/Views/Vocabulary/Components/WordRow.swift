@@ -68,22 +68,32 @@ struct WordRow: View {
                             .foregroundStyle(resolveTone(viewData.leadingTone ?? .tertiary))
                     }
 
+                    // Why: 單字若超長(`pneumonoultramicroscopic…`)在窄寬度
+                    // 會把 partOfSpeech / trailingLabel 擠出版,truncate 是底線。
                     Text(viewData.word)
                         .font(appSkin.typography.rowWord)
                         .strikethrough(viewData.isStrikethrough, color: resolveTone(viewData.wordTone))
                         .foregroundStyle(resolveTone(viewData.wordTone))
+                        .lineLimit(1)
+                        .truncationMode(.tail)
 
                     if let pos = viewData.partOfSpeech {
                         Text(pos)
                             .font(appSkin.typography.caption)
                             .foregroundStyle(appSkin.palette.tertiaryText)
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
 
                     if let trailingLabel = viewData.trailingLabel {
                         Spacer()
+                        // monospacedDigit: `42d / 2d` 之類數字欄位避免比例字寬抖動。
                         Text(trailingLabel.localized)
                             .font(appSkin.typography.monoLabel)
+                            .monospacedDigit()
                             .foregroundStyle(resolveTone(viewData.trailingTone ?? .tertiary))
+                            .lineLimit(1)
+                            .fixedSize(horizontal: true, vertical: false)
                     }
                 }
 
@@ -92,10 +102,12 @@ struct WordRow: View {
                         .font(appSkin.typography.body)
                         .foregroundStyle(appSkin.palette.secondaryText)
                         .lineLimit(2)
+                        .truncationMode(.tail)
                 } else if !viewData.isStrikethrough {
                     Label("待翻譯".localized, systemImage: "clock")
                         .font(appSkin.typography.caption)
                         .foregroundStyle(appSkin.palette.tertiaryText)
+                        .lineLimit(1)
                 }
 
                 if let book = viewData.bookTitle, !book.isEmpty {
@@ -104,9 +116,13 @@ struct WordRow: View {
                             .font(appSkin.typography.iconTiny)
                         Text(book)
                             .font(appSkin.typography.caption)
+                            .lineLimit(1)
+                            .truncationMode(.tail)
                         if let chapter = viewData.chapterTitle {
                             Text("· \(chapter)")
                                 .font(appSkin.typography.caption)
+                                .lineLimit(1)
+                                .truncationMode(.tail)
                         }
                     }
                     .foregroundStyle(appSkin.palette.tertiaryText)
@@ -117,6 +133,7 @@ struct WordRow: View {
                         .font(appSkin.typography.caption)
                         .foregroundStyle(resolveTone(viewData.statusTone ?? .tertiary))
                         .lineLimit(1)
+                        .truncationMode(.tail)
                 }
             }
 
