@@ -20,6 +20,9 @@ struct KGVocabView: View {
     let notebookId: String
     /// macOS: word detail 由父頁的 split panel 顯示，透過此 callback 傳出
     var onEntrySelected: ((VocabularyEntry) -> Void)?
+    /// 詳情頁「開始複習」CTA callback — 由父層 (VocabularyListView+State) 注入。
+    /// `nil` ⇒ chip+sort 列尾端不顯示 CTA pill (e.g. macOS split detail pane)。
+    var onStartReview: (([VocabularyEntry]) -> Void)?
 
     @Query private var syncedEntries: [VocabularyEntry]
     @Environment(\.authManager) private var authManager
@@ -31,10 +34,16 @@ struct KGVocabView: View {
     @State private var showLoginSheet = false
     @Query private var pendingDeletes: [VocabularyEntry]
 
-    init(searchText: Binding<String>, notebookId: String = "default", onEntrySelected: ((VocabularyEntry) -> Void)? = nil) {
+    init(
+        searchText: Binding<String>,
+        notebookId: String = "default",
+        onEntrySelected: ((VocabularyEntry) -> Void)? = nil,
+        onStartReview: (([VocabularyEntry]) -> Void)? = nil
+    ) {
         self._searchText = searchText
         self.notebookId = notebookId
         self.onEntrySelected = onEntrySelected
+        self.onStartReview = onStartReview
         let nbId = notebookId
         let syncedFilter = #Predicate<VocabularyEntry> {
             $0.syncStatus == 1 &&
@@ -97,6 +106,20 @@ struct KGVocabView: View {
                 count: c.count(for: state)
             )
         }
+        let reviewCTA: KGVocabPresenter.State.ReviewCTA? = {
+            guard let handler = onStartReview else { return nil }
+            guard c.dueCount > 0 || c.unlearnedCount > 0 else { return nil }
+            let due = c.dueBucket
+            let unlearned = c.unlearnedBucket
+            return .init(
+                dueCount: c.dueCount,
+                unlearnedCount: c.unlearnedCount,
+                onStartDue: { handler(due) },
+                onStartUnlearned: { handler(unlearned) },
+                onStartMixed: { handler(due + unlearned) }
+            )
+        }()
+
         let state = KGVocabPresenter.State(
             banner: bannerState,
             reviewStateOptions: tabOptions,
@@ -108,7 +131,8 @@ struct KGVocabView: View {
                 systemImage: emptyStateIcon,
                 description: emptyStateDescription,
                 action: emptyStateAction
-            )
+            ),
+            reviewCTA: reviewCTA
         )
 
         return KGVocabPresenter(
