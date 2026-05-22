@@ -10,6 +10,10 @@ enum LayoutMode: Equatable {
     case compact
     case regular
 
+    /// Notebook grid card 鎖定 aspect ratio — 整卡（含 cover + metadata）3:4 直式。
+    /// 修掉左右兩本 metadata 高度不齊 + `NotebookAddCard` 4:3 撐高破節奏的 bug。
+    static let notebookCardAspectRatio: CGFloat = 3.0 / 4.0
+
     init(horizontalSizeClass: UserInterfaceSizeClass?) {
         #if os(macOS)
         self = .regular
