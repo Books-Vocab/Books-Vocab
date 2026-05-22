@@ -7,11 +7,16 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 /// 主介面 — Tab 導航
 struct ContentView: View {
     @Environment(\.authManager) private var authManager
     @Environment(\.modelContext) private var modelContext
+
+    // Why: Hot-reload hook. Release builds: LLVM-strip 成 no-op，零 runtime cost。
+    // 詳見 docs/sop/ios.md §Hot Reload。
+    @ObserveInjection private var inject
 
     #if os(macOS)
     @State private var showSettings = false
@@ -52,6 +57,7 @@ struct ContentView: View {
             SettingsView()
         }
         #endif
+        .enableInjection()
     }
 }
 
