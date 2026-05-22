@@ -1,8 +1,10 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: manual
 scope:
-  - ios/BooksBrowser
-verified_against: 4061750
+  - ios/BooksBrowser/
+verified_against: 7c7a23b
 -->
 # UI Review Checklist
 

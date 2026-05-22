@@ -1,8 +1,10 @@
 <!-- doc-meta
 tier: reference
+authority: derived
+update_trigger: code-change
 scope:
-  - ios/BooksBrowser
-verified_against: c16321f
+  - ios/BooksBrowser/
+verified_against: 7c7a23b
 -->
 # UI State Matrix
 

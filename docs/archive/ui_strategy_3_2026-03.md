@@ -1,8 +1,10 @@
 <!-- doc-meta
-tier: reference
+tier: archive
+authority: frozen
+update_trigger: none
 scope:
-  - ios/BooksBrowser
-verified_against: 4eaa92b
+  - ios/BooksBrowser/
+verified_against: frozen
 -->
 # UI Strategy 3: Verification & Governance
 

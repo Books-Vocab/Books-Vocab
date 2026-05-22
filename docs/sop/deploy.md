@@ -1,9 +1,11 @@
 <!-- doc-meta
-tier: operational
+tier: sop
+authority: derived
+update_trigger: sop-change
 scope:
-  - backend/src/kg
-  - ops
-verified_against: 0bc3299
+  - backend/
+  - ops/
+verified_against: 7c7a23b
 -->
 # 後端部署指南
 
