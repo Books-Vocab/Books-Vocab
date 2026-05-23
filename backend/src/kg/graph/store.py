@@ -6,6 +6,7 @@ import json
 import logging
 import threading
 from pathlib import Path
+from typing import ClassVar
 
 from .candidates import _CandidatesMixin
 from .links import _LinksMixin
@@ -116,7 +117,7 @@ class GraphStore(_PersistenceMixin, _LinksMixin, _CandidatesMixin):
         }
 
     # Link kinds removed from the enum; silently drop on load.
-    _RETIRED_KINDS: set[str] = {"confusable"}
+    _RETIRED_KINDS: ClassVar[frozenset[str]] = frozenset({"confusable"})
 
     @staticmethod
     def _normalize_pair(a: str, b: str) -> tuple[str, str]:
