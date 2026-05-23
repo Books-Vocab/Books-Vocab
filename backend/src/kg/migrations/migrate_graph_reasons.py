@@ -30,7 +30,6 @@ def migrate_user_graph(user_dir: Path, client, model: str) -> int:
     """Migrate all notebook graphs for one user. Returns count of updated links."""
     from kg.cards import CardStore
     from kg.graph import GraphStore
-    from kg.judge import Judgement
 
     # Inline prompts (originally from judge.py, inlined for migration stability)
     _MIGRATE_SYSTEM_PROMPT = """Judge vocabulary relationship. Choose ONE type:

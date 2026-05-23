@@ -24,11 +24,11 @@ def decrypt_value(stored: str, jwt_secret: str) -> str:
     try:
         f = Fernet(_derive_key(jwt_secret))
         return f.decrypt(stored[4:].encode()).decode()
-    except InvalidToken:
+    except InvalidToken as exc:
         raise ValueError(
             "Cannot decrypt stored secret: key mismatch. "
             "Was JWT_SECRET rotated? Re-encrypt stored secrets with the new key."
-        )
+        ) from exc
 
 
 def is_encrypted(value: str) -> bool:
