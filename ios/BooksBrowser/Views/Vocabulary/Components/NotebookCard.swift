@@ -91,8 +91,8 @@ struct NotebookCard: View {
             }
 
             metadataArea
-                .padding(.horizontal, skin.spacing.cardPadding)
-                .padding(.vertical, skin.spacing.cardPadding * 0.8)
+                .padding(.horizontal, AppSpacing.s3)
+                .padding(.vertical, AppSpacing.s2)
         }
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
@@ -226,58 +226,26 @@ struct NotebookCard: View {
         }
     }
 
-    /// Stable-height metadata：ProgressCapsule 與 chips row 永遠在版面上，
-    /// 無資料時以 placeholder / opacity=0 撐位，避免 grid 兩本高度不齊。
+    /// D2 — Editorial metadata：ProgressCapsule (永遠 render) + 條件 due chip。
+    /// cardCount 已上移至 cover D1;pendingCount / unlearnedCount 移至 notebook 內頁 + TipView。
     @ViewBuilder
     private var metadataArea: some View {
-        VStack(alignment: .leading, spacing: skin.spacing.microGap) {
-            HStack {
-                Label("\(data.cardCount) \(data.cardCountLabel)", systemImage: "character.book.closed")
-                    .font(skin.typography.caption)
-                    .monospacedDigit()
-                    .foregroundStyle(skin.palette.secondaryText)
-
-                Spacer()
-
-                if data.pendingCount > 0 {
-                    Label("\(data.pendingCount)", systemImage: "arrow.triangle.2.circlepath")
-                        .font(skin.typography.monoLabel)
-                        .monospacedDigit()
-                        .foregroundStyle(skin.palette.tertiaryText)
-                }
-            }
-
-            // 永遠 render — 無資料時 progress=0 + track only（同高度）
+        HStack(spacing: AppSpacing.s2) {
             ProgressCapsule(
                 progress: totalSynced > 0 ? reviewProgress : 0,
                 label: nil,
-                fillColor: skin.palette.accent,
+                fillColor: coverColor,  // editorial「閱讀進度條跟書同色」族群感
                 trackColor: skin.palette.progressBarBackground,
                 height: 5
             )
+            .frame(maxWidth: .infinity)
 
-            // 永遠 render — 無資料時整 row opacity=0 撐同高
-            HStack(spacing: skin.spacing.inlineGap) {
-                if data.dueCount > 0 {
-                    Label("\(data.dueCount) 到期", systemImage: "clock.badge")
-                        .font(skin.typography.monoLabel)
-                        .monospacedDigit()
-                        .foregroundStyle(skin.palette.warning)
-                }
-                if data.unlearnedCount > 0 {
-                    Label("\(data.unlearnedCount) 未學", systemImage: "sparkles")
-                        .font(skin.typography.monoLabel)
-                        .monospacedDigit()
-                        .foregroundStyle(skin.palette.secondaryText)
-                }
-                if data.dueCount == 0 && data.unlearnedCount == 0 {
-                    // Spacer placeholder — 同 font 確保 row height 一致
-                    Label("0", systemImage: "clock.badge")
-                        .font(skin.typography.monoLabel)
-                        .monospacedDigit()
-                        .opacity(0)
-                        .accessibilityHidden(true)
-                }
+            if data.dueCount > 0 {
+                Label(L10n.format("%@ 到期", "\(data.dueCount)"), systemImage: "clock.badge")
+                    .font(skin.typography.monoLabel)
+                    .monospacedDigit()
+                    .foregroundStyle(skin.palette.warning)
+                    .fixedSize(horizontal: true, vertical: false)
             }
         }
     }
