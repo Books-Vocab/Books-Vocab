@@ -29,6 +29,7 @@ const {
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   isTrustedExternalOrigin,
+  safeUrl,
   VALID_THEMES,
   DEFAULT_THEME,
 } = require('./pure.js');
@@ -395,4 +396,55 @@ test('isTrustedExternalOrigin rejects subdomain phishing look-alikes', () => {
     isTrustedExternalOrigin('https://evil.wordnexus.lol/'),
     false,
   );
+});
+
+
+// ---------------------------------------------------------------------------
+// safeUrl
+// ---------------------------------------------------------------------------
+
+test('safeUrl passes http and https URLs through unchanged', () => {
+  assert.equal(safeUrl('http://example.com/path'), 'http://example.com/path');
+  assert.equal(safeUrl('https://wordnexus.lol/x?y=1#z'), 'https://wordnexus.lol/x?y=1#z');
+});
+
+test('safeUrl passes chrome-extension:// URLs through unchanged', () => {
+  const url = 'chrome-extension://abcdef/options/options.html';
+  assert.equal(safeUrl(url), url);
+});
+
+test('safeUrl rejects javascript: scheme', () => {
+  assert.equal(safeUrl('javascript:alert(1)'), '#');
+  assert.equal(safeUrl('JavaScript:alert(1)'), '#');
+  // Leading whitespace + tab that browsers ignore — must still be rejected.
+  assert.equal(safeUrl(' \tjavascript:alert(1)'), '#');
+  // Leading NUL / control chars.
+  assert.equal(safeUrl('\x00javascript:alert(1)'), '#');
+});
+
+test('safeUrl rejects other dangerous schemes', () => {
+  assert.equal(safeUrl('data:text/html,<script>alert(1)</script>'), '#');
+  assert.equal(safeUrl('vbscript:msgbox(1)'), '#');
+  assert.equal(safeUrl('file:///etc/passwd'), '#');
+  assert.equal(safeUrl('blob:https://example.com/abc'), '#');
+});
+
+test('safeUrl handles nullish / non-string / empty input', () => {
+  assert.equal(safeUrl(null), '#');
+  assert.equal(safeUrl(undefined), '#');
+  assert.equal(safeUrl(''), '#');
+  assert.equal(safeUrl('   '), '#');
+  assert.equal(safeUrl(42), '#');
+  assert.equal(safeUrl({}), '#');
+});
+
+test('safeUrl respects custom fallback', () => {
+  assert.equal(safeUrl('javascript:alert(1)', 'about:blank'), 'about:blank');
+  assert.equal(safeUrl(null, ''), '');
+});
+
+test('safeUrl treats scheme-relative URLs as http(s) via base', () => {
+  // `//evil.example/x` resolves against the https base → becomes https — safe.
+  // This is acceptable: the destination is a regular network URL, not a script.
+  assert.equal(safeUrl('//evil.example/x'), '//evil.example/x');
 });
