@@ -594,7 +594,7 @@ struct PodcastSeriesCard: View {
                             .padding(AppSpacing.s1)
                             .background(.ultraThinMaterial, in: RoundedRectangle(cornerRadius: AppRadius.sm, style: .continuous))
                             .padding(AppSpacing.s2)
-                            .accessibilityLabel("已追蹤")
+                            .accessibilityLabel(L10n.string("已追蹤"))
                     }
                 }
                 .appElevation(.z1)
@@ -607,7 +607,7 @@ struct PodcastSeriesCard: View {
                     .multilineTextAlignment(.leading)
                     .foregroundStyle(appTheme.palette.primaryText)
 
-                Text("\(series.episodeCount) 集")
+                Text(L10n.format("%@ 集", "\(series.episodeCount)"))
                     .font(AppFonts.caption2())
                     .foregroundStyle(appTheme.palette.tertiaryText)
             }
@@ -746,7 +746,7 @@ struct BookshelfLoadingPreview: View {
                 .ignoresSafeArea()
             VStack(spacing: AppSpacing.s4) {
                 ProgressView()
-                Text("正在匯入書籍...")
+                Text(L10n.string("正在匯入書籍..."))
                     .font(AppFonts.caption())
                     .foregroundStyle(appTheme.palette.secondaryText)
             }
