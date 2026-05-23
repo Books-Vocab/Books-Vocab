@@ -46,7 +46,7 @@ struct BooksBrowserApp: App {
         #endif
         bookFileManager = LocalBookFileManager()
 
-        let outcome = Self.bootstrapModelContainer()
+        let outcome = AppBootstrap.run()
         _modelContainer = State(initialValue: outcome.container)
         _startupFailure = State(initialValue: outcome.failure)
 
@@ -58,100 +58,6 @@ struct BooksBrowserApp: App {
         // background URLSession delegate callback can persist localAudioPath.
         PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
         #endif
-    }
-
-    /// Encapsulates the full ModelContainer bootstrap path so it can be re-run
-    /// from `AppStartupRecoveryView` when the first attempt fails.
-    private struct BootstrapOutcome {
-        let container: ModelContainer
-        let failure: AppStartupFailure?
-    }
-
-    private static func bootstrapModelContainer() -> BootstrapOutcome {
-        let localConfig = ModelConfiguration(
-            "LocalStore",
-            schema: Schema([VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self]),
-            cloudKitDatabase: .none
-        )
-
-        let cloudConfig = ModelConfiguration(
-            "CloudStore",
-            schema: Schema([Book.self, PodcastProgress.self]),
-            cloudKitDatabase: .automatic
-        )
-
-        let allModels: [any PersistentModel.Type] = [Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]
-
-        do {
-            let container = try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-                configurations: localConfig, cloudConfig
-            )
-            AuthManager.shared.modelContainer = container
-            Self.runMigrationIfNeeded(container: container)
-            AppLog.app.info("ModelContainer initialized — models: \(allModels.map { String(describing: $0) }.joined(separator: ", "))")
-            return BootstrapOutcome(container: container, failure: nil)
-        } catch {
-            AppLog.app.error("ModelContainer init failed: \(error.localizedDescription) — attempting store reset")
-
-            // 嘗試刪除損壞的本機 store 後重試
-            if let retryContainer = Self.retryAfterStoreReset(localConfig: localConfig, cloudConfig: cloudConfig) {
-                AuthManager.shared.modelContainer = retryContainer
-                AppLog.app.warning("ModelContainer recovered after store reset — user data will re-sync from server")
-                return BootstrapOutcome(container: retryContainer, failure: nil)
-            }
-
-            AppLog.app.error("ModelContainer recovery failed — falling back to in-memory store")
-            let fallback = Self.makeFallbackModelContainer()
-            return BootstrapOutcome(
-                container: fallback,
-                failure: AppStartupFailure.storageInitialization(error: error)
-            )
-        }
-    }
-
-    private static func runMigrationIfNeeded(container: ModelContainer) {
-        let migrationKey = "iCloudDataMigrationCompleted_v1"
-        guard !UserDefaults.standard.bool(forKey: migrationKey) else { return }
-
-        let localBooksDir = Book.localBooksDirectory
-        guard let iCloudDir = Book.iCloudBooksDirectory else {
-            AppLog.app.info("iCloud not available, deferring book migration")
-            return
-        }
-
-        let files: [URL]
-        do {
-            files = try FileManager.default.contentsOfDirectory(
-                at: localBooksDir,
-                includingPropertiesForKeys: nil
-            )
-        } catch {
-            AppLog.app.warning("Cannot list local books for migration: \(error.localizedDescription)")
-            UserDefaults.standard.set(true, forKey: migrationKey)
-            return
-        }
-
-        let epubs = files.filter { $0.pathExtension == "epub" }
-        var failedCount = 0
-        for file in epubs {
-            let dest = iCloudDir.appendingPathComponent(file.lastPathComponent)
-            if !FileManager.default.fileExists(atPath: dest.path) {
-                do {
-                    try FileManager.default.copyItem(at: file, to: dest)
-                } catch {
-                    failedCount += 1
-                    AppLog.app.error("iCloud EPUB copy failed (\(file.lastPathComponent)): \(error.localizedDescription)")
-                }
-            }
-        }
-
-        if failedCount == 0 {
-            UserDefaults.standard.set(true, forKey: migrationKey)
-            AppLog.app.info("iCloud EPUB migration completed: \(epubs.count) files")
-        } else {
-            AppLog.app.warning("iCloud EPUB migration incomplete: \(failedCount)/\(epubs.count) failed, will retry next launch")
-        }
     }
 
     @Environment(\.scenePhase) private var scenePhase
@@ -351,38 +257,6 @@ struct BooksBrowserApp: App {
         }
     }
 
-    /// 刪除本機 SwiftData store 後重建 ModelContainer（CloudKit store 從 iCloud 恢復）
-    private static func retryAfterStoreReset(localConfig: ModelConfiguration, cloudConfig: ModelConfiguration) -> ModelContainer? {
-        // 刪除 LocalStore + CloudStore（CloudKit 資料會從 iCloud 自動恢復）
-        for storeURL in [localConfig.url, cloudConfig.url] {
-            let storePaths = [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")]
-            for path in storePaths {
-                try? FileManager.default.removeItem(at: path)
-            }
-            AppLog.app.info("Removed store files at \(storeURL.lastPathComponent)")
-        }
-
-        // First try: dual-store (local + CloudKit)
-        if let container = try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-            configurations: localConfig, cloudConfig
-        ) {
-            return container
-        }
-
-        // Second try: all local, no CloudKit (iOS 26 CloudKit schema validation may fail)
-        AppLog.app.warning("Dual-store retry failed — attempting single-store without CloudKit")
-        let localOnlyConfig = ModelConfiguration(
-            "LocalStore",
-            schema: Schema([Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self]),
-            cloudKitDatabase: .none
-        )
-        return try? ModelContainer(
-            for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-            configurations: localOnlyConfig
-        )
-    }
-
     // MARK: - Startup Recovery Actions
 
     @MainActor
@@ -390,7 +264,7 @@ struct BooksBrowserApp: App {
         AppStartupRecoveryActions(
             retry: { @MainActor in
                 AppLog.app.info("AppStartupRecoveryView: retry requested")
-                let outcome = Self.bootstrapModelContainer()
+                let outcome = AppBootstrap.run()
                 if outcome.failure == nil {
                     // 重建成功 — 替換 container 並關閉 recovery 畫面。SwiftUI 會以新 container 重掛 view tree。
                     modelContainer = outcome.container
@@ -413,7 +287,7 @@ struct BooksBrowserApp: App {
                     reason: "startup-recovery"
                 )
                 // 額外清除 store 檔案以便下一次 retry 走「全新建立」路徑。
-                Self.purgePersistentStoreFiles()
+                AppBootstrap.purgeStoreFiles()
                 AppCrashReporting.record(
                     NSError(
                         domain: "AppStartupRecovery",
@@ -428,28 +302,6 @@ struct BooksBrowserApp: App {
                 Self.composeSupportMailURL(for: failure)
             }
         )
-    }
-
-    /// Best-effort 刪除已知的 SwiftData store files —
-    /// 與 `retryAfterStoreReset` 使用同樣的檔名（LocalStore / CloudStore + shm/wal）。
-    private static func purgePersistentStoreFiles() {
-        // 用 ModelConfiguration 反推 store URL，避免硬編路徑。
-        let localURL = ModelConfiguration(
-            "LocalStore",
-            schema: Schema([Notebook.self]),
-            cloudKitDatabase: .none
-        ).url
-        let cloudURL = ModelConfiguration(
-            "CloudStore",
-            schema: Schema([Book.self]),
-            cloudKitDatabase: .automatic
-        ).url
-        for storeURL in [localURL, cloudURL] {
-            for path in [storeURL, storeURL.appendingPathExtension("shm"), storeURL.appendingPathExtension("wal")] {
-                try? FileManager.default.removeItem(at: path)
-            }
-            AppLog.app.info("purgePersistentStoreFiles: removed \(storeURL.lastPathComponent)")
-        }
     }
 
     private static func composeSupportMailURL(for failure: AppStartupFailure) -> URL? {
@@ -478,27 +330,6 @@ struct BooksBrowserApp: App {
             URLQueryItem(name: "body", value: body)
         ]
         return components.url
-    }
-
-    private static func makeFallbackModelContainer() -> ModelContainer {
-        do {
-            return try ModelContainer(
-                for: Book.self, VocabularyEntry.self, ReviewRecord.self, Notebook.self, PodcastSeries.self, PodcastEpisode.self, PodcastProgress.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-            )
-        } catch {
-            // Fail-soft: attempt a minimal-schema in-memory container so the app can still
-            // display AppStartupRecoveryView (driven by `startupFailure`) instead of crashing.
-            AppLog.app.critical("Fallback ModelContainer init failed: \(error.localizedDescription); attempting minimal schema")
-            if let minimal = try? ModelContainer(
-                for: Notebook.self,
-                configurations: ModelConfiguration(isStoredInMemoryOnly: true, cloudKitDatabase: .none)
-            ) {
-                return minimal
-            }
-            AppLog.app.critical("Minimal ModelContainer init also failed: \(error.localizedDescription)")
-            fatalError("Cannot create any ModelContainer: \(error)")
-        }
     }
 
     /// Store reset 後掃描磁碟上的書籍檔案，重建遺失的 Book 記錄
