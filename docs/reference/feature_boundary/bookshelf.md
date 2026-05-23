@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Bookshelf/
-verified_against: a706c53
+verified_against: c642ed18
 -->
 # Bookshelf Feature Boundary
 
@@ -14,7 +14,8 @@ verified_against: a706c53
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfView.swift` | 723 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；同檔內定義 `struct BookCard` + `struct PodcastSeriesCard` 兩個 row 子 view（行 333 / 532） |
+| `BookshelfView.swift` | 396 | 主容器 `struct BookshelfView: View`，含書籍 + 播客 series 雙列表 + 匯入流程；row 子 view 已抽出至 `Components/` |
+| `BookshelfPreviews.swift` | 133 | `#Preview` 集中地（mock data scaffolds、各 row 型態樣本） |
 
 ### Coordinator Layer（導航協調）
 
@@ -22,17 +23,24 @@ verified_against: a706c53
 |------|------|------|
 | `BookshelfCoordinator.swift` | 223 | `@MainActor protocol BookshelfCoordinating` + `@Observable @MainActor` 實作，含匯入、刪除、批次選擇、open reader / podcast 導航狀態 |
 
+### Components Layer（row UI）
+
+| 檔案 | 行數 | 說明 |
+|------|------|------|
+| `Components/BookCard.swift` | 206 | `struct BookCard: View` — 書架單列 row（cover / 標題 / 進度 / context menu） |
+| `Components/PodcastSeriesCard.swift` | 75 | `struct PodcastSeriesCard: View` — 播客 series row（封面 / 集數摘要 / 進度） |
+
 ### Token Layer（local metric）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `BookshelfMetrics.swift` | 16 | `enum AppBookshelfMetrics`，feature 內專用 spacing / cover 尺寸常數；跨 feature 共用值已升級至 `AppMetrics`（詳 `docs/snapshot/feature_metrics.md`） |
+| `BookshelfMetrics.swift` | 15 | `enum AppBookshelfMetrics`，feature 內專用 spacing / cover 尺寸常數；跨 feature 共用值已升級至 `AppMetrics`（詳 `docs/snapshot/feature_metrics.md`） |
 
 ---
 
 ## 改動規則
 
-- **新增書籍/播客 row UI** → `BookshelfView.swift` 內的 `BookCard` / `PodcastSeriesCard` 擴充；或抽離到 `Components/` 子目錄（檔案 > 800 行時）
+- **新增書籍/播客 row UI** → `Components/` 子目錄擴充（`BookCard` / `PodcastSeriesCard` 或新增同層 row 元件）
 - **新增匯入流程** → `BookshelfView` body（建議走 `.sheet` + 既有 `appSheet` modifier）+ `BookshelfCoordinator` 加 navigation state
 - **新增資料來源（書籍/播客以外的內容類型）** → 評估是否獨立成新 feature scope，避免 `BookshelfView` 繼續長
 - **新增可復用 UI 元件** → 評估是否屬於 app shell 級（`AppShellComponents.swift`）；feature 專屬留在 `BookshelfView` 內
