@@ -1,5 +1,7 @@
 """Shared language constants."""
 
+from typing import Final
+
 LANGUAGE_NAMES: dict[str, str] = {
     "en": "English",
     "ja": "Japanese",
@@ -11,5 +13,5 @@ LANGUAGE_NAMES: dict[str, str] = {
     "zh-Hans": "Simplified Chinese",
 }
 
-SUPPORTED_SOURCE_LANGS: set[str] = {"en", "ja", "ko", "fr", "de", "es"}
-SUPPORTED_TARGET_LANGS: set[str] = {"zh-Hant", "zh-Hans", "en", "ja", "ko"}
+SUPPORTED_SOURCE_LANGS: Final[frozenset[str]] = frozenset({"en", "ja", "ko", "fr", "de", "es"})
+SUPPORTED_TARGET_LANGS: Final[frozenset[str]] = frozenset({"zh-Hant", "zh-Hans", "en", "ja", "ko"})
