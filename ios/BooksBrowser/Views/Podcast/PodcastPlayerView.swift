@@ -137,7 +137,12 @@ struct PodcastPlayerView: View {
                         autoPauseOnLookup: Binding(
                             get: { autoPauseOnLookup },
                             set: { autoPauseOnLookup = $0 }
-                        )
+                        ),
+                        sleepTimerMode: Binding(
+                            get: { viewModel?.sleepTimerMode ?? .off },
+                            set: { viewModel?.setSleepTimer($0) }
+                        ),
+                        sleepDeadline: viewModel?.sleepDeadline
                     )
                     .presentationCompactAdaptation(.popover)
                 }

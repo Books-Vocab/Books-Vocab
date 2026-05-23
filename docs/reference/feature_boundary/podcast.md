@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: a706c53
+verified_against: 911235ea
 -->
 # Podcast Feature Boundary
 
@@ -22,7 +22,7 @@ verified_against: a706c53
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerViewModel.swift` | 278 | `@Observable @MainActor final class PodcastPlayerViewModel`，播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync |
+| `PodcastPlayerViewModel.swift` | 278 | `@Observable @MainActor final class PodcastPlayerViewModel`，播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync + sleep timer (`DispatchSourceTimer` wall-clock-based;`.endOfEpisode` 模式靠 `onPlaybackFinished` 觸發) |
 
 ### Domain / Integration（翻譯與詞彙橋接）
 
