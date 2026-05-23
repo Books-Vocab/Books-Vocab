@@ -516,9 +516,8 @@ struct EPUBConverter {
     }
 
     private func iso8601Now() -> String {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        // EPUB3 requires format without fractional seconds
-        return f.string(from: Date())
+        // EPUB3 requires format without fractional seconds — use shared
+        // AppDateFormatters.iso8601Simple ([.withInternetDateTime]).
+        return AppDateFormatters.iso8601Simple.string(from: Date())
     }
 }
