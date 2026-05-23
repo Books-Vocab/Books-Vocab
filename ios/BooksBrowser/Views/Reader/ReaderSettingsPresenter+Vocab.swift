@@ -13,11 +13,11 @@ extension ReaderSettingsPresenter {
                 Capsule(style: .continuous)
                     .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                     .frame(
-                        width: appSkin.metrics.readerSettingsHandleWidth,
-                        height: appSkin.metrics.readerSettingsHandleHeight
+                        width: ReaderMetrics.settingsHandleWidth,
+                        height: ReaderMetrics.settingsHandleHeight
                     )
-                    .padding(.top, appSkin.metrics.readerSettingsHandleTopInset)
-                    .padding(.bottom, appSkin.metrics.readerSettingsHandleBottomInset)
+                    .padding(.top, ReaderMetrics.settingsHandleTopInset)
+                    .padding(.bottom, ReaderMetrics.settingsHandleBottomInset)
                 vocabHeaderBlock
                 ScrollView {
                     // Mochi 北極星 #2：群組分隔靠 AppAirDivider + 留白,
@@ -31,8 +31,8 @@ extension ReaderSettingsPresenter {
                         AppAirDivider()
                         vocabDebugSection
                     }
-                    .padding(.horizontal, appSkin.metrics.readerSettingsHorizontalInset)
-                    .padding(.bottom, appSkin.metrics.readerSettingsBottomInset)
+                    .padding(.horizontal, ReaderMetrics.settingsHorizontalInset)
+                    .padding(.bottom, ReaderMetrics.settingsBottomInset)
                 }
             }
         }
@@ -43,15 +43,15 @@ extension ReaderSettingsPresenter {
     // MARK: Header
 
     var vocabHeaderBlock: some View {
-        HStack(alignment: .top, spacing: appSkin.metrics.readerSettingsHeaderSpacing) {
+        HStack(alignment: .top, spacing: ReaderMetrics.settingsHeaderSpacing) {
             Text("閱讀設定".localized)
                 .font(appSkin.typography.sectionTitle)
                 .foregroundStyle(appSkin.palette.primaryText)
             Spacer()
             VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
         }
-        .padding(.horizontal, appSkin.metrics.readerSettingsHorizontalInset)
-        .padding(.bottom, appSkin.metrics.readerSettingsHeaderBottomInset)
+        .padding(.horizontal, ReaderMetrics.settingsHorizontalInset)
+        .padding(.bottom, ReaderMetrics.settingsHeaderBottomInset)
     }
 
     // MARK: Typography
@@ -201,8 +201,8 @@ extension ReaderSettingsPresenter {
             border: .clear
         ) {
             content()
-                .padding(.horizontal, appSkin.metrics.readerSettingsControlHorizontalPadding)
-                .padding(.vertical, appSkin.metrics.readerSettingsControlVerticalPadding)
+                .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)
+                .padding(.vertical, ReaderMetrics.settingsControlVerticalPadding)
                 .contentShape(Rectangle())
         }
     }
@@ -221,8 +221,8 @@ extension ReaderSettingsPresenter {
                         .clipShape(Capsule(style: .continuous))
                 }
                 .frame(maxWidth: .infinity)
-                .padding(.horizontal, appSkin.metrics.readerSettingsControlHorizontalPadding)
-                .padding(.vertical, appSkin.metrics.readerSettingsControlVerticalPadding)
+                .padding(.horizontal, ReaderMetrics.settingsControlHorizontalPadding)
+                .padding(.vertical, ReaderMetrics.settingsControlVerticalPadding)
             }
         }
         .buttonStyle(.plain)

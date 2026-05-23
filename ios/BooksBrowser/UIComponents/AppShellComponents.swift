@@ -310,14 +310,14 @@ struct AppSectionBlock<Content: View>: View {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }
-            .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)
+            .padding(.horizontal, ReaderMetrics.settingsHeaderMicroInset)
 
             if flat {
                 // 群組內容直接坐在 panel 背景上,不再用 card 包覆。
                 content
-                    .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)
+                    .padding(.horizontal, ReaderMetrics.settingsHeaderMicroInset)
             } else {
-                AppSectionCard(padding: appSkin.metrics.readerSettingsCardPadding, style: .settings(appSkin)) {
+                AppSectionCard(padding: ReaderMetrics.settingsCardPadding, style: .settings(appSkin)) {
                     content
                 }
             }

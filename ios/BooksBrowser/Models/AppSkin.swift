@@ -237,30 +237,6 @@ struct AppSkin {
         let overlayHeaderVerticalInset: CGFloat
         let listCardHeaderTopInset: CGFloat
         let listCardHeaderBottomInset: CGFloat
-        let readerPanelHorizontalInset: CGFloat
-        let readerPanelBottomInset: CGFloat
-        let readerPanelHandleWidth: CGFloat
-        let readerPanelHandleHeight: CGFloat
-        let readerPanelHandleTopInset: CGFloat
-        let readerPanelHandleBottomInset: CGFloat
-        let readerSettingsHandleWidth: CGFloat
-        let readerSettingsHandleHeight: CGFloat
-        let readerSettingsHandleTopInset: CGFloat
-        let readerSettingsHandleBottomInset: CGFloat
-        let readerSettingsSectionSpacing: CGFloat
-        let readerSettingsHorizontalInset: CGFloat
-        let readerSettingsBottomInset: CGFloat
-        let readerSettingsHeaderSpacing: CGFloat
-        let readerSettingsHeaderBottomInset: CGFloat
-        let readerSettingsHeaderMicroInset: CGFloat
-        let readerSettingsCardPadding: CGFloat
-        let readerSettingsControlHorizontalPadding: CGFloat
-        let readerSettingsControlVerticalPadding: CGFloat
-        let readerSettingsOptionHorizontalPadding: CGFloat
-        let readerSettingsOptionVerticalPadding: CGFloat
-        let readerSettingsHighlightPreviewTrailingInset: CGFloat
-        let readerSettingsModeMinHeight: CGFloat
-        let readerSettingsHighlightMinHeight: CGFloat
         let overlayCompactDividerInset: CGFloat
         let overlayDrawerHorizontalInset: CGFloat
         let overlayDrawerBottomInset: CGFloat
@@ -288,7 +264,6 @@ struct AppSkin {
         let reviewSwipeMaxRotation: Double
         let reviewSwipeOpacityFloor: Double
         let panelHandleOpacity: Double
-        let readerSettingsDividerOpacity: Double
         let graphDrawerBottomInset: CGFloat
     }
 
