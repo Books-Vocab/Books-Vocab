@@ -44,13 +44,18 @@ struct NotebookCardData {
 struct NotebookCard: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
+    @Environment(\.colorScheme) private var colorScheme
 
     let data: NotebookCardData
     var style: NotebookCardStyle = .grid
     var actions: NotebookCardActions = NotebookCardActions()
 
     private var coverColor: Color {
-        NotebookPalette.color(for: data.color)
+        let raw = NotebookPalette.color(for: data.color)
+        // Dark mode 自動加深 cover — 確保 primaryText dark(#E6E6E3)對 cover ≥ AA 4.5:1。
+        // 走 `NotebookPalette.darken(_, by: 0.2)` 而非 `.brightness(-0.2)` —
+        // HSB scale 跟 contrast test 的計算完全對齊(避免 sRGB additive vs HSB scale 分歧)。
+        return colorScheme == .dark ? NotebookPalette.darken(raw, by: 0.2) : raw
     }
 
     private var pattern: NotebookCoverPattern? {
@@ -70,14 +75,6 @@ struct NotebookCard: View {
         switch style {
         case .grid: return 3.0 / 2.0
         case .hero: return 21.0 / 10.0   // 寬扁、視覺強調「這是首要的」
-        }
-    }
-
-    /// hero 場景隱藏 `使用中` pill — 唯一存在不需此標籤。
-    private var showsActivePill: Bool {
-        switch style {
-        case .grid: return data.isActive
-        case .hero: return false
         }
     }
 
@@ -177,6 +174,7 @@ struct NotebookCard: View {
             switch style {
             case .grid:
                 // 立體堆卡 — 層數由字數決定（0→1 / 1-50→2 / 51-200→3 / 200+→4）
+                // showsName: false — editorial overlay (EditorialCoverComposition) 接管 name 渲染
                 NotebookStackedCoverView(
                     color: coverColor,
                     pattern: pattern,
@@ -184,7 +182,8 @@ struct NotebookCard: View {
                     name: data.name,
                     layerCount: NotebookStackMetrics.layerCount(forCardCount: data.cardCount),
                     aspectRatio: coverAspectRatio,
-                    seed: NotebookStackMetrics.stableSeed(for: data.name)
+                    seed: NotebookStackMetrics.stableSeed(for: data.name),
+                    showsName: false
                 )
             case .hero:
                 // hero 維持平面（單本不擬物，避免「目錄」錯位心理）
@@ -192,7 +191,8 @@ struct NotebookCard: View {
                     color: coverColor,
                     pattern: pattern,
                     coverImagePath: data.coverImagePath,
-                    name: data.name
+                    name: data.name,
+                    showsName: false
                 )
                 .aspectRatio(coverAspectRatio, contentMode: .fill)
                 .clipShape(UnevenRoundedRectangle(
@@ -201,19 +201,18 @@ struct NotebookCard: View {
                 ))
             }
         }
-        .overlay(alignment: .topTrailing) {
-            if showsActivePill {
-                Text("使用中".localized)
-                    .font(skin.typography.monoLabel)
-                    .foregroundStyle(.white)
-                    .padding(.horizontal, AppSpacing.s2)
-                    .padding(.vertical, AppSpacing.tinyGap)
-                    .background(skin.palette.accent, in: Capsule(style: .continuous))
-                    .padding(AppSpacing.s2)
-            }
+        // D1 editorial composition overlay — serif name / rule / N 詞 / (active) spine。
+        // 跟著外層 `rotationEffect` 一起旋轉,不會脫離 cover 邊界。
+        .overlay {
+            EditorialCoverComposition(
+                name: data.name,
+                cardCount: data.cardCount,
+                coverColor: coverColor,
+                isActive: data.isActive,
+                style: style
+            )
         }
-        // Editorial rotation — 包 pill overlay 一起轉，避免 pill 脫離卡片邊界。
-        // hero 不旋轉（單本平面），grid 走 deterministic seedJitter。
+        // Editorial rotation — 包 overlay 一起轉,grid 走 deterministic seedJitter。
         .rotationEffect(coverRotation, anchor: .bottom)
     }
 
