@@ -14,6 +14,7 @@ final class PodcastAudioEngine: NSObject {
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    private var loadedRangesObserver: NSKeyValueObservation?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var stallWatchdog: Task<Void, Never>?
@@ -36,6 +37,9 @@ final class PodcastAudioEngine: NSObject {
     var onDurationLoaded: ((TimeInterval) -> Void)?
     var onReadyToPlay: (() -> Void)?
     var onLoadFailed: ((String) -> Void)?
+    /// Furthest absolute time (seconds) AVPlayer has buffered. Drives the
+    /// YouTube-style "loaded" overlay on the seek bar.
+    var onBufferedEndChanged: ((TimeInterval) -> Void)?
     /// System forced playback to pause (interruption began, headphones unplugged).
     var onSystemPause: (() -> Void)?
     /// System hinted we should resume after interruption ended.
@@ -129,6 +133,23 @@ final class PodcastAudioEngine: NSObject {
             guard let self, gen == self.loadGeneration else { return }
             let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             self.onLoadFailed?(err?.localizedDescription ?? "播放中斷")
+        }
+
+        // KVO on item.loadedTimeRanges — AVFoundation publishes a new array
+        // every time the buffer grows. We report the furthest end across all
+        // ranges (progressive streams buffer contiguously from 0; HLS may have
+        // discontinuous regions but the furthest end is still the right number
+        // for a single "buffered to here" overlay).
+        loadedRangesObserver = item.observe(\.loadedTimeRanges, options: [.new]) { [weak self] observed, _ in
+            guard let self else { return }
+            let furthest = observed.loadedTimeRanges
+                .map { ($0.timeRangeValue.start + $0.timeRangeValue.duration).seconds }
+                .filter { $0.isFinite }
+                .max() ?? 0
+            DispatchQueue.main.async {
+                guard gen == self.loadGeneration else { return }
+                self.onBufferedEndChanged?(furthest)
+            }
         }
 
         // KVO on item.status — catches failures that surface AFTER isPlayable probe
@@ -532,6 +553,8 @@ final class PodcastAudioEngine: NSObject {
         failObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        loadedRangesObserver?.invalidate()
+        loadedRangesObserver = nil
         timeControlObserver?.invalidate()
         timeControlObserver = nil
         if let obs = interruptionObserver {

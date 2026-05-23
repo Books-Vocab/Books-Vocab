@@ -29,6 +29,9 @@ final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+    /// Furthest absolute time AVPlayer has buffered (seconds). Drives the
+    /// "已載入" overlay on the seek bar. 0 until the first range arrives.
+    private(set) var bufferedEnd: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
     private(set) var currentCue: PodcastSubtitleCue?
     private(set) var renderState: SubtitleRenderState?
@@ -76,6 +79,11 @@ final class PodcastPlayerViewModel {
                 self?.duration = d
             }
         }
+        audioEngine.onBufferedEndChanged = { [weak self] end in
+            MainActor.assumeIsolated {
+                self?.bufferedEnd = end
+            }
+        }
         audioEngine.onReadyToPlay = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -118,6 +126,7 @@ final class PodcastPlayerViewModel {
     ) {
         state = .loading
         duration = 0
+        bufferedEnd = 0
         audioEngine.loadAudio(
             url: audioURL,
             httpHeaders: audioHTTPHeaders,
