@@ -79,7 +79,7 @@ extension SettingsPresenter {
                     .font(appSkin.typography.caption)
                     .foregroundStyle(appSkin.palette.secondaryText)
                 Spacer()
-                Text("buffer \(observation.totalCount)".localized)
+                Text(L10n.format("buffer %@", String(observation.totalCount)))
                     .font(appSkin.typography.monoLabel)
                     .foregroundStyle(appSkin.palette.tertiaryText)
             }

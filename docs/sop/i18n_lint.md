@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: 8c7b9e4
+verified_against: 05de9274
 -->
 # i18n Lint
 
@@ -25,10 +25,13 @@ verified_against: 8c7b9e4
 1. **Raw Chinese 字面**(Swift 檔):
    `Text("中") / Button("中") / Label("中") / Section("中") / Toggle("中") / Picker("中") / Menu("中") / TextField(".*中") / .navigationTitle("中") / .alert("中") / .confirmationDialog("中") / Text(verbatim: "中") / .accessibilityHint("中")`
 
-2. **Static formatter**(`static let X: DateFormatter | RelativeDateTimeFormatter | NumberFormatter`):
+2. **Raw Chinese return**(`return "中..."`):
+   Enum getter / computed property / function 回傳生 Chinese,例如 `var label: String { case .x: return "中" }`。這類值通常透過變數 reference 進到 UI(`Text(option.label)`),靜態 extractor 看不到 — 此 scanner 直接擋 source。修法:(a)改 `return L10n.string("中")`(同 KGVocabSortOption / AppLanguage 模式),(b)刻意保留(語言自名等)加行內 `// i18n-allow: <reason>`。
+
+3. **Static formatter**(`static let X: DateFormatter | RelativeDateTimeFormatter | NumberFormatter`):
    靜態 formatter 不會跟 `AppLanguage` 變,需走 `LocaleAwareFormatter`。
 
-3. **`.xcstrings` needs_review**:
+4. **`.xcstrings` needs_review**:
    `Localizable.xcstrings` 內 `state=needs_review` 且 value 空的 entry。
 
 ## 豁免規則 (Exemptions)

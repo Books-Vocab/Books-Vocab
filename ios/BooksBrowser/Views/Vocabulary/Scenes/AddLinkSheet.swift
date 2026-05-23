@@ -28,7 +28,10 @@ struct AddLinkSheet: View {
         let query = searchText.lowercased()
         return Array(
             candidates
-                .filter { $0.word.lowercased().contains(query) }
+                .filter {
+                    $0.word.lowercased().contains(query)
+                        || $0.translation.lowercased().contains(query)
+                }
                 .prefix(20)
         )
     }
@@ -51,17 +54,17 @@ struct AddLinkSheet: View {
                     .padding(appSkin.metrics.cardBlockPadding)
 
                 if searchText.isEmpty {
-                    ContentUnavailableView(
-                        "搜尋單字".localized,
+                    AppEmptyStateContent(
+                        title: "搜尋單字",
                         systemImage: "magnifyingglass",
-                        description: Text("輸入單字名稱來建立連結".localized)
+                        description: "輸入單字名稱來建立連結"
                     )
                     .frame(maxHeight: .infinity)
                 } else if filteredEntries.isEmpty {
-                    ContentUnavailableView(
-                        "沒有結果".localized,
+                    AppEmptyStateContent(
+                        title: "沒有結果",
                         systemImage: "magnifyingglass",
-                        description: Text("找不到符合的單字".localized)
+                        description: "找不到符合的單字"
                     )
                     .frame(maxHeight: .infinity)
                 } else {
@@ -110,7 +113,7 @@ struct AddLinkSheet: View {
             Image(systemName: "magnifyingglass")
                 .foregroundStyle(appSkin.palette.tertiaryText)
             TextField("搜尋單字…".localized, text: $searchText)
-                .platformSourceLangTextInput()
+                .platformTextInputConfig()
         }
         .padding(appSkin.metrics.cardBlockInnerGap * 1.5)
         .background(appSkin.palette.cardBackground, in: RoundedRectangle(cornerRadius: 10))

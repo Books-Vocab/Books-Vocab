@@ -16,36 +16,62 @@ private enum AppGhostButtonMetrics {
 
 // MARK: - AppCard (Pure White Paper)
 
+/// AppCard surface variant.
+///
+/// 預設 `.elevated`（既有行為：cardBorder + z2 shadow）。
+/// Mochi 化北極星二（border 退場）後新元件預設應用 `.flat` — 無 border、無 shadow，
+/// 純 background 區隔。`elevated` 保留給 modal / popover / sticky group 等必須有邊界的場景。
+enum AppCardVariant {
+    /// 既有：border + z2 shadow（modal / popover / sticky group）。
+    case elevated
+    /// Mochi 化預設：純 background、無 border、無 shadow。
+    case flat
+    /// 完全透明：連 background 都不上，僅佔 layout（坐在 page bg 上的群組容器）。
+    case ghost
+}
+
 struct AppCard<Content: View>: View {
     @Environment(\.appTheme) private var appTheme
     let padding: CGFloat
+    let variant: AppCardVariant
     @ViewBuilder var content: Content
 
     init(
         padding: CGFloat = AppSpacing.s6,
+        variant: AppCardVariant = .elevated,
         @ViewBuilder content: () -> Content
     ) {
         self.padding = padding
+        self.variant = variant
         self.content = content()
     }
 
     var body: some View {
-        content
-            .padding(padding)
-            .background(cardBackground)
-            .clipShape(RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous))
-            .overlay(cardBorder.allowsHitTesting(false))
-            .appElevation(.z2)
-    }
-
-    private var cardBackground: some View {
-        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
-            .fill(appTheme.palette.elevatedCardBackground)
-    }
-
-    private var cardBorder: some View {
-        RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
-            .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
+        let shape = RoundedRectangle(cornerRadius: AppRadius.xl, style: .continuous)
+        switch variant {
+        case .elevated:
+            content
+                .padding(padding)
+                .background(shape.fill(appTheme.palette.elevatedCardBackground))
+                .clipShape(shape)
+                .overlay(
+                    shape
+                        .strokeBorder(appTheme.palette.cardBorder, lineWidth: 0.5)
+                        .allowsHitTesting(false)
+                )
+                .appElevation(.z2)
+        case .flat:
+            content
+                .padding(padding)
+                .background(shape.fill(appTheme.palette.cardBackground))
+                .clipShape(shape)
+                .appElevation(.z0)
+        case .ghost:
+            content
+                .padding(padding)
+                // 無 background、無 shadow — 完全透到 page bg
+                .appElevation(.z0)
+        }
     }
 }
 

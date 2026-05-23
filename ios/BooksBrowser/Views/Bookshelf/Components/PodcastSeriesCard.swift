@@ -21,12 +21,8 @@ struct PodcastSeriesCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s2) {
-            // 封面
+            // 封面 — Mochi 北極星二/三：border 退場、resting 走 z0
             coverView
-                .overlay(
-                    RoundedRectangle(cornerRadius: AppBookshelfMetrics.coverCornerRadius, style: .continuous)
-                        .strokeBorder(appTheme.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
-                )
                 .overlay(alignment: .topTrailing) {
                     Image(systemName: "waveform")
                         .font(AppFonts.caption2(weight: .bold))
@@ -46,7 +42,7 @@ struct PodcastSeriesCard: View {
                             .accessibilityLabel(L10n.string("已追蹤"))
                     }
                 }
-                .appElevation(.z1)
+                .appElevation(.z0)
 
             // 元資料
             VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {

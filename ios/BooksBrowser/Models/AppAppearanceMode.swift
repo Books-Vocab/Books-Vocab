@@ -10,10 +10,10 @@ enum AppAppearanceMode: String, CaseIterable, Identifiable {
 
     var titleKey: String {
         switch self {
-        case .system: return "跟隨系統"
-        case .light: return "淺色"
-        case .sepia: return "暖紙"
-        case .dark: return "深色"
+        case .system: return L10n.string("跟隨系統")
+        case .light: return L10n.string("淺色")
+        case .sepia: return L10n.string("暖紙")
+        case .dark: return L10n.string("深色")
         }
     }
 
