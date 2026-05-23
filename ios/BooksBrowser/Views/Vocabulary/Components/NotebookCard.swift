@@ -181,7 +181,7 @@ struct NotebookCard: View {
                     name: data.name,
                     layerCount: NotebookStackMetrics.layerCount(forCardCount: data.cardCount),
                     aspectRatio: coverAspectRatio,
-                    seed: data.name.hashValue
+                    seed: NotebookStackMetrics.stableSeed(for: data.name)
                 )
             case .hero:
                 // hero 維持平面（單本不擬物，避免「目錄」錯位心理）
@@ -218,7 +218,7 @@ struct NotebookCard: View {
     private var coverRotation: Angle {
         switch style {
         case .grid:
-            return .degrees(NotebookStackMetrics.seedJitter(seed: data.name.hashValue, depth: 0).angle)
+            return .degrees(NotebookStackMetrics.seedJitter(seed: NotebookStackMetrics.stableSeed(for: data.name), depth: 0).angle)
         case .hero:
             return .zero
         }

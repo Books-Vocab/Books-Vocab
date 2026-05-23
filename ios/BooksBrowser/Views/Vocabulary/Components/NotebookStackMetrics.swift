@@ -61,19 +61,35 @@ enum NotebookStackMetrics {
     /// 避免 GeometryReader 造成 grid layout 反覆。
     static let rotationOverhang: CGFloat = AppSpacing.s2      // 8pt
 
-    /// Per-notebook deterministic jitter — seed 由 caller 傳入（notebook ID/name hash）。
+    /// Per-notebook deterministic jitter — seed 由 caller 傳入（用 `stableSeed(for:)`）。
     /// 同一 seed × 同一 depth 永遠回傳同一 (angle, dx)，render 不會閃爍。
     /// 在 `layerRotations` / `layerDxJitter` base 上 ±50% 擾動。
+    ///
+    /// ⚠️ 不要傳 `String.hashValue` — Swift hashValue 每 process 啟動隨機 seeded，
+    /// 會導致同一本 notebook 每次 app 開啟旋轉角度都不同。一律走 `stableSeed(for:)`。
     static func seedJitter(seed: Int, depth: Int) -> (angle: Double, dx: CGFloat) {
         let idx = min(max(depth, 0), layerRotations.count - 1)
         let baseAngle = layerRotations[idx]
         let baseDx = layerDxJitter[idx]
-        // perturb ∈ [-0.5, +0.5]，依 seed × depth 變化，同 seed 各 depth 不同擾動
-        let perturb = Double((seed &+ depth &* 31) % 100) / 100.0 - 0.5
+        // perturb ∈ [-0.5, +0.5]，依 seed × depth 變化。
+        // abs() 確保負 seed 下 Swift `%` 仍回傳 [0, 99]，perturb 範圍 invariant。
+        let mixed = abs(seed &+ depth &* 31) % 100
+        let perturb = Double(mixed) / 100.0 - 0.5
         return (
             angle: baseAngle * (1.0 + perturb * 0.5),
             dx:    baseDx * (1.0 + CGFloat(perturb) * 0.5)
         )
+    }
+
+    /// Cross-launch stable hash (djb2) — 取代 `String.hashValue` 的 per-process random seed。
+    /// 同一字串永遠回傳同一非負 Int，保證 rotation 跨 launch 不變。
+    static func stableSeed(for string: String) -> Int {
+        var hash: UInt64 = 5381
+        for byte in string.utf8 {
+            hash = (hash &* 33) &+ UInt64(byte)
+        }
+        // 截到正 Int 範圍（去最高位 sign bit），seedJitter `% 100` 始終非負
+        return Int(hash & UInt64(Int.max))
     }
 
     // MARK: - Ghost color（cream paper, 取代 brightness-based deckColor）
