@@ -51,7 +51,7 @@ extension BooksBrowserApp {
                     // 重建成功 — 替換 container 並關閉 recovery 畫面。SwiftUI 會以新 container 重掛 view tree。
                     modelContainer = outcome.container
                     startupFailure = nil
-                    BooksBrowserApp.recoverOrphanBooks(container: outcome.container)
+                    AppOrphanBookRecovery.run(container: outcome.container)
                     AppLog.app.info("AppStartupRecoveryView: retry succeeded — switching to main UI")
                     return true
                 }
