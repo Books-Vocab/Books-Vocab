@@ -73,29 +73,25 @@ struct NotebookListView: View {
                             .padding(.horizontal, skin.metrics.listRowHorizontalInset)
                     }
 
-                    // Why: 單一 notebook 時 NotebookFilterChip 的「scope filter」
-                    // 沒有意義 (沒得篩)，移除以收斂 hero banner 視覺。
+                    // D4 — page section header `今日複習` + inline VocabReviewCTAPill。
+                    // 取代既有 VocabReviewBanner 卡片框,跟 VocabularyListView 詳情頁
+                    // 的 review pill 同視覺族群(editorial 克制)。
+                    // Filter chip 不在此 row 內(D6 已移至 toolbar)。
                     if totalDueCount > 0 || totalUnlearnedCount > 0 {
-                        Group {
-                            if notebooks.count > 1 {
-                                VocabReviewBanner(
-                                    dueCount: filteredDueEntries.count,
-                                    unlearnedCount: filteredUnlearnedEntries.count,
-                                    onStartDue: { startReview(with: filteredDueEntries) },
-                                    onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
-                                    onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
-                                ) {
-                                    NotebookFilterChip(filter: $reviewFilter)
-                                }
-                            } else {
-                                VocabReviewBanner(
-                                    dueCount: filteredDueEntries.count,
-                                    unlearnedCount: filteredUnlearnedEntries.count,
-                                    onStartDue: { startReview(with: filteredDueEntries) },
-                                    onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
-                                    onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
-                                )
-                            }
+                        HStack {
+                            Text("今日複習".localized)
+                                .font(skin.typography.sectionTitle)
+                                .foregroundStyle(skin.palette.primaryText)
+
+                            Spacer(minLength: 8)
+
+                            VocabReviewCTAPill(
+                                dueCount: filteredDueEntries.count,
+                                unlearnedCount: filteredUnlearnedEntries.count,
+                                onStartDue: { startReview(with: filteredDueEntries) },
+                                onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
+                                onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
+                            )
                         }
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
