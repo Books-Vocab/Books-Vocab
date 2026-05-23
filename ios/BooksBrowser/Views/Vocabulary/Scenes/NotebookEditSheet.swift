@@ -6,6 +6,7 @@
 
 import SwiftUI
 import PhotosUI
+import Inject
 
 struct NotebookAppearance {
     let name: String
@@ -15,6 +16,7 @@ struct NotebookAppearance {
 }
 
 struct NotebookEditSheet: View {
+    @ObserveInjection private var inject
     enum Mode {
         case create
         case edit(name: String, color: String?, coverPattern: String?, coverImagePath: String?)
@@ -168,6 +170,7 @@ struct NotebookEditSheet: View {
             }
         }
         .appSheet(.large)
+        .enableInjection()
     }
 
     @ViewBuilder

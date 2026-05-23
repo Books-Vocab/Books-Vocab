@@ -7,11 +7,13 @@
 //
 
 import SwiftUI
+import Inject
 
 // MARK: - CardSectionDivider
 
 /// 卡片內部的水平分隔線（統一外觀，取代散落在各 View 的重複定義）
 struct CardSectionDivider: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     var horizontalPadding: CGFloat = AppSkin.baseMetrics.cardDividerHorizontalPadding
 
@@ -20,6 +22,7 @@ struct CardSectionDivider: View {
             .fill(appSkin.palette.divider)
             .frame(height: AppMetrics.dividerThin)
             .padding(.horizontal, horizontalPadding)
+            .enableInjection()
     }
 }
 
@@ -27,6 +30,7 @@ struct CardSectionDivider: View {
 
 /// Section 標題標籤（icon + 小字）
 struct CardSectionLabel: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -40,6 +44,7 @@ struct CardSectionLabel: View {
                 .font(appSkin.typography.iconTiny)
         }
         .foregroundStyle(appSkin.palette.tertiaryText)
+        .enableInjection()
     }
 }
 
@@ -47,6 +52,7 @@ struct CardSectionLabel: View {
 
 /// 詳情頁頂部英雄區塊：單字 + 音標 + POS + Tier + 模式 + 翻譯
 struct CardHeroSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.speechService) private var speechService
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -113,6 +119,7 @@ struct CardHeroSection: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }
 
@@ -120,6 +127,7 @@ struct CardHeroSection: View {
 
 /// 例句渲染區塊
 struct CardExamplesSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
@@ -157,6 +165,7 @@ struct CardExamplesSection: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }
 
@@ -164,6 +173,7 @@ struct CardExamplesSection: View {
 
 /// 來源上下文 + 書名 + 章節
 struct CardSourceSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
@@ -200,6 +210,7 @@ struct CardSourceSection: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }
 
@@ -207,6 +218,7 @@ struct CardSourceSection: View {
 
 /// 教學筆記（Rich Text）
 struct CardExplanationSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
@@ -241,6 +253,7 @@ struct CardExplanationSection: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }
 
@@ -248,6 +261,7 @@ struct CardExplanationSection: View {
 
 /// 單字變化形列表
 struct CardFormsSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.toastCoordinator) private var toastCoordinator
     @State private var copyTrigger = false
@@ -278,5 +292,6 @@ struct CardFormsSection: View {
             }
         }
         .sensoryFeedback(.success, trigger: copyTrigger)
+        .enableInjection()
     }
 }

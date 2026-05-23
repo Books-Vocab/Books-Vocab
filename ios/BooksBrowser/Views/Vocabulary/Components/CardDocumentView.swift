@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct CardDocumentView: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let document: CardDocument
@@ -55,6 +57,7 @@ struct CardDocumentView: View {
                 }
             }
         }
+        .enableInjection()
     }
 }
 
@@ -378,6 +381,7 @@ struct CollocationFlowLayout: Layout {
 }
 
 struct CardInlineText: View {
+    @ObserveInjection private var inject
     enum Style {
         case example
         case body
@@ -391,6 +395,7 @@ struct CardInlineText: View {
 
     var body: some View {
         Text(attributedText)
+        .enableInjection()
     }
 
     private var attributedText: AttributedString {

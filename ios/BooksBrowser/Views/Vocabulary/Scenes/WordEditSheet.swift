@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct WordEditSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.appSkin) private var appSkin
@@ -52,6 +54,7 @@ struct WordEditSheet: View {
             draftTranslation = entry.translation
             draftExplanation = entry.explanation ?? ""
         }
+        .enableInjection()
     }
 
     private func editSection(title: String, text: Binding<String>) -> some View {

@@ -10,9 +10,11 @@ import SwiftUI
 import SwiftData
 import TipKit
 import UniformTypeIdentifiers
+import Inject
 
 /// 書架主頁 — 簡約留白設計
 struct BookshelfView: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.modelContext) private var modelContext
@@ -150,6 +152,7 @@ struct BookshelfView: View {
             }
             }
         }
+        .enableInjection()
     }
 
     // MARK: - 空狀態
@@ -331,6 +334,7 @@ struct BookshelfView: View {
 // MARK: - 書籍卡片
 
 struct BookCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.iCloudDownloadManager) private var downloadManager
     let book: Book
@@ -387,6 +391,7 @@ struct BookCard: View {
         .task(id: book.coverImageData) {
             await decodeCoverImage()
         }
+        .enableInjection()
     }
 
     @ViewBuilder
@@ -530,6 +535,7 @@ private struct ICloudProgressBadge: View {
 // MARK: - Podcast 卡片
 
 struct PodcastSeriesCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let series: PodcastSeries
     var coverHeight: CGFloat = AppBookshelfMetrics.coverHeightCompact
@@ -580,6 +586,7 @@ struct PodcastSeriesCard: View {
                     .foregroundStyle(appTheme.palette.tertiaryText)
             }
         }
+        .enableInjection()
     }
 
     private var coverView: some View {
@@ -657,6 +664,7 @@ enum BookshelfPreviewData {
 }
 
 struct BookCardPreviewScene: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let book: Book
 
@@ -665,6 +673,7 @@ struct BookCardPreviewScene: View {
             .padding()
             .frame(width: 180)
             .background(appTheme.palette.pageBackground.ignoresSafeArea())
+            .enableInjection()
     }
 }
 
@@ -700,6 +709,7 @@ struct BookCardPreviewScene: View {
 
 /// 獨立展示 loadingOverlay 的輔助 view，用於 Loading State preview
 struct BookshelfLoadingPreview: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
 
     var body: some View {
@@ -717,6 +727,7 @@ struct BookshelfLoadingPreview: View {
             .padding(AppBookshelfMetrics.loadingOverlayPadding)
             .compatibleGlass(in: .rect(cornerRadius: AppRadius.md))
         }
+        .enableInjection()
     }
 }
 #endif

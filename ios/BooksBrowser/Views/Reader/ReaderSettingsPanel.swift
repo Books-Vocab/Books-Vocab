@@ -7,8 +7,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct ReaderSettingsPanel: View {
+    @ObserveInjection private var inject
     @Bindable var settings: ReaderSettings
     @EnvironmentObject private var appearanceStore: AppAppearanceStore
     let onDismiss: () -> Void
@@ -31,6 +33,7 @@ struct ReaderSettingsPanel: View {
 
     var body: some View {
         panelPresenter
+        .enableInjection()
     }
 
     private var panelPresenter: some View {

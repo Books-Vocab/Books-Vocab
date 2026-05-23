@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
     @Environment(\.quotaStore) var quotaStore
@@ -105,6 +107,7 @@ struct SettingsPresenter: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     // MARK: - Section 1: 帳號

@@ -6,8 +6,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct OverviewTab: View {
+    @ObserveInjection private var inject
     @Environment(\.authManager) private var authManager
     @Environment(\.appTheme) private var appTheme
     @Environment(\.modelContext) private var modelContext
@@ -31,6 +33,7 @@ struct OverviewTab: View {
                 loggedOutState
             }
         }
+        .enableInjection()
     }
 
     @ViewBuilder

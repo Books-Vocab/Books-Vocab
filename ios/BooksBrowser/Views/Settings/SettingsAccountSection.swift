@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsAccountSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.AuthSection
     let subscription: SettingsPresenterState.SubscriptionSection?
@@ -42,6 +44,7 @@ struct SettingsAccountSection: View {
             .animatePhaseChange(state.isAuthenticating)
             .animation(AppMotion.modalSwapSpring, value: state.isLoggedIn)
         }
+        .enableInjection()
     }
 
     private var loginView: some View {
@@ -229,6 +232,7 @@ struct SettingsAccountSection: View {
 // MARK: - Pro Badge
 
 struct SettingsProBadge: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     var body: some View {
@@ -244,6 +248,7 @@ struct SettingsProBadge: View {
         .background(appSkin.palette.accent.opacity(0.12))
         .clipShape(Capsule())
         .accessibilityElement(children: .combine)
+        .enableInjection()
     }
 }
 
@@ -322,6 +327,7 @@ private struct SettingsAuthButton<Leading: View>: View {
 }
 
 struct SettingsAuthSummary: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.AuthSection
     var isProActive: Bool = false
@@ -362,6 +368,7 @@ struct SettingsAuthSummary: View {
                 .foregroundStyle(appSkin.palette.success)
                 .symbolEffect(.bounce, value: state.isLoggedIn)
         }
+        .enableInjection()
     }
 
     @ViewBuilder

@@ -6,8 +6,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct NotebookFilterChip: View {
+    @ObserveInjection private var inject
     @Binding var filter: NotebookFilter
     @Query(sort: \Notebook.sortOrder) private var notebooks: [Notebook]
     @Environment(\.appSkin) private var skin
@@ -38,6 +40,7 @@ struct NotebookFilterChip: View {
                 notebooks: notebooks.filter { !$0.isDeleted }
             )
         }
+        .enableInjection()
     }
 
     private var chipLabel: String {
@@ -56,6 +59,7 @@ struct NotebookFilterChip: View {
 // MARK: - Picker Sheet
 
 struct NotebookFilterPickerSheet: View {
+    @ObserveInjection private var inject
     @Binding var filter: NotebookFilter
     let notebooks: [Notebook]
 
@@ -110,6 +114,7 @@ struct NotebookFilterPickerSheet: View {
             }
         }
         .appSheet(.medium)
+        .enableInjection()
     }
 
     private func toggleNotebook(_ id: String) {

@@ -122,10 +122,14 @@ Apple/Google SSO
 3. 改任何已加 `.enableInjection()` 的 SwiftUI view → 存檔 → simulator 1-2 秒內重渲染
 
 **hot reload 範圍**：
-- `ContentView` 已掛 `@ObserveInjection` + `.enableInjection()` → 整棵 tree 預設可注入
-- 要對個別 view 啟用更精確的注入，於該 view 加同樣兩行
-- **可注入**：view body / modifier / layout / 文案 / `AppTheme` 色票
-- **不可注入（仍需 full build）**：stored property 增減、function signature 改動、`enum` case 新增、Readium C++/ObjC++ bridging 改動
+- `Views/**/*.swift` 下所有 non-private `struct X: View`(排除 Debug/Scenarios、Readium/PDFReader bridging、ViewModifier、`#Preview` 內)已**全面注入三件套**(`import Inject` / `@ObserveInjection` / `.enableInjection()`)— 改任一 leaf view body 都能熱重載
+- **可注入**：view body / modifier / layout / 文案 / `AppTheme` 色票 / padding / spacing / radius / shadow / opacity
+- **不可注入(仍需 full build)**：stored property 增減、`@State` 初始值、function signature 改動、`enum` case 新增、`@Observable` macro 生成的 code(偶有時延)、Readium C++/ObjC++ bridging 改動、`UIViewRepresentable`
+
+**自動化工具**：
+- 新增 leaf view 後若忘加三件套,跑 `python3 ops/inject_codemod.py --apply` 自動補(idempotent)
+- `ops/injection_lint.sh --strict` 守門:三規則 — (R1) 合格 View 必有 `@ObserveInjection`;(R2) 同檔 `@ObserveInjection` 數 == `.enableInjection()` 數;(R3) 有 `@ObserveInjection` 必有 `import Inject`
+- 已知例外:body 為 `if` / `switch` 根 expression 時,codemod 跳過 — 手工包 `Group { ... }.enableInjection()`(現有 9 個 case 已處理完)
 
 **故障排除**：
 - console 無 `💉` 訊息 → InjectionNext.app 未啟、或 Xcode 不是從 menu bar 「Launch Xcode」開的

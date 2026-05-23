@@ -1,9 +1,11 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 // MARK: - Presenter
 
 struct ReaderSettingsPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) var appTheme
     @Environment(\.appSkin) var appSkin
 
@@ -48,6 +50,7 @@ struct ReaderSettingsPresenter: View {
 
     var body: some View {
         vocabLayout
+        .enableInjection()
     }
 }
 

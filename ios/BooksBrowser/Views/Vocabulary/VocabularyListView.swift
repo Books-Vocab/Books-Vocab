@@ -8,9 +8,11 @@
 import SwiftUI
 import SwiftData
 import UniformTypeIdentifiers
+import Inject
 
 /// 單字本內的已收錄列表
 struct VocabularyListView: View {
+    @ObserveInjection private var inject
     @Query var allEntries: [VocabularyEntry]
     @Query private var notebooks: [Notebook]
     @Environment(\.modelContext) var modelContext
@@ -92,6 +94,7 @@ struct VocabularyListView: View {
                 coordinator.activeReviewSession = nil
             }
         }
+        .enableInjection()
     }
 
 }
