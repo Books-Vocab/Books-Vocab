@@ -140,7 +140,7 @@ struct VocabAccessoryIconButton: View {
 ///
 /// 視覺上比 VocabSortPill 重(brandHero 填色 + onBrandHero 前景)以保留 primary action
 /// 的層級，但尺寸跟 sort pill 同階 — 用 capsule + caption 字級 + compact 間距。
-/// 只在 detail 頁出現；NotebookListView 的 hero 入口仍走 `VocabReviewBanner`。
+/// 用於 detail 頁(KGVocabPresenter)與 NotebookListView 頂部 section header (D4 editorial)。
 struct VocabReviewCTAPill: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
