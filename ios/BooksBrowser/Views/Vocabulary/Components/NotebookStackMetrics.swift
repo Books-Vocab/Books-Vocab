@@ -6,20 +6,16 @@
 //  對應 `docs/sop/ui-design.md` 規則：不可在 view 寫 magic number，
 //  spacing/radius/elevation 數值先放 token namespace。
 //
-//  幾何由 plan「Notebooks 立體堆卡重構」對齊：
+//  幾何由 plan「Notebook Editorial Stack」對齊：
 //  - 全層 corner radius 走 `AppRadius.md`
-//  - 層間 dy = `AppSpacing.tinyGap` (3pt)，dx = `AppSpacing.s1` (4pt) 單側
-//  - press-in 僅頂層 offset，下層 ghost 微下沉強化視差
-//  - 色彩暗化走 HSB brightness，不動 saturation、不用 opacity
+//  - 層間 dy = `AppSpacing.s1` (4pt)，dx = `AppSpacing.s1` (4pt) 單側
+//  - Ghost 改 cream paper（paperLight / paperSepia / paperSepiaDeep），
+//    不再用 brightness shift（取代 `deckColor`）
+//  - Editorial 手感：每層套 rotation + dx jitter，per-notebook deterministic seed
+//  - press-in 僅頂層 offset，下層 ghost 微下沉；rotation 不參與動畫
 //
 
 import SwiftUI
-
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
 
 enum NotebookStackMetrics {
     /// 依字數決定堆疊層數：
@@ -36,7 +32,7 @@ enum NotebookStackMetrics {
         }
     }
 
-    /// 每層垂直位移（resting 狀態）— peek 需 ≥ 4pt 才在實機 @3x 清楚可辨
+    /// 每層垂直位移（resting 狀態）
     static let layerOffsetY: CGFloat = AppSpacing.s1          // 4pt
     /// 每層水平單側 inset（下層比上層各縮 dx）
     static let layerInsetX: CGFloat = AppSpacing.s1           // 4pt
@@ -44,45 +40,64 @@ enum NotebookStackMetrics {
     static let pressedTopOffsetY: CGFloat = -14
     /// Press-in 時每深一層額外下沉 1pt（強化視差，總幅 ≤ 2pt）
     static let pressedGhostOffsetY: CGFloat = 1
-    /// Light mode 每深一層 brightness 遞減步階
-    static let brightnessStepLight: CGFloat = 0.05
-    /// Dark mode 每深一層 brightness 遞增步階（向亮走，避免黑底失辨識）
-    static let brightnessStepDark: CGFloat = 0.08
 
-    /// 依 colorScheme 對 base color 套深度 brightness shift。
-    /// - depth 0 = 頂層（不動）
-    /// - light: brightness 下降；dark: brightness 提升
-    /// 不動 saturation（避免下層看起來「褪色」）。
-    static func deckColor(_ base: Color, depth: Int, scheme: ColorScheme) -> Color {
-        guard depth > 0 else { return base }
-        let step = scheme == .dark ? brightnessStepDark : brightnessStepLight
-        let direction: CGFloat = scheme == .dark ? +1 : -1
-        let delta = direction * step * CGFloat(depth)
-        return base.shiftingBrightness(by: delta)
+    // MARK: - Editorial imperfection（rotation + dx jitter）
+
+    /// 每層基準 rotation（index = depth；0 = top cover）— degrees。
+    /// 配合 `.bottom` anchor：底部錨定、頂部微張，模擬「桌上隨手疊」。
+    static let layerRotations: [Double] = [0.5, -0.8, 1.5, -1.5]
+
+    /// 每層 dx 額外 jitter（在 `layerInsetX` 之外加值）— pt。
+    static let layerDxJitter: [CGFloat] = [0, 0.5, -1, 1]
+
+    /// Rotation overhang 保守常數。
+    /// 典型 cover width ~160pt × sin(1.5°) ≈ 4.2pt；8pt = 2× 安全邊際，
+    /// 避免 GeometryReader 造成 grid layout 反覆。
+    static let rotationOverhang: CGFloat = AppSpacing.s2      // 8pt
+
+    /// Per-notebook deterministic jitter — seed 由 caller 傳入（用 `stableSeed(for:)`）。
+    /// 同一 seed × 同一 depth 永遠回傳同一 (angle, dx)，render 不會閃爍。
+    /// 在 `layerRotations` / `layerDxJitter` base 上 ±50% 擾動。
+    ///
+    /// ⚠️ 不要傳 `String.hashValue` — Swift hashValue 每 process 啟動隨機 seeded，
+    /// 會導致同一本 notebook 每次 app 開啟旋轉角度都不同。一律走 `stableSeed(for:)`。
+    static func seedJitter(seed: Int, depth: Int) -> (angle: Double, dx: CGFloat) {
+        let idx = min(max(depth, 0), layerRotations.count - 1)
+        let baseAngle = layerRotations[idx]
+        let baseDx = layerDxJitter[idx]
+        // perturb ∈ [-0.5, +0.5]，依 seed × depth 變化。
+        // abs() 確保負 seed 下 Swift `%` 仍回傳 [0, 99]，perturb 範圍 invariant。
+        let mixed = abs(seed &+ depth &* 31) % 100
+        let perturb = Double(mixed) / 100.0 - 0.5
+        return (
+            angle: baseAngle * (1.0 + perturb * 0.5),
+            dx:    baseDx * (1.0 + CGFloat(perturb) * 0.5)
+        )
     }
-}
 
-// MARK: - HSB brightness helper
-
-extension Color {
-    /// 以 HSB 模型平移 brightness（clamp 到 [0, 1]）。
-    /// 透過 platform 原生 `UIColor` / `NSColor` 拆解；無法解析時回傳原色。
-    fileprivate func shiftingBrightness(by delta: CGFloat) -> Color {
-        #if canImport(UIKit)
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        guard UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
-            return self
+    /// Cross-launch stable hash (djb2) — 取代 `String.hashValue` 的 per-process random seed。
+    /// 同一字串永遠回傳同一非負 Int，保證 rotation 跨 launch 不變。
+    static func stableSeed(for string: String) -> Int {
+        var hash: UInt64 = 5381
+        for byte in string.utf8 {
+            hash = (hash &* 33) &+ UInt64(byte)
         }
-        let newB = max(0, min(1, b + delta))
-        return Color(hue: Double(h), saturation: Double(s), brightness: Double(newB), opacity: Double(a))
-        #elseif canImport(AppKit)
-        let ns = NSColor(self).usingColorSpace(.deviceRGB) ?? NSColor(self)
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        let newB = max(0, min(1, b + delta))
-        return Color(hue: Double(h), saturation: Double(s), brightness: Double(newB), opacity: Double(a))
-        #else
-        return self
-        #endif
+        // 截到正 Int 範圍（去最高位 sign bit），seedJitter `% 100` 始終非負
+        return Int(hash & UInt64(Int.max))
     }
+
+    // MARK: - Ghost color（cream paper, 取代 brightness-based deckColor）
+
+    /// Ghost cream 紙頁三階 — index = depth (1/2/3)。
+    /// depth 0 = top cover（不呼叫此函式）。
+    /// Dark variant 待下輪 design 決定（spec 已留 hook，目前 light/dark 同色）。
+    static func ghostPaperColor(depth: Int, scheme: ColorScheme) -> Color {
+        _ = scheme  // dark variant pending; silence unused warning
+        switch depth {
+        case 1:  return AppColors.paperLight
+        case 2:  return AppColors.paperSepia
+        default: return AppColors.paperSepiaDeep  // depth >= 3
+        }
+    }
+
 }
