@@ -54,4 +54,22 @@ enum NotebookPalette {
         let mapped = legacyMigration[raw.uppercased()] ?? raw
         return Color(hex: mapped) ?? Color(hex: defaultHex) ?? .blue
     }
+
+    /// HSB brightness ×(1 - amount),hue / saturation 保持。
+    /// 用於 cover hairline rule、active spine 等需要「同色族加深」的場景。
+    /// amount 範圍 [0, 1];例:`darken(c, by: 0.3)` → brightness ×0.7。
+    static func darken(_ color: Color, by amount: Double) -> Color {
+        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
+        #if canImport(UIKit)
+        UIColor(color).getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        #else
+        NSColor(color).usingColorSpace(.sRGB)?.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
+        #endif
+        return Color(
+            hue: Double(h),
+            saturation: Double(s),
+            brightness: Double(b) * (1 - amount),
+            opacity: Double(a)
+        )
+    }
 }
