@@ -18,7 +18,7 @@ verified_against: 41bf8dd
 
 三者模型線互補：Claude Opus 4.6 / Gemini 3.1 Pro / GPT-5.5。
 
-> Upstream: [`Soju06/codex-lb`](https://github.com/Soju06/codex-lb) v1.18.2（2026-05-19；FastAPI + uv，1.6k⭐）。讀取 Codex CLI 的 `~/.codex/auth.json`，轉打 OpenAI `/v1/responses`。
+> Upstream: [`Soju06/codex-lb`](https://github.com/Soju06/codex-lb) **v1.19.0-beta.1**（2026-05-19 snapshot；FastAPI + uv，1.6k⭐）。讀取 Codex CLI 的 `~/.codex/auth.json`，轉打 OpenAI `/v1/responses`。
 >
 > **ToS 灰區**：OpenAI 已明文「不得分享帳號」。截至 2026-05 **無大規模封號實證**（僅有 `flagged-accounts` 軟降級至 `gpt-5.2`，見 [codex#12079](https://github.com/openai/codex/issues/12079)）。但**多帳號 + 公網**會主動發 ban 訊號，**僅限本機 / 單一個人帳號使用**。
 
@@ -28,7 +28,7 @@ verified_against: 41bf8dd
 |-----|-------|
 | 本地路徑 | `lab/codex-gateway/`（vendored；`.gitignore` 擋 `auth.json` / `*.db` / `data/` / `.venv/`） |
 | 啟動方式 | `cd lab/codex-gateway && .venv/bin/codex-lb --host 127.0.0.1 --port 2455` |
-| Bind | `http://127.0.0.1:2455`（localhost only，不對外） |
+| Bind | `http://127.0.0.1:2455`（localhost only，不對外）；upstream 另預留 `1455` admin/ws port — **本部署不啟用** |
 | Dashboard | `http://127.0.0.1:2455/`（首次啟動 console print bootstrap token；localhost 連線免 token） |
 | Data dir | `$CODEX_LB_DATA_DIR`（建議 `~/.codex-lb`；存 sqlite + encrypted token，**不在 git**） |
 | 帳號池在線 | 0（待手動加；建議 1 個 ChatGPT Pro，不池化） |
@@ -56,11 +56,11 @@ codex auth login   # 開瀏覽器 OAuth；完成後 ~/.codex/auth.json 寫入 ac
 ls ~/.codex/auth.json   # 確認存在
 ```
 
-然後在 codex-lb dashboard 加帳號（從 `~/.codex/auth.json` 匯入，dashboard UI 操作）：
+然後在 codex-lb dashboard 加帳號（具體 UI 步驟依 upstream README / 實際介面為準，可能是匯入 `auth.json` 或貼 token）：
 
 ```bash
 cd ~/kg/lab/codex-gateway && .venv/bin/codex-lb --host 127.0.0.1 --port 2455
-# 開 http://127.0.0.1:2455 → Accounts → Add → 匯入 auth.json
+# 開 http://127.0.0.1:2455 → Accounts → 依 UI 指示加入
 ```
 
 ## 使用方式（OpenAI SDK，本機）
@@ -131,7 +131,7 @@ cd ~/kg/lab/codex-gateway && uv pip install -e .
 ## 相對 upstream snapshot 的本地修改
 
 - **`.gitignore` 末段擴充**：加 `auth.json` / `codex-lb.db` / `/var/lib/codex-lb/` / `data/` 阻擋 runtime secrets 進 git
-- **`src/`**：未修改（純 vendored）
+- **`app/` + `config/` 套件**：未修改（純 vendored；packages 定義見 `pyproject.toml` `[tool.hatch.build.targets.wheel]`）
 
 ## 相關文檔
 
