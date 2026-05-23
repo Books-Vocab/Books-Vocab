@@ -88,6 +88,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | host / port / container 配置(Caddy 路由) | `docs/reference/host_topology.md` **(SoT)** |
 | 生產禁用指令 / preflight / rollback | `docs/policy/safety.md` **(SoT)** — 已寫進鐵律 7 |
 | ops 流程 / change flow / hard stop | `docs/runbook/system.md` |
+| 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
 
 ## Doc Tier 契約
 
