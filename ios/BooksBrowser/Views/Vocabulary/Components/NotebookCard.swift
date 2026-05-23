@@ -303,14 +303,23 @@ private struct GridAspectRatioModifier: ViewModifier {
     }
 }
 
+/// Editorial 空 slot — 1pt 實線 hairline + cream paperLight 背景 + 36pt soft ring plus icon。
+/// 與 cream ghost stack 共用視覺語言。**不旋轉**（empty slot 語意 = 等待填入，不該有手痕）、
+/// **不加 shadow**（empty 不浮起）。
 struct NotebookAddCard: View {
     @Environment(\.appSkin) private var skin
 
     var body: some View {
         VStack(spacing: skin.spacing.inlineGap) {
+            // Plus icon 包在 36pt soft ring — 將 naked glyph 轉成「等待點擊的目標」
             Image(systemName: "plus")
-                .font(skin.typography.symbolLarge)
+                .font(.system(size: 18, weight: .regular))
                 .foregroundStyle(skin.palette.tertiaryText)
+                .frame(width: 36, height: 36)
+                .overlay(
+                    Circle().strokeBorder(skin.palette.cardBorder, lineWidth: 1)
+                )
+
             Text("新增單字本".localized)
                 .font(skin.typography.caption)
                 .foregroundStyle(skin.palette.tertiaryText)
@@ -318,12 +327,13 @@ struct NotebookAddCard: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         // 與 NotebookCard(.grid) 同 aspect — 修奇數本 / 偶數本 add 卡破節奏
         .aspectRatio(LayoutMode.notebookCardAspectRatio, contentMode: .fit)
-        .background(skin.palette.cardBackground)
+        // Editorial cream — 與 ghost 紙頁同視覺族群（不再 cardBackground 純白）
+        .background(AppColors.paperLight)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
         .overlay(
+            // 1pt 實線 hairline 取代 1.5pt dashed — 移除「資料夾選擇器」感
             RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                .strokeBorder(style: StrokeStyle(lineWidth: 1.5, dash: [6, 4]))
-                .foregroundStyle(skin.palette.cardBorder)
+                .strokeBorder(skin.palette.cardBorder, lineWidth: 1)
         )
     }
 }
