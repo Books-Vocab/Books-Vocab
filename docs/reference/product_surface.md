@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: a706c53
+verified_against: 6067f0c
 -->
 # Implemented Product Surface
 
@@ -150,6 +150,15 @@ verified_against: a706c53
 - Bearer `CCG_API_TOKEN`,模型別名 `sonnet`/`opus`/`haiku`
 - 現行呼叫點 `lab/podcast/pipeline.py`(PoC `lab/archive/podcast_architect_poc.py`)
 - 詳見 `docs/sop/claude-gateway.md`
+
+## Antigravity Proxy (`lab/antigravity-proxy/`,vendored,third-party)
+
+- Google Antigravity OAuth → OpenAI-compatible `/v1/chat/completions`(直接 HTTP 打 Google sandbox endpoint)
+- 公網 `https://wordnexus.lol/ag/v1` (Caddy `/ag/*` → port 3000,Bearer header check)
+- 多 Google Pro 帳號 pool + 自動 quota rotation + healthScore;OAuth refresh tokens 存 `~/antigravity-proxy/data/`
+- 可用模型:`claude-opus-4-6-thinking`/`gemini-2.5-pro`/`gemini-3.1-pro-low`/`gemini-3.5-flash-low`/`gpt-oss-120b-medium` 等(訂閱戶權限範圍)
+- **與 KG 邏輯獨立**(podcast pipeline 不呼叫此 proxy);個人 + 信任的人實驗用
+- 詳見 `docs/sop/antigravity-proxy.md`
 
 ## Ops
 
