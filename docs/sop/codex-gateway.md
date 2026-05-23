@@ -74,11 +74,13 @@ client = OpenAI(
     api_key="dummy",        # 預設 localhost 不檢查 API key；要開 per-key rate limit 走 dashboard 簽發
 )
 resp = client.chat.completions.create(
-    model="gpt-5.5",
+    model="gpt-5.3-codex",   # ChatGPT Plus 訂閱實測唯一可用 model（2026-05-23）
     messages=[{"role": "user", "content": "..."}],
     stream=True,
 )
 ```
+
+> **模型權限注意**：ChatGPT **Plus** 訂閱只能呼叫 `gpt-5.3-codex`。其他 `gpt-5` / `gpt-5-codex` / `gpt-5.4-codex` / `gpt-5.1-codex` 等會回 `not supported when using Codex with a ChatGPT account`（即使 `/v1/models` 顯示出來）。升 Pro / Business / Enterprise 才有更廣範圍。
 
 ### Codex CLI 本身（讓 codex 用 codex-lb pool）
 
