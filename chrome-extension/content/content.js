@@ -296,11 +296,14 @@
 
   function renderLoginPrompt(popup) {
     popup.className = 'kg-popup kg-popup--error';
-    const optionsUrl = chrome.runtime.getURL('options/options.html');
+    // `chrome.runtime.getURL` always returns a `chrome-extension://` URL,
+    // so `safeUrl` is a no-op pass-through here — kept for defense-in-depth
+    // consistency with the sidepanel renderer.
+    const optionsUrl = safeUrl(chrome.runtime.getURL('options/options.html'));
     popup.innerHTML = `
       <div class="kg-popup__login">
         <p>請先登入</p>
-        <a href="${optionsUrl}" target="_blank" class="kg-popup__btn">前往登入</a>
+        <a href="${escapeHtml(optionsUrl)}" target="_blank" class="kg-popup__btn">前往登入</a>
       </div>
     `;
   }
@@ -411,5 +414,30 @@
     const el = document.createElement('span');
     el.textContent = str;
     return el.innerHTML;
+  }
+
+  /**
+   * Defense-in-depth URL scheme allowlist for `href` / `src` rendered into
+   * popup markup. Mirrors `shared/pure.js#safeUrl`, inlined here because
+   * content scripts run in an isolated world without access to KGPure.
+   *
+   * Only `http:`, `https:`, and `chrome-extension:` pass through. Anything
+   * else (notably `javascript:`, `data:`) collapses to `#`.
+   */
+  function safeUrl(raw, fallback = '#') {
+    if (typeof raw !== 'string' || !raw) return fallback;
+    // eslint-disable-next-line no-control-regex
+    const trimmed = raw.replace(/^[\s\x00-\x1f\x7f]+|[\s\x00-\x1f\x7f]+$/g, '');
+    if (!trimmed) return fallback;
+    try {
+      const parsed = new URL(trimmed, 'https://invalid.example/');
+      const proto = parsed.protocol;
+      if (proto === 'http:' || proto === 'https:' || proto === 'chrome-extension:') {
+        return trimmed;
+      }
+      return fallback;
+    } catch (_err) {
+      return fallback;
+    }
   }
 })();
