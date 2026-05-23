@@ -57,9 +57,9 @@ extension TodayReviewPresenter {
 
             VocabChromeIconButton(systemImage: "xmark", action: onClose)
         }
-        .padding(.horizontal, appSkin.metrics.reviewTopBarHorizontalInset)
-        .padding(.top, appSkin.metrics.reviewTopBarTopInset)
-        .padding(.bottom, appSkin.metrics.reviewTopBarBottomInset)
+        .padding(.horizontal, TodayReviewMetrics.topBarHorizontalInset)
+        .padding(.top, TodayReviewMetrics.topBarTopInset)
+        .padding(.bottom, TodayReviewMetrics.topBarBottomInset)
     }
 
     // MARK: - Bottom Toolbar
@@ -71,8 +71,8 @@ extension TodayReviewPresenter {
             #endif
             toolbarControls
         }
-        .padding(.horizontal, appSkin.metrics.reviewToolbarHorizontalInset)
-        .padding(.vertical, appSkin.metrics.reviewToolbarVerticalInset)
+        .padding(.horizontal, TodayReviewMetrics.toolbarHorizontalInset)
+        .padding(.vertical, TodayReviewMetrics.toolbarVerticalInset)
         .background(
             Rectangle()
                 .fill(appSkin.palette.pageBackground)
@@ -290,7 +290,7 @@ extension TodayReviewPresenter {
                         Text("·\(state.forgotCount)").font(appSkin.typography.monoLabel)
                     }
                 }
-                .frame(minWidth: appSkin.metrics.reviewActionMinWidth)
+                .frame(minWidth: TodayReviewMetrics.actionMinWidth)
             }
             .buttonStyle(.vocabAction(.destructive))
             .disabled(buttonsDisabled)
@@ -314,7 +314,7 @@ extension TodayReviewPresenter {
                         Text("·\(state.rememberedCount)").font(appSkin.typography.monoLabel)
                     }
                 }
-                .frame(minWidth: appSkin.metrics.reviewActionMinWidth)
+                .frame(minWidth: TodayReviewMetrics.actionMinWidth)
             }
             .buttonStyle(.vocabAction(.success))
             .disabled(buttonsDisabled)
@@ -337,7 +337,7 @@ extension TodayReviewPresenter {
     var swipeIntensity: Double {
         if dismissPhase == .animatingOut { return frozenSwipeIntensity }
         guard swipeEnabled else { return 0 }
-        return max(-1, min(1, Double(swipeOffset / appSkin.metrics.reviewSwipeThreshold)))
+        return max(-1, min(1, Double(swipeOffset / TodayReviewMetrics.swipeThreshold)))
     }
 
     var forgotButtonScale: CGFloat   { 1.0 + CGFloat(max(-swipeIntensity, 0)) * 0.12 }

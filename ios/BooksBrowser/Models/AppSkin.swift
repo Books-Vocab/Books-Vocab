@@ -179,8 +179,6 @@ struct AppSkin {
         let wordRowVerticalGap: CGFloat
         let wordRowBaselineGap: CGFloat
         let metadataGap: CGFloat
-        let reviewProgressGap: CGFloat
-        let reviewProgressBarGap: CGFloat
         let statusHeroGap: CGFloat
         let timelineRowGap: CGFloat
         let timelineDetailGap: CGFloat
@@ -215,23 +213,6 @@ struct AppSkin {
         let syncOverlayInset: CGFloat
         let overlayVerticalInset: CGFloat
         let summaryHorizontalInset: CGFloat
-        let reviewCardHorizontalInset: CGFloat
-        let reviewCardTopInset: CGFloat
-        let reviewCardBottomInset: CGFloat
-        let reviewTopBarHorizontalInset: CGFloat
-        let reviewTopBarTopInset: CGFloat
-        let reviewTopBarBottomInset: CGFloat
-        let reviewToolbarHorizontalInset: CGFloat
-        let reviewToolbarVerticalInset: CGFloat
-        let reviewFoldPadding: CGFloat
-        let reviewFoldSectionSpacing: CGFloat
-        let reviewFoldHintBottomInset: CGFloat
-        let reviewFoldHintTopInset: CGFloat
-        let reviewFrontMinHeight: CGFloat
-        let reviewAnswerMinHeight: CGFloat
-        let reviewActionMinWidth: CGFloat
-        let reviewChevronButtonSize: CGFloat
-        let reviewHintCapsuleWidth: CGFloat
         let chromeButtonSize: CGFloat
         let overlayHeaderHorizontalInset: CGFloat
         let overlayHeaderVerticalInset: CGFloat
@@ -257,12 +238,7 @@ struct AppSkin {
         let paragraphLineSpacing: CGFloat
         let detailLineSpacing: CGFloat
         let exampleTruncateRadius: Int
-        let reviewFrontHeightRatio: CGFloat
-        let reviewCompletionHeightRatio: CGFloat
         let labelTracking: CGFloat
-        let reviewSwipeThreshold: CGFloat
-        let reviewSwipeMaxRotation: Double
-        let reviewSwipeOpacityFloor: Double
         let panelHandleOpacity: Double
         let graphDrawerBottomInset: CGFloat
     }
