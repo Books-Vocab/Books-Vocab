@@ -199,17 +199,17 @@ enum BookshelfImportError: LocalizedError {
     var errorDescription: String? {
         switch self {
         case .securityScopeAccessFailed:
-            return "Unable to access the selected file. Please try again."
+            return L10n.string("無法存取所選檔案，請再試一次")
         case .unsupportedExtension(let ext):
-            return "不支援的格式：.\(ext)"
+            return L10n.format("不支援的格式：.%@", ext)
         case .fileTooLarge(let bytes, let limit):
-            let mb = Double(bytes) / 1_048_576.0
-            let limitMB = limit / 1_048_576
-            return String(format: "檔案 %.1f MB 超過 %d MB 上限", mb, limitMB)
+            let mb = String(format: "%.1f", Double(bytes) / 1_048_576.0)
+            let limitMB = String(limit / 1_048_576)
+            return L10n.format("檔案 %@ MB 超過 %@ MB 上限", mb, limitMB)
         case .encodingFailed:
-            return "未支援的文字編碼（請改用 UTF-8）"
+            return L10n.string("未支援的文字編碼（請改用 UTF-8）")
         case .corruptedHeader(let format):
-            return "\(format) 檔頭損壞或格式無效"
+            return L10n.format("%@ 檔頭損壞或格式無效", format)
         case .unknown(let underlying):
             return underlying
         }
@@ -218,12 +218,12 @@ enum BookshelfImportError: LocalizedError {
     /// 失敗類別簡短標籤，供 toast / alert 副標使用。
     var diagnosisLabel: String {
         switch self {
-        case .securityScopeAccessFailed: return "權限不足"
-        case .unsupportedExtension: return "不支援的格式"
-        case .fileTooLarge: return "檔案過大"
-        case .encodingFailed: return "編碼錯誤"
-        case .corruptedHeader: return "檔頭損壞"
-        case .unknown: return "未知錯誤"
+        case .securityScopeAccessFailed: return L10n.string("權限不足")
+        case .unsupportedExtension: return L10n.string("不支援的格式")
+        case .fileTooLarge: return L10n.string("檔案過大")
+        case .encodingFailed: return L10n.string("編碼錯誤")
+        case .corruptedHeader: return L10n.string("檔頭損壞")
+        case .unknown: return L10n.string("未知錯誤")
         }
     }
 

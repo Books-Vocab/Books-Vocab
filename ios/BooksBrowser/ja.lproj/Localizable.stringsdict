@@ -86,5 +86,42 @@
 			<string>本日 %lld 枚を復習済み</string>
 		</dict>
 	</dict>
+	<key>已收錄 %d 個單字，其中 %d 個待複習。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>収録済み %1$#@collected@、うち %2$#@due@。</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>%d 語</string>
+		</dict>
+		<key>due</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>%d 語が復習待ち</string>
+		</dict>
+	</dict>
+	<key>已收錄 %d 個單字，去複習鞏固記憶吧。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@collected@</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>収録済み %d 語あります。復習して記憶を定着させましょう。</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

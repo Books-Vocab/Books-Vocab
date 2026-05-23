@@ -20,10 +20,15 @@ extension ReaderSettingsPresenter {
                     .padding(.bottom, appSkin.metrics.readerSettingsHandleBottomInset)
                 vocabHeaderBlock
                 ScrollView {
-                    VStack(alignment: .leading, spacing: appSkin.metrics.readerSettingsSectionSpacing) {
+                    // Mochi 北極星 #2：群組分隔靠 AppAirDivider + 留白,
+                    // 不再用 settings card 背景色塊包每個 section。
+                    VStack(alignment: .leading, spacing: 0) {
                         vocabTypographySection
+                        AppAirDivider()
                         vocabAppearanceSection
+                        AppAirDivider()
                         vocabHighlightSection
+                        AppAirDivider()
                         vocabDebugSection
                     }
                     .padding(.horizontal, appSkin.metrics.readerSettingsHorizontalInset)
@@ -31,7 +36,8 @@ extension ReaderSettingsPresenter {
                 }
             }
         }
-        .appElevation(.z3, direction: .up)
+        // Mochi 北極星 #3：shadow 收兩階 — z3 → z2。
+        .appElevation(.z2, direction: .up)
     }
 
     // MARK: Header
@@ -173,7 +179,8 @@ extension ReaderSettingsPresenter {
         title: String,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        AppSectionBlock(title: title) { content() }
+        // flat=true：移除群組卡片背景,改靠 vocabLayout 內 AppAirDivider 切群組。
+        AppSectionBlock(title: title, flat: true) { content() }
     }
 
     func vocabLabelChip(title: String, systemImage: String) -> some View {
@@ -188,9 +195,10 @@ extension ReaderSettingsPresenter {
     }
 
     func vocabControlSurface<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        // Mochi 北極星 #2：control surface border 退場,只留 fill。
         VocabChromeSurface(
             fill: appSkin.palette.pageBackground,
-            border: appSkin.palette.cardBorder
+            border: .clear
         ) {
             content()
                 .padding(.horizontal, appSkin.metrics.readerSettingsControlHorizontalPadding)

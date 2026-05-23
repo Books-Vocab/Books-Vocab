@@ -18,7 +18,9 @@ extension ReaderViewPresenter {
     }
 
     var vocabExpandedHeader: some View {
-        AppSectionCard(padding: 0, style: .vocab(appSkin)) {
+        // Mochi 北極星 #1：top toolbar 與 paper 同色，去 chrome 分隔感。
+        // 從 `.vocab(appSkin)`（有 border + z1）改為 `.flatVocab(appSkin)`（同色背景、無 border、無 elevation）。
+        AppSectionCard(padding: 0, style: .flatVocab(appSkin)) {
             HStack(spacing: 10) {
                 Button(action: onDismiss) {
                     HStack(spacing: 6) {
@@ -62,9 +64,10 @@ extension ReaderViewPresenter {
             Spacer()
 
             if state.totalProgression > 0 {
+                // Mochi 北極星 #2：border 退場 — 進度膠囊改用純 fill，不再描邊。
                 VocabChromeSurface(
                     fill: appSkin.palette.cardBackground,
-                    border: appSkin.palette.cardBorder
+                    border: .clear
                 ) {
                     HStack(spacing: 6) {
                         Image(systemName: "book.closed")

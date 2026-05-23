@@ -177,10 +177,9 @@ struct NotebookCard: View {
         .frame(height: 72)
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                .stroke(skin.palette.cardBorder, lineWidth: 0.5)
-        )
+        // 北極星二:list card 預設無 border。視覺分區改靠卡片間留白
+        // (editorialGridSpacing)+ cover↔metadata 內部垂直 0.5pt rule(書背隱喻,保留)。
+        // 卡片底色 `cardBackground` 與 `pageBackground` 不同色,單色頁面仍可區分。
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAddTraits(.isButton)

@@ -15,9 +15,9 @@ enum TranslationLanguage: String, CaseIterable, Identifiable, Codable {
     var nativeName: String {
         switch self {
         case .en: return "English"
-        case .zhHant: return "繁體中文"
-        case .zhHans: return "简体中文"
-        case .ja: return "日本語"
+        case .zhHant: return "繁體中文"  // i18n-allow: language-self-name
+        case .zhHans: return "简体中文"  // i18n-allow: language-self-name
+        case .ja: return "日本語"        // i18n-allow: language-self-name
         case .ko: return "한국어"
         case .fr: return "Français"
         case .de: return "Deutsch"
