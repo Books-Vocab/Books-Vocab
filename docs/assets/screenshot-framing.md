@@ -1,3 +1,11 @@
+<!-- doc-meta
+tier: assets
+authority: marketing
+update_trigger: app-store-asset-refresh
+scope:
+  - marketing/
+  - ops/screenshots/
+-->
 # App Store 截圖外框製作 SOP
 
 ## 概覽

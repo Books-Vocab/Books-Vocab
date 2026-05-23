@@ -22,12 +22,11 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 2. **確認 scope** — 任務是否 project-scoped。若涉及跨專案,切回 repo root 遵循根 `CLAUDE.md`。
 3. **依任務性質判斷是否需要 deep scan** — 模糊請求(「看看現況」「整理一下」「有什麼可以做」)才 dispatch 2-5 個 opus general-purpose agent 平行掃描;具體任務(typo / 單檔修改 / 已指明範圍)**不要** deep scan。
 
-## Skill 系統(KG 專屬 8 個 + plugin 全域可用)
+## Skill 系統(KG 專屬 7 個 + plugin 全域可用)
 
 | Skill | 觸發 | 用途 |
 |-------|------|------|
 | `design` | 做 feature / 加功能 / 改行為 | 想法 → spec → plan |
-| `execute` | 有 plan 要執行 | plan → worktree → opus agents → review → PR |
 | `app-debug` | bug / test failure / 異常行為 | 根因調查 + 平行假說驗證 |
 | `devops` | 部署 / 狀態 / 用戶查詢 / 額度 / 遠端操作 / 維護 | 生產環境運維全覽 |
 | `data-analysis` | 分析用戶 / 圖譜 / 連結 / 額度 / 嵌入 / 閾值調優 | 深度資料分析 |
@@ -46,7 +45,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 1. **TDD** — failing test → 紅 → 最小實作 → 綠。不可跳過。
 2. **驗證先於宣稱** — 說「完成 / 通過 / 修好」前必須有當下驗證輸出。「should work」= 謊言。
 3. **根因先於修復** — 遇 bug 必須確認根因才動手。不可看到錯就補 patch。
-4. **逐項 review,不批次** — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改,不限 execute skill。
+4. **逐項 review,不批次** — 每完成一個 fix/feature 立即 dispatch review agent,PASS 才下一個。禁「全部寫完再一起 review」。適用所有程式碼修改。
 5. **長時操作背景執行** — 任何 `Agent()` 與耗時 Bash(`ios_build.sh`、`ios_test.sh`、backend `pytest`、deploy/rsync、長下載/install)一律 `run_in_background: true`。**主線不阻塞**,完成由 notification 觸發。
 6. **主動查文檔(Doc Lookup Discipline)** — 涉及 endpoint / 模組 / env var / DB schema / 既有 feature / ops 工作流,**判斷「這需要查一下」就立即讀對應 reference,不靠記憶**。dispatch 有複雜度的工作時,prompt 必須明示「拿不準就讀 doc,不要省 token」。純樣板修改(typo / rename)不適用。
 7. **生產禁用指令** — `docker compose down -v` / `docker system prune -a` / `rm -rf /home/ubuntu/*`(涵蓋 data dir)永遠禁止。運維走 `ops/devops_kg_safe.sh`,不繞過 wrapper。完整見 `docs/policy/safety.md`。
@@ -73,6 +72,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | 改 iOS Bookshelf(書架 / 播客 series 列表 / 匯入) | `docs/reference/feature_boundary/bookshelf.md` |
 | 改 iOS Podcast player / 字幕 / progress | `docs/reference/feature_boundary/podcast.md` |
 | 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
+| 改 chrome-extension(manifest / sidepanel / content / shared) | `docs/reference/feature_boundary/chrome.md` |
 | 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |
 | 改 sync 狀態流轉(`syncStatus` × `actionType`) | `docs/reference/sync_lifecycle.md` **(SoT)** |
 | 寫 backend test | `docs/reference/testing/backend_strategy.md` |
@@ -88,6 +88,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | host / port / container 配置(Caddy 路由) | `docs/reference/host_topology.md` **(SoT)** |
 | 生產禁用指令 / preflight / rollback | `docs/policy/safety.md` **(SoT)** — 已寫進鐵律 7 |
 | ops 流程 / change flow / hard stop | `docs/runbook/system.md` |
+| 逐項 review 落地(派 review agent / PASS 判準 / block 處理) | `docs/sop/review_discipline.md` — 鐵律 4 落地 |
 
 ## Doc Tier 契約
 
@@ -99,6 +100,8 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 - **policy**(`docs/policy/*`) — 動之前需明確決策,PR 必須說明改動原因。
 - **archive**(`docs/archive/*`) — 凍結歷史 strategy/audit,**不更新、不引用**。需要當前狀態請讀對應 sop / reference。
 - **runbook**(`docs/runbook/*`) — ops change flow / hard stop;由 `devops` skill 引用。
+- **assets**(`docs/assets/*`) — App Store / 行銷素材製作 SOP(promo video / screenshot framing)。不在 `ops/docs_lint.sh` staleness 掃描範圍,但仍須有 `<!-- doc-meta -->` frontmatter。
+- **legal**(`docs/legal/*`) — 對外發布的隱私政策 / EULA。**不**強制 `<!-- doc-meta -->` frontmatter,亦不在 lint 掃描範圍;改動需走法務審閱,不適用 doc-as-code 規則。
 
 ## Doc Freshness 自動同步
 

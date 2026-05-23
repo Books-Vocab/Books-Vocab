@@ -1,14 +1,15 @@
 <!-- doc-meta
 tier: snapshot
 authority: derived
-update_trigger: auto-script
+update_trigger: machine-generated
 scope:
-  - ios/BooksBrowser/
-verified_against: 7c7a23b
+  - ios/BooksBrowser
+verified_against: a706c53
 -->
+
 # iOS Frontend Baseline
 
-基線日期: 2026-05-15
+基線日期: 2026-05-23
 
 ---
 
@@ -16,18 +17,18 @@ verified_against: 7c7a23b
 
 | 行數 | 路徑 |
 |------|------|
-| 731 | `Views/Bookshelf/BookshelfView.swift` |
-| 666 | `Views/Vocabulary/Skin/VocabSkin.swift` |
+| 722 | `Views/Bookshelf/BookshelfView.swift` |
+| 606 | `Models/AppSkin.swift` |
 | 602 | `Views/Reader/ReadiumNavigatorJS.swift` |
-| 559 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 601 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 566 | `BooksBrowserApp.swift` |
 | 551 | `Services/KGService.swift` |
-| 541 | `BooksBrowserApp.swift` |
 | 538 | `Services/PodcastAudioEngine.swift` |
+| 530 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
+| 527 | `Views/Podcast/PodcastPlayerView.swift` |
 | 524 | `Services/EPUBConverter.swift` |
-| 523 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
-| 495 | `Models/AppMetrics.swift` |
 
-總 Swift 行數: 43000 / 264 檔案
+總 Swift 行數: 45523 / 284 檔案
 
 ---
 
@@ -35,7 +36,7 @@ verified_against: 7c7a23b
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 179 |
+| Views/ + UIComponents/ 檔案總數 | 187 |
 | 含 #Preview 的檔案數 | 46 |
 
 ---
@@ -44,5 +45,5 @@ verified_against: 7c7a23b
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 105 |
+| @MainActor | 109 |
 | async func | 0 |
