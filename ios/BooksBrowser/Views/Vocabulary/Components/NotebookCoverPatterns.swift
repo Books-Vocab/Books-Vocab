@@ -114,9 +114,11 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                         seed = seed &* 6364136223846793005 &+ 1442695040888963407
                         let val = Double((seed >> 33) & 0xFF) / 255.0
                         if val > 0.6 {
-                            // noise pattern 維持動態 opacity (per-pixel rand-driven),
-                            // 但以 patternOpacity 作為上限,確保 noise dot 不超過其他 pattern 的視覺重量
-                            let opacity = min((val - 0.6) * 0.375, NotebookStackMetrics.patternOpacity)
+                            // noise pattern 維持動態 opacity (per-pixel rand-driven, max ≈ 0.15)。
+                            // **不**統一 patternOpacity token — noise 的視覺特色就是 per-pixel
+                            // 隨機變化,夾平會變一坨灰塊。Task 7 review 確認 noise 結構上
+                            // 必然 < 0.18 = 既有 token,顯式豁免。
+                            let opacity = (val - 0.6) * 0.375
                             context.fill(
                                 Path(CGRect(x: x, y: y, width: step, height: step)),
                                 with: .color(.white.opacity(opacity))
