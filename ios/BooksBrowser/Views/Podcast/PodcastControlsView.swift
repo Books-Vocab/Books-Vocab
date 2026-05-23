@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct PodcastControlsView: View {
+    @ObserveInjection private var inject
     let viewModel: PodcastPlayerViewModel
     @Environment(\.appSkin) private var skin
 
@@ -56,6 +58,7 @@ struct PodcastControlsView: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private var activeTime: TimeInterval {

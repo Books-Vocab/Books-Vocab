@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 /// 帳號刪除前的多步驟確認 Sheet。
 ///
@@ -9,6 +10,7 @@ import SwiftUI
 ///
 /// 業界參照：GitHub repo delete、Stripe API key revoke、Notion workspace delete。
 struct SettingsDeleteAccountSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
@@ -92,6 +94,7 @@ struct SettingsDeleteAccountSheet: View {
             .animation(AppMotion.standardSpring, value: confirmTextMatches)
             .animation(AppMotion.contentFade, value: countdownRemaining)
         }
+        .enableInjection()
     }
 
     // MARK: - Hero

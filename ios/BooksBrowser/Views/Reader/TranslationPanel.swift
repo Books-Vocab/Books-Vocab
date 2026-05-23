@@ -8,8 +8,10 @@
 
 import Combine
 import SwiftUI
+import Inject
 
 struct TranslationPanel: View {
+    @ObserveInjection private var inject
     let word: String
     let result: TranslationResult?
     let isLoading: Bool
@@ -99,6 +101,7 @@ struct TranslationPanel: View {
             .onDisappear {
                 stopTimer()
             }
+            .enableInjection()
     }
 
     private func startTimer() {

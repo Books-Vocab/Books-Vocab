@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import UIKit
+import Inject
 
 /// 字幕大小（與 Reader 概念對齊，但 persisted 分開）
 enum PodcastSubtitleSize: String, CaseIterable, Identifiable {
@@ -57,6 +58,7 @@ enum PodcastSubtitleSize: String, CaseIterable, Identifiable {
 }
 
 struct PodcastSettingsPopover: View {
+    @ObserveInjection private var inject
     @Binding var subtitleSize: PodcastSubtitleSize
     @Binding var autoPauseOnLookup: Bool
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
@@ -98,6 +100,7 @@ struct PodcastSettingsPopover: View {
         }
         .padding(skin.spacing.cardPadding)
         .frame(minWidth: 280)
+        .enableInjection()
     }
 }
 #endif

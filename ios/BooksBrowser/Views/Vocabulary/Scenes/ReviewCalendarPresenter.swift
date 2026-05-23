@@ -7,8 +7,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct ReviewCalendarPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
@@ -77,6 +79,7 @@ struct ReviewCalendarPresenter: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     // MARK: - Calendar

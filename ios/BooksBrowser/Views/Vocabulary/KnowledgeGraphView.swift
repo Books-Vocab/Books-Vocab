@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
+import Inject
 
 struct KnowledgeGraphView: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
@@ -39,6 +41,7 @@ struct KnowledgeGraphView: View {
             WordDetailSheet(entry: entry, allEntries: allEntries)
                 .appSheet(.large)
         }
+        .enableInjection()
     }
 
     private var presenterState: KnowledgeGraphPresenter.State {

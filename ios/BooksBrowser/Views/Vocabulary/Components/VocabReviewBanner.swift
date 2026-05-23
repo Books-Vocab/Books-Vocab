@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct VocabReviewBanner<FilterContent: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
 
     let dueCount: Int
@@ -54,6 +56,7 @@ struct VocabReviewBanner<FilterContent: View>: View {
         }
         .padding(skin.spacing.cardPadding)
         .background(skin.palette.cardBackground, in: RoundedRectangle(cornerRadius: skin.radii.card))
+        .enableInjection()
     }
 
     @ViewBuilder

@@ -7,8 +7,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct LoginSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.authManager) private var authManager
     @Environment(\.modelContext) private var modelContext
@@ -28,6 +30,7 @@ struct LoginSheet: View {
         .onChange(of: authManager.isLoggedIn) { _, isLoggedIn in
             if isLoggedIn { dismiss() }
         }
+        .enableInjection()
     }
 
     private var content: some View {

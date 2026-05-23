@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct TranslationLanguageSettingsView: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.appTheme) private var appTheme
 
@@ -78,6 +80,7 @@ struct TranslationLanguageSettingsView: View {
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle(L10n.string("翻譯語言"))
         .inlineNavigationBarTitle()
+        .enableInjection()
     }
 
     private func commit(

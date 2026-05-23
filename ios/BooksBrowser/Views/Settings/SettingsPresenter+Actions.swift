@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - Navigation Rows, Card Navigation, Buttons, Subscription Components, Selection
 
 struct SettingsNavigationRow<Trailing: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let icon: String
     let label: String
@@ -31,10 +33,12 @@ struct SettingsNavigationRow<Trailing: View>: View {
             }
         }
         .buttonStyle(.plain)
+        .enableInjection()
     }
 }
 
 struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
     let leading: Leading
@@ -65,10 +69,12 @@ struct SettingsCardNavigationRow<Leading: View, Trailing: View>: View {
             .padding(.vertical, 13)
         }
         .buttonStyle(.plain)
+        .enableInjection()
     }
 }
 
 struct SettingsInlineInfoButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
 
@@ -79,10 +85,12 @@ struct SettingsInlineInfoButton: View {
                 .foregroundStyle(appSkin.palette.secondaryText)
         }
         .buttonStyle(.plain)
+        .enableInjection()
     }
 }
 
 struct SettingsActionRowLabel<Trailing: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -122,10 +130,12 @@ struct SettingsActionRowLabel<Trailing: View>: View {
         .padding(.horizontal, appSkin.spacing.cardPadding)
         .padding(.vertical, 13)
         .frame(minHeight: 50)
+        .enableInjection()
     }
 }
 
 struct SettingsCompactActionButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let action: () -> Void
@@ -153,6 +163,7 @@ struct SettingsCompactActionButton: View {
             )
             .buttonStyle(.plain)
             .disabled(!isEnabled)
+            .enableInjection()
     }
 }
 
@@ -170,6 +181,7 @@ extension SubscriptionBadgeTone {
 }
 
 struct SettingsFeaturePanel<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let borderTone: Color
     let content: Content
@@ -188,10 +200,12 @@ struct SettingsFeaturePanel<Content: View>: View {
                 RoundedRectangle(cornerRadius: appSkin.radii.card, style: .continuous)
                     .stroke(borderTone, lineWidth: 1)
             )
+            .enableInjection()
     }
 }
 
 struct SettingsSubscriptionInfoBlock: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let subtitle: String?
@@ -225,6 +239,7 @@ struct SettingsSubscriptionInfoBlock: View {
                     .lineSpacing(3)
             }
         }
+        .enableInjection()
     }
 }
 
@@ -257,6 +272,7 @@ struct SettingsPlanComparisonRow: Identifiable {
 /// 用途：取代「只列 Pro 有什麼」的單欄 bullet list，直接呈現兩欄差異，
 /// 提升決策資訊密度（業界做法：Notion / Linear / Cursor 訂閱頁）。
 struct SettingsPlanComparisonTable: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let rows: [SettingsPlanComparisonRow]
 
@@ -275,6 +291,7 @@ struct SettingsPlanComparisonTable: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private var headerRow: some View {
@@ -332,6 +349,7 @@ struct SettingsPlanComparisonTable: View {
 }
 
 struct SettingsSubscriptionFeatureList: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let borderTone: Color
     let items: [SettingsSubscriptionFeatureItem]
@@ -362,10 +380,12 @@ struct SettingsSubscriptionFeatureList: View {
                 }
             }
         }
+        .enableInjection()
     }
 }
 
 struct SettingsSelectableRow<Leading: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let isSelected: Bool
     let leading: Leading
@@ -391,10 +411,12 @@ struct SettingsSelectableRow<Leading: View>: View {
         .padding(.vertical, appSkin.spacing.rowPadding)
         .contentShape(Rectangle())
         .background(isSelected ? appSkin.palette.accent.opacity(0.08) : Color.clear)
+        .enableInjection()
     }
 }
 
 struct SettingsSelectionTile<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let isSelected: Bool
     let content: Content
@@ -420,5 +442,6 @@ struct SettingsSelectionTile<Content: View>: View {
                         lineWidth: 1
                     )
             )
+            .enableInjection()
     }
 }

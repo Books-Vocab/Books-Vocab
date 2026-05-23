@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 /// Welcome walkthrough 專用版面參數 — 僅 WelcomeView 使用。
 private enum AppWelcomeMetrics {
@@ -25,6 +26,7 @@ private enum AppWelcomeMetrics {
 }
 
 struct WelcomeView: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @State private var currentPage = 0
 
@@ -101,6 +103,7 @@ struct WelcomeView: View {
                 .padding(.bottom, AppWelcomeMetrics.bottomPadding)
         }
         .background(appTheme.palette.pageBackground.ignoresSafeArea())
+        .enableInjection()
     }
 
     // MARK: - Subviews
@@ -211,6 +214,7 @@ private struct WelcomePage {
 }
 
 struct WelcomePreviewScene: View {
+    @ObserveInjection private var inject
     let initialPage: Int
     let preferredColorScheme: ColorScheme?
 
@@ -219,6 +223,7 @@ struct WelcomePreviewScene: View {
             WelcomeView(initialPage: initialPage, onStart: {}, onLogin: {}, onTryDemo: {})
         }
         .preferredColorScheme(preferredColorScheme)
+        .enableInjection()
     }
 }
 

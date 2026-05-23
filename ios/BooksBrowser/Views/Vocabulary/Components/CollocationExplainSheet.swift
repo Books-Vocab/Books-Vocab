@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct CollocationExplainSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
@@ -38,6 +40,7 @@ struct CollocationExplainSheet: View {
         .padding(.top, AppSpacing.s5)
         .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
         .task { await loadIfNeeded() }
+        .enableInjection()
     }
 
     @ViewBuilder

@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsReviewSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
 
@@ -18,6 +20,7 @@ struct SettingsReviewSection: View {
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("複習節奏".localized)
         .inlineNavigationBarTitle()
+        .enableInjection()
     }
 
     // MARK: - Mode Section

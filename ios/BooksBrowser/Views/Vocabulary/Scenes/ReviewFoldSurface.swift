@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 // MARK: - Fold Segment Position
 
@@ -12,6 +13,7 @@ enum FoldSegmentPosition {
 // MARK: - Fold Surface Container
 
 struct ReviewFoldSurface<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let position: FoldSegmentPosition
@@ -31,6 +33,7 @@ struct ReviewFoldSurface<Content: View>: View {
                 }
             }
             .appElevation(.z1)
+            .enableInjection()
     }
 
     private var shape: UnevenRoundedRectangle {
@@ -49,6 +52,7 @@ struct ReviewFoldSurface<Content: View>: View {
 // MARK: - Fold Chevron Button
 
 struct ReviewFoldChevronButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
 
@@ -63,12 +67,14 @@ struct ReviewFoldChevronButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
+        .enableInjection()
     }
 }
 
 // MARK: - Fold Chevron Pill (centered collapse handle)
 
 struct ReviewFoldChevronPill: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
 
@@ -83,6 +89,7 @@ struct ReviewFoldChevronPill: View {
         }
         .buttonStyle(.plain)
         .contentShape(Capsule())
+        .enableInjection()
     }
 }
 

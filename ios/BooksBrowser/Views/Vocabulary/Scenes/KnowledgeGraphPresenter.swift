@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct KnowledgeGraphPresenter: View {
+    @ObserveInjection private var inject
     struct ForceBindings {
         let centerForce: Binding<Double>
         let repelForce: Binding<Double>
@@ -79,6 +81,7 @@ struct KnowledgeGraphPresenter: View {
             }
         }
         .animation(AppMotion.contentFade, value: state.emptyState == nil)
+        .enableInjection()
     }
 
     private var graphScenePhase: VocabScenePhase {

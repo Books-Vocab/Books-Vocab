@@ -1,25 +1,30 @@
 import SwiftUI
+import Inject
 
 // MARK: - Step Duration View
 
 struct StepDurationView: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let step: PipelineStep
 
     var body: some View {
-        if let start = step.startTime {
-            if let end = step.endTime {
-                Text(formatDuration(end.timeIntervalSince(start)))
-                    .font(appSkin.typography.monoLabel)
-                    .foregroundStyle(appSkin.palette.tertiaryText)
-            } else {
-                TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
-                    Text(formatDuration(timeline.date.timeIntervalSince(start)))
+        Group {
+            if let start = step.startTime {
+                if let end = step.endTime {
+                    Text(formatDuration(end.timeIntervalSince(start)))
                         .font(appSkin.typography.monoLabel)
-                        .foregroundStyle(step.status == .retry ? appSkin.palette.retry : appSkin.palette.secondaryText)
+                        .foregroundStyle(appSkin.palette.tertiaryText)
+                } else {
+                    TimelineView(.periodic(from: .now, by: 0.1)) { timeline in
+                        Text(formatDuration(timeline.date.timeIntervalSince(start)))
+                            .font(appSkin.typography.monoLabel)
+                            .foregroundStyle(step.status == .retry ? appSkin.palette.retry : appSkin.palette.secondaryText)
+                    }
                 }
             }
         }
+        .enableInjection()
     }
 
     private func formatDuration(_ duration: TimeInterval) -> String {
