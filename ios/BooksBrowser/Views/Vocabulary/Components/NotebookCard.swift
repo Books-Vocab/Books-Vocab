@@ -306,6 +306,80 @@ private struct GridAspectRatioModifier: ViewModifier {
     }
 }
 
+/// D1 editorial cover composition — serif name 左上 + hairline rule + N 詞 右下 + (active) spine。
+/// 以 `.overlay` 套在既有 cover view 之上,跟著 `coverArea.rotationEffect` 一起旋轉。
+/// Spine 走 `NotebookPalette.darken(coverColor, by: 0.4)` (HSB brightness ×0.6,同色族加深)。
+/// Rule 走 `NotebookPalette.darken(coverColor, by: 0.3)`(brightness ×0.7),寬度 = cover 寬 × 0.25 (GeometryReader)。
+private struct EditorialCoverComposition: View {
+    let name: String
+    let cardCount: Int
+    let coverColor: Color
+    let isActive: Bool
+    let style: NotebookCardStyle
+    @Environment(\.appSkin) private var skin
+
+    private var nameFont: Font {
+        switch style {
+        case .grid: return AppFonts.serif(size: 22, bold: true)
+        case .hero: return AppFonts.serif(size: 32, bold: true)
+        }
+    }
+
+    private var outerPadding: CGFloat {
+        switch style {
+        case .grid: return AppSpacing.s3
+        case .hero: return AppSpacing.s4
+        }
+    }
+
+    var body: some View {
+        ZStack(alignment: .topLeading) {
+            // D3 spine — grid only,isActive。3pt < layerInsetX(4pt) 視覺與 ghost 邊不融合。
+            if style == .grid && isActive {
+                HStack(spacing: 0) {
+                    Rectangle()
+                        .fill(NotebookPalette.darken(coverColor, by: 0.4))
+                        .frame(width: 3)
+                        .accessibilityHidden(true)
+                    Spacer(minLength: 0)
+                }
+            }
+
+            // Name + rule (top-leading)
+            GeometryReader { geo in
+                VStack(alignment: .leading, spacing: AppSpacing.s2) {
+                    Text(name)
+                        .font(nameFont)
+                        .foregroundStyle(skin.palette.primaryText)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+
+                    Rectangle()
+                        .fill(NotebookPalette.darken(coverColor, by: 0.3))
+                        .frame(width: geo.size.width * 0.25,
+                               height: AppMetrics.dividerStandard)
+                }
+                .padding(outerPadding)
+            }
+
+            // N 詞 (bottom-trailing,僅 cardCount > 0)
+            if cardCount > 0 {
+                VStack {
+                    Spacer()
+                    HStack {
+                        Spacer()
+                        Text(L10n.format("%@ 詞", "\(cardCount)"))
+                            .font(skin.typography.monoLabel)
+                            .monospacedDigit()
+                            .foregroundStyle(skin.palette.secondaryText)
+                    }
+                }
+                .padding(outerPadding)
+            }
+        }
+    }
+}
+
 /// Editorial 空 slot — 1pt 實線 hairline + cream paperLight 背景 + 36pt soft ring plus icon。
 /// 與 cream ghost stack 共用視覺語言。**不旋轉**（empty slot 語意 = 等待填入，不該有手痕）、
 /// **不加 shadow**（empty 不浮起）。
