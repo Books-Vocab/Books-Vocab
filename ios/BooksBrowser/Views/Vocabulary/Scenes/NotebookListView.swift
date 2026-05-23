@@ -60,24 +60,29 @@ struct NotebookListView: View {
         let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
         let sortedNotebooks = sortOption.sort(notebooks, stats: stats)
 
+        // Editorial tight overrides — 全 app token (`pageHorizontalPadding = s5 = 32pt` /
+        // `sectionSpacing = s6 = 48pt` / `sectionGap = 14` / `pageTopInset = 16`) 對
+        // Notebooks editorial 太鬆。本地降到 editorial 緊版,不動共用 token。
+        let editorialHorizontal: CGFloat = AppSpacing.s3   // 12pt (was 32pt)
+        let editorialSectionGap: CGFloat = AppSpacing.s2   // 8pt  (was 14pt)
+        let editorialGridSpacing: CGFloat = AppSpacing.s2  // 8pt  (was 48pt)
+        let editorialTopInset: CGFloat = AppSpacing.s1     // 4pt  (was 16pt)
+
         NavigationStack(path: $navigationPath) {
             ScrollView {
-                VStack(spacing: skin.spacing.sectionGap) {
+                VStack(spacing: editorialSectionGap) {
                     if let message = coordinator.reconcileError {
                         reconcileErrorBanner(message: message)
-                            .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                            .padding(.horizontal, editorialHorizontal)
                             .transition(.statusRowReveal)
                     }
 
                     if !pendingEntries.isEmpty {
                         TipView(SyncPendingTip())
-                            .padding(.horizontal, skin.metrics.listRowHorizontalInset)
+                            .padding(.horizontal, editorialHorizontal)
                     }
 
                     // D4 — page section header `今日複習` + inline VocabReviewCTAPill。
-                    // 取代既有 VocabReviewBanner 卡片框,跟 VocabularyListView 詳情頁
-                    // 的 review pill 同視覺族群(editorial 克制)。
-                    // Filter chip 不在此 row 內(D6 已移至 toolbar)。
                     if totalDueCount > 0 || totalUnlearnedCount > 0 {
                         HStack {
                             Text("今日複習".localized)
@@ -94,14 +99,12 @@ struct NotebookListView: View {
                                 onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
                             )
                         }
-                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                        .padding(.horizontal, editorialHorizontal)
                     }
 
                     if notebooks.isEmpty {
                         emptyState
                     } else if notebooks.count == 1, let only = sortedNotebooks.first {
-                        // Hero variant — 寬扁封面、無 grid 配對、無使用中 pill、+ 移 toolbar。
-                        // 視覺心理：承認 99% 用戶只有 1 本，不假裝目錄。
                         let s = stats[only.remoteId] ?? NotebookStats()
                         NavigationLink(value: only.remoteId) {
                             NotebookCard(
@@ -111,12 +114,10 @@ struct NotebookListView: View {
                             )
                         }
                         .buttonStyle(NotebookDeckButtonStyle())
-                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                        .padding(.horizontal, editorialHorizontal)
                         .transition(.listSwap)
                     } else {
-                        // D5 — grid 永遠對稱:inline NotebookAddCard 移除,`+` 收斂到 toolbar 唯一入口。
-                        // NotebookAddCard 元件保留(future onboarding empty state 用),但此處不再呼叫。
-                        LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
+                        LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: editorialGridSpacing) {
                             ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
                                 NavigationLink(value: notebook.remoteId) {
@@ -130,11 +131,10 @@ struct NotebookListView: View {
                                 .transition(.listSwap)
                             }
                         }
-                        .padding(.horizontal, skin.metrics.pageHorizontalInset)
+                        .padding(.horizontal, editorialHorizontal)
                     }
                 }
-                .padding(.top, skin.metrics.pageTopInset)
-                .padding(.bottom, skin.metrics.pageBottomInset)
+                .padding(.top, editorialTopInset)
             }
             .background(skin.palette.pageBackground)
             .navigationTitle("單字本".localized)

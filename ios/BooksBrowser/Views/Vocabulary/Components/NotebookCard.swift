@@ -91,8 +91,8 @@ struct NotebookCard: View {
             }
 
             metadataArea
-                .padding(.horizontal, AppSpacing.s3)
-                .padding(.vertical, AppSpacing.s2)
+                .padding(.horizontal, AppSpacing.s2)  // editorial 緊版 (was s3 12pt)
+                .padding(.vertical, AppSpacing.s1)    // 4pt (was s2 8pt)
         }
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
@@ -305,8 +305,8 @@ private struct EditorialCoverComposition: View {
 
     private var outerPadding: CGFloat {
         switch style {
-        case .grid: return AppSpacing.s3
-        case .hero: return AppSpacing.s4
+        case .grid: return AppSpacing.s2  // 8pt — editorial 緊版 (was s3 12pt)
+        case .hero: return AppSpacing.s3  // 12pt (was s4 16pt)
         }
     }
 
