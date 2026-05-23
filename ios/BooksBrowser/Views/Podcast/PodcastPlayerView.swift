@@ -341,11 +341,20 @@ struct PodcastPlayerView: View {
 
         loadTask = Task { [weak vm] in
             guard let vm else { return }
-            guard let audioURLStr = episode.audioURL,
-                  let audioURL = URL(string: audioURLStr) else {
+            // Local-first: if the episode was downloaded, stream from disk.
+            // file:// URLs need no auth header and AVPlayer skips network
+            // entirely → instant ready, zero buffer concerns.
+            let localURL: URL? = {
+                guard let path = episode.localAudioPath,
+                      FileManager.default.fileExists(atPath: path) else { return nil }
+                return URL(fileURLWithPath: path)
+            }()
+            guard let audioURL = localURL
+                ?? episode.audioURL.flatMap(URL.init(string:)) else {
                 await MainActor.run { vm.reportError("無音訊 URL") }
                 return
             }
+            let isLocal = localURL != nil
 
             await MainActor.run { vm.setLoading() }
             if Task.isCancelled { return }
@@ -378,17 +387,24 @@ struct PodcastPlayerView: View {
             // Fetch the auth token AFTER subtitle so token refresh latency
             // doesn't block subtitle load, and so the token reflects the
             // latest state right before AVPlayer issues its first Range request.
+            // Skip entirely for local file:// URLs — no network round-trip
+            // means no auth needed, and we avoid blocking on a token fetch
+            // that could fail offline.
             let audioHeaders: [String: String]
-            do {
-                let token = try await kgService.currentAuthToken()
-                audioHeaders = ["Authorization": "Bearer \(token)"]
-            } catch is CancellationError {
-                return
-            } catch {
-                await MainActor.run {
-                    vm.reportError("無法取得認證 token：\(error.localizedDescription)")
+            if isLocal {
+                audioHeaders = [:]
+            } else {
+                do {
+                    let token = try await kgService.currentAuthToken()
+                    audioHeaders = ["Authorization": "Bearer \(token)"]
+                } catch is CancellationError {
+                    return
+                } catch {
+                    await MainActor.run {
+                        vm.reportError("無法取得認證 token：\(error.localizedDescription)")
+                    }
+                    return
                 }
-                return
             }
             if Task.isCancelled { return }
 
