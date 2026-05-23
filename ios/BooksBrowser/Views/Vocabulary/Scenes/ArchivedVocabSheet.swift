@@ -1,8 +1,10 @@
 import SwiftUI
 import SwiftData
 import os
+import Inject
 
 struct ArchivedVocabSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
@@ -85,6 +87,7 @@ struct ArchivedVocabSheet: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private var archivedEntries: [VocabularyEntry] {

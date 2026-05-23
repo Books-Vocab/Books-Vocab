@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct VocabForecastChart: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let buckets: [StatsPresentation.ForecastBucket]
 
@@ -19,36 +21,39 @@ struct VocabForecastChart: View {
     private var maxCount: Int { buckets.map(\.count).max() ?? 1 }
 
     var body: some View {
-        if !buckets.isEmpty {
-            GeometryReader { geo in
-                let labelHeight: CGFloat = 16
-                let countLabelHeight: CGFloat = isCompact ? 0 : 14
-                let chartHeight = geo.size.height - labelHeight - countLabelHeight - appSkin.spacing.inlineGap
-                let columnWidth = geo.size.width / CGFloat(buckets.count)
+        Group {
+            if !buckets.isEmpty {
+                GeometryReader { geo in
+                    let labelHeight: CGFloat = 16
+                    let countLabelHeight: CGFloat = isCompact ? 0 : 14
+                    let chartHeight = geo.size.height - labelHeight - countLabelHeight - appSkin.spacing.inlineGap
+                    let columnWidth = geo.size.width / CGFloat(buckets.count)
 
-                ZStack(alignment: .bottom) {
-                    // Baseline
-                    Rectangle()
-                        .fill(appSkin.palette.divider)
-                        .frame(height: 1)
-                        .offset(y: -labelHeight)
+                    ZStack(alignment: .bottom) {
+                        // Baseline
+                        Rectangle()
+                            .fill(appSkin.palette.divider)
+                            .frame(height: 1)
+                            .offset(y: -labelHeight)
 
-                    // Bars
-                    HStack(alignment: .bottom, spacing: 0) {
-                        ForEach(Array(buckets.enumerated()), id: \.element.id) { index, bucket in
-                            barColumn(index: index, bucket: bucket, chartHeight: chartHeight, labelHeight: labelHeight, columnWidth: columnWidth)
-                                .frame(maxWidth: .infinity)
+                        // Bars
+                        HStack(alignment: .bottom, spacing: 0) {
+                            ForEach(Array(buckets.enumerated()), id: \.element.id) { index, bucket in
+                                barColumn(index: index, bucket: bucket, chartHeight: chartHeight, labelHeight: labelHeight, columnWidth: columnWidth)
+                                    .frame(maxWidth: .infinity)
+                            }
+                        }
+
+                        // Tooltip
+                        if let idx = tappedIndex, idx < buckets.count {
+                            tooltipView(for: idx, geo: geo, chartHeight: chartHeight, labelHeight: labelHeight)
                         }
                     }
-
-                    // Tooltip
-                    if let idx = tappedIndex, idx < buckets.count {
-                        tooltipView(for: idx, geo: geo, chartHeight: chartHeight, labelHeight: labelHeight)
-                    }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottom)
             }
         }
+        .enableInjection()
     }
 
     // MARK: - Bar Column

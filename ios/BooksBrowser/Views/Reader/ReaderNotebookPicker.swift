@@ -7,8 +7,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct ReaderNotebookPicker: View {
+    @ObserveInjection private var inject
     @Bindable var book: Book
 
     @Query(
@@ -109,6 +111,7 @@ struct ReaderNotebookPicker: View {
                 sanitizeStaleBoundNotebook()
             }
         }
+        .enableInjection()
     }
 
     /// 已刪除 notebook 防護：若綁定的 notebook 不在可用列表中，自動清除綁定

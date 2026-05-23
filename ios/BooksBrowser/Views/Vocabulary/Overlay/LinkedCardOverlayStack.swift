@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 /// 連結卡片疊層的層次位移參數 — 僅 LinkedCardOverlayStack 使用。
 private enum AppOverlayMetrics {
@@ -8,28 +9,32 @@ private enum AppOverlayMetrics {
 }
 
 struct LinkedCardOverlayStack: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Binding var stack: [VocabularyEntry]
     var allEntries: [VocabularyEntry] = []
 
     var body: some View {
-        if !stack.isEmpty {
-            ZStack {
-                appSkin.palette.overlayScrim
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        _ = stack.popLast()
-                    }
+        Group {
+            if !stack.isEmpty {
+                ZStack {
+                    appSkin.palette.overlayScrim
+                        .ignoresSafeArea()
+                        .onTapGesture {
+                            _ = stack.popLast()
+                        }
 
-                ForEach(Array(stack.enumerated()), id: \.element.id) { index, entry in
-                    linkedCardLayer(entry: entry, index: index)
-                        .zIndex(Double(index + 1))
-                        .allowsHitTesting(index == stack.count - 1)
-                        .animateSpring(stack.count)
+                    ForEach(Array(stack.enumerated()), id: \.element.id) { index, entry in
+                        linkedCardLayer(entry: entry, index: index)
+                            .zIndex(Double(index + 1))
+                            .allowsHitTesting(index == stack.count - 1)
+                            .animateSpring(stack.count)
+                    }
                 }
+                .transition(.overlayFade)
             }
-            .transition(.overlayFade)
         }
+        .enableInjection()
     }
 
     private func linkedCardLayer(entry: VocabularyEntry, index: Int) -> some View {

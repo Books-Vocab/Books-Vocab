@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - Shared Section Helpers (internal，供各 Section 檔案使用)
 
 struct SettingsSectionHeader: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let icon: String
@@ -16,10 +18,12 @@ struct SettingsSectionHeader: View {
                 color: appSkin.palette.secondaryText
             )
         )
+        .enableInjection()
     }
 }
 
 struct SettingsSectionFooter: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
 
@@ -35,22 +39,26 @@ struct SettingsSectionFooter: View {
                 color: appSkin.palette.tertiaryText
             )
         )
+        .enableInjection()
     }
 }
 
 typealias SettingsDivider = AppSettingsDivider
 
 struct SettingsTrailingChevronIcon: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     var body: some View {
         Image(systemName: "chevron.right")
             .font(appSkin.typography.iconTiny)
             .foregroundStyle(appSkin.palette.tertiaryText)
+            .enableInjection()
     }
 }
 
 struct SettingsDisclosureValue: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
 
@@ -61,10 +69,12 @@ struct SettingsDisclosureValue: View {
                 .foregroundStyle(appSkin.palette.secondaryText)
             SettingsTrailingChevronIcon()
         }
+        .enableInjection()
     }
 }
 
 struct SettingsMenuValue: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
 
@@ -77,10 +87,12 @@ struct SettingsMenuValue: View {
                 .font(appSkin.typography.iconTiny)
                 .foregroundStyle(appSkin.palette.tertiaryText)
         }
+        .enableInjection()
     }
 }
 
 struct SettingsTitleSubtitleStack: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let subtitle: String?
@@ -119,10 +131,12 @@ struct SettingsTitleSubtitleStack: View {
                     .lineLimit(subtitleLineLimit)
             }
         }
+        .enableInjection()
     }
 }
 
 struct SettingsStatusBadge: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
     let tone: Color
@@ -135,10 +149,12 @@ struct SettingsStatusBadge: View {
             .padding(.vertical, appSkin.spacing.chipVerticalPadding)
             .background(tone.opacity(0.12))
             .clipShape(Capsule())
+            .enableInjection()
     }
 }
 
 struct SettingsStatusValue: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
     let color: Color
@@ -158,10 +174,12 @@ struct SettingsStatusValue: View {
             .foregroundStyle(color)
             .lineLimit(lineLimit)
             .multilineTextAlignment(alignment)
+            .enableInjection()
     }
 }
 
 struct SettingsStatusSummaryValue: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
     let color: Color
@@ -186,5 +204,6 @@ struct SettingsStatusSummaryValue: View {
                 .foregroundStyle(appSkin.palette.secondaryText)
                 .lineLimit(1)
         }
+        .enableInjection()
     }
 }

@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - Buttons, Headers, Sliders, Sort, Metric Cards
 
 struct VocabInlineActionButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     var tone: Color? = nil
@@ -13,10 +15,12 @@ struct VocabInlineActionButton: View {
             .font(appSkin.typography.body)
             .foregroundStyle(tone ?? appSkin.palette.accent)
             .buttonStyle(.plain)
+            .enableInjection()
     }
 }
 
 struct VocabSectionHeader: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     var systemImage: String? = nil
@@ -42,10 +46,12 @@ struct VocabSectionHeader: View {
             Spacer()
         }
         .foregroundStyle(appSkin.palette.tertiaryText)
+        .enableInjection()
     }
 }
 
 struct VocabSliderRow: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let label: String
     @Binding var value: Double
@@ -70,10 +76,12 @@ struct VocabSliderRow: View {
                 .frame(width: valueWidth, alignment: .trailing)
         }
         .frame(height: appSkin.metrics.tabSelectorHeight)
+        .enableInjection()
     }
 }
 
 struct VocabMetricHeroCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let description: String
@@ -100,10 +108,12 @@ struct VocabMetricHeroCard: View {
                     .monospacedDigit()
             }
         }
+        .enableInjection()
     }
 }
 
 struct VocabAccessoryIconButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let systemImage: String
     let tone: Color
@@ -122,6 +132,7 @@ struct VocabAccessoryIconButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .enableInjection()
     }
 }
 
@@ -131,6 +142,7 @@ struct VocabAccessoryIconButton: View {
 /// 的層級，但尺寸跟 sort pill 同階 — 用 capsule + caption 字級 + compact 間距。
 /// 只在 detail 頁出現；NotebookListView 的 hero 入口仍走 `VocabReviewBanner`。
 struct VocabReviewCTAPill: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.appTheme) private var appTheme
 
@@ -144,39 +156,42 @@ struct VocabReviewCTAPill: View {
     private var hasBothTypes: Bool { dueCount > 0 && unlearnedCount > 0 }
 
     var body: some View {
-        if hasBothTypes {
-            Menu {
-                Button {
-                    onStartMixed()
-                } label: {
-                    Label(L10n.format("全部複習（%@）", "\(totalCount)"), systemImage: "rectangle.stack")
+        Group {
+            if hasBothTypes {
+                Menu {
+                    Button {
+                        onStartMixed()
+                    } label: {
+                        Label(L10n.format("全部複習（%@）", "\(totalCount)"), systemImage: "rectangle.stack")
+                    }
+                    Divider()
+                    Button {
+                        onStartDue()
+                    } label: {
+                        Label(L10n.format("到期複習（%@）", "\(dueCount)"), systemImage: "clock.badge")
+                    }
+                    Button {
+                        onStartUnlearned()
+                    } label: {
+                        Label(L10n.format("未學複習（%@）", "\(unlearnedCount)"), systemImage: "sparkles")
+                    }
+                } label: { pillLabel(count: totalCount, systemImage: "play.fill") }
+                .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalCount)"))
+            } else if dueCount > 0 {
+                Button(action: onStartDue) {
+                    pillLabel(count: dueCount, systemImage: "clock.badge")
                 }
-                Divider()
-                Button {
-                    onStartDue()
-                } label: {
-                    Label(L10n.format("到期複習（%@）", "\(dueCount)"), systemImage: "clock.badge")
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(dueCount)"))
+            } else if unlearnedCount > 0 {
+                Button(action: onStartUnlearned) {
+                    pillLabel(count: unlearnedCount, systemImage: "sparkles")
                 }
-                Button {
-                    onStartUnlearned()
-                } label: {
-                    Label(L10n.format("未學複習（%@）", "\(unlearnedCount)"), systemImage: "sparkles")
-                }
-            } label: { pillLabel(count: totalCount, systemImage: "play.fill") }
-            .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalCount)"))
-        } else if dueCount > 0 {
-            Button(action: onStartDue) {
-                pillLabel(count: dueCount, systemImage: "clock.badge")
+                .buttonStyle(.plain)
+                .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(unlearnedCount)"))
             }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(dueCount)"))
-        } else if unlearnedCount > 0 {
-            Button(action: onStartUnlearned) {
-                pillLabel(count: unlearnedCount, systemImage: "sparkles")
-            }
-            .buttonStyle(.plain)
-            .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(unlearnedCount)"))
         }
+        .enableInjection()
     }
 
     private func pillLabel(count: Int, systemImage: String) -> some View {
@@ -197,6 +212,7 @@ struct VocabReviewCTAPill: View {
 }
 
 struct VocabSortPill: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Binding var sortOption: KGVocabSortOption
 
@@ -225,5 +241,6 @@ struct VocabSortPill: View {
         }
         .accessibilityLabel(L10n.format("排序方式：%@", sortOption.label))
         .accessibilityHint("點兩下切換排序".localized)
+        .enableInjection()
     }
 }

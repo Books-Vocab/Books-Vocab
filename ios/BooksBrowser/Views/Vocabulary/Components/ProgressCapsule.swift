@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct ProgressCapsule: View {
+    @ObserveInjection private var inject
     let progress: Double
     let label: String?
     var fillColor: Color
@@ -28,6 +30,7 @@ struct ProgressCapsule: View {
                     .padding(.trailing, AppSpacing.microGap)
             }
         }
+        .enableInjection()
     }
 }
 

@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SelectionToolbar: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.appSkin) private var appSkin
 
@@ -27,6 +29,7 @@ struct SelectionToolbar: View {
         .padding(.vertical, AppSpacing.s2)
         .background(appSkin.palette.cardBackground)
         .appElevation(.z2, direction: .up)
+        .enableInjection()
     }
 
     @ViewBuilder

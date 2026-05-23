@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 enum NotebookExportFormat {
     case csv, json, anki
@@ -41,6 +42,7 @@ struct NotebookCardData {
 }
 
 struct NotebookCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
 
     let data: NotebookCardData
@@ -164,6 +166,7 @@ struct NotebookCard: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     // MARK: - Subviews
@@ -307,6 +310,7 @@ private struct GridAspectRatioModifier: ViewModifier {
 /// 與 cream ghost stack 共用視覺語言。**不旋轉**（empty slot 語意 = 等待填入，不該有手痕）、
 /// **不加 shadow**（empty 不浮起）。
 struct NotebookAddCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
 
     var body: some View {
@@ -335,6 +339,7 @@ struct NotebookAddCard: View {
             RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
                 .strokeBorder(skin.palette.cardBorder, lineWidth: 1)
         )
+        .enableInjection()
     }
 }
 

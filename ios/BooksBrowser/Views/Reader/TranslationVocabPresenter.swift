@@ -9,8 +9,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct TranslationVocabPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let state: TranslationPanelPresenterState
@@ -44,6 +46,7 @@ struct TranslationVocabPresenter: View {
             }
         }
         .appElevation(.z3, direction: .up)
+        .enableInjection()
     }
 
     private var heroSection: some View {

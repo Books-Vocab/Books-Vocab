@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsSubscriptionSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.SubscriptionSection
     let actions: SettingsPresenterActions
@@ -86,6 +88,7 @@ struct SettingsSubscriptionSection: View {
 
             SettingsSectionFooter("Pro 權限由後端統一管理；來源可能是 App Store 訂閱或管理員手動授權。".localized)
         }
+        .enableInjection()
     }
 
     private var subscriptionBadge: some View {

@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SpeakerAccentBar: View {
+    @ObserveInjection private var inject
     let speaker: String
     let hostNames: [String]
     @Environment(\.appSkin) private var skin
@@ -16,10 +18,12 @@ struct SpeakerAccentBar: View {
         RoundedRectangle(cornerRadius: skin.radii.tiny)
             .fill(barColor)
             .frame(width: 3)
+            .enableInjection()
     }
 }
 
 struct SpeakerChip: View {
+    @ObserveInjection private var inject
     let speaker: String
     let hostNames: [String]
     @Environment(\.appSkin) private var skin
@@ -38,5 +42,6 @@ struct SpeakerChip: View {
             .padding(.horizontal, skin.spacing.chipHorizontalPadding)
             .padding(.vertical, skin.spacing.chipVerticalPadding / 2)
             .background(chipColor.opacity(0.12), in: Capsule())
+            .enableInjection()
     }
 }

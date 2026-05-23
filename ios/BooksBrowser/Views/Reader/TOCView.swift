@@ -2,8 +2,10 @@
 import SwiftUI
 import ReadiumShared
 import os
+import Inject
 
 struct TOCView: View {
+    @ObserveInjection private var inject
     private enum LoadState {
         case loading
         case loaded
@@ -100,6 +102,7 @@ struct TOCView: View {
                 }
             }
         }
+        .enableInjection()
     }
 }
 

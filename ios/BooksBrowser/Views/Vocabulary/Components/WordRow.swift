@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct WordRow: View {
+    @ObserveInjection private var inject
     struct ViewData: Identifiable, Hashable {
         enum Tone: Hashable {
             case primary
@@ -154,6 +156,7 @@ struct WordRow: View {
         .accessibilityLabel(accessibilityRowLabel)
         .accessibilityValue(accessibilityProgressDescription)
         .accessibilityHint(L10n.string("點兩下查看詳細資訊"))
+        .enableInjection()
     }
 
     private func resolveTone(_ tone: ViewData.Tone) -> Color {

@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct VocabCalendarGrid: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let displayedMonth: Date
@@ -78,6 +80,7 @@ struct VocabCalendarGrid: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private func dayView(_ cell: DayCell) -> some View {

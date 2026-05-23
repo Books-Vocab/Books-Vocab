@@ -1,7 +1,9 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 struct QuotaBar: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.appSkin) private var appSkin
     @Environment(\.quotaStore) private var store
@@ -9,20 +11,23 @@ struct QuotaBar: View {
     let isLoggedIn: Bool
 
     var body: some View {
-        if isLoggedIn {
-            GeometryReader { geo in
-                ZStack(alignment: .leading) {
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(barColor.opacity(0.15))
+        Group {
+            if isLoggedIn {
+                GeometryReader { geo in
+                    ZStack(alignment: .leading) {
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(barColor.opacity(0.15))
 
-                    RoundedRectangle(cornerRadius: 1, style: .continuous)
-                        .fill(barColor.opacity(barOpacity))
-                        .frame(width: geo.size.width * store.fraction)
-                        .animateSpring(store.fraction)
+                        RoundedRectangle(cornerRadius: 1, style: .continuous)
+                            .fill(barColor.opacity(barOpacity))
+                            .frame(width: geo.size.width * store.fraction)
+                            .animateSpring(store.fraction)
+                    }
                 }
+                .frame(height: 2)
             }
-            .frame(height: 2)
         }
+        .enableInjection()
     }
 
     private var barColor: Color {
