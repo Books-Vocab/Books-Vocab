@@ -268,22 +268,24 @@ Preview matrix 已補齊：
 
 | State | 觸發條件 | 視覺 |
 |------|---------|------|
-| 使用中 | `isActive == true` && `.grid` | 頂層右上 `使用中` capsule pill（`skin.palette.accent`） |
+| 使用中 | `isActive == true` && `.grid` | 頂層右上 `使用中` capsule pill（`skin.palette.accent`），**隨 coverArea rotation 一起轉**（`NotebookCard.coverArea` 外層套 rotationEffect，包 pill overlay） |
 | 有待複習 | `dueCount > 0` | metadata row 顯示「N 到期」（`palette.warning`） |
 | 有未學 | `unlearnedCount > 0` | metadata row 顯示「N 未學」 |
 | Pending sync | `pendingCount > 0` | 字數 row 右側 sync icon |
-| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill，下層 ghost 仍走純色 |
+| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill，下層 ghost 仍 cream paper（不混照片） |
+| Editorial rotation | grid + layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic（`stableSeed(for: data.name)` djb2 → `seedJitter`），anchor `.bottom`；同一本跨 launch 同角度 |
+| Editorial divider | `.grid` style | cover 與 metadata 之間 1pt `cardBorder` hairline rule |
 
 ### Theme / Press / a11y
 
 | State | 觸發條件 | 行為 |
 |------|---------|------|
-| Light mode | `colorScheme == .light` | ghost brightness 每深一層 −0.04（壓暗） |
-| Dark mode | `colorScheme == .dark` | ghost brightness 每深一層 +0.06（提亮）；`AppElevationModifier` shadow ×1.8 |
+| Light mode | `colorScheme == .light` | ghost = `paperLight` / `paperSepia` / `paperSepiaDeep` cream 三階；cover 套 Morandi palette 12 色之一 |
+| Dark mode | `colorScheme == .dark` | ghost 同 cream 三階（dark variant pending design）；`AppElevationModifier` shadow ×1.8 |
 | Resting | `isPressed == false` | 頂層 z2 / ghost z1，無 offset |
-| Pressed | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97；ghost 每深一層額外下沉 1pt；haptic `.selection` 觸發一次 |
+| Pressed | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97；ghost 每深一層額外下沉 1pt；haptic `.selection` 觸發一次。**Rotation 不參與 press 動畫**（靜態 layout） |
 | Release | `isPressed` true→false | 走 `AppMotion.cardDeckRelease` spring 回彈 |
-| Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale；保留 opacity dip + haptic + push transition |
+| Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale；保留 opacity dip + haptic + push transition；**rotation 保留**（屬 layout 非 motion，mount 後不再變動） |
 | Dynamic Type `.accessibility3` | a11y size | metadata truncate，stack 幾何不縮放 |
 
 整 stack 為單一 a11y element（`children: .ignore` + label = `name + cardCount + 狀態`），ghost 各自 `.accessibilityHidden(true)`。

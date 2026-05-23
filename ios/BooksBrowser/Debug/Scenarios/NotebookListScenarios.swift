@@ -74,6 +74,21 @@ enum NotebookListScenarios {
             Scenario("A11y · large numbers heavy stack", layout: .fill) {
                 singleSheet(card: Self.heavy)
             }
+
+            // MARK: Editorial（cream paper ghosts + rotation + jitter）
+
+            // 同 row 不同 seed → rotation 視覺差異明顯（驗 stableSeed deterministic）
+            Scenario("Editorial · different seeds 2-up", layout: .fill) {
+                gridSheet(cards: [Self.mediumActive, Self.medium])
+            }
+            // 「使用中」pill 必須隨 cover 一起轉（不脫離卡片邊界）
+            Scenario("Editorial · pill 隨 rotation", layout: .fill) {
+                singleSheet(card: Self.mediumActive)
+            }
+            // 4 本相同字數但不同 name → 確認 seed 純由 name 決定、jitter 各自獨立
+            Scenario("Editorial · 4 different names same depth", layout: .fill) {
+                gridSheet(cards: [Self.medium, Self.mediumActive, Self.thin, Self.longNameHeavy], minimum: 140)
+            }
         }
     }
 

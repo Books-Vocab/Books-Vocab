@@ -140,6 +140,17 @@ PR #402 七階段升級補完語意分層。新元件優先使用以下 token，
 
 舊 `AppShadows.panelOpacity` 在本 PR 由 0.70 → 0.18（paper-tone shadows）；後續逐步以 `AppElevation` 取代分散的 paperFloat/cover/panel 命名。
 
+### Editorial imperfection / static rotation
+
+某些 editorial 元件（如 `NotebookStackedCoverView` 的 cream paper ghost）需要 deterministic 微旋轉帶入「桌上隨手疊」手感。**Rotation 屬 layout 非 motion** 時 — i.e. 角度在 mount 後不再改變、不隨 state 動畫 — `accessibilityReduceMotion` **不關閉** rotation。Apple HIG 的 RM 規範針對動態 motion；靜態 visual rotation 與 Wallet/Books 既有圖示同性質、不適用 RM gate。
+
+落地規則：
+- Rotation 角度由 deterministic seed 推得（如 `NotebookStackMetrics.stableSeed(for:)` djb2 over utf8），**禁用 `String.hashValue`**（per-process random seed 會導致跨 launch 角度跳動）
+- Rotation 不參與 press / 任何 state transition
+- Reduce Motion 仍關 offset/scale 動畫；只保留 rotation 與 opacity dip
+
+Precedent callsite：`NotebookStackedCoverView` editorial stack。
+
 ---
 
 ## Color token：Brand Hero + 狀態 bg
