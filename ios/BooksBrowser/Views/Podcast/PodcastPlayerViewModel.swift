@@ -127,6 +127,14 @@ final class PodcastPlayerViewModel {
         state = .loading
         duration = 0
         bufferedEnd = 0
+        // Register NowPlaying metadata BEFORE loadAudio: the synchronous
+        // updateNowPlayingInfo() fired inside loadAudio (when prefetchedDuration
+        // populates duration immediately) would otherwise read an empty title
+        // for one runloop tick, briefly flashing a blank lock-screen card.
+        audioEngine.configureNowPlaying(
+            title: title,
+            artist: hostNames.joined(separator: " & ")
+        )
         audioEngine.loadAudio(
             url: audioURL,
             httpHeaders: audioHTTPHeaders,
@@ -135,10 +143,6 @@ final class PodcastPlayerViewModel {
         if let srt = subtitleContent {
             applySubtitle(content: srt)
         }
-        audioEngine.configureNowPlaying(
-            title: title,
-            artist: hostNames.joined(separator: " & ")
-        )
         // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 

@@ -148,7 +148,7 @@ final class PodcastAudioEngine: NSObject {
         // ranges (progressive streams buffer contiguously from 0; HLS may have
         // discontinuous regions but the furthest end is still the right number
         // for a single "buffered to here" overlay).
-        loadedRangesObserver = item.observe(\.loadedTimeRanges, options: [.new]) { [weak self] observed, _ in
+        loadedRangesObserver = item.observe(\.loadedTimeRanges) { [weak self] observed, _ in
             guard let self else { return }
             let furthest = observed.loadedTimeRanges
                 .map { ($0.timeRangeValue.start + $0.timeRangeValue.duration).seconds }

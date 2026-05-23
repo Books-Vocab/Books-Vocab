@@ -34,7 +34,7 @@ verified_against: 57f744f
 - **macOS multiplatform** (macOS 15.0+): Cmd+N / Cmd+F shortcuts
 - **Notebook robustness**: `resolveNotebookId` chokepoint + `sanitizeOutbox` orphan migration + `triggerPipelinesIsolated` per-notebook isolation + stale `activeNotebookId` cleanup + tombstone defense
 - **Notebook bookshelf**: LazyVGrid card grid + `NotebookCard` + cover system (12-color palette + 6 SwiftUI Canvas patterns + PhotosPicker custom image) + ProgressCapsule + VocabReviewBanner (separated due/unlearned) + pending tab → SyncView integration + export dual-entry + sort menu + empty-state CTA + `NotebookCardActions` reusable context menu
-- **Podcast player**: audio + sentence-level SRT highlight + reader-parity 翻譯 via `VocabularyContextProtocol` + phrase 長按整句 + auto-pause-on-lookup + subtitle size S/M/L/XL/XXL + series 追蹤 toggle + 已追蹤浮上書庫頂端 + per-user progress sync to backend
+- **Podcast player**: audio + sentence-level SRT highlight + reader-parity 翻譯 via `VocabularyContextProtocol` + phrase 長按整句 + auto-pause-on-lookup + subtitle size S/M/L/XL/XXL + series 追蹤 toggle + 已追蹤浮上書庫頂端 + per-user progress sync to backend + YouTube-style buffered seek-bar overlay + tap-to-warm AVFoundation connection (DNS/TLS/Range pre-fired during navigation push)
 - **Auto-sync**: 60s cooldown + toggle onChange 觸發
 - **Notebook cover photo 編輯**: `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原
 - **Graph empty state**: 區分「無單字」vs「有單字無連結」

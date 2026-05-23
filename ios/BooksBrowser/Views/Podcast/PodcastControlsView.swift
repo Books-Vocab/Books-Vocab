@@ -80,7 +80,9 @@ struct PodcastControlsView: View {
                 Capsule()
                     .fill(skin.palette.accent.opacity(0.25))
                     .frame(width: bufferedWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
-                    .animation(AppMotion.swipeTrackingSpring, value: viewModel.bufferedEnd)
+                    // easeOut (non-bouncy) matches YouTube/Spotify buffer fill;
+                    // springs wobble on frequent KVO updates from loadedTimeRanges.
+                    .animation(.easeOut(duration: 0.2), value: viewModel.bufferedEnd)
                 Capsule()
                     .fill(skin.palette.accent)
                     .frame(width: progressWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
