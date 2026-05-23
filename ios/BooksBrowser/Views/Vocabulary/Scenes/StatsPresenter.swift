@@ -103,9 +103,7 @@ struct StatsPresenter: View {
             // will not auto-refresh the thumbnail until the next auth event,
             // card add/remove, or manual retry. Long-term fix: promote
             // KGGraphLink to @Model so @Query observers across stats/graph/
-            // word-detail views refresh automatically on any mutation (see
-            // spec: docs/superpowers/specs/ — SwiftData migration for
-            // KGGraphLink).
+            // word-detail views refresh automatically on any mutation.
             await loadGraphLinks()
         }
         .toastSheet(isPresented: $showCalendar) {

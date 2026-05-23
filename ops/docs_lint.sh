@@ -2,7 +2,7 @@
 # docs_lint.sh — 掃描 docs/ frontmatter 並回報 staleness
 #
 # 邏輯:
-#   1. 對每份 docs/**/*.md(超過 superpowers/, assets/),解析 doc-meta frontmatter
+#   1. 對每份 docs/**/*.md(除了 assets/),解析 doc-meta frontmatter
 #   2. 確認 5 個必填欄位齊全:tier / authority / update_trigger / scope / verified_against
 #   3. 對非 archive doc,計算 verified_against..HEAD 期間有多少 commit 動過 scope 路徑
 #      - 超過 STALE_THRESHOLD(預設 30)→ WARN
@@ -34,16 +34,16 @@ for arg in "$@"; do
 done
 
 REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
-VALID_TIERS="policy sop reference snapshot runbook archive"
+VALID_TIERS="policy sop reference snapshot runbook archive assets"
 
 errors=0
 warnings=0
 ok=0
 
-# Find docs (exclude superpowers historical archive + assets)
+# Find docs (exclude assets/ marketing artifacts and legal/ externally-published artifacts)
 DOCS=$(find docs -type f -name "*.md" \
-  ! -path "docs/superpowers/*" \
-  ! -path "docs/assets/*" | sort)
+  ! -path "docs/assets/*" \
+  ! -path "docs/legal/*" | sort)
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue

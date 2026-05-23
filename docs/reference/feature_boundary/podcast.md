@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: c86a6b1
+verified_against: a706c53
 -->
 # Podcast Feature Boundary
 
