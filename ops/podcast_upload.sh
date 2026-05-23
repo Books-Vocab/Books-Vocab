@@ -143,12 +143,23 @@ for m in re.finditer(
         except (FileNotFoundError, subprocess.TimeoutExpired):
             pass
 
+    # Embed SRT content inline so iOS skips the per-episode subtitle fetch
+    # (saves one auth'd round-trip per episode load). The standalone
+    # subtitle.srt file is still uploaded for legacy clients and as the
+    # source of truth — metadata.json is the cache, not the canonical store.
+    subtitle_path = os.path.join(ep_dir, "subtitle.srt")
+    subtitle_content = None
+    if os.path.isfile(subtitle_path):
+        with open(subtitle_path, "r", encoding="utf-8") as srt_f:
+            subtitle_content = srt_f.read()
+
     episodes.append({
         "episodeNumber": ep_num,
         "title": ep_title,
         "durationSec": duration_sec,
         "audioAvailable": os.path.isfile(os.path.join(ep_dir, "audio.mp3")),
-        "subtitleAvailable": os.path.isfile(os.path.join(ep_dir, "subtitle.srt")),
+        "subtitleAvailable": subtitle_content is not None,
+        "subtitleContent": subtitle_content,
     })
 
 from datetime import datetime, timezone
