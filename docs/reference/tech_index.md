@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 57f744f
+verified_against: 41bf8dd
 -->
 # Technical Reference Index
 
@@ -62,6 +62,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 - **Service / Ops**: `KG_DATA_DIR` / `CORS_ORIGINS` / `KG_LOG_TZ`(ops-side only — 僅 root `devops.sh` 顯示 log 時間用,不影響 backend runtime) / `SENTRY_DSN` / `SENTRY_ENVIRONMENT`
 - **Claude Code Gateway**: `CCG_API_TOKEN`(詳見 `docs/sop/claude-gateway.md`)
 - **Antigravity Proxy**: 純本機執行(`bun run src/server.ts` on `localhost:3000`),無遠端 endpoint;詳見 `docs/sop/antigravity-proxy.md`
+- **Codex Gateway**: 純本機執行(`.venv/bin/codex-lb` on `127.0.0.1:2455`),讀 `~/.codex/auth.json` OAuth;詳見 `docs/sop/codex-gateway.md`
 
 ## iOS 模組地圖 (`ios/BooksBrowser/`)
 
