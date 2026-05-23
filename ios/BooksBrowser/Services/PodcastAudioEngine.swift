@@ -98,6 +98,14 @@ final class PodcastAudioEngine: NSObject {
         let item = AVPlayerItem(asset: asset)
         // Preserve pitch when rate != 1.0 (varispeed w/o chipmunk effect).
         item.audioTimePitchAlgorithm = .timeDomain
+        // Forward-buffer hint tuned for spoken audio: AVPlayer's default is
+        // conservative (~5-10s) and pegged to bitrate, so on flaky carrier it
+        // can stall mid-sentence even when the network has bandwidth headroom.
+        // 30s covers a typical podcast paragraph; AVPlayer treats this as an
+        // upper hint, not a floor, so memory stays modest. Pairs with
+        // `automaticallyWaitsToMinimizeStalling` — that flag handles WHEN to
+        // start; this hint shapes HOW MUCH to keep ahead.
+        item.preferredForwardBufferDuration = 30
         playerItem = item
 
         let p = AVPlayer(playerItem: item)
