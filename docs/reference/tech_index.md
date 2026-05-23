@@ -6,7 +6,8 @@ scope:
   - backend/src/kg/
   - ios/BooksBrowser/
   - ops/
-verified_against: a706c53
+  - lab/
+verified_against: 6067f0c
 -->
 # Technical Reference Index
 
