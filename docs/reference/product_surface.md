@@ -164,7 +164,7 @@ verified_against: 41bf8dd
 
 - ChatGPT Plus/Pro 訂閱 → OpenAI-compatible `/v1/chat/completions` + `/v1/responses`(讀 `~/.codex/auth.json` OAuth token 轉發)
 - 純本機 `127.0.0.1:2455`(FastAPI + uv);不上 VPS、不過 Caddy(預防性 air-gap)
-- 模型線:`gpt-5.5` / `gpt-5.4-codex` / `gpt-5.3-codex` 等(訂閱戶權限範圍)
+- 模型線:`gpt-5.5` / `gpt-5.4-codex` / `gpt-5.3-codex` 等(訂閱戶當前範圍,dashboard 自動 sync upstream)
 - **與 KG 邏輯獨立**;個人實驗 / OpenClaw / Cursor 本機接入
 - 詳見 `docs/sop/codex-gateway.md`
 
