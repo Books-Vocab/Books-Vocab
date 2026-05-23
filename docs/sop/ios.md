@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: a706c53
+verified_against: c642ed18
 -->
 # BooksBrowser iOS 開發技能
 
@@ -57,7 +57,7 @@ verified_against: a706c53
 | Service | 職責 |
 |---------|------|
 | `AuthManager.swift` | 單例，Apple/Google SSO、Keychain token、登入狀態 |
-| `KGService.swift` | 後端 API 呼叫（分拆為 +Graph/+Notebook/+Stats/+Sync/+UserConfig/+VocabCRUD） |
+| `KGService.swift` | 後端 API 呼叫（拆 10 個 extension：+Graph / +Health / +Models / +Notebook / +Request / +ServerURL / +Stats / +Sync / +UserConfig / +VocabCRUD） |
 | `BackgroundSyncActor` | `@ModelActor`，背景同步（push review/stats、pull cards、flush bilateral ops） |
 | `SyncCoordinator` | 同步協調（手動同步入口、orphan cleanup） |
 | `BookshelfImportService` | Multi-format import（EPUB/TXT/MD/PDF） |

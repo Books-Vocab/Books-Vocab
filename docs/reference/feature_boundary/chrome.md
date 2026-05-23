@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - chrome-extension/
-verified_against: dd5bb87
+verified_against: c642ed18
 -->
 # Chrome Extension Feature Boundary
 
@@ -23,7 +23,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `content/content.js` | 415 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通 |
+| `content/content.js` | 443 | 選詞偵測、popup 顯示、選取範圍管理；與 sidepanel 透過 `chrome.runtime.sendMessage` 溝通；href 渲染走 `shared/pure.js safeUrl()` |
 | `content/popup.css` | — | popup 樣式（tokens.css 子集） |
 
 ### Sidepanel Layer（主 UI）
@@ -31,7 +31,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `sidepanel/index.html` | — | sidepanel 入口 |
-| `sidepanel/app.js` | 405 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理 |
+| `sidepanel/app.js` | 410 | UI 主邏輯：翻譯結果展示、加入詞庫、登入態管理；href 渲染走 `shared/pure.js safeUrl()` |
 | `sidepanel/styles.css` | — | sidepanel 樣式 |
 
 ### Options Layer
@@ -47,8 +47,8 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `shared/api.js` | 219 | `wordnexus.lol` HTTP client + auth header |
-| `shared/pure.js` | 307 | 無副作用 helpers（字串處理、選詞 boundary、token 解析） |
-| `shared/pure.test.js` | 398 | `pure.js` 單元測試 |
+| `shared/pure.js` | 348 | 無副作用 helpers（字串處理、選詞 boundary、token 解析、`safeUrl()` URL scheme allowlist） |
+| `shared/pure.test.js` | 450 | `pure.js` 單元測試 |
 | `shared/theme.js` | 74 | 深淺色主題切換 |
 | `shared/tokens.css` | — | 設計 token（與 iOS Design System 對齊） |
 
@@ -57,6 +57,7 @@ KG Chrome extension（`KG 詞彙助手`, Manifest V3）— 網頁閱讀選詞 �
 - **Backend endpoints**：見 [`docs/reference/tech_index.md`](../tech_index.md) 對應 router 章節。Chrome 不維護自己的 endpoint 表。
 - **Auth**：與 iOS 共享 Google / Apple 登入 backend；token 存 `chrome.storage.local`。
 - **Domain 白名單**：`host_permissions` 只放 `wordnexus.lol/*`，新 backend domain 變動需同步 `manifest.json`。
+- **URL scheme allowlist（XSS defense-in-depth）**：sidepanel / content 渲染外部 href 一律走 `shared/pure.js safeUrl()`；僅放行 `http:` / `https:` / `chrome-extension:`，其餘（`javascript:` / `data:` / `vbscript:` / `file:` / `blob:` 等）一律 fallback `#`。
 
 ## 不在 scope 內
 
