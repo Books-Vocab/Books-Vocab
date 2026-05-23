@@ -37,7 +37,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                     while x < w {
                         context.fill(
                             Path(ellipseIn: CGRect(x: x - radius, y: y - radius, width: radius * 2, height: radius * 2)),
-                            with: .color(.white.opacity(0.15))
+                            with: .color(.white.opacity(NotebookStackMetrics.patternOpacity))
                         )
                         x += spacing
                     }
@@ -51,7 +51,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                     var path = Path()
                     path.move(to: CGPoint(x: offset, y: 0))
                     path.addLine(to: CGPoint(x: offset - h, y: h))
-                    context.stroke(path, with: .color(.white.opacity(0.12)), lineWidth: lineWidth)
+                    context.stroke(path, with: .color(.white.opacity(NotebookStackMetrics.patternOpacity)), lineWidth: lineWidth)
                     offset += spacing
                 }
             case .grid:
@@ -62,7 +62,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                     var path = Path()
                     path.move(to: CGPoint(x: x, y: 0))
                     path.addLine(to: CGPoint(x: x, y: h))
-                    context.stroke(path, with: .color(.white.opacity(0.10)), lineWidth: lineWidth)
+                    context.stroke(path, with: .color(.white.opacity(NotebookStackMetrics.patternOpacity)), lineWidth: lineWidth)
                     x += spacing
                 }
                 var y: CGFloat = 0
@@ -70,7 +70,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                     var path = Path()
                     path.move(to: CGPoint(x: 0, y: y))
                     path.addLine(to: CGPoint(x: w, y: y))
-                    context.stroke(path, with: .color(.white.opacity(0.10)), lineWidth: lineWidth)
+                    context.stroke(path, with: .color(.white.opacity(NotebookStackMetrics.patternOpacity)), lineWidth: lineWidth)
                     y += spacing
                 }
             case .waves:
@@ -87,7 +87,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                         path.addLine(to: CGPoint(x: x, y: y))
                         x += 2
                     }
-                    context.stroke(path, with: .color(.white.opacity(0.12)), lineWidth: 1.2)
+                    context.stroke(path, with: .color(.white.opacity(NotebookStackMetrics.patternOpacity)), lineWidth: 1.2)
                     yOffset += spacing
                 }
             case .circles:
@@ -99,7 +99,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                     let rect = CGRect(x: centerX - r, y: centerY - r, width: r * 2, height: r * 2)
                     context.stroke(
                         Path(ellipseIn: rect),
-                        with: .color(.white.opacity(0.10)),
+                        with: .color(.white.opacity(NotebookStackMetrics.patternOpacity)),
                         lineWidth: 1.0
                     )
                     r += 15
@@ -114,7 +114,9 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
                         seed = seed &* 6364136223846793005 &+ 1442695040888963407
                         let val = Double((seed >> 33) & 0xFF) / 255.0
                         if val > 0.6 {
-                            let opacity = (val - 0.6) * 0.375
+                            // noise pattern 維持動態 opacity (per-pixel rand-driven),
+                            // 但以 patternOpacity 作為上限,確保 noise dot 不超過其他 pattern 的視覺重量
+                            let opacity = min((val - 0.6) * 0.375, NotebookStackMetrics.patternOpacity)
                             context.fill(
                                 Path(CGRect(x: x, y: y, width: step, height: step)),
                                 with: .color(.white.opacity(opacity))
