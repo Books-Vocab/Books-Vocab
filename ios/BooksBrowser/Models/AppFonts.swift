@@ -232,6 +232,10 @@ enum AppFonts {
         /// Display / hero 緊縮 — 配大字級降低視覺鬆散
         /// 在 56pt 級距上約 -0.021em，符合慣例
         static let tight: CGFloat = -1.2
+        /// H2 緊縮 — Mochi editorial heading（-0.024em 換算 pt）
+        /// 在 27pt 級距上約 -0.65pt（27 × 0.024），符合 Mochi typography 規範
+        /// 套 detailWord / 22pt h2 級標題；勿套 body 級字（會壓死可讀性）
+        static let h2Tight: CGFloat = -0.65
         /// 標準字距
         static let normal: CGFloat = 0
         /// Body / metadata 微放寬

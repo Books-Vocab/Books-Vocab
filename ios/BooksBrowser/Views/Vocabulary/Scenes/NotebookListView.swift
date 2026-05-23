@@ -64,9 +64,9 @@ struct NotebookListView: View {
         // `sectionSpacing = s6 = 48pt` / `sectionGap = 14` / `pageTopInset = 16`) 對
         // Notebooks editorial 太鬆。本地降到 editorial 緊版,不動共用 token。
         let editorialHorizontal: CGFloat = AppSpacing.s3   // 12pt (was 32pt)
-        let editorialSectionGap: CGFloat = AppSpacing.s2   // 8pt  (was 14pt)
-        let editorialGridSpacing: CGFloat = AppSpacing.s2  // 8pt  (was 48pt)
-        let editorialTopInset: CGFloat = AppSpacing.s1     // 4pt  (was 16pt)
+        let editorialSectionGap: CGFloat = AppSpacing.s1   // 4pt  (was 8pt — user feedback 緊湊)
+        let editorialGridSpacing: CGFloat = AppSpacing.s1  // 4pt  (was 8pt — 卡片之間更貼)
+        let editorialTopInset: CGFloat = AppSpacing.zero   // 0    (was 4pt — 頂部不留 inset)
 
         NavigationStack(path: $navigationPath) {
             ScrollView {
@@ -82,10 +82,15 @@ struct NotebookListView: View {
                             .padding(.horizontal, editorialHorizontal)
                     }
 
-                    // D4 — page section header `今日複習` + inline pill cluster
-                    // (review CTA + filter + new notebook)。pill 永遠右對齊,有 review 才顯示左側標題。
+                    // D4 — Today Review action bar：title + 三 pill 包進 mutedFill capsule 容器,
+                    // 容器 1pt cardBorder 微粗淡 hairline 框、灰填底比框線更淡。
+                    // 三 pill (CTA / filter / plus) 統一規格走 NotebookHeaderPillLabel,
+                    // 差別僅在「長度 + 填色」— user feedback iteration。
                     let hasReview = totalDueCount > 0 || totalUnlearnedCount > 0
-                    HStack(spacing: AppSpacing.s3) {
+                    let hasBothTypes = filteredDueEntries.count > 0 && filteredUnlearnedEntries.count > 0
+                    let totalReview = filteredDueEntries.count + filteredUnlearnedEntries.count
+
+                    HStack(spacing: AppSpacing.s2) {
                         if hasReview {
                             Text("今日複習".localized)
                                 .font(skin.typography.sectionTitle)
@@ -94,42 +99,123 @@ struct NotebookListView: View {
 
                         Spacer(minLength: 8)
 
+                        // CTA pill — 三模式 menu / 單模式 button,inline VocabReviewCTAPill 邏輯
+                        // 以套用統一 NotebookHeaderPillLabel 規格(高度與 tool pill 對齊)。
                         if hasReview {
-                            VocabReviewCTAPill(
-                                dueCount: filteredDueEntries.count,
-                                unlearnedCount: filteredUnlearnedEntries.count,
-                                onStartDue: { startReview(with: filteredDueEntries) },
-                                onStartUnlearned: { startReview(with: filteredUnlearnedEntries) },
-                                onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
-                            )
+                            if hasBothTypes {
+                                Menu {
+                                    Button {
+                                        startReview(with: filteredDueEntries + filteredUnlearnedEntries)
+                                    } label: {
+                                        Label(L10n.format("全部複習（%@）", "\(totalReview)"), systemImage: "rectangle.stack")
+                                    }
+                                    Divider()
+                                    Button {
+                                        startReview(with: filteredDueEntries)
+                                    } label: {
+                                        Label(L10n.format("到期複習（%@）", "\(filteredDueEntries.count)"), systemImage: "clock.badge")
+                                    }
+                                    Button {
+                                        startReview(with: filteredUnlearnedEntries)
+                                    } label: {
+                                        Label(L10n.format("未學複習（%@）", "\(filteredUnlearnedEntries.count)"), systemImage: "sparkles")
+                                    }
+                                } label: {
+                                    NotebookHeaderPillLabel(
+                                        fillColor: skin.palette.brandHero,
+                                        foregroundColor: AppColors.onBrandHero
+                                    ) {
+                                        HStack(spacing: AppSpacing.microGap) {
+                                            Image(systemName: "play.fill")
+                                            Text("\(totalReview)").monospacedDigit()
+                                        }
+                                    }
+                                }
+                                .accessibilityLabel(L10n.format("開始複習，共 %@ 張", "\(totalReview)"))
+                            } else if filteredDueEntries.count > 0 {
+                                Button {
+                                    startReview(with: filteredDueEntries)
+                                } label: {
+                                    NotebookHeaderPillLabel(
+                                        fillColor: skin.palette.brandHero,
+                                        foregroundColor: AppColors.onBrandHero
+                                    ) {
+                                        HStack(spacing: AppSpacing.microGap) {
+                                            Image(systemName: "clock.badge")
+                                            Text("\(filteredDueEntries.count)").monospacedDigit()
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(L10n.format("開始到期複習，%@ 張", "\(filteredDueEntries.count)"))
+                            } else if filteredUnlearnedEntries.count > 0 {
+                                Button {
+                                    startReview(with: filteredUnlearnedEntries)
+                                } label: {
+                                    NotebookHeaderPillLabel(
+                                        fillColor: skin.palette.brandHero,
+                                        foregroundColor: AppColors.onBrandHero
+                                    ) {
+                                        HStack(spacing: AppSpacing.microGap) {
+                                            Image(systemName: "sparkles")
+                                            Text("\(filteredUnlearnedEntries.count)").monospacedDigit()
+                                        }
+                                    }
+                                }
+                                .buttonStyle(.plain)
+                                .accessibilityLabel(L10n.format("開始未學複習，%@ 張", "\(filteredUnlearnedEntries.count)"))
+                            }
                         }
 
                         if notebooks.count >= 2 {
-                            inlinePillButton(
-                                systemImage: reviewFilter.isFiltered
-                                    ? "line.3.horizontal.decrease.circle.fill"
-                                    : "line.3.horizontal.decrease.circle",
-                                tint: reviewFilter.isFiltered ? skin.palette.accent : skin.palette.secondaryText,
-                                label: "篩選單字本".localized,
-                                action: { showFilterSheet = true }
-                            )
+                            Button {
+                                showFilterSheet = true
+                            } label: {
+                                NotebookHeaderPillLabel(
+                                    fillColor: skin.palette.buttonIdleFill,
+                                    foregroundColor: reviewFilter.isFiltered ? skin.palette.accent : skin.palette.secondaryText
+                                ) {
+                                    Image(systemName: reviewFilter.isFiltered
+                                        ? "line.3.horizontal.decrease.circle.fill"
+                                        : "line.3.horizontal.decrease.circle")
+                                }
+                            }
+                            .buttonStyle(.plain)
+                            .accessibilityLabel("篩選單字本".localized)
                         }
 
-                        inlinePillButton(
-                            systemImage: "plus",
-                            tint: skin.palette.secondaryText,
-                            label: "新增單字本".localized,
-                            action: { showCreateSheet = true },
-                            disabled: !authManager.isLoggedIn
-                        )
+                        Button {
+                            showCreateSheet = true
+                        } label: {
+                            NotebookHeaderPillLabel(
+                                fillColor: skin.palette.buttonIdleFill,
+                                foregroundColor: skin.palette.secondaryText
+                            ) {
+                                Image(systemName: "plus")
+                            }
+                        }
+                        .buttonStyle(.plain)
+                        .disabled(!authManager.isLoggedIn)
+                        .accessibilityLabel("新增單字本".localized)
                     }
                     .padding(.horizontal, AppSpacing.s3)
-                    .padding(.vertical, AppSpacing.s2)
+                    .padding(.vertical, AppSpacing.s1)
+                    .background(
+                        RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                            .fill(skin.palette.mutedFill.opacity(0.5))
+                    )
                     .overlay(
-                        RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                            .stroke(skin.palette.cardBorder, lineWidth: 0.5)
+                        RoundedRectangle(cornerRadius: AppRadius.lg, style: .continuous)
+                            .stroke(skin.palette.divider, lineWidth: 1.5)
                     )
                     .padding(.horizontal, editorialHorizontal)
+
+                    // 北極星二:pill cluster ↔ notebook list 之間靠 AppAirDivider
+                    // 分區。dividerAirMargin 已全域收緊 32 → 16 (user feedback)。
+                    if !notebooks.isEmpty {
+                        AppAirDivider()
+                            .padding(.horizontal, editorialHorizontal)
+                    }
 
                     if notebooks.isEmpty {
                         emptyState
@@ -315,32 +401,6 @@ struct NotebookListView: View {
         )
     }
 
-    // MARK: - Inline pill button (filter / new notebook)
-
-    /// Header pill — 與 VocabReviewCTAPill 同高,走 mutedFill capsule。
-    @ViewBuilder
-    private func inlinePillButton(
-        systemImage: String,
-        tint: Color,
-        label: String,
-        action: @escaping () -> Void,
-        disabled: Bool = false
-    ) -> some View {
-        Button(action: action) {
-            Image(systemName: systemImage)
-                .font(.system(size: 15, weight: .regular))
-                .foregroundStyle(tint)
-                .frame(width: 30, height: 26)
-                .overlay(
-                    Capsule(style: .continuous)
-                        .stroke(skin.palette.cardBorder, lineWidth: 0.5)
-                )
-        }
-        .buttonStyle(.plain)
-        .disabled(disabled)
-        .accessibilityLabel(label)
-    }
-
     // MARK: - Sort Menu
 
     @ViewBuilder
@@ -355,7 +415,7 @@ struct NotebookListView: View {
                 }
             )) {
                 ForEach(NotebookSortOption.allCases) { option in
-                    Label(option.label.localized, systemImage: option.systemImage).tag(option)
+                    Label(option.label, systemImage: option.systemImage).tag(option)
                 }
             } label: {
                 Text("排序方式".localized)
@@ -633,5 +693,27 @@ private struct DetailPresentation: ViewModifier {
                 )
             }
         }
+    }
+}
+
+// MARK: - NotebookHeaderPillLabel
+
+/// 統一的 Header pill 視覺規格 — 給 NotebookListView Today Review action bar
+/// 三 pill（CTA / filter / plus）共用,確保高度與 padding 完全一致,僅差別在「填色 + 長度」。
+/// 不含 Button — caller 自行用 Button / Menu 包裹,讓 Menu label 場景也能套用。
+/// 形狀：Capsule;高度 ≈ 27pt (約原 22pt × 1.2)。
+fileprivate struct NotebookHeaderPillLabel<Content: View>: View {
+    let fillColor: Color
+    let foregroundColor: Color
+    @ViewBuilder let content: Content
+
+    var body: some View {
+        content
+            .font(.system(size: 13, weight: .semibold))
+            .foregroundStyle(foregroundColor)
+            .padding(.horizontal, AppSpacing.s2 + 2)   // 10pt
+            .padding(.vertical, 7)
+            .frame(minWidth: 32)
+            .background(Capsule(style: .continuous).fill(fillColor))
     }
 }

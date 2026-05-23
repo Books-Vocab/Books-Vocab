@@ -19,22 +19,12 @@ struct BookCard: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: AppSpacing.s2) {
-            // 封面
+            // 封面 — Mochi 北極星二/三：border 退場、resting 走 z0
             coverView
-                .overlay(
-                    RoundedRectangle(
-                        cornerRadius: AppBookshelfMetrics.coverCornerRadius,
-                        style: .continuous
-                    )
-                    .strokeBorder(
-                        appTheme.palette.cardBorder,
-                        lineWidth: AppMetrics.dividerThin
-                    )
-                )
                 .overlay(alignment: .bottomTrailing) {
                     iCloudDownloadBadge
                 }
-                .appElevation(.z1)
+                .appElevation(.z0)
 
             // 進度條（封面外獨立元素）
             if let progress = book.progression, progress > 0 {
@@ -170,7 +160,7 @@ struct BookCard: View {
                     .fill(appTheme.palette.mutedFill)
                     .overlay(alignment: .leading) {
                         Capsule()
-                            .fill(appTheme.palette.accent.opacity(AppBookshelfMetrics.progressBarAccentOpacity))
+                            .fill(appTheme.palette.accent)
                             .frame(width: geo.size.width * progress)
                     }
             }

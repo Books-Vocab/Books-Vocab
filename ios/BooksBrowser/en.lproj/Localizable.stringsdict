@@ -98,5 +98,48 @@
 			<string>%lld reviewed today</string>
 		</dict>
 	</dict>
+	<key>已收錄 %d 個單字，其中 %d 個待複習。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%1$#@collected@, %2$#@due@.</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d collected word</string>
+			<key>other</key>
+			<string>%d collected words</string>
+		</dict>
+		<key>due</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>%d due for review</string>
+			<key>other</key>
+			<string>%d due for review</string>
+		</dict>
+	</dict>
+	<key>已收錄 %d 個單字，去複習鞏固記憶吧。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@collected@ Review to reinforce your memory.</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>one</key>
+			<string>You have %d collected word.</string>
+			<key>other</key>
+			<string>You have %d collected words.</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

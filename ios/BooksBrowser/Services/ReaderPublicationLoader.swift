@@ -68,7 +68,7 @@ struct ReaderPublicationLoader {
                     try await Task.sleep(nanoseconds: 200_000_000)
                     continue
                 case .downloading(let progress):
-                    updatePhase(L10n.string("正在從 iCloud 下載… \(Int(progress * 100))%"))
+                    updatePhase(L10n.format("正在從 iCloud 下載… %@%%", String(Int(progress * 100))))
                 case .notDownloaded:
                     break
                 }

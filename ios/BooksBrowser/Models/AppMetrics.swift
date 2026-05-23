@@ -11,6 +11,11 @@ enum AppMetrics {
     // ── Divider / Separator ───────────────────────────────────────────────────
     static let dividerThin: CGFloat = 0.5
     static let dividerStandard: CGFloat = 1
+    /// 「呼吸式」群組分節 — Mochi-borrowed（北極星二：border 退場、divider 進場）。
+    /// 配 `AppAirDivider` 使用，給 list / 群組之間的軟分隔，不靠卡片邊框。
+    /// 原值 32pt 對應 Mochi `<hr style="margin:32px 0">` long-form editorial；
+    /// 2026-05 user feedback 收緊到 16pt — iPhone 列表頁 32pt 過鬆。
+    static let dividerAirMargin: CGFloat = 16
 
     // ── Glass Stroke (iOS <26 fallback) ─────────────────────────────────────────
     static let glassStrokeOpacity: Double = 0.12

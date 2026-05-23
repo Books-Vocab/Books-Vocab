@@ -112,6 +112,40 @@ struct AppSectionFooter: View {
     }
 }
 
+/// Mochi 化北極星二：border 退場、divider 進場。
+///
+/// 「呼吸式」群組分節 — 對應 Mochi `<hr style="margin:32px 0">` 的 long-form 切段感。
+/// 給 list / 群組之間的軟分隔使用，**取代「卡片邊框 + section header 背景色塊」**。
+///
+/// 用法：
+/// ```swift
+/// VStack(spacing: 0) {
+///     bookshelfSectionReading
+///     AppAirDivider()
+///     bookshelfSectionCompleted
+///     AppAirDivider()
+///     bookshelfSectionPodcasts
+/// }
+/// ```
+///
+/// 規格：1pt hairline、`palette.divider` 色、上下各 `AppMetrics.dividerAirMargin = 32` margin。
+struct AppAirDivider: View {
+    @Environment(\.appTheme) private var appTheme
+
+    /// 自訂 hairline 色（預設 `palette.divider`）— 用於需特殊色相的場景。
+    let tone: Color?
+
+    init(tone: Color? = nil) { self.tone = tone }
+
+    var body: some View {
+        Rectangle()
+            .fill(tone ?? appTheme.palette.divider)
+            .frame(height: AppMetrics.dividerStandard)
+            .padding(.vertical, AppMetrics.dividerAirMargin)
+            .accessibilityHidden(true)
+    }
+}
+
 struct AppSearchFieldStyle {
     let iconFont: Font
     let iconColor: Color
@@ -246,15 +280,20 @@ struct AppSectionBlock<Content: View>: View {
     @Environment(\.appSkin) private var appSkin
     let title: String
     let eyebrow: String?
+    /// Mochi 北極星 #2：border 退場 — `flat=true` 時 group 不再用卡片背景包覆,
+    /// 改靠呼叫端 `AppAirDivider` 切群組。`false`(預設) 維持既有 settings card 樣式以利向後相容。
+    let flat: Bool
     @ViewBuilder let content: Content
 
     init(
         title: String,
         eyebrow: String? = nil,
+        flat: Bool = false,
         @ViewBuilder content: () -> Content
     ) {
         self.title = title
         self.eyebrow = eyebrow
+        self.flat = flat
         self.content = content()
     }
 
@@ -273,8 +312,14 @@ struct AppSectionBlock<Content: View>: View {
             }
             .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)
 
-            AppSectionCard(padding: appSkin.metrics.readerSettingsCardPadding, style: .settings(appSkin)) {
+            if flat {
+                // 群組內容直接坐在 panel 背景上,不再用 card 包覆。
                 content
+                    .padding(.horizontal, appSkin.metrics.readerSettingsHeaderMicroInset)
+            } else {
+                AppSectionCard(padding: appSkin.metrics.readerSettingsCardPadding, style: .settings(appSkin)) {
+                    content
+                }
             }
         }
     }
