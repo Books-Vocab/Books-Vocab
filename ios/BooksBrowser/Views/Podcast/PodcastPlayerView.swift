@@ -353,8 +353,15 @@ struct PodcastPlayerView: View {
             // Subtitle load is tracked on the VM separately from audio: a
             // failed fetch surfaces an inline retry instead of being silently
             // swallowed (the player still plays audio meanwhile).
+            //
+            // Fast path: when metadata.json already carried the SRT inline
+            // (ops/podcast_upload.sh embeds it), skip the auth'd subtitle
+            // fetch entirely — saves one round-trip and removes a failure
+            // mode the user has to recover from.
             var subtitleContent: String?
-            if let subtitleURLStr = episode.subtitleURL {
+            if let inline = episode.inlineSubtitle, !inline.isEmpty {
+                subtitleContent = inline
+            } else if let subtitleURLStr = episode.subtitleURL {
                 await MainActor.run { vm.setSubtitleLoading() }
                 subtitleContent = await Self.fetchSubtitle(
                     urlString: subtitleURLStr, kgService: kgService
