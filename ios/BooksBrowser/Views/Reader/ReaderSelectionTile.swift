@@ -13,7 +13,7 @@ struct ReaderSelectionTile<Content: View>: View {
             fill: isSelected ? appSkin.palette.mutedFill : appSkin.palette.pageBackground,
             border: isSelected
                 ? appSkin.palette.cardBorder
-                : appSkin.palette.divider.opacity(appSkin.metrics.readerSettingsDividerOpacity)
+                : appSkin.palette.divider.opacity(ReaderMetrics.settingsDividerOpacity)
         ) {
             content
                 .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)

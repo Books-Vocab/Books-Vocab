@@ -55,6 +55,46 @@ enum TodayReviewMetrics {
     static let stackLayerMicroOffset: CGFloat = -1
     /// 答案展開提示區塊的頂部微調
     static let answerHintTopPadding: CGFloat = 2
+
+    // ── 從 AppSkin.Metrics 遷出(Phase 4 of boundary rectify)─────────
+
+    // MARK: Progress(in原 baseSpacing,搬入此 feature)
+    static let progressGap: CGFloat = 12
+    static let progressBarGap: CGFloat = 5
+
+    // MARK: Card layout(不與既有 cardBorderOpacity / cardBorderActiveOpacity 合併語意)
+    static let cardHorizontalInset: CGFloat = AppSpacing.s2
+    static let cardTopInset: CGFloat = AppSpacing.s2
+    static let cardBottomInset: CGFloat = AppSpacing.s2
+
+    // MARK: TopBar
+    static let topBarHorizontalInset: CGFloat = 20
+    static let topBarTopInset: CGFloat = 10
+    static let topBarBottomInset: CGFloat = 6
+
+    // MARK: Toolbar
+    static let toolbarHorizontalInset: CGFloat = 20
+    static let toolbarVerticalInset: CGFloat = 12
+
+    // MARK: Fold layout(不與既有 foldJoinRadius / paperFoldOffsetY 幾何欄位合併)
+    static let foldPadding: CGFloat = 28
+    static let foldSectionSpacing: CGFloat = 24
+    static let foldHintBottomInset: CGFloat = 22
+    static let foldHintTopInset: CGFloat = 22
+
+    // MARK: Card / Action min size
+    static let frontMinHeight: CGFloat = 120
+    static let answerMinHeight: CGFloat = 188
+    static let actionMinWidth: CGFloat = 92
+    static let chevronButtonSize: CGFloat = 30
+    static let hintCapsuleWidth: CGFloat = 42
+
+    // MARK: Height ratio / Swipe geometry
+    static let frontHeightRatio: CGFloat = 0.22
+    static let completionHeightRatio: CGFloat = 0.18
+    static let swipeThreshold: CGFloat = 100
+    static let swipeMaxRotation: Double = 12
+    static let swipeOpacityFloor: Double = 0.3
 }
 
 extension AnyTransition {

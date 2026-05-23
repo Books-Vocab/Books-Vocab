@@ -48,7 +48,7 @@ extension TodayReviewPresenter {
     var screenWidth: CGFloat { containerWidth }
 
     var cardOpacity: Double {
-        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - appSkin.metrics.reviewSwipeOpacityFloor)
+        1.0 - Double(abs(swipeOffset)) / screenWidth * (1.0 - TodayReviewMetrics.swipeOpacityFloor)
     }
 
     /// 甩出進度 (0=靜止, 1=完全離開) — 驅動牌堆同步升頂
@@ -71,7 +71,7 @@ extension TodayReviewPresenter {
             }
             .onEnded { value in
                 guard swipeEnabled else { return }
-                let threshold = appSkin.metrics.reviewSwipeThreshold
+                let threshold = TodayReviewMetrics.swipeThreshold
                 if value.translation.width < -threshold {
                     flingCard(direction: -1, velocity: abs(value.velocity.width), callback: onForgot)
                 } else if value.translation.width > threshold {

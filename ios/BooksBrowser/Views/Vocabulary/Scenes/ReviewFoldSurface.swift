@@ -61,7 +61,7 @@ struct ReviewFoldChevronButton: View {
             Image(systemName: "chevron.up")
                 .font(appSkin.typography.iconTiny.weight(.bold))
                 .foregroundStyle(appSkin.palette.secondaryText)
-                .frame(width: appSkin.metrics.reviewChevronButtonSize, height: appSkin.metrics.reviewChevronButtonSize)
+                .frame(width: TodayReviewMetrics.chevronButtonSize, height: TodayReviewMetrics.chevronButtonSize)
                 .background(Circle().fill(appSkin.palette.mutedFill.opacity(0.96)))
                 .overlay(Circle().stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
         }
@@ -83,7 +83,7 @@ struct ReviewFoldChevronPill: View {
             Image(systemName: "chevron.up")
                 .font(appSkin.typography.iconTiny.weight(.bold))
                 .foregroundStyle(appSkin.palette.secondaryText)
-                .frame(width: 48, height: appSkin.metrics.reviewChevronButtonSize)
+                .frame(width: 48, height: TodayReviewMetrics.chevronButtonSize)
                 .background(Capsule(style: .continuous).fill(appSkin.palette.mutedFill.opacity(0.96)))
                 .overlay(Capsule(style: .continuous).stroke(appSkin.palette.cardBorder.opacity(TodayReviewMetrics.cardBorderActiveOpacity), lineWidth: 1))
         }

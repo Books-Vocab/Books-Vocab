@@ -31,18 +31,18 @@ struct TranslationVocabPresenter: View {
                 Capsule(style: .continuous)
                     .fill(appSkin.palette.quaternaryText.opacity(appSkin.metrics.panelHandleOpacity))
                     .frame(
-                        width: appSkin.metrics.readerPanelHandleWidth,
-                        height: appSkin.metrics.readerPanelHandleHeight
+                        width: ReaderMetrics.panelHandleWidth,
+                        height: ReaderMetrics.panelHandleHeight
                     )
-                    .padding(.top, appSkin.metrics.readerPanelHandleTopInset)
-                    .padding(.bottom, appSkin.metrics.readerPanelHandleBottomInset)
+                    .padding(.top, ReaderMetrics.panelHandleTopInset)
+                    .padding(.bottom, ReaderMetrics.panelHandleBottomInset)
 
                 VStack(alignment: .leading, spacing: AppSpacing.s3) {
                     heroSection
                     panelBody
                 }
-                .padding(.horizontal, appSkin.metrics.readerPanelHorizontalInset)
-                .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
+                .padding(.horizontal, ReaderMetrics.panelHorizontalInset)
+                .padding(.bottom, ReaderMetrics.panelBottomInset)
             }
         }
         // Mochi 北極星 #3：shadow 收兩階 — z3 → z2,翻譯 panel 降低 floating 感,
