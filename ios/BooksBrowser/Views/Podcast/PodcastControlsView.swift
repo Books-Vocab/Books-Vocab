@@ -73,6 +73,16 @@ struct PodcastControlsView: View {
                 Capsule()
                     .fill(skin.palette.progressBarBackground)
                     .frame(height: PodcastPlayerMetrics.seekBarTrackHeight)
+                // Buffered overlay — sits between background and accent so it
+                // reads as "已下載但未播" (industry-standard YouTube/Spotify
+                // pattern). Uses the accent color at low opacity to stay
+                // visually subordinate to the actual progress.
+                Capsule()
+                    .fill(skin.palette.accent.opacity(0.25))
+                    .frame(width: bufferedWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
+                    // easeOut (non-bouncy) matches YouTube/Spotify buffer fill;
+                    // springs wobble on frequent KVO updates from loadedTimeRanges.
+                    .animation(.easeOut(duration: 0.2), value: viewModel.bufferedEnd)
                 Capsule()
                     .fill(skin.palette.accent)
                     .frame(width: progressWidth(in: w), height: PodcastPlayerMetrics.seekBarTrackHeight)
@@ -108,6 +118,12 @@ struct PodcastControlsView: View {
     private func progressWidth(in totalWidth: CGFloat) -> CGFloat {
         guard viewModel.duration > 0 else { return 0 }
         return CGFloat(activeTime / viewModel.duration) * totalWidth
+    }
+
+    private func bufferedWidth(in totalWidth: CGFloat) -> CGFloat {
+        guard viewModel.duration > 0 else { return 0 }
+        let ratio = min(1, max(0, viewModel.bufferedEnd / viewModel.duration))
+        return CGFloat(ratio) * totalWidth
     }
 
     private func formatTime(_ t: TimeInterval) -> String {

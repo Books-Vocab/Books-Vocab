@@ -52,6 +52,12 @@ struct BooksBrowserApp: App {
 
         // Always recover orphan book files (idempotent — skips files with existing records)
         Self.recoverOrphanBooks(container: outcome.container)
+
+        #if os(iOS)
+        // PodcastDownloadManager must hold a ModelContainer ref before any
+        // background URLSession delegate callback can persist localAudioPath.
+        PodcastDownloadManager.shared.configure(modelContainer: outcome.container)
+        #endif
     }
 
     /// Encapsulates the full ModelContainer bootstrap path so it can be re-run
