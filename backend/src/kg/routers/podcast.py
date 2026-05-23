@@ -60,7 +60,7 @@ def _read_json_file(path: Path, *, context: str):
         return json.loads(path.read_text(encoding="utf-8"))
     except json.JSONDecodeError as e:
         logger.error("Podcast %s corrupt at %s: %s", context, path, e)
-        raise HTTPException(500, detail=f"Malformed {context}")
+        raise HTTPException(500, detail=f"Malformed {context}") from e
 
 
 @router.get("/api/podcasts")
@@ -104,8 +104,8 @@ def _canonical_updated_at(raw: str) -> str:
     """
     try:
         dt = datetime.fromisoformat(raw.replace("Z", "+00:00"))
-    except (TypeError, ValueError, AttributeError):
-        raise HTTPException(status_code=422, detail="updated_at must be ISO8601")
+    except (TypeError, ValueError, AttributeError) as exc:
+        raise HTTPException(status_code=422, detail="updated_at must be ISO8601") from exc
     if dt.tzinfo is None:
         dt = dt.replace(tzinfo=timezone.utc)
     return dt.astimezone(timezone.utc).isoformat()

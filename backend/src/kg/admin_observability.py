@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import json
 import math
-from datetime import UTC, date, datetime, timedelta
+from datetime import UTC, datetime, timedelta
 from typing import Any
 
 

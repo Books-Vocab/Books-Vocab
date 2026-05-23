@@ -10,7 +10,6 @@ import json
 from concurrent.futures import ThreadPoolExecutor
 
 from .cards import Card
-from .languages import LANGUAGE_NAMES
 from .retry import sync_retry
 
 SYSTEM_PROMPT = """針對每個英文詞彙，回傳 JSON array，每個元素含：
