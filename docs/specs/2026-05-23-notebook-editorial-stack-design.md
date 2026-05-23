@@ -111,7 +111,8 @@ Divider()
 ### AddCard
 
 ```swift
-.background(skin.palette.paperLight)  // 微暖背景，與 ghost 同語言
+// 注意：paperLight/Sepia/SepiaDeep 在 AppColors（非 skin.palette），實作時直引 AppColors
+.background(AppColors.paperLight)  // 微暖背景，與 ghost 同語言
 .clipShape(RoundedRectangle(cornerRadius: skin.radii.card))
 .overlay(
     RoundedRectangle(cornerRadius: skin.radii.card)
@@ -148,6 +149,7 @@ static func ghostPaperColor(depth: Int, scheme: ColorScheme) -> Color
 static func seedJitter(seed: Int, depth: Int) -> (angle: Double, dx: CGFloat)
 
 /// Rotation overhang 保守常數（避免 GeometryReader）
+/// 典型 cover width ~160pt，真實 sin(1.5°) overhang ≈ 4.2pt；8pt = 2× 安全邊際
 static let rotationOverhang: CGFloat = AppSpacing.s2  // 8pt
 ```
 
@@ -172,7 +174,7 @@ static let rotationOverhang: CGFloat = AppSpacing.s2  // 8pt
 
 - 既有 accessibility element 邏輯不動（single element + label + isButton trait）
 - ghost 各層 `.accessibilityHidden(true)` 不變
-- Reduce Motion：rotation **保留**（非動畫），press 物理依現規關
+- Reduce Motion：rotation **保留**（屬 layout 非動畫；rotation 在 mount 後不再改變）。HIG 對 RM 主要規範動態 motion；本案 rotation 為靜態 visual，與 Wallet/Books 既有圖示同性質。precedent 同步寫入 `docs/sop/ui-design.md` 以正式化此判斷。press 物理 offset/scale 依現規關
 - Differentiate Without Color：cream 三階加 hairline 已提供邊界區分，不需額外處理
 - VoiceOver：rotation 不影響 hit-test（SwiftUI 自動處理 rotated frame）
 
@@ -184,7 +186,7 @@ static let rotationOverhang: CGFloat = AppSpacing.s2  // 8pt
 | 1-50 | 2 層（cover + L1 paperLight），都微歪 |
 | 51-200 | 3 層（cover + L1 + L2 paperSepia） |
 | 200+ | 4 層（cover + L1 + L2 + L3 paperSepiaDeep） |
-| Active | 既有 `使用中` pill 貼最上層 cover 右上（隨 cover rotation 一起轉） |
+| Active | 既有 `使用中` pill 貼最上層 cover 右上，**隨 cover rotation 一起轉**（落地策略：rotation 應用於整個 `coverArea`，含 pill overlay；pill 本身不再單獨 rotate） |
 | Dark | ghost 套 dark cream variant（待 design check），其餘同 |
 | Reduce Motion | rotation 不變，offset/scale 關 |
 | 自訂照片封面 | top 仍是 image，ghost 仍 paperLight/Sepia（不混照片） |
