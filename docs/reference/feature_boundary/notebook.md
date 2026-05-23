@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookListCoordinator.swift
   - ios/BooksBrowser/Views/Vocabulary/Scenes/NotebookEditSheet.swift
   - ios/BooksBrowser/Views/Vocabulary/Components/Notebook*.swift
-verified_against: 1d2a399
+verified_against: 1233742
 -->
 # Notebook Feature Boundary
 
