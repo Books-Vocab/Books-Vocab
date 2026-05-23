@@ -70,8 +70,8 @@ def hide_graph_link(
         raise NotFoundError("Link", link_id)
     try:
         graph.hide_link(link_id)
-    except KeyError:
-        raise NotFoundError("Link", link_id)
+    except KeyError as exc:
+        raise NotFoundError("Link", link_id) from exc
     cards_store.touch(lk.from_id)
     cards_store.touch(lk.to_id)
 

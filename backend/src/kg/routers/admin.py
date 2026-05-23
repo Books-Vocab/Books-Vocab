@@ -6,7 +6,7 @@ from typing import Any
 from fastapi import APIRouter, Cookie, Depends, Header, Query, Request
 from fastapi.responses import HTMLResponse, RedirectResponse
 
-from ..admin_handlers import check_admin_auth, ADMIN_COOKIE_NAME
+from ..admin_handlers import check_admin_auth
 from ..deps import get_admin_user
 
 

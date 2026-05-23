@@ -50,7 +50,6 @@ def admin_stats_response(
             for call_type, data in utoken.items()
         )
 
-        config = info.get("config", {}) if isinstance(info, dict) else {}
         entitlements = build_entitlements_response(info if isinstance(info, dict) else None)
         admin_grant = current_admin_grant_record(info if isinstance(info, dict) else None)
         result.append(

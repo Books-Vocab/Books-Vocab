@@ -8,7 +8,6 @@ from datetime import UTC, datetime
 from pathlib import Path
 
 from fastapi import HTTPException
-from sqlalchemy.exc import OperationalError
 from sqlmodel import Field as SQLField
 from sqlmodel import Session, SQLModel, create_engine, select
 
