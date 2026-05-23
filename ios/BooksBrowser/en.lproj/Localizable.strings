@@ -537,6 +537,14 @@
 "字幕大小" = "Subtitle Size";
 "查詞時自動暫停" = "Auto-pause on lookup";
 "點字幕查單字時暫停播放，關閉後恢復" = "Pauses playback when looking up a word; resumes on dismiss";
+"睡眠定時" = "Sleep Timer";
+"關閉" = "Off";
+"5 分鐘" = "5 min";
+"15 分鐘" = "15 min";
+"30 分鐘" = "30 min";
+"60 分鐘" = "60 min";
+"結束本集" = "End of Episode";
+"剩餘 %@" = "%@ remaining";
 
 /* TipKit — Phase 2 */
 "tip_long_press_title" = "Long Press to Lookup";
