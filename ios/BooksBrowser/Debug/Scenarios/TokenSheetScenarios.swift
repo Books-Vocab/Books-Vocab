@@ -137,7 +137,7 @@ enum TokenSheetScenarios {
                         Text(sample.0)
                             .font(skin.typography.caption)
                             .foregroundStyle(palette.tertiaryText)
-                        Text("The quick brown fox · 機智的棕狐")
+                        Text("The quick brown fox · 機智的棕狐") // i18n-allow: typography preview sample
                             .font(sample.1)
                             .foregroundStyle(palette.primaryText)
                     }
