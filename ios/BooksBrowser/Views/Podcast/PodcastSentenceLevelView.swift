@@ -285,7 +285,7 @@ struct PodcastSentenceLevelView: View {
                         .fill(tint(for: idx))
                         .frame(width: 6, height: 6)
                 }
-                Text("追隨當前")
+                Text(L10n.string("追隨當前"))
                     .font(skin.typography.caption)
                     .foregroundStyle(skin.palette.primaryText)
                 Image(systemName: "arrow.down")
