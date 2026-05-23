@@ -54,8 +54,8 @@ struct NotebookListView: View {
     }
 
     var body: some View {
-        let stats = Self.computeNotebookStats(allEntries, pendingEntries: pendingEntries)
-        let (filteredDueEntries, filteredUnlearnedEntries) = Self.computeFilteredEntries(allEntries, filter: reviewFilter)
+        let stats = NotebookStatsCalculator.compute(allEntries, pendingEntries: pendingEntries)
+        let (filteredDueEntries, filteredUnlearnedEntries) = NotebookStatsCalculator.filtered(allEntries, filter: reviewFilter)
         let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
         let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
         let sortedNotebooks = sortOption.sort(notebooks, stats: stats)
@@ -509,54 +509,6 @@ struct NotebookListView: View {
         // 空 entries 不再靜默吞掉：交給 TodayReviewPhaseView 落入 .empty 分支，
         // 提供明確回饋（active filter 下 filtered 集合可能為空，但 banner 仍顯示）。
         activeReviewSession = TodayReviewSession(entries: entries)
-    }
-
-    // MARK: - Stats (single-pass O(n))
-
-    struct NotebookStats {
-        var cardCount: Int = 0
-        var dueCount: Int = 0
-        var unlearnedCount: Int = 0
-        var reviewedCount: Int = 0
-        var pendingCount: Int = 0
-        var lastActivity: Date?
-    }
-
-    static func computeNotebookStats(_ entries: [VocabularyEntry], pendingEntries: [VocabularyEntry]) -> [String: NotebookStats] {
-        let now = Date()
-        var result: [String: NotebookStats] = [:]
-        for entry in entries {
-            result[entry.notebookId, default: NotebookStats()].cardCount += 1
-            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
-                result[entry.notebookId, default: NotebookStats()].dueCount += 1
-            } else if entry.reviewCount == 0 {
-                result[entry.notebookId, default: NotebookStats()].unlearnedCount += 1
-            } else {
-                result[entry.notebookId, default: NotebookStats()].reviewedCount += 1
-            }
-            let activity = entry.lastReviewedAt ?? entry.dateAdded
-            if result[entry.notebookId]?.lastActivity == nil || activity > result[entry.notebookId]!.lastActivity! {
-                result[entry.notebookId, default: NotebookStats()].lastActivity = activity
-            }
-        }
-        for entry in pendingEntries {
-            result[entry.notebookId, default: NotebookStats()].pendingCount += 1
-        }
-        return result
-    }
-
-    static func computeFilteredEntries(_ entries: [VocabularyEntry], filter: NotebookFilter) -> ([VocabularyEntry], [VocabularyEntry]) {
-        let now = Date()
-        var due: [VocabularyEntry] = []
-        var unlearned: [VocabularyEntry] = []
-        for entry in entries where filter.matches(entry.notebookId) {
-            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
-                due.append(entry)
-            } else if entry.reviewCount == 0 {
-                unlearned.append(entry)
-            }
-        }
-        return (due, unlearned)
     }
 
     private func setActiveNotebook(_ id: String) {
