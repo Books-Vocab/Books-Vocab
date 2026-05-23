@@ -33,6 +33,10 @@ struct PodcastEpisodeDetail: Codable {
     let durationSec: Double
     let audioAvailable: Bool
     let subtitleAvailable: Bool
+    /// SRT content inlined by `ops/podcast_upload.sh`. When present the
+    /// player skips the per-episode subtitle fetch entirely. Optional —
+    /// older series uploaded before the embed change won't carry it.
+    let subtitleContent: String?
 }
 
 // MARK: - Sync Service
@@ -193,6 +197,7 @@ final class PodcastSyncService {
             episode.durationSec = ep.durationSec
             episode.audioAvailable = ep.audioAvailable
             episode.subtitleAvailable = ep.subtitleAvailable
+            episode.inlineSubtitle = ep.subtitleContent
             episode.audioURL = Self.audioURL(seriesId: detail.id, episodeNumber: ep.episodeNumber)
             episode.subtitleURL = Self.subtitleURL(seriesId: detail.id, episodeNumber: ep.episodeNumber)
             episode.series = series

@@ -7,6 +7,10 @@ struct PodcastEpisodeRow: View {
     let episode: PodcastEpisode
     let progress: PodcastProgress?
     @Environment(\.appSkin) private var skin
+    @Environment(\.kgService) private var kgService
+    #if os(iOS)
+    @State private var downloadManager = PodcastDownloadManager.shared
+    #endif
 
     init(episode: PodcastEpisode, progress: PodcastProgress? = nil) {
         self.episode = episode
@@ -14,6 +18,13 @@ struct PodcastEpisodeRow: View {
     }
 
     private var isCompleted: Bool { progress?.completed == true }
+    #if os(iOS)
+    private var downloadProgress: Double? { downloadManager.progress[episode.remoteId] }
+    private var isDownloaded: Bool {
+        guard let path = episode.localAudioPath else { return false }
+        return FileManager.default.fileExists(atPath: path)
+    }
+    #endif
     private var hasProgress: Bool {
         guard let p = progress else { return false }
         return !p.completed && p.lastPlayedTime > 0 && episode.durationSec > 0
@@ -53,8 +64,41 @@ struct PodcastEpisodeRow: View {
         .padding(.vertical, skin.spacing.compactRowVerticalPadding)
         .padding(.horizontal, skin.spacing.cardPadding)
         .contentShape(Rectangle())
+        #if os(iOS)
+        .contextMenu { downloadMenuItems }
+        #endif
         .enableInjection()
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var downloadMenuItems: some View {
+        if !episode.audioAvailable {
+            EmptyView()
+        } else if downloadProgress != nil {
+            Button(role: .destructive) {
+                downloadManager.cancel(remoteId: episode.remoteId)
+            } label: {
+                Label(L10n.string("取消下載"), systemImage: "xmark.circle")
+            }
+        } else if isDownloaded {
+            Button(role: .destructive) {
+                downloadManager.deleteLocal(episode: episode)
+            } label: {
+                Label(L10n.string("移除下載"), systemImage: "trash")
+            }
+        } else {
+            Button {
+                Task {
+                    guard let token = try? await kgService.currentAuthToken() else { return }
+                    downloadManager.startDownload(episode: episode, authToken: token)
+                }
+            } label: {
+                Label(L10n.string("下載供離線播放"), systemImage: "arrow.down.circle")
+            }
+        }
+    }
+    #endif
 
     private var metadataLine: some View {
         HStack(spacing: skin.spacing.metadataGap) {
@@ -83,8 +127,35 @@ struct PodcastEpisodeRow: View {
                     .font(skin.typography.iconTiny)
                     .foregroundStyle(skin.palette.success)
             }
+
+            #if os(iOS)
+            downloadIndicator
+            #endif
         }
     }
+
+    #if os(iOS)
+    @ViewBuilder
+    private var downloadIndicator: some View {
+        if let frac = downloadProgress {
+            // Active download — compact progress ring.
+            ZStack {
+                Circle()
+                    .stroke(skin.palette.progressBarBackground, lineWidth: 1.5)
+                Circle()
+                    .trim(from: 0, to: frac)
+                    .stroke(skin.palette.accent, style: StrokeStyle(lineWidth: 1.5, lineCap: .round))
+                    .rotationEffect(.degrees(-90))
+            }
+            .frame(width: 11, height: 11)
+            .animation(.easeOut(duration: 0.2), value: frac)
+        } else if isDownloaded {
+            Image(systemName: "arrow.down.circle.fill")
+                .font(skin.typography.iconTiny)
+                .foregroundStyle(skin.palette.success)
+        }
+    }
+    #endif
 
     @ViewBuilder
     private var trailingAccessory: some View {

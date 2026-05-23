@@ -40,6 +40,7 @@ struct PodcastEpisodeListView: View {
     @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
     @Environment(\.toastCoordinator) private var toastCoordinator
+    @Environment(\.kgService) private var kgService
 
     // ⚠️ 5th bisect — 把所有 @Query 改成 @State + 一次性 fetch。
     // 過往 @Query 同 view 內 cross-store（PodcastSeries/Episode 在
@@ -321,6 +322,7 @@ struct PodcastEpisodeListView: View {
                     .simultaneousGesture(
                         TapGesture().onEnded {
                             beginNavigationLock()
+                            warmConnection(for: episode)
                         }
                     )
 
@@ -383,6 +385,24 @@ struct PodcastEpisodeListView: View {
             guard !Task.isCancelled else { return }
             navigationLocked = false
             navigationUnlockTask = nil
+        }
+    }
+
+    /// Fires AVFoundation's DNS/TLS/first-Range while the navigation transition
+    /// is still animating (~300ms). Token fetch races the transition — even if
+    /// it finishes after the player view appears, the second auth'd Range
+    /// inside the engine reuses the warmed connection.
+    private func warmConnection(for episode: PodcastEpisode) {
+        guard
+            let urlStr = episode.audioURL,
+            let url = URL(string: urlStr)
+        else { return }
+        Task { @MainActor in
+            var headers: [String: String] = [:]
+            if let token = try? await kgService.currentAuthToken() {
+                headers["Authorization"] = "Bearer \(token)"
+            }
+            PodcastAssetPreloader.shared.preload(url: url, headers: headers)
         }
     }
 }
