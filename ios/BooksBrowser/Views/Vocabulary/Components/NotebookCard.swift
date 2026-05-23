@@ -83,6 +83,14 @@ struct NotebookCard: View {
         VStack(alignment: .leading, spacing: 0) {
             coverArea
 
+            // Editorial hairline rule — 把 cover/metadata 之間從「色塊硬切」轉成「刻意的線」。
+            // 僅 .grid 需要（hero 自有設計）。
+            if style == .grid {
+                Rectangle()
+                    .fill(skin.palette.cardBorder)
+                    .frame(height: AppMetrics.dividerStandard)
+            }
+
             metadataArea
                 .padding(.horizontal, skin.spacing.cardPadding)
                 .padding(.vertical, skin.spacing.cardPadding * 0.8)
@@ -172,7 +180,8 @@ struct NotebookCard: View {
                     coverImagePath: data.coverImagePath,
                     name: data.name,
                     layerCount: NotebookStackMetrics.layerCount(forCardCount: data.cardCount),
-                    aspectRatio: coverAspectRatio
+                    aspectRatio: coverAspectRatio,
+                    seed: data.name.hashValue
                 )
             case .hero:
                 // hero 維持平面（單本不擬物，避免「目錄」錯位心理）
@@ -199,6 +208,19 @@ struct NotebookCard: View {
                     .background(skin.palette.accent, in: Capsule(style: .continuous))
                     .padding(AppSpacing.s2)
             }
+        }
+        // Editorial rotation — 包 pill overlay 一起轉，避免 pill 脫離卡片邊界。
+        // hero 不旋轉（單本平面），grid 走 deterministic seedJitter。
+        .rotationEffect(coverRotation, anchor: .bottom)
+    }
+
+    /// 整 coverArea 的 rotation（grid 走 seedJitter depth=0、hero 為 0）。
+    private var coverRotation: Angle {
+        switch style {
+        case .grid:
+            return .degrees(NotebookStackMetrics.seedJitter(seed: data.name.hashValue, depth: 0).angle)
+        case .hero:
+            return .zero
         }
     }
 
