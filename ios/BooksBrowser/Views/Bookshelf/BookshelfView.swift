@@ -148,8 +148,9 @@ struct BookshelfView: View {
             }
             .task {
                 if authManager.isLoggedIn {
-                await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
-            }
+                    await PodcastSyncService(kgService: kgService).syncAll(context: modelContext)
+                    await warmFollowedSeriesAudio()
+                }
             }
         }
         .enableInjection()
@@ -329,6 +330,31 @@ struct BookshelfView: View {
         }
     }
 
+    /// Predictive prefetch: warm AVFoundation's connection for the first
+    /// episode of each followed series so tapping it from the shelf reaches
+    /// `.ready` almost instantly. Mirrors Spotify/Audible behaviour where the
+    /// app speculates on the most-likely next play. Bounded by the preloader's
+    /// own LRU cap (5) — extra series silently skip rather than thrash.
+    @MainActor
+    private func warmFollowedSeriesAudio() async {
+        let token: String
+        do {
+            token = try await kgService.currentAuthToken()
+        } catch {
+            return  // No auth → preload would 401; skip silently.
+        }
+        let headers = ["Authorization": "Bearer \(token)"]
+        for series in podcastSeries where series.isFollowed {
+            guard
+                let first = (series.episodes ?? [])
+                    .filter({ $0.audioAvailable })
+                    .min(by: { $0.episodeNumber < $1.episodeNumber }),
+                let urlStr = first.audioURL,
+                let url = URL(string: urlStr)
+            else { continue }
+            PodcastAssetPreloader.shared.preload(url: url, headers: headers)
+        }
+    }
 }
 
 // MARK: - 書籍卡片
