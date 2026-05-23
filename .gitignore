@@ -13,6 +13,7 @@ lab/podcast/gen-lang-client-*.json
 lab/podcast/.claude/
 lab/podcast/.monitor.pid
 lab/podcast/monitor.log
+lab/antigravity-proxy/
 .agents/
 
 # Secrets
