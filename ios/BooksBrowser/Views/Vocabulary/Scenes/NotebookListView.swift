@@ -85,7 +85,7 @@ struct NotebookListView: View {
                     // D4 — page section header `今日複習` + inline pill cluster
                     // (review CTA + filter + new notebook)。pill 永遠右對齊,有 review 才顯示左側標題。
                     let hasReview = totalDueCount > 0 || totalUnlearnedCount > 0
-                    HStack(spacing: AppSpacing.s2) {
+                    HStack(spacing: AppSpacing.s3) {
                         if hasReview {
                             Text("今日複習".localized)
                                 .font(skin.typography.sectionTitle)
@@ -123,6 +123,12 @@ struct NotebookListView: View {
                             disabled: !authManager.isLoggedIn
                         )
                     }
+                    .padding(.horizontal, AppSpacing.s3)
+                    .padding(.vertical, AppSpacing.s2)
+                    .overlay(
+                        RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
+                            .stroke(skin.palette.cardBorder, lineWidth: 0.5)
+                    )
                     .padding(.horizontal, editorialHorizontal)
 
                     if notebooks.isEmpty {
@@ -322,10 +328,9 @@ struct NotebookListView: View {
     ) -> some View {
         Button(action: action) {
             Image(systemName: systemImage)
-                .font(skin.typography.caption)
+                .font(.system(size: 15, weight: .regular))
                 .foregroundStyle(tint)
-                .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
-                .padding(.vertical, skin.spacing.compactChipVerticalPadding)
+                .frame(width: 30, height: 26)
                 .overlay(
                     Capsule(style: .continuous)
                         .stroke(skin.palette.cardBorder, lineWidth: 0.5)
