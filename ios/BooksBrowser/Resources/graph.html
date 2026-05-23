@@ -86,7 +86,10 @@ window.addEventListener('resize', () => {
     // WKWebView emits resize on view hierarchy re-attachment (tab switch,
     // navigation) with identical dimensions — skip those entirely.
     const newW = window.innerWidth, newH = window.innerHeight;
-    if (newW === W && newH === H) return;
+    // Only skip when both old and new dimensions are real. If we're currently
+    // degenerate (W or H is 0 from initial .zero-frame load), any resize —
+    // even to the same reported value — must run so the canvas can recover.
+    if (newW === W && newH === H && W > 0 && H > 0) return;
     const oldW = W, oldH = H;
     resize();
     if (!sim) return;
@@ -554,12 +557,45 @@ window.reheat = function() {
 };
 
 // ── Ready ─────────────────────────────────────────────────────────────────────
-document.addEventListener('DOMContentLoaded', function() {
-    postBridge({ type: 'ready' });
-});
-// In case DOMContentLoaded already fired
+// Defer 'ready' until the viewport has real dimensions. WKWebView loads this
+// HTML while its frame is still .zero (holder is created before SwiftUI layout
+// applies a frame), so DOMContentLoaded fires with innerWidth/Height === 0.
+// Posting ready then would let initGraph run on a 0×0 canvas, spawn nodes at
+// (0,0), and converge invisibly — the source of the blank-thumbnail bug.
+let readyPosted = false;
+function postReadyWhenSized() {
+    if (readyPosted) return;
+    if (window.innerWidth > 0 && window.innerHeight > 0) {
+        readyPosted = true;
+        // Ensure resize() reflects the now-real viewport before initGraph runs.
+        resize();
+        postBridge({ type: 'ready' });
+        return true;
+    }
+    return false;
+}
+
+function startReadyWatch() {
+    if (postReadyWhenSized()) return;
+    if (typeof ResizeObserver !== 'undefined') {
+        const ro = new ResizeObserver(() => {
+            if (postReadyWhenSized()) ro.disconnect();
+        });
+        ro.observe(document.documentElement);
+    }
+    // rAF fallback — also covers environments where ResizeObserver doesn't
+    // fire for the html element (defensive; ResizeObserver should suffice).
+    function tick() {
+        if (postReadyWhenSized()) return;
+        requestAnimationFrame(tick);
+    }
+    requestAnimationFrame(tick);
+}
+
 if (document.readyState === 'complete' || document.readyState === 'interactive') {
-    postBridge({ type: 'ready' });
+    startReadyWatch();
+} else {
+    document.addEventListener('DOMContentLoaded', startReadyWatch);
 }
 </script>
 </body>
