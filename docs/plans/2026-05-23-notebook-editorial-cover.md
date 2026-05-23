@@ -1,3 +1,11 @@
+<!-- doc-meta
+tier: snapshot
+authority: derived
+update_trigger: plan-execution
+scope:
+  - ios/BooksBrowser/Views/Vocabulary/
+verified_against: f63ace78
+-->
 # Notebook Editorial Cover & List Implementation Plan
 
 > **執行方式:** 使用 `phased-workflow` skill,所有 review agent 皆 `opus` + `run_in_background: true`。每完成一個 Phase 立即 dispatch reviewer 審 N-1 phase,PASS 才下一個。**禁批次**(鐵律 4)。
