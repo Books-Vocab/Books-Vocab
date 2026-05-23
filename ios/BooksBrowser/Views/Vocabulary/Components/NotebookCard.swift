@@ -79,30 +79,108 @@ struct NotebookCard: View {
     }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 0) {
-            coverArea
+        // Editorial book row — cover (~40% 寬,承載 serif name + active dot) + metadata。
+        GeometryReader { geo in
+            let coverWidth = geo.size.width * 0.4
+            let isEmpty = data.cardCount == 0
 
-            // Editorial hairline rule — 把 cover/metadata 之間從「色塊硬切」轉成「刻意的線」。
-            // 僅 .grid 需要（hero 自有設計）。
-            if style == .grid {
-                Rectangle()
-                    .fill(skin.palette.cardBorder)
-                    .frame(height: AppMetrics.dividerStandard)
+            HStack(spacing: 0) {
+                // ── 左:cover block ──
+                ZStack(alignment: .topLeading) {
+                    coverColor
+
+                    // 統一 noise pattern — 所有 cover 都帶極淡紙感(opacity 0.04)
+                    NotebookCoverPattern.noise.patternOverlay(size: CGSize(width: coverWidth, height: 72))
+                        .opacity(0.04)
+                        .clipped()
+                        .allowsHitTesting(false)
+
+                    if let pattern {
+                        pattern.patternOverlay(size: CGSize(width: coverWidth, height: 72))
+                            .clipped()
+                    }
+
+                    VStack(alignment: .leading, spacing: AppSpacing.s1) {
+                        HStack(spacing: AppSpacing.s1) {
+                            if data.isActive {
+                                Circle()
+                                    .fill(NotebookPalette.darken(coverColor, by: 0.5))
+                                    .frame(width: 5, height: 5)
+                            }
+                            Text(data.name)
+                                .font(AppFonts.serif(size: 17, bold: true).italic())
+                                .foregroundStyle(skin.palette.primaryText)
+                                .lineLimit(2)
+                                .truncationMode(.tail)
+                        }
+
+                        // Editorial rule — 1pt,顯著 darken 0.5
+                        Rectangle()
+                            .fill(NotebookPalette.darken(coverColor, by: 0.5))
+                            .frame(width: coverWidth * 0.3, height: 1)
+                    }
+                    .padding(.horizontal, AppSpacing.s3)
+                    .padding(.vertical, AppSpacing.s2)
+                }
+                .frame(width: coverWidth)
+                .overlay(alignment: .trailing) {
+                    Rectangle()
+                        .fill(skin.palette.cardBorder)
+                        .frame(width: 0.5)
+                }
+
+                // ── 右:metadata 區 ──
+                VStack(alignment: .leading, spacing: AppSpacing.s2) {
+                    if isEmpty {
+                        // 空 notebook 視覺特例 — 不顯示 0% 進度條,改 placeholder 字
+                        Text("尚未加入單字".localized)
+                            .font(skin.typography.caption)
+                            .foregroundStyle(skin.palette.tertiaryText)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    } else {
+                        HStack(alignment: .firstTextBaseline) {
+                            Text(L10n.format("%@ 詞", "\(data.cardCount)"))
+                                .font(skin.typography.monoLabel)
+                                .monospacedDigit()
+                                .foregroundStyle(skin.palette.secondaryText)
+
+                            Spacer(minLength: AppSpacing.s2)
+
+                            if data.dueCount > 0 {
+                                HStack(spacing: AppSpacing.microGap) {
+                                    Circle()
+                                        .fill(skin.palette.warning)
+                                        .frame(width: 5, height: 5)
+                                    Text("\(data.dueCount)")
+                                        .font(skin.typography.caption)
+                                        .monospacedDigit()
+                                        .foregroundStyle(skin.palette.secondaryText)
+                                }
+                                .fixedSize(horizontal: true, vertical: false)
+                            }
+                        }
+
+                        ProgressCapsule(
+                            progress: reviewProgress,
+                            label: nil,
+                            fillColor: coverColor,
+                            trackColor: skin.palette.progressBarBackground,
+                            height: 4
+                        )
+                    }
+                }
+                .padding(.horizontal, AppSpacing.s3)
+                .padding(.vertical, AppSpacing.s3)
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-
-            metadataArea
-                .padding(.horizontal, AppSpacing.s2)  // editorial 緊版 (was s3 12pt)
-                .padding(.vertical, AppSpacing.s1)    // 4pt (was s2 8pt)
         }
+        .frame(height: 72)
         .background(skin.palette.cardBackground)
         .clipShape(RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous))
         .overlay(
             RoundedRectangle(cornerRadius: skin.radii.card, style: .continuous)
-                .stroke(skin.palette.cardBorder, lineWidth: 1)
+                .stroke(skin.palette.cardBorder, lineWidth: 0.5)
         )
-        // grid 鎖 3:4 整卡 aspect — 修左右兩本 metadata 高度不齊 / add 卡破節奏。
-        // hero 不鎖（21:10 cover 已決定 hero 高度，整卡 fit content）。
-        .modifier(GridAspectRatioModifier(style: style))
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityDescription)
         .accessibilityAddTraits(.isButton)

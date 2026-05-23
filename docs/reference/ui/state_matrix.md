@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: a706c53
+verified_against: f63ace78
 -->
 # UI State Matrix
 
@@ -268,20 +268,20 @@ Preview matrix 已補齊：
 
 | State | 觸發條件 | 視覺 |
 |------|---------|------|
-| 使用中 | `isActive == true` && `.grid` | 頂層右上 `使用中` capsule pill（`skin.palette.accent`），**隨 coverArea rotation 一起轉**（`NotebookCard.coverArea` 外層套 rotationEffect，包 pill overlay） |
-| 有待複習 | `dueCount > 0` | metadata row 顯示「N 到期」（`palette.warning`） |
-| 有未學 | `unlearnedCount > 0` | metadata row 顯示「N 未學」 |
-| Pending sync | `pendingCount > 0` | 字數 row 右側 sync icon |
-| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill，下層 ghost 仍 cream paper（不混照片） |
-| Editorial rotation | grid + layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic（`stableSeed(for: data.name)` djb2 → `seedJitter`），anchor `.bottom`；同一本跨 launch 同角度 |
-| Editorial divider | `.grid` style | cover 與 metadata 之間 1pt `cardBorder` hairline rule |
+| 使用中(grid) | `isActive == true` && `.grid` | **D3** cover 左側 3pt vertical spine(色 `NotebookPalette.darken(coverColor, by: 0.4)`),在 `EditorialCoverComposition` ZStack 內、跟 cover 一起 rotation。**取代舊「使用中」accent-blue capsule pill**(已移除)。Hero 不渲染 spine(單本即 active 冗餘)。 |
+| 有待複習 | `dueCount > 0` | metadata row 顯示「N 到期」chip(`palette.warning`);`dueCount == 0` 時 invisible placeholder 撐高保 grid 同高 |
+| Pending sync | `pendingCount > 0` | 頂部 TipView(`SyncPendingTip`)出現,**卡片底部不再重複顯示 chip**(D2 移除) |
+| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill,下層 ghost 仍 cream paper(不混照片) |
+| Editorial rotation | grid + layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic(`stableSeed(for: data.name)` djb2 → `seedJitter`),anchor `.bottom`;同一本跨 launch 同角度 |
+| Editorial cover composition | `.grid` and `.hero` | **D1** `.overlay(EditorialCoverComposition)` 套在既有 cover 上:serif name 左上 + hairline rule(寬 cover×0.25)+ `N 詞` 右下(cardCount > 0)+ spine(D3, grid+active);跟著 coverArea rotation 一起旋轉 |
+| Editorial divider | `.grid` style | cover 與 metadata 之間 1pt `cardBorder` hairline rule(維持) |
 
 ### Theme / Press / a11y
 
 | State | 觸發條件 | 行為 |
 |------|---------|------|
-| Light mode | `colorScheme == .light` | ghost = `paperLight` / `paperSepia` / `paperSepiaDeep` cream 三階；cover 套 Morandi palette 12 色之一 |
-| Dark mode | `colorScheme == .dark` | ghost 同 cream 三階（dark variant pending design）；`AppElevationModifier` shadow ×1.8 |
+| Light mode | `colorScheme == .light` | ghost = `paperLight` / `paperSepia` / `paperSepiaDeep` cream 三階;cover 套 Morandi palette 12 色之一;`primaryText #37352F` 對全 12 色 ≥ AA 7:1(`NotebookCoverContrastTests` 鎖) |
+| Dark mode | `colorScheme == .dark` | ghost 同 cream 三階(dark variant pending design);`AppElevationModifier` shadow ×1.8;**`NotebookCard.coverColor` 自動套 `NotebookPalette.darken(_, by: 0.2)`** 使 `primaryText #E6E6E3` 對 cover ≥ AA 4.5:1(test 鎖) |
 | Resting | `isPressed == false` | 頂層 z2 / ghost z1，無 offset |
 | Pressed | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97；ghost 每深一層額外下沉 1pt；haptic `.selection` 觸發一次。**Rotation 不參與 press 動畫**（靜態 layout） |
 | Release | `isPressed` true→false | 走 `AppMotion.cardDeckRelease` spring 回彈 |
