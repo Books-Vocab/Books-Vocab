@@ -9,37 +9,6 @@ import Foundation
 import SwiftData
 import os
 
-// MARK: - Models
-
-/// KG server health response
-struct KGHealthResponse: Codable {
-    let status: String
-    let cards: Int
-    let links: Int
-    let pendingCandidates: Int
-    let lastModified: String?
-}
-
-/// Vocab add response
-struct KGAddResponse: Codable {
-    let created: Int
-    let skipped: Int
-    let duplicates: [String]
-    let cardIds: [String: String]
-}
-
-struct KGTranslationConfig: Codable {
-    let source_lang: String?
-    let target_lang: String?
-}
-
-/// User config request/response
-struct KGUserConfig: Codable {
-    let translation: KGTranslationConfig?
-}
-
-// MARK: - Service
-
 /// Manages communication with the Knowledge Graph API server
 @Observable
 final class KGService: KGServing, LocalDataClearing {
