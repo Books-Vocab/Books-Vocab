@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ops/
   - docs/policy/
-verified_against: 57f744f
+verified_against: 41bf8dd
 -->
 # Host Background (Single Source of Truth)
 
@@ -23,6 +23,8 @@ verified_against: 57f744f
 | Claude Gateway | `lab/claude-code-gateway` | `~/claude-code-gateway` | `wordnexus.lol/claude/*` | `8090` | `claude-code-gateway-api-1` |
 
 > Antigravity Proxy（`lab/antigravity-proxy/`）**不在 VPS 上**：2026-05-23 撤出公網改純本機執行（封號風險考量），詳見 `docs/sop/antigravity-proxy.md`。
+>
+> Codex Gateway（`lab/codex-gateway/`，ChatGPT 訂閱 → OpenAI-compatible API）**不在 VPS 上**：從一開始就純本機 `127.0.0.1:2455` 部署（OpenAI 反濫用偵測雖無 ban wave 實證，但具備所有觸發條件，預防性 air-gap）。詳見 `docs/sop/codex-gateway.md`。
 
 ## Routing
 ```caddy

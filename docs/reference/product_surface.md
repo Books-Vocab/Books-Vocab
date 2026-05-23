@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 57f744f
+verified_against: 41bf8dd
 -->
 # Implemented Product Surface
 
@@ -159,6 +159,14 @@ verified_against: 57f744f
 - 可用模型:`claude-opus-4-6-thinking`/`gemini-2.5-pro`/`gemini-3.1-pro-low`/`gemini-3.5-flash-low`/`gpt-oss-120b-medium` 等(訂閱戶權限範圍)
 - **與 KG 邏輯獨立**(podcast pipeline 不呼叫此 proxy);個人實驗用
 - 詳見 `docs/sop/antigravity-proxy.md`
+
+## Codex Gateway (`lab/codex-gateway/`,vendored,third-party)
+
+- ChatGPT Plus/Pro 訂閱 → OpenAI-compatible `/v1/chat/completions` + `/v1/responses`(讀 `~/.codex/auth.json` OAuth token 轉發)
+- 純本機 `127.0.0.1:2455`(FastAPI + uv);不上 VPS、不過 Caddy(預防性 air-gap)
+- 模型線:`gpt-5.5` / `gpt-5.4-codex` / `gpt-5.3-codex` 等(訂閱戶權限範圍)
+- **與 KG 邏輯獨立**;個人實驗 / OpenClaw / Cursor 本機接入
+- 詳見 `docs/sop/codex-gateway.md`
 
 ## Ops
 
