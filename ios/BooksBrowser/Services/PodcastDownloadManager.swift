@@ -1,0 +1,220 @@
+#if os(iOS)
+import Foundation
+import SwiftData
+import Observation
+
+/// Drives podcast episode downloads via a system background URLSession so they
+/// continue across app suspension.
+///
+/// Why a background URLSession (vs `URLSession.shared`):
+///   • Suspended-app continuation — user can lock screen and the MP3 keeps
+///     downloading; with `.default` config every task aborts the moment the
+///     app suspends.
+///   • System-managed retry on transient network drops (cell ↔ wifi handoff
+///     during a commute).
+///
+/// What's intentionally NOT here (deferred follow-ups):
+///   • `application(_:handleEventsForBackgroundURLSession:)` rehydration —
+///     downloads that *complete while the app is terminated* won't surface
+///     until the next foreground launch's `getAllTasks` reconciliation.
+///   • Resume from `resumeData` after manual cancel.
+///   • Concurrent-download cap / queue ordering.
+///
+/// Storage layout: `Documents/podcast-downloads/<seriesRemoteId>/<episodeRemoteId>.mp3`
+/// — matches the existing `PodcastEpisode.localAudioPath` schema field that's
+/// been waiting for a writer.
+@MainActor
+@Observable
+final class PodcastDownloadManager: NSObject {
+    static let shared = PodcastDownloadManager()
+
+    /// Active download fraction keyed by episode.remoteId (0.0 ... 1.0).
+    /// Absent → not downloading.
+    private(set) var progress: [String: Double] = [:]
+    /// Last error string keyed by episode.remoteId. Cleared on retry.
+    private(set) var failed: [String: String] = [:]
+
+    @ObservationIgnored
+    private var modelContainer: ModelContainer?
+    @ObservationIgnored
+    private var taskToRemoteId: [Int: String] = [:]
+    @ObservationIgnored
+    private var remoteIdToTask: [String: URLSessionDownloadTask] = [:]
+
+    @ObservationIgnored
+    private lazy var session: URLSession = {
+        let config = URLSessionConfiguration.background(
+            withIdentifier: "tw.kg.podcast.background-download"
+        )
+        config.isDiscretionary = false       // user explicitly tapped — don't defer
+        config.allowsCellularAccess = true   // podcast.audio is the user's goal
+        config.sessionSendsLaunchEvents = false  // app-relaunch hook is a follow-up
+        return URLSession(configuration: config, delegate: self, delegateQueue: nil)
+    }()
+
+    /// Call once from app launch — required before any startDownload call.
+    /// Persists the container reference so background delegate callbacks
+    /// can update SwiftData without piping it through every API call.
+    func configure(modelContainer: ModelContainer) {
+        self.modelContainer = modelContainer
+    }
+
+    func isDownloading(remoteId: String) -> Bool {
+        progress[remoteId] != nil
+    }
+
+    /// Kicks off the download. Caller supplies a fresh auth token so the
+    /// manager doesn't have to take a dependency on KGService.
+    func startDownload(episode: PodcastEpisode, authToken: String) {
+        guard
+            let urlStr = episode.audioURL,
+            let url = URL(string: urlStr)
+        else {
+            failed[episode.remoteId] = "無音訊 URL"
+            return
+        }
+        if remoteIdToTask[episode.remoteId] != nil { return }
+        failed.removeValue(forKey: episode.remoteId)
+        var request = URLRequest(url: url)
+        request.setValue("Bearer \(authToken)", forHTTPHeaderField: "Authorization")
+        let task = session.downloadTask(with: request)
+        taskToRemoteId[task.taskIdentifier] = episode.remoteId
+        remoteIdToTask[episode.remoteId] = task
+        progress[episode.remoteId] = 0
+        task.resume()
+    }
+
+    func cancel(remoteId: String) {
+        guard let task = remoteIdToTask[remoteId] else { return }
+        task.cancel()
+        // didCompleteWithError(.cancelled) cleans dicts.
+    }
+
+    /// Erase a previously-downloaded file. Idempotent — silently no-ops if
+    /// the file or model field is already gone.
+    func deleteLocal(episode: PodcastEpisode) {
+        guard let path = episode.localAudioPath else { return }
+        let url = URL(fileURLWithPath: path)
+        try? FileManager.default.removeItem(at: url)
+        episode.localAudioPath = nil
+        if let container = modelContainer {
+            try? ModelContext(container).save()
+        }
+    }
+
+    static func downloadsRoot() -> URL {
+        FileManager.default
+            .urls(for: .documentDirectory, in: .userDomainMask)[0]
+            .appendingPathComponent("podcast-downloads", isDirectory: true)
+    }
+}
+
+// MARK: - URLSessionDownloadDelegate
+
+extension PodcastDownloadManager: URLSessionDownloadDelegate {
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didWriteData _: Int64,
+        totalBytesWritten: Int64,
+        totalBytesExpectedToWrite: Int64
+    ) {
+        let fraction = totalBytesExpectedToWrite > 0
+            ? Double(totalBytesWritten) / Double(totalBytesExpectedToWrite)
+            : 0
+        let taskId = downloadTask.taskIdentifier
+        Task { @MainActor in
+            guard let remoteId = self.taskToRemoteId[taskId] else { return }
+            self.progress[remoteId] = fraction
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        downloadTask: URLSessionDownloadTask,
+        didFinishDownloadingTo location: URL
+    ) {
+        // didFinishDownloadingTo's URL is valid only inside this callback —
+        // copy to a temp file we control before hopping to MainActor.
+        let tempDir = FileManager.default.temporaryDirectory
+        let stash = tempDir.appendingPathComponent(
+            "podcast-download-\(downloadTask.taskIdentifier).mp3"
+        )
+        try? FileManager.default.removeItem(at: stash)
+        do {
+            try FileManager.default.moveItem(at: location, to: stash)
+        } catch {
+            let taskId = downloadTask.taskIdentifier
+            Task { @MainActor in
+                self.markFailed(taskId: taskId, message: error.localizedDescription)
+            }
+            return
+        }
+        let taskId = downloadTask.taskIdentifier
+        Task { @MainActor in
+            self.commit(taskId: taskId, stashedAt: stash)
+        }
+    }
+
+    nonisolated func urlSession(
+        _ session: URLSession,
+        task: URLSessionTask,
+        didCompleteWithError error: Error?
+    ) {
+        guard let error else { return }
+        let taskId = task.taskIdentifier
+        let message = (error as NSError).localizedDescription
+        Task { @MainActor in
+            self.markFailed(taskId: taskId, message: message)
+        }
+    }
+
+    @MainActor
+    private func commit(taskId: Int, stashedAt stash: URL) {
+        guard
+            let remoteId = taskToRemoteId[taskId],
+            let container = modelContainer
+        else {
+            try? FileManager.default.removeItem(at: stash)
+            return
+        }
+        let context = ModelContext(container)
+        let descriptor = FetchDescriptor<PodcastEpisode>(
+            predicate: #Predicate { $0.remoteId == remoteId }
+        )
+        guard let episode = try? context.fetch(descriptor).first else {
+            try? FileManager.default.removeItem(at: stash)
+            cleanup(taskId: taskId, remoteId: remoteId)
+            return
+        }
+        let seriesKey = episode.series?.remoteId ?? "unknown"
+        let dir = Self.downloadsRoot().appendingPathComponent(seriesKey, isDirectory: true)
+        try? FileManager.default.createDirectory(at: dir, withIntermediateDirectories: true)
+        let finalURL = dir.appendingPathComponent("\(remoteId).mp3")
+        try? FileManager.default.removeItem(at: finalURL)
+        do {
+            try FileManager.default.moveItem(at: stash, to: finalURL)
+            episode.localAudioPath = finalURL.path
+            try context.save()
+            cleanup(taskId: taskId, remoteId: remoteId)
+        } catch {
+            failed[remoteId] = error.localizedDescription
+            cleanup(taskId: taskId, remoteId: remoteId)
+        }
+    }
+
+    @MainActor
+    private func markFailed(taskId: Int, message: String) {
+        guard let remoteId = taskToRemoteId[taskId] else { return }
+        failed[remoteId] = message
+        cleanup(taskId: taskId, remoteId: remoteId)
+    }
+
+    @MainActor
+    private func cleanup(taskId: Int, remoteId: String) {
+        taskToRemoteId.removeValue(forKey: taskId)
+        remoteIdToTask.removeValue(forKey: remoteId)
+        progress.removeValue(forKey: remoteId)
+    }
+}
+#endif
