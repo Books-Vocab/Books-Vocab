@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/
   - ops/
-verified_against: a706c53
+verified_against: HEAD
 -->
 # i18n Lint
 
@@ -18,7 +18,7 @@ verified_against: a706c53
 | `--report`(預設) | 印出 findings,exit 0。本機 ad-hoc 查看用 |
 | `--baseline` | 把當前命中數寫入 `ops/i18n_baseline.txt`,當 watermark |
 | `--baseline-check` | 對照 baseline,findings 超過即 fail(CI 用) |
-| `--strict` | 任何 finding 即 fail(Phase 7 後切到此模式) |
+| `--strict` | 任何 finding 即 fail。除 legacy 三項外,額外跑「英文模式漏中文」覆蓋檢查 — 見下方「Strict 覆蓋檢查」 |
 
 ## 掃描範圍
 
@@ -79,7 +79,43 @@ raw-Chinese scan 在比對前會先把以下兩種區塊 blank 掉(行號保留,
 
 實作位置:`ops/_i18n_strip_previews.py`。如果預覽程式碼確實會被使用者看到(罕見),改用行內 `// i18n-allow: <reason>` 豁免。
 
+## Strict 覆蓋檢查
+
+`--strict` 模式除了 legacy 三項(raw / fmt / xcstrings)外,再跑三項 — 把「英文模式回退到中文」這個 P0 風險靜態擋掉。
+
+| Check | 來源 | 失敗條件 |
+|---|---|---|
+| A. Key Coverage | `ops/_i18n_extract_keys.py` 抽出的 static key 集 | key 不在 `en.lproj/Localizable.strings` 也不在 `Localizable.stringsdict` |
+| B. EN Purity | `en.lproj/Localizable.strings` + `.stringsdict` 所有 value | value 含 CJK Unified Ideographs(`[一-鿿]`) |
+| C. Plural Coverage | extractor 輸出的 `plural_keys`(`L10n.format(...)` 呼叫) | en value 含 `%d`/`%lld` 整數規格符,但 `.stringsdict` 沒對應 entry |
+
+### Extractor 掃描範圍
+
+`ops/_i18n_extract_keys.py` 解析三種 call shape:
+1. `"<key>".localized`
+2. `L10n.string("<key>")`
+3. `L10n.format("<key>", ...)`(同時進 `plural_keys` 供 Check C)
+
+加上靜態列舉以下 enum 的 `titleKey: String` 內所有 literal,當成 static key:
+- `AppLanguage.titleKey`
+- `AppAppearanceMode.titleKey`
+
+> 新增其他 `*.titleKey` enum 時必須把型別名加進 `_i18n_extract_keys.py` 的 `KNOWN_TITLEKEY_TYPES`,否則對應 call site(`enum.titleKey.localized` / `L10n.string(enum.titleKey)`)會落到 `dynamic_unresolved`、coverage check 觸及不到 → 英文模式漏中文重現。
+
+### 限制(誠實標記)
+
+- **變數 `.localized`**(`Text(message.localized)`)無法靜態追蹤,落在 `dynamic_unresolved` 報告區。實際 key 須在上游 callsite 由靜態 literal 提供 — 此 lint 不擋,責任在 code review。
+- **隱式 `Text(LocalizedStringKey)`** 目前 codebase 0 處;若未來引入,屬靜態無法解析的盲區。
+- **Runtime 組合字串**(server error message 直顯)不在範圍。
+
+### 端到端驗證流程
+
+1. `./ops/i18n_lint.sh --strict` 列出當前所有 missing key + en CJK 污染 + plural 缺項。
+2. 補 `en.lproj/Localizable.strings`(及 zh-Hant / zh-Hans / ja / ko 一併翻);plural 案例補 `Localizable.stringsdict`。
+3. 重跑 `--strict` 直到 exit 0。
+4. 此後英文模式漏中文(在靜態可解析範圍內)= 不可能。
+
 ## CI 接線
 
-- Phase 7.1 前:`--baseline-check`(防回歸)
-- Phase 7.1 後:Xcode Run Script Phase `--strict`(零容忍)
+- Phase 7.1 前:`--baseline-check`(防 legacy 三項回歸)
+- Phase 7.1 後:Xcode Run Script Phase `--strict`(零容忍,含上述三項覆蓋檢查)

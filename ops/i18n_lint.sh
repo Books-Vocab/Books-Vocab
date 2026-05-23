@@ -7,6 +7,12 @@
 #   --baseline-check
 #              Compare current findings to baseline; fail if regressed (count > baseline).
 #   --strict   Any finding fails. Use in CI / Xcode Run Script Phase after sweep done.
+#              Adds three coverage checks on top of the legacy finding count:
+#                A. Key Coverage — every static key referenced from .swift must exist
+#                   in en.lproj/Localizable.strings or .stringsdict.
+#                B. EN Purity — en.lproj values may not contain CJK Unified Ideographs.
+#                C. Plural Coverage — for L10n.format keys whose en.lproj value contains
+#                   %lld/%d, a matching .stringsdict entry must exist.
 #
 # Allowlist:
 #   - Per-line:  `// i18n-allow: <reason>`  on the same line to exempt
@@ -35,6 +41,9 @@ IOS_SRC="$ROOT_DIR/ios/BooksBrowser"
 XCSTRINGS="$IOS_SRC/Localization/Localizable.xcstrings"
 BASELINE_FILE="$ROOT_DIR/ops/i18n_baseline.txt"
 STRIP_PREVIEWS="$ROOT_DIR/ops/_i18n_strip_previews.py"
+KEY_EXTRACTOR="$ROOT_DIR/ops/_i18n_extract_keys.py"
+EN_STRINGS="$IOS_SRC/en.lproj/Localizable.strings"
+EN_STRINGSDICT="$IOS_SRC/en.lproj/Localizable.stringsdict"
 
 MODE="${1:---report}"
 
@@ -155,6 +164,135 @@ for lang, key in hits:
 PY
 }
 
+# ---- strict-only coverage checks --------------------------------------------
+#
+# These run only in --strict mode (gated by main). They compare the Swift call
+# sites against en.lproj as the canonical English source. Any miss = guaranteed
+# English-mode regression to Chinese (via L10n fallback `current → en → key`).
+
+# Check A: every static key from .swift must exist in en.lproj/.strings or
+# .stringsdict. Reports missing keys.
+scan_key_coverage() {
+  [ -f "$KEY_EXTRACTOR" ] || return 0
+  [ -f "$EN_STRINGS" ] || return 0
+  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+import json, plistlib, re, subprocess, sys
+extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    payload = json.loads(subprocess.check_output(["python3", extractor], text=True))
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    sys.exit(0)
+# Parse en.lproj/Localizable.strings — simple "key" = "value"; entries; ignore
+# // and /* */ comments. Tolerant rather than strict — we want every defined key.
+defined = set()
+try:
+    src = open(en_strings, "r", encoding="utf-8").read()
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] cannot read {en_strings}: {e}\n")
+    sys.exit(0)
+src = re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*=\s*"(?:[^"\\]|\\.)*"\s*;', src):
+    defined.add(m.group(1))
+# Add stringsdict keys (plist).
+try:
+    with open(en_stringsdict, "rb") as f:
+        d = plistlib.load(f)
+        defined.update(d.keys())
+except FileNotFoundError:
+    pass
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] cannot parse {en_stringsdict}: {e}\n")
+missing = sorted(k for k in payload.get("keys", []) if k not in defined)
+for k in missing:
+    print(f"missing_key: {k}")
+PY
+}
+
+# Check B: en.lproj values may not contain CJK Unified Ideographs (would render
+# in English mode after L10n fallback). Scans both .strings (values only) and
+# .stringsdict (every leaf string).
+scan_en_purity() {
+  python3 - "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+import plistlib, re, sys
+en_strings, en_stringsdict = sys.argv[1], sys.argv[2]
+cjk = re.compile(r"[一-鿿]")
+# .strings: extract value side only
+try:
+    src = open(en_strings, "r", encoding="utf-8").read()
+except FileNotFoundError:
+    src = ""
+src_nc = re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;', src_nc):
+    key, val = m.group(1), m.group(2)
+    if cjk.search(val):
+        print(f"en_cjk:strings: {key!r} -> {val!r}")
+# .stringsdict: every str leaf except the structural NSStringFormat* metadata keys
+try:
+    with open(en_stringsdict, "rb") as f:
+        d = plistlib.load(f)
+except FileNotFoundError:
+    d = {}
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] cannot parse {en_stringsdict}: {e}\n")
+    d = {}
+def walk(node, trail):
+    if isinstance(node, dict):
+        for k, v in node.items():
+            walk(v, trail + [str(k)])
+    elif isinstance(node, list):
+        for i, v in enumerate(node):
+            walk(v, trail + [f"[{i}]"])
+    elif isinstance(node, str):
+        if cjk.search(node):
+            print(f"en_cjk:stringsdict:{'/'.join(trail)}: {node!r}")
+for k, v in d.items():
+    walk(v, [str(k)])
+PY
+}
+
+# Check C: for L10n.format keys whose en.lproj/.strings value uses %lld/%d
+# (integer specifier likely intended as plural-rule subject), a matching
+# .stringsdict NSStringLocalizedFormatKey entry MUST exist. Otherwise English
+# falls back to the singular-only template and 1/many distinction is lost.
+scan_plural_coverage() {
+  [ -f "$KEY_EXTRACTOR" ] || return 0
+  [ -f "$EN_STRINGS" ] || return 0
+  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+import json, plistlib, re, subprocess, sys
+extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
+try:
+    payload = json.loads(subprocess.check_output(["python3", extractor], text=True))
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] key extractor failed: {e}\n")
+    sys.exit(0)
+src = ""
+try:
+    src = open(en_strings, "r", encoding="utf-8").read()
+except FileNotFoundError:
+    pass
+src = re.sub(r"/\*.*?\*/", "", src, flags=re.DOTALL)
+en_value = {}
+for m in re.finditer(r'"((?:[^"\\]|\\.)*)"\s*=\s*"((?:[^"\\]|\\.)*)"\s*;', src):
+    en_value[m.group(1)] = m.group(2)
+sd_keys = set()
+try:
+    with open(en_stringsdict, "rb") as f:
+        sd_keys = set(plistlib.load(f).keys())
+except FileNotFoundError:
+    pass
+except Exception as e:
+    sys.stderr.write(f"[i18n_lint] cannot parse {en_stringsdict}: {e}\n")
+int_spec = re.compile(r"%(?:\d+\$)?(?:[+\- 0#]*\d*(?:\.\d+)?)?(?:ll|l|h|hh|z|j|t)?[di]")
+for k in sorted(payload.get("plural_keys", [])):
+    val = en_value.get(k)
+    if not val:
+        continue
+    if int_spec.search(val) and k not in sd_keys:
+        print(f"plural_missing: {k!r} (en value uses %d/%lld but no stringsdict entry)")
+PY
+}
+
 # ---- main -------------------------------------------------------------------
 
 raw_hits="$(scan_raw_chinese)"
@@ -165,6 +303,14 @@ raw_count=$(printf '%s' "$raw_hits" | grep -c . || true)
 fmt_count=$(printf '%s' "$fmt_hits" | grep -c . || true)
 xc_count=$(printf '%s' "$xc_hits"  | grep -c . || true)
 total=$((raw_count + fmt_count + xc_count))
+
+# Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
+missing_key_hits=""
+en_cjk_hits=""
+plural_missing_hits=""
+missing_key_count=0
+en_cjk_count=0
+plural_missing_count=0
 
 print_findings() {
   if [ -n "$raw_hits" ]; then
@@ -182,7 +328,22 @@ print_findings() {
     printf '%s\n' "$xc_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count fmt=$fmt_count xcstrings=$xc_count)"
+  if [ -n "$missing_key_hits" ]; then
+    echo "=== Missing en.lproj keys ($missing_key_count) ==="
+    printf '%s\n' "$missing_key_hits"
+    echo
+  fi
+  if [ -n "$en_cjk_hits" ]; then
+    echo "=== EN value contains CJK ($en_cjk_count) ==="
+    printf '%s\n' "$en_cjk_hits"
+    echo
+  fi
+  if [ -n "$plural_missing_hits" ]; then
+    echo "=== Plural rule missing ($plural_missing_count) ==="
+    printf '%s\n' "$plural_missing_hits"
+    echo
+  fi
+  echo "[i18n_lint] total: $total (raw=$raw_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count)"
 }
 
 case "$MODE" in
@@ -207,9 +368,18 @@ case "$MODE" in
     exit 0
     ;;
   --strict)
+    # Compute coverage / purity / plural checks (strict-only — they require
+    # python3 with stdlib plistlib and the extractor script).
+    missing_key_hits="$(scan_key_coverage)"
+    en_cjk_hits="$(scan_en_purity)"
+    plural_missing_hits="$(scan_plural_coverage)"
+    missing_key_count=$(printf '%s' "$missing_key_hits" | grep -c . || true)
+    en_cjk_count=$(printf '%s' "$en_cjk_hits" | grep -c . || true)
+    plural_missing_count=$(printf '%s' "$plural_missing_hits" | grep -c . || true)
+    strict_total=$((total + missing_key_count + en_cjk_count + plural_missing_count))
     print_findings
-    if [ "$total" -gt 0 ]; then
-      echo "[i18n_lint] FAIL strict: $total findings" >&2
+    if [ "$strict_total" -gt 0 ]; then
+      echo "[i18n_lint] FAIL strict: $strict_total findings (legacy=$total, coverage=$missing_key_count, en_cjk=$en_cjk_count, plural=$plural_missing_count)" >&2
       exit 1
     fi
     exit 0
