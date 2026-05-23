@@ -5,9 +5,8 @@ import SwiftUI
 /// Notebook 立體堆卡（`NotebookStackedCoverView` × `NotebookCard.grid`）的 catalog。
 ///
 /// 涵蓋：
-/// - 5 種 stress case（happy / long-content / large-numbers / narrow-width / a11y3）
+/// - 4 種 stress case（happy / long-content / narrow-width / a11y3）
 /// - 自家 state matrix：0 / 30 / 100 / 500 字 × active/inactive × light/dark
-/// - `NotebookAddCard` 與真實卡同 row 對齊
 ///
 /// 與 `NotebooksScenarios` 共存：那份偏既有 hero / grid baseline，本份專攻新堆卡幾何。
 enum NotebookListScenarios {
@@ -28,9 +27,6 @@ enum NotebookListScenarios {
             Scenario("Stress · accessibility3", layout: .fill) {
                 gridSheet(cards: [Self.mediumActive, Self.fresh])
                     .environment(\.dynamicTypeSize, .accessibility3)
-            }
-            Scenario("Stress · 3 真實 + add (odd row)", layout: .fill) {
-                gridSheet(cards: [Self.fresh, Self.thin, Self.medium], showsAddCard: true)
             }
 
             // MARK: State matrix — depth layers
@@ -192,7 +188,6 @@ enum NotebookListScenarios {
 
     private static func gridSheet(
         cards: [NotebookCardData],
-        showsAddCard: Bool = false,
         minimum: CGFloat = 160
     ) -> some View {
         let skin = AppSkin.previewNeutral
@@ -203,9 +198,6 @@ enum NotebookListScenarios {
             ) {
                 ForEach(Array(cards.enumerated()), id: \.offset) { _, data in
                     NotebookCard(data: data, style: .grid)
-                }
-                if showsAddCard {
-                    NotebookAddCard()
                 }
             }
             .padding(.horizontal, skin.metrics.pageHorizontalInset)
