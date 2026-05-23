@@ -250,4 +250,4 @@ async def get_admin_user(
     except HTTPException as exc:
         from .exceptions import ForbiddenError
 
-        raise ForbiddenError(exc.detail or "Admin authentication required")
+        raise ForbiddenError(exc.detail or "Admin authentication required") from exc
