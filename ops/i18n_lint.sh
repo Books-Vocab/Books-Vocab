@@ -175,7 +175,7 @@ PY
 scan_key_coverage() {
   [ -f "$KEY_EXTRACTOR" ] || return 0
   [ -f "$EN_STRINGS" ] || return 0
-  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import json, plistlib, re, subprocess, sys
 extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
@@ -213,7 +213,7 @@ PY
 # in English mode after L10n fallback). Scans both .strings (values only) and
 # .stringsdict (every leaf string).
 scan_en_purity() {
-  python3 - "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+  python3 - "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import plistlib, re, sys
 en_strings, en_stringsdict = sys.argv[1], sys.argv[2]
 cjk = re.compile(r"[一-鿿]")
@@ -258,7 +258,7 @@ PY
 scan_plural_coverage() {
   [ -f "$KEY_EXTRACTOR" ] || return 0
   [ -f "$EN_STRINGS" ] || return 0
-  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' 2>/dev/null || true
+  python3 - "$KEY_EXTRACTOR" "$EN_STRINGS" "$EN_STRINGSDICT" <<'PY' || true
 import json, plistlib, re, subprocess, sys
 extractor, en_strings, en_stringsdict = sys.argv[1], sys.argv[2], sys.argv[3]
 try:
