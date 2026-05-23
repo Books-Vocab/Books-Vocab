@@ -2,13 +2,14 @@
 //  NotebookStackedCoverView.swift
 //  BooksBrowser
 //
-//  Apple Wallet 風的「一疊單字卡」封面 — 由下而上錯位堆疊，
-//  下層只露頂緣、不旋轉、不傾斜。下層為純色 ghost，頂層復用
-//  既有 `NotebookCoverView`（pattern / image / text 邏輯 100% 不拷貝）。
+//  Editorial 立體堆卡 — 彩色封面 + cream 紙頁內頁的 notebook 隱喻。
+//  下層 ghost 用 `AppColors.paperLight/Sepia/SepiaDeep` 三階 cream 紙頁，
+//  每層套 deterministic 微 rotation + edge jitter（per-notebook seed），
+//  與全層 hairline border 共同帶入「桌上隨手疊」的 editorial 手感。
 //
-//  本檔只負責「視覺堆疊」；metadata、使用中 pill、context menu 由
-//  外層 `NotebookCard` 持有。Press feedback 由 `NotebookDeckButtonStyle`
-//  透過 `\.isDeckPressed` environment 注入。
+//  本檔只負責「視覺堆疊」；metadata、使用中 pill、context menu、整體 rotation
+//  （含 pill 隨轉）由外層 `NotebookCard` 持有。Press feedback 由
+//  `NotebookDeckButtonStyle` 透過 `\.isDeckPressed` environment 注入。
 //
 
 import SwiftUI
@@ -49,7 +50,12 @@ struct NotebookStackedCoverView: View {
     /// 1 / 2 / 3 / 4 — 由 `NotebookStackMetrics.layerCount(forCardCount:)` 決定
     let layerCount: Int
     let aspectRatio: CGFloat
+    /// Per-notebook deterministic seed（由 `NotebookCard` 傳 `data.name.hashValue` 等）。
+    /// 同 seed × 同 depth 永遠回傳同一 (angle, dx)；render 不會閃爍。
+    /// 預設 0 為了 Phase 3 build 自包：Phase 4 wire 後實際每張卡會傳不同 seed。
+    var seed: Int = 0
 
+    @Environment(\.appSkin) private var skin
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.isDeckPressed) private var isPressed
     @Environment(\.deckReduceMotion) private var reduceMotion
@@ -81,33 +87,56 @@ struct NotebookStackedCoverView: View {
                 topTrailingRadius: AppRadius.md,
                 style: .continuous
             ))
+            // Editorial hairline — 與 ghost 同 hairline 語言，撞 cream 背景時邊界不糊
+            .overlay(
+                UnevenRoundedRectangle(
+                    topLeadingRadius: AppRadius.md,
+                    bottomLeadingRadius: 0,
+                    bottomTrailingRadius: 0,
+                    topTrailingRadius: AppRadius.md,
+                    style: .continuous
+                )
+                .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
+            )
             .appElevation(.z2)
             .offset(y: isPressed && !reduceMotion ? NotebookStackMetrics.pressedTopOffsetY : 0)
             .scaleEffect(isPressed && !reduceMotion ? AppMotion.TapFeedback.scaleDown : 1.0,
                          anchor: .center)
+            // ⚠️ Top cover 不在這裡套 rotation —
+            // rotation 在 `NotebookCard.coverArea` 外層套，包 pill overlay 一起轉
+            // （避免 pill 脫離卡片邊界）。
         }
         // ⚠️ aspectRatio 必須套在 ZStack 而非個別 layer —
         // 套在 layer 上會被 .padding(.horizontal, dx) 反向壓縮高度，
         // 使 ghost 底邊比 top 底邊還高，peek 永遠不會出現。
         .aspectRatio(aspectRatio, contentMode: .fit)
-        // 為 ghost peek 預留底部空間，避免 peek 渲染到 metadata
-        .padding(.bottom, maxGhostDy)
+        // 為 ghost peek + rotation overhang 預留空間
+        .padding(.bottom, maxGhostDy + NotebookStackMetrics.rotationOverhang)
+        .padding(.horizontal, NotebookStackMetrics.rotationOverhang)
     }
 
-    /// 純色 ghost 一層 — 不 render pattern / image / text，避免下層雜訊。
+    /// Cream 紙頁 ghost 一層 — 不 render pattern / image / text，避免下層雜訊。
     /// 不套自己的 aspectRatio：交由父 ZStack 的 aspectRatio 統一決定 frame。
     @ViewBuilder
     private func ghostLayer(depth: Int) -> some View {
-        let dx = NotebookStackMetrics.layerInsetX * CGFloat(depth)
-        let dy = NotebookStackMetrics.layerOffsetY * CGFloat(depth)
+        let baseInset = NotebookStackMetrics.layerInsetX * CGFloat(depth)
+        let baseDy = NotebookStackMetrics.layerOffsetY * CGFloat(depth)
+        let jitter = NotebookStackMetrics.seedJitter(seed: seed, depth: depth)
         let pressBoost = isPressed && !reduceMotion
             ? NotebookStackMetrics.pressedGhostOffsetY * CGFloat(depth)
             : 0
 
         RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
-            .fill(NotebookStackMetrics.deckColor(color, depth: depth, scheme: colorScheme))
-            .padding(.horizontal, dx)
-            .offset(y: dy + pressBoost)
+            .fill(NotebookStackMetrics.ghostPaperColor(depth: depth, scheme: colorScheme))
+            // Editorial hairline — cream-on-cream 無邊讀不出層次
+            .overlay(
+                RoundedRectangle(cornerRadius: AppRadius.md, style: .continuous)
+                    .stroke(skin.palette.cardBorder, lineWidth: AppMetrics.dividerThin)
+            )
+            .padding(.horizontal, baseInset + jitter.dx)
+            .offset(y: baseDy + pressBoost)
+            // 從 .bottom 錨點旋轉：底部錨定、頂部微張，模擬桌上隨手疊
+            .rotationEffect(.degrees(jitter.angle), anchor: .bottom)
             .appElevation(isPressed ? .z2 : .z1)
             .accessibilityHidden(true)
     }
