@@ -90,6 +90,8 @@ cd ~/kg
 ### Rollback：deploy 失敗後的具體動作
 
 > ⚠️ `devops.sh` **沒有** 內建 rollback 子指令。回滾＝重 deploy 上一個版本 + 視情況還原 data 備份。完整禁用指令邊界見 [`docs/policy/safety.md`](../policy/safety.md)。
+>
+> 📋 **演練狀態**：以下步驟對照 `devops.sh` 實際指令邏輯撰寫，但**尚未在 staging 跑過完整 dry-run**。首次執行請 step-by-step 對照 `devops.sh` 對應 `cmd_*` 函式（行號見 §Step 註解），不要照抄一鍵跑完。事故發生時優先保留現場再動手。
 
 **Step 0：先確認上次成功的 sha**
 
@@ -124,13 +126,14 @@ ls -lht ~/kg/backups/data_*.tar.gz | head -5
 sha256sum -c ~/kg/backups/data_<timestamp>.tar.gz.sha256
 # 3. 停容器（不刪 volume！docker compose down -v 是鐵律 7 禁用）
 ./devops.sh run "cd ~/knowledge_graph_api && docker compose down"
-# 4. scp 備份上去並還原（手動，devops.sh 沒包這步）
+# 4. scp 備份上去並用「原子 mv」還原 — 保留壞掉的 data 以便事故後回查 / 救回
 scp -i ~/.ssh/lightsail_default.pem ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.193.212.134:/tmp/
 ./devops.sh run "cd /tmp && tar -xzf data_<timestamp>.tar.gz && \
-  sudo rm -rf ~/knowledge_graph_api/data && \
+  sudo mv ~/knowledge_graph_api/data ~/knowledge_graph_api/data.broken.\$(date +%s) && \
   sudo mv data_<timestamp> ~/knowledge_graph_api/data"
-# 5. 起容器並 health check
-./devops.sh restart
+# （鐵律 7 精神：data dir 不直接 rm -rf。data.broken.* 之後人工確認再清。）
+# 5. 起容器並 health check（compose down 後容器已移除，restart 對不存在的容器無效，必須 up）
+./devops.sh run "cd ~/knowledge_graph_api && docker compose up -d"
 ./devops.sh status
 ```
 
