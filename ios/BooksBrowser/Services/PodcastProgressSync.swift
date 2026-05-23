@@ -128,7 +128,7 @@ extension PodcastSyncService {
         let payload: [String: Any] = [
             "position_sec": positionSec,
             "duration_sec": durationSec,
-            "updated_at": ISO8601DateFormatter.podcastProgressFractional.string(from: updatedAt),
+            "updated_at": AppDateFormatters.iso8601.string(from: updatedAt),
         ]
         request.httpBody = try JSONSerialization.data(withJSONObject: payload)
         let (_, response) = try await URLSession.shared.data(for: request)
@@ -162,7 +162,7 @@ extension PodcastSyncService {
     ) {
         for item in remote {
             guard !item.seriesId.isEmpty, item.epNum >= 1 else { continue }
-            guard let remoteUpdatedAt = ISO8601DateFormatter.parsePodcastProgress(item.updatedAt) else {
+            guard let remoteUpdatedAt = AppDateFormatters.parseISO8601(item.updatedAt) else {
                 continue
             }
             let episodeRemoteId = episodeRemoteId(seriesId: item.seriesId, episodeNumber: item.epNum)
@@ -205,35 +205,13 @@ extension PodcastSyncService {
 }
 
 // MARK: - Date formatter
-
-private extension ISO8601DateFormatter {
-    /// Encode (push) form — includes fractional seconds so two writes within
-    /// the same wall-clock second remain orderable by last-write-wins.
-    ///
-    /// Backend-compatible: the router parses with ``datetime.fromisoformat``
-    /// (accepts fractional seconds) and re-emits via ``isoformat()``, which
-    /// preserves the sub-second component verbatim when present.
-    static let podcastProgressFractional: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        return f
-    }()
-
-    /// Canonical form without fractional seconds. Still needed for *decoding*:
-    /// the backend only emits a fraction when ``datetime.microsecond != 0``,
-    /// so legacy / whole-second rows arrive without one.
-    static let podcastProgressWhole: ISO8601DateFormatter = {
-        let f = ISO8601DateFormatter()
-        f.formatOptions = [.withInternetDateTime]
-        return f
-    }()
-
-    /// Parse a backend ``updated_at`` string regardless of whether it carries
-    /// fractional seconds. ``ISO8601DateFormatter`` is strict — a formatter
-    /// configured ``.withFractionalSeconds`` rejects fraction-less input and
-    /// vice versa — so both variants are tried.
-    static func parsePodcastProgress(_ raw: String) -> Date? {
-        podcastProgressFractional.date(from: raw)
-            ?? podcastProgressWhole.date(from: raw)
-    }
-}
+//
+// Wire format ISO 8601 helpers live in ``AppDateFormatters``:
+// - ``iso8601`` — withInternetDateTime + withFractionalSeconds (encode form).
+//   Backend-compatible: the router parses with ``datetime.fromisoformat``
+//   (accepts fractional seconds) and re-emits via ``isoformat()``, which
+//   preserves the sub-second component verbatim when present.
+// - ``parseISO8601`` — tries fractional first, falls back to plain
+//   withInternetDateTime. Needed because the backend only emits a fraction
+//   when ``datetime.microsecond != 0``, so legacy / whole-second rows arrive
+//   without one and ``ISO8601DateFormatter`` is strict about the option.
