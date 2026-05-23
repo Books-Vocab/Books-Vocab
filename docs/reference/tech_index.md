@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: 41bf8dd
+verified_against: c642ed18
 -->
 # Technical Reference Index
 
@@ -70,7 +70,7 @@ Data dir 透過 `KG_DATA_DIR` env 切換。`orphan_scan` 為 cross-DB consistenc
 |------|------|
 | `Views/` | 場景視圖(書架、筆記、播客、複習、reader、settings) |
 | `Services/` | 後端通訊(`KGService`)、認證、雲同步、analytics、sentry |
-| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`) |
+| `Models/` | 實體(Book / Notebook / VocabularyEntry / PodcastSeries) + tokens(`AppMetrics` 含 `AppMotion`/`AppSpacing`/`Radius`/`Elevation`;`AppSkin` 拆 `+BaseValues`/`+Environment`;feature-local metrics:`ReaderMetrics` / `TodayReviewMetrics` / `BookshelfMetrics` / `PodcastPlayerMetrics` / `NotebookStackMetrics`) |
 | `UIComponents/` | 可重用元件(buttons / cards / banners / toast / skeleton) |
 | `Platform/` | iOS/macOS 特定(Widget、shortcuts、app intent) |
 | `Localization/`,`*.lproj/` | i18n(en / ja / ko / zh-Hans / zh-Hant) |
