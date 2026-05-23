@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ios/BooksBrowser/UIComponents/
   - ios/BooksBrowser/Views/
-verified_against: a706c53
+verified_against: f63ace78
 -->
 # UI Component & Pattern Inventory
 
@@ -112,7 +112,10 @@ Scope: `ios/BooksBrowser`
 - `VocabActionButtonStyle`
 - `VocabSceneShell` — 四態容器（loading/empty/error/content），統一 Vocabulary 場景的狀態管理殼層；各 VocabPresenter 優先透過此殼層組合狀態而非各自手拼
 - `GraphThumbnailWebView` — 雙平台（iOS `UIViewRepresentable` / macOS `NSViewRepresentable`）小型圖譜預覽，用於 StatsPresenter
-- `NotebookStackedCoverView` — Editorial 立體堆卡：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）
+- `NotebookStackedCoverView` — Editorial 立體堆卡：彩色封面 + cream 紙頁三階 ghost（`paperLight/paperSepia/paperSepiaDeep`）；幾何走 `NotebookStackMetrics`（dy/dx=4pt / rotation ±1.5° / jitter ±1pt / rotationOverhang 8pt / `patternOpacity` 0.12）；每層 0.5pt `cardBorder` hairline；rotation 由 `stableSeed(for:)` djb2 hash 保證跨 launch 同字串同角度；下層 ghost `.appElevation(.z1)`、頂層 `.z2`；按壓走 `NotebookDeckButtonStyle`（press-in `TapFeedback.animation` + release `AppMotion.cardDeckRelease` + haptic `.selection`），Reduce Motion 關 offset/scale 但 **保留 rotation**（靜態 layout 非 motion）；`showsName: Bool = true` opt-in 開關提供 NotebookCard 套 editorial overlay 時關掉內層 name 渲染
+- `EditorialCoverComposition`(private in `NotebookCard.swift`) — D1 editorial book-cover composition,以 `.overlay` 套在 `NotebookStackedCoverView` / `NotebookCoverView` 之上,跟著 coverArea rotation 一起旋轉。內含 serif name 左上(`AppFonts.serif(size: 22/32, bold: true)`)+ `GeometryReader` 動態 hairline rule(寬 = cover×0.25,色 `NotebookPalette.darken(_, by: 0.3)`)+ `N 詞` monoLabel 右下(`L10n.format("%@ 詞")`, cardCount > 0 才顯示)+ **D3** 3pt cover-left spine(grid + isActive only,色 `NotebookPalette.darken(_, by: 0.4)`)。取代舊「使用中」accent-blue pill。
+- `VocabReviewCTAPill` — 用於 detail 頁(KGVocabPresenter)與 **NotebookListView 頂部 section header**(D4 editorial),brandHero 奶黃 capsule + onBrandHero 前景。Both 同視覺族群,page-level 標題不需卡片框包裹。
+- `VocabReviewBanner` — **(已從 NotebookListView 解除引用)** 元件保留於 codebase 作 future use / preview;NotebookListView 現走 page section header `今日複習` + `VocabReviewCTAPill` 取代。
 
 責任：
 - vocabulary feature 的 card rhythm、toolbar chrome、status hero、overlay shell、timeline row、四態場景殼層、graph thumbnail
