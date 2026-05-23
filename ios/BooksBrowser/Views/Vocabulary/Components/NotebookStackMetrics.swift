@@ -55,6 +55,10 @@ enum NotebookStackMetrics {
     /// 避免 GeometryReader 造成 grid layout 反覆。
     static let rotationOverhang: CGFloat = AppSpacing.s2      // 8pt
 
+    /// Editorial pattern overlay opacity — `NotebookCoverPatterns` 6 種 pattern 統一引此 token。
+    /// Phase 1c editorial cover composition：pattern 從 0.3 降至 0.18，讓 serif name 為視覺主角。
+    static let patternOpacity: Double = 0.18
+
     /// Per-notebook deterministic jitter — seed 由 caller 傳入（用 `stableSeed(for:)`）。
     /// 同一 seed × 同一 depth 永遠回傳同一 (angle, dx)，render 不會閃爍。
     /// 在 `layerRotations` / `layerDxJitter` base 上 ±50% 擾動。
