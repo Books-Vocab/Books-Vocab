@@ -36,9 +36,9 @@ struct CollocationExplainSheet: View {
 
             footerToolbar
         }
-        .padding(.horizontal, appSkin.metrics.readerPanelHorizontalInset)
+        .padding(.horizontal, ReaderMetrics.panelHorizontalInset)
         .padding(.top, AppSpacing.s5)
-        .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
+        .padding(.bottom, ReaderMetrics.panelBottomInset)
         .task { await loadIfNeeded() }
         .enableInjection()
     }

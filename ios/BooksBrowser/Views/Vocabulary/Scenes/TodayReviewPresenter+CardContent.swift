@@ -6,9 +6,9 @@ extension TodayReviewPresenter {
 
     // MARK: Dimensions
 
-    var reviewCardPadding: CGFloat { appSkin.metrics.reviewFoldPadding }
-    var frontCardHeight: CGFloat { appSkin.metrics.reviewFrontMinHeight }
-    var answerCardHeight: CGFloat { appSkin.metrics.reviewAnswerMinHeight }
+    var reviewCardPadding: CGFloat { TodayReviewMetrics.foldPadding }
+    var frontCardHeight: CGFloat { TodayReviewMetrics.frontMinHeight }
+    var answerCardHeight: CGFloat { TodayReviewMetrics.answerMinHeight }
 
     // MARK: Front Surface
 
@@ -30,7 +30,7 @@ extension TodayReviewPresenter {
     }
 
     func reviewCardFront(_ card: CardPresentation) -> some View {
-        VStack(alignment: .leading, spacing: appSkin.metrics.reviewFoldSectionSpacing) {
+        VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
             HStack(alignment: .firstTextBaseline, spacing: AppSpacing.s2) {
                 switch card.reviewMode {
                 case .recognition:
@@ -76,7 +76,7 @@ extension TodayReviewPresenter {
             }
         }
         .padding(reviewCardPadding)
-        .padding(.top, appSkin.metrics.reviewFoldHintBottomInset)
+        .padding(.top, TodayReviewMetrics.foldHintBottomInset)
         .frame(maxWidth: .infinity, alignment: .topLeading)
         .frame(minHeight: frontCardHeight, alignment: .topLeading)
     }
@@ -92,7 +92,7 @@ extension TodayReviewPresenter {
         }
         .overlay(alignment: .top) {
             ReviewFoldChevronPill(action: onCollapseReveal)
-                .offset(y: -appSkin.metrics.reviewChevronButtonSize / 2)
+                .offset(y: -TodayReviewMetrics.chevronButtonSize / 2)
         }
     }
 
@@ -103,7 +103,7 @@ extension TodayReviewPresenter {
             containerHeight: availableHeight,
             currentCard: currentCard
         )
-        return VStack(alignment: .leading, spacing: appSkin.metrics.reviewFoldSectionSpacing) {
+        return VStack(alignment: .leading, spacing: TodayReviewMetrics.foldSectionSpacing) {
             HStack(spacing: 6) {
                 Spacer()
                 if let tier = card.difficultyTier {
@@ -230,14 +230,14 @@ extension TodayReviewPresenter {
     ) -> Int {
         // ① 答案卡最大可用高度（geo.size.height 已扣除 topBar / bottomToolbar）
         let answerBudget = containerHeight
-            - appSkin.metrics.reviewCardTopInset
-            - appSkin.metrics.reviewCardBottomInset
+            - TodayReviewMetrics.cardTopInset
+            - TodayReviewMetrics.cardBottomInset
             - frontCardHeight
 
         // ② combinedAnswerContent 固定元素
-        let gap = appSkin.metrics.reviewFoldSectionSpacing
+        let gap = TodayReviewMetrics.foldSectionSpacing
         var coreHeight = reviewCardPadding * 2                                  // fold padding top + bottom
-            + appSkin.metrics.reviewChevronButtonSize / 2                     // chevron pill 佔位
+            + TodayReviewMetrics.chevronButtonSize / 2                     // chevron pill 佔位
             + 20 + gap                                                          // tier label row
             + 36 + gap                                                          // word / translation
             + AppMetrics.dividerThin + gap                                      // CardSectionDivider (always shown)
@@ -252,7 +252,7 @@ extension TodayReviewPresenter {
         // ⑤ 高度 → 行數 → 詞數 → radius
         let lineHeight: CGFloat = 22
         let textWidth = containerWidth
-            - appSkin.metrics.reviewCardHorizontalInset * 2
+            - TodayReviewMetrics.cardHorizontalInset * 2
             - reviewCardPadding * 2
         let wordsPerLine = max(Int(textWidth / 62), 4)
         let lines = Int(exampleBudget / lineHeight)

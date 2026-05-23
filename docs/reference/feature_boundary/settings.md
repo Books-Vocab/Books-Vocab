@@ -90,3 +90,7 @@ verified_against: a706c53
 | `AppMotion` | 動畫 token |
 | `AppFonts` | 字型 |
 | `SubscriptionPresentation` | 訂閱狀態 UI 模型，Settings 內部共用 |
+
+## 未來路標
+
+- `AppSkin.Spacing` 內 `sheet*`（`sheetSectionSpacing` / `sheetPadding` / `sheetPaddingCompact`）目前 3 欄位、Settings / Subscription / Podcast 三 feature 共用 → 留 AppSkin。**若 Settings sheet 演化出 ≥5 個 feature-local 欄位**，套同模式建 `SettingsSheetMetrics`（參考 boundary rectify 2026-05 的 `ReaderMetrics` / `TodayReviewMetrics` 範式）。
