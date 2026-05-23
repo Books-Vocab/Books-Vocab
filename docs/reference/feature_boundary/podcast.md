@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: 911235ea
+verified_against: c02b5221
 -->
 # Podcast Feature Boundary
 
@@ -14,15 +14,15 @@ verified_against: 911235ea
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerView.swift` | 527 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列 |
-| `PodcastEpisodeListView.swift` | 385 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View` |
-| `PodcastSentenceLevelView.swift` | 353 | 句級字幕 + 長按整句翻譯 + 點詞查詞 `struct PodcastSentenceLevelView: View` |
+| `PodcastPlayerView.swift` | ~560 | 主播放器容器 `struct PodcastPlayerView: View`，audio + 字幕同步 + 翻譯面板 + 控制列 |
+| `PodcastEpisodeListView.swift` | ~410 | 單集列表 + series 詳情容器 `struct PodcastEpisodeListView: View` |
+| `PodcastSentenceLevelView.swift` | ~390 | 句級字幕 + 長按整句翻譯 + 點詞查詞 `struct PodcastSentenceLevelView: View` |
 
 ### ViewModel Layer（播放狀態機）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastPlayerViewModel.swift` | 278 | `@Observable @MainActor final class PodcastPlayerViewModel`，播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync + sleep timer (`DispatchSourceTimer` wall-clock-based;`.endOfEpisode` 模式靠 `onPlaybackFinished` 觸發) |
+| `PodcastPlayerViewModel.swift` | ~355 | `@Observable @MainActor final class PodcastPlayerViewModel`,播放/暫停/seek + auto-pause-on-lookup + per-user progress LWW sync + sleep timer(`sleepTimerMode` / `sleepDeadline` / `DispatchSourceTimer` wall-clock;`.endOfEpisode` 由 audio engine load 換集 callback reset) + `bufferedEnd`(YouTube-style buffer overlay) + `subtitleState: PodcastSubtitleLoadState`(idle/loading/loaded/failed + inline retry) + `onSystemPause` / `onSystemResume` interruption hooks + `prefetchedDurationSec` + `audioHTTPHeaders` 透傳 + `stop()`(session-internal teardown) vs `shutdown()`(terminal cleanup) |
 
 ### Domain / Integration（翻譯與詞彙橋接）
 
@@ -50,7 +50,7 @@ verified_against: 911235ea
 | `PodcastControlsView.swift` | 115 | 播放/暫停/快轉/速度控制列 |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron） |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
-| `PodcastSettingsPopover.swift` | 103 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle popover |
+| `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數 |
 | `PodcastFollowToggle.swift` | 49 | series 追蹤 toggle（已追蹤浮上書庫頂端） |
 | `PodcastBadge.swift` | 18 | 「已追蹤」「新集數」狀態 badge |
 | `SpeakerAccentBar.swift` | 42 | 多角色播客的口音/語者識別條 |
@@ -71,7 +71,7 @@ verified_against: 911235ea
 - **新增字幕呈現邏輯** → `PodcastSentenceLevelView` 或 `PodcastSubtitleView`,layout 計算抽到 `CachedFlowLayout` 或 `SubtitleRenderState`
 - **新增播放狀態（speed / region / queue）** → `PodcastPlayerViewModel`,View 不放 mutable state
 - **新增 series / episode 列表 UI** → `PodcastEpisodeListView` + `PodcastEpisodeRow`
-- **新增字幕設定** → `PodcastSettingsPopover`(集中所有 user-tunable 字幕參數)
+- **新增 user-tunable 播放參數(字幕 / 跟隨 / 計時器 等)** → `PodcastSettingsPopover`(集中所有 user-tunable 播放參數;非字幕專屬)
 - **新增詞彙互動** → `PodcastVocabularyContext`(reader-parity:任何 reader 詞彙流程都要在此鏡像)
 - **新增 metric token** → 跨 feature 用升 `AppMetrics`;單 feature 用留 `PodcastPlayerMetrics`
 
