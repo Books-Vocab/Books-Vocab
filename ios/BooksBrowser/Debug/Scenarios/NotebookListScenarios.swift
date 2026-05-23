@@ -81,13 +81,41 @@ enum NotebookListScenarios {
             Scenario("Editorial · different seeds 2-up", layout: .fill) {
                 gridSheet(cards: [Self.mediumActive, Self.medium])
             }
-            // 「使用中」pill 必須隨 cover 一起轉（不脫離卡片邊界）
-            Scenario("Editorial · pill 隨 rotation", layout: .fill) {
+            // D3 spine — 4pt cover 左側,跟 cover 一起旋轉,不脫離邊界
+            Scenario("Editorial · spine 隨 rotation (active)", layout: .fill) {
                 singleSheet(card: Self.mediumActive)
             }
             // 4 本相同字數但不同 name → 確認 seed 純由 name 決定、jitter 各自獨立
             Scenario("Editorial · 4 different names same depth", layout: .fill) {
                 gridSheet(cards: [Self.medium, Self.mediumActive, Self.thin, Self.longNameHeavy], minimum: 140)
+            }
+
+            // MARK: Editorial Cover Composition (D1)
+
+            // D1 三件事:serif name 左上 / hairline rule / N 詞 右下 (+ active spine)
+            Scenario("D1 · cover composition basic", layout: .fill) {
+                gridSheet(cards: [Self.mediumActive, Self.medium])
+            }
+            // 大 cardCount(99999 詞)— monoLabel 字寬不抖,rule width 25% 仍合理
+            Scenario("D1 · very large cardCount (99999)", layout: .fill) {
+                singleSheet(card: Self.massiveCount)
+            }
+            // 大 dueCount(9999 到期)— bottom chip 不擠破 ProgressCapsule
+            Scenario("D1 · very large dueCount (9999)", layout: .fill) {
+                gridSheet(cards: [Self.massiveDue, Self.medium])
+            }
+            // cardCount = 0 → cover 不顯示 N 詞 row
+            Scenario("D1 · empty notebook (0 詞 hides count)", layout: .fill) {
+                singleSheet(card: Self.fresh)
+            }
+            // Dark mode AA — primaryText #E6E6E3 對 darken(Morandi, 0.2) 應 ≥ AA 4.5
+            Scenario("D1 · dark mode contrast", layout: .fill) {
+                gridSheet(cards: [Self.mediumActive, Self.medium, Self.thin], minimum: 140)
+                    .preferredColorScheme(.dark)
+            }
+            // Grid height 穩定 — dueCount=0/>0 兩卡並排同高
+            Scenario("D2 · grid height stability (mixed due)", layout: .fill) {
+                gridSheet(cards: [Self.medium, Self.fresh])
             }
         }
     }
@@ -139,6 +167,24 @@ enum NotebookListScenarios {
         color: "#8B7AA8", coverPattern: "stripes", coverImagePath: nil,
         cardCount: 7000,
         dueCount: 1234, unlearnedCount: 567, reviewedCount: 5199, pendingCount: 0,
+        lastActivity: nil, isActive: true
+    )
+
+    // D1 stress — 99999 詞 cardCount 邊界,monoLabel 不抖
+    private static let massiveCount = NotebookCardData(
+        name: "Massive Vocab",
+        color: "#AFC2D3", coverPattern: "dots", coverImagePath: nil,
+        cardCount: 99999,
+        dueCount: 42, unlearnedCount: 10, reviewedCount: 99947, pendingCount: 0,
+        lastActivity: nil, isActive: false
+    )
+
+    // D2 stress — 9999 到期 chip 不擠破 ProgressCapsule
+    private static let massiveDue = NotebookCardData(
+        name: "Heavy Due",
+        color: "#DCABA4", coverPattern: nil, coverImagePath: nil,
+        cardCount: 9999,
+        dueCount: 9999, unlearnedCount: 0, reviewedCount: 0, pendingCount: 0,
         lastActivity: nil, isActive: true
     )
 
