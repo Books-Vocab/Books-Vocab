@@ -10,6 +10,8 @@ verified_against: 7c7a23b
 # 伺服器排障指南
 
 > `./devops.sh *` 子指令的完整參考由 `devops` skill 作 SoT;本文件內的 `./devops.sh run "..."` 用法為診斷情境範例,非指令清單。
+>
+> ⚠️ **生產禁用指令邊界**：所有 ops 與診斷動作受 [`docs/policy/safety.md`](../policy/safety.md) 約束。`docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 一律禁止；診斷可讀不可破壞性清理。
 
 ## 核心資訊
 

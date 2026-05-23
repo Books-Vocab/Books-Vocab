@@ -9,6 +9,8 @@ verified_against: 7c7a23b
 -->
 # 後端部署指南
 
+> ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
+
 ## 核心資訊
 
 - **伺服器**: AWS Lightsail `booksbrowser-kg-api-2gb`（small_3_0, 2GB RAM），IP `13.193.212.134`

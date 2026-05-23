@@ -16,7 +16,7 @@ Scope: `ios/BooksBrowser`
 - 設計規範主文檔：`docs/sop/ui-design.md`
 - 開發與編譯入口：`docs/sop/ios.md`
 - App 架構脈絡：`docs/sop/architecture.md`
-- Vocabulary 稽核：`docs/archive/vocab_audit_2026-03.md`
+- Vocabulary 範圍對照：`docs/reference/feature_boundary/vocabulary.md`
 
 ## 這份文件是幹嘛的
 
