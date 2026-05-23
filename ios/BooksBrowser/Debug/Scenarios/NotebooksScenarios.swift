@@ -19,9 +19,6 @@ enum NotebooksScenarios {
             Scenario("Grid · two notebooks", layout: .fill) {
                 gridSheet(cards: [Self.heavyCard, Self.lightCard])
             }
-            Scenario("Grid · three notebooks + add card", layout: .fill) {
-                gridSheet(cards: [Self.heavyCard, Self.lightCard, Self.freshCard], showsAddCard: true)
-            }
             Scenario("Hero · long name truncate", layout: .fill) {
                 cardSheet(style: .hero, cards: [Self.longNameCard])
             }
@@ -103,16 +100,13 @@ enum NotebooksScenarios {
         .appSkin(skin)
     }
 
-    private static func gridSheet(cards: [NotebookCardData], showsAddCard: Bool = false) -> some View {
+    private static func gridSheet(cards: [NotebookCardData]) -> some View {
         let skin = AppSkin.previewNeutral
         return ScrollView {
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 160), spacing: AppShellMetrics.sectionSpacing)],
                       spacing: AppShellMetrics.sectionSpacing) {
                 ForEach(Array(cards.enumerated()), id: \.offset) { _, data in
                     NotebookCard(data: data, style: .grid)
-                }
-                if showsAddCard {
-                    NotebookAddCard()
                 }
             }
             .padding(.horizontal, skin.metrics.pageHorizontalInset)
