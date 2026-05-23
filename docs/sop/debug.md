@@ -81,17 +81,27 @@ aws lightsail describe-instance-firewall-rules \
 **修復：Caddyfile 配置錯誤**
 ```bash
 ./devops.sh run "cat /etc/caddy/Caddyfile"
-# 正確格式（含 Claude Gateway 路由）：
+# 正確格式（含 Claude Gateway + Antigravity Proxy；`<CADDY_AG_TOKEN>` 從現役 Caddyfile 撈）：
 ./devops.sh run "cat <<'CADDY' | sudo tee /etc/caddy/Caddyfile > /dev/null && sudo systemctl reload caddy
 wordnexus.lol {
     handle /claude/* {
         uri strip_prefix /claude
         reverse_proxy localhost:8090
     }
+    handle /ag/* {
+        @authed header Authorization \"Bearer <CADDY_AG_TOKEN>\"
+        handle @authed {
+            uri strip_prefix /ag
+            reverse_proxy localhost:3000
+        }
+        respond 401
+    }
     reverse_proxy localhost:8000
 }
 CADDY"
 ```
+
+> 完整 routing 表詳見 `docs/reference/host_topology.md`（SoT）。`/ag/*` handle 必須在 catch-all 之前。
 
 ---
 
