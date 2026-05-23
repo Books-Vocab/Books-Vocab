@@ -56,8 +56,9 @@ enum NotebookStackMetrics {
     static let rotationOverhang: CGFloat = AppSpacing.s2      // 8pt
 
     /// Editorial pattern overlay opacity — `NotebookCoverPatterns` 6 種 pattern 統一引此 token。
-    /// Phase 1c editorial cover composition：pattern 從 0.3 降至 0.18，讓 serif name 為視覺主角。
-    static let patternOpacity: Double = 0.18
+    /// 取自既有 editorial stack PR tune 後 per-pattern 值的中位數 (0.10-0.15),
+    /// 統一為 0.12 確保 serif name 為視覺主角(spec D1.1「pattern 不競爭」原則)。
+    static let patternOpacity: Double = 0.12
 
     /// Per-notebook deterministic jitter — seed 由 caller 傳入（用 `stableSeed(for:)`）。
     /// 同一 seed × 同一 depth 永遠回傳同一 (angle, dx)，render 不會閃爍。
