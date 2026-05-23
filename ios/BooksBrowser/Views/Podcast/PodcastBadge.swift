@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct PodcastBadge: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var skin
 
     var body: some View {
@@ -14,5 +16,6 @@ struct PodcastBadge: View {
                     .fill(skin.palette.mutedFill.opacity(0.85))
             )
             .padding(skin.spacing.cardPadding / 2)
+            .enableInjection()
     }
 }

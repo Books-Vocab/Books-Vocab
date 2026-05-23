@@ -1,6 +1,7 @@
 #if os(iOS)
 import SwiftUI
 import UIKit
+import Inject
 
 /// Chat-style transcript: sentences laid out as left/right bubbles by speaker.
 ///
@@ -14,6 +15,7 @@ import UIKit
 ///   • layout transitions are explicitly animated (bubble bg, underline,
 ///     label show/hide) to avoid the snap-change jank of dt→0 shifts.
 struct PodcastSentenceLevelView: View {
+    @ObserveInjection private var inject
     private struct SentenceSelectionState: Equatable {
         let sentenceId: Int
         let initialRange: NSRange?
@@ -103,6 +105,7 @@ struct PodcastSentenceLevelView: View {
             }
             .animation(AppMotion.contentFade, value: isFollowing)
         }
+        .enableInjection()
     }
 
     // MARK: - Bubble row

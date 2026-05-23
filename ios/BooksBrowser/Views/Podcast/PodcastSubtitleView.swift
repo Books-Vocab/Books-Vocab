@@ -1,7 +1,9 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 struct PodcastSubtitleView: View {
+    @ObserveInjection private var inject
     let viewModel: PodcastPlayerViewModel
     let subtitleSize: PodcastSubtitleSize
     /// Re-runs only the subtitle fetch — wired to the inline failure retry.
@@ -31,6 +33,7 @@ struct PodcastSubtitleView: View {
             }
         }
         .animation(AppMotion.contentFade, value: viewModel.subtitleState)
+        .enableInjection()
     }
 
     @ViewBuilder

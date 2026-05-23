@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
+import Inject
 
 struct WordDetailSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
     @Environment(\.kgService) private var kgService
     @Environment(\.detailRouter) private var detailRouter
@@ -94,6 +96,7 @@ struct WordDetailSheet: View {
                 onSelect: handleAddLink
             )
         }
+        .enableInjection()
     }
 
     private var linkedCardStack: Binding<[VocabularyEntry]> {

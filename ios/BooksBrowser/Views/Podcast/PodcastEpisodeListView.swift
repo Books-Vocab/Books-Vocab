@@ -1,5 +1,6 @@
 import SwiftUI
 import SwiftData
+import Inject
 
 /// Podcast push 路由 — value-based NavigationLink 目標。
 ///
@@ -34,6 +35,7 @@ private enum EpisodeSort: String, CaseIterable, Identifiable {
 }
 
 struct PodcastEpisodeListView: View {
+    @ObserveInjection private var inject
     let seriesId: String
     @Environment(\.appSkin) private var skin
     @Environment(\.modelContext) private var modelContext
@@ -154,6 +156,7 @@ struct PodcastEpisodeListView: View {
         .task(id: seriesId) {
             await reloadFromStore()
         }
+        .enableInjection()
     }
 
     @MainActor

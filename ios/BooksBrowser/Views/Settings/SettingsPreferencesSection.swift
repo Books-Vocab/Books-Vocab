@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsPreferencesSection: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let state: SettingsPresenterState.PreferencesSection
     let actions: SettingsPresenterActions
@@ -109,5 +111,6 @@ struct SettingsPreferencesSection: View {
                     : "切換後會立即套用到 app 介面。".localized
             )
         }
+        .enableInjection()
     }
 }

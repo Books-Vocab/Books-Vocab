@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct AddLinkSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) private var dismiss
     @Environment(\.appSkin) private var appSkin
 
@@ -91,6 +93,7 @@ struct AddLinkSheet: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private func selectEntry(_ entry: VocabularyEntry) {

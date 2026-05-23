@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct SettingsAccountDetailView: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let authState: SettingsPresenterState.AuthSection
     let dangerState: SettingsPresenterState.DangerSection?
@@ -46,6 +48,7 @@ struct SettingsAccountDetailView: View {
         .background(appSkin.palette.pageBackground.ignoresSafeArea())
         .navigationTitle("帳號詳情".localized)
         .inlineNavigationBarTitle()
+        .enableInjection()
     }
 
     private var dataManagementCard: some View {

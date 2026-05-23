@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - WordDetailGraphLinkRow
 
 struct WordDetailGraphLinkRow: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let link: KGCardLinkSummary
     let onTap: (() -> Void)?
@@ -54,6 +56,7 @@ struct WordDetailGraphLinkRow: View {
                 }
             }
         }
+        .enableInjection()
     }
 
     private var hiddenRowContent: some View {
@@ -125,6 +128,7 @@ private struct ShimmerLine: View {
 // MARK: - WordDetailMetadataRow (kept for backward compat, simplified)
 
 struct WordDetailMetadataRow<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     @ViewBuilder let trailing: Content
@@ -142,12 +146,14 @@ struct WordDetailMetadataRow<Content: View>: View {
             Spacer()
             trailing
         }
+        .enableInjection()
     }
 }
 
 // MARK: - VocabularySyncBadge
 
 struct VocabularySyncBadge: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let status: Int
     let successTone: Color
@@ -170,5 +176,6 @@ struct VocabularySyncBadge: View {
                     .foregroundStyle(appSkin.palette.secondaryText)
             }
         }
+        .enableInjection()
     }
 }

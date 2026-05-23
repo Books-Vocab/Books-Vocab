@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct KGVocabPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     struct State {
@@ -165,6 +167,7 @@ struct KGVocabPresenter: View {
         }
         .animateSpring(state.banner == nil)
         } // end outer VStack
+        .enableInjection()
     }
 }
 

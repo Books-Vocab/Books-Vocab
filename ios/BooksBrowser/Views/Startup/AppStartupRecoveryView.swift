@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 struct AppStartupFailure: Equatable {
     let title: String
@@ -38,6 +39,7 @@ struct AppStartupRecoveryActions {
 }
 
 struct AppStartupRecoveryView: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     @Environment(\.openURL) private var openURL
 
@@ -80,6 +82,7 @@ struct AppStartupRecoveryView: View {
             .navigationTitle(L10n.string("啟動保護模式"))
             .inlineNavigationBarTitle()
         }
+        .enableInjection()
     }
 
     // MARK: - Sections

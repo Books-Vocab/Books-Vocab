@@ -1,6 +1,7 @@
 import SwiftUI
 import SwiftData
 import os
+import Inject
 
 enum ReviewIntent {
     case reveal
@@ -52,6 +53,7 @@ struct CollocationExplainItem: Identifiable {
 }
 
 struct TodayReviewView: View {
+    @ObserveInjection private var inject
     @Environment(\.modelContext) private var modelContext
     @Environment(\.reviewSettingsStore) private var reviewSettingsStore
     @Environment(\.toastCoordinator) private var toastCoordinator
@@ -221,6 +223,7 @@ struct TodayReviewView: View {
             shortcutHintTask = nil
         }
         #endif
+        .enableInjection()
     }
 
     private var shouldShowFirstRunHint: Bool {

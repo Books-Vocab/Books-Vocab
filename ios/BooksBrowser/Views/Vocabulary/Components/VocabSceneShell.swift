@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 /// Vocabulary 場景四態
 enum VocabScenePhase {
@@ -16,6 +17,7 @@ enum VocabScenePhase {
 /// loadingSkeleton → 骨架列表 + vocabCanvasBackground
 /// content → 直接呈現 content()
 struct VocabSceneShell<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let phase: VocabScenePhase
@@ -30,54 +32,57 @@ struct VocabSceneShell<Content: View>: View {
     }
 
     var body: some View {
-        switch phase {
-        case .loading(let title, let systemImage):
-            centeredWrapper {
-                VocabStateMessageCard(
-                    title: title,
-                    systemImage: systemImage
-                ) {
-                    ProgressView()
-                        .controlSize(.small)
-                }
-            }
-
-        case .loadingSkeleton(let rowCount):
-            ScrollView {
-                VStack(spacing: AppSpacing.s3) {
-                    ForEach(0..<rowCount, id: \.self) { _ in
-                        AppSkeletonCard(lineCount: 2)
+        Group {
+            switch phase {
+            case .loading(let title, let systemImage):
+                centeredWrapper {
+                    VocabStateMessageCard(
+                        title: title,
+                        systemImage: systemImage
+                    ) {
+                        ProgressView()
+                            .controlSize(.small)
                     }
                 }
-                .padding(appSkin.metrics.cardBlockPadding)
-            }
-            .vocabCanvasBackground()
-            .allowsHitTesting(false)
 
-        case .empty(let title, let systemImage, let description, let action):
-            centeredWrapper {
-                VocabEmptyStateCard(
-                    title: title,
-                    systemImage: systemImage,
-                    description: description,
-                    action: action
-                )
-            }
-
-        case .error(let title, let systemImage, let retryAction):
-            centeredWrapper {
-                VocabStateMessageCard(
-                    title: title,
-                    systemImage: systemImage
-                ) {
-                    Button("重試".localized, action: retryAction)
-                        .buttonStyle(.vocabAction())
+            case .loadingSkeleton(let rowCount):
+                ScrollView {
+                    VStack(spacing: AppSpacing.s3) {
+                        ForEach(0..<rowCount, id: \.self) { _ in
+                            AppSkeletonCard(lineCount: 2)
+                        }
+                    }
+                    .padding(appSkin.metrics.cardBlockPadding)
                 }
-            }
+                .vocabCanvasBackground()
+                .allowsHitTesting(false)
 
-        case .content:
-            content
+            case .empty(let title, let systemImage, let description, let action):
+                centeredWrapper {
+                    VocabEmptyStateCard(
+                        title: title,
+                        systemImage: systemImage,
+                        description: description,
+                        action: action
+                    )
+                }
+
+            case .error(let title, let systemImage, let retryAction):
+                centeredWrapper {
+                    VocabStateMessageCard(
+                        title: title,
+                        systemImage: systemImage
+                    ) {
+                        Button("重試".localized, action: retryAction)
+                            .buttonStyle(.vocabAction())
+                    }
+                }
+
+            case .content:
+                content
+            }
         }
+        .enableInjection()
     }
 
     @ViewBuilder

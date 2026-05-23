@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct WordDetailPresenter: View {
+    @ObserveInjection private var inject
     struct State {
         struct MetadataItem: Hashable {
             let icon: String
@@ -54,6 +56,7 @@ struct WordDetailPresenter: View {
                 detailContentScroll
             }
         }
+        .enableInjection()
     }
 
     private var detailContentScroll: some View {

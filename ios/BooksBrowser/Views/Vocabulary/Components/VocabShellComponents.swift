@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 enum VocabActionTone {
     case primary
@@ -11,6 +12,7 @@ enum VocabActionTone {
 typealias VocabTabOption<ID: Hashable> = AppTabOption<ID>
 
 struct VocabTabSelector<ID: Hashable>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let options: [VocabTabOption<ID>]
     @Binding var selection: ID
@@ -21,10 +23,12 @@ struct VocabTabSelector<ID: Hashable>: View {
             selection: $selection,
             style: .vocab(appSkin)
         )
+        .enableInjection()
     }
 }
 
 struct VocabFilterChipBar<ID: Hashable>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let options: [VocabTabOption<ID>]
     @Binding var selection: Set<ID>
@@ -35,10 +39,12 @@ struct VocabFilterChipBar<ID: Hashable>: View {
             selection: $selection,
             style: .vocab(appSkin)
         )
+        .enableInjection()
     }
 }
 
 struct VocabSearchField: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Binding var text: String
     let prompt: String
@@ -51,10 +57,12 @@ struct VocabSearchField: View {
             style: .vocab(appSkin),
             isFocused: isFocused
         )
+        .enableInjection()
     }
 }
 
 struct VocabToolbarGlyph: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let systemImage: String
     let badge: String?
@@ -72,10 +80,12 @@ struct VocabToolbarGlyph: View {
             badge: badge,
             style: .vocab(appSkin, tone: tone)
         )
+        .enableInjection()
     }
 }
 
 struct VocabChromeIconButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let systemImage: String
     var tone: Color? = nil
@@ -96,10 +106,12 @@ struct VocabChromeIconButton: View {
         }
         .buttonStyle(.plain)
         .accessibilityLabel(label ?? systemImage)
+        .enableInjection()
     }
 }
 
 struct VocabChromeSurface<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let fill: Color
     let border: Color
@@ -125,10 +137,12 @@ struct VocabChromeSurface<Content: View>: View {
                 RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                     .stroke(border, lineWidth: 1)
             )
+            .enableInjection()
     }
 }
 
 struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -181,6 +195,7 @@ struct VocabOverlayHeader<LeadingAccessory: View, TrailingAccessory: View>: View
         }
         .padding(.horizontal, appSkin.metrics.overlayHeaderHorizontalInset)
         .padding(.vertical, appSkin.metrics.overlayHeaderVerticalInset)
+        .enableInjection()
     }
 }
 

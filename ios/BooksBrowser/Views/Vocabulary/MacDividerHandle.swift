@@ -7,6 +7,7 @@ import SwiftUI
 /// - `panelWidth`: 持久化寬度（@AppStorage），僅 onEnded 寫入
 /// - `dragWidth`: 拖曳中即時寬度，nil = 未拖曳
 struct DraggableDivider: View {
+    @ObserveInjection private var inject
     @Binding var panelWidth: CGFloat
     @Binding var dragWidth: CGFloat?
     let containerWidth: CGFloat
@@ -51,6 +52,7 @@ struct DraggableDivider: View {
             #if os(macOS)
             .onTapGesture(count: 2) { onDoubleClick() }
             #endif
+            .enableInjection()
     }
 
     private var dragGesture: some Gesture {
@@ -79,6 +81,7 @@ struct DraggableDivider: View {
 // MARK: - macOS Cursor
 
 #if os(macOS)
+import Inject
 import AppKit
 
 private struct CursorModifier: ViewModifier {
