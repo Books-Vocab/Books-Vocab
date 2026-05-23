@@ -24,6 +24,12 @@ enum PodcastSubtitleLoadState: Equatable {
     case failed
 }
 
+enum SleepTimerMode: Hashable {
+    case off
+    case minutes(Int)
+    case endOfEpisode
+}
+
 @MainActor @Observable
 final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
@@ -40,6 +46,12 @@ final class PodcastPlayerViewModel {
     /// Subtitle load lifecycle — drives the inline retry UI. Independent of
     /// `state` so a subtitle failure never blocks or interrupts audio.
     private(set) var subtitleState: PodcastSubtitleLoadState = .idle
+    /// Sleep timer mode. UI binds via `setSleepTimer(_:)` to keep the
+    /// DispatchSourceTimer schedule in sync with the published mode.
+    private(set) var sleepTimerMode: SleepTimerMode = .off
+    /// Absolute wall-clock deadline for `.minutes(_)` mode. nil for
+    /// `.off` / `.endOfEpisode`. Drives the TimelineView countdown.
+    private(set) var sleepDeadline: Date?
     let hostNames: [String]
 
     // Translation — set by the player view
@@ -56,6 +68,8 @@ final class PodcastPlayerViewModel {
     private let audioEngine = PodcastAudioEngine()
     @ObservationIgnored
     private let subtitleEngine = PodcastSubtitleEngine()
+    @ObservationIgnored
+    private var sleepTimerSource: DispatchSourceTimer?
 
     init(hostNames: [String]) {
         self.hostNames = hostNames
@@ -72,6 +86,9 @@ final class PodcastPlayerViewModel {
                 // let it silently clobber the error UI back to .ready.
                 if case .error = self.state { return }
                 self.state = .ready
+                if self.sleepTimerMode == .endOfEpisode {
+                    self.sleepTimerMode = .off
+                }
             }
         }
         audioEngine.onDurationLoaded = { [weak self] d in
@@ -202,6 +219,10 @@ final class PodcastPlayerViewModel {
     /// session + lock-screen metadata so other apps regain focus.
     func shutdown() {
         audioEngine.shutdown()
+        sleepTimerSource?.cancel()
+        sleepTimerSource = nil
+        sleepTimerMode = .off
+        sleepDeadline = nil
         state = .idle
     }
 
@@ -224,6 +245,44 @@ final class PodcastPlayerViewModel {
         let next = PodcastAudioEngine.nextRate(after: playbackRate)
         playbackRate = next
         audioEngine.setRate(next)
+    }
+
+    // MARK: - Sleep Timer
+
+    /// Drives the sleep timer using a wall-clock DispatchSourceTimer instead
+    /// of `Task.sleep` — the latter freezes when iOS suspends the app during
+    /// a user-initiated pause (no audio output → audio session goes idle).
+    /// DISPATCH_TIMER_STRICT-style behavior means a missed deadline fires on
+    /// foreground resume, which is the desired "auto-paused on schedule" UX.
+    func setSleepTimer(_ mode: SleepTimerMode) {
+        sleepTimerSource?.cancel()
+        sleepTimerSource = nil
+        sleepDeadline = nil
+        sleepTimerMode = mode
+        switch mode {
+        case .off, .endOfEpisode:
+            return
+        case .minutes(let n):
+            let seconds = max(1, n) * 60
+            sleepDeadline = Date().addingTimeInterval(TimeInterval(seconds))
+            let source = DispatchSource.makeTimerSource(queue: .main)
+            source.schedule(deadline: .now() + .seconds(seconds))
+            source.setEventHandler { [weak self] in
+                MainActor.assumeIsolated {
+                    self?.fireSleepTimer()
+                }
+            }
+            sleepTimerSource = source
+            source.resume()
+        }
+    }
+
+    private func fireSleepTimer() {
+        pause()
+        sleepTimerMode = .off
+        sleepDeadline = nil
+        sleepTimerSource?.cancel()
+        sleepTimerSource = nil
     }
 
     // MARK: - Word Tap

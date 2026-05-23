@@ -61,6 +61,8 @@ struct PodcastSettingsPopover: View {
     @ObserveInjection private var inject
     @Binding var subtitleSize: PodcastSubtitleSize
     @Binding var autoPauseOnLookup: Bool
+    @Binding var sleepTimerMode: SleepTimerMode
+    let sleepDeadline: Date?
     @AppStorage("podcast.wordFollowEnabled") private var wordFollowEnabled: Bool = true
     @Environment(\.appSkin) private var skin
 
@@ -97,10 +99,35 @@ struct PodcastSettingsPopover: View {
                         .foregroundStyle(skin.palette.secondaryText)
                 }
             }
+
+            VStack(alignment: .leading, spacing: skin.spacing.microGap) {
+                Picker(L10n.string("睡眠定時"), selection: $sleepTimerMode) {
+                    Text(L10n.string("關閉")).tag(SleepTimerMode.off)
+                    Text(L10n.string("5 分鐘")).tag(SleepTimerMode.minutes(5))
+                    Text(L10n.string("15 分鐘")).tag(SleepTimerMode.minutes(15))
+                    Text(L10n.string("30 分鐘")).tag(SleepTimerMode.minutes(30))
+                    Text(L10n.string("60 分鐘")).tag(SleepTimerMode.minutes(60))
+                    Text(L10n.string("結束本集")).tag(SleepTimerMode.endOfEpisode)
+                }
+                .pickerStyle(.menu)
+
+                if let deadline = sleepDeadline {
+                    TimelineView(.periodic(from: .now, by: 1)) { ctx in
+                        let remaining = max(0, Int(deadline.timeIntervalSince(ctx.date)))
+                        Text(L10n.format("剩餘 %@", Self.formatMMSS(remaining)))
+                            .font(skin.typography.caption)
+                            .foregroundStyle(skin.palette.secondaryText)
+                    }
+                }
+            }
         }
         .padding(skin.spacing.cardPadding)
         .frame(minWidth: 280)
         .enableInjection()
+    }
+
+    private static func formatMMSS(_ seconds: Int) -> String {
+        String(format: "%d:%02d", seconds / 60, seconds % 60)
     }
 }
 #endif
