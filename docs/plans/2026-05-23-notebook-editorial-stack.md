@@ -1,3 +1,15 @@
+<!-- doc-meta
+tier: reference
+authority: derived
+update_trigger: design-decision
+scope:
+  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift
+  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift
+  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift
+  - ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift
+  - ios/BooksBrowser/Debug/Scenarios/NotebookListScenarios.swift
+verified_against: HEAD
+-->
 # Notebook Editorial Stack Implementation Plan
 
 > **執行方式:** 使用 phased-workflow skill，所有 agent 皆 opus。
