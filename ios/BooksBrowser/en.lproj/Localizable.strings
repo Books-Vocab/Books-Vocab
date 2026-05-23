@@ -561,3 +561,7 @@
 "點兩下查看詳細資訊" = "Double-tap to view details";
 "%@ · %@" = "%@ · %@";
 "%@ · %@ · %@" = "%@ · %@ · %@";
+"已追蹤" = "Following";
+"%@ 集" = "%@ episodes";
+"追隨當前" = "Follow current";
+"集數" = "Episodes";

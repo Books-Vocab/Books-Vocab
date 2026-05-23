@@ -47,7 +47,7 @@ struct PodcastSubtitleView: View {
             Button {
                 onRetrySubtitle()
             } label: {
-                Label("重試", systemImage: "arrow.clockwise")
+                Label(L10n.string("重試"), systemImage: "arrow.clockwise")
             }
             .buttonStyle(.appCompactAction(.primary))
             .accessibilityIdentifier("podcast.subtitleRetry")

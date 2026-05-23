@@ -300,7 +300,7 @@ struct PodcastEpisodeListView: View {
     private var episodesSection: some View {
         VStack(alignment: .leading, spacing: skin.spacing.inlineGap) {
             HStack {
-                Text("集數")
+                Text(L10n.string("集數"))
                     .font(skin.typography.sectionTitle)
                     .foregroundStyle(skin.palette.primaryText)
                 Spacer()
