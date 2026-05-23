@@ -34,15 +34,16 @@ for arg in "$@"; do
 done
 
 REQUIRED_FIELDS="tier authority update_trigger scope verified_against"
-VALID_TIERS="policy sop reference snapshot runbook archive"
+VALID_TIERS="policy sop reference snapshot runbook archive assets"
 
 errors=0
 warnings=0
 ok=0
 
-# Find docs (exclude assets)
+# Find docs (exclude assets/ marketing artifacts and legal/ externally-published artifacts)
 DOCS=$(find docs -type f -name "*.md" \
-  ! -path "docs/assets/*" | sort)
+  ! -path "docs/assets/*" \
+  ! -path "docs/legal/*" | sort)
 
 while IFS= read -r f; do
   [ -z "$f" ] && continue
