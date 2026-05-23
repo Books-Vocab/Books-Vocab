@@ -29,6 +29,9 @@ final class PodcastPlayerViewModel {
     private(set) var state: PodcastPlayerState = .idle
     private(set) var currentTime: TimeInterval = 0
     private(set) var duration: TimeInterval = 0
+    /// Furthest absolute time AVPlayer has buffered (seconds). Drives the
+    /// "已載入" overlay on the seek bar. 0 until the first range arrives.
+    private(set) var bufferedEnd: TimeInterval = 0
     private(set) var currentSentence: PodcastSentence?
     private(set) var currentCue: PodcastSubtitleCue?
     private(set) var renderState: SubtitleRenderState?
@@ -76,6 +79,11 @@ final class PodcastPlayerViewModel {
                 self?.duration = d
             }
         }
+        audioEngine.onBufferedEndChanged = { [weak self] end in
+            MainActor.assumeIsolated {
+                self?.bufferedEnd = end
+            }
+        }
         audioEngine.onReadyToPlay = { [weak self] in
             MainActor.assumeIsolated {
                 guard let self else { return }
@@ -113,18 +121,28 @@ final class PodcastPlayerViewModel {
         audioURL: URL,
         subtitleContent: String?,
         title: String = "",
-        audioHTTPHeaders: [String: String] = [:]
+        audioHTTPHeaders: [String: String] = [:],
+        prefetchedDurationSec: TimeInterval = 0
     ) {
         state = .loading
         duration = 0
-        audioEngine.loadAudio(url: audioURL, httpHeaders: audioHTTPHeaders)
-        if let srt = subtitleContent {
-            applySubtitle(content: srt)
-        }
+        bufferedEnd = 0
+        // Register NowPlaying metadata BEFORE loadAudio: the synchronous
+        // updateNowPlayingInfo() fired inside loadAudio (when prefetchedDuration
+        // populates duration immediately) would otherwise read an empty title
+        // for one runloop tick, briefly flashing a blank lock-screen card.
         audioEngine.configureNowPlaying(
             title: title,
             artist: hostNames.joined(separator: " & ")
         )
+        audioEngine.loadAudio(
+            url: audioURL,
+            httpHeaders: audioHTTPHeaders,
+            prefetchedDuration: prefetchedDurationSec > 0 ? prefetchedDurationSec : nil
+        )
+        if let srt = subtitleContent {
+            applySubtitle(content: srt)
+        }
         // state → .ready (via onReadyToPlay) or .error (via onLoadFailed) arrives async.
     }
 

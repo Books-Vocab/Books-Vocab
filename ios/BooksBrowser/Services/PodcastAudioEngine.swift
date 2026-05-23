@@ -14,6 +14,7 @@ final class PodcastAudioEngine: NSObject {
     private var endObserver: NSObjectProtocol?
     private var failObserver: NSObjectProtocol?
     private var statusObserver: NSKeyValueObservation?
+    private var loadedRangesObserver: NSKeyValueObservation?
     private var interruptionObserver: NSObjectProtocol?
     private var routeChangeObserver: NSObjectProtocol?
     private var stallWatchdog: Task<Void, Never>?
@@ -36,6 +37,9 @@ final class PodcastAudioEngine: NSObject {
     var onDurationLoaded: ((TimeInterval) -> Void)?
     var onReadyToPlay: (() -> Void)?
     var onLoadFailed: ((String) -> Void)?
+    /// Furthest absolute time (seconds) AVPlayer has buffered. Drives the
+    /// YouTube-style "loaded" overlay on the seek bar.
+    var onBufferedEndChanged: ((TimeInterval) -> Void)?
     /// System forced playback to pause (interruption began, headphones unplugged).
     var onSystemPause: (() -> Void)?
     /// System hinted we should resume after interruption ended.
@@ -54,7 +58,11 @@ final class PodcastAudioEngine: NSObject {
         removeObservers()
     }
 
-    func loadAudio(url: URL, httpHeaders: [String: String] = [:]) {
+    func loadAudio(
+        url: URL,
+        httpHeaders: [String: String] = [:],
+        prefetchedDuration: TimeInterval? = nil
+    ) {
         removeObservers()
         configureAudioSession()
         loadGeneration &+= 1
@@ -68,16 +76,20 @@ final class PodcastAudioEngine: NSObject {
             data: ["source": currentSourceToken ?? "unknown"]
         )
 
-        // preferPreciseDuration: CBR/VBR MP3 duration from HTTP headers is a
-        // rough estimate; precise parsing prevents end-of-episode scrubber
-        // misalignment and subtitle drift.
+        // preferPreciseDuration trades startup latency for scrubber accuracy:
+        // when true, AVFoundation must read the full MP3 frame index (one extra
+        // Range round-trip on VBR files) before reporting duration. When the
+        // caller already knows duration from backend metadata (server-side
+        // ffprobe is sample-accurate), we skip that probe — saves ~1 RTT on
+        // first play without losing scrubber precision.
         //
         // AVURLAssetHTTPHeaderFieldsKey is a private-but-stable AVFoundation
         // option that lets us attach `Authorization: Bearer …` to the Range
         // requests AVPlayer issues. Required for the authenticated
         // `/api/podcasts/{id}/{n}/audio` endpoint.
+        let hasPrefetched = (prefetchedDuration ?? 0) > 0
         var assetOptions: [String: Any] = [
-            AVURLAssetPreferPreciseDurationAndTimingKey: true
+            AVURLAssetPreferPreciseDurationAndTimingKey: !hasPrefetched
         ]
         if !httpHeaders.isEmpty {
             assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = httpHeaders
@@ -86,6 +98,14 @@ final class PodcastAudioEngine: NSObject {
         let item = AVPlayerItem(asset: asset)
         // Preserve pitch when rate != 1.0 (varispeed w/o chipmunk effect).
         item.audioTimePitchAlgorithm = .timeDomain
+        // Forward-buffer hint tuned for spoken audio: AVPlayer's default is
+        // conservative (~5-10s) and pegged to bitrate, so on flaky carrier it
+        // can stall mid-sentence even when the network has bandwidth headroom.
+        // 30s covers a typical podcast paragraph; AVPlayer treats this as an
+        // upper hint, not a floor, so memory stays modest. Pairs with
+        // `automaticallyWaitsToMinimizeStalling` — that flag handles WHEN to
+        // start; this hint shapes HOW MUCH to keep ahead.
+        item.preferredForwardBufferDuration = 30
         playerItem = item
 
         let p = AVPlayer(playerItem: item)
@@ -121,6 +141,23 @@ final class PodcastAudioEngine: NSObject {
             guard let self, gen == self.loadGeneration else { return }
             let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
             self.onLoadFailed?(err?.localizedDescription ?? "播放中斷")
+        }
+
+        // KVO on item.loadedTimeRanges — AVFoundation publishes a new array
+        // every time the buffer grows. We report the furthest end across all
+        // ranges (progressive streams buffer contiguously from 0; HLS may have
+        // discontinuous regions but the furthest end is still the right number
+        // for a single "buffered to here" overlay).
+        loadedRangesObserver = item.observe(\.loadedTimeRanges) { [weak self] observed, _ in
+            guard let self else { return }
+            let furthest = observed.loadedTimeRanges
+                .map { ($0.timeRangeValue.start + $0.timeRangeValue.duration).seconds }
+                .filter { $0.isFinite }
+                .max() ?? 0
+            DispatchQueue.main.async {
+                guard gen == self.loadGeneration else { return }
+                self.onBufferedEndChanged?(furthest)
+            }
         }
 
         // KVO on item.status — catches failures that surface AFTER isPlayable probe
@@ -159,23 +196,37 @@ final class PodcastAudioEngine: NSObject {
             }
         }
 
-        // Duration + readiness — loaded async from remote asset metadata.
+        // If the caller supplied a backend-known duration, publish it synchronously
+        // so the scrubber + NowPlayingInfo populate immediately and skip the
+        // async `asset.load(.duration)` probe entirely (saves one Range RTT and
+        // avoids the precise-duration MP3 scan when preferPreciseDuration=false).
+        if let prefetched = prefetchedDuration, prefetched > 0 {
+            duration = prefetched
+            onDurationLoaded?(prefetched)
+            #if os(iOS)
+            updateNowPlayingInfo()
+            #endif
+        }
+
+        // Duration (if not prefetched) + readiness — loaded async from remote asset metadata.
         // Capture `gen`; bail if a newer load has started by the time we resume.
         Task { @MainActor [weak self] in
             guard let self, gen == self.loadGeneration else { return }
-            do {
-                let d = try await asset.load(.duration)
-                guard gen == self.loadGeneration else { return }
-                let s = CMTimeGetSeconds(d)
-                if s.isFinite, s > 0 {
-                    self.duration = s
-                    self.onDurationLoaded?(s)
-                    #if os(iOS)
-                    self.updateNowPlayingInfo()
-                    #endif
+            if !hasPrefetched {
+                do {
+                    let d = try await asset.load(.duration)
+                    guard gen == self.loadGeneration else { return }
+                    let s = CMTimeGetSeconds(d)
+                    if s.isFinite, s > 0 {
+                        self.duration = s
+                        self.onDurationLoaded?(s)
+                        #if os(iOS)
+                        self.updateNowPlayingInfo()
+                        #endif
+                    }
+                } catch {
+                    // Keep duration at 0 — player still streams, just scrubber UX degrades.
                 }
-            } catch {
-                // Keep duration at 0 — player still streams, just scrubber UX degrades.
             }
             // Only signal ready when the asset is genuinely playable; otherwise surface
             // the failure so the UI can show an error state instead of hanging in .loading.
@@ -510,6 +561,8 @@ final class PodcastAudioEngine: NSObject {
         failObserver = nil
         statusObserver?.invalidate()
         statusObserver = nil
+        loadedRangesObserver?.invalidate()
+        loadedRangesObserver = nil
         timeControlObserver?.invalidate()
         timeControlObserver = nil
         if let obs = interruptionObserver {

@@ -16,6 +16,10 @@ final class PodcastEpisode {
     var localSubtitlePath: String?
     var audioAvailable: Bool = false
     var subtitleAvailable: Bool = false
+    /// SRT content cached from metadata.json when the backend embeds it.
+    /// Nil for legacy series uploaded before the embed change — caller
+    /// must fall back to fetching from subtitleURL in that case.
+    var inlineSubtitle: String?
     var createdAt: Date = Date()
     var updatedAt: Date = Date()
 
