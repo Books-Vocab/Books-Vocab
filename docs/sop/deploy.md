@@ -5,9 +5,11 @@ update_trigger: sop-change
 scope:
   - backend/
   - ops/
-verified_against: 7c7a23b
+verified_against: a706c53
 -->
 # 後端部署指南
+
+> ⚠️ **生產禁用指令邊界**：本文件所有 ops 動作都受 [`docs/policy/safety.md`](../policy/safety.md) 約束。任何 `docker compose down -v`、`docker system prune -a`、`rm -rf` 涉及 data dir 的操作一律禁止，走 `ops/devops_kg_safe.sh` wrapper。
 
 ## 核心資訊
 
@@ -84,6 +86,72 @@ cd ~/kg
 - `health 000` → 公網斷線、TLS 失敗、Caddy 沒起。`./devops.sh run "sudo systemctl status caddy"`。
 - `health 500` → app 起來但 auth middleware 起火。看 `docker compose logs --tail=100`。
 - sentry endpoint 期待 401 但拿到 200 → admin auth 失效，立即查 `get_admin_user`。
+
+### Rollback：deploy 失敗後的具體動作
+
+> ⚠️ `devops.sh` **沒有** 內建 rollback 子指令。回滾＝重 deploy 上一個版本 + 視情況還原 data 備份。完整禁用指令邊界見 [`docs/policy/safety.md`](../policy/safety.md)。
+>
+> 📋 **演練狀態**：以下步驟對照 `devops.sh` 實際指令邏輯撰寫，但**尚未在 staging 跑過完整 dry-run**。首次執行請 step-by-step 對照 `devops.sh` 對應 `cmd_*` 函式（行號見 §Step 註解），不要照抄一鍵跑完。事故發生時優先保留現場再動手。
+
+**Step 0：先確認上次成功的 sha**
+
+```bash
+# 本地 deploy.log（位於 ~/kg/backups/deploy.log）
+tail -5 ~/kg/backups/deploy.log
+# 或遠端 VERSION 檔（容器啟動時讀的）
+./devops.sh run "cat ~/knowledge_graph_api/VERSION"
+```
+
+每行格式 `<ISO-timestamp> sha=<short-sha> user=<who>`。倒數第二行通常是「上一個會動的版本」。
+
+**Step 1：純程式碼問題（DB schema / data 未動）→ 回滾 code only**
+
+```bash
+cd ~/kg
+git checkout <previous-sha>      # 例：git checkout c2f2a27
+./devops.sh deploy               # 走 fast/full 自動判斷；DEPLOY_FULL=1 強制 full
+./devops.sh status               # 確認 VERSION 已切回
+```
+
+注意：`devops.sh deploy` 會拒絕 dirty working tree（`DEVOPS_YES=1` 不再 bypass）。先 `git stash` 或在乾淨 tree 上 checkout。
+
+**Step 2：DB migration 已執行 / 資料已被破壞 → 還原 data 備份**
+
+`cmd_backup`（full deploy 自動執行）會把 `$REMOTE_DIR/data` 打包成 `~/kg/backups/data_<YYYYMMDD_HHMM>.tar.gz` 並產生 `.sha256`。
+
+```bash
+# 1. 找最新的可信備份
+ls -lht ~/kg/backups/data_*.tar.gz | head -5
+# 2. 驗 checksum
+sha256sum -c ~/kg/backups/data_<timestamp>.tar.gz.sha256
+# 3. 停容器（不刪 volume！docker compose down -v 是鐵律 7 禁用）
+./devops.sh run "cd ~/knowledge_graph_api && docker compose down"
+# 4. scp 備份上去並用「原子 mv」還原 — 保留壞掉的 data 以便事故後回查 / 救回
+scp -i ~/.ssh/lightsail_default.pem ~/kg/backups/data_<timestamp>.tar.gz ubuntu@13.193.212.134:/tmp/
+./devops.sh run "cd /tmp && tar -xzf data_<timestamp>.tar.gz && \
+  sudo mv ~/knowledge_graph_api/data ~/knowledge_graph_api/data.broken.\$(date +%s) && \
+  sudo mv data_<timestamp> ~/knowledge_graph_api/data"
+# （鐵律 7 精神：data dir 不直接 rm -rf。data.broken.* 之後人工確認再清。）
+# 5. 起容器並 health check（compose down 後容器已移除，restart 對不存在的容器無效，必須 up）
+./devops.sh run "cd ~/knowledge_graph_api && docker compose up -d"
+./devops.sh status
+```
+
+**Step 3：smoke verify 失敗但 health 200 → 部署只是部分壞**
+
+通常是 Caddy 路由或 env drift 問題，**不要立即 rollback**：
+- `./devops.sh env-drift` 查本地 / 遠端 `.env` 差異
+- `./devops.sh logs 100` 看容器 log
+- 修完 env / Caddy 後 `./devops.sh restart`（沒改 code 用 restart，比 deploy 快 10 倍）
+
+**何時必須 rollback vs 何時前推修復**
+
+| 情境 | 動作 |
+|------|------|
+| app 啟動就 crash / health 500 持續 | rollback code（Step 1）|
+| 用戶資料被誤刪 / migration 寫壞 | rollback data（Step 2）|
+| 只是 .env 或 Caddy 設定漂移 | 前推修（Step 3），rollback 反而更慢 |
+| LLM provider 切換造成 4xx | 改 `LLM_PROVIDER_*` env → push-env → restart |
 
 ---
 

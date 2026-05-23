@@ -27,6 +27,8 @@ ASYNC_FUNC=$(grep -r "async func" "$IOS_DIR" --include="*.swift" 2>/dev/null | w
 cat > "$OUTPUT" << EOF
 <!-- doc-meta
 tier: snapshot
+authority: derived
+update_trigger: machine-generated
 scope:
   - ios/BooksBrowser
 verified_against: $COMMIT_SHA
