@@ -6,11 +6,13 @@
 //  對應 `docs/sop/ui-design.md` 規則：不可在 view 寫 magic number，
 //  spacing/radius/elevation 數值先放 token namespace。
 //
-//  幾何由 plan「Notebooks 立體堆卡重構」對齊：
+//  幾何由 plan「Notebook Editorial Stack」對齊：
 //  - 全層 corner radius 走 `AppRadius.md`
-//  - 層間 dy = `AppSpacing.tinyGap` (3pt)，dx = `AppSpacing.s1` (4pt) 單側
-//  - press-in 僅頂層 offset，下層 ghost 微下沉強化視差
-//  - 色彩暗化走 HSB brightness，不動 saturation、不用 opacity
+//  - 層間 dy = `AppSpacing.s1` (4pt)，dx = `AppSpacing.s1` (4pt) 單側
+//  - Ghost 改 cream paper（paperLight / paperSepia / paperSepiaDeep），
+//    不再用 brightness shift（取代 `deckColor`）
+//  - Editorial 手感：每層套 rotation + dx jitter，per-notebook deterministic seed
+//  - press-in 僅頂層 offset，下層 ghost 微下沉；rotation 不參與動畫
 //
 
 import SwiftUI
@@ -36,7 +38,7 @@ enum NotebookStackMetrics {
         }
     }
 
-    /// 每層垂直位移（resting 狀態）— peek 需 ≥ 4pt 才在實機 @3x 清楚可辨
+    /// 每層垂直位移（resting 狀態）
     static let layerOffsetY: CGFloat = AppSpacing.s1          // 4pt
     /// 每層水平單側 inset（下層比上層各縮 dx）
     static let layerInsetX: CGFloat = AppSpacing.s1           // 4pt
@@ -44,29 +46,78 @@ enum NotebookStackMetrics {
     static let pressedTopOffsetY: CGFloat = -14
     /// Press-in 時每深一層額外下沉 1pt（強化視差，總幅 ≤ 2pt）
     static let pressedGhostOffsetY: CGFloat = 1
-    /// Light mode 每深一層 brightness 遞減步階
+
+    // MARK: - Editorial imperfection（rotation + dx jitter）
+
+    /// 每層基準 rotation（index = depth；0 = top cover）— degrees。
+    /// 配合 `.bottom` anchor：底部錨定、頂部微張，模擬「桌上隨手疊」。
+    static let layerRotations: [Double] = [0.5, -0.8, 1.5, -1.5]
+
+    /// 每層 dx 額外 jitter（在 `layerInsetX` 之外加值）— pt。
+    static let layerDxJitter: [CGFloat] = [0, 0.5, -1, 1]
+
+    /// Rotation overhang 保守常數。
+    /// 典型 cover width ~160pt × sin(1.5°) ≈ 4.2pt；8pt = 2× 安全邊際，
+    /// 避免 GeometryReader 造成 grid layout 反覆。
+    static let rotationOverhang: CGFloat = AppSpacing.s2      // 8pt
+
+    /// Per-notebook deterministic jitter — seed 由 caller 傳入（notebook ID/name hash）。
+    /// 同一 seed × 同一 depth 永遠回傳同一 (angle, dx)，render 不會閃爍。
+    /// 在 `layerRotations` / `layerDxJitter` base 上 ±50% 擾動。
+    static func seedJitter(seed: Int, depth: Int) -> (angle: Double, dx: CGFloat) {
+        let idx = min(max(depth, 0), layerRotations.count - 1)
+        let baseAngle = layerRotations[idx]
+        let baseDx = layerDxJitter[idx]
+        // perturb ∈ [-0.5, +0.5]，依 seed × depth 變化，同 seed 各 depth 不同擾動
+        let perturb = Double((seed &+ depth &* 31) % 100) / 100.0 - 0.5
+        return (
+            angle: baseAngle * (1.0 + perturb * 0.5),
+            dx:    baseDx * (1.0 + CGFloat(perturb) * 0.5)
+        )
+    }
+
+    // MARK: - Ghost color（cream paper, 取代 brightness-based deckColor）
+
+    /// Ghost cream 紙頁三階 — index = depth (1/2/3)。
+    /// depth 0 = top cover（不呼叫此函式）。
+    /// Dark variant 待下輪 design 決定（spec 已留 hook，目前 light/dark 同色）。
+    static func ghostPaperColor(depth: Int, scheme: ColorScheme) -> Color {
+        _ = scheme  // dark variant pending; silence unused warning
+        switch depth {
+        case 1:  return AppColors.paperLight
+        case 2:  return AppColors.paperSepia
+        default: return AppColors.paperSepiaDeep  // depth >= 3
+        }
+    }
+
+    // MARK: - Deprecated (Phase 6 cleanup will remove)
+
+    /// Light mode 每深一層 brightness 遞減步階（已 deprecated — editorial stack 改 cream paper ghost）
+    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；使用 ghostPaperColor")
     static let brightnessStepLight: CGFloat = 0.05
-    /// Dark mode 每深一層 brightness 遞增步階（向亮走，避免黑底失辨識）
+
+    /// Dark mode 每深一層 brightness 遞增步階（已 deprecated — editorial stack 改 cream paper ghost）
+    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；使用 ghostPaperColor")
     static let brightnessStepDark: CGFloat = 0.08
 
-    /// 依 colorScheme 對 base color 套深度 brightness shift。
-    /// - depth 0 = 頂層（不動）
-    /// - light: brightness 下降；dark: brightness 提升
-    /// 不動 saturation（避免下層看起來「褪色」）。
+    /// 舊版 brightness-shift ghost 顏色（已 deprecated — editorial stack 改 cream paper ghost）
+    @available(*, deprecated, message: "Use ghostPaperColor — editorial stack switched to cream paper ghosts")
     static func deckColor(_ base: Color, depth: Int, scheme: ColorScheme) -> Color {
         guard depth > 0 else { return base }
-        let step = scheme == .dark ? brightnessStepDark : brightnessStepLight
+        // Forward to legacy logic for any lingering callers — Phase 6 will purge.
+        let step = scheme == .dark ? 0.08 : 0.05
         let direction: CGFloat = scheme == .dark ? +1 : -1
         let delta = direction * step * CGFloat(depth)
         return base.shiftingBrightness(by: delta)
     }
 }
 
-// MARK: - HSB brightness helper
+// MARK: - HSB brightness helper (deprecated; Phase 6 cleanup will purge)
 
 extension Color {
     /// 以 HSB 模型平移 brightness（clamp 到 [0, 1]）。
     /// 透過 platform 原生 `UIColor` / `NSColor` 拆解；無法解析時回傳原色。
+    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；此 helper Phase 6 cleanup 移除")
     fileprivate func shiftingBrightness(by delta: CGFloat) -> Color {
         #if canImport(UIKit)
         var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
