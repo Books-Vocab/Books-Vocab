@@ -59,7 +59,6 @@ enum TodayReviewMetrics {
     // ── 從 AppSkin.Metrics 遷出(Phase 4 of boundary rectify)─────────
 
     // MARK: Progress(in原 baseSpacing,搬入此 feature)
-    static let progressGap: CGFloat = 12
     static let progressBarGap: CGFloat = 5
 
     // MARK: Card layout(不與既有 cardBorderOpacity / cardBorderActiveOpacity 合併語意)
@@ -80,18 +79,15 @@ enum TodayReviewMetrics {
     static let foldPadding: CGFloat = 28
     static let foldSectionSpacing: CGFloat = 24
     static let foldHintBottomInset: CGFloat = 22
-    static let foldHintTopInset: CGFloat = 22
 
     // MARK: Card / Action min size
     static let frontMinHeight: CGFloat = 120
     static let answerMinHeight: CGFloat = 188
     static let actionMinWidth: CGFloat = 92
     static let chevronButtonSize: CGFloat = 30
-    static let hintCapsuleWidth: CGFloat = 42
 
     // MARK: Height ratio / Swipe geometry
     static let frontHeightRatio: CGFloat = 0.22
-    static let completionHeightRatio: CGFloat = 0.18
     static let swipeThreshold: CGFloat = 100
     static let swipeMaxRotation: Double = 12
     static let swipeOpacityFloor: Double = 0.3
