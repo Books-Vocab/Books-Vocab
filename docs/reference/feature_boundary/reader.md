@@ -96,3 +96,4 @@ verified_against: a706c53
 | `AppMotion` | 動畫 token |
 | `AppTransition` | 過渡動畫 |
 | `ReaderPresentationMetrics` | Reader 專屬尺寸常數（定義於 `ReaderContentStyle.swift`）|
+| `ReaderMetrics` | Reader feature-local 版面參數（panel handle / settings sheet inset / option padding，25 個 static let，定義於 `ReaderMetrics.swift`）。從 `AppSkin.Metrics` 遷出（boundary rectify 2026-05）。跨 feature 借用者：`UIComponents/AppShellComponents.swift`、`Views/Vocabulary/Components/CollocationExplainSheet.swift` |

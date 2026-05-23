@@ -211,7 +211,7 @@ struct VocabReviewProgressBar: View {
     var body: some View {
         Group {
             if let ratio = progress.ratio {
-                VStack(alignment: .trailing, spacing: appSkin.spacing.reviewProgressBarGap) {
+                VStack(alignment: .trailing, spacing: TodayReviewMetrics.progressBarGap) {
                     if let detailLabel = progress.detailLabel {
                         Text(detailLabel)
                             .font(appSkin.typography.monoLabel)

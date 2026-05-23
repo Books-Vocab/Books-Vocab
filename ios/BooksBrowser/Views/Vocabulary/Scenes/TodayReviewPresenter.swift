@@ -142,14 +142,14 @@ struct TodayReviewPresenter: View {
                     GeometryReader { geo in
                         VStack(spacing: 0) {
                             reviewCard(currentCard, availableHeight: geo.size.height)
-                                .padding(.horizontal, appSkin.metrics.reviewCardHorizontalInset)
-                                .padding(.top, appSkin.metrics.reviewCardTopInset)
-                                .padding(.bottom, appSkin.metrics.reviewCardBottomInset)
+                                .padding(.horizontal, TodayReviewMetrics.cardHorizontalInset)
+                                .padding(.top, TodayReviewMetrics.cardTopInset)
+                                .padding(.bottom, TodayReviewMetrics.cardBottomInset)
 
                             if state.revealStage == .front {
                                 revealExpandZone(
                                     title: "點一下展開".localized,
-                                    minHeight: max(geo.size.height * appSkin.metrics.reviewFrontHeightRatio, 180),
+                                    minHeight: max(geo.size.height * TodayReviewMetrics.frontHeightRatio, 180),
                                     action: onAdvanceReveal
                                 )
                                 .allowsHitTesting(isCardInteractive)
@@ -241,7 +241,7 @@ struct TodayReviewPresenter: View {
             .transition(suppressTransition ? .identity : .reviewCardPromote)
             .offset(x: swipeOffset)
             .rotationEffect(
-                .degrees(Double(swipeOffset) / screenWidth * appSkin.metrics.reviewSwipeMaxRotation),
+                .degrees(Double(swipeOffset) / screenWidth * TodayReviewMetrics.swipeMaxRotation),
                 anchor: .bottom
             )
             .opacity(cardOpacity)
