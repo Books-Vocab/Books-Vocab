@@ -136,6 +136,10 @@ struct NotebookCoverView: View {
     let pattern: NotebookCoverPattern?
     let coverImagePath: String?
     let name: String
+    /// 是否在 cover 中央渲染白色 name text。預設 true 保留既有行為(Bookshelf / Podcast /
+    /// EditSheet preview / #Preview 等 5 處 callsite zero-touch);NotebookCard 在
+    /// 套 editorial overlay 時傳 false,避免雙層 name 疊字。
+    var showsName: Bool = true
 
     var body: some View {
         GeometryReader { geo in
@@ -152,16 +156,18 @@ struct NotebookCoverView: View {
                     pattern.patternOverlay(size: geo.size)
                 }
 
-                Text(name)
-                    .font(AppFonts.body(weight: .semibold))
-                    .foregroundStyle(.white)
-                    // 文字易讀性投影（白字壓在彩色封面上），非 UI elevation — 刻意不走 AppElevation
-                    .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
-                    .lineLimit(2)
-                    .truncationMode(.tail)
-                    .minimumScaleFactor(0.85)
-                    .multilineTextAlignment(.center)
-                    .padding(.horizontal, AppSpacing.s2)
+                if showsName {
+                    Text(name)
+                        .font(AppFonts.body(weight: .semibold))
+                        .foregroundStyle(.white)
+                        // 文字易讀性投影（白字壓在彩色封面上），非 UI elevation — 刻意不走 AppElevation
+                        .shadow(color: .black.opacity(0.3), radius: 2, y: 1)
+                        .lineLimit(2)
+                        .truncationMode(.tail)
+                        .minimumScaleFactor(0.85)
+                        .multilineTextAlignment(.center)
+                        .padding(.horizontal, AppSpacing.s2)
+                }
             }
         }
         .enableInjection()

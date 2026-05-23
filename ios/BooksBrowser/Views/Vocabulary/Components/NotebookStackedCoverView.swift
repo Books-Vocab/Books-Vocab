@@ -56,6 +56,9 @@ struct NotebookStackedCoverView: View {
     /// 同 seed × 同 depth 永遠回傳同一 (angle, dx)；render 不會閃爍。
     /// 預設 0 為了 Phase 3 build 自包：Phase 4 wire 後實際每張卡會傳不同 seed。
     var seed: Int = 0
+    /// 是否在頂層 cover 中央渲染白色 name(透傳至內層 `NotebookCoverView`)。
+    /// 預設 true 保留既有行為;NotebookCard 套 editorial overlay 時傳 false。
+    var showsName: Bool = true
 
     @Environment(\.appSkin) private var skin
     @Environment(\.colorScheme) private var colorScheme
@@ -80,7 +83,8 @@ struct NotebookStackedCoverView: View {
                 color: color,
                 pattern: pattern,
                 coverImagePath: coverImagePath,
-                name: name
+                name: name,
+                showsName: showsName
             )
             .clipShape(UnevenRoundedRectangle(
                 topLeadingRadius: AppRadius.md,
