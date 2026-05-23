@@ -386,13 +386,15 @@ struct PodcastPlayerView: View {
             if Task.isCancelled { return }
 
             let episodeTitle = episode.displayTitle
+            let prefetchedDuration = episode.durationSec
             await MainActor.run {
                 guard !Task.isCancelled else { return }
                 vm.loadEpisode(
                     audioURL: audioURL,
                     subtitleContent: subtitleContent,
                     title: episodeTitle,
-                    audioHTTPHeaders: audioHeaders
+                    audioHTTPHeaders: audioHeaders,
+                    prefetchedDurationSec: prefetchedDuration
                 )
             }
         }

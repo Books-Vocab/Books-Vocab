@@ -54,7 +54,11 @@ final class PodcastAudioEngine: NSObject {
         removeObservers()
     }
 
-    func loadAudio(url: URL, httpHeaders: [String: String] = [:]) {
+    func loadAudio(
+        url: URL,
+        httpHeaders: [String: String] = [:],
+        prefetchedDuration: TimeInterval? = nil
+    ) {
         removeObservers()
         configureAudioSession()
         loadGeneration &+= 1
@@ -68,16 +72,20 @@ final class PodcastAudioEngine: NSObject {
             data: ["source": currentSourceToken ?? "unknown"]
         )
 
-        // preferPreciseDuration: CBR/VBR MP3 duration from HTTP headers is a
-        // rough estimate; precise parsing prevents end-of-episode scrubber
-        // misalignment and subtitle drift.
+        // preferPreciseDuration trades startup latency for scrubber accuracy:
+        // when true, AVFoundation must read the full MP3 frame index (one extra
+        // Range round-trip on VBR files) before reporting duration. When the
+        // caller already knows duration from backend metadata (server-side
+        // ffprobe is sample-accurate), we skip that probe — saves ~1 RTT on
+        // first play without losing scrubber precision.
         //
         // AVURLAssetHTTPHeaderFieldsKey is a private-but-stable AVFoundation
         // option that lets us attach `Authorization: Bearer …` to the Range
         // requests AVPlayer issues. Required for the authenticated
         // `/api/podcasts/{id}/{n}/audio` endpoint.
+        let hasPrefetched = (prefetchedDuration ?? 0) > 0
         var assetOptions: [String: Any] = [
-            AVURLAssetPreferPreciseDurationAndTimingKey: true
+            AVURLAssetPreferPreciseDurationAndTimingKey: !hasPrefetched
         ]
         if !httpHeaders.isEmpty {
             assetOptions["AVURLAssetHTTPHeaderFieldsKey"] = httpHeaders
@@ -159,23 +167,37 @@ final class PodcastAudioEngine: NSObject {
             }
         }
 
-        // Duration + readiness — loaded async from remote asset metadata.
+        // If the caller supplied a backend-known duration, publish it synchronously
+        // so the scrubber + NowPlayingInfo populate immediately and skip the
+        // async `asset.load(.duration)` probe entirely (saves one Range RTT and
+        // avoids the precise-duration MP3 scan when preferPreciseDuration=false).
+        if let prefetched = prefetchedDuration, prefetched > 0 {
+            duration = prefetched
+            onDurationLoaded?(prefetched)
+            #if os(iOS)
+            updateNowPlayingInfo()
+            #endif
+        }
+
+        // Duration (if not prefetched) + readiness — loaded async from remote asset metadata.
         // Capture `gen`; bail if a newer load has started by the time we resume.
         Task { @MainActor [weak self] in
             guard let self, gen == self.loadGeneration else { return }
-            do {
-                let d = try await asset.load(.duration)
-                guard gen == self.loadGeneration else { return }
-                let s = CMTimeGetSeconds(d)
-                if s.isFinite, s > 0 {
-                    self.duration = s
-                    self.onDurationLoaded?(s)
-                    #if os(iOS)
-                    self.updateNowPlayingInfo()
-                    #endif
+            if !hasPrefetched {
+                do {
+                    let d = try await asset.load(.duration)
+                    guard gen == self.loadGeneration else { return }
+                    let s = CMTimeGetSeconds(d)
+                    if s.isFinite, s > 0 {
+                        self.duration = s
+                        self.onDurationLoaded?(s)
+                        #if os(iOS)
+                        self.updateNowPlayingInfo()
+                        #endif
+                    }
+                } catch {
+                    // Keep duration at 0 — player still streams, just scrubber UX degrades.
                 }
-            } catch {
-                // Keep duration at 0 — player still streams, just scrubber UX degrades.
             }
             // Only signal ready when the asset is genuinely playable; otherwise surface
             // the failure so the UI can show an error state instead of hanging in .loading.

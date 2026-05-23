@@ -113,11 +113,16 @@ final class PodcastPlayerViewModel {
         audioURL: URL,
         subtitleContent: String?,
         title: String = "",
-        audioHTTPHeaders: [String: String] = [:]
+        audioHTTPHeaders: [String: String] = [:],
+        prefetchedDurationSec: TimeInterval = 0
     ) {
         state = .loading
         duration = 0
-        audioEngine.loadAudio(url: audioURL, httpHeaders: audioHTTPHeaders)
+        audioEngine.loadAudio(
+            url: audioURL,
+            httpHeaders: audioHTTPHeaders,
+            prefetchedDuration: prefetchedDurationSec > 0 ? prefetchedDurationSec : nil
+        )
         if let srt = subtitleContent {
             applySubtitle(content: srt)
         }
