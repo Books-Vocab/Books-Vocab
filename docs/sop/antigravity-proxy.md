@@ -28,24 +28,41 @@ KG host 的 **Google Antigravity 訂閱 → OpenAI-compatible API** 閘道。把
 | Caddy 路由 | `/ag/*` → strip prefix → `localhost:3000`（Bearer header check） |
 | 認證 | Caddy 層 Bearer token 比對；token 存在 host `/etc/caddy/Caddyfile`（不在 git） |
 | Docker volumes | `./data:/app/data:z`（mount accounts + config JSON） |
-| 帳號池 | 2 / 3（max970228 + maxn970228 在線，第三個待加） |
+| 帳號池在線 | 2（`max970228@gmail.com` + `maxn970228@gmail.com`） |
+| 規劃容量 | 3（第 3 個 Google Pro 待本機 OAuth + scp 同步） |
 | Dashboard | `https://wordnexus.lol/ag/frontend/index.html`（需 Bearer） |
 
-### 可用模型清單
+### 模型清單
 
-從 Antigravity sandbox endpoint 取得，**OAuth 訂閱戶權限範圍**（Pro/Claude 部分 model 仍可能間歇 403）：
+`/v1/models` 回傳全 15 個註冊 ID（從 Antigravity sandbox endpoint cache 而來）。實測可用性分三檔：
+
+**✅ 穩定可用**：
 
 | 模型 ID | 等級 | 備註 |
 |---|---|---|
 | `claude-opus-4-6-thinking` | 旗艦 | reasoning trace 完整回傳 |
 | `gemini-2.5-pro` | 旗艦 | |
-| `gemini-3.1-pro-low` | 旗艦 | `-high` 對 OAuth 訂閱戶有時 403 |
-| `gemini-3.5-flash-low` | 主力 | I/O 2026 發布；`-medium` / `-high` 在 quota 帳簿可見但 inference endpoint 不開放 |
+| `gemini-3.1-pro-low` | 旗艦 | |
+| `gemini-3.5-flash-low` | 主力 | I/O 2026 發布；`-medium` / `-high` 在 quota 帳簿可見但 inference endpoint 對 OAuth 訂閱戶不開放 |
 | `gemini-3-flash` / `gemini-3-flash-agent` | 中堅 | |
 | `gemini-2.5-flash` / `gemini-2.5-flash-lite` | 入門 | |
 | `gemini-3.1-flash-lite` | 入門 | |
 | `gpt-oss-120b-medium` | OpenAI 系 | OpenAI 的 gpt-oss 透過 Google 提供 |
-| `claude-sonnet-4-6` | 旗艦 | 訂閱配額有限，密集打容易 quota_exhausted |
+
+**⚠️ 間歇 / 配額敏感**：
+
+| 模型 ID | 症狀 |
+|---|---|
+| `claude-sonnet-4-6` | 配額有限，密集打容易 `quota_exhausted`；reset 後恢復 |
+| `gemini-3.1-pro-high` | sandbox endpoint 對 OAuth 訂閱戶間歇 403 |
+
+**❌ Cached 但對 OAuth 訂閱戶不開放**（看得到打不通）：
+
+| 模型 ID | 擋的位置 |
+|---|---|
+| `gemini-2.5-flash-thinking` | 403 `unknown_error` |
+| `gemini-3.1-flash-image` | 403 `unknown_error` |
+| `gemini-pro-agent` | 403 `unknown_error` |
 
 每帳號 11 個 quota 群組，**5 小時 rolling window** reset。
 
