@@ -82,15 +82,19 @@ struct NotebookListView: View {
                             .padding(.horizontal, editorialHorizontal)
                     }
 
-                    // D4 — page section header `今日複習` + inline VocabReviewCTAPill。
-                    if totalDueCount > 0 || totalUnlearnedCount > 0 {
-                        HStack {
+                    // D4 — page section header `今日複習` + inline pill cluster
+                    // (review CTA + filter + new notebook)。pill 永遠右對齊,有 review 才顯示左側標題。
+                    let hasReview = totalDueCount > 0 || totalUnlearnedCount > 0
+                    HStack(spacing: AppSpacing.s2) {
+                        if hasReview {
                             Text("今日複習".localized)
                                 .font(skin.typography.sectionTitle)
                                 .foregroundStyle(skin.palette.primaryText)
+                        }
 
-                            Spacer(minLength: 8)
+                        Spacer(minLength: 8)
 
+                        if hasReview {
                             VocabReviewCTAPill(
                                 dueCount: filteredDueEntries.count,
                                 unlearnedCount: filteredUnlearnedEntries.count,
@@ -99,25 +103,34 @@ struct NotebookListView: View {
                                 onStartMixed: { startReview(with: filteredDueEntries + filteredUnlearnedEntries) }
                             )
                         }
-                        .padding(.horizontal, editorialHorizontal)
+
+                        if notebooks.count >= 2 {
+                            inlinePillButton(
+                                systemImage: reviewFilter.isFiltered
+                                    ? "line.3.horizontal.decrease.circle.fill"
+                                    : "line.3.horizontal.decrease.circle",
+                                tint: reviewFilter.isFiltered ? skin.palette.accent : skin.palette.secondaryText,
+                                label: "篩選單字本".localized,
+                                action: { showFilterSheet = true }
+                            )
+                        }
+
+                        inlinePillButton(
+                            systemImage: "plus",
+                            tint: skin.palette.secondaryText,
+                            label: "新增單字本".localized,
+                            action: { showCreateSheet = true },
+                            disabled: !authManager.isLoggedIn
+                        )
                     }
+                    .padding(.horizontal, editorialHorizontal)
 
                     if notebooks.isEmpty {
                         emptyState
-                    } else if notebooks.count == 1, let only = sortedNotebooks.first {
-                        let s = stats[only.remoteId] ?? NotebookStats()
-                        NavigationLink(value: only.remoteId) {
-                            NotebookCard(
-                                data: notebookCardData(for: only, stats: s),
-                                style: .hero,
-                                actions: notebookCardActions(for: only)
-                            )
-                        }
-                        .buttonStyle(NotebookDeckButtonStyle())
-                        .padding(.horizontal, editorialHorizontal)
-                        .transition(.listSwap)
                     } else {
-                        LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: editorialGridSpacing) {
+                        // Editorial row list — 每本 notebook 一條 full-width row,書背隱喻。
+                        // 取代舊 grid + hero 分支(grid 在小卡片下擠破,hero 浪費版面)。
+                        LazyVStack(spacing: editorialGridSpacing) {
                             ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
                                 NavigationLink(value: notebook.remoteId) {
@@ -127,7 +140,7 @@ struct NotebookListView: View {
                                         actions: notebookCardActions(for: notebook)
                                     )
                                 }
-                                .buttonStyle(NotebookDeckButtonStyle())
+                                .buttonStyle(.plain)
                                 .transition(.listSwap)
                             }
                         }
@@ -140,45 +153,17 @@ struct NotebookListView: View {
             .navigationTitle("單字本".localized)
             .largeNavigationBarTitle()
             .toolbar {
-                // D6 — Filter button:只在 ≥ 2 notebook 顯示(單本 scope filter 無意義)。
-                // 點擊復用既有 NotebookFilterPickerSheet,跟舊 NotebookFilterChip 行為一致。
-                if notebooks.count >= 2 {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button {
-                            showFilterSheet = true
-                        } label: {
-                            Image(systemName: reviewFilter.isFiltered
-                                ? "line.3.horizontal.decrease.circle.fill"
-                                : "line.3.horizontal.decrease.circle")
-                                .foregroundStyle(reviewFilter.isFiltered
-                                    ? skin.palette.accent
-                                    : skin.palette.secondaryText)
-                        }
-                        .accessibilityLabel("篩選單字本".localized)
-                    }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     sortMenu
                         .disabled(notebooks.isEmpty)
                 }
 
-                ToolbarItem(placement: .confirmationAction) {
+                ToolbarItem(placement: .topBarTrailing) {
                     Button {
                         showArchiveList = true
                     } label: {
                         Image(systemName: "archivebox")
                     }
-                }
-
-                ToolbarItem(placement: .confirmationAction) {
-                    Button {
-                        showCreateSheet = true
-                    } label: {
-                        Image(systemName: "plus")
-                    }
-                    .disabled(!authManager.isLoggedIn)
-                    .keyboardShortcut("n", modifiers: .command)
                 }
             }
             .navigationDestination(for: String.self) { notebookId in
@@ -322,6 +307,33 @@ struct NotebookListView: View {
             delete: { notebookToDelete = notebook },
             canDelete: !notebook.isDefault
         )
+    }
+
+    // MARK: - Inline pill button (filter / new notebook)
+
+    /// Header pill — 與 VocabReviewCTAPill 同高,走 mutedFill capsule。
+    @ViewBuilder
+    private func inlinePillButton(
+        systemImage: String,
+        tint: Color,
+        label: String,
+        action: @escaping () -> Void,
+        disabled: Bool = false
+    ) -> some View {
+        Button(action: action) {
+            Image(systemName: systemImage)
+                .font(skin.typography.caption)
+                .foregroundStyle(tint)
+                .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
+                .padding(.vertical, skin.spacing.compactChipVerticalPadding)
+                .overlay(
+                    Capsule(style: .continuous)
+                        .stroke(skin.palette.cardBorder, lineWidth: 0.5)
+                )
+        }
+        .buttonStyle(.plain)
+        .disabled(disabled)
+        .accessibilityLabel(label)
     }
 
     // MARK: - Sort Menu
