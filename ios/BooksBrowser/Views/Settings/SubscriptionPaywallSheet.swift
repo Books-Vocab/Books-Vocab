@@ -1,7 +1,9 @@
 import SwiftUI
 import StoreKit
+import Inject
 
 struct SubscriptionPaywallSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
     @Environment(\.subscriptionManager) private var subscriptionManager
@@ -124,6 +126,7 @@ struct SubscriptionPaywallSheet: View {
             .animatePhaseChange(subscriptionManager.hasProAccess)
             .animatePhaseChange(subscriptionManager.entitlements.pro.will_renew)
         }
+        .enableInjection()
     }
 
     // MARK: - 已啟用 Layout（確認式）

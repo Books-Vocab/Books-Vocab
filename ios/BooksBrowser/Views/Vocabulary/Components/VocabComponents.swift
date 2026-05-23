@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct VocabCard<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let padding: CGFloat
     @ViewBuilder let content: Content
@@ -20,6 +22,7 @@ struct VocabCard<Content: View>: View {
         ) {
             content
         }
+        .enableInjection()
     }
 }
 
@@ -51,6 +54,7 @@ extension View {
 }
 
 struct VocabToneChip: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let text: String
     let tone: Color
@@ -66,10 +70,12 @@ struct VocabToneChip: View {
                 Capsule(style: .continuous)
             )
             .accessibilityLabel("語氣標記".localized)
+            .enableInjection()
     }
 }
 
 struct VocabTierLabel: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let tier: String
     var prominent: Bool = false
@@ -89,10 +95,12 @@ struct VocabTierLabel: View {
                 }
             )
             .accessibilityLabel(L10n.format("難度等級：%@", tier))
+            .enableInjection()
     }
 }
 
 struct VocabEmptyStateContent: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -120,10 +128,12 @@ struct VocabEmptyStateContent: View {
             symbolBounce: symbolBounce,
             style: .vocab(appSkin)
         )
+        .enableInjection()
     }
 }
 
 struct VocabEmptyStateCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -146,10 +156,12 @@ struct VocabEmptyStateCard: View {
             cardStyle: .vocab(appSkin),
             contentStyle: .vocab(appSkin)
         )
+        .enableInjection()
     }
 }
 
 struct VocabStateMessageCard<Accessory: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let systemImage: String
@@ -177,6 +189,7 @@ struct VocabStateMessageCard<Accessory: View>: View {
         ) {
             accessory
         }
+        .enableInjection()
     }
 }
 
@@ -189,46 +202,51 @@ struct VocabReviewProgress: Hashable {
 }
 
 struct VocabReviewProgressBar: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @ScaledMetric(relativeTo: .body) private var scaledBarHeight: CGFloat = 5
 
     let progress: VocabReviewProgress
 
     var body: some View {
-        if let ratio = progress.ratio {
-            VStack(alignment: .trailing, spacing: appSkin.spacing.reviewProgressBarGap) {
-                if let detailLabel = progress.detailLabel {
-                    Text(detailLabel)
-                        .font(appSkin.typography.monoLabel)
-                        .monospacedDigit()
-                        .foregroundStyle(appSkin.palette.secondaryText)
-                }
-
-                GeometryReader { proxy in
-                    let clampedFraction = min(ratio, 1.0)
-                    ZStack(alignment: .leading) {
-                        Capsule(style: .continuous)
-                            .fill(appSkin.palette.progressBarBackground)
-
-                        Capsule(style: .continuous)
-                            .fill(ReviewGradient.color(for: ratio))
-                            .frame(width: max(6, proxy.size.width * clampedFraction))
-                            .animateControl(ratio)
+        Group {
+            if let ratio = progress.ratio {
+                VStack(alignment: .trailing, spacing: appSkin.spacing.reviewProgressBarGap) {
+                    if let detailLabel = progress.detailLabel {
+                        Text(detailLabel)
+                            .font(appSkin.typography.monoLabel)
+                            .monospacedDigit()
+                            .foregroundStyle(appSkin.palette.secondaryText)
                     }
-                    .accessibilityLabel("複習進度".localized)
-                    .accessibilityValue("\(Int(min(ratio, 1.0) * 100))%")
+
+                    GeometryReader { proxy in
+                        let clampedFraction = min(ratio, 1.0)
+                        ZStack(alignment: .leading) {
+                            Capsule(style: .continuous)
+                                .fill(appSkin.palette.progressBarBackground)
+
+                            Capsule(style: .continuous)
+                                .fill(ReviewGradient.color(for: ratio))
+                                .frame(width: max(6, proxy.size.width * clampedFraction))
+                                .animateControl(ratio)
+                        }
+                        .accessibilityLabel("複習進度".localized)
+                        .accessibilityValue("\(Int(min(ratio, 1.0) * 100))%")
+                    }
+                    .frame(width: appSkin.metrics.progressBarWidth, height: scaledBarHeight)
                 }
-                .frame(width: appSkin.metrics.progressBarWidth, height: scaledBarHeight)
+            } else if let detailLabel = progress.detailLabel {
+                Text(detailLabel)
+                    .font(appSkin.typography.monoLabel)
+                    .foregroundStyle(appSkin.palette.secondaryText)
             }
-        } else if let detailLabel = progress.detailLabel {
-            Text(detailLabel)
-                .font(appSkin.typography.monoLabel)
-                .foregroundStyle(appSkin.palette.secondaryText)
         }
+        .enableInjection()
     }
 }
 
 struct ReviewGradientBar: View {
+    @ObserveInjection private var inject
     private let sampleCount = 20
 
     var body: some View {
@@ -240,6 +258,7 @@ struct ReviewGradientBar: View {
                 }
             }
         }
+        .enableInjection()
     }
 }
 

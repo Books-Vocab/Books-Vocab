@@ -7,8 +7,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct SyncView: View {
+    @ObserveInjection private var inject
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
@@ -52,6 +54,7 @@ struct SyncView: View {
                 Text("尚未同步到雲端，移除後無法復原。".localized)
             }
         }
+        .enableInjection()
     }
 
     private var presenterState: SyncPresenterState {

@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct VocabularyListPresenter<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @FocusState private var searchFocused: Bool
 
@@ -53,5 +55,6 @@ struct VocabularyListPresenter<Content: View>: View {
                 .accessibilityHidden(true)
             }
         }
+        .enableInjection()
     }
 }

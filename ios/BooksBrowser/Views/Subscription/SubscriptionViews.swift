@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct ProAccessGateCard: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let title: String
@@ -40,5 +42,6 @@ struct ProAccessGateCard: View {
             .padding(.vertical, appSkin.spacing.inlineGap)
             .transition(.contentSwap)
         }
+        .enableInjection()
     }
 }

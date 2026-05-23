@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 enum NotebookCoverPattern: String, CaseIterable, Identifiable {
     case dots
@@ -130,6 +131,7 @@ enum NotebookCoverPattern: String, CaseIterable, Identifiable {
 }
 
 struct NotebookCoverView: View {
+    @ObserveInjection private var inject
     let color: Color
     let pattern: NotebookCoverPattern?
     let coverImagePath: String?
@@ -162,6 +164,7 @@ struct NotebookCoverView: View {
                     .padding(.horizontal, AppSpacing.s2)
             }
         }
+        .enableInjection()
     }
 
     #if os(macOS)

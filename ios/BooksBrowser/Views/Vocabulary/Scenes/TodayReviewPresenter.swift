@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 // MARK: - State
 
@@ -80,6 +81,7 @@ struct TodayReviewPresenterState {
 // MARK: - Presenter
 
 struct TodayReviewPresenter: View {
+    @ObserveInjection private var inject
     // internal — extension files 需要存取
     @Environment(\.horizontalSizeClass) private var sizeClass
     @Environment(\.appSkin) var appSkin
@@ -188,6 +190,7 @@ struct TodayReviewPresenter: View {
             .sensoryFeedback(.impact(weight: .light), trigger: flingHapticTrigger)
             .animation(AppMotion.panelState, value: isHelpPresented)
         }
+        .enableInjection()
     }
 
     // MARK: - Card

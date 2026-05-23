@@ -7,8 +7,10 @@
 import SwiftUI
 import SwiftData
 import TipKit
+import Inject
 
 struct NotebookListView: View {
+    @ObserveInjection private var inject
     @Query(filter: #Predicate<Notebook> { !$0.isDeleted }, sort: \Notebook.sortOrder)
     private var notebooks: [Notebook]
     @Query private var allEntries: [VocabularyEntry]
@@ -272,6 +274,7 @@ struct NotebookListView: View {
             isEditingDetailEntry: $isEditingDetailEntry,
             navigationPath: $navigationPath
         ))
+        .enableInjection()
     }
 
     // MARK: - Notebook card builders

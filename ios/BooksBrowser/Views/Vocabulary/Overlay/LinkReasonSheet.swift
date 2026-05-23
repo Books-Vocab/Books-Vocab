@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct LinkReasonSheet: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.dismiss) private var dismiss
 
@@ -66,5 +68,6 @@ struct LinkReasonSheet: View {
         }
         .padding(appSkin.metrics.cardBlockPadding)
         .vocabCanvasBackground()
+        .enableInjection()
     }
 }

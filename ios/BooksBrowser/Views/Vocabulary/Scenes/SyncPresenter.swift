@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 struct SyncPresenterState {
     let isLoggedIn: Bool
@@ -38,6 +39,7 @@ struct SyncPresenterState {
 }
 
 struct SyncPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) var dismiss
     @Environment(\.appSkin) var appSkin
 
@@ -90,6 +92,7 @@ struct SyncPresenter: View {
                 Button("關閉".localized) { dismiss() }
             }
         }
+        .enableInjection()
     }
 
     // MARK: - Pending List

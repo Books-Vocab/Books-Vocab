@@ -9,6 +9,7 @@
 //
 
 import SwiftUI
+import Inject
 
 /// TodayReview 的場景狀態。
 ///
@@ -33,6 +34,7 @@ enum TodayReviewPhase {
 /// 4-state phase matrix 因此真正生效。session 內容委派給 `TodayReviewView`；
 /// 空待複習集合落在 `.empty` 分支提供關閉回饋。
 struct TodayReviewPhaseView: View {
+    @ObserveInjection private var inject
     let phase: TodayReviewPhase
     let onClose: () -> Void
 
@@ -65,50 +67,53 @@ struct TodayReviewPhaseView: View {
     }
 
     var body: some View {
-        switch phase {
-        case .loading:
-            VocabSceneShell(phase: .loading(
-                title: "準備今日複習...".localized,
-                systemImage: "rectangle.stack"
-            )) {
-                EmptyView()
-            }
-            .animatePhaseChange(0)
+        Group {
+            switch phase {
+            case .loading:
+                VocabSceneShell(phase: .loading(
+                    title: "準備今日複習...".localized,
+                    systemImage: "rectangle.stack"
+                )) {
+                    EmptyView()
+                }
+                .animatePhaseChange(0)
 
-        case .empty:
-            VocabSceneShell(phase: .empty(
-                title: "今日沒有待複習的卡片".localized,
-                systemImage: "checkmark.seal",
-                description: "稍後再回來，或先去探索新單字。".localized,
-                action: .init(
-                    title: "關閉".localized,
-                    systemImage: "xmark",
-                    handler: onClose
+            case .empty:
+                VocabSceneShell(phase: .empty(
+                    title: "今日沒有待複習的卡片".localized,
+                    systemImage: "checkmark.seal",
+                    description: "稍後再回來，或先去探索新單字。".localized,
+                    action: .init(
+                        title: "關閉".localized,
+                        systemImage: "xmark",
+                        handler: onClose
+                    )
+                )) {
+                    EmptyView()
+                }
+                .animatePhaseChange(1)
+
+            case .failure(let retry):
+                VocabSceneShell(phase: .error(
+                    title: "無法載入今日複習".localized,
+                    systemImage: "exclamationmark.triangle",
+                    retryAction: retry
+                )) {
+                    EmptyView()
+                }
+                .animatePhaseChange(2)
+
+            case .session(let entries, let allEntries, let currentUserID):
+                TodayReviewView(
+                    entries: entries,
+                    allEntries: allEntries,
+                    currentUserID: currentUserID,
+                    onClose: onClose
                 )
-            )) {
-                EmptyView()
+                .animatePhaseChange(3)
             }
-            .animatePhaseChange(1)
-
-        case .failure(let retry):
-            VocabSceneShell(phase: .error(
-                title: "無法載入今日複習".localized,
-                systemImage: "exclamationmark.triangle",
-                retryAction: retry
-            )) {
-                EmptyView()
-            }
-            .animatePhaseChange(2)
-
-        case .session(let entries, let allEntries, let currentUserID):
-            TodayReviewView(
-                entries: entries,
-                allEntries: allEntries,
-                currentUserID: currentUserID,
-                onClose: onClose
-            )
-            .animatePhaseChange(3)
         }
+        .enableInjection()
     }
 }
 

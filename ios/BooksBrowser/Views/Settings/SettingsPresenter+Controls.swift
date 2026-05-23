@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - Stepper Buttons, Card/Chrome/TextInput Modifiers, Input Fields
 
 struct SettingsStepperIconButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let systemImage: String
     let enabled: Bool
@@ -25,6 +27,7 @@ struct SettingsStepperIconButton: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .enableInjection()
     }
 }
 
@@ -80,6 +83,7 @@ struct SettingsTextInputModifier: ViewModifier {
 }
 
 struct SettingsLabeledInputField<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let title: String
     let content: Content
@@ -104,5 +108,6 @@ struct SettingsLabeledInputField<Content: View>: View {
             RoundedRectangle(cornerRadius: appSkin.radii.control, style: .continuous)
                 .stroke(appSkin.palette.cardBorder, lineWidth: 1)
         )
+        .enableInjection()
     }
 }

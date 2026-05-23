@@ -1,7 +1,9 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 struct ReaderSelectionTile<Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let isSelected: Bool
     @ViewBuilder let content: Content
@@ -16,6 +18,7 @@ struct ReaderSelectionTile<Content: View>: View {
             content
                 .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
+        .enableInjection()
     }
 }
 #endif

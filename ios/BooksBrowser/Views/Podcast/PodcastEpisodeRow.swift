@@ -1,7 +1,9 @@
 import SwiftUI
 import SwiftData
+import Inject
 
 struct PodcastEpisodeRow: View {
+    @ObserveInjection private var inject
     let episode: PodcastEpisode
     let progress: PodcastProgress?
     @Environment(\.appSkin) private var skin
@@ -51,6 +53,7 @@ struct PodcastEpisodeRow: View {
         .padding(.vertical, skin.spacing.compactRowVerticalPadding)
         .padding(.horizontal, skin.spacing.cardPadding)
         .contentShape(Rectangle())
+        .enableInjection()
     }
 
     private var metadataLine: some View {

@@ -9,8 +9,10 @@
 import SwiftUI
 import SwiftData
 import os
+import Inject
 
 struct KGVocabView: View {
+    @ObserveInjection private var inject
     @Environment(\.modelContext) private var modelContext
     @Environment(\.kgService) private var kgService
     @Environment(\.appSkin) private var appSkin
@@ -93,6 +95,7 @@ struct KGVocabView: View {
                 modelContext: modelContext
             )
         }
+        .enableInjection()
     }
 
     private func contentView(

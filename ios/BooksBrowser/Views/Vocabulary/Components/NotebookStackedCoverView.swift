@@ -13,6 +13,7 @@
 //
 
 import SwiftUI
+import Inject
 
 // MARK: - Press state environment
 
@@ -43,6 +44,7 @@ extension EnvironmentValues {
 // MARK: - Stacked cover view
 
 struct NotebookStackedCoverView: View {
+    @ObserveInjection private var inject
     let color: Color
     let pattern: NotebookCoverPattern?
     let coverImagePath: String?
@@ -113,6 +115,7 @@ struct NotebookStackedCoverView: View {
         // 為 ghost peek + rotation overhang 預留空間
         .padding(.bottom, maxGhostDy + NotebookStackMetrics.rotationOverhang)
         .padding(.horizontal, NotebookStackMetrics.rotationOverhang)
+        .enableInjection()
     }
 
     /// Cream 紙頁 ghost 一層 — 不 render pattern / image / text，避免下層雜訊。

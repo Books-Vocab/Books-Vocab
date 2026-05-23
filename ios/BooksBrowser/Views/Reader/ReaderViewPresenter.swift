@@ -1,7 +1,9 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, SettingsPanelContent: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) var appSkin
     @Environment(\.horizontalSizeClass) var sizeClass
 
@@ -57,6 +59,7 @@ struct ReaderViewPresenter<MainContent: View, TranslationPanelContent: View, Set
             bottomOverlay
             topOverlay
         }
+        .enableInjection()
     }
 }
 #endif

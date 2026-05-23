@@ -1,6 +1,8 @@
 import SwiftUI
+import Inject
 
 struct DemoBanner: View {
+    @ObserveInjection private var inject
     @Environment(\.appTheme) private var appTheme
     let onExit: () -> Void
 
@@ -19,5 +21,6 @@ struct DemoBanner: View {
         .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
         .padding(.vertical, AppSpacing.s2)
         .background(appTheme.palette.accent.opacity(0.08))
+        .enableInjection()
     }
 }

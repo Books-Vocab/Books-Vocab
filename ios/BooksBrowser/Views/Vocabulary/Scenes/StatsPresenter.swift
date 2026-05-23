@@ -7,8 +7,10 @@
 
 import SwiftUI
 import SwiftData
+import Inject
 
 struct StatsPresenter: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     @Environment(\.kgService) private var kgService
     @Environment(\.authManager) private var authManager
@@ -109,6 +111,7 @@ struct StatsPresenter: View {
         .toastSheet(isPresented: $showCalendar) {
             ReviewCalendarPresenter()
         }
+        .enableInjection()
     }
 
     // MARK: - Filtered Data

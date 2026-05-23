@@ -1,8 +1,10 @@
 import SwiftUI
+import Inject
 
 // MARK: - List Cards, Status Hero, Timeline, Button Styles
 
 struct VocabListCard<Header: View, Content: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let headerPadding: EdgeInsets
     @ViewBuilder let header: Header
@@ -37,10 +39,12 @@ struct VocabListCard<Header: View, Content: View>: View {
                 content
             }
         }
+        .enableInjection()
     }
 }
 
 struct VocabStatusHero<Badges: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let systemImage: String
     var tone: Color
@@ -81,10 +85,12 @@ struct VocabStatusHero<Badges: View>: View {
 
             badges
         }
+        .enableInjection()
     }
 }
 
 struct VocabTimelineRow<Trailing: View>: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let statusSymbol: AnyView
     let title: String
@@ -134,6 +140,7 @@ struct VocabTimelineRow<Trailing: View>: View {
             }
         }
         .padding(.vertical, appSkin.spacing.sectionGap)
+        .enableInjection()
     }
 }
 

@@ -6,8 +6,10 @@
 import SwiftUI
 import SwiftData
 import StoreKit
+import Inject
 
 struct SettingsView: View {
+    @ObserveInjection private var inject
     @Environment(\.dismiss) var dismiss
     @Environment(\.modelContext) var modelContext
     @Environment(\.kgService) var kgService
@@ -95,6 +97,7 @@ struct SettingsView: View {
         } message: {
             Text((coordinator.deleteAccountError ?? "請稍後再試").localized)
         }
+        .enableInjection()
     }
 }
 

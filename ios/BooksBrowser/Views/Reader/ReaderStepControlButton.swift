@@ -1,7 +1,9 @@
 #if os(iOS)
 import SwiftUI
+import Inject
 
 struct ReaderStepControlButton: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let label: String
     let font: Font
@@ -22,6 +24,7 @@ struct ReaderStepControlButton: View {
         }
         .buttonStyle(.plain)
         .disabled(!enabled)
+        .enableInjection()
     }
 }
 #endif

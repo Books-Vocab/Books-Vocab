@@ -6,8 +6,10 @@
 //
 
 import SwiftUI
+import Inject
 
 struct VocabActivityHeatmap: View {
+    @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
 
     let activity: [String: Int]  // "yyyy-MM-dd" -> count
@@ -111,6 +113,7 @@ struct VocabActivityHeatmap: View {
         }
         .task { grid = Self.buildGrid(activity: activity, weeks: weeks) }
         .onChange(of: activity) { _, new in grid = Self.buildGrid(activity: new, weeks: weeks) }
+        .enableInjection()
     }
 
     @ViewBuilder

@@ -1,8 +1,10 @@
 #if os(iOS)
 import SwiftUI
 import SwiftData
+import Inject
 
 struct PodcastPlayerView: View {
+    @ObserveInjection private var inject
     let episodeId: String
     @Environment(\.appSkin) private var skin
     @Environment(\.appTheme) private var theme
@@ -94,6 +96,7 @@ struct PodcastPlayerView: View {
 
     var body: some View {
         fullBody
+        .enableInjection()
     }
 
     @ViewBuilder

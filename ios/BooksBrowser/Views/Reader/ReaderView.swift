@@ -12,9 +12,11 @@ import TipKit
 import ReadiumShared
 import ReadiumNavigator
 import os
+import Inject
 
 /// 閱讀器主介面（Readium 版）
 struct ReaderView: View {
+    @ObserveInjection private var inject
     @Bindable var book: Book
     @Environment(\.modelContext) var modelContext
     @Environment(\.dismiss) private var dismiss
@@ -139,6 +141,7 @@ struct ReaderView: View {
         .sheet(isPresented: $showLoginSheet) {
             LoginSheet()
         }
+        .enableInjection()
     }
 
     /// 若 book.preferredNotebookId 指向已刪除或不存在的 notebook，清除綁定以避免新單字存入孤兒 notebook。
