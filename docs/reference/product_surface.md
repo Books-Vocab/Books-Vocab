@@ -8,7 +8,7 @@ scope:
   - chrome-extension/
   - ops/
   - lab/
-verified_against: 6067f0c
+verified_against: 57f744f
 -->
 # Implemented Product Surface
 
@@ -154,10 +154,10 @@ verified_against: 6067f0c
 ## Antigravity Proxy (`lab/antigravity-proxy/`,vendored,third-party)
 
 - Google Antigravity OAuth → OpenAI-compatible `/v1/chat/completions`(直接 HTTP 打 Google sandbox endpoint)
-- 公網 `https://wordnexus.lol/ag/v1` (Caddy `/ag/*` → port 3000,Bearer header check)
-- 多 Google Pro 帳號 pool + 自動 quota rotation + healthScore;OAuth refresh tokens 存 `~/antigravity-proxy/data/`
+- **2026-05-23 撤出公網**:純本機 `bun run start` → `http://localhost:3000/v1`,不再走 VPS / Caddy(封號風險考量)
+- 多 Google Pro 帳號 pool + 自動 quota rotation + healthScore;OAuth refresh tokens 存本機 `lab/antigravity-proxy/antigravity-accounts.json`(不在 git)
 - 可用模型:`claude-opus-4-6-thinking`/`gemini-2.5-pro`/`gemini-3.1-pro-low`/`gemini-3.5-flash-low`/`gpt-oss-120b-medium` 等(訂閱戶權限範圍)
-- **與 KG 邏輯獨立**(podcast pipeline 不呼叫此 proxy);個人 + 信任的人實驗用
+- **與 KG 邏輯獨立**(podcast pipeline 不呼叫此 proxy);個人實驗用
 - 詳見 `docs/sop/antigravity-proxy.md`
 
 ## Ops
