@@ -54,8 +54,8 @@ struct NotebookListView: View {
     }
 
     var body: some View {
-        let stats = Self.computeNotebookStats(allEntries, pendingEntries: pendingEntries)
-        let (filteredDueEntries, filteredUnlearnedEntries) = Self.computeFilteredEntries(allEntries, filter: reviewFilter)
+        let stats = NotebookStatsCalculator.compute(allEntries, pendingEntries: pendingEntries)
+        let (filteredDueEntries, filteredUnlearnedEntries) = NotebookStatsCalculator.filtered(allEntries, filter: reviewFilter)
         let totalDueCount = stats.values.reduce(0) { $0 + $1.dueCount }
         let totalUnlearnedCount = stats.values.reduce(0) { $0 + $1.unlearnedCount }
         let sortedNotebooks = sortOption.sort(notebooks, stats: stats)
@@ -359,7 +359,7 @@ struct NotebookListView: View {
             }
         }
         .environment(\.detailRouter, detailState)
-        .modifier(DetailPresentation(
+        .modifier(NotebookDetailPresentation(
             detailState: detailState,
             layoutMode: layoutMode,
             allEntries: allEntries,
@@ -511,209 +511,8 @@ struct NotebookListView: View {
         activeReviewSession = TodayReviewSession(entries: entries)
     }
 
-    // MARK: - Stats (single-pass O(n))
-
-    struct NotebookStats {
-        var cardCount: Int = 0
-        var dueCount: Int = 0
-        var unlearnedCount: Int = 0
-        var reviewedCount: Int = 0
-        var pendingCount: Int = 0
-        var lastActivity: Date?
-    }
-
-    static func computeNotebookStats(_ entries: [VocabularyEntry], pendingEntries: [VocabularyEntry]) -> [String: NotebookStats] {
-        let now = Date()
-        var result: [String: NotebookStats] = [:]
-        for entry in entries {
-            result[entry.notebookId, default: NotebookStats()].cardCount += 1
-            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
-                result[entry.notebookId, default: NotebookStats()].dueCount += 1
-            } else if entry.reviewCount == 0 {
-                result[entry.notebookId, default: NotebookStats()].unlearnedCount += 1
-            } else {
-                result[entry.notebookId, default: NotebookStats()].reviewedCount += 1
-            }
-            let activity = entry.lastReviewedAt ?? entry.dateAdded
-            if result[entry.notebookId]?.lastActivity == nil || activity > result[entry.notebookId]!.lastActivity! {
-                result[entry.notebookId, default: NotebookStats()].lastActivity = activity
-            }
-        }
-        for entry in pendingEntries {
-            result[entry.notebookId, default: NotebookStats()].pendingCount += 1
-        }
-        return result
-    }
-
-    static func computeFilteredEntries(_ entries: [VocabularyEntry], filter: NotebookFilter) -> ([VocabularyEntry], [VocabularyEntry]) {
-        let now = Date()
-        var due: [VocabularyEntry] = []
-        var unlearned: [VocabularyEntry] = []
-        for entry in entries where filter.matches(entry.notebookId) {
-            if entry.reviewCount > 0 && entry.nextReviewAt <= now {
-                due.append(entry)
-            } else if entry.reviewCount == 0 {
-                unlearned.append(entry)
-            }
-        }
-        return (due, unlearned)
-    }
-
     private func setActiveNotebook(_ id: String) {
         activeNotebookId = id
     }
 }
 
-// MARK: - Detail Presentation
-
-private struct DetailPresentation: ViewModifier {
-    let detailState: DetailRouter
-    let layoutMode: LayoutMode
-    let allEntries: [VocabularyEntry]
-    let currentUserID: String?
-    @Binding var isEditingDetailEntry: Bool
-    @Binding var navigationPath: NavigationPath
-
-    @AppStorage("kg_detail_panel_width") private var panelWidth: Double = Double(MacDetailPanelMetrics.defaultWidth)
-    @State private var dragWidth: CGFloat?
-    @State private var containerWidth: CGFloat = 800
-
-    private var effectivePanelWidth: CGFloat {
-        let desired = CGFloat(panelWidth)
-        let maxAllowed = containerWidth - MacDetailPanelMetrics.leftMinWidth
-        return min(desired, max(maxAllowed, MacDetailPanelMetrics.minWidth))
-    }
-
-    func body(content: Content) -> some View {
-        Group {
-            if layoutMode.usesInlineDetail {
-                content
-                    .safeAreaInset(edge: .trailing, spacing: 0) {
-                        if detailState.hasDetail {
-                            HStack(spacing: 0) {
-                                DraggableDivider(
-                                    panelWidth: Binding(
-                                        get: { CGFloat(panelWidth) },
-                                        set: { panelWidth = Double($0) }
-                                    ),
-                                    dragWidth: $dragWidth,
-                                    containerWidth: containerWidth,
-                                    onDoubleClick: {
-                                        withAnimation(AppMotion.standardSpring) {
-                                            panelWidth = Double(MacDetailPanelMetrics.defaultWidth)
-                                        }
-                                    }
-                                )
-                                inlineDetailPanel
-                                    .frame(width: dragWidth ?? effectivePanelWidth)
-                            }
-                            .transition(.drawerReveal)
-                        }
-                    }
-                    .animation(AppMotion.standardSpring, value: detailState.hasDetail)
-                    .onGeometryChange(for: CGFloat.self) { geo in
-                        geo.size.width
-                    } action: { newWidth in
-                        containerWidth = newWidth
-                    }
-                    .onAppear { dragWidth = nil }
-                    .onChange(of: navigationPath) { _, path in
-                        if path.isEmpty { detailState.dismiss() }
-                    }
-                    .onChange(of: detailState.selectedEntry?.id) { _, entryID in
-                        if entryID == nil { isEditingDetailEntry = false }
-                    }
-                    .toastSheet(isPresented: Binding(
-                        get: { isEditingDetailEntry && detailState.selectedEntry != nil },
-                        set: { isEditingDetailEntry = $0 }
-                    )) {
-                        if let entry = detailState.selectedEntry {
-                            WordEditSheet(entry: entry)
-                        }
-                    }
-            } else {
-                content
-                    .toastSheet(item: Binding(
-                        get: { detailState.selectedEntry },
-                        set: { if $0 == nil { detailState.dismiss() } }
-                    )) { entry in
-                        WordDetailSheet(entry: entry, allEntries: detailState.contextEntries)
-                            .appSheet(.large)
-                    }
-                    .platformFullScreenCover(item: Binding(
-                        get: { detailState.activeReviewSession },
-                        set: { if $0 == nil { detailState.dismiss() } }
-                    )) { session in
-                        TodayReviewPhaseView(
-                            session: session,
-                            allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
-                            currentUserID: currentUserID,
-                            onClose: { detailState.dismiss() }
-                        )
-                        .toastOverlay()
-                    }
-            }
-        }
-        .onChange(of: layoutMode) { _, newMode in
-            if !newMode.usesInlineDetail {
-                detailState.dismiss()
-                isEditingDetailEntry = false
-            }
-        }
-    }
-
-    @ViewBuilder
-    private var inlineDetailPanel: some View {
-        if let session = detailState.activeReviewSession {
-            TodayReviewPhaseView(
-                session: session,
-                allEntries: detailState.contextEntries.isEmpty ? allEntries : detailState.contextEntries,
-                currentUserID: currentUserID,
-                onClose: { detailState.dismiss() }
-            )
-        } else if let entry = detailState.selectedEntry {
-            VStack(spacing: 0) {
-                VocabOverlayHeader(
-                    title: entry.word,
-                    systemImage: "character.book.closed",
-                    onClose: { detailState.dismiss() },
-                    trailing: {
-                        VocabChromeIconButton(
-                            systemImage: "pencil",
-                            label: "編輯".localized,
-                            action: { isEditingDetailEntry = true }
-                        )
-                    }
-                )
-                WordDetailSheet(
-                    entry: entry,
-                    allEntries: detailState.contextEntries,
-                    wrapInNavigation: false,
-                    showsInlineChrome: false
-                )
-            }
-        }
-    }
-}
-
-// MARK: - NotebookHeaderPillLabel
-
-/// 統一的 Header pill 視覺規格 — 給 NotebookListView Today Review action bar
-/// 三 pill（CTA / filter / plus）共用,確保高度與 padding 完全一致,僅差別在「填色 + 長度」。
-/// 不含 Button — caller 自行用 Button / Menu 包裹,讓 Menu label 場景也能套用。
-/// 形狀：Capsule;高度 ≈ 27pt (約原 22pt × 1.2)。
-fileprivate struct NotebookHeaderPillLabel<Content: View>: View {
-    let fillColor: Color
-    let foregroundColor: Color
-    @ViewBuilder let content: Content
-
-    var body: some View {
-        content
-            .font(.system(size: 13, weight: .semibold))
-            .foregroundStyle(foregroundColor)
-            .padding(.horizontal, AppSpacing.s2 + 2)   // 10pt
-            .padding(.vertical, 7)
-            .frame(minWidth: 32)
-            .background(Capsule(style: .continuous).fill(fillColor))
-    }
-}
