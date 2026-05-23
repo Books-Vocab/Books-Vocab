@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+from typing import Final
+
 from pydantic import BaseModel, Field, field_validator
 
 
@@ -15,7 +17,7 @@ class NotebookResponse(BaseModel):
     updatedAt: str | None = None
 
 
-VALID_COVER_PATTERNS = {"dots", "lines", "grid", "waves", "circles", "noise"}
+VALID_COVER_PATTERNS: Final[frozenset[str]] = frozenset({"dots", "lines", "grid", "waves", "circles", "noise"})
 
 
 class NotebookCreateRequest(BaseModel):

@@ -16,7 +16,7 @@ from __future__ import annotations
 import logging
 import os
 from pathlib import Path
-from typing import Any
+from typing import Any, Final
 
 _logger = logging.getLogger(__name__)
 _initialized = False
@@ -31,8 +31,8 @@ _sentry_module: Any | None = None
 _DEFAULT_VERSION_FILE = Path("/app/VERSION")
 
 # Query/header/cookie keys whose values must never reach Sentry.
-_SCRUB_HEADER_KEYS = {"authorization", "cookie", "x-admin-token"}
-_SCRUB_QUERY_KEYS = {"token", "admin_session", "code", "id_token", "access_token"}
+_SCRUB_HEADER_KEYS: Final[frozenset[str]] = frozenset({"authorization", "cookie", "x-admin-token"})
+_SCRUB_QUERY_KEYS: Final[frozenset[str]] = frozenset({"token", "admin_session", "code", "id_token", "access_token"})
 
 # Per-path APM sampling. Keep LLM-call hot paths observable (slow + costly),
 # drop pure-health endpoints, baseline everything else.
