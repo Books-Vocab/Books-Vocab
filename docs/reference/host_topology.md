@@ -23,6 +23,8 @@ verified_against: 6067f0c
 | Claude Gateway | `lab/claude-code-gateway` | `~/claude-code-gateway` | `wordnexus.lol/claude/*` | `8090` | `claude-code-gateway-api-1` |
 | Antigravity Proxy | `lab/antigravity-proxy` | `~/antigravity-proxy` | `wordnexus.lol/ag/*` | `3000` | `antigravity-proxy-proxy-1` |
 
+> `<CADDY_AG_TOKEN>` 取得方式詳見 `docs/sop/antigravity-proxy.md`「運維注意」段（從 host `/etc/caddy/Caddyfile` 撈，不在 git）。
+
 ## Routing
 ```caddy
 wordnexus.lol {
