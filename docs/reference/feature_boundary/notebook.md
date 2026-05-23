@@ -21,7 +21,7 @@ verified_against: c02b5221
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/NotebookListView.swift` | ~600 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
+| `Scenes/NotebookListView.swift` | ~520 | 主場景 `struct NotebookListView: View`。**Unified LazyVStack book-row layout** — 所有 notebook 一律 full-width row(取消 hero/grid 分支)。**Inline pill cluster**(取代舊 banner + toolbar buttons):`今日複習` page section header + `VocabReviewCTAPill` + filter pill(`notebooks.count >= 2` 才顯示,觸發 `NotebookFilterPickerSheet`) + 新增 pill,全部在 ScrollView 內。Pill cluster 與 notebook list 間用 `AppAirDivider`(hairline + 32pt margin)分區,不再用整盒 border 切割(Mochi 北極星二)。**Toolbar 只剩** `[sort] [archive]`。 |
 | `Scenes/NotebookListCoordinator.swift` | 282 | `@Observable @MainActor final class NotebookListCoordinator`，導航 + sheet 狀態 + cover photo 編輯流程（含 `photoError` + `originalCoverImagePath` 延遲刪 + 取消還原） |
 | `Scenes/NotebookEditSheet.swift` | 279 | `struct NotebookEditSheet: View`，建立/編輯 notebook sheet（含 cover system 選色/選 pattern/匯入照片） |
 
@@ -35,6 +35,9 @@ verified_against: c02b5221
 | `Components/NotebookCoverPatterns.swift` | ~200 | 6 種 SwiftUI Canvas pattern 渲染(dots / lines / grid / waves / circles / noise)+ `NotebookCoverView`(頂層封面實體 view)。**新增 `showsName: Bool = true`** — gate 中央白字 name 渲染。5 處非 NotebookCard callsite(Bookshelf / Podcast / EditSheet / StackedCoverView / #Preview)default true zero-touch。pattern stroke/fill opacity 統一引 `NotebookStackMetrics.patternOpacity`。 |
 | `Components/NotebookPalette.swift` | ~55 | 12 色 Morandi 色票 + `color(for:)` + **新增 `darken(_:by:)` HSB helper**(brightness ×(1-amount),hue/sat 保留;cover hairline rule / D3 spine / dark mode cover 用)。 |
 | `Components/NotebookFilterChip.swift` | 123 | filter chip：全部 / 有待複習 / 已學完 / 自訂排序 |
+| `Components/NotebookStatsCalculator.swift` | 64 | `struct NotebookStats` + `enum NotebookStatsCalculator { static compute, static filtered }`。Pure 聚合與篩選邏輯，從 NotebookListView 抽出後可獨立 unit test（覆蓋 due/unlearned/reviewed/pending/lastActivity 分支）。`NotebookSortOption.sort(stats:)` 唯一外部 caller。 |
+| `Components/NotebookDetailPresentation.swift` | 141 | `struct NotebookDetailPresentation: ViewModifier`，NotebookListView 唯一的 detail/review 呈現分支（inline panel for iPad/Mac vs sheet+fullScreenCover for iPhone）。持 `@AppStorage("kg_detail_panel_width")` 與可拖拉 divider。 |
+| `Components/NotebookHeaderPillLabel.swift` | 26 | `struct NotebookHeaderPillLabel<Content>: View`，Today Review action bar 三 pill（CTA/filter/plus）共用的視覺規格（Capsule，~27pt 高）。 |
 
 ---
 
@@ -46,6 +49,7 @@ verified_against: c02b5221
 - **新增建立/編輯欄位** → `NotebookEditSheet` 表單；驗證邏輯走 coordinator
 - **新增 notebook 操作（archive / share / export）** → `NotebookCardActions` context menu + `NotebookListCoordinator` 加 action handler
 - **新增 filter / sort** → `NotebookFilterChip` 擴 enum；資料層走 SwiftData `@Query` predicate
+- **改動 notebook 統計／篩選邏輯** → `NotebookStatsCalculator`（pure，加 unit test 於 `NotebookStatsCalculatorTests.swift`）；改 sort comparator 走 `NotebookSortOption.sort(stats:)`
 - **改動 notebook 與卡片的綁定關係** → 涉及 `resolveNotebookId` chokepoint / `sanitizeOutbox` / `triggerPipelinesIsolated`，動之前讀 `docs/sop/architecture.md` §Notebook 同步 + `docs/reference/sync_lifecycle.md`
 
 ## State 邊界
