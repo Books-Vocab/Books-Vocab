@@ -70,7 +70,7 @@ final class PodcastDownloadManager: NSObject {
             let urlStr = episode.audioURL,
             let url = URL(string: urlStr)
         else {
-            failed[episode.remoteId] = "無音訊 URL"
+            failed[episode.remoteId] = L10n.string("無音訊 URL")
             return
         }
         if remoteIdToTask[episode.remoteId] != nil { return }
@@ -97,9 +97,9 @@ final class PodcastDownloadManager: NSObject {
         let url = URL(fileURLWithPath: path)
         try? FileManager.default.removeItem(at: url)
         episode.localAudioPath = nil
-        if let container = modelContainer {
-            try? ModelContext(container).save()
-        }
+        // Save on the episode's own context so the mutation persists —
+        // creating a fresh ModelContext wouldn't see this object's edits.
+        try? episode.modelContext?.save()
     }
 
     static func downloadsRoot() -> URL {
@@ -162,8 +162,18 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
         didCompleteWithError error: Error?
     ) {
         guard let error else { return }
+        let nsErr = error as NSError
         let taskId = task.taskIdentifier
-        let message = (error as NSError).localizedDescription
+        // User-initiated cancel surfaces here as NSURLErrorCancelled;
+        // treat as clean cleanup, not a failure the UI should announce.
+        if nsErr.code == NSURLErrorCancelled {
+            Task { @MainActor in
+                guard let remoteId = self.taskToRemoteId[taskId] else { return }
+                self.cleanup(taskId: taskId, remoteId: remoteId)
+            }
+            return
+        }
+        let message = nsErr.localizedDescription
         Task { @MainActor in
             self.markFailed(taskId: taskId, message: message)
         }
@@ -178,7 +188,10 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
             try? FileManager.default.removeItem(at: stash)
             return
         }
-        let context = ModelContext(container)
+        // Reuse mainContext so @Query observers pick up the localAudioPath
+        // write immediately without waiting for SwiftData's cross-context
+        // notification round-trip.
+        let context = container.mainContext
         let descriptor = FetchDescriptor<PodcastEpisode>(
             predicate: #Predicate { $0.remoteId == remoteId }
         )
@@ -198,6 +211,9 @@ extension PodcastDownloadManager: URLSessionDownloadDelegate {
             try context.save()
             cleanup(taskId: taskId, remoteId: remoteId)
         } catch {
+            // moveItem failed → stash still on disk; clear it so it doesn't
+            // accumulate across retries.
+            try? FileManager.default.removeItem(at: stash)
             failed[remoteId] = error.localizedDescription
             cleanup(taskId: taskId, remoteId: remoteId)
         }

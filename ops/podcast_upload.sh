@@ -147,11 +147,16 @@ for m in re.finditer(
     # (saves one auth'd round-trip per episode load). The standalone
     # subtitle.srt file is still uploaded for legacy clients and as the
     # source of truth — metadata.json is the cache, not the canonical store.
+    # Read errors (permission / decode) fall back to None instead of
+    # aborting the whole upload — a single bad SRT shouldn't block the rest.
     subtitle_path = os.path.join(ep_dir, "subtitle.srt")
     subtitle_content = None
     if os.path.isfile(subtitle_path):
-        with open(subtitle_path, "r", encoding="utf-8") as srt_f:
-            subtitle_content = srt_f.read()
+        try:
+            with open(subtitle_path, "r", encoding="utf-8") as srt_f:
+                subtitle_content = srt_f.read()
+        except (OSError, UnicodeDecodeError) as exc:
+            print(f"⚠ ep_{ep_num}: subtitle read failed ({exc}); inline skipped")
 
     episodes.append({
         "episodeNumber": ep_num,
