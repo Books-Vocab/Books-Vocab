@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: f63ace78
+verified_against: c02b5221
 -->
 # UI State Matrix
 
@@ -248,45 +248,47 @@ Preview matrix 已補齊：
 
 ---
 
-## Notebook Stacked Cover (`NotebookStackedCoverView` / `NotebookCard.grid`)
+## Notebook Card (HStack book-row, `NotebookCard`)
 
 主要檔案：
-- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift`
-- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackMetrics.swift`
 - `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift`
+- `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCoverPatterns.swift`
 
-### Stack Depth
-
-| State | 觸發條件 | 視覺 |
-|------|---------|------|
-| 空本 | `cardCount == 0` | 單張平面卡（`layerCount=1`），無下層 ghost |
-| 薄堆 | `1...50` | 2 層（1 ghost + 1 頂層） |
-| 中堆 | `51...200` | 3 層 |
-| 厚堆 | `200+` | 4 層（上限） |
+> Book-row redesign 後 `NotebookCard` 不再用 `NotebookStackedCoverView`(該 view 改由 Bookshelf / Podcast / EditSheet preview 維持);stack depth / rotation / deck press 行為僅在那些 surface 生效。
 
 ### Variants
 
 | State | 觸發條件 | 視覺 |
 |------|---------|------|
-| 使用中(grid) | `isActive == true` && `.grid` | **D3** cover 左側 3pt vertical spine(色 `NotebookPalette.darken(coverColor, by: 0.4)`),在 `EditorialCoverComposition` ZStack 內、跟 cover 一起 rotation。**取代舊「使用中」accent-blue capsule pill**(已移除)。Hero 不渲染 spine(單本即 active 冗餘)。 |
-| 有待複習 | `dueCount > 0` | metadata row 顯示「N 到期」chip(`palette.warning`);`dueCount == 0` 時 invisible placeholder 撐高保 grid 同高 |
-| Pending sync | `pendingCount > 0` | 頂部 TipView(`SyncPendingTip`)出現,**卡片底部不再重複顯示 chip**(D2 移除) |
-| 自訂照片封面 | `coverImagePath != nil` | 頂層 image fill,下層 ghost 仍 cream paper(不混照片) |
-| Editorial rotation | grid + layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic(`stableSeed(for: data.name)` djb2 → `seedJitter`),anchor `.bottom`;同一本跨 launch 同角度 |
-| Editorial cover composition | `.grid` and `.hero` | **D1** `.overlay(EditorialCoverComposition)` 套在既有 cover 上:serif name 左上 + hairline rule(寬 cover×0.25)+ `N 詞` 右下(cardCount > 0)+ spine(D3, grid+active);跟著 coverArea rotation 一起旋轉 |
-| Editorial divider | `.grid` style | cover 與 metadata 之間 1pt `cardBorder` hairline rule(維持) |
+| 使用中 | `isActive == true` | cover 左欄 name 旁 5pt 圓點(`NotebookPalette.darken(cover, by: 0.5)`),取代舊 3pt spine / 「使用中」pill |
+| 有待複習 | `dueCount > 0` | metadata 右欄 `N 詞` row 後接 5pt warning 圓點 + count;`dueCount == 0` 時不顯示 |
+| 空 notebook | `cardCount == 0` | metadata 改顯示「尚未加入單字」placeholder,**不**渲染 `N 詞` / ProgressCapsule |
+| 一般狀態 | `cardCount > 0` | metadata 顯示 `N 詞` monoLabel + ProgressCapsule(4pt, fillColor=coverColor) |
+| Pending sync | `pendingCount > 0` | 頂部 TipView(`SyncPendingTip`),卡片內不顯示 chip |
+| 自訂照片封面 | `coverImagePath != nil` | cover 左欄底層改用 image fill,仍套 noise pattern + name overlay |
+| Editorial rule | always | cover 內 1pt rule(寬 cover×0.3,色 darken 0.5);cover/metadata 間 0.5pt 垂直 cardBorder rule |
 
 ### Theme / Press / a11y
 
 | State | 觸發條件 | 行為 |
 |------|---------|------|
-| Light mode | `colorScheme == .light` | ghost = `paperLight` / `paperSepia` / `paperSepiaDeep` cream 三階;cover 套 Morandi palette 12 色之一;`primaryText #37352F` 對全 12 色 ≥ AA 7:1(`NotebookCoverContrastTests` 鎖) |
-| Dark mode | `colorScheme == .dark` | ghost 同 cream 三階(dark variant pending design);`AppElevationModifier` shadow ×1.8;**`NotebookCard.coverColor` 自動套 `NotebookPalette.darken(_, by: 0.2)`** 使 `primaryText #E6E6E3` 對 cover ≥ AA 4.5:1(test 鎖) |
-| Resting | `isPressed == false` | 頂層 z2 / ghost z1，無 offset |
-| Pressed | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97；ghost 每深一層額外下沉 1pt；haptic `.selection` 觸發一次。**Rotation 不參與 press 動畫**（靜態 layout） |
-| Release | `isPressed` true→false | 走 `AppMotion.cardDeckRelease` spring 回彈 |
-| Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale；保留 opacity dip + haptic + push transition；**rotation 保留**（屬 layout 非 motion，mount 後不再變動） |
-| Dynamic Type `.accessibility3` | a11y size | metadata truncate，stack 幾何不縮放 |
+| Light mode | `colorScheme == .light` | cover 套 Morandi palette 12 色;`primaryText #37352F` 對全 12 色 ≥ AA 7:1(`NotebookCoverContrastTests` 鎖) |
+| Dark mode | `colorScheme == .dark` | `NotebookCard.coverColor` 自動套 `NotebookPalette.darken(_, by: 0.2)` 使 `primaryText #E6E6E3` 對 cover ≥ AA 4.5:1(test 鎖) |
+| Press | `NavigationLink` + `.buttonStyle(.plain)` | 無 deck press 動畫(`NotebookDeckButtonStyle` 不適用於 row)、無 offset/scale;按壓由 SwiftUI default highlight + nav push 提供 |
+| Dynamic Type `.accessibility3` | a11y size | metadata truncate,row 高度固定 72pt 不縮放 |
 
-整 stack 為單一 a11y element（`children: .ignore` + label = `name + cardCount + 狀態`），ghost 各自 `.accessibilityHidden(true)`。
+整 row 為單一 a11y element(`children: .ignore` + label = `name + cardCount + 狀態`)。
+
+### Legacy stack(`NotebookStackedCoverView`,Bookshelf / Podcast / EditSheet preview 仍用)
+
+| State | 觸發條件 | 視覺 |
+|------|---------|------|
+| 空本 | `cardCount == 0` | 單張平面卡(`layerCount=1`),無下層 ghost |
+| 薄堆 | `1...50` | 2 層(1 ghost + 1 頂層) |
+| 中堆 | `51...200` | 3 層 |
+| 厚堆 | `200+` | 4 層(上限) |
+| Editorial rotation | layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic(`stableSeed(for: data.name)` djb2 → `seedJitter`),anchor `.bottom`;跨 launch 同角度 |
+| Press(此 surface) | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97;ghost 每深一層額外下沉 1pt;haptic `.selection`。Rotation 不參與 press 動畫 |
+| Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale;保留 opacity dip + haptic + push transition;rotation 保留 |
 
