@@ -1,4 +1,5 @@
 import SwiftUI
+import Inject
 
 /// 跨平台可拖曳分隔線 — macOS/iPad regular size class 共用。
 /// 8pt 透明 hit area，中間 1pt 視覺線，拖曳時加亮。
@@ -81,7 +82,6 @@ struct DraggableDivider: View {
 // MARK: - macOS Cursor
 
 #if os(macOS)
-import Inject
 import AppKit
 
 private struct CursorModifier: ViewModifier {
