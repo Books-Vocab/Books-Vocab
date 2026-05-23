@@ -19,6 +19,69 @@ Notebooks 列表頁的「立體堆卡」首版（PR #571 / #573）視覺仍偏�
 4. Press 互動維持既有物理（top 抽出 + ghost 微下沉），**不**加 rotation 動畫
 5. 0 字 notebook 平面單卡也吸收同套 editorial 細節（hairline、cover↔metadata rule）
 
+## Morandi Palette Swap（同 PR）
+
+現有 `NotebookPalette.colors` 12 色（森林 #5B8C5A / 海洋 #4A90D9 / ...）為中高飽和，與 cream ghost 並列會產生「彩色封面 + 米白內頁」的撕裂感。本 spec 同步把 palette 替換為 Morandi 低飽和色卡（HSB sat 13-30% / bright 67-86%），與 cream ghost 收進同一視覺族群。
+
+### 最終 hex（已與使用者對齊 — 比初版 Morandi 亮一階「Clearly Brighter」）
+
+| 中文名 | EN | 新 hex | 舊 hex |
+|---|---|---|---|
+| 森林 | Sage | `#B1C5AE` | `#5B8C5A` |
+| 海洋 | Dusty Blue | `#AFC2D3` | `#4A90D9` |
+| 琥珀 | Sand | `#DEC69C` | `#D4A843` |
+| 紫藤 | Dusty Mauve | `#C5B2D0` | `#A855C7` |
+| 珊瑚 | Terra Rose | `#DCABA4` | `#D9534F` |
+| 石墨 | Warm Stone | `#AFB2B7` | `#6B7280` |
+| 薄荷 | Dusty Mint | `#B7D2C9` | `#5CC6B0` |
+| 靛藍 | Dusty Indigo | `#ADABCB` | `#4F46E5` |
+| 玫瑰 | Dusty Rose | `#DEBAC2` | `#E8789A` |
+| 焦糖 | Dusty Caramel | `#D2B69D` | `#B8763E` |
+| 天空 | Dusty Sky | `#C5DAE2` | `#7CB9E8` |
+| 薰衣草 | Dusty Lavender | `#C3BCCF` | `#9B8EC4` |
+
+### Migration 策略：auto swap
+
+老 notebook DB 存的是 hex 字串，不是 token name。需在 `NotebookPalette.color(for:)` 加 hex 轉換 map：
+
+```swift
+private static let legacyMigration: [String: String] = [
+    "#5B8C5A": "#B1C5AE",  // 森林
+    "#4A90D9": "#AFC2D3",  // 海洋
+    "#D4A843": "#DEC69C",  // 琥珀
+    "#A855C7": "#C5B2D0",  // 紫藤
+    "#D9534F": "#DCABA4",  // 珊瑚
+    "#6B7280": "#AFB2B7",  // 石墨
+    "#5CC6B0": "#B7D2C9",  // 薄荷
+    "#4F46E5": "#ADABCB",  // 靛藍
+    "#E8789A": "#DEBAC2",  // 玫瑰
+    "#B8763E": "#D2B69D",  // 焦糖
+    "#7CB9E8": "#C5DAE2",  // 天空
+    "#9B8EC4": "#C3BCCF",  // 薰衣草
+]
+
+static func color(for hex: String?) -> Color {
+    guard let raw = hex else { return Color(hex: defaultHex) ?? .blue }
+    let normalized = raw.uppercased()
+    let mapped = legacyMigration[normalized] ?? raw
+    return Color(hex: mapped) ?? Color(hex: defaultHex) ?? .blue
+}
+```
+
+- 不寫 DB，純 render-time 替換（讀 DB 老 hex → render 新 hex）
+- 後續 user 改 cover 時，UI 寫回 DB 自然會是新 hex
+- 零感知 migration、無風險
+
+### 影響範圍
+
+- `NotebookPalette.swift` — hex 表 + legacy migration
+- `NotebookEditSheet` color picker — 自動拿新 hex，layout 不變（12 色仍 3×4 / 4×3 grid）
+- `BookshelfView` / `PodcastEpisodeListView` — 若 reference NotebookPalette 也自動切（grep 確認用法）
+
+### 新名（advisory）
+
+中文名是否同步改為 EN？目前 picker UI 顯示中文（如「森林」），EN 英文 metadata 在 spec / code comment 用、UI 顯示維持中文不動。**無 i18n_lint 風險**（既有資料字串、非 `Text("...")` raw 中文）。
+
 ## Non-Goals
 
 - 不改 layer count 規則（仍 0→1 / 1-50→2 / 51-200→3 / 200+→4）

@@ -4,7 +4,7 @@
 > **Spec:** `docs/specs/2026-05-23-notebook-editorial-stack-design.md`
 > **Branch:** `refine-notebook-deck-aesthetics`
 
-**Goal:** 把 Notebook 立體堆卡從「同色 darken 階梯」升級為「彩色封面 + cream 紙頁」editorial 視覺，加入 deterministic 微旋轉 + edge jitter 帶入手感。
+**Goal:** 把 Notebook 立體堆卡從「同色 darken 階梯」升級為「Morandi 彩色封面 + cream 紙頁」editorial 視覺，加入 deterministic 微旋轉 + edge jitter 帶入手感。同步把 `NotebookPalette` 12 色 swap 為 Morandi "Clearly Brighter" 色卡，並對老 notebook hex 做 render-time legacy migration。
 
 **Architecture:**
 - Token 層：`NotebookStackMetrics` 新增 `ghostPaperColor` / `seedJitter` / rotation tables；deprecate `deckColor` (brightness-based)
@@ -18,6 +18,59 @@
 
 ---
 
+## Task 0: Morandi palette swap + legacy migration
+
+**Files:**
+- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookPalette.swift`
+
+- [ ] **Step 1: 替換 12 色 hex（中文名稱不變）**
+```swift
+static let colors: [(name: String, hex: String)] = [
+    ("森林", "#B1C5AE"), ("海洋", "#AFC2D3"),
+    ("琥珀", "#DEC69C"), ("紫藤", "#C5B2D0"),
+    ("珊瑚", "#DCABA4"), ("石墨", "#AFB2B7"),
+    ("薄荷", "#B7D2C9"), ("靛藍", "#ADABCB"),
+    ("玫瑰", "#DEBAC2"), ("焦糖", "#D2B69D"),
+    ("天空", "#C5DAE2"), ("薰衣草", "#C3BCCF"),
+]
+
+static let defaultHex = "#AFC2D3"  // 海洋 Dusty Blue → 新 default
+```
+
+- [ ] **Step 2: 加 legacy migration map + 改 color(for:) 套用**
+```swift
+private static let legacyMigration: [String: String] = [
+    "#5B8C5A": "#B1C5AE", "#4A90D9": "#AFC2D3",
+    "#D4A843": "#DEC69C", "#A855C7": "#C5B2D0",
+    "#D9534F": "#DCABA4", "#6B7280": "#AFB2B7",
+    "#5CC6B0": "#B7D2C9", "#4F46E5": "#ADABCB",
+    "#E8789A": "#DEBAC2", "#B8763E": "#D2B69D",
+    "#7CB9E8": "#C5DAE2", "#9B8EC4": "#C3BCCF",
+]
+
+static func color(for hex: String?) -> Color {
+    guard let raw = hex else { return Color(hex: defaultHex) ?? .blue }
+    let mapped = legacyMigration[raw.uppercased()] ?? raw
+    return Color(hex: mapped) ?? Color(hex: defaultHex) ?? .blue
+}
+```
+注意：DB 不寫回老 hex，純 render-time 替換。User 下次改 cover、UI 會寫新 hex。
+
+- [ ] **Step 3: grep 其他 callsite 確認無破壞**
+```bash
+grep -rn "NotebookPalette\|#5B8C5A\|#4A90D9\|#D4A843" ios/BooksBrowser --include="*.swift"
+```
+預期：`NotebookEditSheet` / `BookshelfView` / `PodcastEpisodeListView` / `NotebookCard` 只 reference `NotebookPalette.colors` 或 `.color(for:)`，無 hardcoded 舊 hex。**若有 hardcoded 同步更新**。
+
+- [ ] **Step 4: 編譯**
+Run: `./ops/ios_build.sh`
+Expected: success
+
+- [ ] **Step 5: Commit**
+`feat(ios): notebook palette → morandi clearly-brighter + legacy hex migration`
+
+---
+
 ## Task 1: NotebookStackMetrics token surface
 
 **Files:**
@@ -28,7 +81,7 @@
 ```swift
 /// Ghost cream 紙頁三階 — index = depth (1/2/3)
 static func ghostPaperColor(depth: Int, scheme: ColorScheme) -> Color {
-    // depth 0 = cover（不呼叫此函式）
+    _ = scheme  // dark variant 待下輪 design；保留參數簽名以利之後 swap-in，silence unused warning
     switch depth {
     case 1:  return AppColors.paperLight
     case 2:  return AppColors.paperSepia
@@ -183,30 +236,20 @@ NotebookStackedCoverView(
 ```
 
 - [ ] **Step 2: Pill 隨 cover rotation 一起轉**
-Spec 已決定：rotation 應用於整個 coverArea（含 pill overlay）— 但**目前 rotation 已套在 `NotebookStackedCoverView` 內部 top layer**。pill 在外層 `.overlay(alignment: .topTrailing)`，**會跟著轉嗎？不會。**
 
-修法：把 pill 從 `coverArea` 的外層 overlay 移到 `NotebookStackedCoverView` 內部頂層 cover 的 overlay（與 rotation 同層）。新增 view 參數 `topRightBadge: AnyView?` 或 closure parameter：
-```swift
-struct NotebookStackedCoverView<Badge: View>: View {
-    // ...
-    @ViewBuilder let topRightBadge: () -> Badge
-}
-```
-NotebookCard 傳：
-```swift
-NotebookStackedCoverView(...) {
-    if showsActivePill { /* pill view */ } else { EmptyView() }
-}
-```
-**或更簡單**：rotation 不套 stacked cover 內部，把 rotation 上提到 `coverArea` 的外層（包 pill overlay 一起）。**選後者** — view API 不變、改動最小。
+**修正 Task 2 Step 3**：top cover 內部不套 rotation（從 Task 2 Step 3 移除該 `.rotationEffect`）。
 
-實作：
-- Task 2 中 top cover 的 `.rotationEffect(...)` 移除
-- 改在 `NotebookCard.coverArea` 結尾加：
+理由：pill overlay 在 `NotebookCard.coverArea` 外層，rotation 套在 cover 內部 pill 不會跟著轉，會脫離卡片邊界。
+
+落地：rotation 上提到 `coverArea` 結尾，包 pill overlay 一起：
 ```swift
-.rotationEffect(.degrees(NotebookStackMetrics.seedJitter(seed: data.name.hashValue, depth: 0).angle), anchor: .bottom)
+// NotebookCard.coverArea 結尾（pill overlay 之後）
+.rotationEffect(
+    .degrees(NotebookStackMetrics.seedJitter(seed: data.name.hashValue, depth: 0).angle),
+    anchor: .bottom
+)
 ```
-這樣 pill overlay 與 cover 同一個 rotation transform，一起轉。
+view API 不變、ghost 內部 rotation 仍各自獨立。
 
 - [ ] **Step 3: Cover↔metadata hairline rule**
 `body` 內：
@@ -238,6 +281,12 @@ Expected: success
 
 **Files:**
 - Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookCard.swift`（同檔下半段）
+
+- [ ] **Step 0: 確認 "新增單字本" L10n key 已存在**
+```bash
+grep -rn "新增單字本" ios/BooksBrowser/Resources/
+```
+應 hit `Localizable.strings`。若 miss → 加 key 或改用既有等價 key。避免 `i18n_lint.sh` failure。
 
 - [ ] **Step 1: 重寫 body**
 ```swift
@@ -278,20 +327,7 @@ Expected: success
 
 ---
 
-## Task 5: 0 字平面單卡 editorial 細節
-
-**Files:**
-- Modify: `ios/BooksBrowser/Views/Vocabulary/Components/NotebookStackedCoverView.swift`
-
-`layerCount == 1` 時 `ghostDepths` 為空 array，邏輯天然支援 — 但 top cover hairline + cover↔metadata rule 已在 Task 2/3 套上，自動繼承。無新動作，記得 Task 7 驗證時確認 0 字本視覺正確。
-
-- [ ] **Step 1（驗證）:** 在 `NotebookListScenarios` 加 0 字 case（若未有），跑 preview 確認單卡 hairline + rule 都在。
-- [ ] **Step 2: Commit**（如有 scenarios 改動）
-`test(ios): notebook scenarios — 0 字本 editorial 視覺 case`
-
----
-
-## Task 6: Scenarios + token cleanup
+## Task 5: Scenarios + token cleanup
 
 **Files:**
 - Modify: `ios/BooksBrowser/Debug/Scenarios/NotebookListScenarios.swift`
@@ -327,7 +363,7 @@ Expected: success
 
 ---
 
-## Task 7: 模擬器手動驗證 + Doc 同步
+## Task 6: 模擬器手動驗證 + Doc 同步
 
 **Files:**
 - Modify: `docs/sop/ui-design.md`
