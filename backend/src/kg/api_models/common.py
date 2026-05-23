@@ -2,9 +2,9 @@ from __future__ import annotations
 
 import re
 import unicodedata
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel
+from pydantic import AfterValidator, BaseModel
 
 
 def _normalize_context(v: str) -> str:
@@ -18,8 +18,23 @@ def _normalize_context(v: str) -> str:
     return v.strip()
 
 
+def _validate_http_url(value: str) -> str:
+    """Defense-in-depth: reject non-http(s) schemes on VocabSource.url.
+
+    Blocks javascript:, data:, file:, ftp:, etc. to neutralize XSS payloads
+    that could otherwise reach chrome-extension UI rendering url verbatim.
+    Pure validator (no normalization) to preserve round-trip equality.
+    """
+    if not value:
+        return value
+    lower = value.lower()
+    if not (lower.startswith("http://") or lower.startswith("https://")):
+        raise ValueError("VocabSource.url must use http or https scheme")
+    return value
+
+
 class VocabSource(BaseModel):
     type: Literal["book", "web"]
     title: str | None = None
-    url: str | None = None       # web only
+    url: Annotated[str, AfterValidator(_validate_http_url)] | None = None  # web only
     chapter: str | None = None   # book only
