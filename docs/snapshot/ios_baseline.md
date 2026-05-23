@@ -4,7 +4,7 @@ authority: derived
 update_trigger: machine-generated
 scope:
   - ios/BooksBrowser
-verified_against: a706c53
+verified_against: c642ed18
 -->
 
 # iOS Frontend Baseline
@@ -17,18 +17,18 @@ verified_against: a706c53
 
 | 行數 | 路徑 |
 |------|------|
-| 722 | `Views/Bookshelf/BookshelfView.swift` |
-| 606 | `Models/AppSkin.swift` |
 | 602 | `Views/Reader/ReadiumNavigatorJS.swift` |
-| 601 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
-| 566 | `BooksBrowserApp.swift` |
-| 551 | `Services/KGService.swift` |
-| 538 | `Services/PodcastAudioEngine.swift` |
-| 530 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
-| 527 | `Views/Podcast/PodcastPlayerView.swift` |
-| 524 | `Services/EPUBConverter.swift` |
+| 591 | `Services/PodcastAudioEngine.swift` |
+| 560 | `Views/Podcast/PodcastPlayerView.swift` |
+| 533 | `Views/Vocabulary/Scenes/StatsPresenter.swift` |
+| 523 | `Services/EPUBConverter.swift` |
+| 518 | `Views/Vocabulary/Scenes/NotebookListView.swift` |
+| 502 | `Views/Vocabulary/Components/CardDocumentView.swift` |
+| 455 | `Views/Settings/SubscriptionPaywallSheet.swift` |
+| 447 | `Views/Settings/SettingsPresenter+Actions.swift` |
+| 442 | `Services/DemoDataProvider.swift` |
 
-總 Swift 行數: 45523 / 284 檔案
+總 Swift 行數: 47280 / 304 檔案
 
 ---
 
@@ -36,8 +36,8 @@ verified_against: a706c53
 
 | 範圍 | 數量 |
 |------|------|
-| Views/ + UIComponents/ 檔案總數 | 187 |
-| 含 #Preview 的檔案數 | 46 |
+| Views/ + UIComponents/ 檔案總數 | 194 |
+| 含 #Preview 的檔案數 | 45 |
 
 ---
 
@@ -45,5 +45,5 @@ verified_against: a706c53
 
 | 標記 | 出現次數 |
 |------|------|
-| @MainActor | 109 |
+| @MainActor | 122 |
 | async func | 0 |
