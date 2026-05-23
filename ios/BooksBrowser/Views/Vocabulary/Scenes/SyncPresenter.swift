@@ -156,7 +156,7 @@ struct SyncPresenter: View {
                 }
             }
             .padding(.horizontal, appSkin.metrics.listRowHorizontalInset)
-            .padding(.vertical, appSkin.metrics.reviewTopBarBottomInset)
+            .padding(.vertical, TodayReviewMetrics.topBarBottomInset)
             .animation(AppMotion.standardSpring, value: state.steps.map(\.id))
         }
     }

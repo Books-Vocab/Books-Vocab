@@ -15,7 +15,7 @@ struct CardDocumentView: View {
     var onDeleteCollocationExplanation: ((String) -> Void)? = nil
 
     private var blockPadding: CGFloat { compact ? 0 : appSkin.metrics.cardBlockPadding }
-    private var blockSpacing: CGFloat { compact ? appSkin.metrics.reviewFoldSectionSpacing : 0 }
+    private var blockSpacing: CGFloat { compact ? TodayReviewMetrics.foldSectionSpacing : 0 }
 
     var body: some View {
         VStack(alignment: .leading, spacing: blockSpacing) {
