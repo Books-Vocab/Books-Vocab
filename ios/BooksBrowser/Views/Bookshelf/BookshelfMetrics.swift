@@ -7,7 +7,6 @@ enum AppBookshelfMetrics {
     static let coverHeightRegular: CGFloat = 260
     static let coverCornerRadius: CGFloat = 10
     static let progressBarHeight: CGFloat = 4
-    static let progressBarAccentOpacity: Double = 0.55
     static let progressBarSpacing: CGFloat = 6
     static let loadingOverlayPadding: CGFloat = 28
     static let loadingProgressWidth: CGFloat = 180

@@ -59,6 +59,13 @@ fi
 # We anchor on the opening API call to reduce false positives.
 RAW_CHINESE_PATTERN='(Text|Button|Label|Section|Toggle|Picker|Menu|TextField)\("[^"]*[\x{4e00}-\x{9fff}]|\.navigationTitle\("[^"]*[\x{4e00}-\x{9fff}]|Text\(verbatim:\s*"[^"]*[\x{4e00}-\x{9fff}]|\.alert\("[^"]*[\x{4e00}-\x{9fff}]|\.confirmationDialog\("[^"]*[\x{4e00}-\x{9fff}]|\.accessibilityHint\("[^"]*[\x{4e00}-\x{9fff}]'
 
+# Raw Chinese returned from a function / computed property — catches the
+# enum-label-getter blind spot (e.g. `var label: String { case .x: return "中" }`).
+# These reach UI via variable references (`Text(option.label)`) which
+# RAW_CHINESE_PATTERN cannot statically see.
+# Filtered by filter_results (drops L10n. / .localized / i18n-allow lines).
+RAW_RETURN_CHINESE_PATTERN='\breturn\s+"[^"]*[\x{4e00}-\x{9fff}]'
+
 STATIC_FORMATTER_PATTERN='static\s+let\s+\w+.*(DateFormatter|RelativeDateTimeFormatter|NumberFormatter)'
 
 EXCLUDE_GLOBS=(
@@ -127,6 +134,34 @@ filter_locale_neutral_files() {
       if (seen[file] == 0) print $0
     }
   '
+}
+
+scan_raw_return_chinese() {
+  # Mirror of scan_raw_chinese but for `return "中..."` lines.
+  # Same preview-strip + L10n / .localized / i18n-allow filtering applies.
+  local files file stripped hits
+  files=$(rg --files --type swift "${EXCLUDE_GLOBS[@]}" "$IOS_SRC" 2>/dev/null || true)
+  if [ -z "$files" ]; then
+    return 0
+  fi
+  hits=""
+  while IFS= read -r file; do
+    [ -z "$file" ] && continue
+    stripped=$(python3 "$STRIP_PREVIEWS" "$file" 2>/dev/null) || continue
+    local file_hits
+    file_hits=$(printf '%s\n' "$stripped" \
+      | rg --no-heading -n --pcre2 "$RAW_RETURN_CHINESE_PATTERN" 2>/dev/null \
+      | sed "s|^|$file:|" || true)
+    if [ -n "$file_hits" ]; then
+      if [ -z "$hits" ]; then
+        hits="$file_hits"
+      else
+        hits="$hits
+$file_hits"
+      fi
+    fi
+  done <<< "$files"
+  printf '%s' "$hits" | filter_results || true
 }
 
 scan_static_formatter() {
@@ -296,13 +331,15 @@ PY
 # ---- main -------------------------------------------------------------------
 
 raw_hits="$(scan_raw_chinese)"
+ret_hits="$(scan_raw_return_chinese)"
 fmt_hits="$(scan_static_formatter)"
 xc_hits="$(scan_xcstrings_needs_review)"
 
 raw_count=$(printf '%s' "$raw_hits" | grep -c . || true)
+ret_count=$(printf '%s' "$ret_hits" | grep -c . || true)
 fmt_count=$(printf '%s' "$fmt_hits" | grep -c . || true)
 xc_count=$(printf '%s' "$xc_hits"  | grep -c . || true)
-total=$((raw_count + fmt_count + xc_count))
+total=$((raw_count + ret_count + fmt_count + xc_count))
 
 # Strict-only extras — computed lazily; counts default to 0 in non-strict modes.
 missing_key_hits=""
@@ -316,6 +353,11 @@ print_findings() {
   if [ -n "$raw_hits" ]; then
     echo "=== Raw Chinese literals ($raw_count) ==="
     printf '%s\n' "$raw_hits"
+    echo
+  fi
+  if [ -n "$ret_hits" ]; then
+    echo "=== Raw Chinese in return statements ($ret_count) ==="
+    printf '%s\n' "$ret_hits"
     echo
   fi
   if [ -n "$fmt_hits" ]; then
@@ -343,7 +385,7 @@ print_findings() {
     printf '%s\n' "$plural_missing_hits"
     echo
   fi
-  echo "[i18n_lint] total: $total (raw=$raw_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count)"
+  echo "[i18n_lint] total: $total (raw=$raw_count return=$ret_count fmt=$fmt_count xcstrings=$xc_count missing_keys=$missing_key_count en_cjk=$en_cjk_count plural=$plural_missing_count)"
 }
 
 case "$MODE" in

@@ -75,6 +75,9 @@ private struct CardDocumentHeroBlock: View {
                     HStack(alignment: .firstTextBaseline, spacing: appSkin.spacing.heroBaselineGap) {
                         Text(hero.word)
                             .font(appSkin.typography.detailWord)
+                            // Mochi H2 letter-spacing -0.024em → 27pt 上 ≈ -0.65pt。
+                            // 走 `AppFonts.Tracking.h2Tight` token，不寫 magic number。
+                            .tracking(AppFonts.Tracking.h2Tight)
                             .foregroundStyle(appSkin.palette.primaryText)
                             .minimumScaleFactor(0.85)
 
@@ -183,6 +186,8 @@ private struct CardDocumentMeaningBlock: View {
             if !meaning.title.isEmpty {
                 Text(meaning.title)
                     .font(appSkin.typography.translationTitle)
+                    // Mochi H2 letter-spacing -0.024em — translationTitle 是區段 H2
+                    .tracking(AppFonts.Tracking.h2Tight)
                     .foregroundStyle(appSkin.palette.primaryText)
                     .fixedSize(horizontal: false, vertical: true)
             }

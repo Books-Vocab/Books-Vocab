@@ -45,7 +45,9 @@ struct TranslationVocabPresenter: View {
                 .padding(.bottom, appSkin.metrics.readerPanelBottomInset)
             }
         }
-        .appElevation(.z3, direction: .up)
+        // Mochi 北極星 #3：shadow 收兩階 — z3 → z2,翻譯 panel 降低 floating 感,
+        // 但仍保留 panel handle 視覺辨識(VocabCard 內 Capsule)。
+        .appElevation(.z2, direction: .up)
         .enableInjection()
     }
 

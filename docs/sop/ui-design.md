@@ -31,6 +31,22 @@ BooksBrowser 使用 Notion-inspired 的 design token 系統（純淨表面、bor
 - `@Environment(\.vocabSkin)` — Vocabulary 層
 - 不可硬建 instance
 
+### Mochi 化北極星五條（2026-05 拍板）
+
+KG UI 對齊 [mochi.cards](https://mochi.cards/docs/api/) editorial 質感。以下五條為 hard rule，新 view / refactor PR 違反 → review block。
+
+1. **單色頁面、無 chrome 分隔**　top toolbar、tab bar、content 共用 `pageBackground`。禁止用 navigation chrome 改色分區（toolbar bg ≠ content bg 屬違反）。
+2. **border 退場、divider 進場**　list cards 預設無 border。分區走 `hr-style divider`（hairline + 32pt 上下 margin，Phase 1 會在 `AppMetrics` 落 `dividerAirMargin` token）+ 留白。例外：modal / popover / sticky group 必須有邊界，可保留 border。
+3. **shadow 收到 z0 / z1 兩階**　list / resting cards 用 z0（無 shadow，純背景區分）或 z1（極輕）。z2 以上保留給 sheet / drawer / modal / overlay。禁止 raw `.shadow(...)`，一律走 `.appElevation(.zN)`。
+4. **單一強調色策略**　全 app 強調色只有以下軸線，禁止為了好看引入新色：
+   - `brandHero` 奶黃 — 日常 CTA（既有）
+   - `accent` Morandi grey-blue — 連結 / info / 被動裝飾（既有）
+   - `inlineCode` 深藍綠 — 技術 token（API 端點 / 短語引用 / ID）— **Phase 3 Notebook 套皮時隨需引入**
+   - `ctaCritical` 深炭 — 不可錯過 CTA — **暫不上線**，產品決策觸發場景後再引入
+5. **互動 motion 收斂**　按鈕按壓統一走 `TapFeedback` triplet；非按鈕互動禁 transform，只動 `bg-color` / `opacity`，曲線預設 `quickEaseOut`（0.15s）或 `controlEaseOut`（0.14s），對齊 Mochi `transition: bg .1s` 路線。
+
+> 落地原則：北極星規則先於 token。新 token 於 Phase N 真正需要時才加入 `AppColors` / `AppTheme.Palette` / `AppMetrics`，避免提前累積 dormant token。Phase 路線：1 = AppSurface flat / 2 = Bookshelf / 3 = Notebook / 4 = Reader / 5 = Today Review motion / 6 = Settings / 7 = Auth / 8 = 全域 motion / 9 = docs + review。
+
 ### macOS 平台適配
 
 - `Platform/PlatformRepresentable.swift`：跨平台 typealias（PlatformView / Color / Image / Font）

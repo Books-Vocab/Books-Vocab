@@ -86,5 +86,42 @@
 			<string>今天已複習 %lld 張</string>
 		</dict>
 	</dict>
+	<key>已收錄 %d 個單字，其中 %d 個待複習。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>已收錄 %1$#@collected@，其中 %2$#@due@。</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>%d 個單字</string>
+		</dict>
+		<key>due</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>%d 個待複習</string>
+		</dict>
+	</dict>
+	<key>已收錄 %d 個單字，去複習鞏固記憶吧。</key>
+	<dict>
+		<key>NSStringLocalizedFormatKey</key>
+		<string>%#@collected@</string>
+		<key>collected</key>
+		<dict>
+			<key>NSStringFormatSpecTypeKey</key>
+			<string>NSStringPluralRuleType</string>
+			<key>NSStringFormatValueTypeKey</key>
+			<string>d</string>
+			<key>other</key>
+			<string>已收錄 %d 個單字，去複習鞏固記憶吧。</string>
+		</dict>
+	</dict>
 </dict>
 </plist>

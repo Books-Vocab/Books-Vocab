@@ -133,7 +133,7 @@ struct BookshelfView: View {
                 )
             }
             .alert(
-                coordinator.errorDiagnosis.map { "匯入錯誤・\($0)".localized } ?? "匯入錯誤".localized,
+                coordinator.errorDiagnosis.map { L10n.format("匯入錯誤・%@", $0) } ?? "匯入錯誤".localized,
                 isPresented: $coordinator.showError
             ) {
                 Button("確定".localized, role: .cancel, action: coordinator.dismissError)
@@ -162,7 +162,8 @@ struct BookshelfView: View {
 
     private var emptyState: some View {
         ScrollView {
-            VStack(spacing: AppSpacing.s5) {
+            // Mochi 16/24 節奏 — 用 s4 取代既有 s5(20)，對齊 Mochi long-form 留白
+            VStack(spacing: AppSpacing.s4) {
                 Spacer(minLength: 120)
 
                 AppEmptyStateContent(
@@ -221,41 +222,59 @@ struct BookshelfView: View {
 
     private var bookGrid: some View {
         ScrollView {
-            LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
-                ForEach(books) { book in
-                    NavigationLink(value: book) {
-                        BookCard(book: book, coverHeight: coverHeight)
-                    }
-                    .buttonStyle(.liftable)
-                    .accessibilityLabel("\(book.title), \(book.author)")
-                    .accessibilityHint("點兩下開始閱讀".localized)
-                    .transition(.bookshelfCard)
-                    .contextMenu {
-                        Button(role: .destructive) {
-                            coordinator.deleteBook(
-                                book,
-                                modelContext: modelContext,
-                                fileManager: bookFileManager,
-                                toastCoordinator: toastCoordinator
-                            )
-                        } label: {
-                            Label("刪除".localized, systemImage: "trash")
+            VStack(spacing: 0) {
+                // 書籍 section
+                if !books.isEmpty {
+                    LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
+                        ForEach(books) { book in
+                            NavigationLink(value: book) {
+                                BookCard(book: book, coverHeight: coverHeight)
+                            }
+                            .buttonStyle(.bookshelfCard)
+                            .accessibilityLabel("\(book.title), \(book.author)")
+                            .accessibilityHint("點兩下開始閱讀".localized)
+                            .transition(.bookshelfCard)
+                            .contextMenu {
+                                Button(role: .destructive) {
+                                    coordinator.deleteBook(
+                                        book,
+                                        modelContext: modelContext,
+                                        fileManager: bookFileManager,
+                                        toastCoordinator: toastCoordinator
+                                    )
+                                } label: {
+                                    Label("刪除".localized, systemImage: "trash")
+                                }
+                            }
                         }
                     }
+                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    .padding(.top, AppSpacing.s2)
                 }
 
-                ForEach(sortedPodcastSeries) { series in
-                    NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
-                        PodcastSeriesCard(series: series, coverHeight: coverHeight)
+                // Mochi 北極星二：書籍 ↔ 播客之間用 AppAirDivider 切群組（hairline + 32pt margin）
+                if !books.isEmpty && !sortedPodcastSeries.isEmpty {
+                    AppAirDivider()
+                        .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                }
+
+                // 播客 section
+                if !sortedPodcastSeries.isEmpty {
+                    LazyVGrid(columns: columns, spacing: AppShellMetrics.sectionSpacing) {
+                        ForEach(sortedPodcastSeries) { series in
+                            NavigationLink(value: PodcastNavRoute.series(seriesRemoteId: series.remoteId)) {
+                                PodcastSeriesCard(series: series, coverHeight: coverHeight)
+                            }
+                            .buttonStyle(.bookshelfCard)
+                            .accessibilityLabel("\(series.title), podcast")
+                            .transition(.bookshelfCard)
+                        }
                     }
-                    .buttonStyle(.liftable)
-                    .accessibilityLabel("\(series.title), podcast")
-                    .transition(.bookshelfCard)
+                    .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
+                    .padding(.top, books.isEmpty ? AppSpacing.s2 : 0)
                 }
             }
             .animateContentFade(books.count + podcastSeries.count)
-            .padding(.horizontal, AppShellMetrics.pageHorizontalPadding)
-            .padding(.top, AppSpacing.s2)
 
             epubGuideHint
                 .padding(.top, AppSpacing.s6)
@@ -287,7 +306,7 @@ struct BookshelfView: View {
     @ViewBuilder
     private func importErrorBanner(message: String) -> some View {
         AppStateMessageCard(
-            title: coordinator.errorDiagnosis.map { "匯入錯誤・\($0)".localized } ?? "匯入錯誤".localized,
+            title: coordinator.errorDiagnosis.map { L10n.format("匯入錯誤・%@", $0) } ?? "匯入錯誤".localized,
             systemImage: "exclamationmark.triangle",
             description: message.localized
         ) {
@@ -357,4 +376,21 @@ struct BookshelfView: View {
     }
 }
 
+// MARK: - 書架卡 Button Style（Mochi 北極星五：TapFeedback triplet，無 elevation 升降）
+
+/// 書架封面卡 press feedback：scale + opacity + haptic，resting/press 都不換 elevation 階。
+/// 取代既有 `.liftable`（liftable 會 z1↔z2 切換，違反 list 卡 resting z0 的鐵律）。
+private struct BookshelfCardButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? AppMotion.TapFeedback.scaleDown : 1)
+            .opacity(configuration.isPressed ? AppMotion.TapFeedback.opacityDip : 1)
+            .animation(AppMotion.TapFeedback.animation, value: configuration.isPressed)
+            .sensoryFeedback(.selection, trigger: configuration.isPressed) { _, newValue in newValue }
+    }
+}
+
+extension ButtonStyle where Self == BookshelfCardButtonStyle {
+    fileprivate static var bookshelfCard: BookshelfCardButtonStyle { BookshelfCardButtonStyle() }
+}
 #endif

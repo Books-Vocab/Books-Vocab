@@ -22,8 +22,8 @@ private enum EpisodeSort: String, CaseIterable, Identifiable {
     var id: String { rawValue }
     var label: String {
         switch self {
-        case .ascending: return "集數由小到大"
-        case .descending: return "集數由大到小"
+        case .ascending: return L10n.string("集數由小到大")
+        case .descending: return L10n.string("集數由大到小")
         }
     }
     var systemImage: String {
@@ -275,10 +275,10 @@ struct PodcastEpisodeListView: View {
             let progress = progressMap[target.remoteId]
             let unavailable = !target.audioAvailable
             let label: String = {
-                if unavailable { return "音訊暫不可用" }
-                if allCompleted { return "重新播放" }
-                if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return "繼續播放" }
-                return "開始播放"
+                if unavailable { return L10n.string("音訊暫不可用") }
+                if allCompleted { return L10n.string("重新播放") }
+                if (progress?.lastPlayedTime ?? 0) > 0 && progress?.completed != true { return L10n.string("繼續播放") }
+                return L10n.string("開始播放")
             }()
             let icon = unavailable ? "icloud.slash" : "play.fill"
             NavigationLink(value: PodcastNavRoute.episode(episodeRemoteId: target.remoteId)) {
@@ -370,9 +370,9 @@ struct PodcastEpisodeListView: View {
         let h = total / 3600
         let m = (total % 3600) / 60
         if h > 0 {
-            return "共 \(h) 小時 \(m) 分"
+            return L10n.format("共 %@ 小時 %@ 分", String(h), String(m))
         }
-        return "共 \(m) 分鐘"
+        return L10n.format("共 %@ 分鐘", String(m))
     }
 
     @MainActor

@@ -110,7 +110,7 @@ struct ArchivedVocabSheet: View {
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")
                 await MainActor.run {
-                    errorMessage = "解除封存失敗：\(error.localizedDescription)".localized
+                    errorMessage = L10n.format("解除封存失敗：%@", error.localizedDescription)
                 }
             }
         }

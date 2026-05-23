@@ -32,6 +32,41 @@ extension AppSectionCardStyle {
             elevation: .z0
         )
     }
+
+    /// Mochi 化北極星二：border 退場、divider 進場。
+    /// `.flat` style — 純背景、無 border、無 shadow，給 list cards 預設樣式。
+    /// 視覺分區改靠 `AppAirDivider` + 留白，不再靠卡片邊框。
+    static func flat(_ theme: AppTheme) -> AppSectionCardStyle {
+        .init(
+            background: theme.palette.cardBackground,
+            border: .clear,
+            cornerRadius: AppShellMetrics.cardCornerRadius,
+            borderOpacity: 0,
+            elevation: .z0
+        )
+    }
+
+    /// `.flat` 的 Vocab skin 版本。
+    static func flatVocab(_ skin: AppSkin) -> AppSectionCardStyle {
+        .init(
+            background: skin.palette.cardBackground,
+            border: .clear,
+            cornerRadius: skin.radii.card,
+            borderOpacity: 0,
+            elevation: .z0
+        )
+    }
+
+    /// `.flat` 的「完全透明」版 — 連 background 都不上，只佔 layout，給「就坐在 page bg 上」的場景用。
+    static var ghostFlat: AppSectionCardStyle {
+        .init(
+            background: .clear,
+            border: .clear,
+            cornerRadius: AppShellMetrics.cardCornerRadius,
+            borderOpacity: 0,
+            elevation: .z0
+        )
+    }
 }
 
 extension AppSectionTextStyle {
