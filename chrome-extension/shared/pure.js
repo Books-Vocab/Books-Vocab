@@ -275,6 +275,46 @@ function isTrustedExternalOrigin(url) {
   }
 }
 
+/**
+ * Defense-in-depth helper for rendering user-controlled values into `href`
+ * (or `src`) attributes.
+ *
+ * Allowlists only safe schemes — `http:`, `https:`, and `chrome-extension:`
+ * (the last is needed for internal pages such as `options/options.html`
+ * obtained via `chrome.runtime.getURL`). Anything else — including
+ * `javascript:`, `data:`, `vbscript:`, `file:`, scheme-relative `//evil`,
+ * or non-strings — collapses to `'#'`, which is inert when navigated.
+ *
+ * Callers should still HTML-escape the result before string-concatenating
+ * it into markup; this helper is *only* about the URL scheme.
+ *
+ * @param {*} raw
+ * @param {string} [fallback='#']
+ * @returns {string}
+ */
+function safeUrl(raw, fallback = '#') {
+  if (typeof raw !== 'string' || !raw) return fallback;
+  // Strip leading/trailing whitespace + ASCII control chars (U+0000-U+001F,
+  // U+007F): browsers ignore these when resolving `href`, so a payload like
+  // ` \tjavascript:alert(1)` would otherwise sneak past a naive prefix check.
+  // We rely on `URL` for the real parse — this trim just normalises input.
+  // eslint-disable-next-line no-control-regex
+  const trimmed = raw.replace(/^[\s\x00-\x1f\x7f]+|[\s\x00-\x1f\x7f]+$/g, '');
+  if (!trimmed) return fallback;
+  try {
+    // Use a base so relative URLs (which are safe) still parse; the resulting
+    // protocol will be the base's (`https:`) and thus allowlisted.
+    const parsed = new URL(trimmed, 'https://invalid.example/');
+    const proto = parsed.protocol;
+    if (proto === 'http:' || proto === 'https:' || proto === 'chrome-extension:') {
+      return trimmed;
+    }
+    return fallback;
+  } catch (_err) {
+    return fallback;
+  }
+}
+
 const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
@@ -290,6 +330,7 @@ const KGPureExports = {
   ROUTABLE_MESSAGE_TYPES,
   routeMessage,
   isTrustedExternalOrigin,
+  safeUrl,
 };
 
 // This file is loaded as a *classic* script by the side panel / options page
