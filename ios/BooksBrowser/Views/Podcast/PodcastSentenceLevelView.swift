@@ -39,6 +39,27 @@ struct PodcastSentenceLevelView: View {
 
     private var currentId: Int? { renderState?.sentenceId }
 
+    /// Assigns each distinct speaker a stable slot by first appearance in the
+    /// transcript. Decouples alignment + tint from `hostNames` — earlier the
+    /// view required the SRT speaker tag to exactly match a hostNames entry,
+    /// so any mismatch (case, whitespace, untracked guest) collapsed every
+    /// bubble onto the left. Now even unknown speakers get a consistent slot.
+    private var speakerSlots: [String: Int] {
+        var slots: [String: Int] = [:]
+        var next = 0
+        // Seed hostNames first so the documented host[0]=left / host[1]=right
+        // ordering still wins when names line up.
+        for name in hostNames where slots[name] == nil {
+            slots[name] = next
+            next += 1
+        }
+        for sentence in sentences where slots[sentence.speaker] == nil {
+            slots[sentence.speaker] = next
+            next += 1
+        }
+        return slots
+    }
+
     var body: some View {
         ScrollViewReader { proxy in
             ZStack(alignment: .bottom) {
@@ -112,8 +133,11 @@ struct PodcastSentenceLevelView: View {
 
     @ViewBuilder
     private func bubbleRow(_ sentence: PodcastSentence, showSpeaker: Bool) -> some View {
-        let idx = hostNames.firstIndex(of: sentence.speaker)
-        let alignRight = (idx == 1)
+        let slot = speakerSlots[sentence.speaker] ?? 0
+        let idx: Int? = slot
+        // Odd slots align right, even align left — for 2-speaker podcasts that
+        // matches host[0]=left / host[1]=right; 3+ speakers fan out cleanly.
+        let alignRight = (slot % 2 == 1)
         let isCurrent = sentence.id == currentId
         let isSelecting = selectionState?.sentenceId == sentence.id
         HStack(alignment: .bottom, spacing: 0) {
@@ -145,9 +169,14 @@ struct PodcastSentenceLevelView: View {
         isSelecting: Bool
     ) -> some View {
         let bubbleTint = tint(for: idx)
+        // Every bubble carries the speaker's tint — non-current uses a very
+        // light wash so the conversation reads as alternating speakers at a
+        // glance (chat-bubble convention), while current pops with a richer
+        // fill. Replaces the prior neutral mutedFill for non-current bubbles
+        // which made every speaker look identical.
         let bg: Color = isCurrent || isSelecting
-            ? bubbleTint.opacity(0.16)
-            : skin.palette.mutedFill.opacity(0.72)
+            ? bubbleTint.opacity(0.18)
+            : bubbleTint.opacity(0.08)
         let fg: Color = isCurrent || isSelecting ? skin.palette.primaryText : skin.palette.secondaryText
 
         Group {
@@ -280,6 +309,8 @@ struct PodcastSentenceLevelView: View {
         switch idx {
         case 0: return skin.palette.accent
         case 1: return skin.palette.success
+        case 2: return skin.palette.warning
+        case 3: return skin.palette.info
         default: return skin.palette.tertiaryText
         }
     }
