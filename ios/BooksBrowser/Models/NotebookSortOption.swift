@@ -65,10 +65,10 @@ enum NotebookSortOption: String, CaseIterable, Identifiable {
 
 extension NotebookSortOption {
     /// 依排序選項對 notebooks 排序。預設 notebook (`isDefault == true`) 永遠放最前面。
-    /// 需要從 `NotebookListView` 提供已計算好的 stats（避免重算 O(n)）。
+    /// 需要 caller 提供 `NotebookStatsCalculator.compute(...)` 算好的 stats（避免重算 O(n)）。
     func sort(
         _ notebooks: [Notebook],
-        stats: [String: NotebookListView.NotebookStats]
+        stats: [String: NotebookStats]
     ) -> [Notebook] {
         let comparator: (Notebook, Notebook) -> Bool
         switch self {
