@@ -17,12 +17,6 @@
 
 import SwiftUI
 
-#if canImport(UIKit)
-import UIKit
-#elseif canImport(AppKit)
-import AppKit
-#endif
-
 enum NotebookStackMetrics {
     /// 依字數決定堆疊層數：
     /// - 0 = 平面單卡（empty notebook）
@@ -106,50 +100,4 @@ enum NotebookStackMetrics {
         }
     }
 
-    // MARK: - Deprecated (Phase 6 cleanup will remove)
-
-    /// Light mode 每深一層 brightness 遞減步階（已 deprecated — editorial stack 改 cream paper ghost）
-    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；使用 ghostPaperColor")
-    static let brightnessStepLight: CGFloat = 0.05
-
-    /// Dark mode 每深一層 brightness 遞增步階（已 deprecated — editorial stack 改 cream paper ghost）
-    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；使用 ghostPaperColor")
-    static let brightnessStepDark: CGFloat = 0.08
-
-    /// 舊版 brightness-shift ghost 顏色（已 deprecated — editorial stack 改 cream paper ghost）
-    @available(*, deprecated, message: "Use ghostPaperColor — editorial stack switched to cream paper ghosts")
-    static func deckColor(_ base: Color, depth: Int, scheme: ColorScheme) -> Color {
-        guard depth > 0 else { return base }
-        // Forward to legacy logic for any lingering callers — Phase 6 will purge.
-        let step = scheme == .dark ? 0.08 : 0.05
-        let direction: CGFloat = scheme == .dark ? +1 : -1
-        let delta = direction * step * CGFloat(depth)
-        return base.shiftingBrightness(by: delta)
-    }
-}
-
-// MARK: - HSB brightness helper (deprecated; Phase 6 cleanup will purge)
-
-extension Color {
-    /// 以 HSB 模型平移 brightness（clamp 到 [0, 1]）。
-    /// 透過 platform 原生 `UIColor` / `NSColor` 拆解；無法解析時回傳原色。
-    @available(*, deprecated, message: "Editorial stack 改 cream paper ghost；此 helper Phase 6 cleanup 移除")
-    fileprivate func shiftingBrightness(by delta: CGFloat) -> Color {
-        #if canImport(UIKit)
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        guard UIColor(self).getHue(&h, saturation: &s, brightness: &b, alpha: &a) else {
-            return self
-        }
-        let newB = max(0, min(1, b + delta))
-        return Color(hue: Double(h), saturation: Double(s), brightness: Double(newB), opacity: Double(a))
-        #elseif canImport(AppKit)
-        let ns = NSColor(self).usingColorSpace(.deviceRGB) ?? NSColor(self)
-        var h: CGFloat = 0, s: CGFloat = 0, b: CGFloat = 0, a: CGFloat = 0
-        ns.getHue(&h, saturation: &s, brightness: &b, alpha: &a)
-        let newB = max(0, min(1, b + delta))
-        return Color(hue: Double(h), saturation: Double(s), brightness: Double(newB), opacity: Double(a))
-        #else
-        return self
-        #endif
-    }
 }
