@@ -214,7 +214,7 @@ Scope: `ios/BooksBrowser`
 - Empty state policy：
   部分畫面是顯式 empty state，部分畫面是 `EmptyView()`
 - Skeleton 載入：
-  `AppSkeletonLine` / `AppSkeletonCard` primitive 已備齊但目前 0 callsites，多數 loading 仍用 state message card
+  `AppSkeletonLine` / `AppSkeletonCard` primitive 已備齊；目前唯一 callsite 在 `VocabSceneShell.swift:52`（`.loadingSkeleton` phase 用 `AppSkeletonCard(lineCount: 2)`），透過 `VocabSceneShell` 間接覆蓋 KGVocab / Sync / TodayReview / KnowledgeGraph / PodcastEpisodeList 等場景；其餘獨立 loading（Bookshelf import overlay、PodcastPlayer `.loading`、ReaderView publication load）仍用 ProgressView 或 state message card
 
 ---
 
@@ -291,4 +291,180 @@ Preview matrix 已補齊：
 | Editorial rotation | layerCount ≥ 2 | 每層 ±1.5° per-notebook deterministic(`stableSeed(for: data.name)` djb2 → `seedJitter`),anchor `.bottom`;跨 launch 同角度 |
 | Press(此 surface) | `NotebookDeckButtonStyle` `isPressed == true` | 頂層 offset −14pt + scale 0.97;ghost 每深一層額外下沉 1pt;haptic `.selection`。Rotation 不參與 press 動畫 |
 | Reduce Motion | `accessibilityReduceMotion == true` | 關閉 offset/scale;保留 opacity dip + haptic + push transition;rotation 保留 |
+
+---
+
+## Bookshelf
+
+主要檔案：
+- `ios/BooksBrowser/Views/Bookshelf/BookshelfView.swift`
+- `ios/BooksBrowser/Views/Bookshelf/BookshelfCoordinator.swift`
+- `ios/BooksBrowser/Views/Bookshelf/BookshelfMetrics.swift`
+
+> Bookshelf 是 EPUB/PDF/TXT/MD 書籍 + Podcast Series 的統一書庫入口。同一 `NavigationStack` 同時承載 `Book` 與 `PodcastNavRoute` push。`BookshelfImportError.classify` 把底層錯誤分類成 `unsupportedExtension` / `iCloudUnavailable` / `unknown` 等 diagnosed 形式。
+
+### Bookshelf Container State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Idle empty（無書 + 無 podcast） | `books.isEmpty && podcastSeries.isEmpty` | `emptyState` ScrollView：`AppEmptyStateContent` + EPUB 指南 TipView + 匯入 CTA + 登入 / Demo 雙 CTA | 已覆蓋 |
+| Books + podcast 並存 | 任一非空 | `bookGrid` LazyVGrid（書先、podcast series 後）+ pull-to-refresh | 已覆蓋 |
+| Import loading overlay | `coordinator.isLoading == true` | scrim + linear `ProgressView`（`loadingProgress` 有值）或 indeterminate spinner + `loadingMessage` | 已覆蓋 |
+| Import error alert | `coordinator.showError == true` | system alert，title `匯入錯誤・<diagnosis>` | 已覆蓋 |
+| Import error persistent banner | `errorMessage != nil && !showError` | `safeAreaInset(.top)` `AppStateMessageCard`，含「再試匯入 / 關閉」雙 CTA | 已覆蓋 |
+| 部分成功匯入 | `succeeded > 0 && failures.count > 0` | toast warning + alert（保留 inline banner） | 已覆蓋 |
+| 批次全失敗 | `succeeded == 0 && failures.count > 1` | alert message 為 per-file diagnosis 條列 | 已覆蓋 |
+| Background podcast sync 進行中 | `.task` 內 `PodcastSyncService.syncAll` 跑著 | 無顯式 UI（靜默） | 缺口（Priority 3） |
+| Background podcast sync 失敗 | sync 拋例外 | 無 UI，僅 log | 缺口（Priority 2） |
+
+### Book Card State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Cover decoded | `decodedCoverImage != nil` | 平台 image fill | 已覆蓋 |
+| Cover placeholder | 無 cover data 或解碼中 | mutedFill + `book` SF symbol + title + format 標 | 已覆蓋 |
+| 閱讀進度 | `book.progression > 0` | accent capsule + 百分比 mono 文字 | 已覆蓋 |
+| iCloud 待下載 | `book.needsICloudDownload` 或 `state == .notDownloaded` | `icloud.and.arrow.down` 徽章 | 已覆蓋 |
+| iCloud 下載中 | `state == .downloading(progress)` | `ICloudProgressBadge`（圓環 + 數字） | 已覆蓋 |
+| iCloud 下載失敗 | download manager 報錯 | 無專屬 UI，回落到 notDownloaded 徽章 | 缺口（Priority 2） |
+| 長按 context | context menu | 刪除（destructive） | 已覆蓋 |
+
+### Podcast Series Card State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| 一般 series | always | `NotebookCoverView`（pattern + name）+ `waveform` 角標 + episode count | 已覆蓋 |
+| 已追蹤 | `series.isFollowed == true` | 左上 `star.fill` 角標 + a11y label `已追蹤` | 已覆蓋 |
+| 自訂封面 | `series.coverImagePath != nil` | cover image fill 取代 pattern | 已覆蓋 |
+
+### Bookshelf Auth / Paywall
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Demo mode | `authManager.isDemoMode` | empty state 不再顯示登入 / Demo CTA | 已覆蓋 |
+| 未登入 + 非 Demo | `!isDemoMode && !isLoggedIn` | empty state 多出「登入帳號 / 體驗複習與圖譜」雙 CTA | 已覆蓋 |
+| 已登入 ready | `isLoggedIn` | `.task` 觸發 `PodcastSyncService.syncAll` + audio prefetch | 已覆蓋 |
+| Paywall | 無 — Bookshelf 本身不擋 paywall | n/a | n/a（paywall 落在 Reader / Vocabulary） |
+
+判斷：
+- Import 流程的 alert + persistent banner 雙層配置是目前 cross-surface 最成熟的 error pattern
+- 缺口集中在「背景同步沒有可見訊號」：podcast sync running / failed、warmFollowedSeriesAudio 失敗皆靜默
+- iCloud 下載失敗目前回落到「再次出現雲端徽章」，使用者無法區分「沒下過」與「下載失敗」
+
+---
+
+## Podcast
+
+主要檔案：
+- `ios/BooksBrowser/Views/Podcast/PodcastEpisodeListView.swift`
+- `ios/BooksBrowser/Views/Podcast/PodcastPlayerView.swift`
+- `ios/BooksBrowser/Views/Podcast/PodcastPlayerViewModel.swift`（`PodcastPlayerState`、`PodcastSubtitleLoadState`、`SleepTimerMode`）
+- `ios/BooksBrowser/Views/Podcast/PodcastSubtitleView.swift`
+- `ios/BooksBrowser/Views/Podcast/PodcastControlsView.swift`
+- `ios/BooksBrowser/Views/Podcast/PodcastSettingsPopover.swift`
+
+> 音訊與字幕狀態**獨立**：`state` 走 audio lifecycle，`subtitleState` 走 SRT 載入；字幕失敗不阻斷播放。
+
+### Episode List State（`PodcastEpisodeListView`）
+
+由 `VocabScenePhase` 驅動，透過 `VocabSceneShell` 統一渲染。
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Initial loading | `isLoading && !hasLoadedOnce` | `.loadingSkeleton` → `AppSkeletonCard` | 已覆蓋 |
+| Load error | `loadError != nil && rawEpisodes.isEmpty` | `.error` phase，title `無法載入集數`，retry 重跑 `reloadFromStore` | 已覆蓋 |
+| Empty episodes（首載後） | `rawEpisodes.isEmpty && hasLoadedOnce` | `.empty` phase，title `尚無集數` + `waveform.slash` | 已覆蓋 |
+| Populated | episodes 非空 | hero + episode rows（accent divider 區隔） | 已覆蓋 |
+| Continue / Resume CTA | `progressMap[ep].lastPlayedTime > 0 && !completed` | hero primary CTA 文字「繼續播放」 | 已覆蓋 |
+| All completed | `rawEpisodes.allSatisfy(completed)` | hero CTA 文字「重新播放」 | 已覆蓋 |
+| Audio 暫不可用 | `!target.audioAvailable` | CTA 文字「音訊暫不可用」+ `icloud.slash` + disabled | 已覆蓋 |
+| Navigation lock | `navigationLocked == true`（tap 後 1s） | 所有 push CTA disabled，避免雙 push freeze | 已覆蓋 |
+| Follow toggle 儲存失敗 | `PodcastFollowToggle.perform` 回 `.rolledBack` | toast error `追蹤狀態儲存失敗` + 自動回滾 star | 已覆蓋 |
+| Sort 切換 | `sort` 變更 | menu pick + 動畫排序 | 已覆蓋 |
+| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | error phase 不顯（content 優先） | 缺口（Priority 2） — stale data + retry 無提示 |
+
+### Player Container State（`PodcastPlayerView` × `PodcastPlayerState`）
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| VM 尚未建立 | `viewModel == nil` | `ProgressView("載入中…")` | 已覆蓋（過渡態） |
+| `.idle` / `.loading` | audio 未 ready | 置中 `ProgressView` + `載入音訊…` 文案 | 已覆蓋 |
+| `.error(msg)` | audio 載入或中斷失敗 | `xmark.octagon` hero + `音訊載入失敗` + msg + 重試 CTA（`reloadEpisode`） | 已覆蓋 |
+| `.ready` / `.playing` / `.paused` | audio ready 之後 | subtitle view + `PodcastControlsView` + 底部 `TranslationPanel` overlay | 已覆蓋 |
+| Episode 切換中 | `.task(id: episodeId)` re-run | 先存舊 progress → 重建 VM；中間透過 `viewModel == nil` 顯示 `ProgressView` | 已覆蓋 |
+| Scene phase 退出 | `scenePhase != .active` | 自動 saveProgress（無 UI） | 已覆蓋 |
+| 未取得 audio URL | `loadEpisode` 找不到 local 或 remote URL | `vm.reportError("無音訊 URL")` → `.error` | 已覆蓋 |
+| 認證 token 失敗 | `kgService.currentAuthToken()` throw | `.error` 帶錯誤訊息 | 已覆蓋 |
+| Local file 播放 | `episode.localAudioPath` 存在 | 無 auth header，直接 file:// | 已覆蓋（無顯式 indicator） |
+| 系統中斷 / route change | engine `onSystemPause` | VM 從 `.loading` / `.playing` 拉回 `.paused` | 已覆蓋 |
+| Mid-stream 失敗後 didEnd | engine `onPlaybackFinished` 與 `.error` 競爭 | 守 `if case .error` 不 clobber error UI | 已覆蓋 |
+
+### Subtitle State（`PodcastSubtitleLoadState`）
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| `.idle` | 未啟動或 episode 無 subtitle URL | 無 overlay，純句子層渲染 | 已覆蓋 |
+| `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | 句子層仍顯示但 cues 尚未注入 | 部分覆蓋 — 無 loading hint，使用者只看到「空字幕」 |
+| `.loaded` | fetch 成功 / inline subtitle | 句子層 + 高亮字 + cue tracking | 已覆蓋 |
+| `.failed` | fetch / decode 失敗 | `AppStateMessageCard` overlay：`字幕載入失敗` + `音訊仍可正常播放` + 重試 CTA（`onRetrySubtitle`） | 已覆蓋 |
+| Subtitle unavailable（episode 無 URL） | `markSubtitleUnavailable()` | 同 `.idle` — 無顯式提示 | 缺口（Priority 3）— 與 loading 視覺無區別 |
+
+### Translation Panel State（podcast surface）
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| 無查詢 | `translationHandler.wordSelection == nil` | 不顯示 panel | 已覆蓋 |
+| 查詢中 | `translationHandler.isTranslating == true` | `TranslationPanel` shared state message + spinner | 已覆蓋（共用 Reader pattern） |
+| 翻譯結果 | `translationResult` 有值 | translation body | 已覆蓋 |
+| Explain only | `isExplanationOnly == true` | explanation body | 已覆蓋 |
+| 翻譯 / 解釋失敗 | `translationErrorMessage` / `explanationErrorMessage` | 內嵌文字 | 部分覆蓋（同 Reader 缺口） |
+| 自動暫停 | `autoPauseOnLookup` + panel 出現 | VM `pause()` + `autoPausedByTranslation = true`，dismiss 後自動 resume | 已覆蓋 |
+
+### Controls / Seek Bar State
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Duration 未知 | `viewModel.duration == 0` | 拖曳 disabled（防 seek(0)）；文字顯示 `--:--` | 已覆蓋 |
+| Buffered 區段 | `viewModel.bufferedEnd > 0` | accent.opacity(0.25) overlay capsule + easeOut 0.2s | 已覆蓋 |
+| Dragging | `isDragging == true` | seek bar swipe spring + thumb 跟手 + 時間文字 follow dragTime | 已覆蓋 |
+| 倍速切換 | tap rate chip | mono label capsule，VM `cycleRate()` | 已覆蓋 |
+| Skip ±15s | tap forward/back | engine skip + 同步 currentTime | 已覆蓋 |
+
+### Sleep Timer State（`SleepTimerMode`）
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| `.off` | 預設 | popover Picker 顯示「關閉」 | 已覆蓋 |
+| `.minutes(N)` | 5 / 15 / 30 / 60 | Picker 選中 + `TimelineView` 每秒 tick 顯示「剩餘 mm:ss」 | 已覆蓋 |
+| `.endOfEpisode` | 「結束本集」 | Picker 選中，無 deadline 倒數（依靠 `onPlaybackFinished` 結束時自動 reset） | 已覆蓋 |
+| 倒數結束 | timer fire | engine pause + mode 回 `.off`（無顯式 toast） | 部分覆蓋 — 缺結束反饋 |
+
+### Settings Popover
+
+| State | 觸發條件 | 目前 UI | 狀態 |
+|------|----------|--------|------|
+| Open | `showSettingsPopover == true` | popover：字幕大小 segmented / 逐字跟隨 / 查詞時自動暫停 / 睡眠定時 + 倒數 | 已覆蓋 |
+| 字幕大小變更 | `subtitleSize` 變更 | `@AppStorage` 持久化，subtitle view 立即套用 | 已覆蓋 |
+| 逐字跟隨關閉 | `wordFollowEnabled == false` | 句子層不顯示 word underline | 已覆蓋 |
+
+判斷：
+- Player error / subtitle failure 是目前 podcast 最成熟的 state machine（hero error + inline retry）
+- 主要缺口在「沒有結果的時刻」：subtitle loading 沒提示、unavailable 與 idle 視覺合一、sleep timer 觸發時無 toast
+- Episode list 的 stale-data + load error 同時發生時 error 被吃掉，是少數 silent-fail 路徑
+
+### Next UX Priorities（Bookshelf + Podcast 補充）
+
+#### Priority 1
+- Podcast subtitle `.loading` 加 inline hint（shimmer or "字幕載入中"），與 `.idle` 視覺拉開
+- Sleep timer 倒數結束 toast / haptic 反饋（目前靜默 pause）
+- Podcast subtitle "unavailable" 與 "idle" 區分（caption icon + 文字說明 "本集無字幕"）
+
+#### Priority 2
+- Episode list 「load error 但有殘留資料」的 stale banner
+- Bookshelf background podcast sync 失敗 toast / status row
+- iCloud 書籍下載失敗 vs notDownloaded 的徽章區分
+
+#### Priority 3
+- Bookshelf podcast sync running 的微 indicator（pull-to-refresh 期間 OK，自動 sync 期間缺）
+- `warmFollowedSeriesAudio` 失敗的 telemetry（純 silent，不需 UI）
 
