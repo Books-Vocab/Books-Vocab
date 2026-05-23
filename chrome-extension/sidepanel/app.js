@@ -354,7 +354,12 @@ function toggleDetail(card, item) {
 
   // Source
   if (isWeb && sourceUrl) {
-    detail.appendChild(makeSection('來源', `<a class="kg-detail__link" href="${esc(sourceUrl)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
+    // Defense-in-depth: `sourceUrl` is user-controlled (whatever page the
+    // word was captured from). HTML-escaping alone does NOT block dangerous
+    // schemes like `javascript:` — `safeUrl` enforces an http(s) allowlist
+    // and collapses anything else to `#`.
+    const safeHref = KGPure.safeUrl(sourceUrl);
+    detail.appendChild(makeSection('來源', `<a class="kg-detail__link" href="${esc(safeHref)}" target="_blank" rel="noopener">${esc(sourceTitle || sourceUrl)}</a>`));
   } else {
     detail.appendChild(makeSection('來源', `<span class="kg-detail__source-text">iOS app</span>`));
   }
