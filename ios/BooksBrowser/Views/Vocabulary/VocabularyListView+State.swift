@@ -29,7 +29,7 @@ extension VocabularyListView {
             // Why: 詳情頁不再渲染獨立的 VocabReviewBanner — `538 張到期` text +
             // 下方 chip bar `Due 538` 重複；CTA 收進 KGVocabPresenter chip+sort
             // 列尾端的 VocabReviewCTAPill (注入 `onStartReview` callback 觸發)。
-            // NotebookListView 仍保留 hero VocabReviewBanner 作為 primary entry point。
+            // NotebookListView 走 page section header + VocabReviewCTAPill (D4 editorial)。
             KGVocabView(
                 searchText: $debouncedSearchText,
                 notebookId: notebookId,

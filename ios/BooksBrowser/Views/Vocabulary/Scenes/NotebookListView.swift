@@ -42,6 +42,7 @@ struct NotebookListView: View {
     @State private var activeReviewSession: TodayReviewSession?
     @State private var notebookToDelete: Notebook?
     @State private var showArchiveList = false
+    @State private var showFilterSheet = false
     @State private var navigationPath = NavigationPath()
     @State private var detailState = DetailRouter()
     @State private var isEditingDetailEntry = false
@@ -113,6 +114,8 @@ struct NotebookListView: View {
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                         .transition(.listSwap)
                     } else {
+                        // D5 — grid 永遠對稱:inline NotebookAddCard 移除,`+` 收斂到 toolbar 唯一入口。
+                        // NotebookAddCard 元件保留(future onboarding empty state 用),但此處不再呼叫。
                         LazyVGrid(columns: [layoutMode.notebookGridItem], spacing: AppShellMetrics.sectionSpacing) {
                             ForEach(sortedNotebooks) { notebook in
                                 let s = stats[notebook.remoteId] ?? NotebookStats()
@@ -126,13 +129,6 @@ struct NotebookListView: View {
                                 .buttonStyle(NotebookDeckButtonStyle())
                                 .transition(.listSwap)
                             }
-
-                            if authManager.isLoggedIn {
-                                Button { showCreateSheet = true } label: {
-                                    NotebookAddCard()
-                                }
-                                .buttonStyle(.plain)
-                            }
                         }
                         .padding(.horizontal, skin.metrics.pageHorizontalInset)
                     }
@@ -144,6 +140,24 @@ struct NotebookListView: View {
             .navigationTitle("單字本".localized)
             .largeNavigationBarTitle()
             .toolbar {
+                // D6 — Filter button:只在 ≥ 2 notebook 顯示(單本 scope filter 無意義)。
+                // 點擊復用既有 NotebookFilterPickerSheet,跟舊 NotebookFilterChip 行為一致。
+                if notebooks.count >= 2 {
+                    ToolbarItem(placement: .confirmationAction) {
+                        Button {
+                            showFilterSheet = true
+                        } label: {
+                            Image(systemName: reviewFilter.isFiltered
+                                ? "line.3.horizontal.decrease.circle.fill"
+                                : "line.3.horizontal.decrease.circle")
+                                .foregroundStyle(reviewFilter.isFiltered
+                                    ? skin.palette.accent
+                                    : skin.palette.secondaryText)
+                        }
+                        .accessibilityLabel("篩選單字本".localized)
+                    }
+                }
+
                 ToolbarItem(placement: .confirmationAction) {
                     sortMenu
                         .disabled(notebooks.isEmpty)
@@ -219,6 +233,12 @@ struct NotebookListView: View {
             }
             .toastSheet(isPresented: $showArchiveList) {
                 ArchivedVocabSheet()
+            }
+            .toastSheet(isPresented: $showFilterSheet) {
+                NotebookFilterPickerSheet(
+                    filter: $reviewFilter,
+                    notebooks: notebooks.filter { !$0.isDeleted }
+                )
             }
             .toastSheet(item: $coordinator.exportURL) { url in
                 PlatformShareView(url: url)
