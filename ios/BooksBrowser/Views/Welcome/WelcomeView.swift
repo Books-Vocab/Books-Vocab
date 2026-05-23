@@ -151,7 +151,7 @@ struct WelcomeView: View {
         }
         .animation(AppMotion.indicatorTransition, value: currentPage)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(Text("第 \(currentPage + 1) 步，共 \(pages.count) 步".localized))
+        .accessibilityLabel(Text(L10n.format("第 %@ 步，共 %@ 步", String(currentPage + 1), String(pages.count))))
     }
 
     private var ctaStack: some View {
@@ -186,7 +186,7 @@ struct WelcomeView: View {
             }
 
             VStack(spacing: AppWelcomeMetrics.pageContentSpacing) {
-                Text("STEP \(step)".localized)
+                Text(L10n.format("STEP %@", String(step)))
                     .font(AppFonts.caption(weight: .semibold))
                     .foregroundStyle(appTheme.palette.accent)
                     .tracking(AppWelcomeMetrics.stepLabelTracking)

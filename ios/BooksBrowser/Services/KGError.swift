@@ -23,7 +23,7 @@ enum KGError: LocalizedError {
         case .offline:
             return L10n.string("目前沒有網路連線")
         case .httpError(let code, let detail):
-            return L10n.format("HTTP %d：%@", code, detail)
+            return L10n.format("HTTP %@：%@", String(code), detail)
         case .decodingError(let err):
             return L10n.format("解碼錯誤：%@", err.localizedDescription)
         case .networkError(let err):

@@ -63,6 +63,16 @@ Scope: `ios/BooksBrowser`
 - [ ] 關鍵狀態有對應的 `#Preview` 嗎？
 - [ ] preview 是否能固定高價值狀態（不依賴真實登入或後端）？
 
+### 6. Mochi pass（北極星五條）
+
+對齊 `docs/sop/ui-design.md` 的 Mochi 化北極星：
+
+- [ ] 頁面 bg 與 toolbar / tab bar 是否同色？（避免 chrome 改色分區）
+- [ ] cards 是否預設無 border？分區是否改用 `AppMetrics.dividerAirMargin = 32` 的 hr-style divider？
+- [ ] shadow 是否限制在 z0 / z1（list/resting）或 z3+（modal/overlay）？無 raw `.shadow(...)`？
+- [ ] 強調色是否限制在四軸（`brandHero` / `ctaCritical` / `accent` / `inlineCode`）內？無第五色亂入？
+- [ ] 非按鈕互動是否只動 bg-color / opacity，無 transform？
+
 ---
 
 ## 何時用

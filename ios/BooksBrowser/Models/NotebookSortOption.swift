@@ -21,15 +21,15 @@ enum NotebookSortOption: String, CaseIterable, Identifiable {
 
     var label: String {
         switch self {
-        case .manual:        return "手動排序"
-        case .nameAsc:       return "名稱 A→Z"
-        case .nameDesc:      return "名稱 Z→A"
-        case .createdNewest: return "最新建立"
-        case .createdOldest: return "最早建立"
-        case .updatedNewest: return "最近更新"
-        case .cardCountDesc: return "卡片最多"
-        case .dueCountDesc:  return "待複習最多"
-        case .lastActivity:  return "最近活動"
+        case .manual:        return L10n.string("手動排序")
+        case .nameAsc:       return L10n.string("名稱 A→Z")
+        case .nameDesc:      return L10n.string("名稱 Z→A")
+        case .createdNewest: return L10n.string("最新建立")
+        case .createdOldest: return L10n.string("最早建立")
+        case .updatedNewest: return L10n.string("最近更新")
+        case .cardCountDesc: return L10n.string("卡片最多")
+        case .dueCountDesc:  return L10n.string("待複習最多")
+        case .lastActivity:  return L10n.string("最近活動")
         }
     }
 

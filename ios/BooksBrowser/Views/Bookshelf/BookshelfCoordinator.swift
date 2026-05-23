@@ -128,7 +128,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         loadingProgress = nil
         let total = urls.count
         loadingMessage = total > 1
-            ? L10n.string("正在匯入 1 / \(total)...")
+            ? L10n.format("正在匯入 %@ / %@...", "1", String(total))
             : L10n.string("正在匯入...")
 
         Task {
@@ -137,7 +137,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
 
             for (index, url) in urls.enumerated() {
                 if total > 1 {
-                    loadingMessage = L10n.string("正在匯入 \(index + 1) / \(total)...")
+                    loadingMessage = L10n.format("正在匯入 %@ / %@...", String(index + 1), String(total))
                 }
                 loadingProgress = 0.0
 
