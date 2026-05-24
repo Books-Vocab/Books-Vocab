@@ -6,7 +6,7 @@ scope:
   - ops/
   - backend/
   - docs/runbook/
-verified_against: a706c53
+verified_against: 25e7148d
 -->
 # Safety Policy
 
@@ -19,6 +19,12 @@ verified_against: a706c53
 - `docker compose down -v`
 - `docker system prune -a`
 - `rm -rf /home/ubuntu/*`
+- `rm -rf ~` / `rm -rf $HOME`（home 目錄遞迴刪除）
+- `delete-user`（用戶資料刪除 CLI）
+
+實作見 `ops/devops_kg_safe.sh:49` — `is_blocked_run` regex 同時攔截
+`down -v` / `docker system prune` / `rm -rf /` / `rm -rf ~` / `delete-user`，
+適用 `run` / `container-run` / `migrate-run` 三個遠端執行入口。
 
 ## Required Preflight
 1. Confirm remote path (`~/knowledge_graph_api`).
