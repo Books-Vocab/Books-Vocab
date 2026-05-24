@@ -14,7 +14,7 @@ verified_against: c642ed18
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `ReaderView.swift` | 190 | 主容器，持有 @State/@Environment，組裝 body |
+| `ReaderView.swift` | 211 | 主容器，持有 @State/@Environment，組裝 body |
 | `ReaderView+Panels.swift` | 115 | panel content builders |
 | `ReaderView+Handlers.swift` | 94 | callback handlers |
 
