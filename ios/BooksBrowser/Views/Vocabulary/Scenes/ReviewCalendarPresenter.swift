@@ -93,6 +93,7 @@ struct ReviewCalendarPresenter: View {
                         .font(appSkin.typography.iconMedium)
                         .foregroundStyle(appSkin.palette.secondaryText)
                 }
+                .accessibilityLabel(L10n.string("calendar.month.previous"))
 
                 Spacer()
 
@@ -108,6 +109,7 @@ struct ReviewCalendarPresenter: View {
                         .foregroundStyle(canGoForward ? appSkin.palette.secondaryText : appSkin.palette.quaternaryText)
                 }
                 .disabled(!canGoForward)
+                .accessibilityLabel(L10n.string("calendar.month.next"))
             }
             .padding(.horizontal, appSkin.spacing.microGap)
 
