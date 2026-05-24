@@ -818,3 +818,11 @@
 "podcast.controls.playpause.pause" = "一時停止";
 "podcast.controls.cycleRate" = "再生速度を切り替え";
 "podcast.player.subtitleSettings" = "字幕設定";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "前のカード";
+"todayReview.autoplay.next" = "次のカード";
+"todayReview.autoplay.playpause.play" = "自動再生を再開";
+"todayReview.autoplay.playpause.pause" = "自動再生を一時停止";
+"todayReview.nav.previous" = "前のカード";
+"todayReview.nav.next" = "次のカード";

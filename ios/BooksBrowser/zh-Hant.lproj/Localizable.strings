@@ -837,3 +837,11 @@
 "podcast.controls.playpause.pause" = "暫停";
 "podcast.controls.cycleRate" = "切換播放速率";
 "podcast.player.subtitleSettings" = "字幕設定";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "上一張卡片";
+"todayReview.autoplay.next" = "下一張卡片";
+"todayReview.autoplay.playpause.play" = "繼續自動播放";
+"todayReview.autoplay.playpause.pause" = "暫停自動播放";
+"todayReview.nav.previous" = "上一張卡片";
+"todayReview.nav.next" = "下一張卡片";

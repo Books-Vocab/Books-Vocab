@@ -819,3 +819,11 @@
 "podcast.controls.playpause.pause" = "일시정지";
 "podcast.controls.cycleRate" = "재생 속도 전환";
 "podcast.player.subtitleSettings" = "자막 설정";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "이전 카드";
+"todayReview.autoplay.next" = "다음 카드";
+"todayReview.autoplay.playpause.play" = "자동 재생 다시 시작";
+"todayReview.autoplay.playpause.pause" = "자동 재생 일시정지";
+"todayReview.nav.previous" = "이전 카드";
+"todayReview.nav.next" = "다음 카드";

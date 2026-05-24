@@ -854,3 +854,11 @@
 "podcast.controls.playpause.pause" = "Pause";
 "podcast.controls.cycleRate" = "Cycle playback speed";
 "podcast.player.subtitleSettings" = "Subtitle settings";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "Previous card";
+"todayReview.autoplay.next" = "Next card";
+"todayReview.autoplay.playpause.play" = "Resume autoplay";
+"todayReview.autoplay.playpause.pause" = "Pause autoplay";
+"todayReview.nav.previous" = "Previous card";
+"todayReview.nav.next" = "Next card";
