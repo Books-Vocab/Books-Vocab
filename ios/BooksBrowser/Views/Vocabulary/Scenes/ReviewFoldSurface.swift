@@ -55,6 +55,7 @@ struct ReviewFoldChevronButton: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
+    let accessibilityLabel: String
 
     var body: some View {
         Button(action: action) {
@@ -67,6 +68,7 @@ struct ReviewFoldChevronButton: View {
         }
         .buttonStyle(.plain)
         .contentShape(Circle())
+        .accessibilityLabel(accessibilityLabel)
         .enableInjection()
     }
 }
@@ -77,6 +79,7 @@ struct ReviewFoldChevronPill: View {
     @ObserveInjection private var inject
     @Environment(\.appSkin) private var appSkin
     let action: () -> Void
+    let accessibilityLabel: String
 
     var body: some View {
         Button(action: action) {
@@ -89,6 +92,7 @@ struct ReviewFoldChevronPill: View {
         }
         .buttonStyle(.plain)
         .contentShape(Capsule())
+        .accessibilityLabel(accessibilityLabel)
         .enableInjection()
     }
 }

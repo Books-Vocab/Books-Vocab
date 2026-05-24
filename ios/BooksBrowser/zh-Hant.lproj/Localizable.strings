@@ -876,3 +876,10 @@
 "vocab.card.addLink" = "新增知識連結";
 "sync.pending.undoDelete" = "復原刪除";
 "sync.pending.cancelAdd" = "取消待新增項目";
+
+// MARK: - a11y labels for Reader/TodayReview/Notebook icon buttons (track-11)
+"calendar.month.previous" = "上個月";
+"calendar.month.next" = "下個月";
+"notebook.toolbar.archive" = "封存";
+"vocab.wordDetail.toggleExcludeFromReader" = "切換從閱讀器排除";
+"todayReview.fold.collapse" = "收合";

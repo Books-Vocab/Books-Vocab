@@ -240,6 +240,7 @@ struct WordDetailPresenter: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(L10n.string("vocab.wordDetail.toggleExcludeFromReader"))
         .animateContentFade(state.isExcludedFromReader)
     }
 }
