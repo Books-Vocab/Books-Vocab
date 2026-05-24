@@ -215,6 +215,18 @@ private struct TranslationPanelPreviewScene: View {
     .environmentObject(AppAppearanceStore.preview)
 }
 
+#Preview("Translation / Empty") {
+    AppThemeContainer {
+        TranslationPanelPreviewScene(
+            isExpanded: false,
+            isExplanationOnly: false,
+            translation: nil,
+            statusMessage: nil
+        )
+    }
+    .environmentObject(AppAppearanceStore.preview)
+}
+
 #Preview("Explanation / Error") {
     AppThemeContainer {
         TranslationPanelPreviewScene(
