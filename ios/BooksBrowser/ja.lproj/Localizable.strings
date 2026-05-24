@@ -857,3 +857,11 @@
 "vocab.card.addLink" = "ナレッジリンクを追加";
 "sync.pending.undoDelete" = "削除を取り消す";
 "sync.pending.cancelAdd" = "追加待ちをキャンセル";
+
+// MARK: - a11y labels for Reader/TodayReview/Notebook icon buttons (track-11)
+"calendar.month.previous" = "前月";
+"calendar.month.next" = "翌月";
+"notebook.toolbar.archive" = "アーカイブ";
+"a11y.toggle.on" = "オン";
+"a11y.toggle.off" = "オフ";
+"todayReview.fold.collapse" = "折りたたむ";

@@ -256,6 +256,7 @@ struct NotebookListView: View {
                     } label: {
                         Image(systemName: "archivebox")
                     }
+                    .accessibilityLabel(L10n.string("notebook.toolbar.archive"))
                 }
             }
             .navigationDestination(for: String.self) { notebookId in

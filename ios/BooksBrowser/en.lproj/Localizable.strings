@@ -893,3 +893,11 @@
 "vocab.card.addLink" = "Add knowledge link";
 "sync.pending.undoDelete" = "Undo delete";
 "sync.pending.cancelAdd" = "Cancel pending add";
+
+// MARK: - a11y labels for Reader/TodayReview/Notebook icon buttons (track-11)
+"calendar.month.previous" = "Previous month";
+"calendar.month.next" = "Next month";
+"notebook.toolbar.archive" = "Archive";
+"a11y.toggle.on" = "On";
+"a11y.toggle.off" = "Off";
+"todayReview.fold.collapse" = "Collapse";

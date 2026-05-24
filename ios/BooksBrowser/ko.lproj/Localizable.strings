@@ -858,3 +858,11 @@
 "vocab.card.addLink" = "지식 링크 추가";
 "sync.pending.undoDelete" = "삭제 취소";
 "sync.pending.cancelAdd" = "추가 대기 취소";
+
+// MARK: - a11y labels for Reader/TodayReview/Notebook icon buttons (track-11)
+"calendar.month.previous" = "이전 달";
+"calendar.month.next" = "다음 달";
+"notebook.toolbar.archive" = "보관";
+"a11y.toggle.on" = "켜짐";
+"a11y.toggle.off" = "꺼짐";
+"todayReview.fold.collapse" = "접기";

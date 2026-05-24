@@ -91,7 +91,7 @@ extension TodayReviewPresenter {
                 .accessibilityLabel(L10n.format("翻譯：%@", answerText))
         }
         .overlay(alignment: .top) {
-            ReviewFoldChevronPill(action: onCollapseReveal)
+            ReviewFoldChevronPill(action: onCollapseReveal, accessibilityLabel: L10n.string("todayReview.fold.collapse"))
                 .offset(y: -TodayReviewMetrics.chevronButtonSize / 2)
         }
     }
