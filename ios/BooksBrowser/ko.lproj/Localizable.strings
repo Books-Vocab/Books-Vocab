@@ -863,6 +863,7 @@
 "calendar.month.previous" = "이전 달";
 "calendar.month.next" = "다음 달";
 "notebook.toolbar.archive" = "보관";
+"notebook.list.loading" = "단어장 불러오는 중…";
 "a11y.toggle.on" = "켜짐";
 "a11y.toggle.off" = "꺼짐";
 "todayReview.fold.collapse" = "접기";
