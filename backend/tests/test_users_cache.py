@@ -5,8 +5,6 @@ import time
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
-
 from kg.user_store import CachedUserStore
 
 

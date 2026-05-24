@@ -1,8 +1,10 @@
 from __future__ import annotations
+
 from unittest.mock import MagicMock
-import pytest
+
 from kg.judge import ManualLinkJudge
 from kg.tracked_llm import TrackedLLM
+
 
 def _make_client(response_json: str):
     client = MagicMock()

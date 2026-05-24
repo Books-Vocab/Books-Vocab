@@ -21,11 +21,8 @@ from fastapi import Response
 from kg.deps_quota import _is_pro, _with_quota_check
 from kg.exceptions import QuotaExceededError
 from kg.quota_service import (
-    FREE_DAILY_LIMIT_USD,
-    PRO_DAILY_LIMIT_USD,
     configure_limits,
 )
-
 
 # ── shared fixtures ──────────────────────────────────────────────────
 

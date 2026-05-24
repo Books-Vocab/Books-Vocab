@@ -232,7 +232,7 @@ class TestGoogleTokenNonBlocking:
     @pytest.mark.asyncio
     async def test_blocking_verify_runs_off_event_loop(self):
         """The synchronous verify call must execute on a non-loop thread."""
-        loop = asyncio.get_running_loop()
+        asyncio.get_running_loop()
         loop_thread_id = threading.get_ident()
         observed = {}
 

@@ -142,7 +142,6 @@ def test_enrich_step_retries_on_transient_failure():
         return
         yield  # make it an async generator
 
-    import kg.pipeline_service as ps
     original = None
 
     async def run():
@@ -407,7 +406,6 @@ def test_judge_partial_failure_does_not_corrupt_remaining():
             return results
 
     async def run():
-        import kg.pipeline_service as ps_mod
         import kg.judge as judge_mod
         original_judge = judge_mod.Judge
         judge_mod.Judge = _FakeJudge

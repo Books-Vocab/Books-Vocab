@@ -34,8 +34,8 @@ def make_jwt(user_id: str) -> str:
 
 def _swap_settings(new_settings):
     """Replace app.state.kg_settings and rebuild load/save closures."""
-    from kg.user_store import CachedUserStore, load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import CachedUserStore, normalize_users_payload
 
     app.state.kg_settings = new_settings
 
@@ -58,8 +58,8 @@ def isolated_api(tmp_path):
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
-    lock_file = data_dir / "users.json.lock"
-    notifications_file = data_dir / "app_store_notifications.ndjson"
+    data_dir / "users.json.lock"
+    data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps(
             {

@@ -87,6 +87,7 @@ def admin_host_metrics_response() -> dict[str, Any]:
     """
     try:
         import os
+
         import psutil
     except ImportError:
         return {"available": False, "reason": "psutil not installed"}

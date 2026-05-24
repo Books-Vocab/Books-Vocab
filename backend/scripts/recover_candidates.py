@@ -1,12 +1,14 @@
 import json
-import numpy as np
-from pathlib import Path
-from kg.graph import GraphStore
-from kg.embeddings import EmbeddingStore
-from kg.vocab_graph import CANDIDATE_K, SIMILARITY_THRESHOLD
 import os
-from openai import OpenAI
+from pathlib import Path
+
 from dotenv import load_dotenv
+from openai import OpenAI
+
+from kg.embeddings import EmbeddingStore
+from kg.graph import GraphStore
+from kg.vocab_graph import CANDIDATE_K, SIMILARITY_THRESHOLD
+
 
 def main():
     load_dotenv()
@@ -15,17 +17,17 @@ def main():
         api_key=api_key,
         base_url="https://generativelanguage.googleapis.com/v1beta/openai/"
     )
-    
+
     user_dir = Path("data/users/chen")
     cards = json.loads((user_dir / "cards.json").read_text())
-    
+
     # Sort cards by created_at descending to get the 25 newest
     cards.sort(key=lambda c: c.get("created_at", ""), reverse=True)
     new_cards = cards[:25]
-    
+
     graph = GraphStore(user_dir / "graph.json", user_dir / "candidates.json")
     embeddings = EmbeddingStore(user_dir / "embeddings.npy", user_dir / "card_ids.json", client)
-    
+
     count = 0
     print("Regenerating candidates for 25 newest cards...")
     for c in new_cards:
@@ -35,8 +37,8 @@ def main():
                 # Add candidate handles deduplication
                 graph.add_candidate(c["id"], other_id, score)
                 count += 1
-                
+
     print(f"Done! Requeued {count} candidates total.")
-    
+
 if __name__ == "__main__":
     main()

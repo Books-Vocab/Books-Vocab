@@ -13,7 +13,6 @@ from __future__ import annotations
 
 import pytest
 
-
 _ISO_NOW = "2026-05-14T12:00:00+00:00"
 _ISO_LATER = "2026-05-14T12:05:00+00:00"
 _ISO_EARLIER = "2026-05-14T11:55:00+00:00"

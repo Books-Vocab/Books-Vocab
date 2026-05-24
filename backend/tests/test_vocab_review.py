@@ -14,12 +14,10 @@ Complements test_sync_merge.py (CardStore integration) and test_daily_stats.py
 from __future__ import annotations
 
 import logging
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 from datetime import UTC, datetime, timedelta
 from types import SimpleNamespace
 from typing import Any
-
-import pytest
 
 from kg.api_models import DailyReviewStatEntry, ReviewStateEntry
 from kg.vocab_review import (

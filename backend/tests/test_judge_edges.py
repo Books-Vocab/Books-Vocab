@@ -19,15 +19,11 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import MagicMock
 
-import pytest
-
 from kg.judge import (
     BATCH_SYSTEM_PROMPT,
     BATCH_USER_TEMPLATE,
     Judge,
-    Judgement,
 )
-
 
 # ── shared helpers ──────────────────────────────────────────────
 
@@ -241,8 +237,8 @@ def test_batch_judge_degree_cap_respected(tmp_path, monkeypatch):
     """
     judge_log = _fresh_judge_log(tmp_path, monkeypatch)
 
-    from kg.vocab_graph import MAX_DEGREE
     from kg.pipeline_service import _step_embed_and_judge
+    from kg.vocab_graph import MAX_DEGREE
 
     available_slots = 2
     existing = [SimpleNamespace(id=f"existing{i}", status="active")

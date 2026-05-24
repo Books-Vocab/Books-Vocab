@@ -10,8 +10,6 @@ import pytest
 from pydantic import ValidationError
 
 from kg.api_models import TranslateRequest, TranslationLanguageConfig
-from kg.languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
-
 
 # ============================================================================
 # Problem A: Rate limit key should use X-Forwarded-For, not proxy IP
@@ -25,9 +23,10 @@ class TestRateLimitUsesForwardedFor:
 
     @pytest.fixture()
     def isolated_client(self):
-        from kg.rate_limit import api_limiter, translate_limiter
-        from kg.api import app
         from fastapi.testclient import TestClient
+
+        from kg.api import app
+        from kg.rate_limit import api_limiter, translate_limiter
 
         api_limiter._requests.clear()
         translate_limiter._requests.clear()
