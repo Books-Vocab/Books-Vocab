@@ -885,3 +885,6 @@
 "podcast.subtitle.unavailable.title" = "No sentence-level subtitles for this episode";
 "podcast.subtitle.unavailable.description" = "Audio playback continues normally";
 "podcast.episodeList.staleBanner.message" = "Load failed — showing cached data";
+"search.clear" = "Clear search";
+"banner.action.retry" = "Retry";
+"banner.action.dismiss" = "Dismiss";
