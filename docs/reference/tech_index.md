@@ -7,7 +7,7 @@ scope:
   - ios/BooksBrowser/
   - ops/
   - lab/
-verified_against: c642ed18
+verified_against: 800386c5
 -->
 # Technical Reference Index
 
@@ -31,7 +31,7 @@ verified_against: c642ed18
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |
-| `static_pages.py` | `/privacy.html` / `/support.html` / `/terms.html` | 靜態頁 |
+| `static_pages.py` | `/privacy.html` / `/support.html` / `/terms.html` / `/guide.html` | 靜態頁 |
 
 ## SQLite Log Stores (`backend/src/kg/`)
 
