@@ -347,20 +347,6 @@ struct NotebookCard: View {
     }
 }
 
-/// 僅 `.grid` 樣式套整卡 aspect ratio，hero 不鎖（避免寬扁 cover 被壓縮）。
-private struct GridAspectRatioModifier: ViewModifier {
-    let style: NotebookCardStyle
-
-    func body(content: Content) -> some View {
-        switch style {
-        case .grid:
-            content.aspectRatio(LayoutMode.notebookCardAspectRatio, contentMode: .fit)
-        case .hero:
-            content
-        }
-    }
-}
-
 /// D1 editorial cover composition — serif name 左上 + hairline rule + N 詞 右下 + (active) spine。
 /// 以 `.overlay` 套在既有 cover view 之上,跟著 `coverArea.rotationEffect` 一起旋轉。
 /// Spine 走 `NotebookPalette.darken(coverColor, by: 0.4)` (HSB brightness ×0.6,同色族加深)。
