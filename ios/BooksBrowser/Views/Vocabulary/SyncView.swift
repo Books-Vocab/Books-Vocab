@@ -74,7 +74,10 @@ struct SyncView: View {
                     id: entry.id,
                     row: entry.wordRowViewData(),
                     actionSystemImage: entry.syncAction == .delete ? "arrow.uturn.backward.circle" : "trash",
-                    actionTone: entry.syncAction == .delete ? .secondary : .tertiary
+                    actionTone: entry.syncAction == .delete ? .secondary : .tertiary,
+                    actionAccessibilityLabel: entry.syncAction == .delete
+                        ? L10n.string("sync.pending.undoDelete")
+                        : L10n.string("sync.pending.cancelAdd")
                 )
             }
         )

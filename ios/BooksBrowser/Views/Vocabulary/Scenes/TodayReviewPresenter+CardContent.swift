@@ -197,6 +197,7 @@ extension TodayReviewPresenter {
                     .foregroundStyle(appSkin.palette.secondaryText)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(L10n.string("vocab.card.addLink"))
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

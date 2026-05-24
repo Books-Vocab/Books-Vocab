@@ -853,3 +853,8 @@
 "search.clear" = "清除搜索";
 "banner.action.retry" = "重试";
 "banner.action.dismiss" = "关闭";
+"translation.vocab.speak" = "朗读 %@";
+"vocab.card.speak" = "朗读 %@";
+"vocab.card.addLink" = "新增知识链接";
+"sync.pending.undoDelete" = "撤销删除";
+"sync.pending.cancelAdd" = "取消待新增项目";
