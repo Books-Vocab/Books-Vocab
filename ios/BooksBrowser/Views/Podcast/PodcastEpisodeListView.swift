@@ -308,7 +308,7 @@ struct PodcastEpisodeListView: View {
     private var staleDataBanner: some View {
         if loadError != nil && !rawEpisodes.isEmpty {
             AppBanner(
-                message: "載入失敗，顯示快取資料",
+                message: L10n.string("載入失敗，顯示快取資料"),
                 systemImage: "exclamationmark.triangle",
                 onRetry: {
                     Task { await reloadFromStore() }

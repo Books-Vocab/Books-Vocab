@@ -93,9 +93,9 @@ struct PodcastSubtitleView: View {
     @ViewBuilder
     private var subtitleUnavailableHint: some View {
         AppStateMessageCard(
-            title: "此集無逐句字幕",
+            title: L10n.string("此集無逐句字幕"),
             systemImage: "captions.bubble.slash",
-            description: "音訊仍可正常播放",
+            description: L10n.string("音訊仍可正常播放"),
             style: .vocab(skin)
         )
         .padding(.horizontal, skin.spacing.cardPadding)
