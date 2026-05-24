@@ -52,10 +52,18 @@ extension TodayReviewPresenter {
             )
 
             #if os(macOS)
-            VocabChromeIconButton(systemImage: "questionmark.circle", action: onToggleHelp)
+            VocabChromeIconButton(
+                systemImage: "questionmark.circle",
+                label: L10n.string("vocab.chromeIcon.todayReview.help"),
+                action: onToggleHelp
+            )
             #endif
 
-            VocabChromeIconButton(systemImage: "xmark", action: onClose)
+            VocabChromeIconButton(
+                systemImage: "xmark",
+                label: L10n.string("vocab.chromeIcon.todayReview.close"),
+                action: onClose
+            )
         }
         .padding(.horizontal, TodayReviewMetrics.topBarHorizontalInset)
         .padding(.top, TodayReviewMetrics.topBarTopInset)

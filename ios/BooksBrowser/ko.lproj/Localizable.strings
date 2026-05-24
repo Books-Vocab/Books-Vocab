@@ -835,6 +835,16 @@
 "todayReview.nav.previous" = "이전 카드";
 "todayReview.nav.next" = "다음 카드";
 
+// MARK: - VocabChromeIconButton a11y (track-11)
+"vocab.chromeIcon.readerSettings.dismiss" = "읽기 설정 닫기";
+"vocab.chromeIcon.translation.dismiss" = "번역 패널 닫기";
+"vocab.chromeIcon.todayReview.help" = "단축키 표시";
+"vocab.chromeIcon.todayReview.close" = "오늘의 복습 닫기";
+"vocab.chromeIcon.collocation.dismiss" = "연어 설명 닫기";
+
+// MARK: - Podcast Sleep Timer (track-11)
+"podcast.sleepTimer.fired.toast" = "절전 타이머가 종료되어 재생을 일시정지했습니다";
+
 // MARK: - Podcast Subtitle states (track-3)
 "podcast.subtitle.loading.hint" = "자막 로드 중…";
 "podcast.subtitle.unavailable.title" = "이 에피소드에는 문장 단위 자막이 없습니다";
