@@ -22,7 +22,7 @@
 #   KG_BACKUP_DIR   — 覆寫 backup 目錄（預設 <repo>/backups）
 #   KG_VERIFY_QUIET — 1 = 只印摘要
 
-set -o pipefail
+set -euo pipefail
 
 # ── 路徑解析 ────────────────────────────────────────────────────────────────
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"

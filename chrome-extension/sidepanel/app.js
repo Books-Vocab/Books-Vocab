@@ -385,14 +385,14 @@ function makeSection(label, contentHTML) {
 // ---------------------------------------------------------------------------
 
 /**
- * Escape HTML to prevent XSS.
+ * Escape HTML to prevent XSS. Thin alias for `KGPure.escapeHtml` — kept under
+ * the local `esc` name because the template-literal call sites read better
+ * short (`${esc(meaning)}` vs `${KGPure.escapeHtml(meaning)}`).
  * @param {string} str
  * @returns {string}
  */
 function esc(str) {
-  const el = document.createElement('span');
-  el.textContent = str;
-  return el.innerHTML;
+  return KGPure.escapeHtml(str);
 }
 
 /**
