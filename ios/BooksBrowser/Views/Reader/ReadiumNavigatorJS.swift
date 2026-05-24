@@ -22,29 +22,7 @@ enum ReadiumNavigatorJS {
         ].joined(separator: "\n\n")
     }
 
-    static func buildContentStyleScript(contentStyleCSS: String) -> String {
-        """
-        (function() {
-            function ensureContentStyleTag() {
-                var style = document.getElementById('reader-content-style');
-                if (!style) {
-                    style = document.createElement('style');
-                    style.id = 'reader-content-style';
-                    document.head.appendChild(style);
-                }
-                return style;
-            }
-
-            window.__applyReaderContentStyle = function(css) {
-                ensureContentStyleTag().textContent = css;
-            };
-
-            window.__applyReaderContentStyle(`\(contentStyleCSS)`);
-        })();
-        """
-    }
-
-    private static func buildHighlightScript() -> String {
+    static func buildHighlightScript() -> String {
         """
         // 標記單一生字（底線）
         window.__markVocabWord = function(word) {
