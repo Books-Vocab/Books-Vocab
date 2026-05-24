@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Reader/
-verified_against: c642ed18
+verified_against: dba5d4e1
 -->
 # Reader Feature Boundary
 
@@ -50,13 +50,18 @@ verified_against: c642ed18
 | 檔案 | 行數 | 說明 |
 |------|------|------|
 | `ReadiumNavigatorView.swift` | 225 | Readium WebView 封裝 |
-| `ReadiumNavigatorJS.swift` | 502 | JavaScript 橋接腳本 |
+| `ReadiumNavigatorJS.swift` | 25 | JavaScript 橋接腳本 entry（`buildInjectionScript` 組合入口）|
+| `ReadiumNavigatorJS+BaseStyle.swift` | 80 | `buildBaseStyleScript`（@font-face + base CSS + debug overlay styles）|
+| `ReadiumNavigatorJS+ContentStyle.swift` | 32 | `buildContentStyleScript`（內容樣式注入 / 動態更新）|
+| `ReadiumNavigatorJS+Highlight.swift` | 173 | `buildHighlightScript`（`__markVocabWord` / `__markVocabWords` / `__removeVocabWord`）|
+| `ReadiumNavigatorJS+Debug.swift` | 76 | `buildDebugScript`（`__toggleDebugBoxes` Token Calculator 黑盒）|
+| `ReadiumNavigatorJS+Selection.swift` | 266 | `buildSelectionScript`（`selectionchange` 監聽 + 單字 caret 點擊偵測）|
 | `ReadiumNavigatorCoordinator+Commands.swift` | 98 | `BridgeCommand` / `HostCommand` / `NavigatorCommand` / `DOMCommand` |
 | `ReadiumNavigatorCoordinator+Planner.swift` | 166 | `struct BridgePlanner`，指令排程 |
 | `ReadiumNavigatorCoordinator+Messages.swift` | 104 | 訊息解析 extension |
 | `ReadiumNavigatorCoordinator+Highlighting.swift` | 132 | 高亮 extension |
 | `ReadiumNavigatorSupport.swift` | 99 | `actor GlobalDebouncer` + `final class NavigatorHostViewController` |
-| `ReaderContentStyle.swift` | 260 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderGlassTypography` + `ReaderPresentationMetrics` |
+| `ReaderContentStyle.swift` | 164 | `ReaderContentStyle` + `ReaderContentStyleFactory` + `ReaderPresentationMetrics` |
 
 ### Feature Panels
 
