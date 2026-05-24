@@ -60,7 +60,7 @@ class _LinksMixin:
 
     def batch_add_links(
         self,
-        links: list[tuple[str, str, "LinkKind", float, str]],
+        links: list[tuple[str, str, LinkKind, float, str]],
     ) -> list[GraphLink]:
         """Create multiple links with a single disk write. Returns created links."""
         created: list[GraphLink] = []

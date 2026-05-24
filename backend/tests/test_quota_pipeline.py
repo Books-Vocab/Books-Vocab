@@ -13,7 +13,6 @@ from datetime import UTC, datetime
 
 import pytest
 
-
 # ── Helpers ────────────────────────────────────────────────────────
 
 
@@ -38,6 +37,7 @@ def fresh_token_db(tmp_path, monkeypatch):
     """Force token_tracker to use a clean DB for this test (isolated from others)."""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import importlib
+
     import kg.token_tracker as tt
     importlib.reload(tt)
     if tt._conn is not None:

@@ -5,7 +5,6 @@ from datetime import UTC, datetime
 
 from kg.vocab_crud import list_vocab_cards
 
-
 # ---------------------------------------------------------------------------
 # Fake helpers
 # ---------------------------------------------------------------------------

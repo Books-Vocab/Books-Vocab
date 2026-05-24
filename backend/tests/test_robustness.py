@@ -35,7 +35,6 @@ os.environ["KG_DATA_DIR"] = "/tmp/kg_test_default"
 os.environ["JWT_SECRET"] = "test-secret-key-for-ci-at-least-32-bytes"
 os.environ["GEMINI_API_KEY"] = "fake-key"
 
-from datetime import UTC
 
 import kg.api as api_mod
 import kg.deps as deps_mod
@@ -66,8 +65,8 @@ def make_jwt(user_id: str) -> str:
 
 def _swap_settings(new_settings):
     """Replace app.state.kg_settings and rebuild load/save closures."""
-    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
 
     app.state.kg_settings = new_settings
 
@@ -98,8 +97,8 @@ def user_env(tmp_path):
     headers = {"Authorization": f"Bearer {token}"}
 
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
-    notifications_file = tmp_path / "app_store_notifications.ndjson"
+    tmp_path / "users.json.lock"
+    tmp_path / "app_store_notifications.ndjson"
     users_file.write_text(json.dumps({
         user_id: {
             "config": {},

@@ -15,10 +15,7 @@ from __future__ import annotations
 
 import logging
 from dataclasses import dataclass, field
-from types import SimpleNamespace
 from typing import Any
-
-import pytest
 
 from kg.api_models import VocabEntry, VocabSource
 from kg.vocab_intake import _build_example, _derive_inflections, add_vocab_entries

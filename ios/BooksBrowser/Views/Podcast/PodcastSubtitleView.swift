@@ -74,7 +74,7 @@ struct PodcastSubtitleView: View {
             ProgressView()
                 .controlSize(.small)
                 .tint(skin.palette.secondaryText)
-            Text(L10n.string("字幕載入中…"))
+            Text(L10n.string("podcast.subtitle.loading.hint"))
                 .font(skin.typography.caption)
                 .foregroundStyle(skin.palette.secondaryText)
         }
@@ -93,9 +93,9 @@ struct PodcastSubtitleView: View {
     @ViewBuilder
     private var subtitleUnavailableHint: some View {
         AppStateMessageCard(
-            title: L10n.string("此集無逐句字幕"),
+            title: L10n.string("podcast.subtitle.unavailable.title"),
             systemImage: "captions.bubble.slash",
-            description: L10n.string("音訊仍可正常播放"),
+            description: L10n.string("podcast.subtitle.unavailable.description"),
             style: .vocab(skin)
         )
         .padding(.horizontal, skin.spacing.cardPadding)

@@ -5,11 +5,9 @@ import json
 from datetime import UTC, datetime
 from pathlib import Path
 
-import pytest
 from sqlmodel import Session, SQLModel, create_engine
 
 from kg.cards import Card
-
 
 # ---------------------------------------------------------------------------
 # helpers

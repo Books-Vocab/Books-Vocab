@@ -19,7 +19,6 @@ from kg.quota_service import (
     token_cost_usd,
 )
 
-
 # ── token_cost_usd ────────────────────────────────────────────────
 
 
@@ -61,7 +60,7 @@ class TestTokenCostUsd:
 class TestConfigureLimits:
     def test_configure_changes_limits(self):
         configure_limits(pro=1.0, free=0.1)
-        from kg.quota_service import PRO_DAILY_LIMIT_USD, FREE_DAILY_LIMIT_USD
+        from kg.quota_service import FREE_DAILY_LIMIT_USD, PRO_DAILY_LIMIT_USD
         assert PRO_DAILY_LIMIT_USD == 1.0
         assert FREE_DAILY_LIMIT_USD == 0.1
         # Restore defaults
@@ -240,6 +239,7 @@ class TestGrantRevoke:
         Token usage is the only state; limits are pure config.
         """
         from datetime import UTC, datetime
+
         from kg.quota_service import FREE_DAILY_LIMIT_USD, PRO_DAILY_LIMIT_USD
 
         baseline_pro = PRO_DAILY_LIMIT_USD

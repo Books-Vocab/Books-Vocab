@@ -21,7 +21,7 @@ import os
 import sqlite3
 import sys
 from collections import Counter, defaultdict
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from kg.ops_shared import connect_ro, data_dir, notebook_files, resolve_uid, table_columns
@@ -45,7 +45,7 @@ def level_1(uid: str, udir: Path) -> None:
 
     # 額度
     token_db = data_dir() / "token_usage.db"
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    cutoff = (datetime.now(UTC) - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     pro_limit = float(os.getenv("PRO_DAILY_LIMIT_USD", "0.30"))
 
     if token_db.exists():
@@ -96,7 +96,7 @@ def level_2(uid: str, udir: Path) -> None:
         print("  (token_usage.db 不存在)")
         return
 
-    cutoff = (datetime.now(timezone.utc) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    cutoff = (datetime.now(UTC) - timedelta(hours=72)).strftime("%Y-%m-%dT%H:%M:%S+00:00")
     conn = connect_ro(token_db)
     pcol = "provider" if "provider" in table_columns(conn, "token_usage") else "NULL"
     rows = conn.execute(
@@ -213,7 +213,7 @@ def level_3(uid: str, udir: Path) -> dict:
         import statistics
         print(f"  度數: min={min(vals)} max={max(vals)} mean={statistics.mean(vals):.1f} median={statistics.median(vals):.0f}")
         deg_hist = Counter(vals)
-        print(f"  度數分布:")
+        print("  度數分布:")
         for d in sorted(deg_hist):
             print(f"    {d:>3}: {deg_hist[d]:>3} {_bar(deg_hist[d])}")
 
@@ -263,7 +263,7 @@ def level_3(uid: str, udir: Path) -> dict:
 
     # Top hubs
     top = sorted(degrees.items(), key=lambda x: -x[1])[:5]
-    print(f"\n  Top 5 hubs:")
+    print("\n  Top 5 hubs:")
     for cid, deg in top:
         name = cards.get(cid, {}).get("content", "?")
         print(f"    {name:<20} degree={deg}")
@@ -288,7 +288,7 @@ def level_4(uid: str, udir: Path) -> None:
 
     # Kind distribution
     kinds = Counter(l["kind"] for l in links)
-    print(f"  Kind 分布:")
+    print("  Kind 分布:")
     for k, c in kinds.most_common():
         pct = c / len(links) * 100
         print(f"    {k:<20} {c:>4} ({pct:.0f}%)")
@@ -302,7 +302,7 @@ def level_4(uid: str, udir: Path) -> None:
     dates = Counter(l["created_at"][:10] for l in links)
     recent = sorted(dates.items())[-7:]
     if recent:
-        print(f"\n  近 7 天連結建立:")
+        print("\n  近 7 天連結建立:")
         for d, c in recent:
             print(f"    {d}: {c:>3} {_bar(c)}")
 
@@ -349,7 +349,7 @@ def level_5(uid: str, udir: Path) -> None:
     print(f"\n  全局相似度: mean={upper.mean():.4f} std={upper.std():.4f} min={upper.min():.4f} max={upper.max():.4f}")
 
     # Percentiles
-    print(f"  百分位:")
+    print("  百分位:")
     for p in [50, 75, 90, 95, 99]:
         v = np.percentile(upper, p)
         print(f"    P{p}: {v:.4f}")

@@ -829,7 +829,25 @@
 "集數由大到小" = "集數由大到小";
 "集數由小到大" = "集數由小到大";
 "音訊暫不可用" = "音訊暫不可用";
-"字幕載入中…" = "字幕載入中…";
-"此集無逐句字幕" = "此集無逐句字幕";
-"音訊仍可正常播放" = "音訊仍可正常播放";
-"載入失敗，顯示快取資料" = "載入失敗，顯示快取資料";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "倒退 15 秒";
+"podcast.controls.forward15" = "前進 15 秒";
+"podcast.controls.playpause.play" = "播放";
+"podcast.controls.playpause.pause" = "暫停";
+"podcast.controls.cycleRate" = "切換播放速率";
+"podcast.player.subtitleSettings" = "字幕設定";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "上一張卡片";
+"todayReview.autoplay.next" = "下一張卡片";
+"todayReview.autoplay.playpause.play" = "繼續自動播放";
+"todayReview.autoplay.playpause.pause" = "暫停自動播放";
+"todayReview.nav.previous" = "上一張卡片";
+"todayReview.nav.next" = "下一張卡片";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "字幕載入中…";
+"podcast.subtitle.unavailable.title" = "此集無逐句字幕";
+"podcast.subtitle.unavailable.description" = "音訊仍可正常播放";
+"podcast.episodeList.staleBanner.message" = "載入失敗，顯示快取資料";

@@ -1,6 +1,7 @@
 """Tests for KGSettings defaults."""
-from kg.settings import KGSettings
 from pathlib import Path
+
+from kg.settings import KGSettings
 
 
 def test_settings_has_llm_defaults():

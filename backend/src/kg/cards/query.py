@@ -48,7 +48,7 @@ class CardQueryMixin:
             results = session.exec(statement).all()
             yield from results
 
-    def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None) -> dict[str, "Card"]:
+    def all_as_dict(self, include_deleted: bool = False, notebook_id: str | None = None) -> dict[str, Card]:
         with Session(self.engine) as session:
             statement = select(Card)
             if not include_deleted:
@@ -57,7 +57,7 @@ class CardQueryMixin:
                 statement = statement.where(Card.notebook_id == notebook_id)
             return {card.id: card for card in session.exec(statement).all()}
 
-    def get_batch(self, card_ids: set[str]) -> dict[str, "Card"]:
+    def get_batch(self, card_ids: set[str]) -> dict[str, Card]:
         """Fetch multiple cards by ID in a single query."""
         if not card_ids:
             return {}

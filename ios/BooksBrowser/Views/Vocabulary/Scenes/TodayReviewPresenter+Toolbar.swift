@@ -236,6 +236,7 @@ extension TodayReviewPresenter {
                     .font(AppFonts.h2())
             }
             .disabled(!state.canGoPrevious)
+            .accessibilityLabel(L10n.string("todayReview.autoplay.previous"))
 
             Button(action: onToggleAutoPlayPause) {
                 Image(systemName: state.isAutoPlayPaused ? "play.fill" : "pause.fill")
@@ -246,6 +247,7 @@ extension TodayReviewPresenter {
                             .fill(appSkin.palette.mutedFill)
                     )
             }
+            .accessibilityLabel(L10n.string(state.isAutoPlayPaused ? "todayReview.autoplay.playpause.play" : "todayReview.autoplay.playpause.pause"))
 
             Button {
                 guard isCardInteractive else { return }
@@ -255,6 +257,7 @@ extension TodayReviewPresenter {
                     .font(AppFonts.h2())
             }
             .disabled(!state.canGoNext)
+            .accessibilityLabel(L10n.string("todayReview.autoplay.next"))
         }
         .foregroundStyle(appSkin.palette.primaryText)
         .frame(maxWidth: .infinity)
@@ -266,11 +269,13 @@ extension TodayReviewPresenter {
                 Image(systemName: "chevron.left").font(appSkin.typography.iconNavigation)
             }
             .disabled(!state.canGoPrevious)
+            .accessibilityLabel(L10n.string("todayReview.nav.previous"))
 
             Button { guard isCardInteractive else { return }; onNext() } label: {
                 Image(systemName: "chevron.right").font(appSkin.typography.iconNavigation)
             }
             .disabled(!state.canGoNext)
+            .accessibilityLabel(L10n.string("todayReview.nav.next"))
         }
         .foregroundStyle(appSkin.palette.secondaryText)
     }

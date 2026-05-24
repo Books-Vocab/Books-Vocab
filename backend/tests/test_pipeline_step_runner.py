@@ -1,6 +1,8 @@
 """Tests for pipeline step execution helper."""
 import logging
+
 import pytest
+
 from kg.pipeline_service import _run_step
 
 

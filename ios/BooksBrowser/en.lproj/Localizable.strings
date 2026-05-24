@@ -846,7 +846,25 @@
 "集數由大到小" = "Newest first";
 "集數由小到大" = "Oldest first";
 "音訊暫不可用" = "Audio unavailable";
-"字幕載入中…" = "Loading subtitles…";
-"此集無逐句字幕" = "No sentence-level subtitles for this episode";
-"音訊仍可正常播放" = "Audio playback continues normally";
-"載入失敗，顯示快取資料" = "Load failed — showing cached data";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "Rewind 15 seconds";
+"podcast.controls.forward15" = "Forward 15 seconds";
+"podcast.controls.playpause.play" = "Play";
+"podcast.controls.playpause.pause" = "Pause";
+"podcast.controls.cycleRate" = "Cycle playback speed";
+"podcast.player.subtitleSettings" = "Subtitle settings";
+
+// MARK: - TodayReview a11y (track-7)
+"todayReview.autoplay.previous" = "Previous card";
+"todayReview.autoplay.next" = "Next card";
+"todayReview.autoplay.playpause.play" = "Resume autoplay";
+"todayReview.autoplay.playpause.pause" = "Pause autoplay";
+"todayReview.nav.previous" = "Previous card";
+"todayReview.nav.next" = "Next card";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "Loading subtitles…";
+"podcast.subtitle.unavailable.title" = "No sentence-level subtitles for this episode";
+"podcast.subtitle.unavailable.description" = "Audio playback continues normally";
+"podcast.episodeList.staleBanner.message" = "Load failed — showing cached data";

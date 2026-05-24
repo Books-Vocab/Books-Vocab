@@ -131,6 +131,7 @@ struct PodcastPlayerView: View {
                 } label: {
                     Image(systemName: "textformat.size")
                 }
+                .accessibilityLabel(L10n.string("podcast.player.subtitleSettings"))
                 .popover(isPresented: $showSettingsPopover, arrowEdge: .top) {
                     PodcastSettingsPopover(
                         subtitleSize: subtitleSizeBinding,

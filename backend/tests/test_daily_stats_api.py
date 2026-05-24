@@ -6,7 +6,6 @@ from unittest.mock import patch
 import kg.routers.vocab as vocab_router_mod
 from conftest import _DummyEmbeddingStore
 
-
 # ---------------------------------------------------------------------------
 # GET /api/vocab/daily-stats — empty state
 # ---------------------------------------------------------------------------

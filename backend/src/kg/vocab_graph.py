@@ -7,7 +7,6 @@ from typing import Any
 
 from .api_models import GraphLinkResponse
 
-
 SIMILARITY_THRESHOLD = 0.70
 CANDIDATE_K = 12
 MAX_DEGREE = 6  # 每張卡最多連結數

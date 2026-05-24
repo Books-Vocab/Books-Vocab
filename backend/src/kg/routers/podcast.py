@@ -28,11 +28,12 @@ StaticFiles ``/api/podcast-media/`` mount being private (it is not).
 import json
 import logging
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 from typing import Annotated
 
-from fastapi import APIRouter, Depends, Header, HTTPException, Path as PathParam, Request
+from fastapi import APIRouter, Depends, Header, HTTPException, Request
+from fastapi import Path as PathParam
 from fastapi.responses import PlainTextResponse, StreamingResponse
 from pydantic import BaseModel, Field
 
@@ -107,8 +108,8 @@ def _canonical_updated_at(raw: str) -> str:
     except (TypeError, ValueError, AttributeError) as exc:
         raise HTTPException(status_code=422, detail="updated_at must be ISO8601") from exc
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc).isoformat()
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC).isoformat()
 
 
 @router.get("/api/podcasts/progress")
