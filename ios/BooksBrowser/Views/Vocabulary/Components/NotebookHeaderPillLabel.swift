@@ -10,13 +10,14 @@
 import SwiftUI
 
 struct NotebookHeaderPillLabel<Content: View>: View {
+    @Environment(\.appSkin) private var appSkin
     let fillColor: Color
     let foregroundColor: Color
     @ViewBuilder let content: Content
 
     var body: some View {
         content
-            .font(.system(size: 13, weight: .semibold))
+            .font(appSkin.typography.caption.weight(.semibold))
             .foregroundStyle(foregroundColor)
             .padding(.horizontal, AppSpacing.s2 + 2)   // 10pt
             .padding(.vertical, 7)
