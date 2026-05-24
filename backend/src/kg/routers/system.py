@@ -4,7 +4,6 @@ from __future__ import annotations
 import logging
 import time
 from pathlib import Path
-from typing import Any
 
 from fastapi import APIRouter, Depends
 from pydantic import BaseModel
@@ -26,6 +25,12 @@ class SystemInfoResponse(BaseModel):
     started_at: str
     uptime_seconds: int
     migration_version: str
+
+
+class SentryPingResponse(BaseModel):
+    sent: bool
+    is_active: bool
+    event_id: str | None = None
 
 
 router = APIRouter()
@@ -68,8 +73,8 @@ def sentry_test(_admin=Depends(get_admin_user)) -> dict:
     raise RuntimeError("Sentry verification: deliberate test exception from /api/system/sentry-test")
 
 
-@router.post("/api/admin/sentry/ping", include_in_schema=False)
-def sentry_admin_ping(_admin=Depends(get_admin_user)) -> dict[str, Any]:
+@router.post("/api/admin/sentry/ping", include_in_schema=False, response_model=SentryPingResponse)
+def sentry_admin_ping(_admin=Depends(get_admin_user)) -> SentryPingResponse:
     """Smoke-ping Sentry from the admin UI to confirm DSN wiring post-deploy.
 
     Unlike ``/api/system/sentry-test`` (which raises an uncaught exception so
@@ -83,14 +88,14 @@ def sentry_admin_ping(_admin=Depends(get_admin_user)) -> dict[str, Any]:
     """
     is_active = sentry_init.is_active()
     if not is_active:
-        return {"sent": False, "is_active": False, "event_id": None}
+        return SentryPingResponse(sent=False, is_active=False, event_id=None)
 
     event_id: str | None = None
     try:
         import sentry_sdk
     except ImportError:  # pragma: no cover — sentry_sdk presence is implied by is_active()
         _logger.warning("sentry_init.is_active() True but sentry_sdk import failed")
-        return {"sent": False, "is_active": True, "event_id": None}
+        return SentryPingResponse(sent=False, is_active=True, event_id=None)
 
     try:
         event_id = sentry_sdk.capture_message("admin smoke ping", level="info")
@@ -102,6 +107,6 @@ def sentry_admin_ping(_admin=Depends(get_admin_user)) -> dict[str, Any]:
             event_id = captured or event_id
     except Exception:  # pragma: no cover — Sentry transport must never crash the handler
         _logger.exception("Sentry admin ping failed to dispatch")
-        return {"sent": False, "is_active": True, "event_id": None}
+        return SentryPingResponse(sent=False, is_active=True, event_id=None)
 
-    return {"sent": True, "is_active": True, "event_id": event_id}
+    return SentryPingResponse(sent=True, is_active=True, event_id=event_id)
