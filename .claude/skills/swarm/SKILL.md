@@ -41,8 +41,11 @@ user-invocable: true
 
 ```bash
 slug=track-N-<短描述>
-git worktree add -b swarm/$slug .claude/worktrees/$slug origin/main
+WORKTREES=<repo-root-absolute-path>/.claude/worktrees   # 一次定好，絕不用相對路徑
+git worktree add -b swarm/$slug $WORKTREES/$slug origin/main
 ```
+
+> **`git worktree add` 的路徑參數一律絕對路徑** — Bash cwd 在多 Bash call 間會漂移（特別是上一個 call 結尾在某 worktree 內），相對路徑會把新 worktree 建到漂移點之下，釀成 nested worktree。父 worktree 被 `remove` 時連帶 rm-rf 子 worktree dir，in-flight agent 工作目錄被刪 + uncommitted 全失。歷次 session 已撞多次，**用絕對路徑是結構性修正，不靠記憶**。
 
 然後 agent 的 prompt 必含：
 - 「你的工作目錄是絕對路徑 `<.../.claude/worktrees/$slug>`，第一件事 `cd` 進去」
@@ -135,6 +138,8 @@ scan agent 的 medium-severity 發現約**半數是誤報**（查證後常發現
 
 流程：scan 回報疑似 bug → 派一個**短的唯讀 confirm agent**（或你自己）用具體 repro 確認 bug 真實 → **確認後**才預建 worktree、派 write agent。沒 repro 不投。
 
+**Cold-review 發現同等對待 — 甚至更嚴格。** cold-review agent 看 `git log` + `git show --stat` + 表面 grep 推測缺陷，trace 深度比 scan 還淺；標的 ⚠️/🛑 看起來像「真實缺陷」（含具體 file:line + 修補方向），最誘人直接投 fixer，但實測誤報率極高 — 歷史 session cold-review batch 曾出現 4/4 findings 全 false alarm，確認流程救了 4 個無用 hotfix 派發。**規則：cold-review finding ⚠️/🛑 必過唯讀 confirm agent，confirmed 才投 write。**
+
 **嚴重度由 orchestrator 落地，不照單全收。** scan / audit agent 標的 🛑/⚠️ 是**程式碼層嚴重度** — agent 不知道部署拓樸。真實嚴重度 = 程式碼層嚴重度 × 部署事實（worker 數、實例數、該路徑當前是否真的會觸發）。例：agent 把一個並發 race 標 🛑，你先查 `Dockerfile` 確認單 worker → 該 race 當前不觸發 → 降為「潛在」，不急著投昂貴的 write agent，也不引入新風險。**先確認部署事實，再定投入與優先序。** 這點也寫進 audit 類 agent 的 prompt：要求它分開報「程式碼層嚴重度」與「觸發前提」。
 
 ## 收到通知時（pipeline 模式）
@@ -171,6 +176,19 @@ swarm session 末段最常見的事故不在 agent，而在 orchestrator 自己�
    順序固定且不可交錯：**先 `git worktree remove <path>`（cwd 已在 root）→ 再 merge**，branch 隨 merge 刪除。worktree 還佔著 branch 時帶 `--delete-branch` merge 會失敗。
 
 兩類事故同源於「worktree 生命週期」——修了 cwd 一面常又露出 merge 順序另一面。把上面兩條當一組，每次拆 worktree 都走完。
+
+**推薦寫法（不靠記憶，靠 git -C 與 Bash call 分離）：**
+
+```bash
+# Push 從 worktree 內做（無法避免 cd 進去），push 完該 Bash call 就結束
+cd $WORKTREES/track-X && git push -u origin swarm/track-X && gh pr create ...
+
+# 下一個 Bash call **必定獨立**，用 git -C 顯式指定工作目錄，免去 cd
+# 即使 cwd 漂移在別處也不會撞 worktree 生命週期
+git -C $REPO_ROOT worktree remove $WORKTREES/track-X && gh pr merge $PR --squash --admin --delete-branch
+```
+
+`git -C <path>` 等同臨時切到該路徑跑 git 命令，但不污染 Bash cwd。所有跨 worktree 的 git 操作（特別是 `worktree remove` / `worktree list` / `worktree prune`）優先用 `git -C $REPO_ROOT`，把 cwd 漂移從風險公式裡刪掉。
 
 ## Write-agent prompt 模板（每次 dispatch 必含）
 
@@ -224,6 +242,9 @@ git fetch origin main && git merge origin/main
 11. **詢問小改** — 「要不要 merge？」「方向對嗎？」**修**：能猜就猜，使用者會糾正。
 12. **worktree 拆除踩 cwd / merge 順序** — cwd 留在 worktree 內就 `git worktree remove` → cwd 自刪、pipeline 中斷；branch 還被 worktree 佔就 `--delete-branch` merge → 失敗。**修**：見「worktree 生命週期衛生」——拆除前 cd 回 root，先移 worktree 再 merge。
 13. **wakeup 疊加 notification** — pipeline 已由 task 完工 notification 驅動，還額外排 `ScheduleWakeup`「以防萬一」→ 任務結束後 stale wakeup prompt 連環觸發成尾端噪音。**修**：notification 已是驅動器時不排 wakeup，二者擇一。
+14. **cwd 漂移 + 相對路徑建 nested worktree** — `cd <worktree-A> && <cmd>` 後 cwd 留 A；下一個 Bash call `git worktree add -b ... <relative-path> origin/main` 把新 worktree B 建到 `A/<relative-path>` 內（nested）。A 被 `git worktree remove` 時連帶 rm-rf B 的工作目錄，B 的 in-flight agent 工作目錄被刪 + uncommitted 全失（branch 上 commit 仍在，但 work 從零再做）。**修**：見「隔離基建」—— `git worktree add` 路徑參數**一律絕對路徑**（`$WORKTREES/$slug` 而非 `.claude/worktrees/$slug`）；跨 worktree git 操作優先 `git -C $REPO_ROOT`。歷史 session 撞多次。
+15. **cold-review finding 直接投 write 不 confirm** — cold-review agent 標的 ⚠️/🛑 看似具體（含 file:line + 修補方向），最誘人直接派 fixer；但 trace 深度比 scan 更淺，誤報率極高（曾出現 4/4 全 false alarm）。**修**：見「scan 發現 → 廉價確認 → 才投入」段；cold-review finding 與 scan finding 同等紀律，必過唯讀 confirm 才投 write。
+16. **L10n.string("inline 中文 literal") 過 extractor 漏網** — 部分 i18n lint extractor 只解析 `L10n.string(<constant>)` 而非 inline literal，inline literal 寫法 → strict lint pass 但 5 lproj 全缺 key → production fallback 到 raw 中文。reviewer 若只看 lint 結果而沒 grep 5 lproj 對 key 就過了。**修**：iOS PR review 強制條目「新 L10n key 必須 grep 5 lproj 各自確認 entry 存在，非 raw 中文 fallback」；prefer dotted-key 命名（`module.context.action`）而非 inline 中文 literal。曾走 3 輪 review 才解決同一 PR。
 
 ## 並行維持策略
 
@@ -267,7 +288,8 @@ git fetch origin main && git merge origin/main
 - ❌ write agent >5，或在飛的 write PR 超過 review 頻寬
 - ❌ 總並行數 <10 超過 1 個 turn（唯讀 agent 撐不起來沒藉口）
 - ❌ 主線同步等 build / pytest
-- ❌ scan 誤報未經 confirm 就投 dev agent
+- ❌ scan 或 cold-review 誤報未經 confirm 就投 dev agent
+- ❌ `git worktree add` 用相對路徑（必須絕對路徑，避免 nested worktree）
 - ❌ 看到 NEEDS-FIX 不派 fixer 就回報
 - ❌ 看到 stale 通知不查 worktree 真實狀態
 - ❌ 報告超過 300 字無 result:
