@@ -341,7 +341,7 @@ class EmbeddingStore:
                 if attempt < 2:
                     time.sleep(2 ** attempt)
                     continue
-                logger.error("Embedding API error: %s", e)
+                logger.error("Embedding API error: %s", e, exc_info=True)
                 raise e
 
     def add(self, card_id: str, text: str) -> None:
