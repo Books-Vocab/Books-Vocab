@@ -836,3 +836,4 @@
 "podcast.controls.playpause.play" = "播放";
 "podcast.controls.playpause.pause" = "暫停";
 "podcast.controls.cycleRate" = "切換播放速率";
+"podcast.player.subtitleSettings" = "字幕設定";

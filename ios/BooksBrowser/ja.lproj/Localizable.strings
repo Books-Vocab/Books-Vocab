@@ -817,3 +817,4 @@
 "podcast.controls.playpause.play" = "再生";
 "podcast.controls.playpause.pause" = "一時停止";
 "podcast.controls.cycleRate" = "再生速度を切り替え";
+"podcast.player.subtitleSettings" = "字幕設定";

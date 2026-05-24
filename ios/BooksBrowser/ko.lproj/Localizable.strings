@@ -818,3 +818,4 @@
 "podcast.controls.playpause.play" = "재생";
 "podcast.controls.playpause.pause" = "일시정지";
 "podcast.controls.cycleRate" = "재생 속도 전환";
+"podcast.player.subtitleSettings" = "자막 설정";
