@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Vocabulary/
-verified_against: c642ed18
+verified_against: 800386c5
 -->
 # Vocabulary Feature Boundary
 
@@ -72,28 +72,39 @@ verified_against: c642ed18
 
 ### Scenes（獨立場景 View）
 
+> Notebook 場景(`Scenes/NotebookListView.swift` / `NotebookListCoordinator.swift` / `NotebookEditSheet.swift`)獨立 boundary 見 `docs/reference/feature_boundary/notebook.md`,本表不重列。
+
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Scenes/KGVocabView.swift` | 297 | `struct KGVocabView: View`，KG 詞彙列表場景 |
-| `Scenes/TodayReviewView.swift` | 73 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
-| `Scenes/TodayReviewSwipeDeck.swift` | 114 | swipe deck 互動元件 |
-| `Scenes/TodayReviewPreviewData.swift` | 197 | preview 資料 |
-| `Scenes/ReviewFoldSurface.swift` | 119 | `struct ReviewFoldSurface` + `ReviewFoldChevronButton/Pill` |
-| `Scenes/WordDetailSheet.swift` | 56 | `struct WordDetailSheet: View` |
-| `Scenes/WordEditSheet.swift` | 67 | `struct WordEditSheet: View` |
-| `Scenes/ArchivedVocabSheet.swift` | 99 | `struct ArchivedVocabSheet: View` |
+| `Scenes/KGVocabView.swift` | 367 | `struct KGVocabView: View`，KG 詞彙列表場景 |
+| `Scenes/TodayReviewView.swift` | 437 | `struct TodayReviewView: View` + `TodayReviewSession` + `TodayReviewRevealStage` |
+| `Scenes/TodayReviewPhaseView.swift` | 176 | `struct TodayReviewPhaseView: View`，複習階段切換場景 |
+| `Scenes/TodayReviewSwipeDeck.swift` | 127 | swipe deck 互動元件 |
+| `Scenes/TodayReviewPreviewData.swift` | 236 | preview 資料 |
+| `Scenes/TodayReviewMetrics.swift` | 103 | TodayReview feature-local 版面 metrics(`static let`,~44 個) |
+| `Scenes/TodayReviewSessionSnapshotStore.swift` | 98 | `TodayReviewState` session snapshot 持久化 |
+| `Scenes/ReviewFoldSurface.swift` | 121 | `struct ReviewFoldSurface` + `ReviewFoldChevronButton/Pill` |
+| `Scenes/ReviewScoringState.swift` | 49 | 複習評分子狀態 |
+| `Scenes/ReviewSessionPersistence.swift` | 253 | 複習 session 落地/恢復邏輯 |
+| `Scenes/SelectionModeState.swift` | 47 | 列表多選模式狀態 |
+| `Scenes/OverviewTab.swift` | 64 | `struct OverviewTab: View`，Vocab 入口 overview tab |
+| `Scenes/AddLinkSheet.swift` | 121 | `struct AddLinkSheet: View`，KG 手動加連線 sheet |
+| `Scenes/WordDetailSheet.swift` | 250 | `struct WordDetailSheet: View` |
+| `Scenes/WordEditSheet.swift` | 105 | `struct WordEditSheet: View` |
+| `Scenes/ArchivedVocabSheet.swift` | 118 | `struct ArchivedVocabSheet: View` |
 | `GraphWebView.swift` | 224 | `struct GraphWebView: UIViewRepresentable` + `GraphForces` |
 
 ### Components（可復用 UI 元件）
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `Components/VocabShellComponents.swift` | 587 | shell 級元件庫：`VocabTabSelector` / `VocabChromePill` / `VocabSearchField` / `VocabListCard` 等 |
-| `Components/VocabSkinComponents.swift` | 211 | skin 級元件：`VocabCard` / `VocabToneChip` / `VocabEmptyStateCard` / `VocabReviewProgressBar` 等 |
+| `Components/VocabShellComponents.swift` | 201 | shell 級元件庫：`VocabTabSelector` / `VocabChromePill` / `VocabSearchField` 等 |
+| `Components/VocabShellComponents+Lists.swift` | 234 | shell 級 list cards / status hero / timeline / button styles(`VocabListCard` 等) |
+| `Components/VocabShellComponents+Actions.swift` | 246 | `VocabSortPill` + `VocabReviewCTAPill`(brandHero 填色 capsule，與 sort pill 同列尾端，由 `KGVocabPresenter.State.ReviewCTA` 驅動) |
+| `Components/VocabComponents.swift` | 277 | skin 級元件:`VocabCard` / `VocabToneChip` / `VocabEmptyStateCard` / `VocabReviewProgressBar` 等(前身 `VocabSkinComponents.swift`,隨 AppSkin 正名整併) |
+| `Components/VocabSceneShell.swift` | 156 | `VocabSceneShell<Content>` + `VocabScenePhase`,統一 vocabulary 四態容器(loading / loadingSkeleton / empty / error / content) |
 | `Components/WordRow.swift` | 176 | `struct WordRow: View`（Phase 2 起 lineLimit + truncationMode + fixedSize + monospacedDigit 套到 word/pos/translation/book/trailing/status，邊界 case 由 `Debug/Scenarios/NotebookDetailScenarios.swift` 鎖住） |
 | `Components/VocabReviewBanner.swift` | 156 | `struct VocabReviewBanner<FilterContent>: View`。完整 hero CTA(cardBackground + title + stats + button)，**僅** NotebookListView 使用作為 primary entry point。VocabularyListView 詳情頁不再渲染此 banner — CTA 改走 `VocabReviewCTAPill` 內嵌於 chip+sort 列。 |
-| `Components/VocabShellComponents+Actions.swift` | 229 | `VocabSortPill` + `VocabReviewCTAPill`(Phase 3 引入；brandHero 填色 capsule，與 sort pill 同列尾端，由 `KGVocabPresenter.State.ReviewCTA` 驅動) |
-| `Components/VocabSwipeRow.swift` | 105 | `struct VocabSwipeRow<Content>: View` |
 | `Components/CardDocumentView.swift` | 327 | card document 主 View |
 | `Components/CardRichTextRenderer.swift` | 277 | rich text renderer |
 | `Components/CardSections.swift` | 280 | card 各 section 元件 |
@@ -111,11 +122,7 @@ verified_against: c642ed18
 |------|------|------|
 | `Overlay/LinkedCardOverlayStack.swift` | 83 | `struct LinkedCardOverlayStack: View`，關聯卡片 overlay |
 
-### Skin Layer（Design Token）
-
-| 檔案 | 行數 | 說明 |
-|------|------|------|
-| `Skin/VocabSkin.swift` | 601 | `struct VocabSkin`，Vocabulary feature 專屬 design system token |
+> Design token 已從 feature 本地 `Skin/VocabSkin.swift` 升格為全 app 共用 `AppSkin`(見 `ios/BooksBrowser/Models/AppSkin.swift`),不再屬於 Vocabulary feature scope。
 
 ---
 
@@ -124,9 +131,9 @@ verified_against: c642ed18
 - **新增列表 UI** → `Scenes/VocabularyListPresenter.swift` 或新增 Presenter extension
 - **新增業務流程** → Coordinator（`VocabularyListCoordinator` / `SyncCoordinator` / `KGVocabCoordinator`）
 - **新增 UI 資料模型** → `Presentation/` 下新增或擴充現有 Presentation enum/struct
-- **新增可復用元件** → `Components/VocabShellComponents.swift`（shell 級）或 `VocabSkinComponents.swift`（skin 級）
+- **新增可復用元件** → `Components/VocabShellComponents*.swift`（shell 級）或 `Components/VocabComponents.swift`（skin 級）
 - **新增場景** → `Scenes/` 新增 View + Presenter + Coordinator，並在對應 container 的 Sheets extension 掛載
-- **新增 design token** → `Skin/VocabSkin.swift`（禁止在 feature 檔案裡硬編碼顏色/間距）
+- **新增 design token** → `ios/BooksBrowser/Models/AppSkin.swift`（全 app 共用；禁止在 feature 檔案裡硬編碼顏色/間距）
 
 ## State 邊界
 
@@ -140,11 +147,11 @@ verified_against: c642ed18
 
 | Token | 用途 |
 |-------|------|
-| `VocabSkin` | Vocabulary 專屬 design token，`@Environment(\.vocabSkin)` |
+| `AppSkin` | 全 app 共用 feature-level UI token(前身 `VocabSkin`,已正名),`@Environment(\.appSkin)` |
 | `AppTheme` | 全局色彩，`@Environment(\.appTheme)` |
 | `AppMetrics` / `AppShellMetrics` | 間距、尺寸 |
 | `AppMotion` | 動畫 token |
 | `AppTransition` | 過渡動畫 |
-| `AppFonts` / `VocabSkin.Typography` | 字型 |
+| `AppFonts` / `AppSkin.Typography` | 字型 |
 | `TodayReviewMetrics` | TodayReview feature-local 版面參數（card / topBar / toolbar / fold / swipe geometry 等，~44 個 static let，定義於 `Scenes/TodayReviewMetrics.swift`）。boundary rectify 2026-05 從 `AppSkin.Metrics`/`Spacing` 遷出 24 個欄位 |
 | `ReaderMetrics`（**跨 feature 借用**） | `Components/CollocationExplainSheet.swift` 使用 `ReaderMetrics.panelHorizontalInset` / `.panelBottomInset`，目的是讓翻譯 sheet 視覺對齊 Reader panel。**未來 Reader 重構時 Vocabulary 是 stakeholder** |
