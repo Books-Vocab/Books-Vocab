@@ -118,6 +118,7 @@ struct VocabAccessoryIconButton: View {
     let systemImage: String
     let tone: Color
     var background: Color? = nil
+    let accessibilityLabel: String
     var action: () -> Void
 
     var body: some View {
@@ -132,6 +133,7 @@ struct VocabAccessoryIconButton: View {
                 )
         }
         .buttonStyle(.plain)
+        .accessibilityLabel(accessibilityLabel)
         .enableInjection()
     }
 }

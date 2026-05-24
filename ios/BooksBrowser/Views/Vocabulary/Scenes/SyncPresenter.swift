@@ -111,6 +111,7 @@ struct SyncPresenter: View {
                         VocabAccessoryIconButton(
                             systemImage: item.actionSystemImage,
                             tone: resolveTone(item.actionTone),
+                            accessibilityLabel: item.actionAccessibilityLabel,
                             action: { onPendingActionTapped?(item.id) }
                         )
                         .padding(.top, appSkin.metrics.accessoryTopOffset)
