@@ -59,11 +59,11 @@ Scope: `ios/BooksBrowser`
 | Explanation only | `contentMode == .explanationOnly` | explanation body | 已覆蓋 |
 | Explanation loading | `isLoadingExplanation == true` | shared state message | 已覆蓋 |
 | Translation / explanation failed | `translationResult` or `explanationText` 填錯誤文案 | 文本內顯示錯誤 | 部分覆蓋 |
-| Empty panel | `contentMode == .empty` | `EmptyView()` | 缺口 |
+| Empty panel | `contentMode == .empty` | `VocabStateMessageCard("尚未取得翻譯", "text.viewfinder", "請重新選取文字，或稍後再試一次。")` + footer toolbar（含 dismiss） | 已覆蓋 |
 
 判斷：
 - Reader 主容器狀態已經清楚
-- Translation panel 最大缺口是 `empty` 幾乎沒有顯式 UX
+- Translation panel 所有 contentMode 分支皆有明確 UX；`.empty` 透過 `VocabStateMessageCard` 提示用戶重新選字
 - 錯誤目前多數只是文案，不是明確 error state
 
 ---
