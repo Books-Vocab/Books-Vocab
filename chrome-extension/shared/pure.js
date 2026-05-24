@@ -315,6 +315,31 @@ function safeUrl(raw, fallback = '#') {
   }
 }
 
+/**
+ * Escape HTML special characters so a user-controlled string can be safely
+ * concatenated into a markup template literal (e.g. `innerHTML = ...`).
+ *
+ * Mirrors the encoding the browser applies when round-tripping a string
+ * through `textContent` → `innerHTML` (the prior implementation used a
+ * detached `<span>` for exactly that). Encodes `&`, `<`, `>`. Browsers don't
+ * encode `"` or `'` in that round-trip (those characters are only ambiguous
+ * inside attribute values, which the DOM already handles), so neither do we
+ * — preserving the previous behaviour byte-for-byte.
+ *
+ * Pure (no DOM dependency) so it's testable under `node:test`. Mirrored
+ * inline by `content/content.js`, which runs in an isolated world without
+ * access to KGPure — keep that copy in sync.
+ *
+ * @param {*} str — coerced to string; `null`/`undefined` become `''`
+ * @returns {string}
+ */
+function escapeHtml(str) {
+  return String(str == null ? '' : str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;');
+}
+
 const KGPureExports = {
   VALID_THEMES,
   DEFAULT_THEME,
@@ -331,6 +356,7 @@ const KGPureExports = {
   routeMessage,
   isTrustedExternalOrigin,
   safeUrl,
+  escapeHtml,
 };
 
 // This file is loaded as a *classic* script by the side panel / options page
