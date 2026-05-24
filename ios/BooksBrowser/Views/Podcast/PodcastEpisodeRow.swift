@@ -64,6 +64,7 @@ struct PodcastEpisodeRow: View {
         .padding(.vertical, skin.spacing.compactRowVerticalPadding)
         .padding(.horizontal, skin.spacing.cardPadding)
         .contentShape(Rectangle())
+        .accessibilityElement(children: .combine)
         #if os(iOS)
         .contextMenu { downloadMenuItems }
         #endif
@@ -126,6 +127,7 @@ struct PodcastEpisodeRow: View {
                 Image(systemName: "captions.bubble.fill")
                     .font(skin.typography.iconTiny)
                     .foregroundStyle(skin.palette.success)
+                    .accessibilityLabel(L10n.string("podcast.episodeRow.subtitleAvailable"))
             }
 
             #if os(iOS)
@@ -149,10 +151,13 @@ struct PodcastEpisodeRow: View {
             }
             .frame(width: 11, height: 11)
             .animation(.easeOut(duration: 0.2), value: frac)
+            .accessibilityLabel(L10n.string("podcast.episodeRow.downloading"))
+            .accessibilityValue("\(Int((frac * 100).rounded()))%")
         } else if isDownloaded {
             Image(systemName: "arrow.down.circle.fill")
                 .font(skin.typography.iconTiny)
                 .foregroundStyle(skin.palette.success)
+                .accessibilityLabel(L10n.string("podcast.episodeRow.downloaded"))
         }
     }
     #endif
@@ -163,14 +168,17 @@ struct PodcastEpisodeRow: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(skin.typography.iconSmall)
                 .foregroundStyle(skin.palette.success)
+                .accessibilityLabel(L10n.string("podcast.episodeRow.listened"))
         } else if !episode.audioAvailable {
             Image(systemName: "icloud.slash")
                 .font(skin.typography.iconSmall)
                 .foregroundStyle(skin.palette.quaternaryText)
+                .accessibilityLabel(L10n.string("podcast.episodeRow.unavailable"))
         } else {
             Image(systemName: "play.circle.fill")
                 .font(skin.typography.iconSmall)
                 .foregroundStyle(skin.palette.accent)
+                .accessibilityHidden(true)
         }
     }
 
