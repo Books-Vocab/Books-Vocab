@@ -48,7 +48,7 @@ def test_batch_judge_logs_all_decisions():
         ("c2", "dull", "暗淡"),
         ("c3", "dim", "昏暗"),
     ]
-    results = judge.evaluate_batch("shiny", "閃亮", candidates, from_id="f1", similarities={"c1": 0.9, "c2": 0.7, "c3": 0.6})
+    judge.evaluate_batch("shiny", "閃亮", candidates, from_id="f1", similarities={"c1": 0.9, "c2": 0.7, "c3": 0.6})
 
     rows = judge_log.get_log("u1")
     assert len(rows) == 3

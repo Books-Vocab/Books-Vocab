@@ -80,10 +80,10 @@ async def test_async_translate_quota_check_blocks_exceeded():
     """quota check 仍正常運作（exceeded 時 raise 429）"""
     from kg.exceptions import QuotaExceededError
 
-    req = TranslateRequest(word="evoke", context="context")
+    TranslateRequest(word="evoke", context="context")
     user = {"id": "u_test", "config": {}, "record": None}
 
-    client = _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
+    _fake_async_client('{"t":"喚起","p":"v.","r":"evoke"}')
 
     quota_exceeded = {
         "exceeded": True,

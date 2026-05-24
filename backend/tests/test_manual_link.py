@@ -60,7 +60,7 @@ class TestFindLinkBetween:
         assert store.find_link_between("a", "b") is None
 
     def test_skips_deprecated_link(self, store):
-        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         store.deprecate_links_for("a")
         found = store.find_link_between("a", "b")
         assert found is None

@@ -97,8 +97,8 @@ def user_env(tmp_path):
     headers = {"Authorization": f"Bearer {token}"}
 
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
-    notifications_file = tmp_path / "app_store_notifications.ndjson"
+    tmp_path / "users.json.lock"
+    tmp_path / "app_store_notifications.ndjson"
     users_file.write_text(json.dumps({
         user_id: {
             "config": {},

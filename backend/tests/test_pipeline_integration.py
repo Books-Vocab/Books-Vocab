@@ -67,7 +67,7 @@ def pipeline_api(tmp_path):
     (tmp_path / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
+    tmp_path / "users.json.lock"
     users_file.write_text(
         json.dumps(
             {

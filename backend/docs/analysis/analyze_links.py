@@ -6,7 +6,7 @@ import numpy as np
 
 def main():
     user_dir = Path("data/users/chen")
-    cards = json.loads((user_dir / "cards.json").read_text())
+    json.loads((user_dir / "cards.json").read_text())
     graph = json.loads((user_dir / "graph.json").read_text())
     embeddings = np.load(user_dir / "embeddings.npy")
     ids = json.loads((user_dir / "card_ids.json").read_text())

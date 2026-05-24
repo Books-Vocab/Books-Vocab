@@ -218,7 +218,7 @@ class TestEmbedText:
 def test_get_batch_returns_matching_cards(tmp_path):
     store = CardStore(tmp_path / "cards.db")
     c1 = store.add("hello", meaning="你好")
-    c2 = store.add("world", meaning="世界")
+    store.add("world", meaning="世界")
     c3 = store.add("foo", meaning="富")
 
     result = store.get_batch({c1.id, c3.id})
@@ -297,9 +297,6 @@ class TestBatchUpdateNoN1:
         c1 = store.add(content="alpha", meaning="first")
         c2 = store.add(content="beta", meaning="second")
         c3 = store.add(content="gamma", meaning="third")
-
-        select_call_count = 0
-        original_exec = store.engine.connect().__class__.execute
 
         # Track how many DB SELECT round-trips happen via sqlalchemy event
         from sqlalchemy import event

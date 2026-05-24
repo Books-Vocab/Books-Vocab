@@ -54,8 +54,8 @@ def isolated_api(tmp_path):
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
-    lock_file = data_dir / "users.json.lock"
-    notifications_file = data_dir / "app_store_notifications.ndjson"
+    data_dir / "users.json.lock"
+    data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps({user_id: {"config": {}}, "subscription": {"is_active": True}})
     )

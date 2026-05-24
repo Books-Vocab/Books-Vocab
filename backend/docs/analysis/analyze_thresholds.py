@@ -14,7 +14,7 @@ def main():
     total_cards = len(cards)
 
     embeddings = np.load(embeddings_path)
-    ids = json.loads(ids_path.read_text())
+    json.loads(ids_path.read_text())
 
     norms = np.linalg.norm(embeddings, axis=1, keepdims=True)
     normalized = embeddings / (norms + 1e-9)

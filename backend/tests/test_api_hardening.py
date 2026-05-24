@@ -123,7 +123,7 @@ class TestUserLocksLRU:
             for i in range(api_mod._MAX_USER_LOCKS):
                 await api_mod.get_user_lock(f"old_user_{i}")
             # Access a recent user — should be kept
-            lk = await api_mod.get_user_lock("recent_user")
+            await api_mod.get_user_lock("recent_user")
             # Add one more to trigger eviction
             await api_mod.get_user_lock("new_user_trigger")
             return "recent_user" in api_mod._USER_LOCKS
