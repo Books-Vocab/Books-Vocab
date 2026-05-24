@@ -35,30 +35,12 @@ from .mem_log import _MemoryLogHandler, install_memory_log_handler  # noqa: F401
 _mem_log = install_memory_log_handler(maxlen=1000)
 
 from .admin_wiring import create_admin_handlers
-from .rate_limit import api_limiter, translate_limiter
-from .routers import (
-    auth_router,
-    billing_router,
-    build_admin_router,
-    notebook_router,
-    pipeline_router,
-    static_pages_router,
-    system_router,
-    translate_router,
-    user_router,
-    vocab_router,
-    web_auth_router,
-)
-from .routers.podcast import router as podcast_router
-from .service_factories import clear_store_cache
-from .settings import KGSettings, load_settings
-from .user_store import (
-    CachedUserStore,
-    normalize_users_payload,
-)
 
 # Re-export deps symbols so existing tests (import kg.api as api_mod) continue to work.
-from .deps import (  # noqa: F401
+from .deps import (  # noqa: F401  # noqa: F401
+    _MAX_USER_LOCKS,
+    _USER_LOCKS,
+    _USER_LOCKS_MUTEX,
     _apply_quota_headers,
     _build_entitlements_response,
     _build_links_by_kind,
@@ -77,7 +59,6 @@ from .deps import (  # noqa: F401
     _get_settings,
     _graph_store,
     _is_pro,
-    _MAX_USER_LOCKS,
     _notification_status,
     _parse_datetime,
     _resolve_and_link_user,
@@ -88,7 +69,20 @@ from .deps import (  # noqa: F401
     get_user_lock,
     security,
 )
-from .deps import _USER_LOCKS, _USER_LOCKS_MUTEX  # noqa: F401
+from .rate_limit import api_limiter, translate_limiter
+from .routers import (
+    auth_router,
+    billing_router,
+    build_admin_router,
+    notebook_router,
+    pipeline_router,
+    static_pages_router,
+    system_router,
+    translate_router,
+    user_router,
+    vocab_router,
+    web_auth_router,
+)
 
 # Re-export endpoint functions from routers for backward compatibility.
 from .routers.auth import auth_verify  # noqa: F401
@@ -98,6 +92,7 @@ from .routers.billing import (  # noqa: F401
     sync_app_store_subscription,
 )
 from .routers.pipeline import _run_pipeline_background, run_pipeline  # noqa: F401
+from .routers.podcast import router as podcast_router
 from .routers.static_pages import get_guide, get_privacy_policy, get_support, get_terms  # noqa: F401
 from .routers.translate import translate_explain, translate_phrase, translate_quick  # noqa: F401
 from .routers.user import (  # noqa: F401
@@ -118,6 +113,12 @@ from .routers.vocab import (  # noqa: F401
     pull_daily_stats,
     push_daily_stats,
     push_review,
+)
+from .service_factories import clear_store_cache
+from .settings import KGSettings, load_settings
+from .user_store import (
+    CachedUserStore,
+    normalize_users_payload,
 )
 
 load_dotenv()
@@ -186,8 +187,8 @@ def create_app(settings: KGSettings | None = None) -> FastAPI:
         allow_headers=["Authorization", "Content-Type", "X-Request-ID"],
     )
 
-    from .request_context import request_id_var
     from . import sentry_init as _sentry_init
+    from .request_context import request_id_var
 
     @app.middleware("http")
     async def request_id_middleware(request: Request, call_next):

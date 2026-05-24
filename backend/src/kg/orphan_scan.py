@@ -446,7 +446,7 @@ def fix(
     # Lazy CardStore import keeps the CLI usable without the full app context.
     from .cards import CardStore
 
-    user_ids = _load_user_ids(data_dir)
+    _load_user_ids(data_dir)
 
     # 1. soft-delete orphan cards via CardStore.delete — shares the API's
     # in-process write lock and uses the canonical soft-delete code path.

@@ -110,7 +110,7 @@ class TestVerifyAppleToken:
 
         with (
             patch("kg.apple_auth.jwt") as mock_jwt,
-            patch("kg.apple_auth.httpx.Client") as mock_client_cls,
+            patch("kg.apple_auth.httpx.Client"),
             patch("kg.apple_auth._get_rsa_public_key", return_value=FAKE_PEM) as mock_get_key,
         ):
             mock_jwt.get_unverified_header.return_value = {"kid": FAKE_KID}

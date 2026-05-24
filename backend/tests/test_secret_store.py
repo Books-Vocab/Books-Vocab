@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from kg.secret_store import decrypt_value, encrypt_value, is_encrypted
 
-
 _SECRET = "test-jwt-secret-key"
 
 

@@ -14,7 +14,7 @@ from fastapi.testclient import TestClient
 import kg.api as api_mod
 import kg.deps as deps_mod
 import kg.routers.user as user_router_mod
-from kg.api import app, _mem_log
+from kg.api import _mem_log, app
 from kg.request_context import request_id_var
 from kg.settings import KGSettings
 
@@ -32,8 +32,8 @@ def make_jwt(user_id: str) -> str:
 
 
 def _swap_settings(new_settings):
-    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
 
     app.state.kg_settings = new_settings
 
@@ -54,8 +54,8 @@ def isolated_api(tmp_path):
     (data_dir / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = data_dir / "users.json"
-    lock_file = data_dir / "users.json.lock"
-    notifications_file = data_dir / "app_store_notifications.ndjson"
+    data_dir / "users.json.lock"
+    data_dir / "app_store_notifications.ndjson"
     users_file.write_text(
         json.dumps({user_id: {"config": {}}, "subscription": {"is_active": True}})
     )

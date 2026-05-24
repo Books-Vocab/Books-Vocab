@@ -16,7 +16,6 @@ from __future__ import annotations
 
 import pytest
 
-
 PAYLOAD = bytes(range(256)) * 8  # 2 KB deterministic payload
 
 

@@ -2,10 +2,7 @@
 from __future__ import annotations
 
 import json
-import sqlite3
-import uuid
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
 from types import SimpleNamespace
 
 import pytest
@@ -38,8 +35,8 @@ def _swap_settings(new_settings):
 
 def _reset_log_singletons():
     """Reset SQLite singletons so each test starts with a clean db."""
-    import kg.pipeline_log as pl
     import kg.judge_log as jl
+    import kg.pipeline_log as pl
     import kg.token_tracker as tt
     pl._reset()
     jl._reset()
@@ -55,8 +52,8 @@ def admin_app(tmp_path, monkeypatch):
 
     # Redirect ALL log dbs to tmp_path
     monkeypatch.setenv("KG_DATA_DIR", str(data_dir))
-    import kg.pipeline_log as pl
     import kg.judge_log as jl
+    import kg.pipeline_log as pl
     import kg.token_tracker as tt
     import kg.translate_log as tl
     pl.DATA_DIR = data_dir

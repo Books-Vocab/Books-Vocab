@@ -1,7 +1,9 @@
 """Tests for user lock management."""
 import asyncio
+
 import pytest
-from kg.deps import get_user_lock, _USER_LOCKS
+
+from kg.deps import _USER_LOCKS, get_user_lock
 
 
 @pytest.fixture(autouse=True)

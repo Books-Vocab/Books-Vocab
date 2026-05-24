@@ -4,9 +4,7 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
-from kg.judge import Judge, BATCH_SYSTEM_PROMPT
+from kg.judge import BATCH_SYSTEM_PROMPT, Judge
 
 
 def _make_client_capture() -> tuple[MagicMock, list]:

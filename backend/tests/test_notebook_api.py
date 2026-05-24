@@ -33,8 +33,8 @@ def make_jwt(user_id: str) -> str:
 
 
 def _swap_settings(new_settings):
-    from kg.user_store import CachedUserStore, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import CachedUserStore, normalize_users_payload
 
     app.state.kg_settings = new_settings
 

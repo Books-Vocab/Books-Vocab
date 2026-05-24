@@ -10,8 +10,8 @@ from ..deps import (
     _embedding_store,
     _graph_store,
     _notebook_store,
-    get_user_lock,
     get_current_user,
+    get_user_lock,
     logger,
 )
 from ..graph import LinkKind

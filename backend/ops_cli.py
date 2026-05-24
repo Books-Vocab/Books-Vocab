@@ -8,7 +8,7 @@
 import argparse
 import os
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 
 from kg.admin_cost_summary import VALID_RANGES, since_iso
@@ -25,7 +25,7 @@ from kg.quota_service import token_cost_usd
 
 def _cutoff_iso(hours: int = 24) -> str:
     """回傳 N 小時前的 ISO 8601 UTC 時間字串。"""
-    t = datetime.now(timezone.utc) - timedelta(hours=hours)
+    t = datetime.now(UTC) - timedelta(hours=hours)
     return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 

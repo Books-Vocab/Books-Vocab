@@ -87,7 +87,7 @@ class TestTrackedLLMChatAsync:
         client.chat.completions.create = mock_create
 
         llm = TrackedLLM(client, user_id="u1")
-        result = await llm.chat_async("translate_quick", model="m", messages=[])
+        await llm.chat_async("translate_quick", model="m", messages=[])
         mock_record.assert_called_once_with("u1", "translate_quick", 10, 20, provider=None, model="m")
 
 

@@ -1,6 +1,9 @@
 from __future__ import annotations
+
 import pytest
+
 from kg.graph import GraphStore, LinkKind
+
 
 @pytest.fixture()
 def store(tmp_path):
@@ -57,14 +60,16 @@ class TestFindLinkBetween:
         assert store.find_link_between("a", "b") is None
 
     def test_skips_deprecated_link(self, store):
-        lk = store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
+        store.add_link("a", "b", LinkKind.CONTRASTS_WITH, 0.9, "r")
         store.deprecate_links_for("a")
         found = store.find_link_between("a", "b")
         assert found is None
 
 
-import pytest
 from unittest.mock import MagicMock
+
+import pytest
+
 from kg.judge import ManualLinkJudge
 from kg.vocab_graph_ops import create_manual_link
 

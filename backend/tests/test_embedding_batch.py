@@ -7,7 +7,6 @@ from pathlib import Path
 from unittest.mock import MagicMock, patch
 
 import numpy as np
-import pytest
 
 from kg.embeddings import EMBEDDING_DIM, EmbeddingStore
 from kg.tracked_llm import TrackedLLM

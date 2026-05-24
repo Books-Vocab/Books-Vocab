@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from kg.graph import GraphLink, GraphStore, LinkKind
+from kg.graph import GraphStore, LinkKind
 
 
 @pytest.fixture()
