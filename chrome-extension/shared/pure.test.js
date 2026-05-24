@@ -30,6 +30,7 @@ const {
   routeMessage,
   isTrustedExternalOrigin,
   safeUrl,
+  escapeHtml,
   VALID_THEMES,
   DEFAULT_THEME,
 } = require('./pure.js');
@@ -447,4 +448,39 @@ test('safeUrl treats scheme-relative URLs as http(s) via base', () => {
   // `//evil.example/x` resolves against the https base → becomes https — safe.
   // This is acceptable: the destination is a regular network URL, not a script.
   assert.equal(safeUrl('//evil.example/x'), '//evil.example/x');
+});
+
+// ---------------------------------------------------------------------------
+// escapeHtml
+// ---------------------------------------------------------------------------
+
+test('escapeHtml encodes the markup-significant trio &<>', () => {
+  // Matches the prior detached-<span> + textContent → innerHTML round-trip:
+  // browsers only encode these three characters in that round-trip, so we do
+  // the same to keep rendered output byte-identical to the previous helper.
+  assert.equal(escapeHtml('Tom & Jerry'), 'Tom &amp; Jerry');
+  assert.equal(escapeHtml('<script>x</script>'), '&lt;script&gt;x&lt;/script&gt;');
+  assert.equal(escapeHtml('a < b && b > c'), 'a &lt; b &amp;&amp; b &gt; c');
+});
+
+test('escapeHtml leaves quotes alone (matches DOM round-trip)', () => {
+  // textContent → innerHTML does NOT encode `"` or `'`. Call sites that drop
+  // the output into an attribute context rely on the attribute being wrapped
+  // in `"`, so leaving `'` untouched is safe and matches prior behaviour.
+  assert.equal(escapeHtml(`he said "hi"`), `he said "hi"`);
+  assert.equal(escapeHtml("it's fine"), "it's fine");
+});
+
+test('escapeHtml escapes & first so subsequent entities are not double-encoded', () => {
+  // Naively replacing `<` before `&` would turn `&lt;` into `&amp;lt;` on a
+  // pre-encoded input. The replacement order in pure.js prevents that.
+  assert.equal(escapeHtml('&amp;'), '&amp;amp;'); // pre-encoded input round-trips faithfully
+  assert.equal(escapeHtml('&<>'), '&amp;&lt;&gt;');
+});
+
+test('escapeHtml coerces null/undefined/numbers to a safe string', () => {
+  assert.equal(escapeHtml(null), '');
+  assert.equal(escapeHtml(undefined), '');
+  assert.equal(escapeHtml(42), '42');
+  assert.equal(escapeHtml(0), '0');
 });
