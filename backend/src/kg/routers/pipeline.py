@@ -19,13 +19,14 @@ from ..notebook import validate_notebook_access
 from ..pipeline_handlers import queue_pipeline_response
 from ..pipeline_service import run_pipeline_background as _run_pipeline_bg
 from ..service_factories import create_client
+from ..types import UserRecord
 
 NOTEBOOK_ID_PATTERN = r"^[A-Za-z0-9_-]{1,64}$"
 
 router = APIRouter()
 
 
-async def _run_pipeline_background(user: dict, *, force_enrich: bool = False, notebook_id: str = "default"):
+async def _run_pipeline_background(user: UserRecord, *, force_enrich: bool = False, notebook_id: str = "default"):
     await _run_pipeline_bg(
         user,
         get_user_lock_fn=get_user_lock,
@@ -47,7 +48,7 @@ async def run_pipeline(
     quota = _check_quota(user, "pipeline", response)
     validate_notebook_access(_notebook_store(user["dir"]), notebook_id)
 
-    async def _bg(u: dict) -> None:
+    async def _bg(u: UserRecord) -> None:
         await _run_pipeline_background(u, force_enrich=force_enrich, notebook_id=notebook_id)
 
     result = queue_pipeline_response(

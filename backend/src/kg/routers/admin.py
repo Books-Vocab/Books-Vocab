@@ -66,7 +66,7 @@ def build_html_admin_router(
     @router.get("/admin", response_class=HTMLResponse, include_in_schema=False)
     async def admin_ui_page(
         request: Request,
-        token: str | None = Query(None),
+        token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
@@ -77,7 +77,7 @@ def build_html_admin_router(
     @router.get("/admin/tests", response_class=HTMLResponse, include_in_schema=False)
     async def admin_tests_page(
         request: Request,
-        token: str | None = Query(None),
+        token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
@@ -88,7 +88,7 @@ def build_html_admin_router(
     @router.get("/admin/test", response_class=HTMLResponse, include_in_schema=False)
     async def admin_test_page(
         request: Request,
-        token: str | None = Query(None),
+        token: str | None = Query(None, max_length=256),
         authorization: str | None = Header(None),
         admin_session: str | None = Cookie(None),
     ):
@@ -101,7 +101,7 @@ def build_html_admin_router(
         async def admin_user_detail_page(
             request: Request,
             user_id: str,
-            token: str | None = Query(None),
+            token: str | None = Query(None, max_length=256),
             authorization: str | None = Header(None),
             admin_session: str | None = Cookie(None),
         ):
