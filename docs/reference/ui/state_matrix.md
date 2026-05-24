@@ -403,11 +403,11 @@ Preview matrix 已補齊：
 
 | State | 觸發條件 | 目前 UI | 狀態 |
 |------|----------|--------|------|
-| `.idle` | 未啟動或 episode 無 subtitle URL | 無 overlay，純句子層渲染 | 已覆蓋 |
-| `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | 句子層仍顯示但 cues 尚未注入 | 部分覆蓋 — 無 loading hint，使用者只看到「空字幕」 |
+| `.idle` | 未啟動（初始 / pre-load 過渡） | 無 overlay，純句子層渲染 | 已覆蓋 |
+| `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | Capsule hint overlay：spinner + `字幕載入中…`（`podcast.subtitleLoading`） | 已覆蓋 |
 | `.loaded` | fetch 成功 / inline subtitle | 句子層 + 高亮字 + cue tracking | 已覆蓋 |
 | `.failed` | fetch / decode 失敗 | `AppStateMessageCard` overlay：`字幕載入失敗` + `音訊仍可正常播放` + 重試 CTA（`onRetrySubtitle`） | 已覆蓋 |
-| Subtitle unavailable（episode 無 URL） | `markSubtitleUnavailable()` | 同 `.idle` — 無顯式提示 | 缺口（Priority 3）— 與 loading 視覺無區別 |
+| `.unavailable` | `markSubtitleUnavailable()`（episode 無 subtitle URL） | `AppStateMessageCard` overlay：`此集無逐句字幕` + `音訊仍可正常播放`（無重試 CTA；`podcast.subtitleUnavailable`） | 已覆蓋 |
 
 ### Translation Panel State（podcast surface）
 
