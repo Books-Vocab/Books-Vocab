@@ -34,14 +34,17 @@ struct PodcastControlsView: View {
                         Image(systemName: "gobackward.15")
                             .font(skin.typography.symbolLarge)
                     }
+                    .accessibilityLabel(L10n.string("podcast.controls.rewind15"))
                     Button { viewModel.togglePlayPause() } label: {
                         Image(systemName: viewModel.state == .playing ? "pause.circle.fill" : "play.circle.fill")
                             .font(skin.typography.symbolPlayback)
                     }
+                    .accessibilityLabel(L10n.string(viewModel.state == .playing ? "podcast.controls.playpause.pause" : "podcast.controls.playpause.play"))
                     Button { viewModel.skip(seconds: 15) } label: {
                         Image(systemName: "goforward.15")
                             .font(skin.typography.symbolLarge)
                     }
+                    .accessibilityLabel(L10n.string("podcast.controls.forward15"))
                 }
                 .foregroundStyle(skin.palette.accent)
 
@@ -55,6 +58,8 @@ struct PodcastControlsView: View {
                             .background(skin.palette.mutedFill, in: Capsule())
                     }
                     .foregroundStyle(skin.palette.primaryText)
+                    .accessibilityLabel(L10n.string("podcast.controls.cycleRate"))
+                    .accessibilityValue(viewModel.rateDisplayText)
                 }
             }
         }
