@@ -100,12 +100,15 @@ struct PodcastSilentFailureTests {
         #expect(vm.visibleSentences.isEmpty == false)
     }
 
-    @Test func subtitle_state_idle_when_episode_has_no_subtitle_url() {
-        // An episode that genuinely ships no subtitle URL must stay `.idle`,
-        // not surface a spurious "failed" retry prompt.
+    @Test func subtitle_state_unavailable_when_episode_has_no_subtitle_url() {
+        // An episode that genuinely ships no subtitle URL must surface
+        // `.unavailable` so the player view can render an explicit
+        // "此集無逐句字幕" hint — distinct from both `.loading` (which
+        // previously looked identical) and `.failed` (which would falsely
+        // prompt a retry). See state_matrix L410 + track-3.
         let vm = PodcastPlayerViewModel(hostNames: ["Maya", "Kai"])
         vm.markSubtitleUnavailable()
-        #expect(vm.subtitleState == .idle)
+        #expect(vm.subtitleState == .unavailable)
     }
 }
 #endif
