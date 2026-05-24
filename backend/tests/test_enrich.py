@@ -11,7 +11,6 @@ from kg.cards import Card
 from kg.enrich import _build_prompt, _parse_enrich_response, enrich_cards
 from kg.tracked_llm import TrackedLLM
 
-
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------

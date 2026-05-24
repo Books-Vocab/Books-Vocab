@@ -24,7 +24,6 @@ from pydantic import ValidationError
 
 from kg.api_models import TranslateRequest, VocabEntry, _normalize_context
 
-
 # ---------------------------------------------------------------------------
 # 1. Malformed-input characterization
 # ---------------------------------------------------------------------------

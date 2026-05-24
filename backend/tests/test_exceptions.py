@@ -1,10 +1,10 @@
 """Tests for custom exception hierarchy."""
 from kg.exceptions import (
-    KGError,
-    QuotaExceededError,
     ExternalServiceError,
+    KGError,
     LLMParseError,
     NotFoundError,
+    QuotaExceededError,
 )
 
 

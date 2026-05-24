@@ -12,12 +12,11 @@ email is only used for `_email_index` lookup when `email_verified == True`.
 from __future__ import annotations
 
 import json
-from unittest.mock import AsyncMock, patch
 
 import pytest
 
-from kg.auth_handlers import auth_verify_response
 from kg.api_models import AuthVerifyRequest
+from kg.auth_handlers import auth_verify_response
 from kg.auth_service import resolve_and_link_user
 
 

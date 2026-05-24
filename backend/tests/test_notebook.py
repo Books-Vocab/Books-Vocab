@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import pytest
 
-from kg.notebook import NotebookStore, DEFAULT_NOTEBOOK_ID, DEFAULT_NOTEBOOK_NAME
+from kg.notebook import DEFAULT_NOTEBOOK_ID, DEFAULT_NOTEBOOK_NAME, NotebookStore
 
 
 @pytest.fixture()

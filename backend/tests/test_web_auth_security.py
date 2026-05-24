@@ -29,12 +29,10 @@ from fastapi.testclient import TestClient
 
 import kg.api as api_mod
 import kg.deps as deps_mod
+from conftest import TEST_JWT_SECRET, _swap_settings
 from kg.admin_handlers import _build_cookie_value, _sign_cookie
 from kg.api import app
 from kg.settings import KGSettings
-
-from conftest import TEST_JWT_SECRET, _swap_settings
-
 
 ADMIN_TOKEN = "test-admin-token-for-security-suite"
 

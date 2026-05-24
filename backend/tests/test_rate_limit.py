@@ -10,7 +10,6 @@ import pytest
 
 from kg.rate_limit import RateLimiter
 
-
 # ============================================================================
 # Unit tests for RateLimiter
 # ============================================================================
@@ -81,8 +80,9 @@ class TestRateLimitMiddlewareWhitelist:
 
     @pytest.fixture()
     def client(self):
-        from kg.api import app
         from fastapi.testclient import TestClient
+
+        from kg.api import app
 
         return TestClient(app, raise_server_exceptions=False)
 
@@ -140,10 +140,11 @@ class TestRateLimitMiddlewareEnforcement:
     @pytest.fixture()
     def isolated_client(self):
         """Client with freshly reset limiters so test isolation is guaranteed."""
-        from kg.rate_limit import api_limiter, translate_limiter
-        from kg.api import app
+
         from fastapi.testclient import TestClient
-        from unittest.mock import patch
+
+        from kg.api import app
+        from kg.rate_limit import api_limiter, translate_limiter
 
         # Reset limiter state
         api_limiter._requests.clear()
@@ -156,8 +157,9 @@ class TestRateLimitMiddlewareEnforcement:
         assert r.status_code != 429
 
     def test_exceeding_api_limit_returns_429(self, isolated_client):
-        from kg.rate_limit import api_limiter
         import time
+
+        from kg.rate_limit import api_limiter
 
         token = "AAAA0000BBBB1111"
         auth_header = f"Bearer {token}"
@@ -179,9 +181,10 @@ class TestRateLimitMiddlewareEnforcement:
         assert "Retry-After" in r.headers
 
     def test_retry_after_header_present_on_429(self, isolated_client):
-        from kg.rate_limit import api_limiter
-        import time
         import collections
+        import time
+
+        from kg.rate_limit import api_limiter
 
         token = "CCCC2222DDDD3333"
         auth_header = f"Bearer {token}"

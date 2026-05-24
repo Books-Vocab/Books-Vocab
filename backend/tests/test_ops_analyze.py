@@ -1,18 +1,17 @@
 """ops_analyze.py — 計價走 kg.quota_service.token_cost_usd 的 smoke 測試。"""
 
-import json
 import os
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 SCRIPT = Path(__file__).resolve().parent.parent / "ops_analyze.py"
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
 def _create_token_usage_db(path: Path, rows: list[tuple], *, with_provider: bool) -> None:

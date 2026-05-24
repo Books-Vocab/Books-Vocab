@@ -1,12 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from datetime import UTC
 from types import SimpleNamespace
 
 import pytest
-from fastapi import HTTPException
 
-from kg.vocab_shared import MAX_BATCH_SIZE, MAX_WORD_LENGTH, _normalize_word
 from kg.vocab_crud import (
     archive_vocab_word,
     batch_archive_vocab_words,
@@ -17,6 +16,7 @@ from kg.vocab_crud import (
 )
 from kg.vocab_graph import graph_links_payload
 from kg.vocab_intake import add_vocab_entries
+from kg.vocab_shared import MAX_BATCH_SIZE, MAX_WORD_LENGTH, _normalize_word
 
 
 @dataclass
@@ -312,9 +312,10 @@ class TestArchiveVocabWord:
 
 def test_delete_rolls_back_on_graph_failure(tmp_path):
     """If graph operations fail, card deletion must be rolled back."""
+    import pytest
+
     from kg.cards import CardStore
     from kg.vocab_crud import delete_vocab_word
-    import pytest
 
     cards_store = CardStore(tmp_path / "cards.db")
     card = cards_store.add("testword", meaning="test meaning", notebook_id="default")
@@ -588,8 +589,9 @@ class TestDeleteEvictsEmbedding:
 
 def test_incremental_query_does_not_load_all_cards(tmp_path):
     """Incremental sync should use get_modified_since, not all_as_dict."""
-    from unittest.mock import MagicMock
     from datetime import datetime, timedelta
+    from unittest.mock import MagicMock
+
     from kg.vocab_crud import list_vocab_cards
 
     cards_store = MagicMock()
@@ -618,18 +620,19 @@ def test_incremental_query_does_not_load_all_cards(tmp_path):
 
 def test_incremental_query_resolves_neighbour_links(tmp_path):
     """Incremental query should correctly resolve links to non-modified neighbour cards."""
+    import time
+
     from kg.cards import CardStore
+    from kg.difficulty import get_tier
     from kg.graph import GraphStore, LinkKind
     from kg.vocab_crud import list_vocab_cards
     from kg.vocab_shared import card_response
-    from kg.difficulty import get_tier
-    import time
 
     cards = CardStore(tmp_path / "cards.db")
     old_card = cards.add("apple", meaning="蘋果")
     time.sleep(0.05)
-    from datetime import datetime, timezone
-    since_dt = datetime.now(timezone.utc).replace(tzinfo=None)
+    from datetime import datetime
+    since_dt = datetime.now(UTC).replace(tzinfo=None)
     time.sleep(0.05)
     new_card = cards.add("fruit", meaning="水果")
 

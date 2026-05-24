@@ -179,9 +179,9 @@ def main():
 
     # ── Summary ──
     print(f"\n{'=' * 75}")
-    print(f"  SUMMARY")
+    print("  SUMMARY")
     print(f"{'=' * 75}")
-    print(f"\n  Tokens:")
+    print("\n  Tokens:")
     print(f"    A (逐對): in={total_in_a:>6} out={total_out_a:>5} total={total_in_a+total_out_a:>6}")
     print(f"    B (批次): in={total_in_b:>6} out={total_out_b:>5} total={total_in_b+total_out_b:>6}")
     save_in = (1 - total_in_b / total_in_a) * 100 if total_in_a else 0
@@ -195,7 +195,7 @@ def main():
     print(f"    Cost B: ${cost_b:.6f}")
     print(f"    Cost 節省: {(1-cost_b/cost_a)*100:.0f}%")
 
-    print(f"\n  Time:")
+    print("\n  Time:")
     print(f"    A: {time_a:.1f}s  B: {time_b:.1f}s  加速: {time_a/time_b:.1f}x")
 
     print(f"\n  一致率: {total_match}/{total_pairs} ({total_match/total_pairs*100:.0f}%)")

@@ -8,7 +8,6 @@ from fastapi import HTTPException
 
 from kg.admin_handlers import _resolve_admin_token, _sign_cookie, require_admin
 
-
 # ── _resolve_admin_token ───────────────────────────────────────────────────────
 
 def test_header_takes_priority_over_query_param():

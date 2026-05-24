@@ -1,7 +1,4 @@
 """Integration test: pipeline telemetry recording."""
-import json
-from pathlib import Path
-from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
@@ -19,8 +16,9 @@ def _isolate_db(tmp_path, monkeypatch):
 def test_run_step_records_telemetry():
     """_run_step should call pipeline_log when run_id is provided."""
     import asyncio
-    from kg.pipeline_service import _run_step
     import logging
+
+    from kg.pipeline_service import _run_step
 
     logger = logging.getLogger("test")
 
@@ -46,8 +44,9 @@ def test_run_step_records_telemetry():
 def test_run_step_records_failure():
     """_run_step should record failed status on error."""
     import asyncio
-    from kg.pipeline_service import _run_step
     import logging
+
+    from kg.pipeline_service import _run_step
 
     logger = logging.getLogger("test")
 
@@ -70,8 +69,9 @@ def test_run_step_records_failure():
 def test_run_step_without_run_id_does_not_log():
     """_run_step should not call pipeline_log when run_id is None."""
     import asyncio
-    from kg.pipeline_service import _run_step
     import logging
+
+    from kg.pipeline_service import _run_step
 
     logger = logging.getLogger("test")
 

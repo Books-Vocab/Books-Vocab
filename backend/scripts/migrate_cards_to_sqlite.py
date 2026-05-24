@@ -12,8 +12,10 @@ logger = logging.getLogger(__name__)
 project_root = Path(__file__).resolve().parent.parent
 sys.path.append(str(project_root / "src"))
 
-from kg.cards import Card, CardStore
 from sqlmodel import Session
+
+from kg.cards import Card, CardStore
+
 
 def migrate_user(user_dir: Path):
     """Migrates a single user's cards.json to cards.db"""
@@ -30,7 +32,7 @@ def migrate_user(user_dir: Path):
         return
 
     logger.info(f"Migrating user: {user_dir.name}")
-    
+
     # 1. Load old JSON
     try:
         data = json.loads(json_path.read_text())
@@ -40,7 +42,7 @@ def migrate_user(user_dir: Path):
 
     # 2. Init SQLite Store
     store = CardStore(db_path)
-    
+
     # 3. Insert all records
     migrated_count = 0
     with Session(store.engine) as session:
@@ -52,7 +54,7 @@ def migrate_user(user_dir: Path):
                 migrated_count += 1
             except Exception as e:
                 logger.error(f"Failed to parse card {cdict.get('id', 'unknown')} for {user_dir.name}: {e}")
-        
+
         session.commit()
 
     logger.info(f"✅ Successfully migrated {migrated_count} cards for user {user_dir.name}.")
@@ -68,12 +70,12 @@ def main():
         sys.exit(1)
 
     logger.info("Starting cards.json to SQLite migration...")
-    
+
     # Iterate through user directories
     for user_dir in data_dir.iterdir():
         if user_dir.is_dir():
             migrate_user(user_dir)
-            
+
     logger.info("Migration complete.")
 
 if __name__ == "__main__":

@@ -1,7 +1,6 @@
 """Tests for FastAPI lifespan and global exception handler."""
 from __future__ import annotations
 
-import pytest
 from fastapi import HTTPException
 from fastapi.testclient import TestClient
 

@@ -9,11 +9,12 @@ from __future__ import annotations
 import asyncio
 import collections
 import logging
+from collections.abc import Callable
 from datetime import datetime
 from pathlib import Path
-from typing import Any, Callable
+from typing import Any
 
-from fastapi import Cookie, Depends, Header, HTTPException, Query, Request, Response
+from fastapi import Cookie, Depends, Header, HTTPException, Query, Request
 from fastapi.security import HTTPAuthorizationCredentials, HTTPBearer
 
 from .api_models import CardLinkSummaryResponse, EntitlementsResponse
@@ -202,14 +203,11 @@ def _notification_status(notification_type: str | None, subtype: str | None) -> 
 # Quota helpers (extracted to deps_quota.py)
 # ---------------------------------------------------------------------------
 
-from .deps_quota import _is_pro, _with_quota_check, _check_quota, _apply_quota_headers  # noqa: F401
-
-
 # ---------------------------------------------------------------------------
 # Auth helpers (used by auth router)
 # ---------------------------------------------------------------------------
-
 from .auth_service import create_jwt_token, resolve_and_link_user
+from .deps_quota import _apply_quota_headers, _check_quota, _is_pro, _with_quota_check  # noqa: F401
 
 
 def _create_jwt_token(user_id: str, provider: str, *, settings: KGSettings) -> str:
