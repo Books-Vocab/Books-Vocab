@@ -141,6 +141,14 @@ def delete_user_account_response(
             logger.exception("Failed to delete user directory %s: %s", user_dir, exc)
             raise HTTPException(status_code=500, detail=f"Failed to remove user data for {uid}") from exc
 
+    logger.warning(
+        "Account deletion: uid=%s canonical=%s ids=%s dirs=%s",
+        user_id,
+        canonical_id,
+        ids_to_delete,
+        deleted_dirs,
+    )
+
     return DeleteAccountResponse(
         deleted_user_id=canonical_id,
         linked_ids=[uid for uid in ids_to_delete if uid != canonical_id],
