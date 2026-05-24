@@ -53,6 +53,11 @@ final class NotebookListCoordinator: NotebookListCoordinating {
     /// 避免殘留 stale error。
     var reconcileError: String?
 
+    /// 首次 reconcile 是否已完成（成功 / 失敗 / 未登入 early-return 都算）。
+    /// 用於區分「載入中」vs「真的沒有單字本」— 鏡像 PR #603 Podcast 修法。
+    /// 首次完成後永不重設，後續 refresh 不會再回退顯示 loading placeholder。
+    var hasLoadedOnce: Bool = false
+
     /// 從 server 拉 notebook 清單並與本地 reconcile：
     /// - remote 新增 → 本地 insert
     /// - remote 同名 remoteId → 更新欄位（含 isDeleted，對應遠端刪除）
@@ -67,7 +72,12 @@ final class NotebookListCoordinator: NotebookListCoordinating {
         modelContext: ModelContext,
         kgService: any KGServing
     ) async {
-        guard authManager.isLoggedIn else { return }
+        guard authManager.isLoggedIn else {
+            // 未登入也算「首次載入流程已完成」— 否則 logged-out users 會永久卡 loading placeholder。
+            hasLoadedOnce = true
+            return
+        }
+        defer { hasLoadedOnce = true }
 
         let remoteNotebooks: [KGNotebook]
         do {
