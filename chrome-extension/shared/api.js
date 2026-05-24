@@ -170,7 +170,7 @@ async function addVocab(entries) {
  * @param {string} [since] — ISO 8601 timestamp
  */
 async function listVocab(since) {
-  const params = since ? `?since=${encodeURIComponent(since)}` : '';
+  const params = globalThis.KGPure.buildVocabQuery(since);
   return apiFetch(`/api/vocab${params}`);
 }
 
