@@ -829,3 +829,10 @@
 "集數由大到小" = "集數由大到小";
 "集數由小到大" = "集數由小到大";
 "音訊暫不可用" = "音訊暫不可用";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "倒退 15 秒";
+"podcast.controls.forward15" = "前進 15 秒";
+"podcast.controls.playpause.play" = "播放";
+"podcast.controls.playpause.pause" = "暫停";
+"podcast.controls.cycleRate" = "切換播放速率";

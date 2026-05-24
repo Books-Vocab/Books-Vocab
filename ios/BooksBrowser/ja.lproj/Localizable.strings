@@ -810,3 +810,10 @@
 "集數由大到小" = "エピソード（新しい順）";
 "集數由小到大" = "エピソード（古い順）";
 "音訊暫不可用" = "オーディオは現在利用できません";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "15秒戻る";
+"podcast.controls.forward15" = "15秒進む";
+"podcast.controls.playpause.play" = "再生";
+"podcast.controls.playpause.pause" = "一時停止";
+"podcast.controls.cycleRate" = "再生速度を切り替え";

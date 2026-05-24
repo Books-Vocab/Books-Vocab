@@ -846,3 +846,10 @@
 "集數由大到小" = "Newest first";
 "集數由小到大" = "Oldest first";
 "音訊暫不可用" = "Audio unavailable";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "Rewind 15 seconds";
+"podcast.controls.forward15" = "Forward 15 seconds";
+"podcast.controls.playpause.play" = "Play";
+"podcast.controls.playpause.pause" = "Pause";
+"podcast.controls.cycleRate" = "Cycle playback speed";

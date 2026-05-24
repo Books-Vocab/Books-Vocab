@@ -811,3 +811,10 @@
 "集數由大到小" = "에피소드 최신순";
 "集數由小到大" = "에피소드 오래된순";
 "音訊暫不可用" = "오디오를 사용할 수 없습니다";
+
+// MARK: - Podcast Controls a11y (track-7)
+"podcast.controls.rewind15" = "15초 뒤로";
+"podcast.controls.forward15" = "15초 앞으로";
+"podcast.controls.playpause.play" = "재생";
+"podcast.controls.playpause.pause" = "일시정지";
+"podcast.controls.cycleRate" = "재생 속도 전환";
