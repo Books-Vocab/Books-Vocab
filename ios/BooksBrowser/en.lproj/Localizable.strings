@@ -855,6 +855,13 @@
 "podcast.controls.cycleRate" = "Cycle playback speed";
 "podcast.player.subtitleSettings" = "Subtitle settings";
 
+// MARK: - Podcast episode row a11y (track-9)
+"podcast.episodeRow.subtitleAvailable" = "Subtitles available";
+"podcast.episodeRow.downloaded" = "Downloaded";
+"podcast.episodeRow.listened" = "Listened";
+"podcast.episodeRow.unavailable" = "Audio unavailable";
+"podcast.episodeRow.downloading" = "Downloading";
+
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "Previous card";
 "todayReview.autoplay.next" = "Next card";
@@ -872,3 +879,9 @@
 
 // MARK: - Podcast Sleep Timer (track-11)
 "podcast.sleepTimer.fired.toast" = "Sleep timer ended — playback paused";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "Loading subtitles…";
+"podcast.subtitle.unavailable.title" = "No sentence-level subtitles for this episode";
+"podcast.subtitle.unavailable.description" = "Audio playback continues normally";
+"podcast.episodeList.staleBanner.message" = "Load failed — showing cached data";

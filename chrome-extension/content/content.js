@@ -410,6 +410,15 @@
   // Utilities
   // -------------------------------------------------------------------------
 
+  /**
+   * Escape HTML to prevent XSS in popup markup. Mirrors
+   * `shared/pure.js#escapeHtml` — content scripts run in an isolated world
+   * without access to KGPure, so the implementation is inlined.
+   *
+   * Uses a detached `<span>` to round-trip through `textContent` →
+   * `innerHTML` (encodes `&`, `<`, `>`); equivalent to the pure version's
+   * three regex replacements. Keep in sync if either side changes.
+   */
   function escapeHtml(str) {
     const el = document.createElement('span');
     el.textContent = str;

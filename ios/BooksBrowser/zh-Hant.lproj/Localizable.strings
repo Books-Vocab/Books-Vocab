@@ -838,6 +838,13 @@
 "podcast.controls.cycleRate" = "切換播放速率";
 "podcast.player.subtitleSettings" = "字幕設定";
 
+// MARK: - Podcast episode row a11y (track-9)
+"podcast.episodeRow.subtitleAvailable" = "有字幕";
+"podcast.episodeRow.downloaded" = "已下載";
+"podcast.episodeRow.listened" = "已聽完";
+"podcast.episodeRow.unavailable" = "音訊不可用";
+"podcast.episodeRow.downloading" = "下載中";
+
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "上一張卡片";
 "todayReview.autoplay.next" = "下一張卡片";
@@ -855,3 +862,9 @@
 
 // MARK: - Podcast Sleep Timer (track-11)
 "podcast.sleepTimer.fired.toast" = "睡眠定時已結束，播放已暫停";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "字幕載入中…";
+"podcast.subtitle.unavailable.title" = "此集無逐句字幕";
+"podcast.subtitle.unavailable.description" = "音訊仍可正常播放";
+"podcast.episodeList.staleBanner.message" = "載入失敗，顯示快取資料";

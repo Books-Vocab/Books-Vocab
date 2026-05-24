@@ -15,13 +15,19 @@ enum PodcastPlayerState: Equatable {
 /// A failed subtitle fetch used to be swallowed by `try?` — audio kept
 /// playing while subtitles were permanently missing with no prompt. This
 /// state lets the player surface an inline "字幕載入失敗 ⟳" retry without
-/// interrupting playback. `.idle` covers both "not started" and "episode
-/// ships no subtitle URL" — neither warrants a failure prompt.
+/// interrupting playback.
+///
+/// `.idle` = not yet started (transient pre-load); `.unavailable` = the
+/// episode genuinely ships no subtitle URL, surfaced as an explicit hint so
+/// users aren't left guessing why the bubble layer is empty (track-3 state
+/// matrix L407/L410 — previously `.loading` and "unavailable" both rendered
+/// no overlay and looked identical).
 enum PodcastSubtitleLoadState: Equatable {
     case idle
     case loading
     case loaded
     case failed
+    case unavailable
 }
 
 enum SleepTimerMode: Hashable {
@@ -188,10 +194,11 @@ final class PodcastPlayerViewModel {
         subtitleState = .failed
     }
 
-    /// The episode genuinely ships no subtitle URL. Stays `.idle` so no
-    /// spurious failure prompt appears.
+    /// The episode genuinely ships no subtitle URL. Drives an explicit
+    /// "此集無逐句字幕" hint so the empty bubble layer is no longer
+    /// indistinguishable from `.loading` (state matrix L410).
     func markSubtitleUnavailable() {
-        subtitleState = .idle
+        subtitleState = .unavailable
     }
 
     func setLoading() {

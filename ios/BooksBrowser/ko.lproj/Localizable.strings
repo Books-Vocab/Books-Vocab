@@ -820,6 +820,13 @@
 "podcast.controls.cycleRate" = "재생 속도 전환";
 "podcast.player.subtitleSettings" = "자막 설정";
 
+// MARK: - Podcast episode row a11y (track-9)
+"podcast.episodeRow.subtitleAvailable" = "자막 있음";
+"podcast.episodeRow.downloaded" = "다운로드됨";
+"podcast.episodeRow.listened" = "청취 완료";
+"podcast.episodeRow.unavailable" = "오디오를 사용할 수 없음";
+"podcast.episodeRow.downloading" = "다운로드 중";
+
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "이전 카드";
 "todayReview.autoplay.next" = "다음 카드";
@@ -837,3 +844,9 @@
 
 // MARK: - Podcast Sleep Timer (track-11)
 "podcast.sleepTimer.fired.toast" = "절전 타이머가 종료되어 재생을 일시정지했습니다";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "자막 로드 중…";
+"podcast.subtitle.unavailable.title" = "이 에피소드에는 문장 단위 자막이 없습니다";
+"podcast.subtitle.unavailable.description" = "오디오는 계속 정상적으로 재생됩니다";
+"podcast.episodeList.staleBanner.message" = "로드 실패 — 캐시된 데이터 표시 중";
