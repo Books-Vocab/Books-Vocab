@@ -31,7 +31,6 @@ enum ReaderMetrics {
 
     // MARK: - Settings layout
 
-    static let settingsSectionSpacing: CGFloat = 18
     static let settingsHorizontalInset: CGFloat = 18
     static let settingsBottomInset: CGFloat = 20
 
@@ -46,14 +45,6 @@ enum ReaderMetrics {
     static let settingsCardPadding: CGFloat = 16
     static let settingsControlHorizontalPadding: CGFloat = 14
     static let settingsControlVerticalPadding: CGFloat = 14
-    static let settingsOptionHorizontalPadding: CGFloat = 12
-    static let settingsOptionVerticalPadding: CGFloat = 12
-
-    // MARK: - Settings highlight preview / minHeight
-
-    static let settingsHighlightPreviewTrailingInset: CGFloat = 22
-    static let settingsModeMinHeight: CGFloat = 112
-    static let settingsHighlightMinHeight: CGFloat = 78
 
     // MARK: - Settings divider
 

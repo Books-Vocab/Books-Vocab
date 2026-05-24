@@ -5,7 +5,7 @@ import SwiftUI
 
 /// Catalog scenarios for the Bookshelf surface.
 /// Reuses `BookshelfPreviewData` / `BookCardPreviewScene` / `BookshelfLoadingPreview`
-/// (defined in `BookshelfView.swift`) so state stays in lock-step with the
+/// (defined in `BookshelfPreviews.swift`) so state stays in lock-step with the
 /// existing `#Preview` blocks.
 enum BookshelfScenarios {
     static func register(in playbook: Playbook) {
