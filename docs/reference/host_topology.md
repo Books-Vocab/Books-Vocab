@@ -5,7 +5,7 @@ update_trigger: code-change
 scope:
   - ops/
   - docs/policy/
-verified_against: 41bf8dd
+verified_against: 800386c5
 -->
 # Host Background (Single Source of Truth)
 
@@ -27,6 +27,9 @@ verified_against: 41bf8dd
 > Codex Gateway（`lab/codex-gateway/`，ChatGPT 訂閱 → OpenAI-compatible API）**不在 VPS 上**：從一開始就純本機 `127.0.0.1:2455` 部署（OpenAI 反濫用偵測雖無 ban wave 實證，但具備所有觸發條件，預防性 air-gap）。詳見 `docs/sop/codex-gateway.md`。
 
 ## Routing
+
+> Caddyfile lives on VPS only (`/etc/caddy/Caddyfile`), not in repo — snippet below is reference only.
+
 ```caddy
 wordnexus.lol {
     handle /claude/* {
