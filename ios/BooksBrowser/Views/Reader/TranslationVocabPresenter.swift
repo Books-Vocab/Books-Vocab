@@ -66,6 +66,7 @@ struct TranslationVocabPresenter: View {
                     .symbolEffect(.bounce, value: state.isSpeaking)
             }
             .buttonStyle(.plain)
+            .accessibilityLabel(L10n.format("translation.vocab.speak", state.word))
 
             Spacer()
 

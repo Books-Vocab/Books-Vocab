@@ -88,6 +88,7 @@ struct CardHeroSection: View {
                                 .contentShape(Rectangle())
                         }
                         .buttonStyle(.plain)
+                        .accessibilityLabel(L10n.format("vocab.card.speak", card.word))
                     }
 
                 }
