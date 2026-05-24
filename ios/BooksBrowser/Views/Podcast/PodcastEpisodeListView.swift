@@ -131,6 +131,7 @@ struct PodcastEpisodeListView: View {
             ScrollView {
                 LazyVStack(spacing: skin.spacing.sectionGap) {
                     heroHeader
+                    staleDataBanner
                     episodesSection
                 }
                 .padding(.horizontal, skin.spacing.cardPadding)
@@ -292,6 +293,28 @@ struct PodcastEpisodeListView: View {
                 }
             )
             .frame(maxWidth: 280)
+        }
+    }
+
+    // MARK: - Stale data banner
+
+    /// Reload from store failed but we still have cached episodes — surface
+    /// the staleness inline with a retry CTA instead of silently letting the
+    /// user think the cached list is fresh (state matrix L384, track-3).
+    /// `.error` phase only fires when `rawEpisodes.isEmpty`, so this banner
+    /// is the only signal users get when `loadError != nil` overlaps with
+    /// cached content.
+    @ViewBuilder
+    private var staleDataBanner: some View {
+        if loadError != nil && !rawEpisodes.isEmpty {
+            AppBanner(
+                message: "載入失敗，顯示快取資料",
+                systemImage: "exclamationmark.triangle",
+                onRetry: {
+                    Task { await reloadFromStore() }
+                }
+            )
+            .accessibilityIdentifier("podcast.episodeList.staleBanner")
         }
     }
 

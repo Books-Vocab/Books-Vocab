@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: c642ed18
+verified_against: 5cb8dd11
 -->
 # UI State Matrix
 
@@ -381,7 +381,7 @@ Preview matrix 已補齊：
 | Navigation lock | `navigationLocked == true`（tap 後 1s） | 所有 push CTA disabled，避免雙 push freeze | 已覆蓋 |
 | Follow toggle 儲存失敗 | `PodcastFollowToggle.perform` 回 `.rolledBack` | toast error `追蹤狀態儲存失敗` + 自動回滾 star | 已覆蓋 |
 | Sort 切換 | `sort` 變更 | menu pick + 動畫排序 | 已覆蓋 |
-| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | error phase 不顯（content 優先） | 缺口（Priority 2） — stale data + retry 無提示 |
+| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | content 仍顯示 + 上方插入 `AppBanner`（`載入失敗，顯示快取資料` + retry CTA → `reloadFromStore()`；`podcast.episodeList.staleBanner`） | 已覆蓋 |
 
 ### Player Container State（`PodcastPlayerView` × `PodcastPlayerState`）
 
