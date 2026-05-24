@@ -19,7 +19,7 @@
 #
 # 相容 bash 3.2(macOS 預設),不使用 mapfile / readarray。
 
-set -eu
+set -euo pipefail
 
 cd "$(git rev-parse --show-toplevel)"
 

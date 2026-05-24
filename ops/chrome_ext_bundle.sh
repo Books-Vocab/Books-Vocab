@@ -14,7 +14,7 @@
 #   KG_CHROME_EXT_DIR — 來源目錄，預設 <repo>/chrome-extension
 #   KG_DIST_DIR       — 輸出目錄，預設 <repo>/dist
 
-set -o pipefail
+set -euo pipefail
 
 # ── Helpers ────────────────────────────────────────────────────────────────
 info() { echo "▶ $*"; }
