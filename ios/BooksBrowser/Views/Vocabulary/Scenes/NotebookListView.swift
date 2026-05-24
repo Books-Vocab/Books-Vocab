@@ -217,7 +217,11 @@ struct NotebookListView: View {
                             .padding(.horizontal, editorialHorizontal)
                     }
 
-                    if notebooks.isEmpty {
+                    if notebooks.isEmpty && !coordinator.hasLoadedOnce && authManager.isLoggedIn {
+                        // 首次 reconcile 完成前不顯示 empty state — 否則 logged-in users
+                        // 啟動瞬間會閃過「還沒有單字本」誤導 copy。鏡像 PR #603 Podcast 修法。
+                        loadingPlaceholder
+                    } else if notebooks.isEmpty {
                         emptyState
                     } else {
                         // Editorial row list — 每本 notebook 一條 full-width row,書背隱喻。
@@ -469,6 +473,20 @@ struct NotebookListView: View {
                 }
             }
             .buttonStyle(.appCompactAction(.primary))
+        }
+    }
+
+    // MARK: - Loading Placeholder
+
+    /// 首次 reconcile 尚未完成時顯示，避免 logged-in users 啟動瞬間誤看到 empty-state copy。
+    /// 鏡像 PR #603 Podcast `.loading` 處理 — `loadingSkeleton` 比裸 spinner 更貼近最終 list 版面。
+    @ViewBuilder
+    private var loadingPlaceholder: some View {
+        VocabSceneShell(phase: .loading(
+            title: L10n.string("notebook.list.loading"),
+            systemImage: "books.vertical"
+        )) {
+            EmptyView()
         }
     }
 
