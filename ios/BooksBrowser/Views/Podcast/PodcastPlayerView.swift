@@ -118,6 +118,11 @@ struct PodcastPlayerView: View {
                             saveProgress()
                         }
                     }
+                    .sensoryFeedback(.success, trigger: vm.sleepTimerFiredTick)
+                    .onChange(of: vm.sleepTimerFiredTick) { oldTick, newTick in
+                        guard newTick != oldTick else { return }
+                        toastCoordinator.info(L10n.string("podcast.sleepTimer.fired.toast"))
+                    }
             } else {
                 ProgressView("載入中…")
             }
