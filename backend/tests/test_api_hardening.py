@@ -7,6 +7,7 @@ from __future__ import annotations
 import asyncio
 import json
 import uuid
+
 import pytest
 from fastapi.testclient import TestClient
 
@@ -33,8 +34,8 @@ def make_jwt(user_id: str) -> str:
 
 
 def _swap_settings(new_settings):
-    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
 
     app.state.kg_settings = new_settings
 

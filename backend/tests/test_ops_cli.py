@@ -3,10 +3,8 @@
 import sqlite3
 import subprocess
 import sys
-from datetime import datetime, timedelta, timezone
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
-
-import pytest
 
 # ops_cli.py 位於 backend/ 根目錄，需要直接 import
 CLI_PATH = Path(__file__).resolve().parent.parent / "ops_cli.py"
@@ -91,11 +89,11 @@ def _run_cli(data_dir: str, *args: str) -> subprocess.CompletedProcess:
 
 
 def _now_iso() -> str:
-    return datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S+00:00")
+    return datetime.now(UTC).strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 
 def _hours_ago_iso(hours: int) -> str:
-    t = datetime.now(timezone.utc) - timedelta(hours=hours)
+    t = datetime.now(UTC) - timedelta(hours=hours)
     return t.strftime("%Y-%m-%dT%H:%M:%S+00:00")
 
 

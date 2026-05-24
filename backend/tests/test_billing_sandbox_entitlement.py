@@ -8,8 +8,6 @@ read layer, a client could replay a sandbox transaction to obtain real Pro acces
 
 from __future__ import annotations
 
-import pytest
-
 from kg.billing import build_entitlements_response, current_pro_entitlement_record
 
 

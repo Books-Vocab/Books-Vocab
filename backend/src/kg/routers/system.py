@@ -37,7 +37,7 @@ def system_info() -> SystemInfoResponse:
     if VERSION_FILE.exists():
         version = VERSION_FILE.read_text().strip()
 
-    from datetime import datetime, UTC
+    from datetime import UTC, datetime
     started_at = datetime.fromtimestamp(_STARTED_AT, tz=UTC).isoformat()
     uptime_seconds = int(time.time() - _STARTED_AT)
 

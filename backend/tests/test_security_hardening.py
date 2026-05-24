@@ -29,7 +29,6 @@ class TestNotebookIdPathTraversal:
 
 class TestTransactionIdFormat:
     def test_valid_transaction_id(self):
-        from kg.app_store import fetch_transaction_info
         # We can't actually call the async function, but we test the validation
         # by importing the validator directly
         from kg.app_store import _validate_transaction_id

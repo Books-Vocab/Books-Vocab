@@ -167,7 +167,7 @@ def main():
     time_a = time.time() - t0
 
     # ── B: 批次呼叫 ──
-    print(f"\n--- Method B: 批次呼叫 (1 次 LLM call) ---\n")
+    print("\n--- Method B: 批次呼叫 (1 次 LLM call) ---\n")
     t0 = time.time()
     batch_data, total_in_b, total_out_b = call_batch(client, TARGET, CANDIDATES)
     time_b = time.time() - t0
@@ -183,10 +183,10 @@ def main():
 
     # ── 比較 ──
     print(f"\n{'=' * 70}")
-    print(f"  COMPARISON")
+    print("  COMPARISON")
     print(f"{'=' * 70}")
 
-    print(f"\n  Token 消耗:")
+    print("\n  Token 消耗:")
     print(f"    Method A (逐對): input={total_in_a:>6}, output={total_out_a:>5}, total={total_in_a+total_out_a:>6}")
     print(f"    Method B (批次): input={total_in_b:>6}, output={total_out_b:>5}, total={total_in_b+total_out_b:>6}")
     savings_in = (1 - total_in_b / total_in_a) * 100 if total_in_a else 0
@@ -194,12 +194,12 @@ def main():
     print(f"    Input 節省: {savings_in:.0f}%")
     print(f"    Total 節省: {savings_total:.0f}%")
 
-    print(f"\n  時間:")
+    print("\n  時間:")
     print(f"    Method A: {time_a:.1f}s ({time_a/len(CANDIDATES):.1f}s/call)")
     print(f"    Method B: {time_b:.1f}s")
     print(f"    加速: {time_a/time_b:.1f}x")
 
-    print(f"\n  結果一致性:")
+    print("\n  結果一致性:")
     match = 0
     total = 0
     for word, _ in CANDIDATES:

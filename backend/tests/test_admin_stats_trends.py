@@ -211,9 +211,8 @@ def test_trends_active_users_distinct_count(admin_app):
 
 def test_trends_window_excludes_old_data(admin_app):
     """Rows older than 30 days must not appear in any series."""
-    import sqlite3
-    import kg.token_tracker as tt
     import kg.pipeline_log as pl
+    import kg.token_tracker as tt
 
     # Insert one normal row today, then back-date one record to 45 days ago
     tt.record("u1", "translate_quick", 100, 50)

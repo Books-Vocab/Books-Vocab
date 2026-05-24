@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from datetime import UTC, datetime
-from unittest.mock import patch, call
 
 import pytest
 
@@ -342,8 +341,9 @@ class TestVocabIntakeNoN1:
     def test_duplicate_lookup_uses_dict_not_db(self):
         """vocab_intake N+1 regression: duplicate words must be resolved from in-memory dict."""
         from types import SimpleNamespace
-        from kg.vocab_intake import add_vocab_entries
+
         from kg.api_models import VocabEntry
+        from kg.vocab_intake import add_vocab_entries
 
         db_lookup_calls = []
 
@@ -411,6 +411,7 @@ class TestBuildContentLookupNoFullScan:
     def test_vocab_crud_batch_delete_single_scan(self):
         """batch_delete_vocab_words must call cards_store.all() exactly once."""
         from types import SimpleNamespace
+
         from kg.vocab_crud import batch_delete_vocab_words
 
         all_call_count = 0
@@ -442,6 +443,7 @@ class TestBuildContentLookupNoFullScan:
     def test_vocab_crud_batch_archive_single_scan(self):
         """batch_archive_vocab_words must call cards_store.all() exactly once."""
         from types import SimpleNamespace
+
         from kg.vocab_crud import batch_archive_vocab_words
 
         all_call_count = 0
@@ -540,7 +542,9 @@ class TestFindByContent:
     def test_perf_with_large_dataset(self, tmp_path):
         """find_by_content must use index, not scan whole table."""
         import time
+
         from sqlmodel import Session
+
         from kg.text_utils import normalize_nfc_lower
         store = CardStore(tmp_path / "cards_perf.db")
         # Bulk insert 5000 cards via ORM in a single transaction

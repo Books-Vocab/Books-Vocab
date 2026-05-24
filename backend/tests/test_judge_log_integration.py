@@ -32,8 +32,8 @@ def _make_llm(response_content: str, user_id: str = "u1"):
 # ── Batch Judge ──────────────────────────────────────────
 
 def test_batch_judge_logs_all_decisions():
-    from kg.judge import Judge
     from kg import judge_log
+    from kg.judge import Judge
 
     resp = json.dumps([
         {"word": "bright", "link": "shares_usage", "confidence": 0.9, "reason": "兩詞都描述光澤"},
@@ -68,8 +68,8 @@ def test_batch_judge_logs_all_decisions():
 
 
 def test_single_evaluate_logs():
-    from kg.judge import Judge
     from kg import judge_log
+    from kg.judge import Judge
 
     resp = json.dumps([
         {"word": "bright", "link": "shares_usage", "confidence": 0.9, "reason": "相關"},
@@ -88,8 +88,8 @@ def test_single_evaluate_logs():
 # ── ManualLinkJudge ──────────────────────────────────────
 
 def test_manual_judge_logs():
-    from kg.judge import ManualLinkJudge
     from kg import judge_log
+    from kg.judge import ManualLinkJudge
 
     resp = json.dumps({"link": "contrasts_with", "confidence": 0.95, "reason": "對比詞"})
     llm = _make_llm(resp)
@@ -108,8 +108,8 @@ def test_manual_judge_logs():
 
 
 def test_manual_judge_parse_error_logs():
-    from kg.judge import ManualLinkJudge
     from kg import judge_log
+    from kg.judge import ManualLinkJudge
 
     llm = _make_llm("NOT JSON AT ALL")
     judge = ManualLinkJudge(llm, user_id="u1", notebook_id="nb1")

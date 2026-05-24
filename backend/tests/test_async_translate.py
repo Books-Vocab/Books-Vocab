@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import logging
 from types import SimpleNamespace
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -61,7 +60,6 @@ async def test_run_explain_translate_returns_expected_shape():
 
 @pytest.mark.asyncio
 async def test_run_quick_translate_raises_on_empty_choices():
-    from fastapi import HTTPException
 
     req = TranslateRequest(word="evoke", context="context")
     response = SimpleNamespace(choices=[], usage=None)
@@ -81,8 +79,6 @@ async def test_run_quick_translate_raises_on_empty_choices():
 async def test_async_translate_quota_check_blocks_exceeded():
     """quota check 仍正常運作（exceeded 時 raise 429）"""
     from kg.exceptions import QuotaExceededError
-
-    from kg.translate_handlers import translate_quick_response
 
     req = TranslateRequest(word="evoke", context="context")
     user = {"id": "u_test", "config": {}, "record": None}

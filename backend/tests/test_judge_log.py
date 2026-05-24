@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import threading
-
 
 def test_record_and_retrieve(tmp_path, monkeypatch):
     """Insert accepted decision, verify all fields round-trip."""
@@ -11,6 +9,7 @@ def test_record_and_retrieve(tmp_path, monkeypatch):
 
     # Force reimport with fresh env
     import importlib
+
     from kg import judge_log
     importlib.reload(judge_log)
     judge_log._reset()
@@ -53,6 +52,7 @@ def test_record_rejection(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
 
     import importlib
+
     from kg import judge_log
     importlib.reload(judge_log)
     judge_log._reset()
@@ -92,6 +92,7 @@ def test_acceptance_stats(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
 
     import importlib
+
     from kg import judge_log
     importlib.reload(judge_log)
     judge_log._reset()
@@ -130,6 +131,7 @@ def test_acceptance_stats_per_user(tmp_path, monkeypatch):
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
 
     import importlib
+
     from kg import judge_log
     importlib.reload(judge_log)
     judge_log._reset()

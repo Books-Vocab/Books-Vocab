@@ -24,7 +24,7 @@ from __future__ import annotations
 import os
 import sqlite3
 import threading
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from pathlib import Path
 
 _DEFAULT_DATA_DIR = Path(__file__).resolve().parent.parent.parent / "data"
@@ -122,8 +122,8 @@ def _parse_instant(value: str) -> datetime | None:
     except (TypeError, ValueError, AttributeError):
         return None
     if dt.tzinfo is None:
-        dt = dt.replace(tzinfo=timezone.utc)
-    return dt.astimezone(timezone.utc)
+        dt = dt.replace(tzinfo=UTC)
+    return dt.astimezone(UTC)
 
 
 def _reset() -> None:

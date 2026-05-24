@@ -1,9 +1,9 @@
 """Tests for store lifecycle (open/close)."""
-import pytest
 from pathlib import Path
+
 from kg.cards import CardStore
-from kg.notebook import NotebookStore
 from kg.daily_stats import DailyReviewStatsStore
+from kg.notebook import NotebookStore
 
 
 def test_card_store_close_disposes_engine(tmp_path: Path):

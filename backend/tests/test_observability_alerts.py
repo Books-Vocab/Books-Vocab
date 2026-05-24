@@ -1,13 +1,11 @@
 """Tests for kg.observability_alerts — threshold checks emit Sentry alerts."""
 from __future__ import annotations
 
-import sqlite3
 from datetime import UTC, datetime, timedelta
 
 import pytest
 
 from kg import judge_log, observability_alerts, pipeline_log, translate_log
-
 
 # ---------------------------------------------------------------------------
 # Fixtures

@@ -3,11 +3,9 @@ from __future__ import annotations
 from dataclasses import dataclass
 
 import pytest
-from fastapi import HTTPException
 
 from kg.graph import GraphStore, LinkKind
 from kg.vocab_crud import delete_vocab_word
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
