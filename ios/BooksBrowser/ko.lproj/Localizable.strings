@@ -853,3 +853,8 @@
 "search.clear" = "검색 지우기";
 "banner.action.retry" = "다시 시도";
 "banner.action.dismiss" = "닫기";
+"translation.vocab.speak" = "%@ 읽기";
+"vocab.card.speak" = "%@ 읽기";
+"vocab.card.addLink" = "지식 링크 추가";
+"sync.pending.undoDelete" = "삭제 취소";
+"sync.pending.cancelAdd" = "추가 대기 취소";

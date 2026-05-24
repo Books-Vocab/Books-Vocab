@@ -888,3 +888,8 @@
 "search.clear" = "Clear search";
 "banner.action.retry" = "Retry";
 "banner.action.dismiss" = "Dismiss";
+"translation.vocab.speak" = "Speak %@";
+"vocab.card.speak" = "Speak %@";
+"vocab.card.addLink" = "Add knowledge link";
+"sync.pending.undoDelete" = "Undo delete";
+"sync.pending.cancelAdd" = "Cancel pending add";
