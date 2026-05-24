@@ -827,3 +827,10 @@
 "todayReview.autoplay.playpause.pause" = "暂停自动播放";
 "todayReview.nav.previous" = "上一张卡片";
 "todayReview.nav.next" = "下一张卡片";
+
+// MARK: - VocabChromeIconButton a11y (track-11)
+"vocab.chromeIcon.readerSettings.dismiss" = "关闭阅读设置";
+"vocab.chromeIcon.translation.dismiss" = "关闭翻译面板";
+"vocab.chromeIcon.todayReview.help" = "显示快捷键";
+"vocab.chromeIcon.todayReview.close" = "关闭今日复习";
+"vocab.chromeIcon.collocation.dismiss" = "关闭搭配说明";

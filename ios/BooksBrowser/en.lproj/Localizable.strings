@@ -862,3 +862,10 @@
 "todayReview.autoplay.playpause.pause" = "Pause autoplay";
 "todayReview.nav.previous" = "Previous card";
 "todayReview.nav.next" = "Next card";
+
+// MARK: - VocabChromeIconButton a11y (track-11)
+"vocab.chromeIcon.readerSettings.dismiss" = "Close reading settings";
+"vocab.chromeIcon.translation.dismiss" = "Close translation panel";
+"vocab.chromeIcon.todayReview.help" = "Show keyboard shortcuts";
+"vocab.chromeIcon.todayReview.close" = "Close today's review";
+"vocab.chromeIcon.collocation.dismiss" = "Close collocation explanation";

@@ -826,3 +826,10 @@
 "todayReview.autoplay.playpause.pause" = "自動再生を一時停止";
 "todayReview.nav.previous" = "前のカード";
 "todayReview.nav.next" = "次のカード";
+
+// MARK: - VocabChromeIconButton a11y (track-11)
+"vocab.chromeIcon.readerSettings.dismiss" = "閲覧設定を閉じる";
+"vocab.chromeIcon.translation.dismiss" = "翻訳パネルを閉じる";
+"vocab.chromeIcon.todayReview.help" = "ショートカットを表示";
+"vocab.chromeIcon.todayReview.close" = "今日の復習を閉じる";
+"vocab.chromeIcon.collocation.dismiss" = "コロケーション説明を閉じる";
