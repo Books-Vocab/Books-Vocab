@@ -18,6 +18,7 @@ struct ReaderSelectionTile<Content: View>: View {
             content
                 .foregroundStyle(isSelected ? appSkin.palette.primaryText : appSkin.palette.secondaryText)
         }
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
         .enableInjection()
     }
 }
