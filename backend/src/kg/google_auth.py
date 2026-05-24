@@ -93,5 +93,7 @@ async def verify_google_token(token: str, client_id: str) -> tuple[str, str | No
         logger.warning("Google token validation failed: %s", e)
         raise HTTPException(status_code=401, detail="Invalid token") from e
     except (GoogleAuthError, OSError) as e:
-        logger.error("Google token verification error: %s", e)
+        # Client-side token issue (expired / malformed / network during verify).
+        # Mirrors the JWT validation branch above — not a server error.
+        logger.warning("Google token verification error: %s", e)
         raise HTTPException(status_code=401, detail="Google authentication failed") from e
