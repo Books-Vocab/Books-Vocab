@@ -240,6 +240,8 @@ struct WordDetailPresenter: View {
             }
         }
         .buttonStyle(.plain)
+        .accessibilityValue(state.isExcludedFromReader ? L10n.string("a11y.toggle.on") : L10n.string("a11y.toggle.off"))
+        .accessibilityAddTraits(.isToggle)
         .animateContentFade(state.isExcludedFromReader)
     }
 }
