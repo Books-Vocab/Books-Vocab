@@ -863,6 +863,7 @@
 "calendar.month.previous" = "上个月";
 "calendar.month.next" = "下个月";
 "notebook.toolbar.archive" = "归档";
+"notebook.list.loading" = "正在加载单词本…";
 "a11y.toggle.on" = "开";
 "a11y.toggle.off" = "关";
 "todayReview.fold.collapse" = "收起";
