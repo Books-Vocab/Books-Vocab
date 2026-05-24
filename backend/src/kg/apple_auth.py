@@ -36,7 +36,7 @@ def _fetch_apple_public_keys() -> None:
     except (httpx.HTTPError, ValueError, KeyError) as e:
         # If cache exists and request fails, keeping old cache is safer
         if not _apple_public_keys:
-            logger.error("Failed to fetch Apple public keys: %s", e)
+            logger.error("Failed to fetch Apple public keys: %s", e, exc_info=True)
             raise HTTPException(status_code=500, detail="Authentication service unavailable")  # noqa: B904
 
 
@@ -128,5 +128,8 @@ def verify_apple_token(token: str, audience: str) -> tuple[str, str | None, bool
     except HTTPException:
         raise
     except (KeyError, ValueError, httpx.HTTPError) as e:
-        logger.error("Apple token verification error: %s", e)
+        # Client-side token issue surfacing during validation — mirrors the
+        # PyJWTError branch above. Server-side JWK fetch failures stay at
+        # error level in _fetch_apple_public_keys.
+        logger.warning("Apple token verification error: %s", e)
         raise HTTPException(status_code=401, detail="Authentication failed")  # noqa: B904
