@@ -898,5 +898,6 @@
 "calendar.month.previous" = "Previous month";
 "calendar.month.next" = "Next month";
 "notebook.toolbar.archive" = "Archive";
-"vocab.wordDetail.toggleExcludeFromReader" = "Toggle exclude from Reader";
+"a11y.toggle.on" = "On";
+"a11y.toggle.off" = "Off";
 "todayReview.fold.collapse" = "Collapse";

@@ -863,5 +863,6 @@
 "calendar.month.previous" = "上个月";
 "calendar.month.next" = "下个月";
 "notebook.toolbar.archive" = "归档";
-"vocab.wordDetail.toggleExcludeFromReader" = "切换从阅读器排除";
+"a11y.toggle.on" = "开";
+"a11y.toggle.off" = "关";
 "todayReview.fold.collapse" = "收起";

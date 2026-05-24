@@ -862,5 +862,6 @@
 "calendar.month.previous" = "前月";
 "calendar.month.next" = "翌月";
 "notebook.toolbar.archive" = "アーカイブ";
-"vocab.wordDetail.toggleExcludeFromReader" = "リーダーから除外を切替";
+"a11y.toggle.on" = "オン";
+"a11y.toggle.off" = "オフ";
 "todayReview.fold.collapse" = "折りたたむ";
