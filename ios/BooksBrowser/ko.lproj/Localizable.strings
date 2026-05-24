@@ -834,3 +834,6 @@
 "vocab.chromeIcon.todayReview.help" = "단축키 표시";
 "vocab.chromeIcon.todayReview.close" = "오늘의 복습 닫기";
 "vocab.chromeIcon.collocation.dismiss" = "연어 설명 닫기";
+
+// MARK: - Podcast Sleep Timer (track-11)
+"podcast.sleepTimer.fired.toast" = "절전 타이머가 종료되어 재생을 일시정지했습니다";

@@ -852,3 +852,6 @@
 "vocab.chromeIcon.todayReview.help" = "顯示快捷鍵";
 "vocab.chromeIcon.todayReview.close" = "關閉今日複習";
 "vocab.chromeIcon.collocation.dismiss" = "關閉搭配說明";
+
+// MARK: - Podcast Sleep Timer (track-11)
+"podcast.sleepTimer.fired.toast" = "睡眠定時已結束，播放已暫停";

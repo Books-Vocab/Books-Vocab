@@ -869,3 +869,6 @@
 "vocab.chromeIcon.todayReview.help" = "Show keyboard shortcuts";
 "vocab.chromeIcon.todayReview.close" = "Close today's review";
 "vocab.chromeIcon.collocation.dismiss" = "Close collocation explanation";
+
+// MARK: - Podcast Sleep Timer (track-11)
+"podcast.sleepTimer.fired.toast" = "Sleep timer ended — playback paused";

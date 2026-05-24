@@ -52,6 +52,11 @@ final class PodcastPlayerViewModel {
     /// Absolute wall-clock deadline for `.minutes(_)` mode. nil for
     /// `.off` / `.endOfEpisode`. Drives the TimelineView countdown.
     private(set) var sleepDeadline: Date?
+    /// Monotonic counter bumped each time the sleep timer fires (minutes
+    /// deadline reached or end-of-episode hit). The View observes this to
+    /// drive sensory feedback + toast — users otherwise see playback pause
+    /// with no signal that the sleep timer caused it.
+    private(set) var sleepTimerFiredTick: Int = 0
     let hostNames: [String]
 
     // Translation — set by the player view
@@ -88,6 +93,7 @@ final class PodcastPlayerViewModel {
                 self.state = .ready
                 if self.sleepTimerMode == .endOfEpisode {
                     self.sleepTimerMode = .off
+                    self.sleepTimerFiredTick &+= 1
                 }
             }
         }
@@ -283,6 +289,7 @@ final class PodcastPlayerViewModel {
         sleepDeadline = nil
         sleepTimerSource?.cancel()
         sleepTimerSource = nil
+        sleepTimerFiredTick &+= 1
     }
 
     // MARK: - Word Tap

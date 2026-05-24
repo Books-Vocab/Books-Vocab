@@ -833,3 +833,6 @@
 "vocab.chromeIcon.todayReview.help" = "ショートカットを表示";
 "vocab.chromeIcon.todayReview.close" = "今日の復習を閉じる";
 "vocab.chromeIcon.collocation.dismiss" = "コロケーション説明を閉じる";
+
+// MARK: - Podcast Sleep Timer (track-11)
+"podcast.sleepTimer.fired.toast" = "スリープタイマーが終了し、再生を一時停止しました";
