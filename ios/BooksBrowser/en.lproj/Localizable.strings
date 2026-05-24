@@ -855,6 +855,13 @@
 "podcast.controls.cycleRate" = "Cycle playback speed";
 "podcast.player.subtitleSettings" = "Subtitle settings";
 
+// MARK: - Podcast episode row a11y (track-9)
+"podcast.episodeRow.subtitleAvailable" = "Subtitles available";
+"podcast.episodeRow.downloaded" = "Downloaded";
+"podcast.episodeRow.listened" = "Listened";
+"podcast.episodeRow.unavailable" = "Audio unavailable";
+"podcast.episodeRow.downloading" = "Downloading";
+
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "Previous card";
 "todayReview.autoplay.next" = "Next card";

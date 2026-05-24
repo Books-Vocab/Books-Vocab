@@ -819,6 +819,13 @@
 "podcast.controls.cycleRate" = "再生速度を切り替え";
 "podcast.player.subtitleSettings" = "字幕設定";
 
+// MARK: - Podcast episode row a11y (track-9)
+"podcast.episodeRow.subtitleAvailable" = "字幕あり";
+"podcast.episodeRow.downloaded" = "ダウンロード済み";
+"podcast.episodeRow.listened" = "再生済み";
+"podcast.episodeRow.unavailable" = "音声を利用できません";
+"podcast.episodeRow.downloading" = "ダウンロード中";
+
 // MARK: - TodayReview a11y (track-7)
 "todayReview.autoplay.previous" = "前のカード";
 "todayReview.autoplay.next" = "次のカード";
