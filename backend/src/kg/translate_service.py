@@ -204,7 +204,7 @@ async def _run_llm_translate(
 
         if not response.choices:
             if logger:
-                logger.error("%s: Gemini returned empty choices. Full response: %s", operation, response)
+                logger.error("%s: Gemini returned empty choices. Response: %s", operation, repr(response)[:500])
             err = ExternalServiceError(f"{operation}/empty_response")
             fut.set_exception(err)
             raise err
