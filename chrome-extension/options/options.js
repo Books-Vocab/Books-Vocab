@@ -75,7 +75,7 @@ async function refreshAuthUI() {
 
 function handleLogin() {
   try {
-    chrome.tabs.create({ url: 'https://wordnexus.lol/login' });
+    chrome.tabs.create({ url: 'https://wordnexus.lol/login' }).catch((err) => console.error('[KG] handleLogin tabs.create failed', err));
   } catch (err) {
     console.error('[KG] handleLogin failed:', err);
     renderAuthError('無法開啟登入頁面', handleLogin);

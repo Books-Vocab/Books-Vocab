@@ -67,9 +67,9 @@ document.addEventListener('DOMContentLoaded', async () => {
 /** Open the extension options page in a new tab. */
 function openSettings() {
   if (chrome.runtime.openOptionsPage) {
-    chrome.runtime.openOptionsPage();
+    chrome.runtime.openOptionsPage().catch((err) => console.error('[KG] openOptionsPage failed', err));
   } else {
-    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') });
+    chrome.tabs.create({ url: chrome.runtime.getURL('options/options.html') }).catch((err) => console.error('[KG] openSettings tabs.create failed', err));
   }
 }
 
