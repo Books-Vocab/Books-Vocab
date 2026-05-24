@@ -48,7 +48,11 @@ extension ReaderSettingsPresenter {
                 .font(appSkin.typography.sectionTitle)
                 .foregroundStyle(appSkin.palette.primaryText)
             Spacer()
-            VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
+            VocabChromeIconButton(
+                systemImage: "xmark",
+                label: L10n.string("vocab.chromeIcon.readerSettings.dismiss"),
+                action: onDismiss
+            )
         }
         .padding(.horizontal, ReaderMetrics.settingsHorizontalInset)
         .padding(.bottom, ReaderMetrics.settingsHeaderBottomInset)

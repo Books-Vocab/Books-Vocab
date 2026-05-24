@@ -290,7 +290,11 @@ struct TranslationVocabPresenter: View {
                 )
             }
 
-            VocabChromeIconButton(systemImage: "xmark", action: onDismiss)
+            VocabChromeIconButton(
+                systemImage: "xmark",
+                label: L10n.string("vocab.chromeIcon.translation.dismiss"),
+                action: onDismiss
+            )
         }
         .padding(.top, appSkin.spacing.tinyGap)
     }

@@ -94,9 +94,11 @@ struct CollocationExplainSheet: View {
                 )
             }
 
-            VocabChromeIconButton(systemImage: "xmark", action: {
-                dismiss()
-            })
+            VocabChromeIconButton(
+                systemImage: "xmark",
+                label: L10n.string("vocab.chromeIcon.collocation.dismiss"),
+                action: { dismiss() }
+            )
         }
     }
 
