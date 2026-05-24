@@ -46,8 +46,8 @@ def _make_jwt(user_id: str) -> str:
 
 
 def _swap_settings(new_settings):
-    from kg.user_store import load_users_from, save_users_to, normalize_users_payload
     from kg.billing import default_subscription_payload
+    from kg.user_store import load_users_from, normalize_users_payload, save_users_to
 
     app.state.kg_settings = new_settings
 
@@ -67,7 +67,7 @@ def pipeline_api(tmp_path):
     (tmp_path / "users").mkdir()
     user_id = "u_" + uuid.uuid4().hex[:8]
     users_file = tmp_path / "users.json"
-    lock_file = tmp_path / "users.json.lock"
+    tmp_path / "users.json.lock"
     users_file.write_text(
         json.dumps(
             {

@@ -1,5 +1,7 @@
 import pytest
-from kg.translate_log import record, lookup, get_log, _reset
+
+from kg.translate_log import _reset, get_log, lookup, record
+
 
 @pytest.fixture(autouse=True)
 def _isolate(tmp_path, monkeypatch):
@@ -80,7 +82,7 @@ def test_lookup_expired_cache(tmp_path, monkeypatch):
     )
 
     # Backdate the entry to 60 days ago
-    from datetime import datetime, timedelta, UTC
+    from datetime import UTC, datetime, timedelta
     old_ts = (datetime.now(UTC) - timedelta(days=60)).isoformat()
     from kg.translate_log import _get_conn, _lock
     with _lock:
@@ -105,7 +107,8 @@ def test_lookup_expired_cache(tmp_path, monkeypatch):
 
 def _backdate(word: str, days: float) -> None:
     """Set created_at of `word` row to `days` ago (UTC)."""
-    from datetime import datetime, timedelta, UTC
+    from datetime import UTC, datetime, timedelta
+
     from kg.translate_log import _get_conn, _lock
     ts = (datetime.now(UTC) - timedelta(days=days)).isoformat()
     with _lock:

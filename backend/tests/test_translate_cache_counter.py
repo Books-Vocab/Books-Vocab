@@ -21,7 +21,7 @@ def _isolate(tmp_path, monkeypatch):
 
 
 def test_record_cache_hit_persists_row():
-    from kg.translate_log import record_cache_hit, count_cache_hits_since
+    from kg.translate_log import count_cache_hits_since, record_cache_hit
 
     record_cache_hit(
         user_id="u1", operation="translate_quick",
@@ -34,7 +34,7 @@ def test_record_cache_hit_persists_row():
 
 def test_record_cache_hit_allows_blank_user_id():
     """Anonymous / unauth cache hits should still be counted."""
-    from kg.translate_log import record_cache_hit, count_cache_hits_since
+    from kg.translate_log import count_cache_hits_since, record_cache_hit
 
     record_cache_hit(
         user_id=None, operation="translate_quick",

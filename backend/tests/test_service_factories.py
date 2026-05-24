@@ -1,7 +1,6 @@
 """Tests for store cache eviction behavior."""
 import threading
 import time
-from pathlib import Path
 from unittest.mock import MagicMock
 
 from kg.service_factories import _get_cached, clear_store_cache
@@ -33,7 +32,6 @@ def test_evicted_store_is_closed():
 
 def test_clear_store_cache_closes_all():
     """clear_store_cache() should close all cached stores."""
-    import kg.service_factories as sf
     clear_store_cache()
 
     mock1 = MagicMock()
@@ -75,7 +73,6 @@ def test_factory_runs_outside_lock():
 def test_concurrent_misses_dedupe_to_single_factory_call():
     """Two threads racing on the same key should both end up with the same
     cached instance (last writer wins) rather than constructing two."""
-    import kg.service_factories as sf
     clear_store_cache()
     try:
         call_count = {"n": 0}

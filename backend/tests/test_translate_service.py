@@ -6,10 +6,10 @@ from unittest.mock import AsyncMock
 import pytest
 
 from kg.api_models import TranslateRequest
+from kg.tracked_llm import TrackedLLM
 from kg.translate_service import (
     _parse_json_payload as parse_json_payload,
 )
-from kg.tracked_llm import TrackedLLM
 from kg.translate_service import (
     run_explain_translate,
     run_phrase_translate,
@@ -103,6 +103,7 @@ def test_explain_prompt_concise():
 
 
 import hashlib
+
 
 def _compute_context_hash(context: str) -> str:
     return hashlib.sha256((context or "").encode()).hexdigest()[:16]

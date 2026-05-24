@@ -4,12 +4,12 @@ import json
 import os
 import sys
 import uuid
+from datetime import UTC, datetime, timedelta
 from pathlib import Path
 from types import SimpleNamespace
 
 import jwt as pyjwt
 import pytest
-from datetime import UTC, datetime, timedelta
 from fastapi.testclient import TestClient
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
@@ -48,10 +48,10 @@ def make_jwt(user_id: str) -> str:
 
 def _swap_settings(new_settings):
     """Replace app.state.kg_settings and rebuild load/save closures."""
-    from kg.user_store import CachedUserStore, normalize_users_payload
-    from kg.billing import default_subscription_payload
-    from kg.api import app
     import kg.podcast_progress as _pp
+    from kg.api import app
+    from kg.billing import default_subscription_payload
+    from kg.user_store import CachedUserStore, normalize_users_payload
 
     app.state.kg_settings = new_settings
     _pp.set_data_dir(new_settings.data_dir)

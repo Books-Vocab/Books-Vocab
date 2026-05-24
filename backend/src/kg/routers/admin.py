@@ -9,7 +9,6 @@ from fastapi.responses import HTMLResponse, RedirectResponse
 from ..admin_handlers import check_admin_auth
 from ..deps import get_admin_user
 
-
 # ---------------------------------------------------------------------------
 # Login router — no auth required
 # ---------------------------------------------------------------------------

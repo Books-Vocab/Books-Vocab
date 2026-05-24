@@ -2,11 +2,7 @@
 
 from __future__ import annotations
 
-import os
-import tempfile
-
 import pytest
-
 
 # ---------------------------------------------------------------------------
 # Fixtures
@@ -17,6 +13,7 @@ def isolated_tracker(tmp_path, monkeypatch):
     """Patch token_tracker to use a fresh DB in tmp_path."""
     monkeypatch.setenv("KG_DATA_DIR", str(tmp_path))
     import importlib
+
     import kg.token_tracker as tt
     importlib.reload(tt)
     tt._conn = None
@@ -53,6 +50,7 @@ class TestCheckAndGetQuota:
 
     def _fresh_quota_service(self, isolated_tracker):
         import importlib
+
         import kg.quota_service as qs
         importlib.reload(qs)
         return qs

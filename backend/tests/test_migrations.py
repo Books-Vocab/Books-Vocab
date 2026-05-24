@@ -20,7 +20,6 @@ from kg.cards import CardStore
 from kg.graph import GraphStore, LinkKind
 from kg.notebook import NotebookStore
 
-
 # ---------------------------------------------------------------------------
 # migrate_notebook
 # ---------------------------------------------------------------------------

@@ -9,8 +9,9 @@ import pytest
 
 @pytest.fixture()
 def client():
-    from kg.api import app
     from fastapi.testclient import TestClient
+
+    from kg.api import app
 
     return TestClient(app, raise_server_exceptions=False)
 
@@ -48,10 +49,11 @@ class TestSecurityHeaders:
         assert r.headers.get("X-Frame-Options") == "DENY"
 
     def test_rate_limited_response_has_security_headers(self, client):
-        from kg.rate_limit import api_limiter
         import asyncio
-        import time
         import collections
+        import time
+
+        from kg.rate_limit import api_limiter
 
         token = "SECSEC1SECSEC123"
         auth_header = f"Bearer {token}"

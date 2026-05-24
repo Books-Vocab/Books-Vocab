@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from unittest.mock import MagicMock
 
-import pytest
-
 from kg.judge import Judge, Judgement, _parse_batch_response
 
 
@@ -181,9 +179,9 @@ class TestParseBatchResponse:
 class TestJudgeChunking:
     def test_large_batch_splits_into_chunks(self):
         """20 candidates should be split into 2 chunks (15 + 5)."""
-        from unittest.mock import MagicMock, call
+        from unittest.mock import MagicMock
+
         from kg.tracked_llm import TrackedLLM
-        from kg.judge import MAX_BATCH_SIZE
 
         call_count = 0
         chunk_sizes = []
@@ -219,10 +217,11 @@ class TestJudgeChunking:
 
     def test_exact_max_batch_no_split(self):
         """Exactly MAX_BATCH_SIZE candidates → no split."""
-        from unittest.mock import MagicMock
-        from kg.tracked_llm import TrackedLLM
-        from kg.judge import MAX_BATCH_SIZE
         import json
+        from unittest.mock import MagicMock
+
+        from kg.judge import MAX_BATCH_SIZE
+        from kg.tracked_llm import TrackedLLM
 
         items = [{"link": "shares_usage", "confidence": 0.8, "reason": "r"} for _ in range(MAX_BATCH_SIZE)]
         mock_client = MagicMock()

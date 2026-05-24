@@ -2,7 +2,14 @@ from __future__ import annotations
 
 from fastapi import APIRouter, Depends, Request
 
-from ..api_models import DeleteAccountResponse, EntitlementsResponse, HealthResponse, QuotaResponse, UserConfigRequest, UserConfigResponse
+from ..api_models import (
+    DeleteAccountResponse,
+    EntitlementsResponse,
+    HealthResponse,
+    QuotaResponse,
+    UserConfigRequest,
+    UserConfigResponse,
+)
 from ..deps import (
     _build_entitlements_response,
     _card_store,

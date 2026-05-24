@@ -37,7 +37,8 @@ _INFLIGHT: dict[tuple, asyncio.Future] = {}
 _INFLIGHT_WAIT_TIMEOUT_S: float = 120.0
 
 from .api_models import ExplainResponse, QuickTranslateResponse, TranslateRequest
-from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES, SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
+from .languages import LANGUAGE_NAMES as SUPPORTED_LANGUAGES
+from .languages import SUPPORTED_SOURCE_LANGS, SUPPORTED_TARGET_LANGS
 from .vocab_shared import _normalize_pos
 
 

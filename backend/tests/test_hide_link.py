@@ -6,7 +6,7 @@ import json
 
 import pytest
 
-from kg.graph import GraphLink, GraphStore, LinkKind
+from kg.graph import GraphStore, LinkKind
 
 
 @pytest.fixture()
@@ -174,14 +174,15 @@ class TestRejectedMigration:
 # --- Task 3: Service-layer tests ---
 
 from unittest.mock import MagicMock
+
+from kg.judge import ManualLinkJudge
 from kg.vocab_graph_ops import (
+    create_manual_link,
+    delete_graph_link,
     hide_graph_link,
     unhide_graph_link,
-    delete_graph_link,
-    create_manual_link,
 )
 from kg.vocab_shared import build_links_by_kind
-from kg.judge import ManualLinkJudge
 
 
 class FakeCard:

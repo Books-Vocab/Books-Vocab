@@ -14,7 +14,6 @@ from kg.api_models import (
     ReviewStateEntry,
 )
 
-
 # --- ManualLinkRequest: empty string IDs ---
 
 
