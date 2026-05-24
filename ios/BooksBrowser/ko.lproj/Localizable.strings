@@ -850,3 +850,6 @@
 "podcast.subtitle.unavailable.title" = "이 에피소드에는 문장 단위 자막이 없습니다";
 "podcast.subtitle.unavailable.description" = "오디오는 계속 정상적으로 재생됩니다";
 "podcast.episodeList.staleBanner.message" = "로드 실패 — 캐시된 데이터 표시 중";
+"search.clear" = "검색 지우기";
+"banner.action.retry" = "다시 시도";
+"banner.action.dismiss" = "닫기";
