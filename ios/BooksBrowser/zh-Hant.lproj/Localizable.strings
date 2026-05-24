@@ -868,3 +868,6 @@
 "podcast.subtitle.unavailable.title" = "此集無逐句字幕";
 "podcast.subtitle.unavailable.description" = "音訊仍可正常播放";
 "podcast.episodeList.staleBanner.message" = "載入失敗，顯示快取資料";
+"search.clear" = "清除搜尋";
+"banner.action.retry" = "重試";
+"banner.action.dismiss" = "關閉";

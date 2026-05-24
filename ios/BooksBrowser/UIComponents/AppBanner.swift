@@ -34,6 +34,7 @@ struct AppBanner: View {
                         .font(AppFonts.caption())
                         .foregroundStyle(appTheme.palette.accent)
                 }
+                .accessibilityLabel(L10n.string("banner.action.retry"))
             }
 
             if let dismiss = onDismiss {
@@ -42,6 +43,7 @@ struct AppBanner: View {
                         .font(AppFonts.caption2())
                         .foregroundStyle(appTheme.palette.tertiaryText)
                 }
+                .accessibilityLabel(L10n.string("banner.action.dismiss"))
             }
         }
         .padding(.horizontal, AppBannerMetrics.horizontalPadding)
