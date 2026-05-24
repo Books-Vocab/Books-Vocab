@@ -184,6 +184,7 @@ struct AppSearchField: View {
                         .foregroundStyle(style.clearButtonColor)
                 }
                 .buttonStyle(.plain)
+                .accessibilityLabel(L10n.string("search.clear"))
             }
         }
         .padding(.horizontal, AppSpacing.s3)

@@ -850,3 +850,6 @@
 "podcast.subtitle.unavailable.title" = "此集无逐句字幕";
 "podcast.subtitle.unavailable.description" = "音频仍可正常播放";
 "podcast.episodeList.staleBanner.message" = "加载失败，显示缓存数据";
+"search.clear" = "清除搜索";
+"banner.action.retry" = "重试";
+"banner.action.dismiss" = "关闭";
