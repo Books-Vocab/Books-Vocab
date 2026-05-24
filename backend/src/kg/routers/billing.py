@@ -29,26 +29,28 @@ from ..deps import (
     _write_subscription_snapshot,
     get_current_user,
 )
+from ..settings import KGSettings
 
 router = APIRouter()
+
+
+def _decode_signed_txn(signed_transaction_info: str, settings: KGSettings) -> dict[str, Any]:
+    return decode_signed_transaction_info(
+        signed_transaction_info, bundle_id=settings.apple_bundle_id,
+        parse_datetime_fn=_parse_datetime, verify_signed_jws=verify_and_decode_signed_jws,
+    )
 
 
 @router.post("/api/billing/app-store/sync", response_model=EntitlementsResponse)
 def sync_app_store_subscription(req: AppStoreSyncRequest, request: Request, user: dict = Depends(get_current_user)):
     settings = request.app.state.kg_settings
 
-    def _decode_signed_txn(signed_transaction_info: str) -> dict[str, Any]:
-        return decode_signed_transaction_info(
-            signed_transaction_info, bundle_id=settings.apple_bundle_id,
-            parse_datetime_fn=_parse_datetime, verify_signed_jws=verify_and_decode_signed_jws,
-        )
-
     return sync_app_store_subscription_response(
         req, user,
         allow_unsigned_sync=settings.app_store_allow_unsigned_sync,
         users_lock_file=settings.users_lock_file,
         load_users=request.app.state.load_users, save_users=request.app.state.save_users,
-        decode_signed_transaction_info=_decode_signed_txn,
+        decode_signed_transaction_info=lambda s: _decode_signed_txn(s, settings),
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
     )
@@ -86,19 +88,13 @@ async def reconcile_app_store_subscription(
 ):
     settings = request.app.state.kg_settings
 
-    def _decode_signed_txn(signed_transaction_info: str) -> dict[str, Any]:
-        return decode_signed_transaction_info(
-            signed_transaction_info, bundle_id=settings.apple_bundle_id,
-            parse_datetime_fn=_parse_datetime, verify_signed_jws=verify_and_decode_signed_jws,
-        )
-
     return await reconcile_app_store_subscription_response(
         req, user,
         apple_bundle_id=settings.apple_bundle_id,
         users_lock_file=settings.users_lock_file,
         load_users=request.app.state.load_users, save_users=request.app.state.save_users,
         fetch_transaction_info=fetch_transaction_info,
-        decode_signed_transaction_info=_decode_signed_txn,
+        decode_signed_transaction_info=lambda s: _decode_signed_txn(s, settings),
         resolve_user_id_from_subscription_index=_resolve_user_id_from_subscription_index,
         write_subscription_snapshot=_write_subscription_snapshot,
         build_entitlements_response=_build_entitlements_response,
