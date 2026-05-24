@@ -7,6 +7,7 @@ struct PendingVocabPresenterState {
         let row: WordRow.ViewData
         let actionSystemImage: String
         let actionTone: WordRow.ViewData.Tone
+        let actionAccessibilityLabel: String
     }
 
     let pendingCount: Int
@@ -60,6 +61,7 @@ struct PendingVocabPresenter: View {
                                         VocabAccessoryIconButton(
                                             systemImage: item.actionSystemImage,
                                             tone: resolveTone(item.actionTone),
+                                            accessibilityLabel: item.actionAccessibilityLabel,
                                             action: { onActionTapped(item.id) }
                                         )
                                         .padding(.top, appSkin.metrics.accessoryTopOffset)

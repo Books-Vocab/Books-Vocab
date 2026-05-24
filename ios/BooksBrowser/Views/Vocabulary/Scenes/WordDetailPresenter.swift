@@ -122,6 +122,7 @@ struct WordDetailPresenter: View {
                             .foregroundStyle(appSkin.palette.secondaryText)
                     }
                     .buttonStyle(.plain)
+                    .accessibilityLabel(L10n.string("vocab.card.addLink"))
                 }
             }
 
