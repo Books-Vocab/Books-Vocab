@@ -833,3 +833,9 @@
 "todayReview.autoplay.playpause.pause" = "自動再生を一時停止";
 "todayReview.nav.previous" = "前のカード";
 "todayReview.nav.next" = "次のカード";
+
+// MARK: - Podcast Subtitle states (track-3)
+"podcast.subtitle.loading.hint" = "字幕を読み込み中…";
+"podcast.subtitle.unavailable.title" = "このエピソードには文単位の字幕がありません";
+"podcast.subtitle.unavailable.description" = "オーディオは引き続き正常に再生されます";
+"podcast.episodeList.staleBanner.message" = "読み込みに失敗しました — キャッシュを表示中";

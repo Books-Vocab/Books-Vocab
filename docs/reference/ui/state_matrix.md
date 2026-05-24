@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/
-verified_against: c642ed18
+verified_against: 5cb8dd11
 -->
 # UI State Matrix
 
@@ -381,7 +381,7 @@ Preview matrix 已補齊：
 | Navigation lock | `navigationLocked == true`（tap 後 1s） | 所有 push CTA disabled，避免雙 push freeze | 已覆蓋 |
 | Follow toggle 儲存失敗 | `PodcastFollowToggle.perform` 回 `.rolledBack` | toast error `追蹤狀態儲存失敗` + 自動回滾 star | 已覆蓋 |
 | Sort 切換 | `sort` 變更 | menu pick + 動畫排序 | 已覆蓋 |
-| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | error phase 不顯（content 優先） | 缺口（Priority 2） — stale data + retry 無提示 |
+| Refresh after load error | `loadError != nil` 但 `rawEpisodes` 非空（殘留） | content 仍顯示 + 上方插入 `AppBanner`（`載入失敗，顯示快取資料` + retry CTA → `reloadFromStore()`；`podcast.episodeList.staleBanner`） | 已覆蓋 |
 
 ### Player Container State（`PodcastPlayerView` × `PodcastPlayerState`）
 
@@ -403,11 +403,11 @@ Preview matrix 已補齊：
 
 | State | 觸發條件 | 目前 UI | 狀態 |
 |------|----------|--------|------|
-| `.idle` | 未啟動或 episode 無 subtitle URL | 無 overlay，純句子層渲染 | 已覆蓋 |
-| `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | 句子層仍顯示但 cues 尚未注入 | 部分覆蓋 — 無 loading hint，使用者只看到「空字幕」 |
+| `.idle` | 未啟動（初始 / pre-load 過渡） | 無 overlay，純句子層渲染 | 已覆蓋 |
+| `.loading` | `setSubtitleLoading()`（無 inline、有 URL） | Capsule hint overlay：spinner + `字幕載入中…`（`podcast.subtitleLoading`） | 已覆蓋 |
 | `.loaded` | fetch 成功 / inline subtitle | 句子層 + 高亮字 + cue tracking | 已覆蓋 |
 | `.failed` | fetch / decode 失敗 | `AppStateMessageCard` overlay：`字幕載入失敗` + `音訊仍可正常播放` + 重試 CTA（`onRetrySubtitle`） | 已覆蓋 |
-| Subtitle unavailable（episode 無 URL） | `markSubtitleUnavailable()` | 同 `.idle` — 無顯式提示 | 缺口（Priority 3）— 與 loading 視覺無區別 |
+| `.unavailable` | `markSubtitleUnavailable()`（episode 無 subtitle URL） | `AppStateMessageCard` overlay：`此集無逐句字幕` + `音訊仍可正常播放`（無重試 CTA；`podcast.subtitleUnavailable`） | 已覆蓋 |
 
 ### Translation Panel State（podcast surface）
 
