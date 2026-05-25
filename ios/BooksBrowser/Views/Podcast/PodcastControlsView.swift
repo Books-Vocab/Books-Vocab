@@ -35,6 +35,8 @@ struct PodcastControlsView: View {
                         Image(systemName: "gobackward.15")
                             .font(skin.typography.symbolLarge)
                             .foregroundStyle(skin.palette.primaryText)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.rewind15"))
 
@@ -52,6 +54,8 @@ struct PodcastControlsView: View {
                         Image(systemName: "goforward.15")
                             .font(skin.typography.symbolLarge)
                             .foregroundStyle(skin.palette.primaryText)
+                            .frame(minWidth: 44, minHeight: 44)
+                            .contentShape(Rectangle())
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.forward15"))
                 }
