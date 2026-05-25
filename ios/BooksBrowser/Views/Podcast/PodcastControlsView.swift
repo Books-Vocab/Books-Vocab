@@ -30,34 +30,39 @@ struct PodcastControlsView: View {
             }
             ZStack {
                 HStack(spacing: skin.spacing.controlGap) {
+                    // 15s 跳轉：ghost 風格（primaryText icon，無背景）— 次級操作
                     Button { viewModel.skip(seconds: -15) } label: {
                         Image(systemName: "gobackward.15")
                             .font(skin.typography.symbolLarge)
+                            .foregroundStyle(skin.palette.primaryText)
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.rewind15"))
+
+                    // 主 play／pause：brandHero 奶黃 capsule CTA — 對齊整體設計語言
                     Button { viewModel.togglePlayPause() } label: {
-                        Image(systemName: viewModel.state == .playing ? "pause.circle.fill" : "play.circle.fill")
-                            .font(skin.typography.symbolPlayback)
+                        Image(systemName: viewModel.state == .playing ? "pause.fill" : "play.fill")
+                            .font(skin.typography.symbolLarge)
+                            .foregroundStyle(AppColors.onBrandHero)
+                            .frame(width: 56, height: 56)
+                            .background(skin.palette.brandHero, in: Circle())
                     }
                     .accessibilityLabel(L10n.string(viewModel.state == .playing ? "podcast.controls.playpause.pause" : "podcast.controls.playpause.play"))
+
                     Button { viewModel.skip(seconds: 15) } label: {
                         Image(systemName: "goforward.15")
                             .font(skin.typography.symbolLarge)
+                            .foregroundStyle(skin.palette.primaryText)
                     }
                     .accessibilityLabel(L10n.string("podcast.controls.forward15"))
                 }
-                .foregroundStyle(skin.palette.accent)
 
                 HStack {
                     Spacer()
+                    // 速度切換：套既有 .appCompactAction(.neutral) capsule pill
                     Button { viewModel.cycleRate() } label: {
                         Text(viewModel.rateDisplayText)
-                            .font(skin.typography.monoLabel)
-                            .padding(.horizontal, skin.spacing.compactChipHorizontalPadding)
-                            .padding(.vertical, skin.spacing.compactChipVerticalPadding)
-                            .background(skin.palette.mutedFill, in: Capsule())
                     }
-                    .foregroundStyle(skin.palette.primaryText)
+                    .buttonStyle(.appCompactAction(.neutral))
                     .accessibilityLabel(L10n.string("podcast.controls.cycleRate"))
                     .accessibilityValue(viewModel.rateDisplayText)
                 }
