@@ -234,13 +234,12 @@ struct PodcastSentenceLevelView: View {
                     let showsActiveUnderline = wordFollowEnabled && isActive
                     Text(word.text)
                         .font(subtitleSize.subtitleFont)
-                        .fontWeight(showsActiveUnderline ? .semibold : .regular)
-                        .foregroundStyle(showsActiveUnderline ? skin.palette.primaryText : textColor)
+                        .foregroundStyle(textColor)
                         .overlay(alignment: .bottom) {
                             if showsActiveUnderline {
                                 Capsule()
                                     .fill(tint)
-                                    .frame(height: 2.5)
+                                    .frame(height: 3)
                                     .offset(y: 3)
                                     .transition(.overlayFade)
                             }
