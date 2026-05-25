@@ -116,6 +116,10 @@ struct VocabCalendarGrid: View {
                 RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
                     .fill(count > 0 ? cellFill(count) : Color.clear)
             )
+            .overlay(
+                RoundedRectangle(cornerRadius: appSkin.radii.tiny, style: .continuous)
+                    .stroke(appSkin.palette.cardBorder.opacity(0.5), lineWidth: 0.5)
+            )
         }
         .buttonStyle(.plain)
     }
@@ -129,11 +133,13 @@ struct VocabCalendarGrid: View {
     }
 
     private func cellFill(_ count: Int) -> Color {
+        // 提高低活動 cell 的 opacity（0.06 對米色卡片背景對比過低，
+        // 導致連續低活動日視覺融合成 pill；intensity 由底部 dot 區分）
         switch count {
-        case 1...3: return AppColors.chartHighlight.opacity(0.06)
-        case 4...7: return AppColors.chartHighlight.opacity(0.12)
-        case 8...14: return AppColors.chartHighlight.opacity(0.18)
-        default: return AppColors.chartHighlight.opacity(0.24)
+        case 1...3: return AppColors.chartHighlight.opacity(0.12)
+        case 4...7: return AppColors.chartHighlight.opacity(0.16)
+        case 8...14: return AppColors.chartHighlight.opacity(0.20)
+        default: return AppColors.chartHighlight.opacity(0.26)
         }
     }
 }
