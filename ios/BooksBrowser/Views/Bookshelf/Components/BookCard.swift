@@ -152,24 +152,26 @@ struct BookCard: View {
     }
 
     private func progressBar(_ progress: Double) -> some View {
-        HStack(spacing: AppBookshelfMetrics.progressBarSpacing) {
+        let clamped = min(max(progress, 0), 1)
+        return HStack(spacing: AppBookshelfMetrics.progressBarSpacing) {
             GeometryReader { geo in
                 Capsule()
                     .fill(appTheme.palette.mutedFill)
                     .overlay(alignment: .leading) {
                         Capsule()
                             .fill(appTheme.palette.accent)
-                            .frame(width: geo.size.width * progress)
+                            .frame(width: geo.size.width * clamped)
                     }
             }
             .frame(height: AppBookshelfMetrics.progressBarHeight)
             .clipShape(Capsule())
 
-            Text("\(Int(progress * 100))%")
+            Text("\(Int(clamped * 100))%")
                 .font(AppFonts.monoNumbers(size: 10))
                 .foregroundStyle(appTheme.palette.tertiaryText)
-                .opacity(progress > 0 ? 1 : 0)
+                .opacity(clamped > 0 ? 1 : 0)
         }
+        .accessibilityHidden(clamped <= 0)
     }
 }
 
