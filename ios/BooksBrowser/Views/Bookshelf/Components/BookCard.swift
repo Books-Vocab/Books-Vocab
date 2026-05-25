@@ -26,10 +26,8 @@ struct BookCard: View {
                 }
                 .appElevation(.z0)
 
-            // 進度條（封面外獨立元素）
-            if let progress = book.progression, progress > 0 {
-                progressBar(progress)
-            }
+            // 進度條（封面外獨立元素，0% 時保留占位以維持卡片高度一致）
+            progressBar(book.progression ?? 0)
 
             // 元資料
             VStack(alignment: .leading, spacing: AppSpacing.tinyGap) {
@@ -170,6 +168,7 @@ struct BookCard: View {
             Text("\(Int(progress * 100))%")
                 .font(AppFonts.monoNumbers(size: 10))
                 .foregroundStyle(appTheme.palette.tertiaryText)
+                .opacity(progress > 0 ? 1 : 0)
         }
     }
 }
