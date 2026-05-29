@@ -27,7 +27,7 @@ verified_against: 800386c5
 | `notebook.py` | `/api/notebooks/*` | 筆記簿 CRUD、cover |
 | `translate.py` | `/api/translate/*` | quick / phrase / explain |
 | `pipeline.py` | `/api/pipeline*` | 圖譜生成流程觸發 |
-| `podcast.py` | `/api/podcasts*`, `/api/podcast-media/*` | 播客列表 / 媒體 / 進度 |
+| `podcast.py` | `/api/podcasts*` | 播客列表 / 媒體 / 進度 |
 | `billing.py` | `/api/billing/*` | App Store 收據與 server-to-server 通知 |
 | `system.py` | `/api/system/*` | `/info`、health |
 | `admin.py` | `/api/admin/*`, `/admin/*` | dashboard / user detail / logs / test-matrix |

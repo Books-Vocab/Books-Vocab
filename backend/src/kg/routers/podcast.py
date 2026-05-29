@@ -21,8 +21,9 @@ Hardening already in place:
 
 If a future product decision turns podcasts into per-user content, the right
 move is to add an ``owner_id`` field to ``metadata.json`` and compare it to
-``user["id"]`` here — **not** to remove ``get_current_user`` and rely on the
-StaticFiles ``/api/podcast-media/`` mount being private (it is not).
+``user["id"]`` here — and route all media through this authenticated router.
+(The legacy public StaticFiles ``/api/podcast-media/`` mount, which bypassed
+auth entirely, was removed in 2026-05.)
 """
 
 import json
@@ -250,10 +251,10 @@ def get_podcast_audio(
 ):
     """Authenticated audio stream with HTTP Range / 206 Partial Content support.
 
-    Replaces the public ``/api/podcast-media/.../audio.mp3`` StaticFiles mount
-    (which bypasses FastAPI auth). The legacy mount is retained for backward
-    compatibility with shipped iOS clients but emits a deprecation warning on
-    every hit (see ``api.py``).
+    This is now the SOLE path to podcast audio. The legacy public
+    ``/api/podcast-media/.../audio.mp3`` StaticFiles mount (which bypassed
+    FastAPI auth) was removed in 2026-05 after production logs showed zero
+    traffic over a 12-day window — see the note in ``api.py``.
 
     Implementation note: we use a hand-rolled Range handler rather than
     Starlette's ``FileResponse`` because ``FileResponse`` only learned about
