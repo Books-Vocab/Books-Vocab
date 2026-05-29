@@ -1,9 +1,10 @@
 """Tests for the authenticated podcast audio endpoint.
 
-Background: `/api/podcast-media/` is mounted as Starlette StaticFiles, which
-bypasses FastAPI auth dependencies. This file locks in the contract for the
-authenticated replacement at
-``GET /api/podcasts/{series_id}/{ep_num}/audio``.
+Background: `/api/podcast-media/` was previously mounted as Starlette
+StaticFiles, which bypassed FastAPI auth. That legacy public mount has been
+removed (zero production traffic over a 12-day window while the authenticated
+endpoint served all podcast requests); this endpoint is now the sole path to
+podcast audio.
 
 Covers:
 * 401 without auth
@@ -172,44 +173,3 @@ def test_audio_ep_num_rejects_non_integer(audio_api):
     api, _ = audio_api
     resp = api.client.get("/api/podcasts/series_a/abc/audio", headers=api.headers)
     assert resp.status_code == 422
-
-
-def test_static_mount_still_accessible_for_backward_compat(audio_api):
-    """The legacy public StaticFiles mount must remain functional so older
-    iOS clients keep working until they upgrade. This is a deliberate
-    backward-compat guarantee, not an oversight."""
-    api, _ = audio_api
-    # The StaticFiles mount is bound at app-import time to the original
-    # podcasts_dir (see test_media_mount_supports_range), so we cannot route
-    # to the test tmp dir. Instead, just assert the mount route is present.
-    from kg.api import app
-    media_mount = next(
-        (r for r in app.routes if getattr(r, "name", None) == "podcast-media"),
-        None,
-    )
-    assert media_mount is not None, "legacy podcast-media mount must stay registered"
-
-
-def test_static_mount_logs_deprecation_hit(audio_api, caplog):
-    """Each hit on the legacy public mount must emit an INFO log so we can
-    track real-world usage and pick a safe deprecation date.
-
-    Level is INFO (not WARNING) because legacy traffic from shipped iOS
-    clients is *expected* during the deprecation window — alerting on it
-    would be noise. See review feedback on PR worktree-agent-ab37cf664ac45cf2c.
-
-    The middleware sees the request before StaticFiles 404s it, so we can
-    test on a path that doesn't need a real file."""
-    import logging
-    api, _ = audio_api
-    with caplog.at_level(logging.INFO, logger="kg.podcast_media_deprecation"):
-        api.client.get("/api/podcast-media/anything/audio.mp3")
-    records = [r for r in caplog.records if r.name == "kg.podcast_media_deprecation"]
-    msgs = [r.getMessage() for r in records]
-    assert any("podcast-media" in m for m in msgs), (
-        f"expected deprecation log, got: {msgs}"
-    )
-    # Verify level is INFO, not WARNING (review feedback).
-    assert all(r.levelno == logging.INFO for r in records), (
-        f"deprecation logs must be INFO, got: {[(r.levelname, r.getMessage()) for r in records]}"
-    )
