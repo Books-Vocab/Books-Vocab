@@ -94,10 +94,25 @@ function fmtAudioSecs(s) {
 }
 
 // ─── Workspace list ───
-async function loadWorkspaces() {
-  const r = await fetch("/api/workspaces");
-  const list = await r.json();
+//
+// Two callers: explicit (initial load + manual ↻ click) and a quiet 8s poll.
+// The poll path MUST preserve the user's current selection — clobbering it
+// every 8s would force a re-subscribe to SSE and re-fetch cost / episodes,
+// which both breaks the inline player and looks like the dashboard "resets".
+const WORKSPACES_POLL_MS = 8000;
+
+async function loadWorkspaces({ quiet = false } = {}) {
+  let list;
+  try {
+    const r = await fetch("/api/workspaces");
+    if (!r.ok) return;
+    list = await r.json();
+  } catch { return; }
+
   const sel = $("#ws-select");
+  const prevSelection = sel.value;
+  const prevList = state.workspaceList || [];
+
   sel.innerHTML = "";
   for (const name of list) {
     const opt = document.createElement("option");
@@ -105,10 +120,35 @@ async function loadWorkspaces() {
     opt.textContent = name;
     sel.appendChild(opt);
   }
-  const wsFromUrl = new URLSearchParams(location.search).get("ws");
-  if (wsFromUrl && list.includes(wsFromUrl)) sel.value = wsFromUrl;
   sel.onchange = () => switchWorkspace(sel.value);
-  if (list.length) switchWorkspace(sel.value);
+
+  // Preserve selection across the rebuild — otherwise the quiet poll would
+  // re-trigger switchWorkspace every tick and tear down SSE / player state.
+  if (prevSelection && list.includes(prevSelection)) {
+    sel.value = prevSelection;
+  } else {
+    const wsFromUrl = new URLSearchParams(location.search).get("ws");
+    if (wsFromUrl && list.includes(wsFromUrl)) sel.value = wsFromUrl;
+  }
+
+  // Detect newly-appeared workspaces. Skip toasting on the very first load
+  // (prevList is empty) — that's just "what was already there".
+  const fresh = list.filter(n => !prevList.includes(n));
+  state.workspaceList = list;
+
+  if (!quiet || prevList.length === 0) {
+    // Explicit load: switch to the (preserved or first) selection so the
+    // dashboard fills with data.
+    if (list.length && !state.ws) switchWorkspace(sel.value);
+  } else {
+    // Quiet poll: workspace appeared while user wasn't watching. Toast it.
+    // If user has nothing selected yet, auto-switch to the newest.
+    for (const n of fresh) toast(`new workspace: ${n}`, "info", 6000);
+    if (fresh.length && !state.ws) {
+      sel.value = fresh[fresh.length - 1];
+      switchWorkspace(sel.value);
+    }
+  }
 }
 
 function resetState() {
@@ -458,11 +498,22 @@ function openNewPodcastModal() {
   modalState.file = null;
   modalState.submitting = false;
   $("#epub-input").value = "";
-  $("#parallel-input").value = "3";
-  $("#modal-submit").disabled = true;
+  // Belt-and-suspenders on the parallel default — HTML carries value="3" but
+  // browser autofill / stale cached HTML can leave it blank. Set both the
+  // attribute and the live value so neither path can drop it.
+  const pi = $("#parallel-input");
+  pi.value = "3";
+  pi.setAttribute("value", "3");
+  // Make the disabled button SAY what's blocking it — "↑ START PIPELINE"
+  // greyed out with no explanation is the screenshot bug user hit.
+  const submit = $("#modal-submit");
+  submit.disabled = true;
+  submit.textContent = "↑ PICK AN EPUB ABOVE";
   refreshDropzonePrompt();
-  // Trap initial focus on the file input for keyboard users.
-  setTimeout(() => $("#epub-input").focus(), 50);
+  // Add a one-shot pulse to the dropzone so the click target is obvious.
+  const dz = $("#dropzone");
+  dz.classList.add("dropzone-pulse");
+  setTimeout(() => dz.classList.remove("dropzone-pulse"), 2200);
 }
 
 function closeNewPodcastModal() {
@@ -500,7 +551,9 @@ function setModalFile(file) {
     return;
   }
   modalState.file = file;
-  $("#modal-submit").disabled = false;
+  const submit = $("#modal-submit");
+  submit.disabled = false;
+  submit.textContent = "↑ START PIPELINE";
   refreshDropzonePrompt();
 }
 
@@ -972,7 +1025,9 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape" && !$("#modal-backdrop").hidden) closeNewPodcastModal();
   });
 
-  // Modal: file picker + drag/drop
+  // Modal: file picker + drag/drop. The <label class="dropzone"> wrapping
+  // the hidden file input already triggers the OS picker on click via HTML —
+  // no JS click handler needed (and adding one would double-fire the picker).
   $("#epub-input").addEventListener("change", (e) => setModalFile(e.target.files[0]));
   const dz = $("#dropzone");
   dz.addEventListener("dragenter", (e) => { e.preventDefault(); dz.classList.add("drag-over"); });
@@ -1003,4 +1058,7 @@ document.addEventListener("DOMContentLoaded", () => {
   state.remoteTimer = setInterval(refreshRemote, REMOTE_REFRESH_MS);
 
   loadWorkspaces();
+  // Quiet poll for new workspaces — fills the gap when pipeline runs from
+  // an external terminal (./start.sh standalone, not via the modal).
+  setInterval(() => loadWorkspaces({ quiet: true }), WORKSPACES_POLL_MS);
 });
