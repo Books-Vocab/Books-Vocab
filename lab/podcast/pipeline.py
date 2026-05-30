@@ -73,9 +73,71 @@ _UNBUF_ENV = {**os.environ, "PYTHONUNBUFFERED": "1"}
 # Default opus[1m] is intentional: pipeline agents (scriptwriter / enricher /
 # series-polish) reason over multi-chapter context and benefit from 1M window.
 MODEL = os.getenv("PODCAST_CLAUDE_MODEL", "opus[1m]")
-# Set PODCAST_VERBOSE=1 to stream claude CLI tool-use events live via stream-json
-_STREAM_JSON = os.getenv("PODCAST_VERBOSE") == "1"
+# Stream claude CLI tool-use events live via stream-json. Default ON so the
+# dashboard has cost data. Set PODCAST_VERBOSE=0 to opt out (smaller log files,
+# but loses per-stage cost tracking + tool-use feed in dashboard).
+_STREAM_JSON = os.getenv("PODCAST_VERBOSE", "1") != "0"
 _VERBOSE_FLAGS = ["--output-format", "stream-json", "--verbose"] if _STREAM_JSON else []
+
+# Dashboard auto-launch — single-command UX. Set PODCAST_NO_DASHBOARD=1 to skip.
+_DASHBOARD_ENABLED = os.getenv("PODCAST_NO_DASHBOARD", "0") != "1"
+_DASHBOARD_PORT = int(os.getenv("PODCAST_DASHBOARD_PORT", "8765"))
+
+
+def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
+    """Idempotent: start ./start.sh if monitor isn't already up on the port,
+    then open the user's browser to the workspace's dashboard view. Returns
+    the dashboard URL (or None if disabled / startup failed).
+
+    Why here: pipelines are long-running. Forcing two terminals (one for
+    dashboard, one for pipeline) is the obvious friction point. The dashboard
+    is just an idempotent localhost server; starting it on demand from the
+    pipeline keeps a single-command flow without any orchestration layer.
+    """
+    if not _DASHBOARD_ENABLED:
+        return None
+
+    import socket
+    import webbrowser
+
+    # 1. Probe if dashboard is already up on the port (cheap TCP check).
+    def _port_alive() -> bool:
+        with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
+            s.settimeout(0.3)
+            try:
+                s.connect(("127.0.0.1", _DASHBOARD_PORT))
+                return True
+            except OSError:
+                return False
+
+    if not _port_alive():
+        start_sh = ROOT / "start.sh"
+        if not start_sh.exists():
+            print(f"[dashboard] {start_sh} missing — skipping auto-start")
+            return None
+        print(f"[dashboard] starting monitor on :{_DASHBOARD_PORT} ...")
+        # start.sh is itself idempotent; nohup-detaches a uv subprocess.
+        # Run it FOREGROUND so we get its readiness banner, but it returns
+        # quickly because it daemonizes the uvicorn child.
+        try:
+            subprocess.run(
+                ["bash", str(start_sh), str(_DASHBOARD_PORT)],
+                cwd=str(ROOT), check=False, timeout=15,
+            )
+        except subprocess.TimeoutExpired:
+            print("[dashboard] start.sh timed out — check monitor.log")
+            return None
+
+    # 2. Open browser. Browsers dedupe to existing tab if URL matches.
+    url = f"http://127.0.0.1:{_DASHBOARD_PORT}/"
+    if workspace:
+        url += f"?ws={workspace.name}"
+    print(f"[dashboard] {url}")
+    try:
+        webbrowser.open(url)
+    except Exception:
+        pass  # headless / no GUI — printed URL is enough
+    return url
 
 # Authoritative stage order. When changing this list, also update the module
 # docstring stage list above and `.claude/skills/podcast/SKILL.md` §管線總覽.
@@ -958,6 +1020,10 @@ examples:
         print("\n[Dry run] Workspace created.")
         show_status(workspace)
         return
+
+    # Auto-start dashboard + open browser — single-command UX.
+    # Idempotent: no-op if already running. Skip with PODCAST_NO_DASHBOARD=1.
+    _ensure_dashboard_running(workspace)
 
     # Prereq marker check: --skip-to X (incl. --only-stage X which rewrites
     # to skip_to=stop_after=X) requires STAGES[0:X] all to have completion

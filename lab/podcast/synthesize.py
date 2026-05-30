@@ -32,10 +32,41 @@ import shutil
 import subprocess
 import sys
 import tempfile
+import threading
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
+from datetime import datetime
 from pathlib import Path
 from typing import List, Dict
+
+# ─── Events.jsonl emission (cost / usage tracking) ───
+# Writes one NDJSON line per TTS batch + episode boundary so the dashboard's
+# /api/workspace/<n>/cost endpoint can compute Vertex spend. Shape mirrors
+# pipeline.py's wrap: {ts, stage_label, event}. Module-level lock makes
+# ThreadPoolExecutor writes safe.
+_EVENTS_LOCK = threading.Lock()
+_EVENTS_WORKSPACE: Path | None = None  # set by main() before parallel start
+
+
+def _set_events_workspace(workspace: Path) -> None:
+    global _EVENTS_WORKSPACE
+    _EVENTS_WORKSPACE = workspace
+
+
+def _emit_event(stage_label: str, event_payload: dict) -> None:
+    """Append one wrapped event to <workspace>/events.jsonl. No-op if no ws."""
+    if _EVENTS_WORKSPACE is None:
+        return
+    wrapped = {
+        "ts": datetime.now().isoformat(timespec="seconds"),
+        "stage_label": stage_label,
+        "event": event_payload,
+    }
+    line = json.dumps(wrapped, ensure_ascii=False) + "\n"
+    with _EVENTS_LOCK:
+        with (_EVENTS_WORKSPACE / "events.jsonl").open("a", encoding="utf-8") as f:
+            f.write(line)
+            f.flush()
 
 from dotenv import load_dotenv
 
@@ -434,8 +465,14 @@ def _synthesize_one(
     batch_words: int,
     turns_count: int,
     cache_path: Path | None = None,
+    episode_label: str = "Synthesize",
 ) -> tuple[int, AudioSegment]:
-    """Synthesize a single batch. Caches to disk on success. Returns (index, segment)."""
+    """Synthesize a single batch. Caches to disk on success. Returns (index, segment).
+
+    On success, emits a `tts_usage` event to <workspace>/events.jsonl for
+    dashboard cost aggregation. Uses response.usage_metadata when available
+    (real Vertex token counts) and falls back to char/4 + audio_seconds*25.
+    """
     t0 = time.time()
 
     response = _generate_with_retry(client, prompt, speech_config, index)
@@ -468,6 +505,36 @@ def _synthesize_one(
         cache_path.parent.mkdir(parents=True, exist_ok=True)
         segment.export(str(cache_path), format="wav")
 
+    # ─── Emit usage event for cost dashboard ───
+    # Prefer Vertex's real token counts; fallback to estimates if absent.
+    um = getattr(response, "usage_metadata", None)
+    input_tokens = getattr(um, "prompt_token_count", None) if um else None
+    output_tokens = getattr(um, "candidates_token_count", None) if um else None
+    total_tokens = getattr(um, "total_token_count", None) if um else None
+    input_chars = len(prompt)
+    if input_tokens is None:
+        # 4 chars/token is a rough English/Gemini avg; clearly marked as estimate
+        input_tokens = max(1, input_chars // 4)
+    if output_tokens is None:
+        # Google official: 25 audio tokens per second
+        output_tokens = int(round(trimmed_duration_s * 25))
+    _emit_event(episode_label, {
+        "type": "tts_usage",
+        "model": TTS_MODEL,
+        "batch_index": index,
+        "batch_total": total,
+        "turns": turns_count,
+        "words": batch_words,
+        "input_chars": input_chars,
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "total_tokens": total_tokens,
+        "audio_seconds": round(trimmed_duration_s, 2),
+        "elapsed_s": round(elapsed, 2),
+        "trimmed_ms": trimmed_ms,
+        "usage_source": "vertex_api" if um else "estimated",
+    })
+
     trim_note = f" (trimmed {trimmed_ms/1000:.1f}s silence)" if trimmed_ms > 1000 else ""
     print(f"  batch {index}/{total}: {turns_count} turns, {batch_words} words → {trimmed_duration_s:.1f}s audio in {elapsed:.1f}s{trim_note}")
     return index, segment
@@ -479,6 +546,7 @@ def synthesize_batches(
     system_instructions: str,
     batches: List[List[Dict[str, str]]],
     cache_dir: Path | None = None,
+    episode_label: str = "Synthesize",
 ) -> List[AudioSegment]:
     """Synthesize batches with per-batch disk caching + wall-clock timeout.
 
@@ -521,7 +589,7 @@ def synthesize_batches(
             cache_path = (cache_dir / f"batch_{i:02d}.wav") if cache_dir else None
             fut = pool.submit(
                 _synthesize_one, client, speech_config, prompt,
-                i, total, batch_words, len(batch), cache_path,
+                i, total, batch_words, len(batch), cache_path, episode_label,
             )
             futures[fut] = i
 
@@ -665,7 +733,14 @@ def process_file(
     # Per-episode batch cache: scripts/.cache/ep_N/batch_MM.wav
     stem = script_path.stem.replace("_script", "")
     cache_dir = script_path.parent / ".cache" / stem
-    segments = synthesize_batches(client, speech_config, system_prompt, batches, cache_dir=cache_dir)
+    # Tag this episode's TTS events so the dashboard can attribute cost per-EP.
+    # Stem looks like "ep_1" / "ep_12" → label "Synthesize EP1" / "Synthesize EP12".
+    ep_match = re.match(r"ep_?(\d+)", stem)
+    episode_label = f"Synthesize EP{int(ep_match.group(1))}" if ep_match else f"Synthesize {stem}"
+    segments = synthesize_batches(
+        client, speech_config, system_prompt, batches,
+        cache_dir=cache_dir, episode_label=episode_label,
+    )
 
     ext = "mp3" if OUTPUT_FORMAT == "mp3" else "wav"
     # Tag output with model name: ep_1_flash.mp3 / ep_1_pro.mp3
@@ -748,6 +823,9 @@ def main():
         workspace_dir = target_path.parent.parent  # scripts/ → workspace/
     else:
         workspace_dir = target_path.parent if target_path.name == "scripts" else target_path
+
+    # Wire workspace for events.jsonl emission (cost dashboard)
+    _set_events_workspace(workspace_dir)
 
     overview_path = workspace_dir / "plan" / "overview.md"
     speaker_map, system_prompt = _parse_overview_hosts(overview_path)
