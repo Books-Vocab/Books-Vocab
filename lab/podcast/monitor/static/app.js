@@ -4,7 +4,22 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30e";
+const APP_VERSION = "2026-05-30h";
+
+// Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
+// reload remembers what the user was looking at.
+const SIDEBAR_LS_KEY = "podcast-monitor:sidebar";
+const sidebarUI = (() => {
+  const defaults = { query: "", status: "all", sort: "recent" };
+  try {
+    const stored = JSON.parse(localStorage.getItem(SIDEBAR_LS_KEY) || "{}");
+    return { ...defaults, ...stored };
+  } catch { return { ...defaults }; }
+})();
+function persistSidebarUI() {
+  try { localStorage.setItem(SIDEBAR_LS_KEY, JSON.stringify(sidebarUI)); }
+  catch { /* private mode etc. — silently skip */ }
+}
 console.info(`[monitor] app.js loaded · version ${APP_VERSION}`);
 
 // Surface any uncaught JS error to the toast stack so the user sees it
@@ -196,24 +211,73 @@ function renderSidebar(summaries, activeName) {
   const countEl = $("#sidebar-count");
   if (!list) return;
 
-  countEl.textContent = summaries.length.toString();
+  // Apply filter (search + status). Counts shown reflect the TOTAL workspace
+  // count, not the filtered visible count, so users can tell when filter hides
+  // things ("2 of 6" semantics handled below by chip badges).
+  const q = sidebarUI.query.trim().toLowerCase();
+  const filtered = summaries.filter(s => {
+    if (sidebarUI.status !== "all" && s.status !== sidebarUI.status) return false;
+    if (q && !s.name.toLowerCase().includes(q)) return false;
+    return true;
+  });
 
-  if (!summaries.length) {
-    list.innerHTML = `<div class="sidebar-empty">no workspaces yet — pick "+ NEW PODCAST"</div>`;
+  // Update count badge — "filtered/total" if a filter narrows the list.
+  countEl.textContent = (filtered.length === summaries.length)
+    ? summaries.length.toString()
+    : `${filtered.length}/${summaries.length}`;
+
+  // Update chip status counts so the user sees "RUN 1 · FAIL 0" at a glance.
+  // Cheap: one pass over summaries (typically < 20).
+  const counts = { all: summaries.length, running: 0, failed: 0, idle: 0, done: 0, fresh: 0 };
+  for (const s of summaries) {
+    counts[s.status] = (counts[s.status] ?? 0) + 1;
+  }
+  for (const chip of document.querySelectorAll(".sidebar-chip")) {
+    const k = chip.dataset.status;
+    const n = counts[k] ?? 0;
+    // Compact label "ALL·6"; count gets its own span so CSS can dim it
+    // without dimming the label. Cache the base label on first render.
+    if (!chip.dataset.label) chip.dataset.label = chip.textContent.trim();
+    chip.innerHTML = `${escapeHtml(chip.dataset.label)}<span class="sidebar-chip-count">${n}</span>`;
+    chip.classList.toggle("is-active", k === sidebarUI.status);
+    chip.setAttribute("aria-selected", k === sidebarUI.status ? "true" : "false");
+  }
+
+  if (!filtered.length) {
+    list.innerHTML = summaries.length === 0
+      ? `<div class="sidebar-empty">no workspaces yet — pick "+ NEW PODCAST"</div>`
+      : `<div class="sidebar-empty">no match — clear filter to see all ${summaries.length}</div>`;
     return;
   }
 
   const statusOrder = { running: 0, failed: 1, idle: 2, done: 3, fresh: 4 };
-  const sorted = summaries.slice().sort((a, b) => {
-    // Recent activity wins; status priority breaks ties.
+  const sorted = filtered.slice().sort((a, b) => {
+    if (sidebarUI.sort === "name") {
+      return a.name.localeCompare(b.name);
+    }
+    // recent (default): newest first; status priority breaks ties so a
+    // running ws beats an older idle one with the same epoch.
     if (b.last_updated !== a.last_updated) return b.last_updated - a.last_updated;
     return (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
   });
 
+  // Preserve scroll position across re-render (poll every 8s would otherwise
+  // snap a scrolled user to top mid-skim).
+  const prevScroll = list.scrollTop;
   list.innerHTML = sorted.map(s => sidebarCardHtml(s, s.name === activeName)).join("");
+  list.scrollTop = prevScroll;
 
-  // Single delegated click handler — added once per render but bound via
-  // dataset, so attaching here keeps the handler scoped to current cards.
+  // Reflect sort mode on the sort button (icon class).
+  const sortBtn = $("#sidebar-sort");
+  if (sortBtn) {
+    sortBtn.classList.toggle("by-recent", sidebarUI.sort === "recent");
+    sortBtn.classList.toggle("by-name", sidebarUI.sort === "name");
+    sortBtn.title = sidebarUI.sort === "recent"
+      ? "Sort: recent activity first (click for name)"
+      : "Sort: name A-Z (click for recent)";
+  }
+
+  // Single delegated click handler — replaced every render, no leak.
   list.onclick = (ev) => {
     const card = ev.target.closest(".ws-card");
     if (!card) return;
@@ -221,11 +285,30 @@ function renderSidebar(summaries, activeName) {
     if (!name || name === state.ws) return;
     $("#ws-select").value = name;
     switchWorkspace(name);
-    // Optimistic highlight — saves one render pass before next poll catches up.
     for (const el of list.querySelectorAll(".ws-card")) {
       el.classList.toggle("is-active", el.dataset.ws === name);
     }
+    // On narrow viewports the sidebar is a drawer — close it after picking.
+    if (document.body.classList.contains("sidebar-open")) {
+      closeSidebarDrawer();
+    }
   };
+}
+
+// ─── Drawer (mobile) toggle ──────────────────────────────────────────────────
+function openSidebarDrawer() {
+  document.body.classList.add("sidebar-open");
+  const btn = $("#sidebar-toggle");
+  if (btn) btn.setAttribute("aria-expanded", "true");
+}
+function closeSidebarDrawer() {
+  document.body.classList.remove("sidebar-open");
+  const btn = $("#sidebar-toggle");
+  if (btn) btn.setAttribute("aria-expanded", "false");
+}
+function toggleSidebarDrawer() {
+  if (document.body.classList.contains("sidebar-open")) closeSidebarDrawer();
+  else openSidebarDrawer();
 }
 
 function sidebarCardHtml(s, isActive) {
@@ -239,15 +322,20 @@ function sidebarCardHtml(s, isActive) {
     ? (s.active_job.kind || "running")
     : s.status;
 
+  // The <button> element carries its own implicit "button" role; we DON'T
+  // double-up with role="listitem" because that would override the more
+  // useful "button" announcement screen readers give by default.
+  const absTime = s.last_updated > 0
+    ? escapeAttr(new Date(s.last_updated * 1000).toLocaleString())
+    : "never updated";
   return `
 <button class="ws-card ws-card-${s.status}${isActive ? " is-active" : ""}"
         data-ws="${escapeAttr(s.name)}"
-        role="listitem"
         title="${escapeAttr(s.name)}">
   <div class="ws-card-head">
     <span class="ws-status-dot ws-status-${s.status}"></span>
     <span class="ws-name">${escapeHtml(s.name)}</span>
-    <span class="ws-time" title="${new Date(s.last_updated * 1000).toLocaleString()}">${time}</span>
+    <span class="ws-time" title="${absTime}">${time}</span>
   </div>
   <div class="ws-card-bar">
     <div class="ws-card-bar-track"><div class="ws-card-bar-fill" style="width:${pct}%"></div></div>
@@ -274,11 +362,9 @@ function relativeTime(epochSeconds) {
   return `${Math.floor(diff / (86400 * 30))}mo`;
 }
 
-function escapeHtml(s) {
-  return String(s).replace(/[&<>"']/g, c => (
-    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
-  ));
-}
+// escapeHtml lives further down (line ~1201). Use the same one for sidebar
+// markup — function hoisting makes it available here. escapeAttr is a thin
+// alias used in attribute contexts; same escapes serve both.
 function escapeAttr(s) { return escapeHtml(s); }
 
 function resetState() {
@@ -304,6 +390,10 @@ async function switchWorkspace(ws) {
   const url = new URL(location.href);
   url.searchParams.set("ws", ws);
   history.replaceState(null, "", url);
+
+  // Re-render sidebar so any path (dropdown change, URL ?ws=, direct click)
+  // ends with the correct card highlighted — without waiting for the 8s poll.
+  if (state.workspaceSummaries) renderSidebar(state.workspaceSummaries, ws);
 
   renderAll();
   renderCost({ total_usd: 0, by_stage: {}, by_model: {}, warnings: [] });
@@ -1154,6 +1244,46 @@ document.addEventListener("DOMContentLoaded", () => {
   $("#act-new").addEventListener("click", openNewPodcastModal);
   $("#act-upload").addEventListener("click", actionUpload);
   $("#act-delete").addEventListener("click", actionDelete);
+
+  // ─── Sidebar interactive controls (P3) ──────────────────────────────────
+  // All re-renders consume state.workspaceSummaries (no extra fetch) so the
+  // user gets sub-frame latency on every keystroke / chip click.
+  const reRenderFromCache = () =>
+    renderSidebar(state.workspaceSummaries || [], state.ws);
+
+  // Search: input fires on every keystroke (incl. the X clear button on type=search).
+  $("#sidebar-search").addEventListener("input", (e) => {
+    sidebarUI.query = e.target.value;
+    persistSidebarUI();
+    reRenderFromCache();
+  });
+  // Restore persisted search on load.
+  $("#sidebar-search").value = sidebarUI.query;
+
+  // Status filter chips (delegated to the chip row).
+  $("#sidebar-chips").addEventListener("click", (e) => {
+    const chip = e.target.closest(".sidebar-chip");
+    if (!chip) return;
+    sidebarUI.status = chip.dataset.status;
+    persistSidebarUI();
+    reRenderFromCache();
+  });
+
+  // Sort toggle (recent ⇄ name).
+  $("#sidebar-sort").addEventListener("click", () => {
+    sidebarUI.sort = sidebarUI.sort === "recent" ? "name" : "recent";
+    persistSidebarUI();
+    reRenderFromCache();
+  });
+
+  // Drawer toggle (mobile hamburger + backdrop click + Esc).
+  $("#sidebar-toggle").addEventListener("click", toggleSidebarDrawer);
+  $("#sidebar-backdrop").addEventListener("click", closeSidebarDrawer);
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && document.body.classList.contains("sidebar-open")) {
+      closeSidebarDrawer();
+    }
+  });
 
   // Modal: close (esc / backdrop click / cancel / X)
   //
