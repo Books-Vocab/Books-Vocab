@@ -83,17 +83,24 @@ html, body {
   margin-left: auto;
 }
 
-.ws-select {
+/* Current-workspace name shown in nav (replaces the old <select> picker —
+   the sidebar is now the only picker. Truncates with ellipsis when names
+   are long; full name appears in tooltip via the `title` attr set by JS. */
+.nav-current-ws {
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--ink);
   background: var(--bg);
   border: 1px solid var(--borderBase);
   border-radius: 2px;
-  color: var(--ink);
-  font-family: var(--mono);
-  font-size: 11px;
-  padding: 4px 8px;
-  cursor: pointer;
-  min-width: 280px;
+  padding: 4px 10px;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
+.nav-current-ws.empty { color: var(--sub); font-style: italic; }
 
 .icon-btn {
   background: transparent;
@@ -238,14 +245,24 @@ html, body {
 }
 .sidebar-title {
   display: flex;
-  align-items: baseline;
+  align-items: center;
   justify-content: space-between;
+}
+.sidebar-title-right {
+  display: flex;
+  align-items: center;
+  gap: 8px;
 }
 .sidebar-count {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--sub);
   font-variant-numeric: tabular-nums;
+}
+.sidebar-refresh-btn {
+  width: 20px; height: 20px;
+  font-size: 11px;
+  padding: 0;
 }
 
 /* Search input */
@@ -315,11 +332,13 @@ html, body {
   background: transparent;
   color: var(--sub);
   cursor: pointer;
+  min-width: 22px;
 }
 .sidebar-sort-btn:hover { color: var(--ink); }
-.sidebar-sort-btn.by-name::before { content: "A"; font-weight: 700; font-size: 10px; }
-.sidebar-sort-btn.by-recent::before { content: "↓"; font-weight: 700; }
-.sidebar-sort-btn::after { display: none; }
+/* HTML keeps the button text node EMPTY so the active mode's ::before is
+   the SOLE glyph. Renderer toggles by-recent / by-name to switch icon. */
+.sidebar-sort-btn.by-name::before    { content: "A→Z"; font-weight: 700; font-size: 9px; letter-spacing: -0.04em; }
+.sidebar-sort-btn.by-recent::before  { content: "⏱"; font-weight: 700; font-size: 11px; }
 
 /* Hamburger only meaningful in narrow drawer mode (hidden on desktop). */
 .nav-hamburger {

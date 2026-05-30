@@ -179,6 +179,7 @@ verified_against: c642ed18
 - System observability: version tracking + deploy log
 - `ios_test.sh`: `-g` pattern grep + clean output
 - `podcast_upload.sh`: `series_id` regex + `createdAt` idempotent + rsync `--partial-dir --delay-updates` 原子 + 遠端 `index.json` flock
+- **Podcast producer dashboard**(`lab/podcast/monitor/`,localhost:8765):workspace 列表 sidebar(search / 狀態 chip / sort recent⇄A→Z / mobile drawer,localStorage 持久)+ 每 workspace 富 summary(status `running|done|failed|idle|fresh`、progress、cost LLM/TTS split、episodes、last_updated、active_job 透過 `<ws>/.pipeline_job_id` sidecar 反查)+ 內嵌試聽(SRT 同步)+ NEW PODCAST upload modal + UPLOAD / DELETE / RERUN-STAGE 動作 + RECENT JOBS panel + PUBLISHED ON SERVER 遠端 series 管理(rm + index.json rebuild)。`./start.sh` 預設前景跑(`--bg` 給 pipeline.py auto-launch)
 - Post-deploy smoke verify: `system/info` + health + sentry test event
 - `backup_verify.sh`: restore drill + integrity check
 - Chrome extension release bundle script + tests
