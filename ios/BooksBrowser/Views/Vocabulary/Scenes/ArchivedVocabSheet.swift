@@ -105,7 +105,7 @@ struct ArchivedVocabSheet: View {
                 try await kgService.archiveCard(word: entry.word, archived: false, notebookId: entry.notebookId)
                 entry.isArchived = false
                 if modelContext.safeSaveWithToast(toastCoordinator) {
-                    toastCoordinator.success("已取消封存")
+                    toastCoordinator.success("已取消封存".localized)
                 }
             } catch {
                 AppLog.kg.error("Unarchive failed: \(error.localizedDescription)")

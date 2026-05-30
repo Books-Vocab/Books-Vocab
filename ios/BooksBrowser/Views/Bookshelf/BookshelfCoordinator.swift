@@ -114,7 +114,7 @@ final class BookshelfCoordinator: BookshelfCoordinating {
         fileManager.deleteBookFile(named: book.epubFileName)
         modelContext.delete(book)
         if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success("已刪除")
+            toastCoordinator.success("已刪除".localized)
         }
     }
 
@@ -193,9 +193,9 @@ final class BookshelfCoordinator: BookshelfCoordinating {
             // 結果回報：依成功/失敗組合決定 toast vs alert
             switch (succeeded, failures.count) {
             case (let s, 0) where s == 1:
-                toastCoordinator.success("已匯入")
+                toastCoordinator.success("已匯入".localized)
             case (let s, 0):
-                toastCoordinator.success("已匯入 \(s) 本")
+                toastCoordinator.success(L10n.format("已匯入 %@ 本", String(s)))
             case (0, 1):
                 let f = failures[0]
                 errorMessage = f.diagnosed.errorDescription ?? f.name

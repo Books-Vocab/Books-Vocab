@@ -182,7 +182,7 @@ final class SettingsCoordinator: SettingsCoordinating {
             )
             translationSourceLang = prevSource
             translationTargetLang = prevTarget
-            toastCoordinator.error("設定儲存失敗")
+            toastCoordinator.error("設定儲存失敗".localized)
             AppLog.kg.error("updateUserConfig (translation lang) failed: \(error.localizedDescription)")
             return false
         }

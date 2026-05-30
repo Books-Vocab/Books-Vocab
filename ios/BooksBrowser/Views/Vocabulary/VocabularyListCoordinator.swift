@@ -38,17 +38,17 @@ final class VocabularyListCoordinator: VocabularyListCoordinating {
 
     func exportCSV(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsCSV(entries: entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗") }
+        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
     }
 
     func exportJSON(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsJSON(entries: entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗") }
+        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
     }
 
     func exportAnki(entries: [VocabularyEntry], toastCoordinator: AppToastCoordinator) {
         exportURL = VocabularyExporter.exportAsAnki(entries: entries)
-        if exportURL == nil { toastCoordinator.error("匯出失敗") }
+        if exportURL == nil { toastCoordinator.error("匯出失敗".localized) }
     }
 
     func startKnowledgeReview(entries: [VocabularyEntry]) {

@@ -217,7 +217,7 @@ struct PodcastEpisodeListView: View {
             }
         }
         if outcome == .rolledBack {
-            toastCoordinator.error("追蹤狀態儲存失敗")
+            toastCoordinator.error("追蹤狀態儲存失敗".localized)
         }
     }
 
