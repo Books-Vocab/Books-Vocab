@@ -88,6 +88,17 @@ def test_gate2_independent_of_plan_marker(tmp_path):
     assert _gate("tts-prep", tmp_path) == ".script_approved"
 
 
+def test_gate2_bypassed_by_ignore_gates(tmp_path):
+    assert _gate("tts-prep", tmp_path, ignore_gates=True) is None
+
+
+def test_gate2_blocks_when_explicit_skip_one_stage_before(tmp_path):
+    """--skip-to series-polish(gate2 前一階段)會 auto-progress 跨 gate2 → 仍須核准。"""
+    one_before = pipeline.STAGES.index("script-review")  # tts-prep 前一個
+    assert one_before == TTS_PREP_IDX - 1
+    assert _gate("tts-prep", tmp_path, explicit_skip_idx=one_before) == ".script_approved"
+
+
 # ─── auto-resume 必須仍守 gate(回歸:不可用 start_idx 當顯式判斷)───
 def test_autoresume_to_scriptwrite_without_approval_still_blocks(tmp_path):
     """模擬:plan 階段做完(markers 在),未核准就再跑 pipeline.py <ws>。
