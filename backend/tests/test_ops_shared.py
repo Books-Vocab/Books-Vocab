@@ -92,6 +92,9 @@ class TestNotebookFiles:
         assert files["candidates"] == tmp_path / "candidates_default.json"
         assert files["embeddings"] == tmp_path / "embeddings_default.npy"
         assert files["card_ids"] == tmp_path / "card_ids_default.json"
+        # The embeddings meta sidecar (model/dim guard) is a real per-notebook
+        # artifact — it must be in the SoT so notebook deletion cleans it up.
+        assert files["embeddings_meta"] == tmp_path / "embeddings_meta_default.json"
 
     def test_named_notebook(self, tmp_path):
         files = notebook_files(tmp_path, "nb7")
