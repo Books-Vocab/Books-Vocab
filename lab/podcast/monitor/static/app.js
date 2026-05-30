@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30c";
+const APP_VERSION = "2026-05-30d";
 console.info(`[monitor] app.js loaded · version ${APP_VERSION}`);
 
 // Surface any uncaught JS error to the toast stack so the user sees it
