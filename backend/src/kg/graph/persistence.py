@@ -39,6 +39,7 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 from pathlib import Path
 from typing import Any
 
@@ -46,6 +47,25 @@ from .filelock import path_write_lock
 from .models import CandidatePair, GraphLink
 
 logger = logging.getLogger(__name__)
+
+
+def _fsync_dir(directory: Path) -> None:
+    """Best-effort fsync of a directory so a rename within it is durable.
+
+    Some filesystems disallow directory fsync (raises) — that's tolerated:
+    the tmp-file fsync already covers data durability, this only hardens the
+    rename's directory entry where the platform supports it.
+    """
+    try:
+        fd = os.open(directory, os.O_RDONLY)
+    except OSError:
+        return
+    try:
+        os.fsync(fd)
+    except OSError:
+        pass
+    finally:
+        os.close(fd)
 
 
 class _PersistenceMixin:
@@ -75,13 +95,25 @@ class _PersistenceMixin:
 
     @staticmethod
     def _atomic_json_write(path: Path, data: Any, *, indent: int | None = 2) -> None:
-        """Atomic JSON write: tmp -> bak -> replace."""
+        """Atomic JSON write: tmp -> bak -> replace, fsynced before the rename.
+
+        fsync of the tmp file (and best-effort of the parent directory) makes
+        the bytes durable *before* the rename is observable. Without it an
+        OS/power crash can persist the rename ahead of the data, surfacing a
+        zero-length or torn primary file on next boot. The .bak still covers a
+        torn write so recovery via _read_json_list stays possible.
+        """
         path.parent.mkdir(parents=True, exist_ok=True)
         tmp = path.with_suffix(".json.tmp")
-        tmp.write_text(json.dumps(data, indent=indent, ensure_ascii=False))
+        with open(tmp, "w", encoding="utf-8") as f:
+            f.write(json.dumps(data, indent=indent, ensure_ascii=False))
+            f.flush()
+            os.fsync(f.fileno())
         if path.exists():
             path.replace(path.with_suffix(".json.bak"))
         tmp.replace(path)
+        # Persist the rename (directory entry) too, so the swap survives a crash.
+        _fsync_dir(path.parent)
 
     @staticmethod
     def _read_json_list(path: Path) -> list:

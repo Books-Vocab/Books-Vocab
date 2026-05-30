@@ -28,6 +28,9 @@ class SystemInfoResponse(BaseModel):
     started_at: str
     uptime_seconds: int
     migration_version: str
+    # Unauth existence-proof that the Sentry DSN was wired (deploy.md gate
+    # falls back to this when /api/system/sentry-test is unavailable).
+    sentry: bool
 
 
 class SentryPingResponse(BaseModel):
@@ -62,6 +65,7 @@ def system_info() -> SystemInfoResponse:
         started_at=started_at,
         uptime_seconds=uptime_seconds,
         migration_version=migration_version,
+        sentry=sentry_init.is_active(),
     )
 
 

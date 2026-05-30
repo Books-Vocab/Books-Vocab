@@ -20,7 +20,6 @@ from .steps import (
     _step_difficulty,
     _step_embed_and_judge,
     _step_enrich,
-    _sync_embed_loop,
     _touch_linked_cards,
 )
 
@@ -32,7 +31,6 @@ __all__ = [
     "_step_difficulty",
     "_step_embed_and_judge",
     "_step_enrich",
-    "_sync_embed_loop",
     "_touch_linked_cards",
     "is_pipeline_running",
     "run_pipeline_background",

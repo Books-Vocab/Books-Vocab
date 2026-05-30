@@ -10,7 +10,6 @@ from openai import OpenAIError
 
 from kg.pipeline_service import (
     _step_embed_and_judge,
-    _sync_embed_loop,
     run_pipeline_background,
 )
 
@@ -203,33 +202,15 @@ def test_embed_step_runs_in_executor_thread():
 
     asyncio.run(run())
 
-    # Cards in _CardsBothFields already have embeddings → missing list is empty,
-    # so add() never runs. Let's test _sync_embed_loop directly instead.
-    card = SimpleNamespace(id="cx", content="test", embed_text=lambda: "test text")
-    emb = _EmbeddingsMissing()
-    graph = _GraphOk()
-    fake_logger = _FakeLogger()
-
-    executor_thread_ids: list[int] = []
-
-    original_add = emb.add
-
-    def recording_add(card_id, text):
-        executor_thread_ids.append(threading.get_ident())
-        original_add(card_id, text)
-
-    emb.add = recording_add
-    main_thread_id = threading.get_ident()
-
-    async def run_executor():
-        loop = asyncio.get_event_loop()
-        await loop.run_in_executor(None, _sync_embed_loop, [card], emb, graph, "u2", fake_logger)
-
-    asyncio.run(run_executor())
-
-    # The add() call should have happened in a different thread than main
-    assert len(executor_thread_ids) == 1
-    assert executor_thread_ids[0] != main_thread_id
+    # _step_embed_and_judge offloads the synchronous embeddings.add_batch onto a
+    # thread-pool executor (steps.py: loop.run_in_executor(None, add_batch, ...)),
+    # so the embedding work for the missing card must NOT run on the event-loop
+    # thread. This exercises the real production path (the old version tested a
+    # now-deleted _sync_embed_loop helper directly).
+    assert embeddings.add_thread_ids, "add_batch should have run for the missing card"
+    assert all(tid != event_loop_thread_id for tid in embeddings.add_thread_ids), (
+        "embedding work must run off the event-loop thread"
+    )
 
 
 # ════════════════════════════════════════════════════════════════════════

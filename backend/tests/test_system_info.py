@@ -57,6 +57,23 @@ class TestSystemInfoEndpoint:
             r = client.get("/api/system/info")
         assert r.json()["version"] == "unknown"
 
+    def test_response_contains_sentry_field(self):
+        # deploy.md's post-deploy gate falls back to checking the /api/system/info
+        # body for a `sentry` field as proof the DSN was wired. The field must
+        # exist and reflect sentry_init.is_active().
+        with patch("kg.routers.system.sentry_init.is_active", return_value=True):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get("/api/system/info")
+        body = r.json()
+        assert "sentry" in body
+        assert body["sentry"] is True
+
+    def test_sentry_field_false_when_inactive(self):
+        with patch("kg.routers.system.sentry_init.is_active", return_value=False):
+            client = TestClient(app, raise_server_exceptions=False)
+            r = client.get("/api/system/info")
+        assert r.json()["sentry"] is False
+
     def test_endpoint_exempt_from_rate_limit(self):
         """The system info endpoint should not be rate-limited."""
         client = TestClient(app, raise_server_exceptions=False)
