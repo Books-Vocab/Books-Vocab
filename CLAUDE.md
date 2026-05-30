@@ -71,6 +71,7 @@ Monorepo:`ios/`(SwiftUI BooksBrowser app)+ `backend/`(FastAPI / Python)+ `chrome
 | 改 iOS Notebook(list / card / cover / edit sheet) | `docs/reference/feature_boundary/notebook.md` |
 | 改 iOS Bookshelf(書架 / 播客 series 列表 / 匯入) | `docs/reference/feature_boundary/bookshelf.md` |
 | 改 iOS Podcast player / 字幕 / progress | `docs/reference/feature_boundary/podcast.md` |
+| 改 podcast 生成 pipeline(`lab/podcast/` / synthesize / subtitle / TTS / upload) | `docs/sop/podcast_pipeline.md` |
 | 改 iOS Settings | `docs/reference/feature_boundary/settings.md` |
 | 改 chrome-extension(manifest / sidepanel / content / shared) | `docs/reference/feature_boundary/chrome.md` |
 | 改 CSV / Card schema | `docs/reference/card_format.md` **(SoT)** |

@@ -66,7 +66,7 @@ verified_against: c642ed18
 - **Translate singleflight dedup**: 120s follower timeout + N>2 loop semantics
 - **Translate cache**: env-tunable TTL `TRANSLATE_CACHE_TTL_DAYS` + model-key column migration
 - **Log retention env vars**: `JUDGE_LOG_RETENTION_DAYS` / `TRANSLATE_LOG_RETENTION_DAYS` / `PIPELINE_LOG_RETENTION_DAYS` / `TOKEN_USAGE_RETENTION_DAYS` + pruners + CLI + admin trigger endpoint + flat aliases
-- **Podcast API**: `/api/podcasts*` 認證端點（手刻 Range/206 音訊串流 + `ep_num` Path 驗證）+ per-user podcast progress LWW SQLite store（legacy 無認證 `/api/podcast-media/` StaticFiles 掛載已於 2026-05 移除，零生產流量後關閉公開讀取繞道）
+- **Podcast API**: `/api/podcasts*` 認證端點（手刻 Range/206 音訊串流 + `ep_num` Path 驗證）+ per-user podcast progress LWW SQLite store（legacy 無認證 `/api/podcast-media/` StaticFiles 掛載已於 2026-05 移除，零生產流量後關閉公開讀取繞道）。生成 pipeline 工程文檔:`docs/sop/podcast_pipeline.md`
 - **EmbeddingStore env wiring**: `EMBEDDING_MODEL` / `EMBEDDING_DIM` 透過 factory 傳入 + dim mismatch guard + cache key 含 model+dim + `_load` shape verification 防 silent corruption
 - **`cards.batch_touch(notebook_id=...)`** scope filter
 - **`orphan_scan`** cross-DB consistency scanner + admin endpoint
