@@ -227,20 +227,142 @@ html, body {
 
 .sidebar-head {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  padding: 10px 14px 6px;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 8px;
   border-bottom: 1px solid var(--borderL);
   background: var(--surface);
   position: sticky;
   top: 0;
   z-index: 1;
 }
+.sidebar-title {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+}
 .sidebar-count {
   font-family: var(--mono);
   font-size: 10px;
   color: var(--sub);
   font-variant-numeric: tabular-nums;
+}
+
+/* Search input */
+.sidebar-search {
+  width: 100%;
+  background: var(--bg);
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  padding: 5px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--ink);
+  outline: none;
+  /* Hide WebKit's default search clear button — we use a custom-flavored input. */
+  -webkit-appearance: none;
+}
+.sidebar-search:focus { border-color: var(--contra); }
+.sidebar-search::placeholder { color: var(--sub); }
+
+/* Filter chips + sort button */
+.sidebar-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.sidebar-chips {
+  display: flex;
+  flex: 1;
+  gap: 2px;
+  min-width: 0;          /* allow chips to shrink instead of forcing overflow */
+}
+.sidebar-chip {
+  flex: 1;
+  background: transparent;
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  padding: 3px 1px;
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.03em;
+  color: var(--sub);
+  cursor: pointer;
+  text-align: center;
+  min-width: 0;
+  /* Prevent chip text overflow at tight sidebar widths. */
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.sidebar-chip-count {
+  margin-left: 2px;
+  font-weight: 500;
+  opacity: 0.7;
+}
+.sidebar-chip.is-active .sidebar-chip-count { opacity: 0.85; }
+.sidebar-chip:hover { background: var(--bg); color: var(--ink); }
+.sidebar-chip.is-active {
+  background: var(--ink);
+  border-color: var(--ink);
+  color: var(--surface);
+}
+.sidebar-sort-btn {
+  font-size: 12px;
+  padding: 2px 6px;
+  border: 1px solid var(--borderBase);
+  border-radius: 2px;
+  background: transparent;
+  color: var(--sub);
+  cursor: pointer;
+}
+.sidebar-sort-btn:hover { color: var(--ink); }
+.sidebar-sort-btn.by-name::before { content: "A"; font-weight: 700; font-size: 10px; }
+.sidebar-sort-btn.by-recent::before { content: "↓"; font-weight: 700; }
+.sidebar-sort-btn::after { display: none; }
+
+/* Hamburger only meaningful in narrow drawer mode (hidden on desktop). */
+.nav-hamburger {
+  display: none;
+}
+
+/* Backdrop for the mobile drawer */
+.sidebar-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.35);
+  z-index: 30;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.18s ease;
+}
+body.sidebar-open .sidebar-backdrop {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+/* Responsive: drawer mode below 900px. */
+@media (max-width: 899px) {
+  .app-shell { grid-template-columns: minmax(0, 1fr); }
+  .nav-hamburger { display: inline-flex; align-items: center; }
+  .sidebar {
+    position: fixed;
+    top: 0;
+    left: 0;
+    height: 100vh;
+    width: 300px;
+    max-width: 85vw;
+    z-index: 40;
+    transform: translateX(-100%);
+    transition: transform 0.18s ease;
+    box-shadow: 2px 0 16px rgba(0, 0, 0, 0.1);
+  }
+  body.sidebar-open .sidebar { transform: translateX(0); }
+  .sidebar-backdrop { display: block; }
+}
+@media (min-width: 900px) {
+  /* Desktop: no backdrop, no drawer */
+  .sidebar-backdrop { display: none; }
 }
 
 .sidebar-list {
