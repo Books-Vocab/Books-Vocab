@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30n";
+const APP_VERSION = "2026-05-30o";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -15,13 +15,18 @@ const sidebarUI = (() => {
   // Defaults are the authoritative shape; any stored value not matching the
   // current enum (e.g. after a release renames "warning" → "failed") gets
   // dropped silently rather than wedging the filter to show zero cards.
-  const defaults = { query: "", status: "all", sort: "recent" };
+  const defaults = { query: "", status: "all", sort: "recent", collapsed: [] };
   try {
     const stored = JSON.parse(localStorage.getItem(SIDEBAR_LS_KEY) || "{}");
     return {
       query: typeof stored.query === "string" ? stored.query : defaults.query,
       status: SIDEBAR_STATUS_VALUES.has(stored.status) ? stored.status : defaults.status,
       sort: SIDEBAR_SORT_VALUES.has(stored.sort) ? stored.sort : defaults.sort,
+      // Collapsed date-group keys (YYYY-MM-DD strings). Filtered to strings so
+      // a corrupted store can't inject objects into the collapse Set.
+      collapsed: Array.isArray(stored.collapsed)
+        ? stored.collapsed.filter(k => typeof k === "string")
+        : defaults.collapsed,
     };
   } catch { return { ...defaults }; }
 })();
@@ -201,6 +206,52 @@ async function loadWorkspaces({ quiet = false } = {}) {
 // Sorts by last_updated desc (most recently active floats to top), with status
 // priority as the tiebreak so a running workspace beats an older idle one.
 // Re-render is cheap (innerHTML rebuild) — sidebar's typical N is < 20.
+// Bucket a `created` epoch into a date group. Returns {key, label} where key
+// is a stable YYYY-MM-DD (used for collapse persistence + bucket ordering) and
+// label is the human header — relative for recent days (Today / Yesterday /
+// N days ago), absolute thereafter. Workspaces with no created date fall into
+// a trailing "No date" bucket.
+function dateBucket(epoch) {
+  if (!epoch) return { key: "0000-unknown", label: "No date" };
+  const d = new Date(epoch * 1000);
+  const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const startOfDay = x => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const diffDays = Math.round((startOfDay(new Date()) - startOfDay(d)) / 86400000);
+  let label;
+  if (diffDays <= 0) label = "Today";
+  else if (diffDays === 1) label = "Yesterday";
+  else if (diffDays < 7) label = `${diffDays} days ago`;
+  else label = d.toLocaleDateString(undefined, { year: "numeric", month: "short", day: "numeric" });
+  return { key, label };
+}
+
+// Group the (already within-group sorted) summaries by added-date into
+// collapsible sections, newest bucket first. The "No date" bucket sorts last.
+function groupedSidebarHtml(sorted, activeName) {
+  const buckets = new Map();
+  for (const s of sorted) {
+    const b = dateBucket(s.created);
+    if (!buckets.has(b.key)) buckets.set(b.key, { label: b.label, items: [] });
+    buckets.get(b.key).items.push(s);
+  }
+  const orderedKeys = [...buckets.keys()].sort((a, b) => (a < b ? 1 : a > b ? -1 : 0)); // desc; "0000-unknown" trails
+  const collapsed = new Set(sidebarUI.collapsed);
+  return orderedKeys.map(key => {
+    const { label, items } = buckets.get(key);
+    const isCollapsed = collapsed.has(key);
+    const cards = items.map(s => sidebarCardHtml(s, s.name === activeName)).join("");
+    return `
+<div class="ws-group${isCollapsed ? " is-collapsed" : ""}">
+  <button type="button" class="ws-group-head" data-bucket="${escapeAttr(key)}" aria-expanded="${isCollapsed ? "false" : "true"}">
+    <span class="ws-group-chevron" aria-hidden="true"></span>
+    <span class="ws-group-label">${escapeHtml(label)}</span>
+    <span class="ws-group-count">${items.length}</span>
+  </button>
+  <div class="ws-group-body"${isCollapsed ? " hidden" : ""}>${cards}</div>
+</div>`;
+  }).join("");
+}
+
 function renderSidebar(summaries, activeName) {
   const list = $("#sidebar-list");
   const countEl = $("#sidebar-count");
@@ -260,7 +311,7 @@ function renderSidebar(summaries, activeName) {
   // Preserve scroll position across re-render (poll every 8s would otherwise
   // snap a scrolled user to top mid-skim).
   const prevScroll = list.scrollTop;
-  list.innerHTML = sorted.map(s => sidebarCardHtml(s, s.name === activeName)).join("");
+  list.innerHTML = groupedSidebarHtml(sorted, activeName);
   list.scrollTop = prevScroll;
 
   // Reflect sort mode on the sort button (icon class + aria + title).
@@ -278,6 +329,22 @@ function renderSidebar(summaries, activeName) {
 
   // Single delegated click handler — replaced every render, no leak.
   list.onclick = (ev) => {
+    // Group header → toggle collapse. Mutate the DOM in place (don't
+    // re-render) so scroll + other groups stay put; persist the key set.
+    const head = ev.target.closest(".ws-group-head");
+    if (head) {
+      const key = head.dataset.bucket;
+      const set = new Set(sidebarUI.collapsed);
+      const nowCollapsed = !set.has(key);
+      if (nowCollapsed) set.add(key); else set.delete(key);
+      sidebarUI.collapsed = [...set];
+      persistSidebarUI();
+      head.setAttribute("aria-expanded", nowCollapsed ? "false" : "true");
+      head.parentElement.classList.toggle("is-collapsed", nowCollapsed);
+      const body = head.nextElementSibling;
+      if (body) body.hidden = nowCollapsed;
+      return;
+    }
     const card = ev.target.closest(".ws-card");
     if (!card) return;
     const name = card.dataset.ws;
