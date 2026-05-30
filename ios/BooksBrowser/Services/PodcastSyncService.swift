@@ -111,7 +111,7 @@ final class PodcastSyncService {
             do {
                 let detail = try await fetchSeriesDetail(seriesId: summary.id)
                 details[summary.id] = detail
-                upsertSeries(detail: detail, context: context)
+                Self.upsertSeries(detail: detail, context: context)
             } catch {
                 AppLog.kg.warning("[PodcastSync] detail fetch failed for \(summary.id): \(error.localizedDescription)")
                 if !(error is CancellationError) {
@@ -143,7 +143,7 @@ final class PodcastSyncService {
     }
 
     @MainActor
-    private func upsertSeries(detail: PodcastSeriesDetail, context: ModelContext) {
+    static func upsertSeries(detail: PodcastSeriesDetail, context: ModelContext) {
         let seriesId = detail.id
         let descriptor = FetchDescriptor<PodcastSeries>(
             predicate: #Predicate { $0.remoteId == seriesId }
@@ -172,15 +172,22 @@ final class PodcastSyncService {
         // Resurrect: if server brings a previously-tombstoned series back, clear flag.
         if series.isDeleted { series.isDeleted = false }
 
+        // Single fetch + in-memory index instead of one fetch per episode.
+        // Mirrors reconcileLocalState's approach — the old per-episode fetch was
+        // O(N) @MainActor SwiftData calls, painful at 1000+ episodes.
+        let epDescriptor = FetchDescriptor<PodcastEpisode>(
+            predicate: #Predicate { $0.series?.remoteId == seriesId }
+        )
+        let existingByRemoteId = Dictionary(
+            ((try? context.fetch(epDescriptor)) ?? []).map { ($0.remoteId, $0) },
+            uniquingKeysWith: { first, _ in first }
+        )
+
         for ep in detail.episodes {
             let epRemoteId = Self.episodeRemoteId(seriesId: detail.id, episodeNumber: ep.episodeNumber)
-            let epDescriptor = FetchDescriptor<PodcastEpisode>(
-                predicate: #Predicate { $0.remoteId == epRemoteId }
-            )
-            let existingEp = try? context.fetch(epDescriptor)
             let episode: PodcastEpisode
 
-            if let found = existingEp?.first {
+            if let found = existingByRemoteId[epRemoteId] {
                 episode = found
             } else {
                 episode = PodcastEpisode(
