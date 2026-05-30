@@ -4,7 +4,7 @@ authority: derived
 update_trigger: code-change
 scope:
   - ios/BooksBrowser/Views/Podcast/
-verified_against: c642ed18
+verified_against: 3d4ed997
 -->
 # Podcast Feature Boundary
 
@@ -47,7 +47,7 @@ verified_against: c642ed18
 
 | 檔案 | 行數 | 說明 |
 |------|------|------|
-| `PodcastControlsView.swift` | 115 | 播放/暫停/快轉/速度控制列 |
+| `PodcastControlsView.swift` | 148 | 播放/暫停/快轉/速度控制列（brandHero CTA + appCompactAction；15s ghost 按鈕含 44pt 最小 tap target） |
 | `PodcastEpisodeRow.swift` | 130 | 單集 list row（標題、長度、追蹤 chevron） |
 | `PodcastSubtitleView.swift` | 55 | 字幕單行渲染 |
 | `PodcastSettingsPopover.swift` | ~135 | 字幕大小 S/M/L/XL/XXL + auto-pause toggle + 逐字跟隨 toggle(`@AppStorage("podcast.wordFollowEnabled")`) + 睡眠定時 Picker(off / 5 / 15 / 30 / 60min / endOfEpisode)含 `TimelineView` MM:SS 倒數 |

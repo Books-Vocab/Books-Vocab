@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - ios/BooksBrowser/
   - backend/src/kg/
-verified_against: c642ed18
+verified_against: 3d4ed997
 -->
 # BooksBrowser Architecture (Offline-First & Multi-User)
 
@@ -54,7 +54,7 @@ BooksBrowser 採用**離線優先 (Offline-first)** 的資料庫架構，以裝�
 
 ## 閱讀器 (ReaderView) 的離線運作
 
-支援格式：EPUB、TXT、MD、PDF（`BookshelfImportService` 統一入口，TXT/MD 經 `EPUBConverter` 轉 EPUB 後閱讀，PDF 走 `PDFReaderView` 獨立路徑）。macOS 端 Reader 暫不啟用（以 `#if os(iOS)` 隔離）。
+支援格式：EPUB、TXT、MD、PDF（`BookshelfImportService` 統一入口，TXT/MD 經 `EPUBConverter` 轉 EPUB 後閱讀，PDF 走 `PDFReaderView` 獨立路徑）。`EPUBConverter` 拆三檔：核心 `EPUBConverter.swift`、Markdown 解析 `EPUBConverter+Markdown.swift`、純 Swift ZIP 寫入 `EPUBConverter+MinimalZIP.swift`（避免 ZipFoundation 依賴）。macOS 端 Reader 暫不啟用（以 `#if os(iOS)` 隔離）。
 
 1. **底線渲染 (Underline Rendering)**:
    打開書籍時，撈出所有非刪除的 `VocabularyEntry`，注入 JS 顯示底線。離線亦可。
