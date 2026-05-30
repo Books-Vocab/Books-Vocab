@@ -271,6 +271,88 @@ def _milestones(ws: Path) -> tuple[list[dict], float]:
     return milestones, overall
 
 
+# ─── Per-episode artifact gates (durable, disk-derived) ─────────────────────
+#
+# The sidebar milestone bar aggregates four gates into ratios; the dashboard
+# matrix needs the SAME four gates resolved PER EPISODE so the producer can see
+# (and individually re-run) "ep 3 has a script but no audio". This is the only
+# source that works for an *idle* workspace — live SSE `parallelEps` is empty
+# the moment a run ends. Episode set = plan ∪ scripts so a script that exists
+# without its plan (manual restore, deleted plan) is still surfaced.
+_EP_PLAN_RE = re.compile(r"ep_0*(\d+)\.md$")
+_EP_SCRIPT_RE = re.compile(r"ep_0*(\d+)_script\.md$")
+_EP_AUDIO_RE = re.compile(r"ep_0*(\d+)_(pro|flash)\.mp3$")
+_EP_SRT_RE = re.compile(r"ep_0*(\d+)_(pro|flash)\.srt$")
+
+
+def _episode_status(ws: Path) -> list[dict]:
+    """Per-episode gate status from on-disk artifacts.
+
+    Returns a list (sorted by episode number) of
+    {ep, plan, script, audio, subtitle, variant, audio_bytes}. `variant` /
+    `audio_bytes` describe the chosen mp3 (pro preferred over flash) or are
+    None when no audio exists. Decoy files (ep_N_review.md,
+    ep_N_voice_preview.mp3) are excluded by the strict regexes.
+    """
+    plan_eps = ws / "plan" / "episodes"
+    scripts = ws / "scripts"
+
+    eps: set[int] = set()
+    plan_set: set[int] = set()
+    if plan_eps.is_dir():
+        for f in plan_eps.glob("ep_*.md"):
+            m = _EP_PLAN_RE.match(f.name)
+            if m:
+                n = int(m.group(1))
+                eps.add(n)
+                plan_set.add(n)
+
+    script_set: set[int] = set()
+    srt_set: set[int] = set()
+    audio: dict[int, dict] = {}  # ep -> {variant, bytes}; pro wins over flash
+    if scripts.is_dir():
+        for f in scripts.glob("ep_*_script.md"):
+            m = _EP_SCRIPT_RE.match(f.name)
+            if m:
+                n = int(m.group(1))
+                eps.add(n)
+                script_set.add(n)
+        for f in scripts.glob("ep_*.mp3"):
+            m = _EP_AUDIO_RE.match(f.name)
+            if not m:
+                continue  # skip ep_N_voice_preview.mp3 etc.
+            n = int(m.group(1))
+            variant = m.group(2)
+            eps.add(n)
+            cur = audio.get(n)
+            if cur is None or (cur["variant"] == "flash" and variant == "pro"):
+                try:
+                    size = f.stat().st_size
+                except OSError:
+                    size = 0
+                audio[n] = {"variant": variant, "bytes": size}
+        for f in scripts.glob("ep_*.srt"):
+            m = _EP_SRT_RE.match(f.name)
+            if m:
+                n = int(m.group(1))
+                eps.add(n)
+                srt_set.add(n)
+
+    out: list[dict] = []
+    for n in sorted(eps):
+        a = audio.get(n)
+        out.append({
+            "ep": n,
+            "plan": n in plan_set,
+            "script": n in script_set,
+            "audio": a is not None,
+            "subtitle": n in srt_set,
+            "variant": a["variant"] if a else None,
+            "audio_bytes": a["bytes"] if a else None,
+        })
+    return out
+
+
 def _ensure_created(ws: Path) -> float:
     """Return the workspace 'added' timestamp (epoch seconds), backfilling it.
 
@@ -640,6 +722,19 @@ def workspace_episodes(ws_name: str):
             "has_subtitle": srt.exists(),
         }
     return [seen[n] for n in sorted(seen)]
+
+
+@app.get("/api/workspace/{ws_name}/episodes/status")
+def episode_status(ws_name: str):
+    """Per-episode gate status (plan/script/audio/subtitle) from disk artifacts.
+
+    Powers the dashboard's episode matrix. Unlike /episodes (audio-only, for
+    the player), this lists EVERY planned/scripted episode with each gate's
+    boolean so the producer can spot + individually re-run gaps on an idle
+    workspace. See _episode_status for the artifact contract.
+    """
+    ws = _resolve_ws(ws_name)
+    return _episode_status(ws)
 
 
 # ─── Job-spawning actions (Phase 1 producer surface) ─────────────────────────
