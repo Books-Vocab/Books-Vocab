@@ -140,7 +140,7 @@ final class PodcastAudioEngine: NSObject {
         ) { [weak self] note in
             guard let self, gen == self.loadGeneration else { return }
             let err = note.userInfo?[AVPlayerItemFailedToPlayToEndTimeErrorKey] as? Error
-            self.onLoadFailed?(err?.localizedDescription ?? "播放中斷")
+            self.onLoadFailed?(err?.localizedDescription ?? L10n.string("播放中斷"))
         }
 
         // KVO on item.loadedTimeRanges — AVFoundation publishes a new array
@@ -164,7 +164,7 @@ final class PodcastAudioEngine: NSObject {
         // returned true (404 with range, corrupted headers discovered during decode).
         statusObserver = item.observe(\.status, options: [.new]) { [weak self] observed, _ in
             guard let self, observed.status == .failed else { return }
-            let msg = observed.error?.localizedDescription ?? "音訊項目失敗"
+            let msg = observed.error?.localizedDescription ?? L10n.string("音訊項目失敗")
             DispatchQueue.main.async {
                 guard gen == self.loadGeneration else { return }
                 self.onLoadFailed?(msg)
@@ -242,7 +242,7 @@ final class PodcastAudioEngine: NSObject {
             if playable {
                 self.onReadyToPlay?()
             } else {
-                self.onLoadFailed?("音訊無法播放")
+                self.onLoadFailed?(L10n.string("音訊無法播放"))
             }
         }
     }
@@ -541,7 +541,7 @@ final class PodcastAudioEngine: NSObject {
             try? await Task.sleep(for: .seconds(15))
             guard let self, !Task.isCancelled else { return }
             if self.player?.timeControlStatus == .waitingToPlayAtSpecifiedRate {
-                self.onLoadFailed?("網路緩衝逾時")
+                self.onLoadFailed?(L10n.string("網路緩衝逾時"))
             }
         }
     }
