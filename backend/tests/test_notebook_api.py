@@ -250,6 +250,33 @@ def test_delete_non_default_notebook(isolated_api):
     assert "banana" not in default_words
 
 
+def test_delete_notebook_removes_all_artifact_kinds(isolated_api):
+    """delete_notebook must remove a file for EVERY kind in NOTEBOOK_FILE_SPECS
+    (plus its .bak/.tmp siblings). It derives filenames from the ops_shared SoT,
+    so adding a new per-notebook artifact kind cannot silently orphan a file."""
+    from kg.ops_shared import notebook_files
+
+    client = isolated_api.client
+    h = isolated_api.headers
+    nb_id = client.post("/api/notebooks", json={"name": "Artifacts"}, headers=h).json()["id"]
+
+    user_dir = isolated_api.data_dir / "users" / isolated_api.user_id
+    user_dir.mkdir(parents=True, exist_ok=True)
+    created = []
+    for path in notebook_files(user_dir, nb_id).values():
+        for suffix in ("", ".bak", ".tmp"):
+            sibling = path.with_name(path.name + suffix)
+            sibling.write_text("x")
+            created.append(sibling)
+    assert all(f.exists() for f in created)
+
+    r = client.delete(f"/api/notebooks/{nb_id}", headers=h)
+    assert r.status_code == 200, r.text
+
+    leftover = [str(f) for f in created if f.exists()]
+    assert not leftover, f"orphan artifacts left after delete: {leftover}"
+
+
 def test_delete_default_notebook_fails(isolated_api):
     """Deleting the default notebook must return 400."""
     r = isolated_api.client.delete("/api/notebooks/default", headers=isolated_api.headers)
