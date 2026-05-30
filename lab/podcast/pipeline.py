@@ -891,6 +891,12 @@ examples:
     parser.add_argument("--skip-to", choices=STAGES, help="Start from this stage")
     parser.add_argument("--stop-after", choices=STAGES, help="Stop after this stage")
     parser.add_argument("--only-stage", choices=STAGES, help="Run exactly one stage")
+    parser.add_argument(
+        "--force",
+        action="store_true",
+        help="Bypass prereq marker check when using --skip-to / --only-stage. "
+        "Use only after manually verifying earlier stages' artifacts exist.",
+    )
     parser.add_argument("--status", action="store_true", help="Show workspace status and exit")
     parser.add_argument("--dry-run", action="store_true", help="Extract EPUB and setup workspace only")
     args = parser.parse_args()
@@ -950,6 +956,22 @@ examples:
         print("\n[Dry run] Workspace created.")
         show_status(workspace)
         return
+
+    # Prereq marker check: --skip-to X (incl. --only-stage X which rewrites
+    # to skip_to=stop_after=X) requires STAGES[0:X] all to have completion
+    # markers. Catches the footgun where user jumps to e.g. scriptwrite on a
+    # workspace where architect/plan-review never ran — downstream stage will
+    # crash trying to read missing plan/overview.md. --force opts out for
+    # advanced cases (e.g. cherry-picked workspace, manual artifact stitching).
+    if args.skip_to and start_idx > 0 and not args.force:
+        missing = [s for s in STAGES[:start_idx] if not stage_done(workspace, s)]
+        if missing:
+            print(f"ERROR: --skip-to {args.skip_to} requires earlier stages completed.")
+            print(f"  Missing markers: {', '.join(missing)}")
+            print(f"  Either resume from the earliest missing stage:")
+            print(f"    uv run pipeline.py {workspace} --skip-to {missing[0]}")
+            print(f"  Or pass --force to override (downstream may fail on absent artifacts).")
+            sys.exit(1)
 
     log = PipelineLog(workspace)
     t0 = time.time()
