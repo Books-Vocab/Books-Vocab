@@ -5,7 +5,7 @@ update_trigger: sop-change
 scope:
   - lab/podcast/
   - ops/podcast_upload.sh
-verified_against: 93a8919c
+verified_against: 5d5277ae
 -->
 <!--
   tier 慣例:tier=sop 用 update_trigger=sop-change(對齊其他 sop)。
@@ -146,6 +146,19 @@ Vertex `gemini-2.5-pro-tts` 已知 bug(finishReason=OTHER，Google WONTFIX #922)
 | `TTS_MASTER` | 1 | 設 0 跳過 loudnorm(無 ffmpeg 自動降級) |
 
 **429 特殊退避**(`synthesize.py:419-422`):per-minute quota 必須等 ≥60s，所以 backoff = `60 + 15*attempt + random*5`，其他 transient 用 `2^attempt`。**這條不能改成統一指數退避**——429 用指數退避會 thrash。
+
+#### Agent-stage 重試(stage 1-10 的 `claude -p`)
+
+| env | default | 說明 |
+|---|---|---|
+| `PODCAST_STAGE_RETRIES` | 3 | 單一 agent stage 的總嘗試次數(含首次) |
+| `PODCAST_STAGE_RETRY_BASE` | 5 | 退避基數(秒);backoff = `min(90, base*2^(n-1)) + jitter`,429 強制 ≥60s |
+
+`pipeline.py:_run_claude_with_retry`(`:549`)包住所有 agent stage(prep/analyst/architect/plan-review/enricher*/scriptwriter/script-review/tts-prep)。**每次重試都是全新 `claude -p`(不 --resume)** —— transient 失敗最常見的是 `400 ... thinking/redacted_thinking blocks ... cannot be modified`(CLI agent loop 在 extended thinking + tool use 下汙染了對話歷史的 thinking 區塊簽章;壞區塊存在 transcript 裡,`--resume`/`--continue`/`--fork-session` 都會重送 → 重現同一個 400,**只有全新對話能繞過**)。
+
+成敗判定看 stream-json **terminal `result` event 的 `is_error`**,不是 exit code(CLI 可能 `subtype:"success"` 但 `is_error:true` 且 exit 1)。retryable 分類(`_is_retryable_claude_failure` `:455`):thinking-block 400 / 429 / 5xx / overload / connection → 重試;auth / 一般 400 / **subprocess timeout** → fatal 不重試(逾時重試 3× 純燒錢,要調 stage timeout 而非靠重試)。
+
+重試要便宜的前提是 **prompt resume-aware**:`architect.md` Step 0 會先列既有 `overview.md` + `ep_*.md`、跳過已完成集數,只補缺的。新增 agent stage 或讓既有 stage 可重試時,prompt 必須遵守同一條 idempotency 契約(讀既有產物 → 只補缺口),否則重試會整批重做。
 
 ### ffmpeg loudnorm mastering
 
