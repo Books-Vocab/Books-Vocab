@@ -68,7 +68,8 @@ elif [[ ${#SPECIFIC_TESTS[@]} -gt 0 ]]; then
 fi
 
 # --- Lock acquire (shared with ios_build.sh) ---
-cleanup() { rm -f "$LOCK_FILE"; }
+TMPOUT=""
+cleanup() { rm -f "$LOCK_FILE" "${TMPOUT:-}"; }
 
 echo "[ios_test] caller=$CALLER waiting for lock..."
 WAITED=0
@@ -86,7 +87,7 @@ while ! shlock -f "$LOCK_FILE" -p $$; do
     exit 1
   fi
 done
-trap cleanup EXIT
+trap cleanup EXIT INT TERM
 
 echo "[ios_test] lock acquired — running ${#ONLY_FLAGS[@]} tests (0=all)..."
 START=$(date +%s)
