@@ -158,7 +158,7 @@ opt-out env:
 後端 FastAPI(`monitor/server.py` + `monitor/cost.py` + `monitor/jobs.py` + `monitor/remote.py`)+ 前端 vanilla JS + `static/player.js`。
 
 **Read API**(觀測):
-- `GET /api/workspaces` — workspace 列表
+- `GET /api/workspaces` — 名稱列表(`[name,...]`);`?full=1` 回 sidebar summary array(`name/status/n_stages_done/n_stages_total/episode_count/last_updated/total_usd/claude_usd/tts_usd/has_cost_data/active_job`)。status cascade `running>done>failed>idle>fresh`;pipeline kind 經 `<ws>/.pipeline_job_id` sidecar 反查 workspace
 - `GET /api/workspace/<n>/snapshot` — 歷史事件 + 已完成 stage marker
 - `GET /api/workspace/<n>/stream` — SSE,tail `pipeline_log.jsonl` + `events.jsonl`
 - `GET /api/workspace/<n>/cost` — 成本聚合(前端每 4 秒 poll)
