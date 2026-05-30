@@ -336,7 +336,10 @@ html, body {
 }
 .sidebar-sort-btn:hover { color: var(--ink); }
 /* HTML keeps the button text node EMPTY so the active mode's ::before is
-   the SOLE glyph. Renderer toggles by-recent / by-name to switch icon. */
+   the SOLE glyph. Renderer toggles by-recent / by-name to switch icon.
+   The :not() default keeps the button non-empty on the brief first paint
+   before loadWorkspaces resolves and assigns a mode class. */
+.sidebar-sort-btn:not(.by-recent):not(.by-name)::before { content: "⇅"; font-weight: 700; }
 .sidebar-sort-btn.by-name::before    { content: "A→Z"; font-weight: 700; font-size: 9px; letter-spacing: -0.04em; }
 .sidebar-sort-btn.by-recent::before  { content: "⏱"; font-weight: 700; font-size: 11px; }
 
