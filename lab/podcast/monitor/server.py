@@ -32,7 +32,7 @@ import sys
 from pathlib import Path
 
 from fastapi import FastAPI, HTTPException, Query, UploadFile, File, Form
-from fastapi.responses import FileResponse, StreamingResponse, JSONResponse
+from fastapi.responses import FileResponse, PlainTextResponse, StreamingResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 # Make `monitor/` importable when launched as a script via `uv run monitor/server.py`.
@@ -200,6 +200,80 @@ async def stream(ws_name: str):
             "X-Accel-Buffering": "no",
         },
     )
+
+
+# ─── Per-episode asset serving (inline player) ──────────────────────────────
+
+
+def _ep_file(ws: Path, ep: int, suffixes: tuple[str, ...]) -> Path | None:
+    """Find `ep_<n>_<suffix>.<ext>` matching any (suffix, ext) pair.
+
+    Naming in lab/podcast/scripts/ follows: ep_N_pro.mp3 / ep_N_pro.srt
+    (or _flash for the flash model variant). We prefer _pro if both exist.
+    """
+    scripts = ws / "scripts"
+    for sfx, ext in suffixes:
+        candidates = sorted(scripts.glob(f"ep_{ep}_{sfx}.{ext}"))
+        if candidates:
+            return candidates[0]
+    return None
+
+
+@app.get("/api/workspace/{ws_name}/episode/{ep}/audio")
+def episode_audio(ws_name: str, ep: int):
+    ws = _resolve_ws(ws_name)
+    if not 1 <= ep <= 999:
+        raise HTTPException(400, "ep out of range")
+    f = _ep_file(ws, ep, (("pro", "mp3"), ("flash", "mp3")))
+    if not f:
+        raise HTTPException(404, f"no audio for ep {ep}")
+    # FileResponse handles Range requests, content-type, length headers, and
+    # the conditional GET dance browsers do when seeking inside <audio>.
+    return FileResponse(str(f), media_type="audio/mpeg", filename=f.name)
+
+
+@app.get("/api/workspace/{ws_name}/episode/{ep}/subtitle")
+def episode_subtitle(ws_name: str, ep: int):
+    """Return the SRT as plain text so the client can parse for word-sync.
+    iOS-style inline-in-metadata-json is overkill here — we're on localhost."""
+    ws = _resolve_ws(ws_name)
+    if not 1 <= ep <= 999:
+        raise HTTPException(400, "ep out of range")
+    f = _ep_file(ws, ep, (("pro", "srt"), ("flash", "srt")))
+    if not f:
+        raise HTTPException(404, f"no subtitle for ep {ep}")
+    return PlainTextResponse(f.read_text(encoding="utf-8"), media_type="text/plain")
+
+
+@app.get("/api/workspace/{ws_name}/episodes")
+def workspace_episodes(ws_name: str):
+    """List episodes that have audio + indicate subtitle availability.
+    Powers the inline player's episode list — UI uses ep number to call
+    /audio + /subtitle above.
+    """
+    ws = _resolve_ws(ws_name)
+    scripts = ws / "scripts"
+    if not scripts.is_dir():
+        return []
+    seen: dict[int, dict] = {}
+    for f in sorted(scripts.glob("ep_*.mp3")):
+        # ep_N_pro.mp3 / ep_N_flash.mp3
+        m = re.match(r"ep_(\d+)_(pro|flash)\.mp3$", f.name)
+        if not m:
+            continue
+        n = int(m.group(1))
+        variant = m.group(2)
+        # Prefer pro over flash when both exist (mirrors podcast_upload.sh).
+        if n in seen and seen[n]["variant"] == "pro":
+            continue
+        srt = scripts / f"ep_{n}_{variant}.srt"
+        seen[n] = {
+            "episode": n,
+            "variant": variant,
+            "audio_bytes": f.stat().st_size,
+            "has_subtitle": srt.exists(),
+        }
+    return [seen[n] for n in sorted(seen)]
 
 
 # ─── Job-spawning actions (Phase 1 producer surface) ─────────────────────────
