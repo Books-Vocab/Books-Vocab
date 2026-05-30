@@ -115,7 +115,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
 
             var actions: [UIMenuElement] = [
                 UIAction(
-                    title: "翻譯",
+                    title: L10n.string("翻譯"),
                     image: UIImage(systemName: "character.book.closed")
                 ) { [weak self, weak textView] _ in
                     guard let self, let textView else { return }
@@ -127,7 +127,7 @@ struct PodcastSelectableSentenceTextView: UIViewRepresentable {
             if shouldOfferExplain(for: selection.text) {
                 actions.append(
                     UIAction(
-                        title: "解釋",
+                        title: L10n.string("解釋"),
                         image: UIImage(systemName: "text.magnifyingglass")
                     ) { [weak self, weak textView] _ in
                         guard let self, let textView else { return }

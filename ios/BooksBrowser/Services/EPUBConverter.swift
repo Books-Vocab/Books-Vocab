@@ -45,9 +45,7 @@ struct EPUBConverter {
     /// Convert a Markdown file to EPUB3.
     func convertMD(at url: URL, title: String, progress: (@Sendable (Double) -> Void)? = nil) throws -> URL {
         let data = try loadAndValidate(url, progress: progress)
-        guard let text = String(data: data, encoding: .utf8) else {
-            throw EPUBConverterError.encodingFailed
-        }
+        let text = try decodeText(data)
         let htmlBody = SimpleMarkdownToHTML().convert(text)
         let chapter = wrapXHTML(title: title, body: htmlBody)
         return try buildEPUB(title: title, chapters: [chapter])

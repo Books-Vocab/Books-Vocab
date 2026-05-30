@@ -43,7 +43,10 @@ final class AppToastCoordinator {
         withAnimation(AppMotion.panelState) {
             current = item
         }
-        guard !PlatformAccessibility.announceIfVoiceOver(item.message) else { return }
+        // Announce for VoiceOver (side effect only). The auto-dismiss MUST still
+        // be scheduled regardless — otherwise the toast never clears when
+        // VoiceOver is on, leaving `current` stuck forever.
+        _ = PlatformAccessibility.announceIfVoiceOver(item.message)
         dismissTask = Task {
             try? await Task.sleep(for: .seconds(item.duration))
             guard !Task.isCancelled else { return }
