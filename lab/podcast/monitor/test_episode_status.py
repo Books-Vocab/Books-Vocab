@@ -112,6 +112,33 @@ def test_decoy_files_not_counted(tmp_path):
     assert rows[1]["audio"] is False
 
 
+def test_zero_pad_and_multi_digit_episode_numbers(tmp_path):
+    """ep_0*(\\d+) 正規化是最高風險行:zero-pad plan vs 無 pad script 必須對到
+    同一集,且雙位數/三位數不溢位、不與個位碰撞。"""
+    ws = tmp_path / "pad_abcd1234"
+    for n in (1, 9, 10, 100):
+        _mk(ws, f"plan/episodes/ep_{n:02d}.md")  # ep_01 ep_09 ep_10 ep_100
+    _mk(ws, "scripts/ep_1_script.md")    # 無 pad,須對到 plan ep_01
+    _mk(ws, "scripts/ep_10_script.md")   # 不可被 ep_1 吃掉
+    _mk(ws, "scripts/ep_100_pro.mp3", "AAA")
+    rows = _by_ep(server._episode_status(ws))
+    assert sorted(rows) == [1, 9, 10, 100]
+    assert rows[1]["plan"] and rows[1]["script"]
+    assert rows[9]["plan"] and not rows[9]["script"]
+    assert rows[10]["plan"] and rows[10]["script"]
+    assert rows[100]["plan"] and rows[100]["audio"] and not rows[100]["script"]
+
+
+def test_both_pro_and_flash_subtitle_present(tmp_path):
+    """pro+flash 字幕同時存在:subtitle gate 為真即可(不挑 variant)。"""
+    ws = tmp_path / "twosrt_abcd1234"
+    _mk(ws, "plan/episodes/ep_01.md")
+    _mk(ws, "scripts/ep_1_pro.srt")
+    _mk(ws, "scripts/ep_1_flash.srt")
+    rows = _by_ep(server._episode_status(ws))
+    assert rows[1]["subtitle"] is True
+
+
 def test_script_or_audio_without_plan_still_listed(tmp_path):
     """episode 集合 = plan ∪ scripts;有腳本但 plan 缺也要出現(plan=False)。"""
     ws = tmp_path / "noplan_abcd1234"
