@@ -36,6 +36,20 @@ MAX_ACTIVE = int(os.getenv("PODCAST_MAX_ACTIVE_JOBS", "4"))
 MAX_HISTORY = int(os.getenv("PODCAST_JOB_HISTORY", "100"))
 
 
+class JobLimitReached(Exception):
+    """Spawn refused because too many jobs are already running. Caller turns
+    this into HTTP 429 — different from a malformed request (400) or a server
+    crash (500)."""
+
+    def __init__(self, active: int, limit: int):
+        self.active = active
+        self.limit = limit
+        super().__init__(
+            f"job limit reached ({active}/{limit} running) — "
+            "wait for current jobs to finish or raise PODCAST_MAX_ACTIVE_JOBS"
+        )
+
+
 @dataclass
 class Job:
     id: str
@@ -84,13 +98,18 @@ class JobTracker:
         metadata: dict | None = None,
     ) -> Job:
         """Start a subprocess, write its output to a per-job log file,
-        return the Job record immediately (non-blocking)."""
-        active = sum(1 for j in self._jobs.values() if j.status == "running")
-        if active >= MAX_ACTIVE:
-            raise RuntimeError(
-                f"Job limit reached ({active}/{MAX_ACTIVE} running) — "
-                f"wait for current jobs to finish or raise PODCAST_MAX_ACTIVE_JOBS."
-            )
+        return the Job record immediately (non-blocking).
+
+        Raises JobLimitReached if too many jobs are already running.
+        Caller (server.py) converts that to HTTP 429.
+        """
+        # Atomic capacity check + reservation. Without the lock here, two
+        # concurrent POST /upload could both observe active=MAX-1 and both
+        # spawn, breaking the cap on the 2GB VPS. Reserve a slot up-front.
+        with self._lock:
+            active = sum(1 for j in self._jobs.values() if j.status == "running")
+            if active >= MAX_ACTIVE:
+                raise JobLimitReached(active, MAX_ACTIVE)
 
         job_id = uuid.uuid4().hex[:12]
         log_path = JOBS_DIR / f"{job_id}.log"
@@ -115,19 +134,24 @@ class JobTracker:
             f.write("# ─── output below ─────────────────────────────────\n")
             f.flush()
 
+        # Open the log for append in the parent, dup the FD into the child via
+        # Popen's stdout=, then close the parent handle. Without this close,
+        # the FileIO is held by Popen's frame for the lifetime of the Job —
+        # 100 finished-but-retained jobs would hold 100 FDs.
+        log_fh = open(log_path, "a", encoding="utf-8")
         try:
-            # Inherit env so PATH / SSH_AUTH_SOCK / dotfiles work; layer caller overrides on top.
             full_env = {**os.environ, **(env or {})}
             proc = subprocess.Popen(
                 cmd,
                 cwd=str(cwd),
-                stdout=open(log_path, "a", encoding="utf-8"),
+                stdout=log_fh,
                 stderr=subprocess.STDOUT,
                 env=full_env,
                 # New process group so we can SIGTERM the whole tree (e.g. uv run → python).
                 start_new_session=True,
             )
         except (OSError, ValueError) as exc:
+            log_fh.close()
             # spawn failure — record and surface, don't pretend it ran
             job.status = "failed"
             job.ended_ts = time.time()
@@ -138,6 +162,13 @@ class JobTracker:
                 self._jobs[job_id] = job
                 self._prune_locked()
             return job
+        finally:
+            # Child has dup'd the FD; parent's handle can go away now.
+            # Safe whether Popen succeeded or raised (try/finally above the
+            # except is fine because we re-raise nothing — the except handles
+            # the failure path itself).
+            if not log_fh.closed:
+                log_fh.close()
 
         job.pid = proc.pid
         job.status = "running"

@@ -155,11 +155,32 @@ opt-out env:
 ./start.sh --stop          # 停掉
 ```
 
-後端 FastAPI(`monitor/server.py`)+ 前端 vanilla JS。四個 API:
+後端 FastAPI(`monitor/server.py` + `monitor/cost.py` + `monitor/jobs.py` + `monitor/remote.py`)+ 前端 vanilla JS + `static/player.js`。
+
+**Read API**(觀測):
 - `GET /api/workspaces` — workspace 列表
 - `GET /api/workspace/<n>/snapshot` — 歷史事件 + 已完成 stage marker
 - `GET /api/workspace/<n>/stream` — SSE,tail `pipeline_log.jsonl` + `events.jsonl`
 - `GET /api/workspace/<n>/cost` — 成本聚合(前端每 4 秒 poll)
+- `GET /api/workspace/<n>/episodes` — list ep + variant(pro/flash)+ size + has_subtitle
+- `GET /api/workspace/<n>/episode/<ep>/audio` — MP3 stream(Range / 206 OK)
+- `GET /api/workspace/<n>/episode/<ep>/subtitle` — SRT plain text
+
+**Action API**(製作 — 都會 spawn subprocess,回傳 job_id):
+- `POST /api/workspace/<n>/upload` — 跑 `ops/podcast_upload.sh`,422 if 無 ep_*.mp3
+- `DELETE /api/workspace/<n>?confirm=<n>` — 本地砍 workspace(confirm 必須等於名字)
+- `POST /api/workspace/<n>/rerun?stage=<S>&episode=<N>&drop_marker=true` — `uv run pipeline.py --only-stage`
+- `POST /api/pipeline/start` (multipart `epub` + `parallel` 1-10) — 上傳 EPUB + 跑全流程
+
+**Jobs API**:
+- `GET /api/jobs?limit=N`、`GET /api/jobs/<id>?log_bytes=N`、`POST /api/jobs/<id>/kill`
+
+**Remote API**(SSH 到 Lightsail):
+- `GET /api/remote/series` — index.json + 每 series du size
+- `GET /api/remote/disk` — df + du for the data volume
+- `DELETE /api/remote/series/<id>?confirm=<id>` — flock 序列化 rm + index 重建 + 回 `fully_deleted` flag
+
+429 表示同時 job 太多(預設 cap 4 個 running),412 → 422 → 413(epub >200MB)→ 500 各有意義。
 
 UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度條(scriptwrite / script-review / synthesize 三段平行階段展開顯示每集 EP tile) + COST BREAKDOWN 表(逐 stage:model、calls、input/output tokens、cache R/W、audio、$) + LIVE ACTIVITY feed。
 
@@ -200,6 +221,13 @@ UI:KPI strip(TOTAL COST / ELAPSED / CONTEXT NOW / TOKENS OUT) + 13 stage 進度�
 | `TTS_RETRY_ATTEMPTS` | `4` | 429/503 指數退避重試次數 |
 | `TTS_MASTER` | `1` | 設 `0` 關閉 loudnorm mastering |
 | `TTS_MASTER_LUFS` | `-16` | 目標整合響度（Apple Podcasts 標準） |
+| `PODCAST_SSH_KEY` | `~/.ssh/lightsail_default.pem` | Monitor remote endpoints + `ops/podcast_upload.sh` 用的 SSH key |
+| `PODCAST_REMOTE_SERVER` | `ubuntu@13.193.212.134` | Lightsail VPS 連線目標(必要時改 host topology) |
+| `PODCAST_REMOTE_DIR` | `~/knowledge_graph_api/data/podcasts` | 遠端 podcast 資產根目錄 |
+| `PODCAST_SSH_TIMEOUT` | `20` | SSH 連線 timeout 秒數 |
+| `PODCAST_MAX_ACTIVE_JOBS` | `4` | Monitor 同時 running 的 subprocess job 上限,超過回 429 |
+| `PODCAST_JOB_HISTORY` | `100` | Monitor 留多少筆已完成 job log(超過 LRU 砍最舊) |
+| `PODCAST_MAX_EPUB_BYTES` | `200 * 1024 * 1024` | `/api/pipeline/start` 接受的 EPUB 上限 |
 
 ## Workspace 結構
 
