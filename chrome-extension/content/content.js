@@ -415,14 +415,18 @@
    * `shared/pure.js#escapeHtml` — content scripts run in an isolated world
    * without access to KGPure, so the implementation is inlined.
    *
-   * Uses a detached `<span>` to round-trip through `textContent` →
-   * `innerHTML` (encodes `&`, `<`, `>`); equivalent to the pure version's
-   * three regex replacements. Keep in sync if either side changes.
+   * Encodes `&`, `<`, `>`, `"` and `'`. The quotes are encoded so the output
+   * is safe inside a `"`-wrapped attribute (e.g. `href="${escapeHtml(url)}"`)
+   * — a raw `"` would otherwise break out of the attribute. Keep byte-for-byte
+   * in sync with the pure version.
    */
   function escapeHtml(str) {
-    const el = document.createElement('span');
-    el.textContent = str;
-    return el.innerHTML;
+    return String(str == null ? '' : str)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   /**
@@ -442,7 +446,9 @@
       const parsed = new URL(trimmed, 'https://invalid.example/');
       const proto = parsed.protocol;
       if (proto === 'http:' || proto === 'https:' || proto === 'chrome-extension:') {
-        return trimmed;
+        // Return the normalized href (percent-encodes `"` etc.), mirroring
+        // shared/pure.js#safeUrl — closes the attribute-breakout vector.
+        return parsed.href;
       }
       return fallback;
     } catch (_err) {
