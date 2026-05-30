@@ -162,7 +162,7 @@ opt-out env:
 - `GET /api/workspace/<n>/snapshot` — 歷史事件 + 已完成 stage marker
 - `GET /api/workspace/<n>/stream` — SSE,tail `pipeline_log.jsonl` + `events.jsonl`
 - `GET /api/workspace/<n>/cost` — 成本聚合(前端每 4 秒 poll)
-- `GET /api/workspace/<n>/episodes` — list ep + variant(pro/flash)+ size + has_subtitle
+- `GET /api/workspace/<n>/episodes` — list ep + variant(pro/flash)+ `model`(full TTS id from sidecar，舊集數無 sidecar 時為 `null`)+ size + has_subtitle
 - `GET /api/workspace/<n>/episode/<ep>/audio` — MP3 stream(Range / 206 OK)
 - `GET /api/workspace/<n>/episode/<ep>/subtitle` — SRT plain text
 
@@ -251,6 +251,7 @@ workspaces/<slug>_<hash>/
     ep_N_review.md               ← script QA 結果
     ep_N_pro.mp3                 ← TTS 音訊（loudnorm 過）
     ep_N_pro.srt                 ← 詞級字幕
+    ep_N_pro.meta.json           ← {"tts_model": "gemini-2.5-pro-tts"} sidecar（含完整模型 id，monitor UI 顯示用；舊集數可能沒有）
   audio_qa.json                  ← 音訊 QA 報告
   claude_*.stderr.log            ← agent 失敗時的 stderr tail
 ```

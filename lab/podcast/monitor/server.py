@@ -494,9 +494,26 @@ def workspace_episodes(ws_name: str):
         if n in seen and seen[n]["variant"] == "pro":
             continue
         srt = scripts / f"ep_{n}_{variant}.srt"
+        # Sidecar `ep_N_<variant>.meta.json` written by synthesize.py carries
+        # the full TTS model id (e.g. "gemini-2.5-flash-tts"). Filename alone
+        # collapses 2.5-pro and 3.1-pro to the same `_pro` tag; the sidecar
+        # is what lets the UI distinguish generations. Pre-sidecar files
+        # (synthesized before this change shipped) return model=None and the
+        # UI falls back to showing the legacy short tag.
+        meta_path = scripts / f"ep_{n}_{variant}.meta.json"
+        model_id: str | None = None
+        if meta_path.is_file():
+            try:
+                data = json.loads(meta_path.read_text(encoding="utf-8"))
+                m_id = data.get("tts_model")
+                if isinstance(m_id, str) and m_id.strip():
+                    model_id = m_id.strip()
+            except (OSError, ValueError):
+                pass
         seen[n] = {
             "episode": n,
             "variant": variant,
+            "model": model_id,
             "audio_bytes": f.stat().st_size,
             "has_subtitle": srt.exists(),
         }
