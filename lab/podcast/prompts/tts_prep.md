@@ -85,7 +85,7 @@ The parser expects:
 6. **Trailing italic `*takeaway*` line** — remove. Replace the beat with an explicit `**Host:**` turn (Sign-Off already covers this).
 7. **Malformed SSML** — unclosed `<prosody>`, missing `/>` on `<break>`, unbalanced tags.
 8. **Empty speaker turns** — `**Maya:** ` with nothing after, produces garbage audio.
-9. **Multi-word host name** — speaker tag like `**Host A:**` with a space. Host names must be single `\w+` token to be safe.
+9. **Speaker tag name containing `:` or `*`** — parser splits on `:` and matches `**[^:*]+:**`, so colons or asterisks inside the name break parsing. Spaces, hyphens, and unicode letters in the host name are now permitted (synthesize.py / subtitle.py / audio_qa.py all use `[^:*]+`). Single-word names are still preferred for readability but no longer required.
 10. **Missing `<!-- END_OF_SCRIPT -->` sentinel** at very end (pipeline resume logic depends on it).
 
 ### Soft Warnings (note in report but don't auto-fix)

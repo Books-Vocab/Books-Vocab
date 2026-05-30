@@ -118,9 +118,14 @@ author = author_m.group(1).strip() if author_m else ""
 voice_map_re = re.compile(r"\*\*([^*()]+?)\s*\(([^)]+)\)\*\*:\s*(Speaker[12])")
 host_names = [m.group(1).strip() for m in voice_map_re.finditer(text)]
 if not host_names:
+    # Surface to stderr so warning isn't swallowed if this python heredoc ever
+    # gets wrapped in command substitution. Currently runs inline (stdout
+    # passes through), but defensive against future refactor — and aligns with
+    # the KG project rule against silent fallbacks.
     print(
         "⚠ no Voice Mapping section found in overview.md — hostNames left empty "
-        "(legacy workspace without the tts-prep voice block?)"
+        "(pre-tts-prep workspace, e.g. legacy flow_*)",
+        file=sys.stderr,
     )
 
 # Parse episode map table
