@@ -392,10 +392,18 @@ struct SubscriptionPaywallSheet: View {
         return L10n.string("載入 App Store 價格中…")
     }
 
+    /// 後端未回傳 trial_days 時的預設試用天數。
+    private static let defaultTrialDays = 7
+
+    /// 有效試用天數（後端 entitlements 優先，否則回退預設）。
+    private var trialDays: Int {
+        subscriptionManager.entitlements.pro.trial_days ?? Self.defaultTrialDays
+    }
+
     /// 試用資訊（次要位置，字級小於帳單金額）
     private var trialInfoLine: String? {
         guard !isAdminGranted else { return nil }
-        let days = subscriptionManager.entitlements.pro.trial_days ?? 7
+        let days = trialDays
         guard days > 0 else { return nil }
         return L10n.format("包含 %@ 天免費試用", "\(days)")
     }
@@ -414,7 +422,7 @@ struct SubscriptionPaywallSheet: View {
     /// CTA 按鈕標題（包含價格 — 3.1.2(c) 合規）
     private var ctaButtonTitle: String {
         if let product = subscriptionManager.proProduct {
-            let days = subscriptionManager.entitlements.pro.trial_days ?? 7
+            let days = trialDays
             if days > 0 {
                 return L10n.format("免費試用 %@ 天，之後 %@/月", "\(days)", product.displayPrice)
             }

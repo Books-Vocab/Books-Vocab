@@ -101,8 +101,8 @@ extension SettingsView {
                 )
                 : nil,
             about: .init(
-                version: "1.1.0",
-                developerName: "陳亮宇"
+                version: (Bundle.main.infoDictionary?["CFBundleShortVersionString"] as? String) ?? "-",
+                developerName: "陳亮宇" // i18n-allow: 人名
             ),
             danger: authManager.isLoggedIn ? .init(isDeletingAccount: coordinator.isDeletingAccount) : nil
         )

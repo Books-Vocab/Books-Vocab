@@ -95,7 +95,7 @@ struct SettingsView: View {
         )) {
             Button("好".localized, action: coordinator.clearDeleteAccountError)
         } message: {
-            Text((coordinator.deleteAccountError ?? "請稍後再試").localized)
+            Text(coordinator.deleteAccountError ?? "請稍後再試".localized)
         }
         .enableInjection()
     }

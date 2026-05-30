@@ -30,6 +30,9 @@ enum CardRichTextRenderer {
     private static let stripMarkPattern = regex("\\*\\*(.+?)\\*\\*")
     private static let tokenPattern = regex("\\S+")
 
+    /// Typographic ellipsis used uniformly for context truncation (prefix/suffix).
+    private static let ellipsis = "…"
+
     static func text(
         _ raw: String,
         style: CardRichTextStyle,
@@ -292,7 +295,7 @@ enum CardRichTextRenderer {
             trimmedBefore = String(trimmedBefore.drop(while: { char in
                 char.unicodeScalars.allSatisfy { punctuationAndWhitespace.contains($0) }
             }))
-            prefix = "…"
+            prefix = ellipsis
         }
 
         var suffix = ""
@@ -305,7 +308,7 @@ enum CardRichTextRenderer {
             let cutRange = afterTokens[fullTokenIndex].range
             let cutEnd = cutRange.location + cutRange.length
             trimmedAfter = (afterText as NSString).substring(to: cutEnd)
-            suffix = "..."
+            suffix = ellipsis
         }
 
         return prefix + trimmedBefore + target + trimmedAfter + suffix
@@ -320,7 +323,7 @@ enum CardRichTextRenderer {
         let lastTokenIndex = validIndices[count - 1]
         let lastToken = tokens[lastTokenIndex]
         let cutEnd = lastToken.range.location + lastToken.range.length
-        return nsText.substring(to: cutEnd) + "..."
+        return nsText.substring(to: cutEnd) + ellipsis
     }
 
     private static func tokenContainsWordCharacters(
