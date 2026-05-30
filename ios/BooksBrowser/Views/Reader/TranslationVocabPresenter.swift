@@ -116,7 +116,7 @@ struct TranslationVocabPresenter: View {
             VocabStateMessageCard(
                 title: state.guestMessageTitle,
                 systemImage: state.guestMessageIcon,
-                description: "登入後即可獲得 AI 翻譯，並同步至雲端。"
+                description: "登入後即可獲得 AI 翻譯，並同步至雲端。".localized
             )
 
             if let onLogin {

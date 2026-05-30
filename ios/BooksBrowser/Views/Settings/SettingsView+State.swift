@@ -152,7 +152,7 @@ extension SettingsView {
                 if let url = VocabularyExporter.exportAsCSV(entries: allEntries) {
                     exportURL = url
                 } else {
-                    toastCoordinator.error("匯出失敗")
+                    toastCoordinator.error("匯出失敗".localized)
                 }
             }
         )

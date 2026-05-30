@@ -39,7 +39,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
         guard let entry = syncedEntries.first(where: { $0.id == entryID }) else { return }
         entry.queueDelete()
         if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success("已刪除")
+            toastCoordinator.success("已刪除".localized)
         }
     }
 
@@ -133,7 +133,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
             entry.queueDelete()
         }
         if modelContext.safeSaveWithToast(toastCoordinator) {
-            toastCoordinator.success("已刪除 \(entries.count) 個")
+            toastCoordinator.success(L10n.format("已刪除 %@ 個", String(entries.count)))
         }
     }
 
@@ -178,7 +178,7 @@ final class KGVocabCoordinator: KGVocabCoordinating {
                 let successCount = entries.count - failCount
                 errorMessage = L10n.format("%@/%@ 張卡片已封存，部分失敗", "\(successCount)", "\(entries.count)")
             } else {
-                toastCoordinator.success("已封存 \(entries.count) 個")
+                toastCoordinator.success(L10n.format("已封存 %@ 個", String(entries.count)))
             }
         }
     }

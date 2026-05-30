@@ -22,7 +22,7 @@ extension ModelContext {
         file: String = #file, line: Int = #line
     ) -> Bool {
         let ok = safeSave(file: file, line: line)
-        if !ok { toastCoordinator.error("儲存失敗") }
+        if !ok { toastCoordinator.error("儲存失敗".localized) }
         return ok
     }
 }

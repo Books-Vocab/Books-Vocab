@@ -83,7 +83,7 @@ extension ReaderSettingsPresenter {
                 }
                 Divider().overlay(appSkin.palette.divider)
                 HStack(alignment: .center, spacing: AppSpacing.s3) {
-                    vocabLabelChip(title: "行距", systemImage: "text.line.spacing")
+                    vocabLabelChip(title: "行距".localized, systemImage: "text.line.spacing")
                     Slider(value: bindings.lineHeight, in: 1.0...2.5, step: 0.1)
                         .tint(appSkin.palette.primaryText)
                     Text(String(format: "%.1f", bindings.lineHeight.wrappedValue))
