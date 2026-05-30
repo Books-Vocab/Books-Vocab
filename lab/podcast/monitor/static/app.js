@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-31b";
+const APP_VERSION = "2026-05-31c";
 
 // Sidebar UI state (filter / sort / drawer). Persisted to localStorage so a
 // reload remembers what the user was looking at.
@@ -381,12 +381,15 @@ function toggleSidebarDrawer() {
 // the server sends) keeps the segment CSS class injection-safe.
 const MILESTONE_SHORT = { plan: "PLAN", script: "SCRIPT", audio: "AUDIO", subtitle: "SUB" };
 
-// Build the four-segment depth-shaded progress bar from server-derived
-// milestones. Each gate owns a fixed 1/4 slot; the inner fill width is the
-// gate's completion ratio, coloured by depth (plan darkest → subtitle
-// lightest). The label names the *frontier* — the first gate that isn't yet
-// full — so the producer sees at a glance which stage a workspace is stuck on
-// ("AUDIO 0/10"), or "READY" when all four gates are complete.
+// Sidebar progress = a 3-phase / 2-gate track. Three phase bars
+// (PLAN→SCRIPT→AUDIO) each filled by their own ratio, SEPARATED by the two
+// approval-gate glyphs. Subtitle has no gate of its own — it shares the audio
+// phase — so it folds into the audio bar as a thin secondary underline.
+//
+// The gate glyph is the hero: ◆ passed (approved/de-facto) · ◈ awaiting (amber
+// pulse = needs YOUR approval) · ◇ pending (phase ahead not reached). The label
+// is verb-led — an awaiting gate beats the frontier count so a parked workspace
+// screams "⏸ APPROVE PLAN" instead of a quiet "SCRIPT 0/8".
 function milestoneBar(s) {
   const ms = Array.isArray(s.milestones) ? s.milestones : null;
   if (!ms || !ms.length) {
@@ -394,28 +397,38 @@ function milestoneBar(s) {
     // back to the legacy single-bar marker ratio.
     const pct = s.n_stages_total ? Math.round((s.n_stages_done / s.n_stages_total) * 100) : 0;
     return {
-      segs: `<div class="ws-mseg ws-mseg-legacy"><i style="width:${pct}%"></i></div>`,
+      segs: `<span class="ph ph-legacy"><i style="width:${pct}%"></i></span>`,
       label: `${s.n_stages_done || 0}/${s.n_stages_total || 13}`,
+      awaiting: false,
     };
   }
-  // Four visually-separated bars, one per gate, each filled by its OWN ratio.
-  // The gates sit in fixed pipeline order (PLAN→SCRIPT→AUDIO→SUBTITLE), so
-  // position + the label identify the stage; colour is a single blue (no
-  // depth ramp). Showing each gate's real ratio is the most informative —
-  // the_let_them reads "audio 5/8 AND subtitle 3/8" at a glance, instead of
-  // a cumulative fill that would hide the subtitle progress. Because the bars
-  // are clearly separated (gap + own rounding), a partial-then-partial
-  // sequence reads as two independent bars, not a broken-looking gap.
-  const segs = ms.map(m => {
-    const key = MILESTONE_SHORT[m.key] ? m.key : "legacy"; // whitelist for class safety
-    const w = Math.max(0, Math.min(100, Math.round((m.ratio || 0) * 100)));
-    return `<div class="ws-mseg ws-mseg-${key}"><i style="width:${w}%"></i></div>`;
-  }).join("");
-  const frontier = ms.find(m => (m.ratio || 0) < 1);
-  const label = frontier
-    ? `${MILESTONE_SHORT[frontier.key] || frontier.key.toUpperCase()} ${frontier.done}/${frontier.total}`
-    : "READY";
-  return { segs, label };
+  const by = Object.fromEntries(ms.map(m => [m.key, m]));
+  const gates = Array.isArray(s.gates) ? s.gates : [];
+  const gState = k => (gates.find(g => g.key === k) || {}).state || "pending";
+  const w = key => Math.max(0, Math.min(100, Math.round(((by[key] || {}).ratio || 0) * 100)));
+  const g1 = gState("plan"), g2 = gState("script");
+
+  // Phase key is whitelisted (PLAN/SCRIPT/AUDIO) → safe to inject as a class.
+  const phase = (key, extra = "") =>
+    `<span class="ph ph-${key}"><i style="width:${w(key)}%"></i>${extra}</span>`;
+  const gate = (state, name) =>
+    `<span class="gate gate-${state}" title="${name} gate · ${state}"></span>`;
+  const subTick = `<b class="ph-sub" style="width:${w("subtitle")}%"></b>`;
+
+  const segs =
+    phase("plan") + gate(g1, "plan") + phase("script") + gate(g2, "script") +
+    phase("audio", subTick);
+
+  let label, awaiting = false;
+  if (g1 === "awaiting") { label = "⏸ APPROVE PLAN"; awaiting = true; }
+  else if (g2 === "awaiting") { label = "⏸ APPROVE SCRIPTS"; awaiting = true; }
+  else {
+    const frontier = ms.find(m => (m.ratio || 0) < 1);
+    label = frontier
+      ? `${MILESTONE_SHORT[frontier.key] || frontier.key.toUpperCase()} ${frontier.done}/${frontier.total}`
+      : "READY";
+  }
+  return { segs, label, awaiting };
 }
 
 function sidebarCardHtml(s, isActive) {
@@ -423,7 +436,7 @@ function sidebarCardHtml(s, isActive) {
   const costClass = s.total_usd >= 0.01 ? "ws-cost" : "ws-cost zero";
   const ep = s.episode_count ? `${s.episode_count} ep` : "—";
   const time = relativeTime(s.last_updated);
-  const { segs, label } = milestoneBar(s);
+  const { segs, label, awaiting } = milestoneBar(s);
   // Status text override for clarity (active job kind tells you more than "running")
   const statusText = s.status === "running" && s.active_job
     ? (s.active_job.kind || "running")
@@ -446,7 +459,7 @@ function sidebarCardHtml(s, isActive) {
   </div>
   <div class="ws-card-bar">
     <div class="ws-mstrip">${segs}</div>
-    <span class="ws-card-progress">${escapeHtml(label)}</span>
+    <span class="ws-card-progress${awaiting ? " awaiting" : ""}">${escapeHtml(label)}</span>
   </div>
   <div class="ws-card-meta">
     <span class="${costClass}">${cost}</span>
