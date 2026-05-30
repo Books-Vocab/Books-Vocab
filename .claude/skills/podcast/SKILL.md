@@ -158,7 +158,7 @@ opt-out env:
 後端 FastAPI(`monitor/server.py` + `monitor/cost.py` + `monitor/jobs.py` + `monitor/remote.py`)+ 前端 vanilla JS + `static/player.js`。
 
 **Read API**(觀測):
-- `GET /api/workspaces` — 名稱列表(`[name,...]`);`?full=1` 回 sidebar summary array(`name/status/milestones/progress/n_stages_done/n_stages_total/episode_count/created/last_updated/total_usd/claude_usd/tts_usd/has_cost_data/active_job`)。`milestones[]` = 四關卡 `{key,label,done,total,ratio}`(plan→script→audio→subtitle,**產物推導非 marker**);`progress` = 四 ratio 均值(進度條總填充);`created` = workspace 加入時間 epoch(`.created` sidecar,無則灌 birthtime)。`n_stages_*` 為 legacy marker 欄位,**已不用於進度條**(marker 會與產物脫鉤,見 sop)。status cascade `running>done>failed>idle>fresh`;pipeline kind 經 `<ws>/.pipeline_job_id` sidecar 反查 workspace
+- `GET /api/workspaces` — 名稱列表(`[name,...]`);`?full=1` 回 sidebar summary array(`name/status/milestones/progress/n_stages_done/n_stages_total/episode_count/created/last_updated/total_usd/claude_usd/tts_usd/has_cost_data/active_job`)。`milestones[]` = 四關卡 `{key,label,done,total,ratio}`(plan→script→audio→subtitle,**產物推導非 marker**);`progress` = 四 ratio 均值(整體進度標量;前端改以四條 per-gate ratio 各自渲染,不直接用此值);`created` = workspace 加入時間 epoch(`.created` sidecar,無則灌 birthtime)。`n_stages_*` 為 legacy marker 欄位,**已不用於進度條**(marker 會與產物脫鉤,見 sop)。status cascade `running>done>failed>idle>fresh`;pipeline kind 經 `<ws>/.pipeline_job_id` sidecar 反查 workspace
 - `GET /api/workspace/<n>/snapshot` — 歷史事件 + 已完成 stage marker
 - `GET /api/workspace/<n>/stream` — SSE,tail `pipeline_log.jsonl` + `events.jsonl`
 - `GET /api/workspace/<n>/cost` — 成本聚合(前端每 4 秒 poll)
