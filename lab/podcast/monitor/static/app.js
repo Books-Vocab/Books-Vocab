@@ -1,4 +1,6 @@
 // Podcast Pipeline Monitor — live dashboard
+// Streams pipeline_log.jsonl + events.jsonl via SSE; pulls cost summary from
+// /api/workspace/<n>/cost (claude CLI's costUSD + Vertex TTS calc).
 
 const STAGES = [
   "prep", "analyst", "architect", "plan-review",
@@ -7,44 +9,56 @@ const STAGES = [
   "tts-prep", "synthesize", "audio-qa", "subtitle",
 ];
 
-const OPUS_CTX_MAX = 1_000_000; // 1M context
+const OPUS_CTX_MAX = 1_000_000;
+const COST_REFRESH_MS = 4000;
 
 const state = {
   ws: null,
   stages: {},          // stage -> { status, elapsed_s, started_ts }
   parallelEps: {       // per-stage per-episode runner status
-    scriptwrite: {},   // { 1: "running"|"done"|"failed", ... }
+    scriptwrite: {},
     "script-review": {},
+    synthesize: {},
   },
-  tokensTotal: { out: 0, cacheRead: 0, cacheCreate: 0, fresh: 0 },
-  lastCtx: 0,          // real context size from last assistant msg
-  peakCtx: 0,          // max context ever observed
-  currentStage: null,  // label from last stage_start
+  tokensTotal: { fresh: 0, out: 0, cacheRead: 0, cacheCreate: 0 },
+  lastCtx: 0,
+  peakCtx: 0,
+  currentStage: null,
   pipelineStartTs: null,
   pipelineEndTs: null,
-  feed: [],            // most-recent-first
+  feed: [],
   maxFeed: 200,
   eventSource: null,
+  costTimer: null,
 };
 
-// Map an agent stage_label from events.jsonl to its pipeline stage + episode (if parallel).
+// Map an agent stage_label from events.jsonl to its pipeline stage + episode.
 function parseLabel(label) {
   if (!label) return { stage: null, ep: null };
   let m = label.match(/^Scriptwriter EP(\d+)$/i);
   if (m) return { stage: "scriptwrite", ep: Number(m[1]) };
   m = label.match(/^Script Review EP(\d+)$/i);
   if (m) return { stage: "script-review", ep: Number(m[1]) };
+  m = label.match(/^Synthesize EP(\d+)$/i);
+  if (m) return { stage: "synthesize", ep: Number(m[1]) };
   return { stage: null, ep: null };
 }
 
 const $ = (sel) => document.querySelector(sel);
 
 function fmtNum(n) {
+  if (n == null || Number.isNaN(n)) return "0";
   return new Intl.NumberFormat().format(Math.round(n));
 }
 
+function fmtUsd(n) {
+  if (n == null || Number.isNaN(n)) return "$0.00";
+  if (n < 0.01) return "<$0.01";
+  return "$" + n.toFixed(2);
+}
+
 function fmtDuration(ms) {
-  if (!ms || ms < 0) return "—";
+  if (!ms || ms < 0 || Number.isNaN(ms)) return "—";
   const s = Math.floor(ms / 1000);
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -60,6 +74,14 @@ function fmtTime(iso) {
     const d = new Date(iso);
     return d.toTimeString().slice(0, 8);
   } catch { return iso.slice(11, 19); }
+}
+
+function fmtAudioSecs(s) {
+  if (!s) return "—";
+  const m = Math.floor(s / 60);
+  const sec = Math.round(s % 60);
+  if (m) return `${m}m${sec.toString().padStart(2, "0")}s`;
+  return `${Math.round(s)}s`;
 }
 
 // ─── Workspace list ───
@@ -82,21 +104,27 @@ async function loadWorkspaces() {
 
 function resetState() {
   state.stages = {};
-  state.tokensTotal = { in: 0, out: 0, cache: 0 };
+  state.parallelEps = { scriptwrite: {}, "script-review": {}, synthesize: {} };
+  state.tokensTotal = { fresh: 0, out: 0, cacheRead: 0, cacheCreate: 0 };
   state.lastCtx = 0;
+  state.peakCtx = 0;
   state.currentStage = null;
   state.pipelineStartTs = null;
   state.pipelineEndTs = null;
   state.feed = [];
   if (state.eventSource) { state.eventSource.close(); state.eventSource = null; }
+  if (state.costTimer) { clearInterval(state.costTimer); state.costTimer = null; }
 }
 
 async function switchWorkspace(ws) {
   resetState();
   state.ws = ws;
-  renderStages();
-  renderMetrics();
-  renderFeed();
+  const url = new URL(location.href);
+  url.searchParams.set("ws", ws);
+  history.replaceState(null, "", url);
+
+  renderAll();
+  renderCost({ total_usd: 0, by_stage: {}, by_model: {}, warnings: [] });
 
   const r = await fetch(`/api/workspace/${ws}/snapshot`);
   const snap = await r.json();
@@ -105,20 +133,31 @@ async function switchWorkspace(ws) {
     else handleStreamEvent(e.data);
   }
   renderAll();
+  await refreshCost();
 
-  // Connect SSE for live updates
+  // Live updates
   const es = new EventSource(`/api/workspace/${ws}/stream`);
   state.eventSource = es;
   es.addEventListener("pipeline", (ev) => {
-    const obj = JSON.parse(ev.data);
-    handlePipelineEvent(obj);
+    handlePipelineEvent(JSON.parse(ev.data));
     renderAll();
   });
   es.addEventListener("stream", (ev) => {
-    const obj = JSON.parse(ev.data);
-    handleStreamEvent(obj);
+    handleStreamEvent(JSON.parse(ev.data));
     renderAll();
   });
+
+  // Cost polled (events.jsonl is tailed but we recompute server-side for accuracy)
+  state.costTimer = setInterval(refreshCost, COST_REFRESH_MS);
+}
+
+async function refreshCost() {
+  if (!state.ws) return;
+  try {
+    const r = await fetch(`/api/workspace/${state.ws}/cost`);
+    if (!r.ok) return;
+    renderCost(await r.json());
+  } catch { /* network blip; next tick */ }
 }
 
 // ─── pipeline_log.jsonl events ───
@@ -145,12 +184,12 @@ function handlePipelineEvent(obj) {
     });
   } else if (ev === "error") {
     pushFeed(ts, stage || (state.currentStage || ""), { kind: "error", msg: obj.msg });
-  } else if (ev === "info") {
+  } else if (ev === "info" && obj.msg) {
     if (obj.msg === "claude invocation") {
       pushFeed(ts, stage || (state.currentStage || ""), {
         kind: "info", msg: `claude invoked · timeout ${obj.timeout_s}s`,
       });
-    } else if (obj.msg) {
+    } else {
       pushFeed(ts, stage || (state.currentStage || ""), { kind: "info", msg: obj.msg });
     }
   }
@@ -166,7 +205,6 @@ function handleStreamEvent(obj) {
 
   if (type === "system") {
     if (ev.subtype === "init") {
-      // Mark parallel-ep as running on first event
       if (pStage && ep != null) {
         state.parallelEps[pStage] ||= {};
         state.parallelEps[pStage][ep] = "running";
@@ -179,11 +217,8 @@ function handleStreamEvent(obj) {
   if (type === "assistant") {
     const msg = ev.message || {};
     const content = msg.content || [];
-    // Usage tokens
     const usage = msg.usage || {};
     if (usage.input_tokens !== undefined) {
-      // Real context size = fresh input + cache_read + cache_creation
-      // (Anthropic's `input_tokens` is only the fresh/new portion)
       const freshIn = usage.input_tokens || 0;
       const cacheRead = usage.cache_read_input_tokens || 0;
       const cacheCreate = usage.cache_creation_input_tokens || 0;
@@ -203,7 +238,7 @@ function handleStreamEvent(obj) {
           input: part.input || {},
         });
       } else if (part.type === "text" && part.text) {
-        const first = (part.text || "").trim().split("\n")[0].slice(0, 300);
+        const first = (part.text || "").trim().split("\n")[0].slice(0, 280);
         if (first) {
           pushFeed(ts, stageLabel, { kind: "text", msg: first });
         }
@@ -212,17 +247,34 @@ function handleStreamEvent(obj) {
     return;
   }
 
+  if (type === "tts_usage") {
+    // Synthesize batch finished — mark parallel EP tile.
+    if (pStage && ep != null) {
+      state.parallelEps[pStage] ||= {};
+      // Don't downgrade from "done"; record progress via running until pipeline_log says stage_end.
+      if (state.parallelEps[pStage][ep] !== "done") {
+        state.parallelEps[pStage][ep] = "running";
+      }
+    }
+    pushFeed(ts, stageLabel, {
+      kind: "tts",
+      msg: `batch ${ev.batch_index}/${ev.batch_total} · ${ev.words}w → ${ev.audio_seconds}s audio · ${ev.elapsed_s}s${ev.usage_source === "estimated" ? " (est)" : ""}`,
+    });
+    return;
+  }
+
   if (type === "result") {
     const dur = (ev.duration_ms || 0) / 1000;
     const turns = ev.num_turns;
     const isErr = !!ev.is_error;
+    const cost = ev.total_cost_usd;
     if (pStage && ep != null) {
       state.parallelEps[pStage] ||= {};
       state.parallelEps[pStage][ep] = isErr ? "failed" : "done";
     }
     pushFeed(ts, stageLabel, {
       kind: isErr ? "stage_fail" : "result",
-      msg: `${isErr ? "FAILED" : "done"} · ${dur.toFixed(0)}s · ${turns} turns`,
+      msg: `${isErr ? "FAILED" : "done"} · ${dur.toFixed(0)}s · ${turns} turns${cost ? " · " + fmtUsd(cost) : ""}`,
     });
     return;
   }
@@ -236,7 +288,7 @@ function pushFeed(ts, stage, entry) {
 // ─── Renderers ───
 function renderAll() {
   renderStages();
-  renderMetrics();
+  renderKpis();
   renderFeed();
   renderNavStatus();
 }
@@ -247,46 +299,39 @@ function renderStages() {
   for (const stage of STAGES) {
     const s = state.stages[stage] || { status: "pending" };
     const card = document.createElement("div");
-    const isParallel = stage === "scriptwrite" || stage === "script-review";
-    card.className = `stage-card ${s.status || "pending"}${isParallel ? " stage-parallel" : ""}`;
+    const isParallel = stage === "scriptwrite" || stage === "script-review" || stage === "synthesize";
+    card.className = `stage ${s.status || "pending"}${isParallel ? " stage-wide" : ""}`;
 
-    let subGrid = "";
+    let epLine = "";
     if (isParallel) {
       const eps = state.parallelEps[stage] || {};
       const epNums = Object.keys(eps).map(Number).sort((a, b) => a - b);
       if (epNums.length) {
-        const running = epNums.filter(n => eps[n] === "running").length;
-        const done = epNums.filter(n => eps[n] === "done").length;
-        const failed = epNums.filter(n => eps[n] === "failed").length;
         const tiles = epNums.map(n => {
           const st = eps[n] || "pending";
-          return `<span class="ep-tile ${st}" title="EP${n} · ${st}">EP${n}</span>`;
+          return `<span class="ep-tile ${st}" title="EP${n} · ${st}">${n}</span>`;
         }).join("");
-        subGrid = `
-          <div class="ep-summary">
-            <span>✓ ${done}</span>
-            <span>⦿ ${running}</span>
-            ${failed ? `<span class="fail">✗ ${failed}</span>` : ""}
-          </div>
-          <div class="ep-tiles">${tiles}</div>
-        `;
+        epLine = `<div class="ep-tiles">${tiles}</div>`;
       }
     }
 
+    const elapsed = s.elapsed_s ? `${s.elapsed_s}s`
+      : s.started_ts ? `started ${fmtTime(s.started_ts)}`
+      : "";
+
     card.innerHTML = `
-      <div class="stage-title">${stage}</div>
-      <div class="stage-status-chip ${s.status}">${s.status}</div>
-      ${subGrid}
-      <div class="stage-meta">
-        ${s.elapsed_s ? `<span class="k">elapsed</span> <span class="v tabular">${s.elapsed_s}s</span>` :
-          s.started_ts ? `<span class="k">started</span> <span class="v tabular">${fmtTime(s.started_ts)}</span>` : ""}
+      <div class="stage-head">
+        <span class="stage-name">${stage}</span>
+        <span class="stage-pill ${s.status}">${s.status}</span>
       </div>
+      ${epLine}
+      ${elapsed ? `<div class="stage-meta">${elapsed}</div>` : ""}
     `;
     grid.appendChild(card);
   }
 }
 
-function renderMetrics() {
+function renderKpis() {
   // Elapsed
   let elapsed = "—";
   if (state.pipelineStartTs) {
@@ -294,24 +339,80 @@ function renderMetrics() {
     const ms = end - new Date(state.pipelineStartTs);
     elapsed = fmtDuration(ms);
   }
-  $("#m-elapsed").textContent = elapsed;
-  $("#m-stage").textContent = state.currentStage || "—";
+  $("#k-elapsed").textContent = elapsed;
+  $("#k-current").textContent = state.currentStage ? `running · ${state.currentStage}` : "idle";
 
-  // Context (real size = fresh + cache_read + cache_creation)
+  // Context
   const ctx = state.lastCtx || 0;
   const pct = (ctx / OPUS_CTX_MAX) * 100;
-  $("#m-ctx").textContent = fmtNum(ctx);
-  $("#m-ctx-pct").textContent = pct < 0.01 && pct > 0 ? "<0.01%" : pct.toFixed(2) + "%";
-  $("#m-ctx-bar").style.width = Math.min(100, pct) + "%";
-  const peakEl = document.querySelector("#m-ctx-peak");
-  if (peakEl) peakEl.textContent = fmtNum(state.peakCtx);
+  $("#k-ctx").textContent = fmtNum(ctx);
+  $("#k-ctx-pct").textContent = pct < 0.01 && pct > 0 ? "<0.01%" : pct.toFixed(2) + "%";
+  $("#k-ctx-bar").style.width = Math.min(100, pct) + "%";
+  $("#k-ctx-peak").textContent = fmtNum(state.peakCtx);
 
-  // Tokens: OUT is the only truly cumulative meaningful number (cost of generation).
-  // IN breakdown shows fresh vs cache split for research into caching effectiveness.
-  $("#m-tok-total").textContent = fmtNum(state.tokensTotal.out);
-  $("#m-tok-in").textContent = fmtNum(state.tokensTotal.fresh);
-  $("#m-tok-out").textContent = fmtNum(state.tokensTotal.cacheRead);
-  $("#m-tok-cache").textContent = fmtNum(state.tokensTotal.cacheCreate);
+  // Tokens
+  $("#k-tok-out").textContent = fmtNum(state.tokensTotal.out);
+  $("#k-tok-fresh").textContent = fmtNum(state.tokensTotal.fresh);
+  $("#k-tok-cr").textContent = fmtNum(state.tokensTotal.cacheRead);
+  $("#k-tok-cc").textContent = fmtNum(state.tokensTotal.cacheCreate);
+}
+
+function renderCost(c) {
+  const total = c.total_usd || 0;
+  $("#k-cost").textContent = fmtUsd(total);
+  $("#cost-total").textContent = fmtUsd(total);
+
+  // Claude vs TTS split for the primary KPI sub-line.
+  let claudeUsd = 0, ttsUsd = 0;
+  for (const [model, m] of Object.entries(c.by_model || {})) {
+    if (/claude/i.test(model)) claudeUsd += m.usd || 0;
+    else ttsUsd += m.usd || 0;
+  }
+  $("#k-cost-claude").textContent = fmtUsd(claudeUsd);
+  $("#k-cost-tts").textContent = fmtUsd(ttsUsd);
+
+  // Pricing source footnote
+  const meta = c.pricing || {};
+  $("#cost-pricing-src").textContent = meta.verified_against
+    ? `verified ${meta.verified_against} · vertex + claude CLI rates`
+    : "";
+
+  // Table — order rows by canonical STAGES sequence, hide empty rows.
+  const tbody = $("#cost-tbody");
+  tbody.innerHTML = "";
+  const byStage = c.by_stage || {};
+  for (const stage of STAGES) {
+    const b = byStage[stage];
+    if (!b || b.calls === 0) continue;
+    const tr = document.createElement("tr");
+    const cacheRW = (b.cache_read_tokens || b.cache_create_tokens)
+      ? `${fmtNum(b.cache_read_tokens)} / ${fmtNum(b.cache_create_tokens)}`
+      : "—";
+    tr.innerHTML = `
+      <td class="stage-cell">${stage}</td>
+      <td class="model-cell">${escapeHtml(b.model || "—")}</td>
+      <td class="r tabular">${b.calls}</td>
+      <td class="r tabular">${fmtNum(b.input_tokens)}</td>
+      <td class="r tabular">${fmtNum(b.output_tokens)}</td>
+      <td class="r tabular">${cacheRW}</td>
+      <td class="r tabular">${fmtAudioSecs(b.audio_seconds)}</td>
+      <td class="r tabular usd"><strong>${fmtUsd(b.usd)}</strong></td>
+    `;
+    tbody.appendChild(tr);
+  }
+  if (!tbody.children.length) {
+    tbody.innerHTML = `<tr><td colspan="8" class="empty">No cost data yet — set <code>PODCAST_VERBOSE=1</code> before running pipeline.</td></tr>`;
+  }
+
+  // Warnings
+  const wEl = $("#cost-warnings");
+  wEl.innerHTML = "";
+  for (const w of (c.warnings || [])) {
+    const div = document.createElement("div");
+    div.className = "warn";
+    div.textContent = "⚠ " + w;
+    wEl.appendChild(div);
+  }
 }
 
 function renderFeed() {
@@ -322,16 +423,11 @@ function renderFeed() {
   for (const e of state.feed) {
     const row = document.createElement("div");
     row.className = "feed-line";
-    const time = document.createElement("span");
-    time.className = "feed-time";
-    time.textContent = fmtTime(e.ts);
-    const stage = document.createElement("span");
-    stage.className = "feed-stage";
-    stage.textContent = e.stage;
-    const body = document.createElement("span");
-    body.className = "feed-body";
-    body.innerHTML = renderEntry(e);
-    row.append(time, stage, body);
+    row.innerHTML = `
+      <span class="feed-time">${fmtTime(e.ts)}</span>
+      <span class="feed-stage">${escapeHtml(e.stage || "")}</span>
+      <span class="feed-body">${renderEntry(e)}</span>
+    `;
     frag.appendChild(row);
   }
   feed.innerHTML = "";
@@ -364,28 +460,21 @@ function renderEntry(e) {
       }
       return `<span class="feed-tool">→ ${escapeHtml(e.tool)}</span><span class="feed-text">${escapeHtml(detail)}</span>`;
     }
-    case "text":
-      return `<span class="feed-text">💬 ${escapeHtml(e.msg)}</span>`;
-    case "stage_start":
-      return `<span class="feed-text" style="color:var(--contra);font-weight:500">▸ ${escapeHtml(e.msg)}</span>`;
-    case "stage_done":
-      return `<span class="feed-text" style="color:var(--ink);font-weight:500">✓ ${escapeHtml(e.msg)}</span>`;
-    case "stage_fail":
-      return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
-    case "error":
-      return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
-    case "sys":
-      return `<span class="feed-text" style="color:var(--sub)">· ${escapeHtml(e.msg)}</span>`;
-    case "result":
-      return `<span class="feed-usage">· ${escapeHtml(e.msg)}</span>`;
+    case "text":      return `<span class="feed-text">💬 ${escapeHtml(e.msg)}</span>`;
+    case "stage_start": return `<span class="feed-text strong contra">▸ ${escapeHtml(e.msg)}</span>`;
+    case "stage_done":  return `<span class="feed-text strong">✓ ${escapeHtml(e.msg)}</span>`;
+    case "stage_fail":  return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
+    case "error":       return `<span class="feed-error">✗ ${escapeHtml(e.msg)}</span>`;
+    case "sys":         return `<span class="feed-text muted">· ${escapeHtml(e.msg)}</span>`;
+    case "result":      return `<span class="feed-usage">· ${escapeHtml(e.msg)}</span>`;
+    case "tts":         return `<span class="feed-tts">♪ ${escapeHtml(e.msg)}</span>`;
     case "info":
-    default:
-      return `<span class="feed-text" style="color:var(--inkLight)">${escapeHtml(e.msg || "")}</span>`;
+    default:            return `<span class="feed-text muted">${escapeHtml(e.msg || "")}</span>`;
   }
 }
 
 function escapeHtml(s) {
-  return String(s || "").replace(/[&<>"']/g, (c) =>
+  return String(s ?? "").replace(/[&<>"']/g, (c) =>
     ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[c])
   );
 }
@@ -408,9 +497,11 @@ function renderNavStatus() {
   }
 }
 
-// Elapsed ticks forward while running
 setInterval(() => {
-  if (state.currentStage) renderMetrics();
+  if (state.currentStage) renderKpis();
 }, 1000);
 
-loadWorkspaces();
+document.addEventListener("DOMContentLoaded", () => {
+  $("#ws-refresh").addEventListener("click", loadWorkspaces);
+  loadWorkspaces();
+});
