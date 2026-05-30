@@ -17,12 +17,17 @@
     <label class="micro-label">WORKSPACE</label>
     <select id="ws-select" class="ws-select"></select>
     <button id="ws-refresh" class="icon-btn" title="Reload workspace list">↻</button>
+    <button id="act-upload" class="action-btn" title="Upload this workspace to production">↑ UPLOAD</button>
+    <button id="act-delete" class="action-btn danger" title="Delete local workspace (does not touch server)">✕ DELETE</button>
   </div>
   <div class="nav-status">
     <span id="status-dot" class="status-dot"></span>
     <span id="status-text" class="micro-label">IDLE</span>
   </div>
 </nav>
+
+<!-- Toast stack — actions push transient messages here -->
+<div id="toasts" class="toasts"></div>
 
 <main class="main">
 
@@ -86,6 +91,15 @@
 
   <!-- Inline player -->
   <section class="panel" id="player-panel"></section>
+
+  <!-- Recent jobs -->
+  <section class="panel">
+    <div class="panel-head">
+      <span class="micro-label">RECENT JOBS</span>
+      <span class="panel-sub" id="jobs-meta">none</span>
+    </div>
+    <div class="jobs-table" id="jobs-table"></div>
+  </section>
 
   <!-- Live activity -->
   <section class="panel">
