@@ -1,0 +1,4 @@
+# Runtime-only state — job log tails, EPUB upload staging.
+# Always regenerated; never commit.
+.jobs/
+.uploads/
