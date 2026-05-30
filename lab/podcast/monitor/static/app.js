@@ -4,7 +4,7 @@
 
 // Build stamp — visible in the nav so we can tell at-a-glance whether the
 // browser is serving fresh JS or a stale cache. Bumped per noteworthy change.
-const APP_VERSION = "2026-05-30d";
+const APP_VERSION = "2026-05-30e";
 console.info(`[monitor] app.js loaded · version ${APP_VERSION}`);
 
 // Surface any uncaught JS error to the toast stack so the user sees it
@@ -116,17 +116,34 @@ function fmtAudioSecs(s) {
 const WORKSPACES_POLL_MS = 8000;
 
 async function loadWorkspaces({ quiet = false } = {}) {
-  let list;
+  // P1 endpoint returns rich summaries; bare fallback would return strings.
+  // Always request full=1; if the server is somehow stale, normalize below.
+  let summaries;
   try {
-    const r = await fetch("/api/workspaces");
+    const r = await fetch("/api/workspaces?full=1");
     if (!r.ok) return;
-    list = await r.json();
+    summaries = await r.json();
   } catch { return; }
+
+  // Defensive: tolerate legacy string-list shape (server pre-P1).
+  if (summaries.length && typeof summaries[0] === "string") {
+    summaries = summaries.map(name => ({
+      name, status: "idle", n_stages_done: 0, n_stages_total: 13,
+      episode_count: 0, last_updated: 0,
+      total_usd: 0, claude_usd: 0, tts_usd: 0,
+      has_cost_data: false, active_job: null,
+    }));
+  }
+
+  const list = summaries.map(s => s.name);
+  state.workspaceSummaries = summaries;
 
   const sel = $("#ws-select");
   const prevSelection = sel.value;
   const prevList = state.workspaceList || [];
 
+  // Mirror into the legacy <select> (kept until P4 retires it; remains the
+  // a11y fallback + the source of truth for the active workspace value).
   sel.innerHTML = "";
   for (const name of list) {
     const opt = document.createElement("option");
@@ -150,6 +167,9 @@ async function loadWorkspaces({ quiet = false } = {}) {
   const fresh = list.filter(n => !prevList.includes(n));
   state.workspaceList = list;
 
+  // Render sidebar AFTER deciding sel.value so the highlight matches.
+  renderSidebar(summaries, sel.value);
+
   if (!quiet || prevList.length === 0) {
     // Explicit load: switch to the (preserved or first) selection so the
     // dashboard fills with data.
@@ -160,10 +180,106 @@ async function loadWorkspaces({ quiet = false } = {}) {
     for (const n of fresh) toast(`new workspace: ${n}`, "info", 6000);
     if (fresh.length && !state.ws) {
       sel.value = fresh[fresh.length - 1];
+      renderSidebar(summaries, sel.value);
       switchWorkspace(sel.value);
     }
   }
 }
+
+// ─── Sidebar render ──────────────────────────────────────────────────────────
+//
+// Sorts by last_updated desc (most recently active floats to top), with status
+// priority as the tiebreak so a running workspace beats an older idle one.
+// Re-render is cheap (innerHTML rebuild) — sidebar's typical N is < 20.
+function renderSidebar(summaries, activeName) {
+  const list = $("#sidebar-list");
+  const countEl = $("#sidebar-count");
+  if (!list) return;
+
+  countEl.textContent = summaries.length.toString();
+
+  if (!summaries.length) {
+    list.innerHTML = `<div class="sidebar-empty">no workspaces yet — pick "+ NEW PODCAST"</div>`;
+    return;
+  }
+
+  const statusOrder = { running: 0, failed: 1, idle: 2, done: 3, fresh: 4 };
+  const sorted = summaries.slice().sort((a, b) => {
+    // Recent activity wins; status priority breaks ties.
+    if (b.last_updated !== a.last_updated) return b.last_updated - a.last_updated;
+    return (statusOrder[a.status] ?? 99) - (statusOrder[b.status] ?? 99);
+  });
+
+  list.innerHTML = sorted.map(s => sidebarCardHtml(s, s.name === activeName)).join("");
+
+  // Single delegated click handler — added once per render but bound via
+  // dataset, so attaching here keeps the handler scoped to current cards.
+  list.onclick = (ev) => {
+    const card = ev.target.closest(".ws-card");
+    if (!card) return;
+    const name = card.dataset.ws;
+    if (!name || name === state.ws) return;
+    $("#ws-select").value = name;
+    switchWorkspace(name);
+    // Optimistic highlight — saves one render pass before next poll catches up.
+    for (const el of list.querySelectorAll(".ws-card")) {
+      el.classList.toggle("is-active", el.dataset.ws === name);
+    }
+  };
+}
+
+function sidebarCardHtml(s, isActive) {
+  const pct = s.n_stages_total ? Math.round((s.n_stages_done / s.n_stages_total) * 100) : 0;
+  const cost = s.total_usd >= 0.01 ? `$${s.total_usd.toFixed(2)}` : "<$0.01";
+  const costClass = s.total_usd >= 0.01 ? "ws-cost" : "ws-cost zero";
+  const ep = s.episode_count ? `${s.episode_count} ep` : "—";
+  const time = relativeTime(s.last_updated);
+  // Status text override for clarity (active job kind tells you more than "running")
+  const statusText = s.status === "running" && s.active_job
+    ? (s.active_job.kind || "running")
+    : s.status;
+
+  return `
+<button class="ws-card ws-card-${s.status}${isActive ? " is-active" : ""}"
+        data-ws="${escapeAttr(s.name)}"
+        role="listitem"
+        title="${escapeAttr(s.name)}">
+  <div class="ws-card-head">
+    <span class="ws-status-dot ws-status-${s.status}"></span>
+    <span class="ws-name">${escapeHtml(s.name)}</span>
+    <span class="ws-time" title="${new Date(s.last_updated * 1000).toLocaleString()}">${time}</span>
+  </div>
+  <div class="ws-card-bar">
+    <div class="ws-card-bar-track"><div class="ws-card-bar-fill" style="width:${pct}%"></div></div>
+    <span class="ws-card-progress">${s.n_stages_done}/${s.n_stages_total}</span>
+  </div>
+  <div class="ws-card-meta">
+    <span class="${costClass}">${cost}</span>
+    <span class="ws-sep">·</span>
+    <span class="ws-eps">${ep}</span>
+    <span class="ws-sep">·</span>
+    <span class="ws-status-text">${escapeHtml(statusText)}</span>
+  </div>
+</button>`;
+}
+
+function relativeTime(epochSeconds) {
+  if (!epochSeconds) return "—";
+  const diff = Date.now() / 1000 - epochSeconds;
+  if (diff < 0) return "now";
+  if (diff < 60) return `${Math.floor(diff)}s`;
+  if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+  if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+  if (diff < 86400 * 30) return `${Math.floor(diff / 86400)}d`;
+  return `${Math.floor(diff / (86400 * 30))}mo`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"']/g, c => (
+    { "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]
+  ));
+}
+function escapeAttr(s) { return escapeHtml(s); }
 
 function resetState() {
   state.stages = {};
