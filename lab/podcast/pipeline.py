@@ -116,12 +116,12 @@ def _ensure_dashboard_running(workspace: Path | None = None) -> str | None:
             print(f"[dashboard] {start_sh} missing — skipping auto-start")
             return None
         print(f"[dashboard] starting monitor on :{_DASHBOARD_PORT} ...")
-        # start.sh is itself idempotent; nohup-detaches a uv subprocess.
-        # Run it FOREGROUND so we get its readiness banner, but it returns
-        # quickly because it daemonizes the uvicorn child.
+        # Pass --bg so start.sh nohup-detaches uvicorn and returns the readiness
+        # banner. Default start.sh mode is now foreground (humans want to see
+        # the logs); the pipeline auto-launch path needs the legacy detach.
         try:
             subprocess.run(
-                ["bash", str(start_sh), str(_DASHBOARD_PORT)],
+                ["bash", str(start_sh), "--bg", str(_DASHBOARD_PORT)],
                 cwd=str(ROOT), check=False, timeout=15,
             )
         except subprocess.TimeoutExpired:
