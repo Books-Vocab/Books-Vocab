@@ -12,7 +12,7 @@ struct AppActionButtonStyle: ButtonStyle {
     let tone: AppActionTone
 
     func makeBody(configuration: Configuration) -> some View {
-        let palette = stylePalette
+        let palette = Self.palette(tone: tone, theme: appTheme)
 
         configuration.label
             .font(AppFonts.subhead(weight: .semibold))
@@ -39,27 +39,37 @@ struct AppActionButtonStyle: ButtonStyle {
             .animateControl(configuration.isPressed)
     }
 
-    private var stylePalette: (foreground: Color, background: Color, border: Color) {
+    /// Resolved (foreground, background, border) for a tone against a theme.
+    /// Static + theme-injected so WCAGContrastTests can assert the real pairing
+    /// without standing up a SwiftUI environment.
+    static func palette(
+        tone: AppActionTone,
+        theme: AppTheme
+    ) -> (foreground: Color, background: Color, border: Color) {
         switch tone {
         case .primary:
-            return (.white, appTheme.palette.primaryText, appTheme.palette.primaryText)
+            // Foreground = pageBackground so it inverts WITH the scheme: light
+            // text on the dark primaryText fill in light mode, dark text on the
+            // near-white fill in dark mode. A hardcoded `.white` was invisible in
+            // dark mode (white on #E6E6E3 ≈ 1.05:1).
+            return (theme.palette.pageBackground, theme.palette.primaryText, theme.palette.primaryText)
         case .neutral:
             return (
-                appTheme.palette.primaryText,
-                appTheme.palette.cardBackground,
-                appTheme.palette.cardBorder
+                theme.palette.primaryText,
+                theme.palette.cardBackground,
+                theme.palette.cardBorder
             )
         case .outline:
             return (
-                appTheme.palette.primaryText,
+                theme.palette.primaryText,
                 .clear,
-                appTheme.palette.secondaryText.opacity(0.3)
+                theme.palette.secondaryText.opacity(0.3)
             )
         case .destructive:
             return (
-                appTheme.palette.destructive,
-                appTheme.palette.destructive.opacity(0.10),
-                appTheme.palette.destructive.opacity(0.22)
+                theme.palette.destructive,
+                theme.palette.destructive.opacity(0.10),
+                theme.palette.destructive.opacity(0.22)
             )
         }
     }

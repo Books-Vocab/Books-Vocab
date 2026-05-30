@@ -115,4 +115,27 @@ import SwiftUI
     @Test func tertiaryText_dark_meetsGraphical() {
         #expect(contrast(AppTheme.dark.palette.tertiaryText, AppTheme.dark.palette.pageBackground) >= 3.0)
     }
+
+    // MARK: - appAction(.primary) button label legibility
+    //
+    // Regression guard for the dark-mode invisibility bug: the primary tone used
+    // a hardcoded `.white` foreground on the `primaryText` fill. In dark mode
+    // primaryText = #E6E6E3 (near white), so white-on-near-white ≈ 1.05:1 —
+    // effectively invisible. These assert the REAL pairing the style returns
+    // (via AppActionButtonStyle.palette) flips with the scheme and stays legible.
+
+    @Test func primaryButtonLabel_light_meetsAA() {
+        let p = AppActionButtonStyle.palette(tone: .primary, theme: .light)
+        #expect(contrast(p.foreground, p.background) >= 4.5)
+    }
+
+    @Test func primaryButtonLabel_dark_meetsAA() {
+        let p = AppActionButtonStyle.palette(tone: .primary, theme: .dark)
+        #expect(contrast(p.foreground, p.background) >= 4.5)
+    }
+
+    @Test func primaryButtonLabel_sepia_meetsAA() {
+        let p = AppActionButtonStyle.palette(tone: .primary, theme: .sepia)
+        #expect(contrast(p.foreground, p.background) >= 4.5)
+    }
 }
