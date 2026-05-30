@@ -512,31 +512,67 @@ body.sidebar-open .sidebar-backdrop {
   align-items: center;
   gap: 8px;
 }
-/* ── Four independent milestone bars ──────────────────────────────────
-   One bar per production gate (PLAN→SCRIPT→AUDIO→SUBTITLE), visually
-   SEPARATED so each reads as its own mini progress bar filled by that
-   gate's real ratio. Position + label identify the stage; a single blue
-   fill (no depth ramp) keeps it calm. Replaces the marker-ratio single
-   bar, which lied (markers drift from real artifacts). */
+/* ── 3-phase / 2-gate track ────────────────────────────────────────────
+   Three phase bars (PLAN→SCRIPT→AUDIO) each filled by their own ratio,
+   separated by the two approval-gate glyphs. Subtitle has no gate of its
+   own (shares the audio phase) → it folds into the audio bar as a thin
+   secondary underline. The gate glyph is the hero: awaiting pulses amber so
+   a parked workspace draws the eye. Replaces the flat four-bar view, which
+   couldn't show the two human gates the new pipeline pauses at. */
 .ws-mstrip {
   display: flex;
-  gap: 4px;          /* clear separation → reads as four distinct bars */
-  height: 4px;
+  align-items: center;
+  gap: 5px;
+  height: 8px;       /* room for the gate diamonds beside 5px bars */
 }
-.ws-mseg {
+.ph {
+  position: relative;
   flex: 1;
+  height: 5px;
   background: var(--borderL);   /* empty-bar track */
-  border-radius: 2px;           /* each bar rounded independently */
+  border-radius: 2px;
   overflow: hidden;
 }
-.ws-mseg > i {
+.ph > i {
   display: block;
   height: 100%;
-  background: #2f81c4;          /* one blue for every gate */
+  background: #2f81c4;          /* one blue for every phase */
   transition: width 0.3s ease;
 }
-/* failed workspaces tint the fills red so status reads before the label. */
-.ws-card.ws-card-failed .ws-mseg > i { background: var(--dev); }
+/* subtitle = thin secondary underline inside the audio phase bar. */
+.ph-audio > .ph-sub {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  background: #7fb2da;          /* lighter blue → reads as a sub-track */
+  transition: width 0.3s ease;
+}
+/* failed workspaces tint phase fills red so status reads before the label. */
+.ws-card.ws-card-failed .ph > i { background: var(--dev); }
+
+/* Gate glyph: a small rotated square (diamond) between phases. */
+.gate {
+  flex: 0 0 auto;
+  width: 7px;
+  height: 7px;
+  transform: rotate(45deg);
+  border-radius: 1px;
+}
+.gate-passed { background: var(--sub); opacity: 0.5; }       /* approved / de-facto */
+.gate-pending { background: transparent; box-shadow: inset 0 0 0 1px var(--borderBase); }
+.gate-awaiting {                                              /* needs YOUR approval */
+  background: var(--dual);
+  box-shadow: 0 0 0 0 rgba(211, 84, 0, 0.5);
+  animation: gatePulse 1.6s ease-out infinite;
+}
+@keyframes gatePulse {
+  0%   { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0.5); }
+  70%  { box-shadow: 0 0 0 5px rgba(211, 84, 0, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(211, 84, 0, 0); }
+}
+/* awaiting workspaces: amber left accent + amber label so the card pops. */
+.ws-card.ws-card-awaiting { border-left: 2px solid var(--dual); }
 .ws-card-progress {
   font-family: var(--mono);
   font-size: 9px;
@@ -544,6 +580,7 @@ body.sidebar-open .sidebar-backdrop {
   font-variant-numeric: tabular-nums;
   letter-spacing: 0.04em;
 }
+.ws-card-progress.awaiting { color: var(--dual); font-weight: 700; }
 
 .ws-card-meta {
   display: flex;
